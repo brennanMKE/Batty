@@ -1,6 +1,9 @@
 // swift-tools-version: 6.3
 import PackageDescription
 
+// Important: Use these settings for all libraries except CommunityCore.
+let swiftSettings: [SwiftSetting]? = [.defaultIsolation(MainActor.self)]
+
 let package = Package(
     name: "BattyKit",
     platforms: [
@@ -25,11 +28,13 @@ let package = Package(
             dependencies: [
                 .product(name: "GhosttyKit", package: "libghostty-spm"),
                 .product(name: "SlidingTabs", package: "SlidingTabs"),
-            ]
+            ],
+            swiftSettings: swiftSettings
         ),
         .testTarget(
             name: "BattyKitTests",
-            dependencies: ["BattyKit"]
+            dependencies: ["BattyKit"],
+            swiftSettings: swiftSettings
         ),
     ],
     swiftLanguageModes: [.v6]
