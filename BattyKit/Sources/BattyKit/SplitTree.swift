@@ -90,9 +90,37 @@ public final class SplitTree {
         }
         return newPane
     }
+
+    public func removeFocusedPane() {
+        let leaves = root.allLeafPanes
+        guard leaves.count > 1 else { return }
+        guard let newRoot = SplitTreeNode.removingPane(focusedPaneID, from: root) else { return }
+        root = newRoot
+        focusedPaneID = newRoot.firstLeafPaneID
+    }
 }
 
 extension SplitTreeNode {
+    static func removingPane(_ id: UUID, from node: SplitTreeNode) -> SplitTreeNode? {
+        switch node {
+        case .leaf(let pane):
+            return pane.id == id ? nil : node
+        case .split(let dir, let ratio, let left, let right):
+            let newLeft = removingPane(id, from: left)
+            let newRight = removingPane(id, from: right)
+            switch (newLeft, newRight) {
+            case (nil, nil):
+                return nil
+            case (nil, let r?):
+                return r
+            case (let l?, nil):
+                return l
+            case (let l?, let r?):
+                return .split(direction: dir, ratio: ratio, left: l, right: r)
+            }
+        }
+    }
+
     static func inserting(
         newPane: PaneRuntime,
         adjacentTo paneID: UUID,

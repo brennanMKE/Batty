@@ -18,4 +18,13 @@ public final class SessionRuntime: Identifiable {
     public var focusedPane: PaneRuntime {
         tree.focusedPane
     }
+
+    public func closeFocusedTab() {
+        let pane = focusedPane
+        if pane.tabs.count > 1 {
+            pane.closeActiveTab()
+        } else if tree.allPanes.count > 1 {
+            tree.removeFocusedPane()
+        }
+    }
 }

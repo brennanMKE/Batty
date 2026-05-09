@@ -56,10 +56,10 @@ public struct BattyCommands: Commands {
             .disabled(focusedPane == nil)
 
             Button("Close Tab") {
-                store?.selectedSession?.focusedPane.closeActiveTab()
+                store?.selectedSession?.closeFocusedTab()
             }
             .keyboardShortcut("w", modifiers: .command)
-            .disabled((focusedPane?.tabs.count ?? 0) < 2)
+            .disabled(!canCloseFocusedTab)
 
             Divider()
 
@@ -89,6 +89,11 @@ public struct BattyCommands: Commands {
 
     private var focusedPane: PaneRuntime? {
         store?.selectedSession?.focusedPane
+    }
+
+    private var canCloseFocusedTab: Bool {
+        guard let session = store?.selectedSession else { return false }
+        return session.focusedPane.tabs.count > 1 || session.tree.allPanes.count > 1
     }
 
     private func sessionMenuTitle(at index: Int) -> String {
