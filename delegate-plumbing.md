@@ -1,6 +1,6 @@
 # Decision: how to unblock the delegate-plumbing-blocked issues
 
-> **TL;DR.** Nine open issues are blocked on the same gap: GhosttyTerminal's SwiftUI-facing `TerminalViewState` only conforms to 4 of the 12 `TerminalSurfaceViewDelegate` sub-protocols, and `sendText(_:)` is `internal`. Two ways forward: open small upstream PRs against `Lakr233/libghostty-spm` (clean, slow, depends on maintainer), or wrap `TerminalView` ourselves with a custom `NSViewRepresentable` (fast, more code, tighter coupling). **Recommendation: open the upstream PRs first; fall back to the wrapper if review stalls.**
+> **TL;DR.** Nine open issues are blocked on the same gap: GhosttyTerminal's SwiftUI-facing `TerminalViewState` only conforms to 4 of the 12 `TerminalSurfaceViewDelegate` sub-protocols, and `sendText(_:)` is `internal`. **Only `libghostty.a` is a pre-built binary; the Swift wrappers (`GhosttyTerminal`, `GhosttyTheme`, `ShellCraftKit`) are source code we can fork.** Recommended path: **fork `Lakr233/libghostty-spm` to `brennanMKE/libghostty-spm`, add the missing delegates + public sendText on a branch, and point our `BattyKit/Package.swift` at the fork.** Hours of work, full control, optional upstream PR later. Path A (upstream PR with no fork) is slower; Path B (custom NSViewRepresentable wrapper) is more code; Path D (vendor in-tree) is bigger maintenance burden.
 
 ---
 
@@ -108,6 +108,29 @@ Four additions to make the blocked group resolvable:
 
 ---
 
+## Important context: what's binary vs. source in `libghostty-spm`
+
+The package mixes a binary target with regular Swift source targets:
+
+```swift
+// libghostty-spm/Package.swift, abridged:
+.target(name: "GhosttyKit",      dependencies: ["libghostty"]),       // Swift source
+.target(name: "GhosttyTerminal", dependencies: ["GhosttyKit", ...]),  // Swift source
+.target(name: "GhosttyTheme",    dependencies: ["GhosttyTerminal"]),  // Swift source
+.target(name: "ShellCraftKit",   dependencies: ["GhosttyTerminal"]),  // Swift source
+.binaryTarget(name: "libghostty",
+    url: "...GhosttyKit.xcframework.zip",
+    checksum: "...")                                                  // Binary (libghostty.a)
+```
+
+**Only `libghostty.a` is binary.** Every Swift wrapper file we'd want to modify — `TerminalViewState+Delegate.swift`, `TerminalController.swift`, `TerminalSurface.swift` — is regular source built from the checkout when SwiftPM resolves the package.
+
+That means we don't have to wait on upstream merge. We can fork the Swift code (keeping the binary `libghostty.a` from the upstream release) and consume our fork from `BattyKit/Package.swift`. The C engine stays binary-shipped via the upstream xcframework URL; only the wrappers diverge.
+
+This is what enables **Paths C and D below** to be fast and low-risk.
+
+---
+
 ## Path A — Upstream PRs against `Lakr233/libghostty-spm`
 
 ### What it looks like
@@ -203,32 +226,132 @@ We've effectively abandoned GhosttyTerminal as a SwiftUI integration and reverte
 
 ---
 
-## Comparison
+## Path C — Fork `libghostty-spm`, point our package at the fork
 
-| Dimension | Path A (upstream PRs) | Path B (custom wrapper) |
-|---|---|---|
-| **Time to unblock** | 1–14 days (maintainer-dependent) | 1–4 days (fully under our control) |
-| **Code we own** | 0 lines | ~1000+ lines re-implementing the SwiftUI bridge |
-| **Risk of regressions** | Low (small, mechanical PR) | Medium-high (Metal / IME / display-link are tricky) |
-| **Long-term maintenance** | Negligible (upstream maintains) | Ongoing (we own the wrapper code forever) |
-| **Aligns with "use what's available"** | Yes | No |
-| **Affects M3/M4 work shipped** | No (additive change to TerminalViewState) | Yes (would replace `TerminalSurfaceView` in `PaneView`) |
-| **Future libghostty-spm upgrades** | Flow in automatically | Require manual port |
-| **Failure mode** | Maintainer stalls → fall back to Path B | Bugs in Metal/IME → debug ourselves |
+### What it looks like
+
+1. **Fork** `Lakr233/libghostty-spm` to `brennanMKE/libghostty-spm` on GitHub.
+2. **Branch** the fork (e.g., `batty-delegates`).
+3. **Apply two small patches** on the branch:
+   - `Sources/GhosttyTerminal/State/TerminalViewState+Delegate.swift`: add `Bell` / `DesktopNotification` / `Pwd` conformances mirroring the existing `Title` / `GridResize` / `Focus` / `Close` pattern. Add corresponding `public internal(set) var bellCount`, `lastDesktopNotification`, `workingDirectory` (etc.) on `TerminalViewState` itself in `TerminalViewState.swift`.
+   - `Sources/GhosttyTerminal/Controller/TerminalController.swift` (or `TerminalViewState.swift`): add a public `sendText(_: String)` that forwards to the internal `TerminalSurface.sendText(_:)`.
+4. **Update `BattyKit/Package.swift`** to point at the fork:
+   ```swift
+   .package(url: "https://github.com/brennanMKE/libghostty-spm", branch: "batty-delegates"),
+   ```
+5. SwiftPM resolves and builds. We're done.
+
+The binary `libghostty.a` continues to be downloaded from the upstream release URL — we don't have to host an xcframework. Only the Swift wrappers run from our fork.
+
+### Pros
+
+- **Hours, not weeks.** No external review dependency. Same speed as Path B but a fraction of the code change.
+- **Modifies only the missing pieces.** ~30 lines of new code in 2 source files. Doesn't re-implement anything.
+- **Future upstream improvements flow in via rebase.** Lakr233 ships an update? `git pull upstream main` on the fork, push, bump the branch ref. Five minutes.
+- **Optional later PR upstream.** Once the changes have proven themselves in our use, we can submit them back. No time pressure on either side.
+- **Same coupling as the original "use the dependency" plan.** We still consume libghostty-spm's wrapper; we just consume our own copy of it.
+
+### Cons
+
+- **One additional GitHub repo to maintain.** The fork. Trivial overhead for a single-developer project.
+- **`Package.resolved` pins to a branch** (or a specific commit on the branch). Branch tracking can drift; a commit pin is more reproducible. Use `revision:` rather than `branch:` for stability:
+  ```swift
+  .package(url: "https://github.com/brennanMKE/libghostty-spm",
+           revision: "<short-sha-after-our-changes>"),
+  ```
+- **Diverges from `Lakr233/libghostty-spm`'s versioning.** If we want to upstream the changes, we have to keep the diff small enough to be reviewable. Keep the fork narrow.
+- **MSDisplayLink dependency stays as-is.** That's fine — it's a sub-dep of `libghostty-spm` itself.
+
+### Time estimate
+
+- **Forking + branching**: 5 minutes via the GitHub UI or `gh repo fork`.
+- **Reading the source carefully**: 15-30 minutes.
+- **Writing the changes** (3 delegate conformances + corresponding `@Observable` properties + a public `sendText`): 30-60 minutes.
+- **Pinning our `Package.swift` and verifying with `swift test --package-path BattyKit` and `xcodebuild build`**: 15 minutes.
+- **Total: under 2 hours.**
+
+I can do this as a subagent task: hand it the repo URL, target branch, and the list of needed additions. It produces commits on the fork and a `Package.swift` patch on our side.
+
+### Risk if path C fails
+
+Worst case: we discover a non-trivial reason the change can't be made (e.g., `TerminalSurface` is set up in a way that requires more than just exposing a `sendText`). At that point we still have Path B as a fallback, and we've lost ~2 hours of investigation that produced documented learnings about the wrapper internals.
 
 ---
 
-## Recommendation: Path A first, Path B as fallback
+## Path D — Vendor `GhosttyTerminal` source in-tree
 
-Open the upstream PRs. They're small, mechanical, and follow the maintainer's existing pattern. Lakr233 has been responsive on the package historically (judging by recent commits and the level of documentation in the repo). The upside of merging is real: every consumer of `libghostty-spm` gets the improvements, not just us.
+### What it looks like
 
-While we wait for review:
+- Copy the `Sources/GhosttyTerminal/**` and `Sources/GhosttyTheme/**` source trees from the libghostty-spm checkout into a new `BattyKit/Vendor/` directory in our repo.
+- Stop depending on the `GhosttyTerminal` and `GhosttyTheme` products in `BattyKit/Package.swift`.
+- Keep depending on `GhosttyKit` (which gives us `libghostty.a` via the binary target).
+- Apply our delegate / `sendText` changes locally.
+- The vendored source files now build as part of the `BattyKit` target directly.
 
-- **I keep working on what's not blocked.** `#0030`/`#0031` cadence wiring, `#0019` drag-divider, `#0020` geometric focus.
-- **You verify the M3/M4/M8 work** that's already shipped (`#0014`, `#0015`, `#0017`, `#0018`, `#0021`, `#0033`).
-- **You set up `batty.sstools.co`** + Sparkle keys when convenient (this is also unblocking, just for `#0038`).
+### Pros
 
-If the PRs stall for >2 weeks, **switch to Path B** with a documented "interim wrapper" issue that we can revert when upstream lands the API. We'd vendor a `BattyTerminalSurfaceView` that exists alongside `TerminalSurfaceView` — easier to remove later than a full replacement.
+- **No external repo.** No fork to maintain.
+- **Total local control.** Absolutely no upstream dependency.
+
+### Cons
+
+- **~1000+ lines of vendored Swift in our repo.** That's a maintenance liability.
+- **Loses git-merge upgrade path.** Upstream ships an update? We have to manually port the diff into our copy.
+- **Bigger commit footprint** — `git log` becomes noisy.
+- **Worse than Path C in basically every dimension** except the "no fork to maintain" axis. And maintaining a fork in 2026 is a 5-minute affair.
+
+Path D is here for completeness; I don't recommend it.
+
+### Time estimate
+
+- **Copying the source**: 10 minutes.
+- **Untangling from the package's structure** (the source assumes it's a `target` with specific dependencies): 30-60 minutes.
+- **Applying the changes**: same as Path C.
+- **Total: 1-3 hours.**
+
+---
+
+## Comparison
+
+| Dimension | Path A (upstream PRs) | Path B (custom wrapper) | **Path C (fork)** | Path D (vendor) |
+|---|---|---|---|---|
+| **Time to unblock** | 1–14 days | 1–4 days | **< 2 hours** | 1–3 hours |
+| **Code we own** | 0 lines | ~1000+ lines (re-bridge) | **~30 lines (in our fork)** | ~1000+ lines (in our repo) |
+| **Risk of regressions** | Low | Medium-high (Metal / IME) | **Low (mechanical change)** | Low |
+| **Long-term maintenance** | Negligible | Ongoing | **Periodic rebase** | Ongoing port-the-diff |
+| **Aligns with "use what's available"** | Yes | No | **Yes (we still consume the package)** | Borderline |
+| **Affects M3/M4 work shipped** | No | Yes | **No** | No |
+| **Future libghostty-spm upgrades** | Auto | Manual port | **Rebase, ~5 min** | Manual port |
+| **External dependency** | Maintainer time | None | **GitHub fork** | None |
+| **Failure mode** | Stalls → fallback | Bugs in Metal/IME | **Discovery of structural blocker → fallback** | Same |
+
+---
+
+## Recommendation: Path C — fork the package
+
+**Best ratio of speed × control × maintainability.** We modify ~30 lines, host a fork (basically free), and keep consuming the package the same way we already do. Future GhosttyTerminal improvements come in via a 5-minute rebase. Upstreaming our changes later as a Path A-style PR is optional and unhurried.
+
+Sequence of work if you go with Path C:
+
+1. **You** fork `Lakr233/libghostty-spm` to `brennanMKE/libghostty-spm` (or wherever you want it). 5 minutes via GitHub UI or `gh repo fork`.
+2. **I** dispatch a subagent to clone the fork, write the changes on a branch, push the branch, and emit a commit hash + the one-line `Package.swift` change for our side. ~1 hour.
+3. **You** review the fork's changes, push them.
+4. **I** apply the `Package.swift` revision pin in our repo, run `swift test --package-path BattyKit` and `xcodebuild build`, commit.
+5. **I** unblock and ship the previously-deferred issues: `#0022`, `#0023`, `#0024`, `#0025`, `#0026`, `#0027`, `#0028`, `#0035`, `#0036`'s close-confirm half. Probably another half-day to a day, depending on visual verification rhythm.
+
+While step 1 happens (or in parallel), I keep working on the unblocked issues (`#0030`/`#0031` cadence wiring, `#0019` drag-divider, `#0020` focus).
+
+---
+
+## What I need from you (revised)
+
+One small operational thing:
+
+**Fork the repo and tell me the URL.**
+
+Once you do, I dispatch the subagent to apply the changes and report back with the fork commit SHA + `Package.swift` revision. Then we're past the blocker and the bell-feed / drag-drop work can start.
+
+Or if you'd rather I propose the exact code first (so you can review before any commit lands on the fork): say so and I'll write up the proposed changes as a separate markdown file you can read over before I touch anything.
 
 ---
 
