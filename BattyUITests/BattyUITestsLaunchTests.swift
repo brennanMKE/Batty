@@ -2,7 +2,7 @@
 
 import XCTest
 
-final class BattyUITestsLaunchTests: XCTestCase {
+nonisolated final class BattyUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true
