@@ -16,5 +16,6 @@ public struct RootWindowView: View {
         } detail: {
             SessionDetailView(store: store)
         }
+        .focusedSceneValue(\.appStateStore, store)
     }
 }

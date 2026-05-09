@@ -9,5 +9,8 @@ struct BattyApp: App {
         WindowGroup {
             ContentView()
         }
+        .commands {
+            BattyCommands()
+        }
     }
 }
