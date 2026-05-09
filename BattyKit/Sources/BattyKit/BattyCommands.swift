@@ -5,6 +5,7 @@ import SwiftUI
 public struct BattyCommands: Commands {
     @FocusedValue(\.appStateStore) private var store: AppStateStore?
     @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
+    @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
 
     public init() {}
 
@@ -31,6 +32,21 @@ public struct BattyCommands: Commands {
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
                 .disabled(!sessionExists(at: index))
+            }
+        }
+
+        CommandMenu("Theme") {
+            ForEach(GhosttyThemeCatalog.allThemes, id: \.id) { theme in
+                Button {
+                    selectTheme(theme)
+                } label: {
+                    if theme.name == activeThemeName {
+                        Label(theme.name, systemImage: "checkmark")
+                    } else {
+                        Text(theme.name)
+                    }
+                }
+                .disabled(store == nil)
             }
         }
 
@@ -120,5 +136,10 @@ public struct BattyCommands: Commands {
 
     private func tabExists(at index: Int) -> Bool {
         focusedPane?.tabs.indices.contains(index) ?? false
+    }
+
+    private func selectTheme(_ theme: GhosttyThemeDefinition) {
+        activeThemeName = theme.name
+        store?.applyThemeToAllSurfaces(theme)
     }
 }
