@@ -17,12 +17,14 @@ let package = Package(
             url: "https://github.com/Lakr233/libghostty-spm",
             exact: "1.0.1777879537"
         ),
+        .package(path: "../../SlidingTabs"),
     ],
     targets: [
         .target(
             name: "BattyKit",
             dependencies: [
                 .product(name: "GhosttyKit", package: "libghostty-spm"),
+                .product(name: "SlidingTabs", package: "SlidingTabs"),
             ]
         ),
         .testTarget(
