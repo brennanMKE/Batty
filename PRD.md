@@ -305,31 +305,36 @@ See `batty-getting-started.md` for the deep dive. Short version:
 - **`SessionSidebarView`** — a `List` of sessions with reorder, "+" toolbar button, and unseen-bell badges.
 - **`SessionDetailView`** — toolbar (split SF Symbols, theme, bell) plus a recursive `SplitContainerView` that renders the session's split tree.
 - **`SplitContainerView`** — switches on `SplitNode` cases; renders `PaneView` at leaves and an `HSplitView` / `VSplitView` (or custom equivalent) for splits with draggable dividers.
-- **`PaneView`** — owns a `SlidingTabBar` plus the active tab's `TerminalSurfaceView`.
-- **`TerminalSurfaceView: NSViewRepresentable`** — wraps an NSView that owns a `CAMetalLayer`, forwards events to libghostty, implements `NSTextInputClient` and `NSDraggingDestination`.
-- **`GhosttyKit.xcframework`** — libghostty packaged for Swift via Mitchell's Zig→C→Swift bridge pattern.
-- **Surface registry** — `[UUID: ghostty_surface_t]` keeps surface lifetimes decoupled from SwiftUI view identity.
+- **`PaneView`** — owns a `SlidingTabBar` plus the active tab's terminal surface.
+- **Terminal surface** — provided by **`GhosttyTerminal`**'s `TerminalSurfaceView` (SwiftUI) / `TerminalView` (NSView typealias). The wrapper handles Metal layer sizing, key/mouse forwarding, IME (`NSTextInputClient`), and the libghostty IO/render thread plumbing — we do not re-implement these. Drag-and-drop (`NSDraggingDestination`) is layered on top via either a SwiftUI `.onDrop` overlay or a thin `AppTerminalView` subclass in `BattyKit`.
+- **Bell + surface events** — `GhosttyTerminal`'s split delegate protocols (`TerminalSurfaceBellDelegate`, `TerminalSurfaceDesktopNotificationDelegate`, `TerminalSurfaceTitleDelegate`, `TerminalSurfacePwdDelegate`, `TerminalSurfaceFocusDelegate`, `TerminalSurfaceCloseDelegate`) feed our `BellFeedStore` and per-tab title/cwd state. No raw libghostty callback wiring needed.
 - **`BellFeedStore`** — `@Observable` actor-backed store collecting bell events, exposing aggregated unseen counts to sidebar/pane/tab views.
 - **Persistence layer** — Codable structs serialize the full session/split/pane/tab tree.
+
+The lower-level libghostty C surface (`GhosttyKit`) is still re-exported by `BattyKit` for cases where we need direct access (e.g. `ghostty_surface_text` for drag-drop injection if `GhosttyTerminal` doesn't expose a high-level send-text API).
 
 ### Module structure
 
 The repo is split into two Swift modules:
 
-- **`BattyKit`** (Swift Package, `BattyKit/Package.swift`) — holds the bulk of the code: data models, persistence, theme parsing, surface registry, layout views, bell-feed store, and the `NSViewRepresentable` terminal surface. Owns the SPM dependencies: `libghostty-spm` (re-exported as `GhosttyKit`) and `SlidingTabs`. Re-exports both via `@_exported import` so consumers just `import BattyKit` to get everything.
-- **`Batty`** (Xcode app target) — kept deliberately lightweight: `@main BattyApp`, top-level `Scene` and `WindowGroup` wiring, app-level menus, and any glue code that has to live in the app target (resource bundle hooks, app-lifecycle delegates). Consumes `BattyKit` as a local SPM dependency.
+- **`BattyKit`** (Swift Package, `BattyKit/Package.swift`) — holds the bulk of the code: data models, persistence, theme adapters, layout views, bell-feed store, and integration with the `GhosttyTerminal` SwiftUI surface. Owns the SPM dependencies: `libghostty-spm` (re-exporting `GhosttyKit`, `GhosttyTerminal`, and `GhosttyTheme`) and `SlidingTabs`. Re-exports them via `@_exported import` so consumers just `import BattyKit` to get everything.
+- **`Batty`** (Xcode app target) — kept deliberately lightweight: `@main BattyApp`, top-level `Scene` and `WindowGroup` wiring, app-level menus, and any glue code that has to live in the app target (Sparkle integration, app-lifecycle delegates). Consumes `BattyKit` as a local SPM dependency.
 
-This keeps the app target thin, makes the bulk of the code unit-testable in `BattyKitTests` (which has full access to `import BattyKit`), and gives each piece of code direct access to libghostty / SlidingTabs without having to round-trip through the app target. New Swift files for layout, models, persistence, theming, and views should land in `BattyKit/Sources/BattyKit/`; reserve `Batty/` for code that genuinely has to be in the app bundle.
+This keeps the app target thin, makes the bulk of the code unit-testable in `BattyKitTests` (which has full access to `import BattyKit`), and gives each piece of code direct access to the libghostty Swift wrappers without having to round-trip through the app target. New Swift files for layout, models, persistence, theming, and views should land in `BattyKit/Sources/BattyKit/`; reserve `Batty/` for code that genuinely has to be in the app bundle.
 
 ### Dependencies
 
 | Dependency | Source | Purpose |
 |---|---|---|
-| `GhosttyKit.xcframework` | libghostty (Path A: `libghostty-spm`, Path B: built from Ghostty source) | The terminal core |
+| `GhosttyKit` | `libghostty-spm` (https://github.com/Lakr233/libghostty-spm) | Raw libghostty C API — used for direct calls when the higher-level wrappers don't suffice (e.g. `ghostty_surface_text`) |
+| `GhosttyTerminal` | `libghostty-spm` | Swift wrapper providing `TerminalSurfaceView` (SwiftUI), `TerminalView` (NSView), `TerminalViewState` (`@Observable`), the split delegate protocols (bell, OSC 9, title, pwd, focus, close), and `TerminalKeyEventHandler`. Replaces what we'd otherwise build from scratch for M1 |
+| `GhosttyTheme` | `libghostty-spm` | 485 prebuilt themes via `GhosttyThemeCatalog` plus `GhosttyThemeDefinition` types and a `+TerminalConfiguration` adapter that produces a config applicable to `TerminalViewState.theme` |
 | `SlidingTabs` | Local SPM at `/Users/brennan/Developer/brennanMKE/SlidingTabs` (or its GitHub URL) | Per-pane tab bar with drag-reorder and unseen-dot |
 | `Sparkle` | SPM | Auto-update for non-App-Store distribution (M10) |
 
-`GhosttyKit` and `SlidingTabs` are declared as dependencies of **`BattyKit`**, not the app target. `Sparkle` will likely live in the app target since it integrates with `NSApplication`.
+`GhosttyKit`, `GhosttyTerminal`, `GhosttyTheme`, and `SlidingTabs` are declared as dependencies of **`BattyKit`**, not the app target. `Sparkle` will likely live in the app target since it integrates with `NSApplication`.
+
+**Use existing dependencies before writing new code.** Where `libghostty-spm`'s wrappers, delegate protocols, or theme catalog already cover a requirement, use them. Implement custom code only where there's a real gap (e.g. drag-drop, our specific multi-session/multi-pane UI, persistence model, bell aggregation). This rule supersedes the original "build our own NSView" plan implied by earlier drafts of this PRD.
 
 ### Integration path
 
