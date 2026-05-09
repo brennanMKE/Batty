@@ -71,16 +71,11 @@ private struct SessionRow: View {
 
     var body: some View {
         Label {
-            Text(displayTitle).lineLimit(1)
+            Text(session.title).lineLimit(1)
         } icon: {
             Image(systemName: "rectangle.split.3x1")
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private var displayTitle: String {
-        let live = session.terminal.title
-        return live.isEmpty ? session.title : live
     }
 }
 

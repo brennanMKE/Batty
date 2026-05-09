@@ -39,9 +39,7 @@ public struct BattyCommands: Commands {
         guard let store, store.sessions.indices.contains(index) else {
             return "Session \(index + 1)"
         }
-        let session = store.sessions[index]
-        let live = session.terminal.title
-        return live.isEmpty ? session.title : live
+        return store.sessions[index].title
     }
 
     private func sessionExists(at index: Int) -> Bool {
