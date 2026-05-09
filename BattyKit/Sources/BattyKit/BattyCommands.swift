@@ -36,13 +36,13 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Tab") {
             Button("New Tab") {
-                store?.selectedSession?.pane.addTab()
+                store?.selectedSession?.focusedPane.addTab()
             }
             .keyboardShortcut("t", modifiers: .command)
             .disabled(focusedPane == nil)
 
             Button("Close Tab") {
-                store?.selectedSession?.pane.closeActiveTab()
+                store?.selectedSession?.focusedPane.closeActiveTab()
             }
             .keyboardShortcut("w", modifiers: .command)
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
@@ -50,13 +50,13 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button("Show Previous Tab") {
-                store?.selectedSession?.pane.selectPreviousTab()
+                store?.selectedSession?.focusedPane.selectPreviousTab()
             }
             .keyboardShortcut("[", modifiers: [.command, .shift])
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
 
             Button("Show Next Tab") {
-                store?.selectedSession?.pane.selectNextTab()
+                store?.selectedSession?.focusedPane.selectNextTab()
             }
             .keyboardShortcut("]", modifiers: [.command, .shift])
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
@@ -65,7 +65,7 @@ public struct BattyCommands: Commands {
 
             ForEach(0..<9) { index in
                 Button(tabMenuTitle(at: index)) {
-                    store?.selectedSession?.pane.selectTab(at: index)
+                    store?.selectedSession?.focusedPane.selectTab(at: index)
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 .disabled(!tabExists(at: index))
@@ -74,7 +74,7 @@ public struct BattyCommands: Commands {
     }
 
     private var focusedPane: PaneRuntime? {
-        store?.selectedSession?.pane
+        store?.selectedSession?.focusedPane
     }
 
     private func sessionMenuTitle(at index: Int) -> String {

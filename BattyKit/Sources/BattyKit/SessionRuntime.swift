@@ -7,11 +7,15 @@ import Observation
 public final class SessionRuntime: Identifiable {
     public let id: UUID
     public var title: String
-    public let pane: PaneRuntime
+    public let tree: SplitTree
 
-    public init(id: UUID = UUID(), title: String = "Session", pane: PaneRuntime? = nil) {
+    public init(id: UUID = UUID(), title: String = "Session", tree: SplitTree? = nil) {
         self.id = id
         self.title = title
-        self.pane = pane ?? PaneRuntime()
+        self.tree = tree ?? SplitTree()
+    }
+
+    public var focusedPane: PaneRuntime {
+        tree.focusedPane
     }
 }
