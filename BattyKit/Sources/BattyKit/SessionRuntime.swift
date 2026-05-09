@@ -8,11 +8,13 @@ public final class SessionRuntime: Identifiable {
     public let id: UUID
     public var title: String
     public let tree: SplitTree
+    @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     public init(id: UUID = UUID(), title: String = "Session", tree: SplitTree? = nil) {
         self.id = id
         self.title = title
         self.tree = tree ?? SplitTree()
+        self.paneFrames = PaneFrameTracker()
     }
 
     public var focusedPane: PaneRuntime {

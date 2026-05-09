@@ -13,6 +13,10 @@ public struct SessionDetailView: View {
         ZStack {
             ForEach(store.sessions) { session in
                 SplitContainerView(tree: session.tree)
+                    .coordinateSpace(name: "session")
+                    .onPreferenceChange(PaneFramePreferenceKey.self) { newFrames in
+                        session.paneFrames.frames = newFrames
+                    }
                     .opacity(session.id == store.selectedSessionID ? 1 : 0)
                     .allowsHitTesting(session.id == store.selectedSessionID)
             }

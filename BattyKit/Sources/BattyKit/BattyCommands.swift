@@ -62,6 +62,32 @@ public struct BattyCommands: Commands {
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
             .disabled(store?.selectedSession == nil)
+
+            Divider()
+
+            Button("Focus Pane Left") {
+                store?.selectedSession?.focusPane(adjacent: .left)
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            .disabled(!canFocusAdjacentPane)
+
+            Button("Focus Pane Right") {
+                store?.selectedSession?.focusPane(adjacent: .right)
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+            .disabled(!canFocusAdjacentPane)
+
+            Button("Focus Pane Above") {
+                store?.selectedSession?.focusPane(adjacent: .up)
+            }
+            .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+            .disabled(!canFocusAdjacentPane)
+
+            Button("Focus Pane Below") {
+                store?.selectedSession?.focusPane(adjacent: .down)
+            }
+            .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+            .disabled(!canFocusAdjacentPane)
         }
 
         CommandMenu("Tab") {
@@ -110,6 +136,11 @@ public struct BattyCommands: Commands {
     private var canCloseFocusedTab: Bool {
         guard let session = store?.selectedSession else { return false }
         return session.focusedPane.tabs.count > 1 || session.tree.allPanes.count > 1
+    }
+
+    private var canFocusAdjacentPane: Bool {
+        guard let session = store?.selectedSession else { return false }
+        return session.tree.allPanes.count > 1
     }
 
     private func sessionMenuTitle(at index: Int) -> String {

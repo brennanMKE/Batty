@@ -33,6 +33,14 @@ public struct PaneView: View {
                 }
             }
         }
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: PaneFramePreferenceKey.self,
+                    value: [pane.id: geo.frame(in: .named("session"))]
+                )
+            }
+        }
     }
 
     private var activeIDBinding: Binding<UUID?> {
