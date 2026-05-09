@@ -27,6 +27,8 @@ let package = Package(
             name: "BattyKit",
             dependencies: [
                 .product(name: "GhosttyKit", package: "libghostty-spm"),
+                .product(name: "GhosttyTerminal", package: "libghostty-spm"),
+                .product(name: "GhosttyTheme", package: "libghostty-spm"),
                 .product(name: "SlidingTabs", package: "SlidingTabs"),
             ],
             swiftSettings: swiftSettings
