@@ -2,7 +2,7 @@
 
 import Foundation
 import Testing
-@testable import Batty
+@testable import BattyKit
 
 struct WorkspaceTests {
 

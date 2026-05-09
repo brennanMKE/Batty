@@ -1,5 +1,6 @@
 // BattyApp.swift
 
+import BattyKit
 import SwiftUI
 
 @main
