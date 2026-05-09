@@ -44,6 +44,23 @@ public final class AppStateStore {
         }
     }
 
+    public func renameSession(id: UUID, to newTitle: String) {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        session.title = trimmed
+    }
+
+    @discardableResult
+    public func duplicateSession(id: UUID) -> SessionRuntime? {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return nil }
+        let source = sessions[index]
+        let copy = SessionRuntime(title: "\(source.title) Copy")
+        sessions.insert(copy, at: index + 1)
+        selectedSessionID = copy.id
+        return copy
+    }
+
     public func moveSessions(fromOffsets source: IndexSet, toOffset destination: Int) {
         sessions.move(fromOffsets: source, toOffset: destination)
     }
