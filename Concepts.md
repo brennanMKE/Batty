@@ -47,7 +47,7 @@ A named workspace, listed as one row in the Window's Sidebar.
 - **Identity:** stable `id: UUID`, plus a user-editable `title` (and optional icon/color).
 - **Selection:** exactly one Session is selected per Window at a time. Selecting a Session swaps the Detail Area to that Session's Split tree. Surfaces in non-selected Sessions stay alive so switching is instant and processes keep running.
 - **Sidebar affordances:** drag to reorder; right-click to Rename / Duplicate / Close; "+" toolbar button creates a new Session.
-- **Keybinding:** Cmd-Shift-1..9 selects the Nth Session in the active Window.
+- **Keybinding:** Cmd-Option-1..9 selects the Nth Session in the active Window. (Cmd-Shift-Number is reserved by macOS for screenshot hotkeys, so we use Cmd-Option-Number — same family iTerm2 uses for session/window selection.)
 - **Persisted:** ordered list per Window, plus everything inside.
 
 > "Session" is overloaded in terminal-land — to be precise, a Batty **Session** is a *workspace grouping*. The actual *running shell process* is a **Terminal Session** (below). When the doc just says "session" unqualified, it means the workspace grouping.
@@ -173,7 +173,7 @@ The single keyboard-active leaf in the app at any time.
   - Bell events from the focused Tab record to the **Bell Feed** but do not increment unseen counters.
 - **Movement:**
   - Within a Session: Cmd-Option-arrows move focus between Panes; clicking a Pane focuses it; Cmd-1..9 selects a Tab in the focused Pane.
-  - Across Sessions: clicking a Session in the Sidebar or Cmd-Shift-1..9 moves focus to that Session's `focusedPaneID`'s active Tab.
+  - Across Sessions: clicking a Session in the Sidebar or Cmd-Option-1..9 moves focus to that Session's `focusedPaneID`'s active Tab.
   - Across Windows: standard macOS Cmd-` / window picker.
 
 ---

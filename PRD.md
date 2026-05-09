@@ -148,7 +148,7 @@ Tab:
   - Context menu on each session: Rename, Duplicate, Close.
 - Selecting a session swaps the detail area to that session's split tree.
 - Surfaces in non-active sessions stay alive in the background so switching is instant and processes keep running.
-- Cmd-Shift-1..9 selects the Nth session.
+- Cmd-Option-1..9 selects the Nth session.
 - The sidebar is collapsible: View → Hide Sidebar (Cmd-Ctrl-S), or the standard NavigationSplitView toggle button in the toolbar.
 
 ### 6.4 Panes & splits (within a session)
@@ -348,7 +348,7 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 |---|---|
 | **M0 — Project skeleton** | Xcode project created, `GhosttyKit` linked, `SlidingTabs` linked, terminfo + shell-integration resources copied into the bundle. App launches to an empty window with a (stub) sidebar and detail area. |
 | **M1 — Hello, surface** | A single libghostty surface renders inside a single pane in a single session. Working shell prompt. Typing works. Fonts look right. |
-| **M2 — Sessions sidebar** | Left sidebar lists sessions; "+" creates a new session; selecting a session swaps the detail area. Sidebar collapses/expands. Cmd-Shift-1..9 selects sessions. |
+| **M2 — Sessions sidebar** | Left sidebar lists sessions; "+" creates a new session; selecting a session swaps the detail area. Sidebar collapses/expands. Cmd-Option-1..9 selects sessions. |
 | **M3 — Tabs in a pane (SlidingTabs)** | Each pane shows a SlidingTabs bar. Cmd-T / Cmd-W / Cmd-1..9 work. Drag-to-reorder works. Tab title auto-updates from focused surface. |
 | **M4 — Splits** | `SplitNode` tree replaces the single-pane layout. SF Symbol split buttons + Cmd-D / Cmd-Shift-D split the focused pane. Drag-to-resize dividers, focus movement, and resize keybindings all work. Closing the last tab in a pane collapses the split. |
 | **M5 — Drag & drop files** | Dropping files from Finder onto a pane inserts shell-quoted paths via `ghostty_surface_text`. Drag-over highlight on the target pane. |

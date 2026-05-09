@@ -287,7 +287,7 @@ Use these canonical module names so issues stay consistent and groupable in the 
 | `App` | Top-level shell (`BattyApp`), menus, app lifecycle, Settings window |
 | `Window` | NSWindow management, multi-window behavior, frame restoration |
 | `Sidebar` | Session sidebar list, reorder, "+" button, collapse/expand |
-| `Session` | Session model, session detail view, Cmd-Shift-1..9 selection |
+| `Session` | Session model, session detail view, Cmd-Option-1..9 selection |
 | `Split` | Split tree, dividers, drag-resize, keyboard resize, focus movement |
 | `Pane` | Pane view, per-pane toolbar, pane lifecycle (collapse on last-tab-close) |
 | `Tabs` | SlidingTabs integration, tab lifecycle, Cmd-T/Cmd-W/Cmd-1..9 |

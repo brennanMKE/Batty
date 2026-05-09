@@ -20,7 +20,7 @@ public struct BattyCommands: Commands {
             Button("New Session") {
                 store?.addSession()
             }
-            .keyboardShortcut("n", modifiers: [.command, .shift, .option])
+            .keyboardShortcut("n", modifiers: [.command, .option])
             .disabled(store == nil)
 
             Divider()
@@ -29,7 +29,7 @@ public struct BattyCommands: Commands {
                 Button(sessionMenuTitle(at: index)) {
                     store?.selectSession(at: index)
                 }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .shift])
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
                 .disabled(!sessionExists(at: index))
             }
         }
