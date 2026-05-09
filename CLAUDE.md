@@ -69,6 +69,18 @@ The `Batty/` source folder uses Xcode's **`PBXFileSystemSynchronizedRootGroup`**
 - **Headers are minimal**: `// FileName.swift` and a blank line. No author, date, project name. Xcode templates are configured via `Batty.xcodeproj/xcshareddata/IDETemplateMacros.plist` to generate this.
 - **No emojis in code or commits** unless explicitly requested.
 
+## Logging
+
+Each `.swift` file that needs to emit logs declares a file-scoped logger at the top:
+
+```swift
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "<Filename>")
+```
+
+`Logging.subsystem` lives in `BattyKit/Sources/BattyKit/Logging.swift` and is sourced from `Bundle.main.bundleIdentifier`. Use `nonisolated` so the logger doesn't inherit `@MainActor` from the package's default isolation. Use `private` to scope the logger to the file. Use the matching filename as the category so Console.app filters work cleanly.
+
+Do **not** use `print()` or `NSLog()` for diagnostics — they disappear in release.
+
 ## Architectural rules
 
 - **Surface registry is the single source of truth for live Terminal Sessions.** SwiftUI views only ever store `surfaceID: UUID`, never a `ghostty_surface_t` directly. View rebuilds must not destroy surfaces.

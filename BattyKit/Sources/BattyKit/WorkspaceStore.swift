@@ -3,6 +3,8 @@
 import Foundation
 import os
 
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "WorkspaceStore")
+
 enum WorkspaceStoreError: Error, Sendable {
     case applicationSupportUnavailable
 }
@@ -26,7 +28,6 @@ final class WorkspaceStore {
     static let defaultDirectoryName = "Batty"
     static let defaultFileName = "workspace.json"
 
-    private let logger = Logger(subsystem: "co.sstools.Batty", category: "WorkspaceStore")
     private let fileURL: URL
     private let fileManager: FileManager
 
