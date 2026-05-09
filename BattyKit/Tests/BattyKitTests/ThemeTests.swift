@@ -103,23 +103,11 @@ struct ThemeTests {
         #expect(t.background == ThemeColor(hex: "#000000"))
     }
 
-    @Test func builtInThemesAreValid() {
-        let names = Set(ThemeStore.builtInThemes.map(\.name))
-        #expect(names.contains("Batty Dark"))
-        #expect(names.contains("Batty Light"))
-        #expect(names.contains("Solarized Dark"))
-        #expect(names.contains("Dracula"))
-        for theme in ThemeStore.builtInThemes {
-            #expect(theme.palette.count == 16, "theme \(theme.name) has \(theme.palette.count) palette entries")
-        }
-    }
-
-    @Test func discoverAllReturnsBuiltInsWhenNoFilesExist() {
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("batty-theme-test-\(UUID().uuidString)")
+    @Test func discoverAllReturnsEmptyWhenNoFilesExist() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-theme-test-\(UUID().uuidString)")
         let themes = ThemeStore.discoverAll(homeDirectory: tmp)
-        let names = Set(themes.map(\.name))
-        #expect(names.contains("Batty Dark"))
-        #expect(themes.count >= ThemeStore.builtInThemes.count)
+        #expect(themes.isEmpty)
     }
 
     private func paletteAllSame(hex: String) -> String {

@@ -151,10 +151,6 @@ enum ThemeStore {
             ingest(url, into: &byName, fileManager: fileManager)
         }
 
-        for builtin in builtInThemes where byName[builtin.name] == nil {
-            byName[builtin.name] = builtin
-        }
-
         return byName.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -189,79 +185,3 @@ enum ThemeStore {
     }
 }
 
-extension ThemeStore {
-    static let builtInThemes: [Theme] = [
-        Theme(
-            name: "Batty Dark",
-            foreground: ThemeColor(hex: "#c5c8c6")!,
-            background: ThemeColor(hex: "#1d1f21")!,
-            cursor: ThemeColor(hex: "#c5c8c6")!,
-            selectionForeground: nil,
-            selectionBackground: ThemeColor(hex: "#373b41")!,
-            palette: [
-                ThemeColor(hex: "#1d1f21")!, ThemeColor(hex: "#cc6666")!,
-                ThemeColor(hex: "#b5bd68")!, ThemeColor(hex: "#f0c674")!,
-                ThemeColor(hex: "#81a2be")!, ThemeColor(hex: "#b294bb")!,
-                ThemeColor(hex: "#8abeb7")!, ThemeColor(hex: "#c5c8c6")!,
-                ThemeColor(hex: "#666666")!, ThemeColor(hex: "#d54e53")!,
-                ThemeColor(hex: "#b9ca4a")!, ThemeColor(hex: "#e7c547")!,
-                ThemeColor(hex: "#7aa6da")!, ThemeColor(hex: "#c397d8")!,
-                ThemeColor(hex: "#70c0b1")!, ThemeColor(hex: "#eaeaea")!,
-            ]
-        ),
-        Theme(
-            name: "Batty Light",
-            foreground: ThemeColor(hex: "#383a42")!,
-            background: ThemeColor(hex: "#fafafa")!,
-            cursor: ThemeColor(hex: "#383a42")!,
-            selectionForeground: nil,
-            selectionBackground: ThemeColor(hex: "#e5e5e6")!,
-            palette: [
-                ThemeColor(hex: "#fafafa")!, ThemeColor(hex: "#e45649")!,
-                ThemeColor(hex: "#50a14f")!, ThemeColor(hex: "#c18401")!,
-                ThemeColor(hex: "#0184bc")!, ThemeColor(hex: "#a626a4")!,
-                ThemeColor(hex: "#0997b3")!, ThemeColor(hex: "#383a42")!,
-                ThemeColor(hex: "#a0a1a7")!, ThemeColor(hex: "#e45649")!,
-                ThemeColor(hex: "#50a14f")!, ThemeColor(hex: "#c18401")!,
-                ThemeColor(hex: "#0184bc")!, ThemeColor(hex: "#a626a4")!,
-                ThemeColor(hex: "#0997b3")!, ThemeColor(hex: "#090a0b")!,
-            ]
-        ),
-        Theme(
-            name: "Solarized Dark",
-            foreground: ThemeColor(hex: "#839496")!,
-            background: ThemeColor(hex: "#002b36")!,
-            cursor: ThemeColor(hex: "#93a1a1")!,
-            selectionForeground: nil,
-            selectionBackground: ThemeColor(hex: "#073642")!,
-            palette: [
-                ThemeColor(hex: "#073642")!, ThemeColor(hex: "#dc322f")!,
-                ThemeColor(hex: "#859900")!, ThemeColor(hex: "#b58900")!,
-                ThemeColor(hex: "#268bd2")!, ThemeColor(hex: "#d33682")!,
-                ThemeColor(hex: "#2aa198")!, ThemeColor(hex: "#eee8d5")!,
-                ThemeColor(hex: "#002b36")!, ThemeColor(hex: "#cb4b16")!,
-                ThemeColor(hex: "#586e75")!, ThemeColor(hex: "#657b83")!,
-                ThemeColor(hex: "#839496")!, ThemeColor(hex: "#6c71c4")!,
-                ThemeColor(hex: "#93a1a1")!, ThemeColor(hex: "#fdf6e3")!,
-            ]
-        ),
-        Theme(
-            name: "Dracula",
-            foreground: ThemeColor(hex: "#f8f8f2")!,
-            background: ThemeColor(hex: "#282a36")!,
-            cursor: ThemeColor(hex: "#f8f8f2")!,
-            selectionForeground: nil,
-            selectionBackground: ThemeColor(hex: "#44475a")!,
-            palette: [
-                ThemeColor(hex: "#21222c")!, ThemeColor(hex: "#ff5555")!,
-                ThemeColor(hex: "#50fa7b")!, ThemeColor(hex: "#f1fa8c")!,
-                ThemeColor(hex: "#bd93f9")!, ThemeColor(hex: "#ff79c6")!,
-                ThemeColor(hex: "#8be9fd")!, ThemeColor(hex: "#f8f8f2")!,
-                ThemeColor(hex: "#6272a4")!, ThemeColor(hex: "#ff6e6e")!,
-                ThemeColor(hex: "#69ff94")!, ThemeColor(hex: "#ffffa5")!,
-                ThemeColor(hex: "#d6acff")!, ThemeColor(hex: "#ff92df")!,
-                ThemeColor(hex: "#a4ffff")!, ThemeColor(hex: "#ffffff")!,
-            ]
-        ),
-    ]
-}
