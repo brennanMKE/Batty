@@ -36,4 +36,29 @@ public final class PaneRuntime: Identifiable {
             activeTabID = tabs[max(0, index - 1)].id
         }
     }
+
+    public func closeActiveTab() {
+        removeTab(id: activeTabID)
+    }
+
+    public func selectTab(at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        activeTabID = tabs[index].id
+    }
+
+    public func selectNextTab() {
+        guard tabs.count > 1,
+              let current = tabs.firstIndex(where: { $0.id == activeTabID })
+        else { return }
+        let next = (current + 1) % tabs.count
+        activeTabID = tabs[next].id
+    }
+
+    public func selectPreviousTab() {
+        guard tabs.count > 1,
+              let current = tabs.firstIndex(where: { $0.id == activeTabID })
+        else { return }
+        let prev = (current - 1 + tabs.count) % tabs.count
+        activeTabID = tabs[prev].id
+    }
 }
