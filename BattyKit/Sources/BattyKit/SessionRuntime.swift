@@ -7,11 +7,11 @@ import Observation
 public final class SessionRuntime: Identifiable {
     public let id: UUID
     public var title: String
-    public let terminal: TerminalViewState
+    public let pane: PaneRuntime
 
-    public init(id: UUID = UUID(), title: String = "Session", terminal: TerminalViewState? = nil) {
+    public init(id: UUID = UUID(), title: String = "Session", pane: PaneRuntime? = nil) {
         self.id = id
         self.title = title
-        self.terminal = terminal ?? TerminalViewState()
+        self.pane = pane ?? PaneRuntime()
     }
 }

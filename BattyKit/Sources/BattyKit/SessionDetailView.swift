@@ -12,7 +12,7 @@ public struct SessionDetailView: View {
     public var body: some View {
         ZStack {
             ForEach(store.sessions) { session in
-                TerminalSurfaceView(context: session.terminal)
+                PaneView(pane: session.pane)
                     .opacity(session.id == store.selectedSessionID ? 1 : 0)
                     .allowsHitTesting(session.id == store.selectedSessionID)
             }
@@ -30,7 +30,7 @@ public struct SessionDetailView: View {
 
     private var navigationTitle: String {
         guard let session = store.selectedSession else { return "Batty" }
-        let live = session.terminal.title
+        let live = session.pane.activeTab.terminal.title
         return live.isEmpty ? session.title : live
     }
 }

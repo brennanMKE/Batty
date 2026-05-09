@@ -1,0 +1,52 @@
+// PaneView.swift
+
+import SwiftUI
+
+public struct PaneView: View {
+    @Bindable public var pane: PaneRuntime
+
+    public init(pane: PaneRuntime) {
+        self.pane = pane
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            SlidingTabBar(
+                items: $pane.tabs,
+                activeID: activeIDBinding,
+                onReorderCommit: nil,
+                onAdd: { pane.addTab() }
+            ) { tab, isActive in
+                DefaultTabChip(
+                    title: chipTitle(for: tab),
+                    isActive: isActive,
+                    hasUnseen: false,
+                    onClose: pane.tabs.count > 1 ? { pane.removeTab(id: tab.id) } : nil
+                )
+            }
+
+            ZStack {
+                ForEach(pane.tabs) { tab in
+                    TerminalSurfaceView(context: tab.terminal)
+                        .opacity(tab.id == pane.activeTabID ? 1 : 0)
+                        .allowsHitTesting(tab.id == pane.activeTabID)
+                }
+            }
+        }
+    }
+
+    private var activeIDBinding: Binding<UUID?> {
+        Binding(
+            get: { pane.activeTabID },
+            set: { newValue in
+                if let newValue { pane.activeTabID = newValue }
+            }
+        )
+    }
+
+    private func chipTitle(for tab: TabRuntime) -> String {
+        if let override = tab.titleOverride, !override.isEmpty { return override }
+        let live = tab.terminal.title
+        return live.isEmpty ? "Tab" : live
+    }
+}
