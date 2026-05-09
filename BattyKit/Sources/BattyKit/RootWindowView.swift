@@ -4,13 +4,14 @@ import SwiftUI
 
 public struct RootWindowView: View {
     @State private var store: AppStateStore
+    @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
 
     public init(store: AppStateStore = AppStateStore()) {
         _store = State(initialValue: store)
     }
 
     public var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: columnVisibilityBinding) {
             SessionSidebarView(store: store)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
@@ -18,4 +19,17 @@ public struct RootWindowView: View {
         }
         .focusedSceneValue(\.appStateStore, store)
     }
+
+    private var columnVisibilityBinding: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { sidebarHidden ? .detailOnly : .all },
+            set: { newValue in
+                sidebarHidden = (newValue == .detailOnly)
+            }
+        )
+    }
+}
+
+public enum SidebarPreference {
+    public static let hiddenKey = "co.sstools.Batty.sidebarHidden"
 }

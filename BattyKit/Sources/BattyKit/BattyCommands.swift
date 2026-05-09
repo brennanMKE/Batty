@@ -4,10 +4,18 @@ import SwiftUI
 
 public struct BattyCommands: Commands {
     @FocusedValue(\.appStateStore) private var store: AppStateStore?
+    @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
 
     public init() {}
 
     public var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Button(sidebarHidden ? "Show Sidebar" : "Hide Sidebar") {
+                sidebarHidden.toggle()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .control])
+        }
+
         CommandMenu("Session") {
             Button("New Session") {
                 store?.addSession()
