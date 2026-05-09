@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		26AA00010000000000000001 /* BattyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 26AA00010000000000000002 /* BattyKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		26D543292FAEC4AD00BA9AF8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -53,6 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				26AA00010000000000000001 /* BattyKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -122,6 +127,7 @@
 			);
 			name = Batty;
 			packageProductDependencies = (
+				26AA00010000000000000002 /* BattyKit */,
 			);
 			productName = Batty;
 			productReference = 26D5431B2FAEC4AC00BA9AF8 /* Batty.app */;
@@ -205,6 +211,9 @@
 			);
 			mainGroup = 26D543122FAEC4AC00BA9AF8;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				26D543572FAED3F400BA9AF8 /* XCLocalSwiftPackageReference "BattyKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 26D5431C2FAEC4AC00BA9AF8 /* Products */;
 			projectDirPath = "";
@@ -549,6 +558,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		26D543572FAED3F400BA9AF8 /* XCLocalSwiftPackageReference "BattyKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = BattyKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		26AA00010000000000000002 /* BattyKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BattyKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 26D543132FAEC4AC00BA9AF8 /* Project object */;
 }
