@@ -12,6 +12,17 @@ public final class TabRuntime: Identifiable {
     public init(id: UUID = UUID(), titleOverride: String? = nil) {
         self.id = id
         self.titleOverride = titleOverride
-        self.terminal = TerminalViewState()
+        self.terminal = TerminalViewState(theme: Self.activeTheme())
+    }
+
+    private static func activeTheme() -> TerminalTheme {
+        guard
+            let name = UserDefaults.standard.string(forKey: ThemePreference.defaultsKey),
+            !name.isEmpty,
+            let definition = GhosttyThemeCatalog.theme(named: name)
+        else {
+            return .default
+        }
+        return definition.toTerminalTheme()
     }
 }
