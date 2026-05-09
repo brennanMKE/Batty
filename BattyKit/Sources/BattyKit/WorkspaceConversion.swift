@@ -34,7 +34,7 @@ extension SplitNode {
         switch runtime {
         case .leaf(let pane):
             self = .leaf(Pane(from: pane))
-        case .split(let direction, let ratio, let left, let right):
+        case .split(_, let direction, let ratio, let left, let right):
             self = .split(
                 direction: direction,
                 ratio: ratio,
@@ -92,6 +92,7 @@ extension SplitTreeNode {
             self = .leaf(PaneRuntime(from: pane))
         case .split(let direction, let ratio, let left, let right):
             self = .split(
+                id: UUID(),
                 direction: direction,
                 ratio: ratio,
                 left: SplitTreeNode(from: left),

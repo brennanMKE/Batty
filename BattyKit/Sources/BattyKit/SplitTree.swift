@@ -5,7 +5,7 @@ import Observation
 
 public indirect enum SplitTreeNode {
     case leaf(PaneRuntime)
-    case split(direction: SplitDirection, ratio: Double, left: SplitTreeNode, right: SplitTreeNode)
+    case split(id: UUID, direction: SplitDirection, ratio: Double, left: SplitTreeNode, right: SplitTreeNode)
 }
 
 extension SplitTreeNode {
@@ -13,7 +13,7 @@ extension SplitTreeNode {
         switch self {
         case .leaf(let pane):
             return pane.id
-        case .split(_, _, let left, _):
+        case .split(_, _, _, let left, _):
             return left.firstLeafPaneID
         }
     }
@@ -22,7 +22,7 @@ extension SplitTreeNode {
         switch self {
         case .leaf(let pane):
             return pane
-        case .split(_, _, let left, _):
+        case .split(_, _, _, let left, _):
             return left.firstLeafPane
         }
     }
@@ -31,7 +31,7 @@ extension SplitTreeNode {
         switch self {
         case .leaf(let pane):
             return pane.id == id ? pane : nil
-        case .split(_, _, let left, let right):
+        case .split(_, _, _, let left, let right):
             return left.findPane(id: id) ?? right.findPane(id: id)
         }
     }
@@ -40,7 +40,7 @@ extension SplitTreeNode {
         switch self {
         case .leaf(let pane):
             return [pane]
-        case .split(_, _, let left, let right):
+        case .split(_, _, _, let left, let right):
             return left.allLeafPanes + right.allLeafPanes
         }
     }
@@ -98,14 +98,37 @@ public final class SplitTree {
         root = newRoot
         focusedPaneID = newRoot.firstLeafPaneID
     }
+
+    public func updateRatio(forSplitID id: UUID, to newRatio: Double) {
+        let clamped = max(0.05, min(0.95, newRatio))
+        root = SplitTreeNode.updatingRatio(in: root, forID: id, to: clamped)
+    }
 }
 
 extension SplitTreeNode {
+    static func updatingRatio(in node: SplitTreeNode, forID id: UUID, to newRatio: Double) -> SplitTreeNode {
+        switch node {
+        case .leaf:
+            return node
+        case .split(let nodeID, let dir, let ratio, let left, let right):
+            if nodeID == id {
+                return .split(id: nodeID, direction: dir, ratio: newRatio, left: left, right: right)
+            }
+            return .split(
+                id: nodeID,
+                direction: dir,
+                ratio: ratio,
+                left: updatingRatio(in: left, forID: id, to: newRatio),
+                right: updatingRatio(in: right, forID: id, to: newRatio)
+            )
+        }
+    }
+
     static func removingPane(_ id: UUID, from node: SplitTreeNode) -> SplitTreeNode? {
         switch node {
         case .leaf(let pane):
             return pane.id == id ? nil : node
-        case .split(let dir, let ratio, let left, let right):
+        case .split(let nodeID, let dir, let ratio, let left, let right):
             let newLeft = removingPane(id, from: left)
             let newRight = removingPane(id, from: right)
             switch (newLeft, newRight) {
@@ -116,7 +139,7 @@ extension SplitTreeNode {
             case (let l?, nil):
                 return l
             case (let l?, let r?):
-                return .split(direction: dir, ratio: ratio, left: l, right: r)
+                return .split(id: nodeID, direction: dir, ratio: ratio, left: l, right: r)
             }
         }
     }
@@ -131,6 +154,7 @@ extension SplitTreeNode {
         switch node {
         case .leaf(let pane) where pane.id == paneID:
             return .split(
+                id: UUID(),
                 direction: direction,
                 ratio: ratio,
                 left: .leaf(pane),
@@ -138,7 +162,7 @@ extension SplitTreeNode {
             )
         case .leaf:
             return nil
-        case .split(let dir, let r, let left, let right):
+        case .split(let nodeID, let dir, let r, let left, let right):
             if let newLeft = inserting(
                 newPane: newPane,
                 adjacentTo: paneID,
@@ -146,7 +170,7 @@ extension SplitTreeNode {
                 ratio: ratio,
                 into: left
             ) {
-                return .split(direction: dir, ratio: r, left: newLeft, right: right)
+                return .split(id: nodeID, direction: dir, ratio: r, left: newLeft, right: right)
             }
             if let newRight = inserting(
                 newPane: newPane,
@@ -155,7 +179,7 @@ extension SplitTreeNode {
                 ratio: ratio,
                 into: right
             ) {
-                return .split(direction: dir, ratio: r, left: left, right: newRight)
+                return .split(id: nodeID, direction: dir, ratio: r, left: left, right: newRight)
             }
             return nil
         }
