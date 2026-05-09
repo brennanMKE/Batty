@@ -71,4 +71,65 @@ public final class SplitTree {
     public var allPanes: [PaneRuntime] {
         root.allLeafPanes
     }
+
+    @discardableResult
+    public func splitFocusedPane(
+        direction: SplitDirection,
+        ratio: Double = 0.5
+    ) -> PaneRuntime {
+        let newPane = PaneRuntime()
+        if let newRoot = SplitTreeNode.inserting(
+            newPane: newPane,
+            adjacentTo: focusedPaneID,
+            direction: direction,
+            ratio: ratio,
+            into: root
+        ) {
+            root = newRoot
+            focusedPaneID = newPane.id
+        }
+        return newPane
+    }
+}
+
+extension SplitTreeNode {
+    static func inserting(
+        newPane: PaneRuntime,
+        adjacentTo paneID: UUID,
+        direction: SplitDirection,
+        ratio: Double,
+        into node: SplitTreeNode
+    ) -> SplitTreeNode? {
+        switch node {
+        case .leaf(let pane) where pane.id == paneID:
+            return .split(
+                direction: direction,
+                ratio: ratio,
+                left: .leaf(pane),
+                right: .leaf(newPane)
+            )
+        case .leaf:
+            return nil
+        case .split(let dir, let r, let left, let right):
+            if let newLeft = inserting(
+                newPane: newPane,
+                adjacentTo: paneID,
+                direction: direction,
+                ratio: ratio,
+                into: left
+            ) {
+                return .split(direction: dir, ratio: r, left: newLeft, right: right)
+            }
+            if let newRight = inserting(
+                newPane: newPane,
+                adjacentTo: paneID,
+                direction: direction,
+                ratio: ratio,
+                into: right
+            ) {
+                return .split(direction: dir, ratio: r, left: left, right: newRight)
+            }
+            return nil
+        }
+    }
 }

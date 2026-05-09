@@ -34,6 +34,20 @@ public struct BattyCommands: Commands {
             }
         }
 
+        CommandMenu("Pane") {
+            Button("Split Horizontally") {
+                store?.selectedSession?.tree.splitFocusedPane(direction: .horizontal)
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            .disabled(store?.selectedSession == nil)
+
+            Button("Split Vertically") {
+                store?.selectedSession?.tree.splitFocusedPane(direction: .vertical)
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .disabled(store?.selectedSession == nil)
+        }
+
         CommandMenu("Tab") {
             Button("New Tab") {
                 store?.selectedSession?.focusedPane.addTab()

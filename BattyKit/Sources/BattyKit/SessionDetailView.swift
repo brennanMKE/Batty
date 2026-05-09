@@ -26,6 +26,25 @@ public struct SessionDetailView: View {
         }
         .frame(minWidth: 600, minHeight: 400)
         .navigationTitle(navigationTitle)
+        .toolbar {
+            ToolbarItemGroup {
+                Button {
+                    store.selectedSession?.tree.splitFocusedPane(direction: .horizontal)
+                } label: {
+                    Label("Split Horizontally", systemImage: "rectangle.split.2x1")
+                }
+                .help("Split Horizontally (\u{2318}D)")
+                .disabled(store.selectedSession == nil)
+
+                Button {
+                    store.selectedSession?.tree.splitFocusedPane(direction: .vertical)
+                } label: {
+                    Label("Split Vertically", systemImage: "rectangle.split.1x2")
+                }
+                .help("Split Vertically (\u{2318}\u{21E7}D)")
+                .disabled(store.selectedSession == nil)
+            }
+        }
     }
 
     private var navigationTitle: String {
