@@ -312,6 +312,15 @@ See `batty-getting-started.md` for the deep dive. Short version:
 - **`BellFeedStore`** — `@Observable` actor-backed store collecting bell events, exposing aggregated unseen counts to sidebar/pane/tab views.
 - **Persistence layer** — Codable structs serialize the full session/split/pane/tab tree.
 
+### Module structure
+
+The repo is split into two Swift modules:
+
+- **`BattyKit`** (Swift Package, `BattyKit/Package.swift`) — holds the bulk of the code: data models, persistence, theme parsing, surface registry, layout views, bell-feed store, and the `NSViewRepresentable` terminal surface. Owns the SPM dependencies: `libghostty-spm` (re-exported as `GhosttyKit`) and `SlidingTabs`. Re-exports both via `@_exported import` so consumers just `import BattyKit` to get everything.
+- **`Batty`** (Xcode app target) — kept deliberately lightweight: `@main BattyApp`, top-level `Scene` and `WindowGroup` wiring, app-level menus, and any glue code that has to live in the app target (resource bundle hooks, app-lifecycle delegates). Consumes `BattyKit` as a local SPM dependency.
+
+This keeps the app target thin, makes the bulk of the code unit-testable in `BattyKitTests` (which has full access to `import BattyKit`), and gives each piece of code direct access to libghostty / SlidingTabs without having to round-trip through the app target. New Swift files for layout, models, persistence, theming, and views should land in `BattyKit/Sources/BattyKit/`; reserve `Batty/` for code that genuinely has to be in the app bundle.
+
 ### Dependencies
 
 | Dependency | Source | Purpose |
@@ -319,6 +328,8 @@ See `batty-getting-started.md` for the deep dive. Short version:
 | `GhosttyKit.xcframework` | libghostty (Path A: `libghostty-spm`, Path B: built from Ghostty source) | The terminal core |
 | `SlidingTabs` | Local SPM at `/Users/brennan/Developer/brennanMKE/SlidingTabs` (or its GitHub URL) | Per-pane tab bar with drag-reorder and unseen-dot |
 | `Sparkle` | SPM | Auto-update for non-App-Store distribution (M10) |
+
+`GhosttyKit` and `SlidingTabs` are declared as dependencies of **`BattyKit`**, not the app target. `Sparkle` will likely live in the app target since it integrates with `NSApplication`.
 
 ### Integration path
 
