@@ -18,6 +18,7 @@ public struct RootWindowView: View {
             SessionDetailView(store: store)
         }
         .focusedSceneValue(\.appStateStore, store)
+        .environment(\.appStateStore, store)
     }
 
     private var columnVisibilityBinding: Binding<NavigationSplitViewVisibility> {

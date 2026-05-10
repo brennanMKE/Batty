@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
+    @Environment(\.appStateStore) private var appStore
     @State private var isDragHovering: Bool = false
 
     public init(pane: PaneRuntime) {
@@ -40,10 +41,18 @@ public struct PaneView: View {
                             return Self.handleFileDrop(providers, into: tab.terminal)
                         }
                         .onChange(of: tab.terminal.bellCount) {
-                            tab.recordBellTickIfNeeded()
+                            if let appStore {
+                                appStore.recordBellTick(forTabID: tab.id)
+                            } else {
+                                tab.recordBellTickIfNeeded()
+                            }
                         }
                         .onChange(of: tab.terminal.lastDesktopNotificationAt) {
-                            tab.recordDesktopNotificationIfNeeded()
+                            if let appStore {
+                                appStore.recordDesktopNotification(forTabID: tab.id)
+                            } else {
+                                tab.recordDesktopNotificationIfNeeded()
+                            }
                         }
                 }
             }

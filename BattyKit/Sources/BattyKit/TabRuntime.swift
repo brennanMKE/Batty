@@ -40,28 +40,30 @@ public final class TabRuntime: Identifiable {
         self.lastBellMessage = lastBellMessage
     }
 
-    public func recordBellTickIfNeeded() {
+    @discardableResult
+    public func recordBellTickIfNeeded() -> Int {
         let observed = terminal.bellCount
-        guard observed > lastObservedBellCount else { return }
+        guard observed > lastObservedBellCount else { return 0 }
         let delta = observed - lastObservedBellCount
         lastObservedBellCount = observed
         bellCount += delta
-        unseenBellCount += delta
         lastBellAt = terminal.lastBellAt ?? Date()
         lastBellMessage = nil
+        return delta
     }
 
-    public func recordDesktopNotificationIfNeeded() {
-        guard let at = terminal.lastDesktopNotificationAt else { return }
-        guard at != lastObservedNotificationAt else { return }
+    @discardableResult
+    public func recordDesktopNotificationIfNeeded() -> Bool {
+        guard let at = terminal.lastDesktopNotificationAt else { return false }
+        guard at != lastObservedNotificationAt else { return false }
         lastObservedNotificationAt = at
         bellCount += 1
-        unseenBellCount += 1
         lastBellAt = at
         lastBellMessage = Self.formatNotification(
             title: terminal.lastDesktopNotificationTitle,
             body: terminal.lastDesktopNotificationBody
         )
+        return true
     }
 
     public func markBellsSeen() {

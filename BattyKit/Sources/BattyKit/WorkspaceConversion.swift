@@ -24,7 +24,7 @@ extension Pane {
             id: runtime.id,
             tabs: runtime.tabs.map { Tab(from: $0) },
             activeTabID: runtime.activeTabID,
-            unseenBellCount: 0
+            unseenBellCount: runtime.unseenBellCount
         )
     }
 }
@@ -53,7 +53,7 @@ extension Session {
             icon: nil,
             root: SplitNode(from: runtime.tree.root),
             focusedPaneID: runtime.tree.focusedPaneID,
-            unseenBellCount: 0
+            unseenBellCount: runtime.unseenBellCount
         )
     }
 }
@@ -88,7 +88,11 @@ extension TabRuntime {
 extension PaneRuntime {
     convenience init(from persisted: Pane) {
         let runtimeTabs = persisted.tabs.map { TabRuntime(from: $0) }
-        self.init(id: persisted.id, tabs: runtimeTabs)
+        self.init(
+            id: persisted.id,
+            tabs: runtimeTabs,
+            unseenBellCount: persisted.unseenBellCount
+        )
         self.activeTabID = persisted.activeTabID
     }
 }
@@ -114,7 +118,12 @@ extension SessionRuntime {
     convenience init(from persisted: Session) {
         let tree = SplitTree(root: SplitTreeNode(from: persisted.root))
         tree.focusedPaneID = persisted.focusedPaneID
-        self.init(id: persisted.id, title: persisted.title, tree: tree)
+        self.init(
+            id: persisted.id,
+            title: persisted.title,
+            tree: tree,
+            unseenBellCount: persisted.unseenBellCount
+        )
     }
 }
 

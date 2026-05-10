@@ -8,13 +8,19 @@ public final class PaneRuntime: Identifiable {
     public let id: UUID
     public var tabs: [TabRuntime]
     public var activeTabID: UUID
+    public internal(set) var unseenBellCount: Int = 0
 
-    public init(id: UUID = UUID(), tabs: [TabRuntime]? = nil) {
+    public init(
+        id: UUID = UUID(),
+        tabs: [TabRuntime]? = nil,
+        unseenBellCount: Int = 0
+    ) {
         self.id = id
         let initial = tabs ?? [TabRuntime()]
         precondition(!initial.isEmpty, "PaneRuntime must contain at least one Tab")
         self.tabs = initial
         self.activeTabID = initial[0].id
+        self.unseenBellCount = unseenBellCount
     }
 
     public var activeTab: TabRuntime {

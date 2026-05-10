@@ -35,18 +35,18 @@ struct WindowState: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
-    var id: UUID
-    var timestamp: Date
-    var windowID: UUID
-    var sessionID: UUID
-    var paneID: UUID
-    var tabID: UUID
-    var surfaceID: UUID
-    var message: String?
-    var seen: Bool
+public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var timestamp: Date
+    public var windowID: UUID
+    public var sessionID: UUID
+    public var paneID: UUID
+    public var tabID: UUID
+    public var surfaceID: UUID
+    public var message: String?
+    public var seen: Bool
 
-    init(
+    public init(
         id: UUID = UUID(),
         timestamp: Date,
         windowID: UUID,
