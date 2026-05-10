@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
+    @State private var isDragHovering: Bool = false
 
     public init(pane: PaneRuntime) {
         self.pane = pane
@@ -31,11 +32,21 @@ public struct PaneView: View {
                     TerminalSurfaceView(context: tab.terminal)
                         .opacity(tab.id == pane.activeTabID ? 1 : 0)
                         .allowsHitTesting(tab.id == pane.activeTabID)
-                        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                        .onDrop(
+                            of: [.fileURL],
+                            isTargeted: tab.id == pane.activeTabID ? $isDragHovering : .constant(false)
+                        ) { providers in
                             guard tab.id == pane.activeTabID else { return false }
                             return Self.handleFileDrop(providers, into: tab.terminal)
                         }
                 }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .opacity(isDragHovering ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: isDragHovering)
+                    .allowsHitTesting(false)
             }
         }
         .background {
