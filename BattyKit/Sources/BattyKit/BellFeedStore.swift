@@ -3,6 +3,10 @@
 import Foundation
 import Observation
 
+extension Notification.Name {
+    public static let battyToggleBellFeed = Notification.Name("co.sstools.Batty.toggleBellFeed")
+}
+
 @Observable
 @MainActor
 public final class BellFeedStore {

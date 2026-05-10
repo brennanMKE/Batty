@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct SessionDetailView: View {
     public let store: AppStateStore
+    @State private var bellFeedShown: Bool = false
 
     public init(store: AppStateStore) {
         self.store = store
@@ -47,7 +48,27 @@ public struct SessionDetailView: View {
                 }
                 .help("Split Vertically (\u{2318}\u{21E7}D)")
                 .disabled(store.selectedSession == nil)
+
+                Button {
+                    bellFeedShown.toggle()
+                } label: {
+                    Label(
+                        "Bell Feed",
+                        systemImage: store.bellFeed.unseenCount > 0 ? "bell.badge" : "bell"
+                    )
+                    .symbolRenderingMode(.hierarchical)
+                }
+                .help("Bell Feed (\u{2318}\u{21E7}N)")
+                .popover(isPresented: $bellFeedShown, arrowEdge: .top) {
+                    BellFeedView(store: store) { entry in
+                        bellFeedShown = false
+                        store.jumpToBellEntry(entry)
+                    }
+                }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .battyToggleBellFeed)) { _ in
+            bellFeedShown.toggle()
         }
     }
 

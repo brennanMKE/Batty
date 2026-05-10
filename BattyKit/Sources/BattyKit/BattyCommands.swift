@@ -50,6 +50,19 @@ public struct BattyCommands: Commands {
             }
         }
 
+        CommandGroup(after: .windowArrangement) {
+            Button("Toggle Bell Feed") {
+                NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .disabled(store == nil)
+
+            Button("Mark All Bells Seen") {
+                store?.markAllBellsSeen()
+            }
+            .disabled((store?.bellFeed.unseenCount ?? 0) == 0)
+        }
+
         CommandMenu("Pane") {
             Button("Split Horizontally") {
                 store?.selectedSession?.tree.splitFocusedPane(direction: .horizontal)

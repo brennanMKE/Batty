@@ -174,4 +174,26 @@ struct AppStateStoreBellRoutingTests {
         #expect(store.bellFeed.entries.first?.seen == false)
         #expect(tab.unseenBellCount == 1)
     }
+
+    @Test func jumpToBellEntrySelectsSessionPaneAndTab() {
+        let store = AppStateStore()
+        let focused = store.sessions[0]
+        let target = store.addSession()
+        store.selectedSessionID = focused.id
+
+        let pane = target.tree.allPanes[0]
+        target.focusedPane.addTab()
+        let secondaryTab = pane.tabs.last!
+        pane.activeTabID = pane.tabs[0].id
+
+        secondaryTab.terminal.terminalDidRingBell()
+        store.recordBellTick(forTabID: secondaryTab.id)
+        let entry = store.bellFeed.entries[0]
+
+        store.jumpToBellEntry(entry)
+
+        #expect(store.selectedSessionID == target.id)
+        #expect(target.tree.focusedPaneID == pane.id)
+        #expect(pane.activeTabID == secondaryTab.id)
+    }
 }

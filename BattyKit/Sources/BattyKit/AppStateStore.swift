@@ -126,6 +126,16 @@ public final class AppStateStore {
         }
     }
 
+    public func jumpToBellEntry(_ entry: BellFeedEntry) {
+        guard let session = sessions.first(where: { $0.id == entry.sessionID }),
+              let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
+              pane.tabs.contains(where: { $0.id == entry.tabID })
+        else { return }
+        selectedSessionID = session.id
+        session.tree.focusedPaneID = pane.id
+        pane.activeTabID = entry.tabID
+    }
+
     private struct BellLocation {
         let session: SessionRuntime
         let pane: PaneRuntime
