@@ -8,12 +8,15 @@ public final class AppStateStore {
     public private(set) var sessions: [SessionRuntime]
     public var selectedSessionID: UUID?
     public let bellFeed: BellFeedStore
+    @ObservationIgnored public var notifier: BellNotifier?
 
     public init(
         sessions: [SessionRuntime] = [],
-        bellFeed: BellFeedStore = BellFeedStore()
+        bellFeed: BellFeedStore = BellFeedStore(),
+        notifier: BellNotifier? = nil
     ) {
         self.bellFeed = bellFeed
+        self.notifier = notifier
         if sessions.isEmpty {
             let initial = SessionRuntime(title: "Session 1")
             self.sessions = [initial]
@@ -94,6 +97,7 @@ public final class AppStateStore {
             )
             bellFeed.record(entry)
             propagateUnseen(at: location)
+            postNotification(for: entry, at: location)
         }
     }
 
@@ -112,6 +116,7 @@ public final class AppStateStore {
         )
         bellFeed.record(entry)
         propagateUnseen(at: location)
+        postNotification(for: entry, at: location)
     }
 
     public func markBellSeen(id: UUID) {
@@ -161,6 +166,26 @@ public final class AppStateStore {
         location.tab.unseenBellCount += 1
         location.pane.unseenBellCount += 1
         location.session.unseenBellCount += 1
+    }
+
+    private func postNotification(for entry: BellFeedEntry, at location: BellLocation) {
+        guard let notifier else { return }
+        let paneIndex = (location.session.tree.allPanes.firstIndex { $0.id == location.pane.id } ?? 0) + 1
+        let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
+        let tabLabel: String
+        if let override = location.tab.titleOverride, !override.isEmpty {
+            tabLabel = override
+        } else if !location.tab.terminal.title.isEmpty {
+            tabLabel = location.tab.terminal.title
+        } else {
+            tabLabel = "Tab \(tabIndex)"
+        }
+        notifier.post(
+            for: entry,
+            sessionTitle: location.session.title,
+            paneIndex: paneIndex,
+            tabLabel: tabLabel
+        )
     }
 
     private func decrementUnseen(for entry: BellFeedEntry) {

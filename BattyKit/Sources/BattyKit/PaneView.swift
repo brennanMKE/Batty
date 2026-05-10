@@ -7,6 +7,7 @@ public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
     @Environment(\.appStateStore) private var appStore
     @State private var isDragHovering: Bool = false
+    @State private var bellFlashOpacity: Double = 0
 
     public init(pane: PaneRuntime) {
         self.pane = pane
@@ -23,7 +24,7 @@ public struct PaneView: View {
                 DefaultTabChip(
                     title: chipTitle(for: tab),
                     isActive: isActive,
-                    hasUnseen: false,
+                    hasUnseen: tab.unseenBellCount > 0,
                     onClose: pane.tabs.count > 1 ? { pane.removeTab(id: tab.id) } : nil
                 )
             }
@@ -63,6 +64,15 @@ public struct PaneView: View {
                     .animation(.easeOut(duration: 0.12), value: isDragHovering)
                     .allowsHitTesting(false)
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .opacity(bellFlashOpacity)
+                    .allowsHitTesting(false)
+            }
+            .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
+                triggerBellFlash()
+            }
         }
         .background {
             GeometryReader { geo in
@@ -81,6 +91,13 @@ public struct PaneView: View {
                 if let newValue { pane.activeTabID = newValue }
             }
         )
+    }
+
+    private func triggerBellFlash() {
+        bellFlashOpacity = 1
+        withAnimation(.easeOut(duration: 1.0)) {
+            bellFlashOpacity = 0
+        }
     }
 
     static func handleFileDrop(

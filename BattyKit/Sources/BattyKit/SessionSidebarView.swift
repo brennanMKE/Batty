@@ -70,11 +70,23 @@ private struct SessionRow: View {
     @Bindable var session: SessionRuntime
 
     var body: some View {
-        Label {
-            Text(session.title).lineLimit(1)
-        } icon: {
-            Image(systemName: "rectangle.split.3x1")
-                .foregroundStyle(.secondary)
+        HStack {
+            Label {
+                Text(session.title).lineLimit(1)
+            } icon: {
+                Image(systemName: "rectangle.split.3x1")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if session.unseenBellCount > 0 {
+                Text("\(session.unseenBellCount)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.accentColor))
+                    .help("\(session.unseenBellCount) unseen bell event\(session.unseenBellCount == 1 ? "" : "s")")
+            }
         }
     }
 }

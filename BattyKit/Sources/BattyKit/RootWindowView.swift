@@ -19,6 +19,20 @@ public struct RootWindowView: View {
         }
         .focusedSceneValue(\.appStateStore, store)
         .environment(\.appStateStore, store)
+        .task { setUpNotifier() }
+    }
+
+    private func setUpNotifier() {
+        guard store.notifier == nil else { return }
+        let notifier = BellNotifier { [weak store] entryID in
+            guard let store else { return }
+            if let entry = store.bellFeed.entries.first(where: { $0.id == entryID }) {
+                store.markBellSeen(id: entryID)
+                store.jumpToBellEntry(entry)
+            }
+        }
+        store.notifier = notifier
+        notifier.ensureAuthorization()
     }
 
     private var columnVisibilityBinding: Binding<NavigationSplitViewVisibility> {
