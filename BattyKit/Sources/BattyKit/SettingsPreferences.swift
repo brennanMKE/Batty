@@ -11,6 +11,7 @@ public enum SettingsPreference {
     public static let bellSoundKey = "co.sstools.Batty.bellSound"
     public static let systemNotificationsKey = "co.sstools.Batty.systemNotifications"
     public static let pasteStrictnessKey = "co.sstools.Batty.pasteStrictness"
+    public static let confirmQuitKey = "co.sstools.Batty.confirmQuit"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -18,6 +19,7 @@ public enum SettingsPreference {
     public static let defaultBellSound: Bool = true
     public static let defaultSystemNotifications: Bool = true
     public static let defaultPasteStrictness: String = PasteStrictness.alwaysOnMultiline.rawValue
+    public static let defaultConfirmQuit: Bool = true
 
     public static func detectedShell() -> String {
         if let shell = ProcessInfo.processInfo.environment["SHELL"], !shell.isEmpty {
@@ -70,6 +72,13 @@ public enum SettingsPreference {
     public static func resolvedPasteStrictness() -> PasteStrictness {
         let raw = UserDefaults.standard.string(forKey: pasteStrictnessKey) ?? defaultPasteStrictness
         return PasteStrictness(rawValue: raw) ?? .alwaysOnMultiline
+    }
+
+    public static func resolvedConfirmQuit() -> Bool {
+        if UserDefaults.standard.object(forKey: confirmQuitKey) == nil {
+            return defaultConfirmQuit
+        }
+        return UserDefaults.standard.bool(forKey: confirmQuitKey)
     }
 }
 

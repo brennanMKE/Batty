@@ -51,6 +51,12 @@ public struct BattyCommands: Commands {
             }
         }
 
+        CommandGroup(replacing: .appInfo) {
+            Button("About Batty") {
+                AboutPanel.show()
+            }
+        }
+
         CommandGroup(replacing: .pasteboard) {
             Button("Paste") {
                 PasteDispatcher.handlePasteRequest(store: store)

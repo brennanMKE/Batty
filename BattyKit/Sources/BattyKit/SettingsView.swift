@@ -25,6 +25,7 @@ public struct SettingsView: View {
 private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.defaultShellKey) private var shellOverride: String = ""
     @AppStorage(SettingsPreference.pasteStrictnessKey) private var pasteStrictness: String = SettingsPreference.defaultPasteStrictness
+    @AppStorage(SettingsPreference.confirmQuitKey) private var confirmQuit: Bool = SettingsPreference.defaultConfirmQuit
 
     var body: some View {
         Form {
@@ -48,6 +49,13 @@ private struct GeneralSettingsView: View {
                 }
                 .pickerStyle(.menu)
                 Text("Confirms before injecting potentially risky text. Cmd-V to a TextField is unaffected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Quit") {
+                Toggle("Confirm quit when terminals are open", isOn: $confirmQuit)
+                Text("Counts open tabs across all sessions; the prompt fires only when at least one tab exists.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
