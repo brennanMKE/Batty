@@ -34,10 +34,27 @@ public final class TabRuntime: Identifiable {
         if let workingDirectory {
             self.terminal.configuration.workingDirectory = workingDirectory
         }
+        Self.applyShellAndAppearancePreferences(to: self.terminal)
         self.bellCount = bellCount
         self.unseenBellCount = unseenBellCount
         self.lastBellAt = lastBellAt
         self.lastBellMessage = lastBellMessage
+    }
+
+    private static func applyShellAndAppearancePreferences(to terminal: TerminalViewState) {
+        let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle()) ?? .block
+        let blink = SettingsPreference.resolvedCursorBlink()
+        let fontSize = SettingsPreference.resolvedFontSize()
+        let shell = SettingsPreference.resolvedShell()
+        let configuration = TerminalConfiguration { builder in
+            builder.withFontSize(fontSize)
+            builder.withCursorStyle(cursor)
+            builder.withCursorStyleBlink(blink)
+            if !shell.isEmpty {
+                builder.withCustom("command", shell)
+            }
+        }
+        terminal.controller.setTerminalConfiguration(configuration)
     }
 
     @discardableResult

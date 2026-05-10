@@ -12,5 +12,10 @@ struct BattyApp: App {
         .commands {
             BattyCommands()
         }
+
+        Settings {
+            SettingsView()
+                .environment(\.appStateStore, WorkspaceManager.shared.store)
+        }
     }
 }

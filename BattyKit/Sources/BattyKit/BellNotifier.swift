@@ -38,11 +38,14 @@ public final class BellNotifier {
         paneIndex: Int,
         tabLabel: String
     ) {
+        guard SettingsPreference.resolvedSystemNotifications() else { return }
         guard shouldPost(for: entry) else { return }
         let content = UNMutableNotificationContent()
         content.title = "Batty — \(sessionTitle) › Pane \(paneIndex) › \(tabLabel)"
         content.body = entry.message?.isEmpty == false ? entry.message! : "Bell"
-        content.sound = .default
+        if SettingsPreference.resolvedBellSound() {
+            content.sound = .default
+        }
         content.userInfo = [Self.entryIdUserInfoKey: entry.id.uuidString]
 
         let request = UNNotificationRequest(
