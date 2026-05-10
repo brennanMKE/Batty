@@ -15,7 +15,7 @@ public struct PaneView: View {
                 items: $pane.tabs,
                 activeID: activeIDBinding,
                 onReorderCommit: nil,
-                onAdd: { pane.addTab() }
+                onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
             ) { tab, isActive in
                 DefaultTabChip(
                     title: chipTitle(for: tab),
@@ -55,6 +55,11 @@ public struct PaneView: View {
     private func chipTitle(for tab: TabRuntime) -> String {
         if let override = tab.titleOverride, !override.isEmpty { return override }
         let live = tab.terminal.title
-        return live.isEmpty ? "Tab" : live
+        if !live.isEmpty { return live }
+        if let cwd = tab.terminal.workingDirectory, !cwd.isEmpty {
+            let basename = URL(fileURLWithPath: cwd).lastPathComponent
+            if !basename.isEmpty, basename != "/" { return basename }
+        }
+        return "Tab"
     }
 }

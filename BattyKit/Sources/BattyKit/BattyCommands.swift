@@ -162,7 +162,12 @@ public struct BattyCommands: Commands {
         let tab = pane.tabs[index]
         if let override = tab.titleOverride, !override.isEmpty { return override }
         let live = tab.terminal.title
-        return live.isEmpty ? "Tab \(index + 1)" : live
+        if !live.isEmpty { return live }
+        if let cwd = tab.terminal.workingDirectory, !cwd.isEmpty {
+            let basename = URL(fileURLWithPath: cwd).lastPathComponent
+            if !basename.isEmpty, basename != "/" { return basename }
+        }
+        return "Tab \(index + 1)"
     }
 
     private func tabExists(at index: Int) -> Bool {

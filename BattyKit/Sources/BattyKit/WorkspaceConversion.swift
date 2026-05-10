@@ -8,7 +8,7 @@ extension Tab {
             id: runtime.id,
             surfaceID: UUID(),
             titleOverride: runtime.titleOverride,
-            lastKnownCWD: nil,
+            lastKnownCWD: runtime.terminal.workingDirectory,
             lastSetTitle: runtime.terminal.title.isEmpty ? nil : runtime.terminal.title,
             bellCount: 0,
             unseenBellCount: 0,
@@ -73,7 +73,11 @@ extension WindowState {
 
 extension TabRuntime {
     convenience init(from persisted: Tab) {
-        self.init(id: persisted.id, titleOverride: persisted.titleOverride)
+        self.init(
+            id: persisted.id,
+            titleOverride: persisted.titleOverride,
+            workingDirectory: persisted.lastKnownCWD
+        )
     }
 }
 

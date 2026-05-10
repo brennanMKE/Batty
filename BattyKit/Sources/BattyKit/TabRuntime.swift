@@ -9,10 +9,17 @@ public final class TabRuntime: Identifiable {
     public var titleOverride: String?
     public let terminal: TerminalViewState
 
-    public init(id: UUID = UUID(), titleOverride: String? = nil) {
+    public init(
+        id: UUID = UUID(),
+        titleOverride: String? = nil,
+        workingDirectory: String? = nil
+    ) {
         self.id = id
         self.titleOverride = titleOverride
         self.terminal = TerminalViewState(theme: Self.activeTheme())
+        if let workingDirectory {
+            self.terminal.configuration.workingDirectory = workingDirectory
+        }
     }
 
     private static func activeTheme() -> TerminalTheme {

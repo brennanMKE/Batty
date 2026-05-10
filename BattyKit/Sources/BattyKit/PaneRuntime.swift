@@ -22,8 +22,9 @@ public final class PaneRuntime: Identifiable {
     }
 
     @discardableResult
-    public func addTab() -> TabRuntime {
-        let tab = TabRuntime()
+    public func addTab(inheritingCWDFrom source: TabRuntime? = nil) -> TabRuntime {
+        let cwd = source?.terminal.workingDirectory
+        let tab = TabRuntime(workingDirectory: cwd)
         tabs.append(tab)
         activeTabID = tab.id
         return tab
