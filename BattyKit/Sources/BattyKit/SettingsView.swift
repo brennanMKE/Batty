@@ -24,6 +24,7 @@ public struct SettingsView: View {
 
 private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.defaultShellKey) private var shellOverride: String = ""
+    @AppStorage(SettingsPreference.pasteStrictnessKey) private var pasteStrictness: String = SettingsPreference.defaultPasteStrictness
 
     var body: some View {
         Form {
@@ -35,6 +36,18 @@ private struct GeneralSettingsView: View {
                 )
                 .textFieldStyle(.roundedBorder)
                 Text("Auto-detected: \(SettingsPreference.detectedShell())")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Paste Confirmation") {
+                Picker("On Cmd-V", selection: $pasteStrictness) {
+                    ForEach(PasteStrictness.allCases, id: \.rawValue) { strictness in
+                        Text(strictness.displayName).tag(strictness.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                Text("Confirms before injecting potentially risky text. Cmd-V to a TextField is unaffected.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

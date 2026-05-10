@@ -5,6 +5,7 @@ import SwiftUI
 public struct SessionDetailView: View {
     public let store: AppStateStore
     @State private var bellFeedShown: Bool = false
+    @State private var pendingPaste: PendingPaste?
 
     public init(store: AppStateStore) {
         self.store = store
@@ -69,6 +70,20 @@ public struct SessionDetailView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleBellFeed)) { _ in
             bellFeedShown.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .battyRequestPaste)) { note in
+            guard let pending = note.userInfo?["paste"] as? PendingPaste else { return }
+            pendingPaste = pending
+        }
+        .sheet(item: $pendingPaste) { pending in
+            PasteConfirmationSheet(
+                paste: pending,
+                onConfirm: { _ in
+                    PasteDispatcher.confirm(pending, in: store)
+                    pendingPaste = nil
+                },
+                onCancel: { pendingPaste = nil }
+            )
         }
     }
 

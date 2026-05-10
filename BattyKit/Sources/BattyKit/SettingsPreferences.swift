@@ -10,12 +10,14 @@ public enum SettingsPreference {
     public static let cursorBlinkKey = "co.sstools.Batty.cursorBlink"
     public static let bellSoundKey = "co.sstools.Batty.bellSound"
     public static let systemNotificationsKey = "co.sstools.Batty.systemNotifications"
+    public static let pasteStrictnessKey = "co.sstools.Batty.pasteStrictness"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
     public static let defaultCursorBlink: Bool = true
     public static let defaultBellSound: Bool = true
     public static let defaultSystemNotifications: Bool = true
+    public static let defaultPasteStrictness: String = PasteStrictness.alwaysOnMultiline.rawValue
 
     public static func detectedShell() -> String {
         if let shell = ProcessInfo.processInfo.environment["SHELL"], !shell.isEmpty {
@@ -63,6 +65,38 @@ public enum SettingsPreference {
             return defaultSystemNotifications
         }
         return UserDefaults.standard.bool(forKey: systemNotificationsKey)
+    }
+
+    public static func resolvedPasteStrictness() -> PasteStrictness {
+        let raw = UserDefaults.standard.string(forKey: pasteStrictnessKey) ?? defaultPasteStrictness
+        return PasteStrictness(rawValue: raw) ?? .alwaysOnMultiline
+    }
+}
+
+public enum PasteStrictness: String, CaseIterable, Sendable {
+    case alwaysOnMultiline
+    case onShellMetacharacters
+    case never
+
+    public var displayName: String {
+        switch self {
+        case .alwaysOnMultiline: return "Always confirm multi-line"
+        case .onShellMetacharacters: return "Confirm only with shell metacharacters"
+        case .never: return "Never confirm"
+        }
+    }
+
+    public func shouldConfirm(_ text: String) -> Bool {
+        switch self {
+        case .never:
+            return false
+        case .alwaysOnMultiline:
+            return text.contains("\n")
+        case .onShellMetacharacters:
+            guard text.contains("\n") else { return false }
+            let dangerous = ["rm ", "sudo ", "dd ", " > /", " | sh", "&&", ";"]
+            return dangerous.contains(where: text.contains)
+        }
     }
 }
 

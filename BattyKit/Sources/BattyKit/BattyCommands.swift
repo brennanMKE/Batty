@@ -1,5 +1,6 @@
 // BattyCommands.swift
 
+import AppKit
 import SwiftUI
 
 public struct BattyCommands: Commands {
@@ -48,6 +49,28 @@ public struct BattyCommands: Commands {
                 }
                 .disabled(store == nil)
             }
+        }
+
+        CommandGroup(replacing: .pasteboard) {
+            Button("Paste") {
+                PasteDispatcher.handlePasteRequest(store: store)
+            }
+            .keyboardShortcut("v", modifiers: .command)
+
+            Button("Copy") {
+                NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("c", modifiers: .command)
+
+            Button("Cut") {
+                NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("x", modifiers: .command)
+
+            Button("Select All") {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("a", modifiers: .command)
         }
 
         CommandGroup(after: .windowArrangement) {
