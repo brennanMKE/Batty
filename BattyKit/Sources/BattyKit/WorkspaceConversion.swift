@@ -10,10 +10,10 @@ extension Tab {
             titleOverride: runtime.titleOverride,
             lastKnownCWD: runtime.terminal.workingDirectory,
             lastSetTitle: runtime.terminal.title.isEmpty ? nil : runtime.terminal.title,
-            bellCount: 0,
-            unseenBellCount: 0,
-            lastBellAt: nil,
-            lastBellMessage: nil
+            bellCount: runtime.bellCount,
+            unseenBellCount: runtime.unseenBellCount,
+            lastBellAt: runtime.lastBellAt,
+            lastBellMessage: runtime.lastBellMessage
         )
     }
 }
@@ -76,7 +76,11 @@ extension TabRuntime {
         self.init(
             id: persisted.id,
             titleOverride: persisted.titleOverride,
-            workingDirectory: persisted.lastKnownCWD
+            workingDirectory: persisted.lastKnownCWD,
+            bellCount: persisted.bellCount,
+            unseenBellCount: persisted.unseenBellCount,
+            lastBellAt: persisted.lastBellAt,
+            lastBellMessage: persisted.lastBellMessage
         )
     }
 }

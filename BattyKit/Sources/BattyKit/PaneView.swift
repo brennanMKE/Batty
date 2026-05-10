@@ -39,6 +39,12 @@ public struct PaneView: View {
                             guard tab.id == pane.activeTabID else { return false }
                             return Self.handleFileDrop(providers, into: tab.terminal)
                         }
+                        .onChange(of: tab.terminal.bellCount) {
+                            tab.recordBellTickIfNeeded()
+                        }
+                        .onChange(of: tab.terminal.lastDesktopNotificationAt) {
+                            tab.recordDesktopNotificationIfNeeded()
+                        }
                 }
             }
             .overlay {
