@@ -16,10 +16,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(
-            url: "https://github.com/Lakr233/libghostty-spm",
-            exact: "1.0.1777879537"
-        ),
+        .package(path: "../../libghostty-spm"),
         .package(path: "../../SlidingTabs"),
     ],
     targets: [
