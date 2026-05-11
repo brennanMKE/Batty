@@ -251,8 +251,8 @@ The single canonical persistence document for the user's layout and history.
   - For each Tab: id, title override, surfaceID, last-known cwd, last-set title.
   - Bell Feed history (capped).
 - **Write cadence:** on quit, on every Session/Pane/Tab structural change (debounced), and every 30 seconds while running.
-- **Read cadence:** once at launch. Replayed into new Windows. **Shells start fresh** — we don't restore running processes.
-- **Failure mode:** if the file is missing or unparseable, start with a single empty Window containing one Session, one Pane, one Tab, one Terminal Session. The corrupt file is renamed `workspace.json.broken-<timestamp>` so it isn't lost.
+- **Read cadence:** **none by default.** Workspace persistence is write-only — launch always starts with a single fresh Window containing one Session, one Pane, one Tab, one Terminal Session, matching the behavior of Terminal.app, Ghostty, iTerm2, and other native terminal apps. The file is kept on disk as a diagnostic snapshot and to preserve the option of adding an opt-in "Restore Previous Layout" command later. (Layout restoration is wrong-by-default for a terminal app: the user's "documents" are running shell processes, and those can't actually be restored — only the surface of the previous layout, full of stale prompts and missing context.)
+- **Failure mode:** since the file isn't read on launch, a missing or unparseable file is harmless. The recovery path (`workspace.json.broken-<timestamp>` rename) still runs if a future opt-in restore command exercises the load path.
 
 ---
 

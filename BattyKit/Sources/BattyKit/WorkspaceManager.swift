@@ -28,27 +28,12 @@ public final class WorkspaceManager {
         }
         self.workspaceStore = resolvedStore
 
-        let result = resolvedStore?.load() ?? .missing
-        switch result {
-        case .loaded(let workspace):
-            if let first = workspace.windows.first {
-                self.store = AppStateStore(from: first)
-                self.lastLoadResultDescription = "loaded \(workspace.windows.count) window(s)"
-            } else {
-                self.store = AppStateStore()
-                self.lastLoadResultDescription = "loaded but empty"
-            }
-        case .recovered(let workspace, let brokenURL, let underlying):
-            if let first = workspace.windows.first {
-                self.store = AppStateStore(from: first)
-            } else {
-                self.store = AppStateStore()
-            }
-            self.lastLoadResultDescription = "recovered (broken file at \(brokenURL.lastPathComponent); \(underlying))"
-        case .missing:
-            self.store = AppStateStore()
-            self.lastLoadResultDescription = "missing"
-        }
+        // Launch always starts fresh: one window, one session, one pane, one tab,
+        // one fresh shell prompt — matching Terminal.app / Ghostty / iTerm2 defaults.
+        // The workspace file is still written for diagnostic purposes; bringing back
+        // an opt-in "Restore Previous Layout" command later can re-enable the read.
+        self.store = AppStateStore()
+        self.lastLoadResultDescription = "skipped (launch starts fresh)"
 
         startTimer()
         observeAppLifecycle()
