@@ -50,8 +50,8 @@ public struct PaneView: View {
                 onReorderCommit: nil,
                 onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
             ) { tab, isActive in
-                DefaultTabChip(
-                    title: Self.truncate(chipTitle(for: tab), limit: charBudget),
+                BattyTabChip(
+                    title: chipTitle(for: tab),
                     isActive: isActive,
                     hasUnseen: tab.unseenBellCount > 0,
                     onClose: {
@@ -62,7 +62,7 @@ public struct PaneView: View {
                         }
                     }
                 )
-                .frame(maxWidth: chipMaxWidth)
+                .frame(width: chipMaxWidth)
                 .contextMenu { tabContextMenu(for: tab) }
             }
             .clipped()
