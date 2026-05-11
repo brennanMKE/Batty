@@ -18,6 +18,7 @@ let package = Package(
     dependencies: [
         .package(path: "../../libghostty-spm"),
         .package(path: "../../SlidingTabs"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .target(
@@ -27,6 +28,7 @@ let package = Package(
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "GhosttyTheme", package: "libghostty-spm"),
                 .product(name: "SlidingTabs", package: "SlidingTabs"),
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             swiftSettings: swiftSettings
         ),

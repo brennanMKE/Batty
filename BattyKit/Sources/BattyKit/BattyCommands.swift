@@ -55,6 +55,11 @@ public struct BattyCommands: Commands {
             Button("About Batty") {
                 AboutPanel.show()
             }
+            Divider()
+            Button("Check for Updates…") {
+                UpdaterController.shared.checkForUpdates()
+            }
+            .disabled(!UpdaterController.shared.isConfigured)
         }
 
         CommandGroup(replacing: .pasteboard) {
