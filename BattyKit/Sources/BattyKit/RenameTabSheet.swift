@@ -4,6 +4,7 @@ import SwiftUI
 
 struct RenameTabSheet: View {
     @Binding var title: String
+    let placeholder: String
     let onCommit: () -> Void
     let onCancel: () -> Void
     @FocusState private var isFocused: Bool
@@ -11,11 +12,11 @@ struct RenameTabSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Rename Tab").font(.headline)
-            TextField("Tab title", text: $title)
+            TextField(placeholder.isEmpty ? "Tab title" : placeholder, text: $title)
                 .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
                 .onSubmit(onCommit)
-            Text("Leave blank to reset to the live title.")
+            Text("Leave blank to reset to the auto title.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {

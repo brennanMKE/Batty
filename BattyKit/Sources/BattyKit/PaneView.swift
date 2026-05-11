@@ -128,6 +128,7 @@ public struct PaneView: View {
         .sheet(item: $renamingTab) { tab in
             RenameTabSheet(
                 title: $renameDraft,
+                placeholder: tab.terminal.title,
                 onCommit: {
                     let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     tab.titleOverride = trimmed.isEmpty ? nil : trimmed
@@ -141,7 +142,7 @@ public struct PaneView: View {
     @ViewBuilder
     private func tabContextMenu(for tab: TabRuntime) -> some View {
         Button("Rename…") {
-            renameDraft = tab.titleOverride ?? tab.terminal.title
+            renameDraft = tab.titleOverride ?? ""
             renamingTab = tab
         }
         Button("Reset Title") {
