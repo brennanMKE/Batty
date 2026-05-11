@@ -201,15 +201,7 @@ public struct BattyCommands: Commands {
         guard let pane = focusedPane, pane.tabs.indices.contains(index) else {
             return "Tab \(index + 1)"
         }
-        let tab = pane.tabs[index]
-        if let override = tab.titleOverride, !override.isEmpty { return override }
-        let live = tab.terminal.title
-        if !live.isEmpty { return live }
-        if let cwd = tab.terminal.workingDirectory, !cwd.isEmpty {
-            let basename = URL(fileURLWithPath: cwd).lastPathComponent
-            if !basename.isEmpty, basename != "/" { return basename }
-        }
-        return "Tab \(index + 1)"
+        return TabTitleFormatter.chipTitle(for: pane.tabs[index], fallback: "Tab \(index + 1)")
     }
 
     private func tabExists(at index: Int) -> Bool {
