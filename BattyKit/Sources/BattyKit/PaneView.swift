@@ -196,6 +196,11 @@ public struct PaneView: View {
             get: { pane.activeTabID },
             set: { newValue in
                 if let newValue { pane.activeTabID = newValue }
+                if let appStore {
+                    appStore.focusPane(id: pane.id)
+                } else {
+                    tree.focusedPaneID = pane.id
+                }
             }
         )
     }

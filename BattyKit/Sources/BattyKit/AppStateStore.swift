@@ -159,6 +159,19 @@ public final class AppStateStore {
         closeTab(id: session.focusedPane.activeTabID)
     }
 
+    /// Marks the pane with `id` as the focused pane in its owning session.
+    /// No-op if the pane id doesn't belong to any session in the store.
+    /// Does not change the selected session — cross-session focus moves
+    /// belong to `jumpToBellEntry` / sidebar selection.
+    public func focusPane(id: UUID) {
+        for session in sessions {
+            if session.tree.allPanes.contains(where: { $0.id == id }) {
+                session.tree.focusedPaneID = id
+                return
+            }
+        }
+    }
+
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
         guard let session = sessions.first(where: { $0.id == entry.sessionID }),
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
