@@ -12,6 +12,7 @@ public struct BattyTabChip: View {
 
     private let title: String
     private let isActive: Bool
+    private let isPaneFocused: Bool
     private let hasUnseen: Bool
     private let onClose: (() -> Void)?
 
@@ -19,14 +20,18 @@ public struct BattyTabChip: View {
 
     private var showsUnseenDot: Bool { hasUnseen && !isActive }
 
+    private var showsActiveAccent: Bool { isActive && isPaneFocused }
+
     public init(
         title: String,
         isActive: Bool,
+        isPaneFocused: Bool = true,
         hasUnseen: Bool = false,
         onClose: (() -> Void)? = nil
     ) {
         self.title = title
         self.isActive = isActive
+        self.isPaneFocused = isPaneFocused
         self.hasUnseen = hasUnseen
         self.onClose = onClose
     }
@@ -71,11 +76,16 @@ public struct BattyTabChip: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isActive ? Color.accentColor.opacity(0.15) : Color.gray.opacity(0.12))
+                .fill(showsActiveAccent
+                    ? Color.accentColor.opacity(0.15)
+                    : (isActive ? Color.gray.opacity(0.22) : Color.gray.opacity(0.12)))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(isActive ? Color.accentColor : Color.gray.opacity(0.25), lineWidth: 1)
+                .stroke(showsActiveAccent
+                    ? Color.accentColor
+                    : (isActive ? Color.gray.opacity(0.45) : Color.gray.opacity(0.25)),
+                    lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onHover { hovering in

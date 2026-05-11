@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
+    @Bindable public var tree: SplitTree
     @Environment(\.appStateStore) private var appStore
     @State private var isDragHovering: Bool = false
     @State private var bellFlashOpacity: Double = 0
@@ -26,8 +27,17 @@ public struct PaneView: View {
     private static let charBudgetMin: Int = 3
     private static let charBudgetMax: Int = 40
 
-    public init(pane: PaneRuntime) {
+    public init(pane: PaneRuntime, tree: SplitTree) {
         self.pane = pane
+        self.tree = tree
+    }
+
+    private var isPaneFocused: Bool {
+        tree.focusedPaneID == pane.id
+    }
+
+    private var hasSiblingPanes: Bool {
+        tree.allPanes.count > 1
     }
 
     private var chipMaxWidth: CGFloat {
@@ -53,6 +63,7 @@ public struct PaneView: View {
                 BattyTabChip(
                     title: chipTitle(for: tab),
                     isActive: isActive,
+                    isPaneFocused: isPaneFocused,
                     hasUnseen: tab.unseenBellCount > 0,
                     onClose: {
                         if let appStore {
@@ -108,6 +119,15 @@ public struct PaneView: View {
                     .opacity(bellFlashOpacity)
                     .allowsHitTesting(false)
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
+                    .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
+                    .allowsHitTesting(false)
+            }
+            .opacity(hasSiblingPanes && !isPaneFocused ? 0.7 : 1)
+            .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
                 triggerBellFlash()
             }

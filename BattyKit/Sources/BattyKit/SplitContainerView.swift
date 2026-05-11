@@ -15,13 +15,13 @@ public struct SplitContainerView: View {
 }
 
 private struct SplitNodeView: View {
-    let tree: SplitTree
+    @Bindable var tree: SplitTree
     let node: SplitTreeNode
 
     var body: AnyView {
         switch node {
         case .leaf(let pane):
-            return AnyView(PaneView(pane: pane))
+            return AnyView(PaneView(pane: pane, tree: tree))
         case let .split(id, direction, ratio, left, right):
             return AnyView(
                 DraggableSplitView(
