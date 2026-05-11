@@ -8,6 +8,8 @@ public struct PaneView: View {
     @Environment(\.appStateStore) private var appStore
     @State private var isDragHovering: Bool = false
     @State private var bellFlashOpacity: Double = 0
+    @State private var renamingTab: TabRuntime?
+    @State private var renameDraft: String = ""
 
     public init(pane: PaneRuntime) {
         self.pane = pane
@@ -33,6 +35,7 @@ public struct PaneView: View {
                         }
                     }
                 )
+                .contextMenu { tabContextMenu(for: tab) }
             }
             .clipped()
 
@@ -89,6 +92,49 @@ public struct PaneView: View {
                 )
             }
         }
+        .sheet(item: $renamingTab) { tab in
+            RenameTabSheet(
+                title: $renameDraft,
+                onCommit: {
+                    let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    tab.titleOverride = trimmed.isEmpty ? nil : trimmed
+                    renamingTab = nil
+                },
+                onCancel: { renamingTab = nil }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func tabContextMenu(for tab: TabRuntime) -> some View {
+        Button("Rename…") {
+            renameDraft = tab.titleOverride ?? tab.terminal.title
+            renamingTab = tab
+        }
+        Button("Reset Title") {
+            tab.titleOverride = nil
+        }
+        .disabled(tab.titleOverride == nil)
+
+        Divider()
+
+        Button("Duplicate Tab") {
+            pane.addTab(inheritingCWDFrom: tab)
+        }
+
+        Divider()
+
+        Button("Close Tab") {
+            if let appStore {
+                appStore.closeTab(id: tab.id)
+            } else {
+                pane.removeTab(id: tab.id)
+            }
+        }
+        Button("Close Other Tabs") {
+            pane.closeOtherTabs(keeping: tab.id)
+        }
+        .disabled(pane.tabs.count < 2)
     }
 
     private var activeIDBinding: Binding<UUID?> {

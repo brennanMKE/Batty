@@ -51,6 +51,14 @@ public final class PaneRuntime: Identifiable {
         removeTab(id: activeTabID)
     }
 
+    /// Removes every tab in the pane except the one with `id`. Used by the
+    /// chip context menu's "Close Other Tabs". The kept tab becomes active.
+    public func closeOtherTabs(keeping id: UUID) {
+        guard let kept = tabs.first(where: { $0.id == id }) else { return }
+        tabs = [kept]
+        activeTabID = kept.id
+    }
+
     public func selectTab(at index: Int) {
         guard tabs.indices.contains(index) else { return }
         activeTabID = tabs[index].id

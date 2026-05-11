@@ -58,6 +58,26 @@ struct CloseTabCascadeTests {
         #expect(store.sessions[0].id != session.id)
     }
 
+    @Test func closeOtherTabsKeepsTheTargetActive() {
+        let pane = PaneRuntime()
+        pane.addTab()
+        pane.addTab()
+        #expect(pane.tabs.count == 3)
+        let keeperID = pane.tabs[1].id
+
+        pane.closeOtherTabs(keeping: keeperID)
+
+        #expect(pane.tabs.count == 1)
+        #expect(pane.activeTabID == keeperID)
+    }
+
+    @Test func closeOtherTabsIsNoOpForUnknownID() {
+        let pane = PaneRuntime()
+        let originalCount = pane.tabs.count
+        pane.closeOtherTabs(keeping: UUID())
+        #expect(pane.tabs.count == originalCount)
+    }
+
     @Test func closeFocusedTabRoutesThroughTheCascade() {
         let store = AppStateStore()
         let session = store.sessions[0]
