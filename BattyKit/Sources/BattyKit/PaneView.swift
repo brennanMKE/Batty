@@ -10,9 +10,36 @@ public struct PaneView: View {
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
     @State private var renameDraft: String = ""
+    @State private var paneWidth: CGFloat = 0
+
+    /// Approximate per-character text width at the chip's font. Used to
+    /// derive a string-level char budget from the per-chip pixel budget.
+    private static let approxCharWidth: CGFloat = 7
+    /// Per-chip non-text overhead (icon + close button + padding).
+    private static let chipChromeWidth: CGFloat = 36
+    /// Per-bar overhead (horizontal padding + "+" button + spacing).
+    private static let barChromeWidth: CGFloat = 56
+    /// Absolute clamps so chips don't disappear in tiny panes or grow
+    /// absurdly wide in huge ones.
+    private static let chipMinWidth: CGFloat = 60
+    private static let chipMaxWidthCap: CGFloat = 220
+    private static let charBudgetMin: Int = 3
+    private static let charBudgetMax: Int = 40
 
     public init(pane: PaneRuntime) {
         self.pane = pane
+    }
+
+    private var chipMaxWidth: CGFloat {
+        let count = max(1, CGFloat(pane.tabs.count))
+        let available = max(0, paneWidth - Self.barChromeWidth)
+        let perChip = (available / count) - 6  // SlidingTabBar's default spacing
+        return min(Self.chipMaxWidthCap, max(Self.chipMinWidth, perChip))
+    }
+
+    private var charBudget: Int {
+        let raw = Int((chipMaxWidth - Self.chipChromeWidth) / Self.approxCharWidth)
+        return min(Self.charBudgetMax, max(Self.charBudgetMin, raw))
     }
 
     public var body: some View {
@@ -24,7 +51,7 @@ public struct PaneView: View {
                 onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
             ) { tab, isActive in
                 DefaultTabChip(
-                    title: Self.truncate(chipTitle(for: tab), limit: 24),
+                    title: Self.truncate(chipTitle(for: tab), limit: charBudget),
                     isActive: isActive,
                     hasUnseen: tab.unseenBellCount > 0,
                     onClose: {
@@ -35,6 +62,7 @@ public struct PaneView: View {
                         }
                     }
                 )
+                .frame(maxWidth: chipMaxWidth)
                 .contextMenu { tabContextMenu(for: tab) }
             }
             .clipped()
@@ -86,10 +114,15 @@ public struct PaneView: View {
         }
         .background {
             GeometryReader { geo in
-                Color.clear.preference(
-                    key: PaneFramePreferenceKey.self,
-                    value: [pane.id: geo.frame(in: .named("session"))]
-                )
+                Color.clear
+                    .preference(
+                        key: PaneFramePreferenceKey.self,
+                        value: [pane.id: geo.frame(in: .named("session"))]
+                    )
+                    .onAppear { paneWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, newValue in
+                        paneWidth = newValue
+                    }
             }
         }
         .sheet(item: $renamingTab) { tab in
