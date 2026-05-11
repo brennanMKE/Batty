@@ -47,6 +47,7 @@ A named workspace, listed as one row in the Window's Sidebar.
 - **Identity:** stable `id: UUID`, plus a user-editable `title` (and optional icon/color).
 - **Selection:** exactly one Session is selected per Window at a time. Selecting a Session swaps the Detail Area to that Session's Split tree. Surfaces in non-selected Sessions stay alive so switching is instant and processes keep running.
 - **Sidebar affordances:** drag to reorder; right-click to Rename / Duplicate / Close; "+" toolbar button creates a new Session.
+- **CWD inheritance:** a newly created Session's first Pane spawns its shell in the previously-focused Pane's active-Tab cwd when one is known, mirroring the way Cmd-T inherits cwd within a Pane; falls back to the shell's default (`$HOME`) when no previously-selected Session exists.
 - **Keybinding:** Cmd-Option-1..9 selects the Nth Session in the active Window. (Cmd-Shift-Number is reserved by macOS for screenshot hotkeys, so we use Cmd-Option-Number — same family iTerm2 uses for session/window selection.)
 - **Persisted:** ordered list per Window, plus everything inside.
 

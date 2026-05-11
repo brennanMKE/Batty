@@ -35,7 +35,12 @@ public final class AppStateStore {
     @discardableResult
     public func addSession(title: String? = nil) -> SessionRuntime {
         let resolvedTitle = title ?? "Session \(sessions.count + 1)"
-        let session = SessionRuntime(title: resolvedTitle)
+        let sourceTab = selectedSession?.focusedPane.activeTab
+        let inheritedCWD = sourceTab?.terminal.workingDirectory
+            ?? sourceTab?.terminal.configuration.workingDirectory
+        let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: inheritedCWD)])
+        let tree = SplitTree(root: .leaf(firstPane))
+        let session = SessionRuntime(title: resolvedTitle, tree: tree)
         sessions.append(session)
         selectedSessionID = session.id
         return session
