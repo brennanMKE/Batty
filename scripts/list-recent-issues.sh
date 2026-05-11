@@ -4,23 +4,35 @@
 # Each line is: number, status, age, title — four columns separated by
 # two spaces, suitable for piping into grep/awk. Age is the time since
 # the file was last modified (e.g. 12s, 4m, 3h, 2d, 5w, 6mo, 1y).
+#
+# Looks for issue files in $PWD/issues by default. Pass a different
+# directory name (or absolute path) as the first positional argument to
+# override:
+#
+#   list-recent-issues.sh                    # ./issues
+#   list-recent-issues.sh project-issues     # ./project-issues
+#   list-recent-issues.sh /path/to/issues    # absolute path
+#   list-recent-issues.sh -n 5 logs          # ./logs, top 5
+#
+# Designed to live in ~/bin (or any other directory on PATH) and be
+# invoked from a project root. It does not assume any particular layout
+# of the script's own location.
 
 set -euo pipefail
 zmodload zsh/datetime
 
-SCRIPT_DIR="${0:A:h}"
 SCRIPT_NAME="${0##*/}"
-REPO_ROOT="${SCRIPT_DIR:h}"
-ISSUES_DIR="$REPO_ROOT/issues"
-
 LIMIT=20
 
 usage() {
     cat <<EOF
-Usage: $SCRIPT_NAME [-n LIMIT] [-h]
+Usage: $SCRIPT_NAME [-n LIMIT] [-h] [DIR]
 
-List recently updated issues from $ISSUES_DIR, sorted by mtime (newest first).
-Columns: number  status  age  title.
+List recently updated issues in DIR (or \$PWD/issues by default),
+sorted by mtime (newest first). Columns: number  status  age  title.
+
+DIR can be a directory name relative to the current working directory
+(e.g. "project-issues") or an absolute path. Defaults to "issues".
 
 Options:
   -n LIMIT  Show at most LIMIT issues (default: 20). Use 0 for no limit.
@@ -57,6 +69,14 @@ while getopts "n:h" opt; do
         *) usage >&2; exit 2 ;;
     esac
 done
+shift $((OPTIND - 1))
+
+DIR_ARG="${1:-issues}"
+if [[ "$DIR_ARG" = /* ]]; then
+    ISSUES_DIR="$DIR_ARG"
+else
+    ISSUES_DIR="$PWD/$DIR_ARG"
+fi
 
 if [[ ! -d "$ISSUES_DIR" ]]; then
     print -u2 "error: $ISSUES_DIR not found"
