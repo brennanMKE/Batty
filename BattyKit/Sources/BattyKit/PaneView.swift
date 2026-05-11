@@ -22,7 +22,7 @@ public struct PaneView: View {
                 onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
             ) { tab, isActive in
                 DefaultTabChip(
-                    title: chipTitle(for: tab),
+                    title: Self.truncate(chipTitle(for: tab), limit: 24),
                     isActive: isActive,
                     hasUnseen: tab.unseenBellCount > 0,
                     onClose: {
@@ -34,6 +34,7 @@ public struct PaneView: View {
                     }
                 )
             }
+            .clipped()
 
             ZStack {
                 ForEach(pane.tabs) { tab in
@@ -97,6 +98,16 @@ public struct PaneView: View {
                 if let newValue { pane.activeTabID = newValue }
             }
         )
+    }
+
+    static func truncate(_ title: String, limit: Int) -> String {
+        guard limit > 1, title.count > limit else { return title }
+        let keep = limit - 1
+        let head = keep / 2
+        let tail = keep - head
+        let prefix = title.prefix(head)
+        let suffix = title.suffix(tail)
+        return "\(prefix)…\(suffix)"
     }
 
     private func triggerBellFlash() {
