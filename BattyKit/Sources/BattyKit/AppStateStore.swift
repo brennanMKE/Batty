@@ -131,6 +131,34 @@ public final class AppStateStore {
         }
     }
 
+    // MARK: - Tab close cascade
+
+    /// Closes a specific tab, cascading through pane and session teardown
+    /// when it was the last tab in its pane / the last pane in its session.
+    /// Restores a single default session if the close would leave the store
+    /// with zero sessions, mirroring `removeSession`'s recovery.
+    public func closeTab(id tabID: UUID) {
+        for session in sessions {
+            for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
+                pane.removeTab(id: tabID)
+                if pane.tabs.isEmpty {
+                    let treeEmptied = session.tree.removePane(id: pane.id)
+                    if treeEmptied {
+                        removeSession(id: session.id)
+                    }
+                }
+                return
+            }
+        }
+    }
+
+    /// Closes the currently-focused tab in the selected session, cascading
+    /// through pane and session teardown as needed.
+    public func closeFocusedTab() {
+        guard let session = selectedSession else { return }
+        closeTab(id: session.focusedPane.activeTabID)
+    }
+
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
         guard let session = sessions.first(where: { $0.id == entry.sessionID }),
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),

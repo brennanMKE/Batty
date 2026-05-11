@@ -25,7 +25,13 @@ public struct PaneView: View {
                     title: chipTitle(for: tab),
                     isActive: isActive,
                     hasUnseen: tab.unseenBellCount > 0,
-                    onClose: pane.tabs.count > 1 ? { pane.removeTab(id: tab.id) } : nil
+                    onClose: {
+                        if let appStore {
+                            appStore.closeTab(id: tab.id)
+                        } else {
+                            pane.removeTab(id: tab.id)
+                        }
+                    }
                 )
             }
 

@@ -99,6 +99,21 @@ public final class SplitTree {
         focusedPaneID = newRoot.firstLeafPaneID
     }
 
+    /// Removes a pane by id. Returns `true` when the tree became empty
+    /// (the removed pane was the only one). Callers should treat that as
+    /// "session is now empty and should be closed."
+    @discardableResult
+    public func removePane(id: UUID) -> Bool {
+        guard let newRoot = SplitTreeNode.removingPane(id, from: root) else {
+            return true
+        }
+        root = newRoot
+        if !newRoot.contains(paneID: focusedPaneID) {
+            focusedPaneID = newRoot.firstLeafPaneID
+        }
+        return false
+    }
+
     public func updateRatio(forSplitID id: UUID, to newRatio: Double) {
         let clamped = max(0.05, min(0.95, newRatio))
         root = SplitTreeNode.updatingRatio(in: root, forID: id, to: clamped)

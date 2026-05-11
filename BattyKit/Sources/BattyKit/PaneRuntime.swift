@@ -36,10 +36,13 @@ public final class PaneRuntime: Identifiable {
         return tab
     }
 
+    /// Removes a tab by id. Allows the pane to become empty — callers
+    /// must handle the empty case (typically by removing the pane).
+    /// Use ``AppStateStore/closeTab(id:)`` for the full cascade.
     public func removeTab(id: UUID) {
-        guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs.remove(at: index)
-        if activeTabID == id {
+        if !tabs.isEmpty, activeTabID == id {
             activeTabID = tabs[max(0, index - 1)].id
         }
     }

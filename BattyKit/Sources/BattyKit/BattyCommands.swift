@@ -140,10 +140,10 @@ public struct BattyCommands: Commands {
             .disabled(focusedPane == nil)
 
             Button("Close Tab") {
-                store?.selectedSession?.closeFocusedTab()
+                store?.closeFocusedTab()
             }
             .keyboardShortcut("w", modifiers: .command)
-            .disabled(!canCloseFocusedTab)
+            .disabled(store?.selectedSession == nil)
 
             Divider()
 
@@ -173,11 +173,6 @@ public struct BattyCommands: Commands {
 
     private var focusedPane: PaneRuntime? {
         store?.selectedSession?.focusedPane
-    }
-
-    private var canCloseFocusedTab: Bool {
-        guard let session = store?.selectedSession else { return false }
-        return session.focusedPane.tabs.count > 1 || session.tree.allPanes.count > 1
     }
 
     private var canFocusAdjacentPane: Bool {
