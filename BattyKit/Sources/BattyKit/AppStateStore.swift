@@ -8,14 +8,17 @@ public final class AppStateStore {
     public private(set) var sessions: [SessionRuntime]
     public var selectedSessionID: UUID?
     public let bellFeed: BellFeedStore
+    public let nameCache: SessionNameCache
     @ObservationIgnored public var notifier: BellNotifier?
 
     public init(
         sessions: [SessionRuntime] = [],
         bellFeed: BellFeedStore = BellFeedStore(),
+        nameCache: SessionNameCache = SessionNameCache(),
         notifier: BellNotifier? = nil
     ) {
         self.bellFeed = bellFeed
+        self.nameCache = nameCache
         self.notifier = notifier
         if sessions.isEmpty {
             let initial = SessionRuntime(title: "Session 1")
@@ -34,10 +37,14 @@ public final class AppStateStore {
 
     @discardableResult
     public func addSession(title: String? = nil) -> SessionRuntime {
-        let resolvedTitle = title ?? "Session \(sessions.count + 1)"
         let sourceTab = selectedSession?.focusedPane.activeTab
         let inheritedCWD = sourceTab?.terminal.workingDirectory
             ?? sourceTab?.terminal.configuration.workingDirectory
+        let cachedName: String? = {
+            guard title == nil, let cwd = inheritedCWD, !cwd.isEmpty else { return nil }
+            return nameCache.lookup(path: cwd)
+        }()
+        let resolvedTitle = title ?? cachedName ?? "Session \(sessions.count + 1)"
         let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: inheritedCWD)])
         let tree = SplitTree(root: .leaf(firstPane))
         let session = SessionRuntime(title: resolvedTitle, tree: tree)
@@ -62,6 +69,21 @@ public final class AppStateStore {
         guard !trimmed.isEmpty else { return }
         guard let session = sessions.first(where: { $0.id == id }) else { return }
         session.title = trimmed
+        guard !Self.isDefaultSessionTitle(trimmed) else { return }
+        let firstTab = session.tree.root.firstLeafPane.tabs[0]
+        let cwd = firstTab.terminal.workingDirectory
+            ?? firstTab.terminal.configuration.workingDirectory
+        guard let cwd, !cwd.isEmpty else { return }
+        nameCache.record(path: cwd, name: trimmed)
+    }
+
+    private static let defaultSessionTitlePattern: Regex<Substring> = {
+        // swiftlint:disable:next force_try
+        try! Regex(#"^Session \d+$"#)
+    }()
+
+    static func isDefaultSessionTitle(_ title: String) -> Bool {
+        title.wholeMatch(of: defaultSessionTitlePattern) != nil
     }
 
     @discardableResult

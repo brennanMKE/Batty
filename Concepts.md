@@ -48,6 +48,7 @@ A named workspace, listed as one row in the Window's Sidebar.
 - **Selection:** exactly one Session is selected per Window at a time. Selecting a Session swaps the Detail Area to that Session's Split tree. Surfaces in non-selected Sessions stay alive so switching is instant and processes keep running.
 - **Sidebar affordances:** drag to reorder; right-click to Rename / Duplicate / Close; "+" toolbar button creates a new Session.
 - **CWD inheritance:** a newly created Session's first Pane spawns its shell in the previously-focused Pane's active-Tab cwd when one is known, mirroring the way Cmd-T inherits cwd within a Pane; falls back to the shell's default (`$HOME`) when no previously-selected Session exists.
+- **Name cache:** a small JSON file at `~/Library/Application Support/Batty/session-name-cache.json` remembers the most recent user-chosen Session title per working directory. Renaming a Session writes `(firstPaneFirstTabCWD, newName)` (skipping default `Session N` titles); creating a new Session looks up the inherited CWD before falling back to `Session N`, so opening a fresh Session in a known project directory auto-applies the previously-chosen name. Exact-path match, capped at 100 entries with LRU eviction, atomic writes, debounced.
 - **Keybinding:** Cmd-Option-1..9 selects the Nth Session in the active Window. (Cmd-Shift-Number is reserved by macOS for screenshot hotkeys, so we use Cmd-Option-Number — same family iTerm2 uses for session/window selection.)
 - **Persisted:** ordered list per Window, plus everything inside.
 

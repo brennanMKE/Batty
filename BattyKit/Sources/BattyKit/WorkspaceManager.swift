@@ -73,6 +73,7 @@ public final class WorkspaceManager {
             MainActor.assumeIsolated {
                 let hidden = UserDefaults.standard.bool(forKey: SidebarPreference.hiddenKey)
                 self?.saveNow(sidebarHidden: hidden)
+                self?.store.nameCache.save()
             }
         }
     }
