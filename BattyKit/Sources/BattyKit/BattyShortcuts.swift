@@ -18,6 +18,13 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 public enum BattyShortcuts {
     /// Returns true when the event was consumed.
     public static func handle(_ event: NSEvent) -> Bool {
+        // If the user is recording a new shortcut in Settings, the keystroke
+        // belongs to the recorder, not to our action dispatch. Let it fall
+        // through to RecorderView.performKeyEquivalent / keyDown.
+        if NSApp.keyWindow?.firstResponder is RecorderView {
+            return false
+        }
+
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers ?? ""
 
