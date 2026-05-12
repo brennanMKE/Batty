@@ -25,6 +25,14 @@ struct BattyApp: App {
 }
 
 final class BattyAppDelegate: NSObject, NSApplicationDelegate {
+    private var keyMonitor: Any?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            BattyShortcuts.handle(event) ? nil : event
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if QuitConfirmation.shouldQuitOrPrompt(store: WorkspaceManager.shared.store) {
             return .terminateNow
