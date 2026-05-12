@@ -90,4 +90,41 @@ struct TabTitleFormatterTests {
         #expect(TabTitleFormatter.chipTitle(for: tab) == "Tab")
         #expect(TabTitleFormatter.chipTitle(for: tab, fallback: "Tab 7") == "Tab 7")
     }
+
+    @Test func chipUsesRunningCommandWhenSet() {
+        let tab = TabRuntime()
+        tab.runningCommandDisplayName = "Claude Code"
+        #expect(TabTitleFormatter.chipTitle(for: tab) == "Claude Code")
+    }
+
+    @Test func chipRunningCommandBeatsFallback() {
+        // With no titleOverride, no OSC title, no cwd, the fallback would be
+        // returned — runningCommandDisplayName preempts the fallback.
+        let tab = TabRuntime()
+        tab.runningCommandDisplayName = "Aider"
+        #expect(TabTitleFormatter.chipTitle(for: tab, fallback: "Tab 3") == "Aider")
+    }
+
+    @Test func chipOverrideBeatsRunningCommand() {
+        let tab = TabRuntime(titleOverride: "Frontend")
+        tab.runningCommandDisplayName = "Claude Code"
+        // User-set Rename wins absolutely, even when a TUI is running.
+        #expect(TabTitleFormatter.chipTitle(for: tab) == "Frontend")
+    }
+
+    @Test func chipIgnoresEmptyRunningCommand() {
+        let tab = TabRuntime()
+        tab.runningCommandDisplayName = ""
+        // Empty string is treated as "not set" — fall through to fallback.
+        #expect(TabTitleFormatter.chipTitle(for: tab) == "Tab")
+    }
+
+    @Test func chipClearingRunningCommandRevertsToPriorChain() {
+        let tab = TabRuntime()
+        tab.runningCommandDisplayName = "Claude Code"
+        #expect(TabTitleFormatter.chipTitle(for: tab) == "Claude Code")
+        tab.runningCommandDisplayName = nil
+        // With no other signals, falls back to the supplied fallback.
+        #expect(TabTitleFormatter.chipTitle(for: tab) == "Tab")
+    }
 }

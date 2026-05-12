@@ -16,6 +16,8 @@ public final class TabRuntime: Identifiable {
     public internal(set) var lastBellAt: Date?
     public internal(set) var lastBellMessage: String?
 
+    public internal(set) var runningCommandDisplayName: String?
+
     /// Long-lived libghostty NSView whose lifetime is bound to this tab,
     /// not to any SwiftUI representable. `StableTerminalSurfaceView`
     /// re-parents this view into fresh containers as SwiftUI rebuilds the

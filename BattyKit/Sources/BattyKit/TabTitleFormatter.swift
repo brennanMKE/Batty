@@ -7,6 +7,9 @@ public enum TabTitleFormatter {
         if let override = tab.titleOverride, !override.isEmpty {
             return override
         }
+        if let running = tab.runningCommandDisplayName, !running.isEmpty {
+            return running
+        }
         if let stripped = stripShellPromptPrefix(tab.terminal.title), !stripped.isEmpty {
             return prettifyPath(stripped)
         }
