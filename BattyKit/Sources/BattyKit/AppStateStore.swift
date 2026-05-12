@@ -199,6 +199,24 @@ public final class AppStateStore {
         }
     }
 
+    /// When the anchor tab (first leaf pane's first tab) of a session moves
+    /// to a CWD that has a cached name, apply that name as the session title.
+    /// Mirrors the write rule in `renameSession` — only the anchor tab's CWD
+    /// drives auto-naming.
+    public func handleWorkingDirectoryChange(forTabID tabID: UUID) {
+        for session in sessions {
+            let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+            guard anchorTab.id == tabID else { continue }
+            let cwd = anchorTab.terminal.workingDirectory
+                ?? anchorTab.terminal.configuration.workingDirectory
+            guard let cwd, !cwd.isEmpty else { return }
+            guard let cachedName = nameCache.lookup(path: cwd) else { return }
+            guard cachedName != session.title else { return }
+            session.title = cachedName
+            return
+        }
+    }
+
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
         guard let session = sessions.first(where: { $0.id == entry.sessionID }),
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),

@@ -104,6 +104,9 @@ public struct PaneView: View {
                                 tab.recordDesktopNotificationIfNeeded()
                             }
                         }
+                        .onChange(of: tab.terminal.workingDirectory) {
+                            appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
+                        }
                 }
             }
             .overlay {
