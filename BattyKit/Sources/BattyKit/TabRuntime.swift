@@ -53,6 +53,13 @@ public final class TabRuntime: Identifiable {
             if !shell.isEmpty {
                 builder.withCustom("command", shell)
             }
+            // Drop libghostty's default Cmd-* bindings (new_window, close_surface,
+            // new_tab, new_split, goto_split, etc.) so they fall through to our
+            // menu via performKeyEquivalent. Keep Cmd-C for copy because the menu
+            // doesn't route through libghostty's copy buffer; paste goes through
+            // our PasteDispatcher menu action.
+            builder.withCustom("keybind", "clear")
+            builder.withCustom("keybind", "cmd+c=copy_to_clipboard")
         }
         terminal.controller.setTerminalConfiguration(configuration)
     }
