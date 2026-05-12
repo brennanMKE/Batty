@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Privacy — Batty</title>
+    <link rel="icon" href="/assets/batty-icon.png" type="image/png">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page">
+    <header class="page-header">
+        <a class="back" href="/">← Batty</a>
+        <h1>Privacy</h1>
+    </header>
+    <main class="prose">
+        <h2>Summary</h2>
+        <p>
+            Batty collects no telemetry, no analytics, and no usage data. The
+            app runs locally on your Mac and shares nothing with the developer
+            or any third party.
+        </p>
+
+        <h2>Network requests</h2>
+        <p>
+            Batty makes exactly one kind of outbound network request: a
+            periodic fetch of <a href="/appcast.xml">https://batty.sstools.co/appcast.xml</a>
+            by the Sparkle update framework so the app can notify you when a
+            new version is available. You can disable this check in Batty's
+            Settings → Notifications pane.
+        </p>
+        <p>
+            Anything else that talks to the network is a process YOU started
+            inside a Batty terminal (curl, ssh, your shell's package manager,
+            etc.). Batty doesn't observe what your shells do.
+        </p>
+
+        <h2>Local data</h2>
+        <p>
+            Batty stores workspace state (session/pane/tab layout, last-known
+            working directories, preferences) under your user's Application
+            Support directory. None of it leaves your Mac.
+        </p>
+
+        <h2>Crash reports</h2>
+        <p>
+            Batty does not collect, transmit, or upload crash reports. macOS
+            may capture a crash log locally; sharing it with us via an issue
+            on GitHub is entirely up to you.
+        </p>
+
+        <h2>Source</h2>
+        <p>
+            The source is open on <a href="https://github.com/brennanMKE/Batty">GitHub</a>.
+            What's described here is enforced by the code, not by promise.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+            Questions or concerns: file an issue at
+            <a href="https://github.com/brennanMKE/Batty/issues">github.com/brennanMKE/Batty/issues</a>.
+        </p>
+
+        <p class="meta">Last updated: 2026-05-12.</p>
+    </main>
+    <footer>
+        <p class="copyright">© Batty contributors.</p>
+    </footer>
+</body>
+</html>

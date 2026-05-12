@@ -1,0 +1,222 @@
+/* Batty website */
+
+:root {
+    --bg: #0d0b14;
+    --bg-card: #161320;
+    --fg: #f4f1ff;
+    --fg-muted: #9b94b8;
+    --accent: #b18cff;
+    --accent-strong: #d4bcff;
+    --border: rgba(177, 140, 255, 0.15);
+    --max-width: 920px;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+img { max-width: 100%; height: auto; }
+
+/* --- Hero ------------------------------------------------------------- */
+
+.hero {
+    position: relative;
+    padding: 96px 24px 64px;
+    text-align: center;
+    overflow: hidden;
+}
+
+.hero-glow {
+    position: absolute;
+    inset: 0;
+    background-image: url('/assets/batty-icon-glow.png');
+    background-repeat: no-repeat;
+    background-position: center 80px;
+    background-size: 600px auto;
+    opacity: 0.35;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.hero-content { position: relative; z-index: 1; max-width: var(--max-width); margin: 0 auto; }
+
+.hero-icon { width: 192px; height: 192px; border-radius: 36px; }
+
+h1 {
+    margin: 32px 0 8px;
+    font-size: 64px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.tagline {
+    margin: 0 0 28px;
+    font-size: 22px;
+    color: var(--fg-muted);
+}
+
+.cta {
+    display: inline-block;
+    padding: 14px 28px;
+    background: var(--accent);
+    color: #1a0f2e;
+    border-radius: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.15s ease;
+}
+
+.cta:hover { background: var(--accent-strong); text-decoration: none; }
+
+.subnote { color: var(--fg-muted); font-size: 14px; margin: 14px 0 0; }
+
+/* --- Main sections ---------------------------------------------------- */
+
+main {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+section { padding: 64px 0; border-top: 1px solid var(--border); }
+
+section:first-child { border-top: none; padding-top: 32px; }
+
+section h2 {
+    font-size: 28px;
+    margin: 0 0 16px;
+    letter-spacing: -0.01em;
+}
+
+.features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    padding: 64px 0;
+}
+
+.feature {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.feature h2 {
+    font-size: 18px;
+    margin: 0 0 8px;
+    color: var(--accent-strong);
+}
+
+.feature p {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 15px;
+}
+
+.why p, .download p, .open-source p {
+    color: var(--fg-muted);
+}
+
+/* --- Footer ----------------------------------------------------------- */
+
+footer {
+    max-width: var(--max-width);
+    margin: 64px auto 32px;
+    padding: 32px 24px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+}
+
+footer nav a {
+    margin: 0 12px;
+    color: var(--fg-muted);
+    font-size: 14px;
+}
+
+.copyright {
+    margin: 24px 0 0;
+    color: var(--fg-muted);
+    font-size: 13px;
+}
+
+/* --- Subpages (changelog, privacy) ----------------------------------- */
+
+.page {
+    background: var(--bg);
+}
+
+.page-header {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 48px 24px 16px;
+}
+
+.page-header .back {
+    color: var(--fg-muted);
+    font-size: 14px;
+}
+
+.page-header h1 {
+    font-size: 40px;
+    margin: 16px 0 0;
+}
+
+.changelog,
+.prose {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 24px 64px;
+}
+
+.changelog article {
+    border-top: 1px solid var(--border);
+    padding-top: 32px;
+    margin-top: 32px;
+}
+
+.changelog article:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+.changelog h2 { font-size: 24px; }
+
+.changelog .meta,
+.prose .meta {
+    color: var(--fg-muted);
+    font-size: 14px;
+    margin: -8px 0 16px;
+}
+
+.prose h2 {
+    font-size: 22px;
+    margin-top: 36px;
+}
+
+.prose p, .changelog li {
+    color: var(--fg);
+}
+
+.changelog ul { padding-left: 22px; }
+.changelog li { margin-bottom: 6px; }
+
+/* --- Responsive ------------------------------------------------------- */
+
+@media (max-width: 720px) {
+    .features { grid-template-columns: 1fr; }
+    h1 { font-size: 44px; }
+    .hero { padding: 64px 16px 48px; }
+    .hero-icon { width: 144px; height: 144px; }
+}

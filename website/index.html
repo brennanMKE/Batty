@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Batty — a native macOS terminal multiplexer</title>
+    <meta name="description" content="Batty is a native macOS terminal multiplexer built on libghostty. Sessions, panes, tabs, and a unified bell feed.">
+
+    <meta property="og:title" content="Batty">
+    <meta property="og:description" content="A native macOS terminal multiplexer built on libghostty.">
+    <meta property="og:image" content="https://batty.sstools.co/assets/batty-icon.png">
+    <meta property="og:url" content="https://batty.sstools.co/">
+    <meta property="og:type" content="website">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Batty">
+    <meta name="twitter:description" content="A native macOS terminal multiplexer built on libghostty.">
+    <meta name="twitter:image" content="https://batty.sstools.co/assets/batty-icon.png">
+
+    <link rel="icon" href="/assets/batty-icon.png" type="image/png">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="hero">
+        <div class="hero-glow" aria-hidden="true"></div>
+        <div class="hero-content">
+            <img src="/assets/batty-icon.png" alt="Batty icon" class="hero-icon" width="256" height="256">
+            <h1>Batty</h1>
+            <p class="tagline">A native macOS terminal multiplexer built on libghostty.</p>
+            <a class="cta" href="#download">Download for macOS</a>
+            <p class="subnote">Free and open source. macOS 15.6+. Apple Silicon and Intel.</p>
+        </div>
+    </header>
+
+    <main>
+        <section class="features">
+            <div class="feature">
+                <h2>Sessions · Panes · Tabs</h2>
+                <p>One window. A sidebar of sessions, splits that recurse, tab strips that scroll. Layout persists across restarts.</p>
+            </div>
+            <div class="feature">
+                <h2>Native AppKit performance</h2>
+                <p>libghostty under the hood. Metal-accelerated rendering, true-color, ligature-friendly. No web view, no bridge tax.</p>
+            </div>
+            <div class="feature">
+                <h2>Bell Feed</h2>
+                <p>Every BEL and OSC 9 lands in a unified feed. Click an entry to jump to the originating tab. Per-session mute when a long build gets noisy.</p>
+            </div>
+        </section>
+
+        <section class="why">
+            <h2>Why Batty?</h2>
+            <p>
+                Ghostty's terminal engine is fast and faithful. tmux's structure
+                (sessions, splits, multiple windows of work) is unbeatable for
+                day-to-day terminal use. Batty pairs the two in a native macOS
+                shell — no tmux required, no web UI, no compromise on what a
+                terminal feels like.
+            </p>
+            <p>
+                If you've been hopping between Terminal.app, iTerm2, and tmux:
+                Batty is the third one you'd build if you had time.
+            </p>
+        </section>
+
+        <section id="download" class="download">
+            <h2>Download</h2>
+            <p>
+                Direct DMG download below. Signed and notarized for Gatekeeper.
+                Updates are delivered via <a href="https://sparkle-project.org/">Sparkle</a>
+                — the app polls <a href="/appcast.xml">appcast.xml</a> and prompts
+                when a new build is available.
+            </p>
+            <p>
+                <a class="cta" href="/downloads/">Latest release ↓</a>
+            </p>
+            <p class="subnote">Requires macOS 15.6 or later.</p>
+        </section>
+
+        <section class="open-source">
+            <h2>Open source</h2>
+            <p>
+                Source on <a href="https://github.com/brennanMKE/Batty">GitHub</a>.
+                Built in the open under MIT. Issues and PRs welcome.
+            </p>
+        </section>
+    </main>
+
+    <footer>
+        <nav>
+            <a href="/changelog.html">Changelog</a>
+            <a href="/privacy.html">Privacy</a>
+            <a href="https://github.com/brennanMKE/Batty/issues">Report an issue</a>
+        </nav>
+        <p class="copyright">© Batty contributors. Built on libghostty (Ghostty contributors, MIT) and SlidingTabs.</p>
+    </footer>
+</body>
+</html>

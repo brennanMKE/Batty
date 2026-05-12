@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Batty</title>
+    <link>https://batty.sstools.co/</link>
+    <description>Updates for Batty — a native macOS terminal multiplexer.</description>
+    <language>en</language>
+    <!--
+        Each release adds an <item> entry. scripts/release.sh will append
+        one per signed DMG once the release pipeline is wired into the
+        appcast. Until the first release ships, the feed is intentionally
+        empty so Sparkle reports "you're already up to date."
+    -->
+  </channel>
+</rss>
