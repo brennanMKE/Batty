@@ -32,6 +32,8 @@ public final class TabRuntime: Identifiable {
     private var lastObservedBellCount: Int = 0
     @ObservationIgnored
     private var lastObservedNotificationAt: Date?
+    @ObservationIgnored
+    private var lastObservedCommandDurationNanos: UInt64?
 
     public init(
         id: UUID = UUID(),
@@ -106,6 +108,47 @@ public final class TabRuntime: Identifiable {
 
     public func markBellsSeen() {
         unseenBellCount = 0
+    }
+
+    /// Re-derive ``runningCommandDisplayName`` from the surface's current
+    /// OSC 2 title. Called whenever ``TerminalViewState.title`` changes.
+    ///
+    /// The signal path: zsh shell-integration (in particular oh-my-zsh's
+    /// `omz_termsupport_preexec`) emits OSC 2 with the running command line
+    /// when a command starts, and OSC 2 with the prompt form (`user@host:~`)
+    /// when a command exits. We treat the OSC 2 stream as the source of
+    /// truth for what's running and let ``TUIAppRegistry.displayNameFromTitle``
+    /// classify each title.
+    ///
+    /// When the title matches a registered TUI we set the display name; when
+    /// it doesn't, we clear. This means a TUI that mutates its own title to
+    /// a non-recognized string mid-session will drop the chip — that's
+    /// acceptable for v1 and the chip recovers when the prompt or another
+    /// command-start fires.
+    public func refreshRunningCommandFromTitle() {
+        let derived = TUIAppRegistry.displayNameFromTitle(terminal.title)
+        if derived != runningCommandDisplayName {
+            runningCommandDisplayName = derived
+        }
+    }
+
+    /// Clears ``runningCommandDisplayName`` once when libghostty reports a
+    /// command finished via OSC 133 D. Returns `true` if the call cleared
+    /// the field (i.e. the duration moved since the last observation).
+    ///
+    /// Acts as a backstop for shells that don't emit a prompt OSC 2 on
+    /// command exit; with oh-my-zsh's precmd the title-driven path already
+    /// clears, but this guards against shell configs that skip that step.
+    @discardableResult
+    public func recordCommandFinishedIfNeeded() -> Bool {
+        let observed = terminal.lastCommandDurationNanos
+        guard observed != lastObservedCommandDurationNanos else { return false }
+        lastObservedCommandDurationNanos = observed
+        guard observed != nil else { return false }
+        if runningCommandDisplayName != nil {
+            runningCommandDisplayName = nil
+        }
+        return true
     }
 
     private static func formatNotification(title: String?, body: String?) -> String? {

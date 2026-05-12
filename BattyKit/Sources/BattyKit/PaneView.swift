@@ -110,6 +110,7 @@ public struct PaneView: View {
                         .onChange(of: tab.terminal.workingDirectory) {
                             appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
                         }
+                        .modifier(TabRunningCommandObserver(tab: tab))
                         .onChange(of: tab.terminal.isFocused) { _, isFocused in
                             guard isFocused else { return }
                             if let appStore {
@@ -314,5 +315,25 @@ public struct PaneView: View {
 
     private func chipTitle(for tab: TabRuntime) -> String {
         TabTitleFormatter.chipTitle(for: tab)
+    }
+}
+
+/// Observes the terminal's OSC 2 title and OSC 133 D command-finished
+/// markers and keeps ``TabRuntime.runningCommandDisplayName`` in sync.
+///
+/// Extracted from ``PaneView`` because adding both `.onChange` modifiers
+/// inline pushes the surrounding `ViewBuilder` past the SwiftUI
+/// type-checker's complexity budget.
+private struct TabRunningCommandObserver: ViewModifier {
+    let tab: TabRuntime
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: tab.terminal.title) {
+                tab.refreshRunningCommandFromTitle()
+            }
+            .onChange(of: tab.terminal.lastCommandDurationNanos) {
+                tab.recordCommandFinishedIfNeeded()
+            }
     }
 }
