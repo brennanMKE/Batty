@@ -36,15 +36,21 @@ public struct SessionSidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Batty")
-        .toolbar {
-            ToolbarItem {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack {
                 Button {
                     store.addSession()
                 } label: {
-                    Label("New Session", systemImage: "plus")
+                    Image(systemName: "plus")
+                        .frame(width: 22, height: 22)
                 }
+                .buttonStyle(.borderless)
                 .help("New Session")
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.bar)
         }
         .sheet(item: renamingBinding) { session in
             RenameSessionSheet(
