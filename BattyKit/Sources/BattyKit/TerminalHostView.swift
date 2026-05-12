@@ -44,17 +44,24 @@ final class TerminalHostView: NSView {
 
     /// The host itself is decorative — it never paints. Click-throughs
     /// land on the terminal subview underneath when one is positioned
-    /// at the click point. AppKit's default hit-testing already does
-    /// the right thing for visible-and-not-occluded subviews; the host's
-    /// own hit-test only needs to fall through when no terminal sits
-    /// under the point.
+    /// at the click point. Iterate visible subviews top-down (last-added
+    /// is topmost) and delegate to `subview.hitTest(point)`. Each
+    /// subview's hitTest handles its own coord conversion and bounds
+    /// check; we just pick the topmost non-nil result. Returning nil
+    /// when no terminal sits at the point lets the click fall through
+    /// to whatever SwiftUI sibling is above us in the window's view
+    /// chain.
+    ///
+    /// Note: do NOT add a redundant `subview.bounds.contains(local)`
+    /// pre-check here. The host has `isFlipped == true` while
+    /// `AppTerminalView` keeps the default `false`, so manually
+    /// converting the point can disagree with NSView's internal
+    /// converted-point logic on cases like a vertical split's bottom
+    /// pane (see #0090).
     override func hitTest(_ point: NSPoint) -> NSView? {
         for subview in subviews.reversed() where !subview.isHidden {
-            let local = subview.convert(point, from: self)
-            if subview.bounds.contains(local) {
-                if let target = subview.hitTest(point) {
-                    return target
-                }
+            if let target = subview.hitTest(point) {
+                return target
             }
         }
         return nil
