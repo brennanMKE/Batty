@@ -12,6 +12,7 @@ struct BattyApp: App {
         Window("Batty", id: "main") {
             ContentView()
         }
+        .commandsRemoved()
         .commands {
             BattyCommands()
         }

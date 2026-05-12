@@ -155,6 +155,7 @@ public struct BattyCommands: Commands {
             .disabled(focusedPane == nil)
 
             Button("Close Tab") {
+                logger.info("Cmd-W action fired (Tab → Close Tab)")
                 store.closeFocusedTab()
             }
             .keyboardShortcut("w", modifiers: .command)
