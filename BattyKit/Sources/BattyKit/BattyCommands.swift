@@ -12,6 +12,13 @@ public struct BattyCommands: Commands {
     public init() {}
 
     public var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Session") {
+                store.addSession()
+            }
+            .keyboardShortcut("n", modifiers: .command)
+        }
+
         CommandGroup(after: .sidebar) {
             Button(sidebarHidden ? "Show Sidebar" : "Hide Sidebar") {
                 sidebarHidden.toggle()
@@ -23,7 +30,6 @@ public struct BattyCommands: Commands {
             Button("New Session") {
                 store.addSession()
             }
-            .keyboardShortcut("n", modifiers: [.command, .option])
 
             Divider()
 
