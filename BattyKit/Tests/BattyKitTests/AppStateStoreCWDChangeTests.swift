@@ -94,18 +94,22 @@ struct AppStateStoreCWDChangeTests {
         #expect(session.title == originalTitle)
     }
 
-    @Test func renameThenCDBackAppliesCachedNameAgain() {
+    @Test func userRenameSetsTitleOverrideAndPinsAgainstFurtherCDChanges() {
         let (store, url) = makeStore()
         defer { cleanup(url) }
 
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
-        store.renameSession(id: session.id, to: "Batty")
+        store.renameSession(id: session.id, to: "Frontend")
+        #expect(session.titleOverride == true)
+        #expect(session.title == "Frontend")
 
-        session.title = "Misc"
+        store.nameCache.record(path: "/Users/test/Other", name: "OtherName")
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/Other"
         store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
 
-        #expect(session.title == "Batty")
+        #expect(session.title == "Frontend")
+        #expect(session.titleOverride == true)
     }
 }

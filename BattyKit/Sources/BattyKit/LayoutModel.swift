@@ -74,6 +74,7 @@ struct Session: Codable, Sendable, Hashable, Identifiable {
     var focusedPaneID: UUID
     var unseenBellCount: Int
     var notificationsMuted: Bool
+    var titleOverride: Bool
 
     init(
         id: UUID = UUID(),
@@ -82,7 +83,8 @@ struct Session: Codable, Sendable, Hashable, Identifiable {
         root: SplitNode,
         focusedPaneID: UUID,
         unseenBellCount: Int = 0,
-        notificationsMuted: Bool = false
+        notificationsMuted: Bool = false,
+        titleOverride: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -91,10 +93,11 @@ struct Session: Codable, Sendable, Hashable, Identifiable {
         self.focusedPaneID = focusedPaneID
         self.unseenBellCount = unseenBellCount
         self.notificationsMuted = notificationsMuted
+        self.titleOverride = titleOverride
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, icon, root, focusedPaneID, unseenBellCount, notificationsMuted
+        case id, title, icon, root, focusedPaneID, unseenBellCount, notificationsMuted, titleOverride
     }
 
     init(from decoder: any Decoder) throws {
@@ -106,6 +109,7 @@ struct Session: Codable, Sendable, Hashable, Identifiable {
         self.focusedPaneID = try container.decode(UUID.self, forKey: .focusedPaneID)
         self.unseenBellCount = try container.decode(Int.self, forKey: .unseenBellCount)
         self.notificationsMuted = try container.decodeIfPresent(Bool.self, forKey: .notificationsMuted) ?? false
+        self.titleOverride = try container.decodeIfPresent(Bool.self, forKey: .titleOverride) ?? false
     }
 }
 

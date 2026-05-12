@@ -14,6 +14,9 @@ public enum TabTitleFormatter {
             return prettifyPath(stripped)
         }
         if let cwd = tab.terminal.workingDirectory, !cwd.isEmpty {
+            if let projectName = ProjectNameResolver.shared.resolve(at: cwd), !projectName.isEmpty {
+                return projectName
+            }
             return prettifyPath(cwd)
         }
         return fallback

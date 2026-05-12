@@ -1,0 +1,150 @@
+{
+  "rules": [
+    {
+      "id": "swift-xcode",
+      "label": "Xcode project",
+      "detect": ["*.xcodeproj", "*.xcworkspace"],
+      "extract": {
+        "kind": "directory-basename-of-match",
+        "stripExtension": true
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "swift-spm",
+      "label": "Swift Package Manager",
+      "detect": ["Package.swift"],
+      "extract": {
+        "kind": "regex",
+        "file": "Package.swift",
+        "pattern": "Package\\s*\\(\\s*name:\\s*\"([^\"]+)\""
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "rust",
+      "label": "Rust / Cargo",
+      "detect": ["Cargo.toml"],
+      "extract": {
+        "kind": "toml-regex",
+        "file": "Cargo.toml",
+        "pattern": "(?ms)^\\[package\\][^\\[]*?\\bname\\s*=\\s*\"([^\"]+)\""
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "node",
+      "label": "Node.js / npm / pnpm / Yarn / Bun",
+      "detect": ["package.json"],
+      "extract": {
+        "kind": "json",
+        "file": "package.json",
+        "path": "name"
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "deno",
+      "label": "Deno",
+      "detect": ["deno.json", "deno.jsonc", "jsr.json"],
+      "extract": {
+        "kind": "json",
+        "file": "deno.json",
+        "path": "name"
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "go",
+      "label": "Go module",
+      "detect": ["go.mod"],
+      "extract": {
+        "kind": "regex",
+        "file": "go.mod",
+        "pattern": "(?m)^module\\s+([^\\s]+)",
+        "transform": "last-path-segment"
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "python-pep621",
+      "label": "Python (pyproject.toml)",
+      "detect": ["pyproject.toml"],
+      "extract": {
+        "kind": "toml-regex",
+        "file": "pyproject.toml",
+        "pattern": "(?ms)^\\[project\\][^\\[]*?\\bname\\s*=\\s*\"([^\"]+)\""
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "ruby-gem",
+      "label": "Ruby gem",
+      "detect": ["*.gemspec"],
+      "extract": {
+        "kind": "regex",
+        "file": "*.gemspec",
+        "pattern": "spec\\.name\\s*=\\s*['\"]([^'\"]+)['\"]"
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "dart-flutter",
+      "label": "Dart / Flutter",
+      "detect": ["pubspec.yaml"],
+      "extract": {
+        "kind": "regex",
+        "file": "pubspec.yaml",
+        "pattern": "(?m)^name:\\s*([^\\s#]+)"
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "julia",
+      "label": "Julia",
+      "detect": ["Project.toml"],
+      "extract": {
+        "kind": "toml-regex",
+        "file": "Project.toml",
+        "pattern": "(?m)^name\\s*=\\s*\"([^\"]+)\""
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "elixir",
+      "label": "Elixir",
+      "detect": ["mix.exs"],
+      "extract": {
+        "kind": "regex",
+        "file": "mix.exs",
+        "pattern": "app:\\s*:([a-zA-Z_][a-zA-Z0-9_]*)"
+      },
+      "fallback": "directory"
+    },
+    {
+      "id": "cmake",
+      "label": "CMake",
+      "detect": ["CMakeLists.txt"],
+      "extract": {
+        "kind": "regex",
+        "file": "CMakeLists.txt",
+        "pattern": "(?i)project\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_-]*)"
+      },
+      "fallback": "directory"
+    }
+  ],
+  "priority": [
+    "swift-xcode",
+    "swift-spm",
+    "rust",
+    "node",
+    "deno",
+    "go",
+    "python-pep621",
+    "ruby-gem",
+    "dart-flutter",
+    "julia",
+    "elixir",
+    "cmake"
+  ]
+}

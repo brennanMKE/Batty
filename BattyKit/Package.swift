@@ -33,11 +33,17 @@ let package = Package(
                 .product(name: "SlidingTabs", package: "SlidingTabs"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
+            resources: [
+                .process("Resources"),
+            ],
             swiftSettings: swiftSettings
         ),
         .testTarget(
             name: "BattyKitTests",
             dependencies: ["BattyKit"],
+            resources: [
+                .copy("Fixtures"),
+            ],
             swiftSettings: swiftSettings
         ),
     ],

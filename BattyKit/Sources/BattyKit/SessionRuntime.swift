@@ -10,6 +10,11 @@ public final class SessionRuntime: Identifiable {
     public let tree: SplitTree
     public internal(set) var unseenBellCount: Int = 0
     public var notificationsMuted: Bool = false
+    /// `true` once the user has explicitly renamed the session via the
+    /// sidebar rename action. Auto-derivation paths (project-name from
+    /// CWD, name-cache lookups) check this and skip the rewrite — a
+    /// user-set name pins permanently. See `#0089`.
+    public var titleOverride: Bool = false
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     public init(
@@ -17,13 +22,15 @@ public final class SessionRuntime: Identifiable {
         title: String = "Session",
         tree: SplitTree? = nil,
         unseenBellCount: Int = 0,
-        notificationsMuted: Bool = false
+        notificationsMuted: Bool = false,
+        titleOverride: Bool = false
     ) {
         self.id = id
         self.title = title
         self.tree = tree ?? SplitTree()
         self.unseenBellCount = unseenBellCount
         self.notificationsMuted = notificationsMuted
+        self.titleOverride = titleOverride
         self.paneFrames = PaneFrameTracker()
     }
 

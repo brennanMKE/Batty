@@ -54,7 +54,8 @@ extension Session {
             root: SplitNode(from: runtime.tree.root),
             focusedPaneID: runtime.tree.focusedPaneID,
             unseenBellCount: runtime.unseenBellCount,
-            notificationsMuted: runtime.notificationsMuted
+            notificationsMuted: runtime.notificationsMuted,
+            titleOverride: runtime.titleOverride
         )
     }
 }
@@ -124,7 +125,8 @@ extension SessionRuntime {
             title: persisted.title,
             tree: tree,
             unseenBellCount: persisted.unseenBellCount,
-            notificationsMuted: persisted.notificationsMuted
+            notificationsMuted: persisted.notificationsMuted,
+            titleOverride: persisted.titleOverride
         )
     }
 }

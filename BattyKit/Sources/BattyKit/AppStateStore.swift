@@ -83,6 +83,9 @@ public final class AppStateStore {
         guard !trimmed.isEmpty else { return }
         guard let session = sessions.first(where: { $0.id == id }) else { return }
         session.title = trimmed
+        // A user-set rename pins the title — subsequent auto-naming
+        // paths (name cache, project-name resolver) must respect it.
+        session.titleOverride = true
         guard !Self.isDefaultSessionTitle(trimmed) else { return }
         let firstTab = session.tree.root.firstLeafPane.tabs[0]
         let cwd = firstTab.terminal.workingDirectory
@@ -320,20 +323,32 @@ public final class AppStateStore {
     }
 
     /// When the anchor tab (first leaf pane's first tab) of a session moves
-    /// to a CWD that has a cached name, apply that name as the session title.
+    /// to a CWD that has a cached name OR matches a project-name rule,
+    /// apply the derived name as the session title — but only if the user
+    /// hasn't explicitly renamed the session (`titleOverride == true`).
     /// Mirrors the write rule in `renameSession` — only the anchor tab's CWD
-    /// drives auto-naming.
+    /// drives auto-naming. Cache hits beat project-name extraction so that
+    /// a previously-typed rename in this CWD always wins (`#0058` + `#0089`).
     public func handleWorkingDirectoryChange(forTabID tabID: UUID) {
         for session in sessions {
             let anchorTab = session.tree.root.firstLeafPane.tabs[0]
             guard anchorTab.id == tabID else { continue }
+            guard !session.titleOverride else { return }
             let cwd = anchorTab.terminal.workingDirectory
                 ?? anchorTab.terminal.configuration.workingDirectory
             guard let cwd, !cwd.isEmpty else { return }
-            guard let cachedName = nameCache.lookup(path: cwd) else { return }
-            guard cachedName != session.title else { return }
-            logger.info("auto-rename session \(session.title, privacy: .public) -> \(cachedName, privacy: .public) for cwd=\(cwd, privacy: .public)")
-            session.title = cachedName
+            if let cachedName = nameCache.lookup(path: cwd) {
+                guard cachedName != session.title else { return }
+                logger.info("auto-rename session \(session.title, privacy: .public) -> \(cachedName, privacy: .public) for cwd=\(cwd, privacy: .public)")
+                session.title = cachedName
+                return
+            }
+            if let derivedName = ProjectNameResolver.shared.resolve(at: cwd) {
+                guard derivedName != session.title else { return }
+                logger.info("project-rename session \(session.title, privacy: .public) -> \(derivedName, privacy: .public) for cwd=\(cwd, privacy: .public)")
+                session.title = derivedName
+                return
+            }
             return
         }
     }
