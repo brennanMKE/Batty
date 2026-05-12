@@ -72,9 +72,14 @@ public struct SessionDetailView: View {
         }
         .onAppear {
             focusSelectedSessionTerminal()
+            store.markActiveTabSeen()
         }
         .onChange(of: store.selectedSessionID) { _, _ in
             focusSelectedSessionTerminal()
+            store.markActiveTabSeen()
+        }
+        .onChange(of: store.selectedSession?.tree.focusedPaneID) { _, _ in
+            store.markActiveTabSeen()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleBellFeed)) { _ in
             bellFeedShown.toggle()

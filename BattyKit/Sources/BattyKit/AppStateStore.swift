@@ -166,6 +166,29 @@ public final class AppStateStore {
         }
     }
 
+    /// Marks every bell-feed entry whose `tabID` matches the actively viewed
+    /// tab as seen, then zeroes the tab's `unseenBellCount` (with cascade
+    /// onto the pane and session aggregates) to cover entries that were
+    /// evicted from the feed cap before they could be cleared. Called on
+    /// every focus-changing path — sidebar selection, pane focus, tab
+    /// switch — so visiting a tab acknowledges its bells the way Mail,
+    /// iMessage, and Slack do.
+    public func markActiveTabSeen() {
+        guard let session = selectedSession else { return }
+        let pane = session.focusedPane
+        let tabID = pane.activeTabID
+        let entriesToClear = bellFeed.entries.filter { $0.tabID == tabID && !$0.seen }
+        for entry in entriesToClear {
+            markBellSeen(id: entry.id)
+        }
+        guard let tab = pane.tabs.first(where: { $0.id == tabID }) else { return }
+        guard tab.unseenBellCount > 0 else { return }
+        let residual = tab.unseenBellCount
+        tab.unseenBellCount = 0
+        pane.unseenBellCount = max(0, pane.unseenBellCount - residual)
+        session.unseenBellCount = max(0, session.unseenBellCount - residual)
+    }
+
     // MARK: - Tab close cascade
 
     /// Closes a specific tab, cascading through pane and session teardown

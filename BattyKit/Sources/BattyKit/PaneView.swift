@@ -163,6 +163,9 @@ public struct PaneView: View {
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
                 triggerBellFlash()
             }
+            .onChange(of: pane.activeTabID) { _, _ in
+                appStore?.markActiveTabSeen()
+            }
         }
         .background {
             GeometryReader { geo in
