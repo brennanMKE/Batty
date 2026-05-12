@@ -25,6 +25,10 @@ public struct SessionSidebarView: View {
                             store.duplicateSession(id: session.id)
                         }
                         Divider()
+                        Button(session.notificationsMuted ? "Unmute Notifications" : "Mute Notifications") {
+                            session.notificationsMuted.toggle()
+                        }
+                        Divider()
                         Button("Close", role: .destructive) {
                             store.removeSession(id: session.id)
                         }

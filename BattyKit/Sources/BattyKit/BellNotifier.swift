@@ -5,7 +5,17 @@ import Foundation
 import UserNotifications
 
 @MainActor
-public final class BellNotifier {
+public protocol BellNotifying: AnyObject {
+    func post(
+        for entry: BellFeedEntry,
+        sessionTitle: String,
+        paneIndex: Int,
+        tabLabel: String
+    )
+}
+
+@MainActor
+public final class BellNotifier: BellNotifying {
     public static let entryIdUserInfoKey = "co.sstools.Batty.bellEntryID"
 
     private let center: UNUserNotificationCenter

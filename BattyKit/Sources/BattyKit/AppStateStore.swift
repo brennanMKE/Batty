@@ -16,13 +16,13 @@ public final class AppStateStore {
     public var selectedSessionID: UUID?
     public let bellFeed: BellFeedStore
     public let nameCache: SessionNameCache
-    @ObservationIgnored public var notifier: BellNotifier?
+    @ObservationIgnored public var notifier: BellNotifying?
 
     public init(
         sessions: [SessionRuntime] = [],
         bellFeed: BellFeedStore = BellFeedStore(),
         nameCache: SessionNameCache = SessionNameCache(),
-        notifier: BellNotifier? = nil
+        notifier: BellNotifying? = nil
     ) {
         self.bellFeed = bellFeed
         self.nameCache = nameCache
@@ -265,6 +265,7 @@ public final class AppStateStore {
 
     private func postNotification(for entry: BellFeedEntry, at location: BellLocation) {
         guard let notifier else { return }
+        guard !location.session.notificationsMuted else { return }
         let paneIndex = (location.session.tree.allPanes.firstIndex { $0.id == location.pane.id } ?? 0) + 1
         let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
         let tabLabel: String

@@ -73,4 +73,35 @@ struct WorkspaceConversionTests {
 
         #expect(restored.tree.root.firstLeafPane.tabs.first?.titleOverride == "logs")
     }
+
+    @Test func sessionNotificationsMutedRoundTrips() {
+        let session = SessionRuntime(title: "Noisy build")
+        session.notificationsMuted = true
+
+        let persisted = Session(from: session)
+        let restored = SessionRuntime(from: persisted)
+
+        #expect(restored.notificationsMuted == true)
+    }
+
+    @Test func sessionDecodesWithMissingNotificationsMutedField() throws {
+        // Legacy workspace.json files won't carry the new field.
+        // Build a JSON blob without it and confirm the decoder defaults to false.
+        let tab = Tab()
+        let pane = Pane(tabs: [tab])
+        let session = Session(
+            title: "Legacy",
+            root: .leaf(pane),
+            focusedPaneID: pane.id
+        )
+        let data = try Workspace.prettyEncoder.encode(session)
+        var json = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        json.removeValue(forKey: "notificationsMuted")
+        let strippedData = try JSONSerialization.data(withJSONObject: json)
+
+        let decoded = try Workspace.decoder.decode(Session.self, from: strippedData)
+        #expect(decoded.notificationsMuted == false)
+    }
 }

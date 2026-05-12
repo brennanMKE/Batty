@@ -53,7 +53,8 @@ extension Session {
             icon: nil,
             root: SplitNode(from: runtime.tree.root),
             focusedPaneID: runtime.tree.focusedPaneID,
-            unseenBellCount: runtime.unseenBellCount
+            unseenBellCount: runtime.unseenBellCount,
+            notificationsMuted: runtime.notificationsMuted
         )
     }
 }
@@ -122,7 +123,8 @@ extension SessionRuntime {
             id: persisted.id,
             title: persisted.title,
             tree: tree,
-            unseenBellCount: persisted.unseenBellCount
+            unseenBellCount: persisted.unseenBellCount,
+            notificationsMuted: persisted.notificationsMuted
         )
     }
 }

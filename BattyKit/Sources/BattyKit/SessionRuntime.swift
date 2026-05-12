@@ -9,18 +9,21 @@ public final class SessionRuntime: Identifiable {
     public var title: String
     public let tree: SplitTree
     public internal(set) var unseenBellCount: Int = 0
+    public var notificationsMuted: Bool = false
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     public init(
         id: UUID = UUID(),
         title: String = "Session",
         tree: SplitTree? = nil,
-        unseenBellCount: Int = 0
+        unseenBellCount: Int = 0,
+        notificationsMuted: Bool = false
     ) {
         self.id = id
         self.title = title
         self.tree = tree ?? SplitTree()
         self.unseenBellCount = unseenBellCount
+        self.notificationsMuted = notificationsMuted
         self.paneFrames = PaneFrameTracker()
     }
 
