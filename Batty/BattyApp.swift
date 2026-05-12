@@ -9,7 +9,7 @@ struct BattyApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: BattyAppDelegate
 
     var body: some Scene {
-        WindowGroup {
+        Window("Batty", id: "main") {
             ContentView()
         }
         .commands {
