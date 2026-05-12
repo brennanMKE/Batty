@@ -107,6 +107,14 @@ public struct PaneView: View {
                         .onChange(of: tab.terminal.workingDirectory) {
                             appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
                         }
+                        .onChange(of: tab.terminal.isFocused) { _, isFocused in
+                            guard isFocused else { return }
+                            if let appStore {
+                                appStore.focusPane(id: pane.id)
+                            } else {
+                                tree.focusedPaneID = pane.id
+                            }
+                        }
                         .task(id: tab.id) {
                             tab.terminal.onClose = { [weak appStore, weak pane] _ in
                                 if let appStore {
