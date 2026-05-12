@@ -107,6 +107,15 @@ public struct PaneView: View {
                         .onChange(of: tab.terminal.workingDirectory) {
                             appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
                         }
+                        .task(id: tab.id) {
+                            tab.terminal.onClose = { [weak appStore, weak pane] _ in
+                                if let appStore {
+                                    appStore.closeTab(id: tab.id)
+                                } else {
+                                    pane?.removeTab(id: tab.id)
+                                }
+                            }
+                        }
                 }
             }
             .overlay {
