@@ -70,6 +70,12 @@ public struct SessionDetailView: View {
                 }
             }
         }
+        .onAppear {
+            focusSelectedSessionTerminal()
+        }
+        .onChange(of: store.selectedSessionID) { _, _ in
+            focusSelectedSessionTerminal()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleBellFeed)) { _ in
             bellFeedShown.toggle()
         }
@@ -91,5 +97,11 @@ public struct SessionDetailView: View {
 
     private var navigationTitle: String {
         store.selectedSession?.title ?? "Batty"
+    }
+
+    private func focusSelectedSessionTerminal() {
+        guard let session = store.selectedSession else { return }
+        let pane = session.focusedPane
+        TerminalSurfaceFocuser.focusWhenReady(terminal: pane.activeTab.terminal)
     }
 }

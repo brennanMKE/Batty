@@ -116,6 +116,18 @@ public struct PaneView: View {
                                 }
                             }
                         }
+                        .onAppear {
+                            guard tab.id == pane.activeTabID, isPaneFocused else { return }
+                            TerminalSurfaceFocuser.focusWhenReady(terminal: tab.terminal)
+                        }
+                        .onChange(of: pane.activeTabID) { _, newValue in
+                            guard tab.id == newValue, isPaneFocused else { return }
+                            TerminalSurfaceFocuser.focusWhenReady(terminal: tab.terminal)
+                        }
+                        .onChange(of: isPaneFocused) { _, focused in
+                            guard focused, tab.id == pane.activeTabID else { return }
+                            TerminalSurfaceFocuser.focusWhenReady(terminal: tab.terminal)
+                        }
                 }
             }
             .overlay {
