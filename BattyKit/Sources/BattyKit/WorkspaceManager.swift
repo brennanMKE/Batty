@@ -41,6 +41,7 @@ public final class WorkspaceManager {
 
     public func saveNow(sidebarHidden: Bool = false) {
         guard let workspaceStore else { return }
+        guard !store.sessions.isEmpty else { return }
         let workspace = Workspace(
             windows: [WindowState(from: store, sidebarHidden: sidebarHidden)]
         )
