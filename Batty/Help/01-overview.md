@@ -1,47 +1,31 @@
 # Overview
 
-Batty is a native macOS terminal multiplexer built on libghostty. It runs in
-a single window by default and pairs the speed of Ghostty's renderer with a
-session sidebar, splits, tabs, and a bell-driven notification feed.
+Batty is a native macOS terminal multiplexer built on libghostty. You get the speed and rendering of Ghostty plus a sidebar of named workspaces, splits and tabs inside each, and a bell-driven feed that pulls your attention to background activity. Think of it as the small set of tmux features you actually use, in a real Mac UI.
 
-## Concepts at a glance
+Batty opens in a **single window** by default. Sessions, panes, tabs, terminals, and notifications all live inside that one window — the single-window flow is the one to learn first.
 
-Batty's UI is organized around a small vocabulary. Each term has a precise
-meaning that's used consistently throughout the menus and this Help system.
+## The four-level hierarchy
 
-- **Window** — the top-level macOS window hosting the app. Batty is a
-  single-window app by default; multiple windows are supported but the
-  sidebar and bell feed live in each window independently.
-- **Session** — a named workspace listed in the sidebar. A Session contains
-  one or more Panes arranged in a split layout. Switch sessions with
-  Cmd-Option-1 through Cmd-Option-9.
-- **Pane** — a rectangular region within a Session that hosts one or more
-  Tabs. Panes are created by splitting horizontally or vertically. A Pane
-  collapses automatically when its last Tab is closed.
-- **Tab** — a single terminal inside a Pane. Each Tab wraps a live
-  **Terminal Session** (a running shell). Tabs are switched with Cmd-1
-  through Cmd-9 and managed with Cmd-T (new), Cmd-W (close), and the
-  standard previous/next shortcuts.
-- **Split** — the divider between two Panes inside a Session. Splits can
-  be resized with the mouse or keyboard, and focus moves between adjacent
-  Panes with the configured shortcuts.
-- **Theme** — a Ghostty `.ghostty` color scheme. Themes are applied live
-  via the **View → Theme** menu and persist across launches.
-- **Bell Feed** — a popover that captures terminal bells (BEL + OSC 9)
-  from every Tab. Click an entry to jump to the Tab that raised it.
-- **Workspace** — the on-disk layout (Sessions, Panes, Tabs) that Batty
-  serializes to `workspace.json` and restores on launch.
+You navigate four nested things, from outside in:
 
-## Where to go next
+1. **Sessions** — named workspaces listed in the left sidebar. One per project or context. See [Sessions](02-sessions.md).
+2. **Panes** — rectangular regions inside a session, arranged by splits. Press `Cmd-D` to split side-by-side, `Cmd-Shift-D` to stack. See [Panes and Splits](03-panes.md).
+3. **Tabs** — a strip of terminals along the top of each pane. `Cmd-T` adds one, `Cmd-W` closes. See [Tabs](04-tabs.md).
+4. **Terminals** — the actual shell prompt inside each tab, where you type.
 
-The other sections in this Help describe each concept in more detail:
+## Tour of the window
 
-- **Sessions** — managing the sidebar list.
-- **Panes and Splits** — creating, resizing, and navigating splits.
-- **Tabs** — tab lifecycle and per-Pane tab bars.
-- **Keyboard Shortcuts** — the full list of bindings.
-- **Notifications** — the Bell Feed and system notification routing.
-- **Themes** — installing and switching themes.
-- **Drag and Drop** — dropping files onto a Pane.
+- **Sidebar** (left) — your session list. The `+` button adds a session. Right-click a row for Rename, Duplicate, Mute, or Close.
+- **Tab bar** (top of each pane) — drag chips to reorder, click `×` to close, right-click for more.
+- **Bell feed** — open with `Cmd-Shift-N` or the bell button in the toolbar. Recent bells from every tab; click an entry to jump to the source. See [Notifications](06-notifications.md).
+- **Settings** — `Cmd-,`. Shell, font, cursor, theme, paste confirmation, per-session mute. See [Themes](07-themes.md) and the full binding list in [Keyboard Shortcuts](05-shortcuts.md). Dropping a file from Finder onto a pane pastes its quoted path — see [Drag and Drop](08-drag-and-drop.md).
 
-Preferences and font/cursor settings live under **Batty → Settings…**.
+## Try this
+
+1. Type `pwd` and press Return.
+2. Press `Cmd-D` to split the pane side-by-side.
+3. Press `Cmd-T` to add a tab to the new pane.
+4. Click `+` in the sidebar to add a second session.
+5. Press `Cmd-Shift-N` to peek at the bell feed.
+
+Five seconds in, you have the shape of the app.
