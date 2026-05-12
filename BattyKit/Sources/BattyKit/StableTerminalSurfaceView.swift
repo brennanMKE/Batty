@@ -2,7 +2,10 @@
 
 import AppKit
 import GhosttyTerminal
+import OSLog
 import SwiftUI
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "StableTerminalSurfaceView")
 
 /// Wrapper around libghostty's `AppTerminalView` that keeps the underlying
 /// NSView (and its PTY/surface) alive across SwiftUI view-tree rebuilds.
@@ -13,12 +16,14 @@ import SwiftUI
 /// or pane focus change (see issue #0072).
 ///
 /// Instead, the long-lived `AppTerminalView` is owned by ``TabRuntime``.
-/// `makeNSView` returns a cheap container; `updateNSView` re-parents the
-/// tab's existing `AppTerminalView` into that container, creating one on
-/// first use. SwiftUI can tear down the container whenever it likes — the
-/// terminal view stays retained by the tab and is re-attached on the next
-/// mount. `AppTerminalView.viewDidMoveToWindow` is already coded to skip
-/// surface rebuild when one already exists, so re-parenting is cheap.
+/// `makeNSView` returns a cheap container and eagerly attaches the tab's
+/// `AppTerminalView` (creating one on first use); `updateNSView` defensively
+/// re-checks the attachment on every SwiftUI update so the NSView is always
+/// hosted by *some* container in the window's view hierarchy. SwiftUI can
+/// tear down the container whenever it likes — the terminal view stays
+/// retained by the tab and is re-attached on the next mount.
+/// `AppTerminalView.viewDidMoveToWindow` is already coded to skip surface
+/// rebuild when one already exists, so re-parenting is cheap.
 public struct StableTerminalSurfaceView: NSViewRepresentable {
     private let tab: TabRuntime
 
@@ -30,12 +35,12 @@ public struct StableTerminalSurfaceView: NSViewRepresentable {
         let container = NSView(frame: .zero)
         container.wantsLayer = true
         container.translatesAutoresizingMaskIntoConstraints = false
-        attachTerminalView(to: container)
+        attachIfNeeded(to: container)
         return container
     }
 
     public func updateNSView(_ container: NSView, context: Context) {
-        attachTerminalView(to: container)
+        attachIfNeeded(to: container)
         guard let terminalView = tab.terminalNSView else { return }
         if terminalView.delegate !== tab.terminal {
             terminalView.delegate = tab.terminal
@@ -54,19 +59,25 @@ public struct StableTerminalSurfaceView: NSViewRepresentable {
         // link and clears focus; it does not free the surface.
     }
 
-    private func attachTerminalView(to container: NSView) {
-        let terminalView: AppTerminalView
-        if let existing = tab.terminalNSView {
-            terminalView = existing
-        } else {
-            terminalView = AppTerminalView(frame: .zero)
-            terminalView.delegate = tab.terminal
-            terminalView.controller = tab.terminal.controller
-            terminalView.configuration = tab.terminal.configuration
-            tab.terminalNSView = terminalView
+    /// Guarantees two invariants after it returns:
+    ///   1. `tab.terminalNSView` is non-nil.
+    ///   2. That NSView is a subview of `container`, pinned to all four edges.
+    ///
+    /// Called from both `makeNSView` (so the first mount never returns an
+    /// empty container even if SwiftUI skips the initial `updateNSView`) and
+    /// from `updateNSView` (so any subsequent rebuild re-parents an orphaned
+    /// or cross-container NSView back into the current container).
+    private func attachIfNeeded(to container: NSView) {
+        let terminalView = ensureTerminalView()
+
+        if terminalView.superview === container {
+            return
         }
 
-        guard terminalView.superview !== container else { return }
+        if terminalView.superview == nil {
+            logger.debug("re-attaching orphaned AppTerminalView to container")
+        }
+
         terminalView.removeFromSuperview()
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(terminalView)
@@ -76,5 +87,17 @@ public struct StableTerminalSurfaceView: NSViewRepresentable {
             terminalView.topAnchor.constraint(equalTo: container.topAnchor),
             terminalView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
+    }
+
+    private func ensureTerminalView() -> AppTerminalView {
+        if let existing = tab.terminalNSView {
+            return existing
+        }
+        let terminalView = AppTerminalView(frame: .zero)
+        terminalView.delegate = tab.terminal
+        terminalView.controller = tab.terminal.controller
+        terminalView.configuration = tab.terminal.configuration
+        tab.terminalNSView = terminalView
+        return terminalView
     }
 }
