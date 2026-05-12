@@ -62,4 +62,12 @@ public final class BellFeedStore {
     public func unseenCount(forSessionID sessionID: UUID) -> Int {
         entries.lazy.filter { !$0.seen && $0.sessionID == sessionID }.count
     }
+
+    @discardableResult
+    public func removeEntries(matchingTabIDs tabIDs: Set<UUID>) -> [BellFeedEntry] {
+        guard !tabIDs.isEmpty else { return [] }
+        let removed = entries.filter { tabIDs.contains($0.tabID) }
+        entries.removeAll { tabIDs.contains($0.tabID) }
+        return removed
+    }
 }

@@ -62,6 +62,9 @@ public final class AppStateStore {
 
     public func removeSession(id: UUID) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let session = sessions[index]
+        let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
+        cleanUpBellState(forTabIDs: tabIDsToClear)
         sessions.remove(at: index)
         if selectedSessionID == id {
             let newIndex = max(0, index - 1)
@@ -198,6 +201,7 @@ public final class AppStateStore {
     public func closeTab(id tabID: UUID) {
         for session in sessions {
             for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
+                cleanUpBellState(forTabIDs: [tabID])
                 pane.removeTab(id: tabID)
                 if pane.tabs.isEmpty {
                     let treeEmptied = session.tree.removePane(id: pane.id)
@@ -316,6 +320,13 @@ public final class AppStateStore {
                     if tab.unseenBellCount > 0 { tab.unseenBellCount -= 1 }
                 }
             }
+        }
+    }
+
+    private func cleanUpBellState(forTabIDs tabIDs: Set<UUID>) {
+        let removed = bellFeed.removeEntries(matchingTabIDs: tabIDs)
+        for entry in removed where !entry.seen {
+            decrementUnseen(for: entry)
         }
     }
 }
