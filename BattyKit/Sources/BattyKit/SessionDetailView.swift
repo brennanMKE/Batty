@@ -90,8 +90,6 @@ public struct SessionDetailView: View {
     }
 
     private var navigationTitle: String {
-        guard let session = store.selectedSession else { return "Batty" }
-        let live = session.focusedPane.activeTab.terminal.title
-        return live.isEmpty ? session.title : live
+        store.selectedSession?.title ?? "Batty"
     }
 }
