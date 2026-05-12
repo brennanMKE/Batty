@@ -64,7 +64,8 @@ public final class AppStateStore {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         sessions.remove(at: index)
         if selectedSessionID == id {
-            selectedSessionID = sessions.first?.id
+            let newIndex = max(0, index - 1)
+            selectedSessionID = sessions.indices.contains(newIndex) ? sessions[newIndex].id : nil
         }
         if sessions.isEmpty {
             NotificationCenter.default.post(name: .battyAllSessionsClosed, object: nil)
