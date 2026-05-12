@@ -17,6 +17,16 @@ public struct RootWindowView: View {
         } detail: {
             SessionDetailView(store: store)
         }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    store.addSession()
+                } label: {
+                    Label("New Session", systemImage: "plus")
+                }
+                .help("New Session")
+            }
+        }
         .environment(\.appStateStore, store)
         .task { setUpNotifier() }
     }
@@ -38,7 +48,9 @@ public struct RootWindowView: View {
         Binding(
             get: { sidebarHidden ? .detailOnly : .all },
             set: { newValue in
-                sidebarHidden = (newValue == .detailOnly)
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    sidebarHidden = (newValue == .detailOnly)
+                }
             }
         )
     }

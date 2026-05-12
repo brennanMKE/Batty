@@ -25,7 +25,9 @@ public struct BattyCommands: Commands {
 
         CommandGroup(after: .sidebar) {
             Button(sidebarHidden ? "Show Sidebar" : "Hide Sidebar") {
-                sidebarHidden.toggle()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    sidebarHidden.toggle()
+                }
             }
             .keyboardShortcut("s", modifiers: [.command, .control])
         }
