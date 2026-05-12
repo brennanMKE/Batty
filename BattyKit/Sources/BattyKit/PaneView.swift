@@ -80,7 +80,7 @@ public struct PaneView: View {
 
             ZStack {
                 ForEach(pane.tabs) { tab in
-                    TerminalSurfaceView(context: tab.terminal)
+                    StableTerminalSurfaceView(tab: tab)
                         .opacity(tab.id == pane.activeTabID ? 1 : 0)
                         .allowsHitTesting(tab.id == pane.activeTabID)
                         .onDrop(

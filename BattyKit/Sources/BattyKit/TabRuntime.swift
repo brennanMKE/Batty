@@ -1,6 +1,8 @@
 // TabRuntime.swift
 
+import AppKit
 import Foundation
+import GhosttyTerminal
 import Observation
 
 @Observable
@@ -13,6 +15,14 @@ public final class TabRuntime: Identifiable {
     public internal(set) var unseenBellCount: Int = 0
     public internal(set) var lastBellAt: Date?
     public internal(set) var lastBellMessage: String?
+
+    /// Long-lived libghostty NSView whose lifetime is bound to this tab,
+    /// not to any SwiftUI representable. `StableTerminalSurfaceView`
+    /// re-parents this view into fresh containers as SwiftUI rebuilds the
+    /// view tree, preserving the underlying PTY and surface across tab
+    /// switches, pane focus changes, and sidebar selection.
+    @ObservationIgnored
+    public internal(set) var terminalNSView: AppTerminalView?
 
     @ObservationIgnored
     private var lastObservedBellCount: Int = 0
