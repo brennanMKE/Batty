@@ -28,24 +28,39 @@ struct TabRuntimeRunningCommandTests {
         #expect(tab.runningCommandDisplayName == "Claude Code")
     }
 
-    @Test func refreshClearsOnPromptForm() {
+    @Test func refreshDoesNotClearOnPromptForm() {
+        // TUIs (claude, vim, ssh) routinely mutate OSC 2 mid-session to
+        // a non-registry value. The title-driven path must NOT clear on
+        // a miss — clearing is the command-finished path's job.
         let tab = TabRuntime()
         tab.terminal.terminalDidChangeTitle("claude")
         tab.refreshRunningCommandFromTitle()
         #expect(tab.runningCommandDisplayName == "Claude Code")
         tab.terminal.terminalDidChangeTitle("brennan@host:~/Developer/Batty")
         tab.refreshRunningCommandFromTitle()
-        #expect(tab.runningCommandDisplayName == nil)
+        #expect(tab.runningCommandDisplayName == "Claude Code")
     }
 
-    @Test func refreshClearsOnUnknownCommand() {
+    @Test func refreshDoesNotClearOnUnknownTitle() {
         let tab = TabRuntime()
         tab.terminal.terminalDidChangeTitle("claude")
         tab.refreshRunningCommandFromTitle()
         #expect(tab.runningCommandDisplayName == "Claude Code")
-        tab.terminal.terminalDidChangeTitle("ls -la")
+        tab.terminal.terminalDidChangeTitle("Some Inner Claude State")
         tab.refreshRunningCommandFromTitle()
-        #expect(tab.runningCommandDisplayName == nil)
+        #expect(tab.runningCommandDisplayName == "Claude Code")
+    }
+
+    @Test func refreshFlipsBetweenKnownTUIs() {
+        // If one TUI's title is replaced by another known TUI's title
+        // (rare but possible — chained tools), the latest one wins.
+        let tab = TabRuntime()
+        tab.terminal.terminalDidChangeTitle("claude")
+        tab.refreshRunningCommandFromTitle()
+        #expect(tab.runningCommandDisplayName == "Claude Code")
+        tab.terminal.terminalDidChangeTitle("aider")
+        tab.refreshRunningCommandFromTitle()
+        #expect(tab.runningCommandDisplayName == "Aider")
     }
 
     @Test func refreshRecognizesDisplayNameVerbatim() {

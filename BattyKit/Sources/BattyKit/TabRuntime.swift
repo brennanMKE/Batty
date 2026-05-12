@@ -113,20 +113,17 @@ public final class TabRuntime: Identifiable {
     /// Re-derive ``runningCommandDisplayName`` from the surface's current
     /// OSC 2 title. Called whenever ``TerminalViewState.title`` changes.
     ///
-    /// The signal path: zsh shell-integration (in particular oh-my-zsh's
-    /// `omz_termsupport_preexec`) emits OSC 2 with the running command line
-    /// when a command starts, and OSC 2 with the prompt form (`user@host:~`)
-    /// when a command exits. We treat the OSC 2 stream as the source of
-    /// truth for what's running and let ``TUIAppRegistry.displayNameFromTitle``
-    /// classify each title.
-    ///
-    /// When the title matches a registered TUI we set the display name; when
-    /// it doesn't, we clear. This means a TUI that mutates its own title to
-    /// a non-recognized string mid-session will drop the chip — that's
-    /// acceptable for v1 and the chip recovers when the prompt or another
-    /// command-start fires.
+    /// Set-only: a registry hit assigns the display name. A miss does NOT
+    /// clear — many TUIs (claude, vim, ssh) mutate their own OSC 2 title
+    /// mid-session to show context (chat name, file path, host), and a
+    /// strict "clear on any non-matching title" would wipe the chip the
+    /// moment the TUI started doing its job. Clearing is the
+    /// responsibility of ``recordCommandFinishedIfNeeded`` (driven by
+    /// libghostty's OSC 133 D command-finished signal).
     public func refreshRunningCommandFromTitle() {
-        let derived = TUIAppRegistry.displayNameFromTitle(terminal.title)
+        guard let derived = TUIAppRegistry.displayNameFromTitle(terminal.title) else {
+            return
+        }
         if derived != runningCommandDisplayName {
             runningCommandDisplayName = derived
         }
