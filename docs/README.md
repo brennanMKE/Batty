@@ -15,6 +15,12 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   shortcuts aren't the load-bearing path. Read this before touching
   `BattyShortcuts`, the NSEvent monitor in `BattyAppDelegate`, or the
   Settings → Shortcuts pane.
+- [`themes.md`](themes.md) — where themes come from (the
+  `brennanMKE/libghostty-spm` catalog), how the active theme is
+  persisted in `UserDefaults`, how new tabs pick it up, and how
+  selection propagates live to every surface without a PTY restart.
+  Read this before touching the Theme menu, `ThemePreference`,
+  `TabRuntime.activeTheme()`, or `applyThemeToAllSurfaces`.
 - [`nsviewrepresentable-state-persistence.md`](nsviewrepresentable-state-persistence.md)
   — patterns for keeping `NSView` state alive across SwiftUI rebuilds. The
   load-bearing reference for the terminal host architecture.
@@ -26,5 +32,4 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
 
 ## Upcoming
 
-- `themes.md` — theme loading, search paths, applying live changes (`#0078`).
 - `notifications.md` — bell capture pipeline, feed, system notifications (`#0079`).
