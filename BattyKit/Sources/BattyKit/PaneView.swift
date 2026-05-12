@@ -1,10 +1,7 @@
 // PaneView.swift
 
-import OSLog
 import SwiftUI
 import UniformTypeIdentifiers
-
-nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "PaneView")
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
@@ -107,8 +104,7 @@ public struct PaneView: View {
                                 tab.recordDesktopNotificationIfNeeded()
                             }
                         }
-                        .onChange(of: tab.terminal.workingDirectory) { _, newValue in
-                            logger.debug("workingDirectory changed tab=\(tab.id, privacy: .public) to=\(newValue ?? "<nil>", privacy: .public)")
+                        .onChange(of: tab.terminal.workingDirectory) {
                             appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
                         }
                 }
