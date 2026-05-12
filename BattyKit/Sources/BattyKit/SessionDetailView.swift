@@ -13,11 +13,17 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         ZStack {
-            // Install the long-lived terminal host into the window's
-            // contentView on first appearance. Zero-sized; purely a hook.
+            // The long-lived terminal host fills the entire detail area.
+            // It's a singleton-backed NSViewRepresentable: makeNSView
+            // returns the same TerminalHostView instance every time, so
+            // SwiftUI rebuilds (sidebar collapse, navigation churn,
+            // session selection changes, etc.) never destroy the host
+            // or its terminal subviews. Placed below the session chrome
+            // in the ZStack so terminals render behind chips / sidebar
+            // overlays. AppKit hit-testing on TerminalHostView routes
+            // clicks inside a visible terminal frame to that terminal;
+            // clicks outside fall through to SwiftUI.
             TerminalHostInstaller()
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
 
             ForEach(store.sessions) { session in
                 SplitContainerView(tree: session.tree)
@@ -37,6 +43,7 @@ public struct SessionDetailView: View {
                 )
             }
         }
+        .coordinateSpace(name: TerminalHostInstaller.coordinateSpaceName)
         .onPreferenceChange(TerminalPlacementPreferenceKey.self) { newPlacements in
             TerminalHostStore.shared.updatePlacements(newPlacements)
         }

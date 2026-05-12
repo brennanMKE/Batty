@@ -16,8 +16,10 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// becomes one store per window keyed by the window identifier.
 ///
 /// Responsibilities:
-///   * Vend the persistent ``TerminalHostView`` and ensure it is installed
-///     as a subview of the active window's `contentView` exactly once.
+///   * Own the persistent ``TerminalHostView``. The host is handed to
+///     SwiftUI via ``TerminalHostInstaller`` (an `NSViewRepresentable`
+///     that returns this same instance from every `makeNSView` call —
+///     Pattern 3 from `nsviewrepresentable-state-persistence.md`).
 ///   * Lazily create one `AppTerminalView` per `TabRuntime.id` on first
 ///     request and add it to the host as `isHidden = true`.
 ///   * Expose a single mutator (`updatePlacements(_:)`) that the
@@ -30,9 +32,11 @@ public final class TerminalHostStore {
 
     public static let shared = TerminalHostStore()
 
-    /// The single persistent host. Created on demand, added to the
-    /// window's contentView the first time ``attachHost(to:)`` is called
-    /// with that window, and never removed.
+    /// The single persistent host. Created on init and held strongly here
+    /// for the store's lifetime. ``TerminalHostInstaller.makeNSView``
+    /// returns this instance directly so SwiftUI never constructs a new
+    /// one — even when the representable is torn down and rebuilt, the
+    /// host and all its terminal subviews survive in this store.
     let hostView: TerminalHostView
 
     /// `tab.id` → live terminal view. Each entry is created once and
@@ -41,14 +45,10 @@ public final class TerminalHostStore {
     /// also strong-references it as a subview. Both go away on close.
     private var terminalViews: [UUID: AppTerminalView] = [:]
 
-    /// `tab.id` → most recent placement (window-coordinate frame +
-    /// visibility flag). Stored so re-applying the latest placement on
-    /// (re-)attach is a single dictionary read.
+    /// `tab.id` → most recent placement (host-local frame + visibility
+    /// flag). Stored so re-applying the latest placement on a re-mount
+    /// is a single dictionary read.
     private var placements: [UUID: Placement] = [:]
-
-    /// Window the host is currently parented to. Once set it does not
-    /// change for the host's lifetime.
-    private weak var attachedWindow: NSWindow?
 
     public init() {
         self.hostView = TerminalHostView(frame: .zero)
@@ -117,35 +117,10 @@ public final class TerminalHostStore {
         }
     }
 
-    /// Install the host into the window's contentView if not already
-    /// attached. Idempotent — calling this a second time with the same
-    /// window is a no-op; calling it with a different window logs and
-    /// keeps the original (Batty is single-window-by-default).
-    public func attachHost(to window: NSWindow) {
-        if let attached = attachedWindow, attached === window {
-            return
-        }
-        if attachedWindow != nil {
-            logger.error("attachHost called with a second window; ignoring (single-window app)")
-            return
-        }
-        guard let contentView = window.contentView else {
-            logger.error("attachHost: window.contentView is nil; cannot install host")
-            return
-        }
-        attachedWindow = window
-        hostView.frame = contentView.bounds
-        hostView.autoresizingMask = [.width, .height]
-        contentView.addSubview(hostView, positioned: .above, relativeTo: nil)
-        let contentName = String(describing: type(of: contentView))
-        let contentFlipped = contentView.isFlipped
-        logger.debug("attached host to window: contentView=\(contentName, privacy: .public) flipped=\(contentFlipped, privacy: .public)")
-    }
-
-    /// Window-coordinate placement for a single terminal view.
-    /// `frame` is expressed in the host's coordinate space (which is the
-    /// window's contentView coordinate space since the host fills it);
-    /// `isVisible == false` keeps the view attached but hidden.
+    /// Host-local placement for a single terminal view. `frame` is in
+    /// the host's own coordinate space (top-left origin because the
+    /// host is `isFlipped == true`, matching SwiftUI). `isVisible == false`
+    /// keeps the view attached but hidden.
     public struct Placement: Equatable, Sendable {
         public var frame: NSRect
         public var isVisible: Bool
