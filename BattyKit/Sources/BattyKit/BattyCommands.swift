@@ -4,9 +4,10 @@ import AppKit
 import SwiftUI
 
 public struct BattyCommands: Commands {
-    @FocusedValue(\.appStateStore) private var store: AppStateStore?
     @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
     @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
+
+    private var store: AppStateStore { WorkspaceManager.shared.store }
 
     public init() {}
 
@@ -20,16 +21,15 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Session") {
             Button("New Session") {
-                store?.addSession()
+                store.addSession()
             }
             .keyboardShortcut("n", modifiers: [.command, .option])
-            .disabled(store == nil)
 
             Divider()
 
             ForEach(0..<9) { index in
                 Button(sessionMenuTitle(at: index)) {
-                    store?.selectSession(at: index)
+                    store.selectSession(at: index)
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
                 .disabled(!sessionExists(at: index))
@@ -47,7 +47,6 @@ public struct BattyCommands: Commands {
                         Text(theme.name)
                     }
                 }
-                .disabled(store == nil)
             }
         }
 
@@ -89,49 +88,48 @@ public struct BattyCommands: Commands {
                 NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
-            .disabled(store == nil)
 
             Button("Mark All Bells Seen") {
-                store?.markAllBellsSeen()
+                store.markAllBellsSeen()
             }
-            .disabled((store?.bellFeed.unseenCount ?? 0) == 0)
+            .disabled(store.bellFeed.unseenCount == 0)
         }
 
         CommandMenu("Pane") {
             Button("Split Horizontally") {
-                store?.selectedSession?.tree.splitFocusedPane(direction: .horizontal)
+                store.selectedSession?.tree.splitFocusedPane(direction: .horizontal)
             }
             .keyboardShortcut("d", modifiers: .command)
-            .disabled(store?.selectedSession == nil)
+            .disabled(store.selectedSession == nil)
 
             Button("Split Vertically") {
-                store?.selectedSession?.tree.splitFocusedPane(direction: .vertical)
+                store.selectedSession?.tree.splitFocusedPane(direction: .vertical)
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
-            .disabled(store?.selectedSession == nil)
+            .disabled(store.selectedSession == nil)
 
             Divider()
 
             Button("Focus Pane Left") {
-                store?.selectedSession?.focusPane(adjacent: .left)
+                store.selectedSession?.focusPane(adjacent: .left)
             }
             .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
             .disabled(!canFocusAdjacentPane)
 
             Button("Focus Pane Right") {
-                store?.selectedSession?.focusPane(adjacent: .right)
+                store.selectedSession?.focusPane(adjacent: .right)
             }
             .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             .disabled(!canFocusAdjacentPane)
 
             Button("Focus Pane Above") {
-                store?.selectedSession?.focusPane(adjacent: .up)
+                store.selectedSession?.focusPane(adjacent: .up)
             }
             .keyboardShortcut(.upArrow, modifiers: [.command, .option])
             .disabled(!canFocusAdjacentPane)
 
             Button("Focus Pane Below") {
-                store?.selectedSession?.focusPane(adjacent: .down)
+                store.selectedSession?.focusPane(adjacent: .down)
             }
             .keyboardShortcut(.downArrow, modifiers: [.command, .option])
             .disabled(!canFocusAdjacentPane)
@@ -139,27 +137,27 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Tab") {
             Button("New Tab") {
-                store?.selectedSession?.focusedPane.addTab()
+                store.selectedSession?.focusedPane.addTab()
             }
             .keyboardShortcut("t", modifiers: .command)
             .disabled(focusedPane == nil)
 
             Button("Close Tab") {
-                store?.closeFocusedTab()
+                store.closeFocusedTab()
             }
             .keyboardShortcut("w", modifiers: .command)
-            .disabled(store?.selectedSession == nil)
+            .disabled(store.selectedSession == nil)
 
             Divider()
 
             Button("Show Previous Tab") {
-                store?.selectedSession?.focusedPane.selectPreviousTab()
+                store.selectedSession?.focusedPane.selectPreviousTab()
             }
             .keyboardShortcut("[", modifiers: [.command, .shift])
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
 
             Button("Show Next Tab") {
-                store?.selectedSession?.focusedPane.selectNextTab()
+                store.selectedSession?.focusedPane.selectNextTab()
             }
             .keyboardShortcut("]", modifiers: [.command, .shift])
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
@@ -168,7 +166,7 @@ public struct BattyCommands: Commands {
 
             ForEach(0..<9) { index in
                 Button(tabMenuTitle(at: index)) {
-                    store?.selectedSession?.focusedPane.selectTab(at: index)
+                    store.selectedSession?.focusedPane.selectTab(at: index)
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 .disabled(!tabExists(at: index))
@@ -177,24 +175,23 @@ public struct BattyCommands: Commands {
     }
 
     private var focusedPane: PaneRuntime? {
-        store?.selectedSession?.focusedPane
+        store.selectedSession?.focusedPane
     }
 
     private var canFocusAdjacentPane: Bool {
-        guard let session = store?.selectedSession else { return false }
+        guard let session = store.selectedSession else { return false }
         return session.tree.allPanes.count > 1
     }
 
     private func sessionMenuTitle(at index: Int) -> String {
-        guard let store, store.sessions.indices.contains(index) else {
+        guard store.sessions.indices.contains(index) else {
             return "Session \(index + 1)"
         }
         return store.sessions[index].title
     }
 
     private func sessionExists(at index: Int) -> Bool {
-        guard let store else { return false }
-        return store.sessions.indices.contains(index)
+        store.sessions.indices.contains(index)
     }
 
     private func tabMenuTitle(at index: Int) -> String {
@@ -210,6 +207,6 @@ public struct BattyCommands: Commands {
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
         activeThemeName = theme.name
-        store?.applyThemeToAllSurfaces(theme)
+        store.applyThemeToAllSurfaces(theme)
     }
 }
