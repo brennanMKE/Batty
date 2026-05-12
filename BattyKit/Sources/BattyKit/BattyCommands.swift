@@ -1,7 +1,10 @@
 // BattyCommands.swift
 
 import AppKit
+import OSLog
 import SwiftUI
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BattyCommands")
 
 public struct BattyCommands: Commands {
     @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
@@ -14,6 +17,7 @@ public struct BattyCommands: Commands {
     public var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Session") {
+                logger.info("Cmd-N action fired (File → New Session)")
                 store.addSession()
             }
             .keyboardShortcut("n", modifiers: .command)
