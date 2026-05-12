@@ -13,6 +13,12 @@ When starting any non-trivial task, read in this order:
 3. `issues/Issues.md` — issue tracker workflow, status vocabulary, module conventions.
 4. `issues/NNNN.md` if working a specific issue.
 
+For any work touching the terminal / pane / tab / window path, **also read
+`docs/view-hierarchy.md` first** — it explains how the model hierarchy
+maps onto the SwiftUI tree and the persistent AppKit terminal host, and
+lists the non-negotiable rules for the terminal-host architecture. The
+`docs/` folder has additional topical guides (see `docs/README.md`).
+
 ## Build / verify commands
 
 ```bash
