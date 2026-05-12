@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct RootWindowView: View {
     @State private var store: AppStateStore
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
 
     public init(store: AppStateStore? = nil) {
@@ -11,24 +12,27 @@ public struct RootWindowView: View {
     }
 
     public var body: some View {
-        NavigationSplitView(columnVisibility: columnVisibilityBinding) {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SessionSidebarView(store: store)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             SessionDetailView(store: store)
         }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    store.addSession()
-                } label: {
-                    Label("New Session", systemImage: "plus")
-                }
-                .help("New Session")
-            }
-        }
         .environment(\.appStateStore, store)
         .task { setUpNotifier() }
+        .onAppear {
+            columnVisibility = sidebarHidden ? .detailOnly : .all
+        }
+        .onChange(of: columnVisibility) { _, newValue in
+            sidebarHidden = (newValue == .detailOnly)
+        }
+        .onChange(of: sidebarHidden) { _, newValue in
+            let target: NavigationSplitViewVisibility = newValue ? .detailOnly : .all
+            guard columnVisibility != target else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                columnVisibility = target
+            }
+        }
     }
 
     private func setUpNotifier() {
@@ -42,17 +46,6 @@ public struct RootWindowView: View {
         }
         store.notifier = notifier
         notifier.ensureAuthorization()
-    }
-
-    private var columnVisibilityBinding: Binding<NavigationSplitViewVisibility> {
-        Binding(
-            get: { sidebarHidden ? .detailOnly : .all },
-            set: { newValue in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    sidebarHidden = (newValue == .detailOnly)
-                }
-            }
-        )
     }
 }
 

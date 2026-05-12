@@ -36,6 +36,16 @@ public struct SessionSidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Batty")
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    store.addSession()
+                } label: {
+                    Label("New Session", systemImage: "plus")
+                }
+                .help("New Session")
+            }
+        }
         .sheet(item: renamingBinding) { session in
             RenameSessionSheet(
                 title: $renameDraft,
