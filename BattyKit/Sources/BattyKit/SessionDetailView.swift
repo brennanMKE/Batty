@@ -35,7 +35,8 @@ public struct SessionDetailView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button {
-                    store.selectedSession?.tree.splitFocusedPane(direction: .horizontal)
+                    guard let tree = store.selectedSession?.tree else { return }
+                    tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
                 } label: {
                     Label("Split Horizontally", systemImage: "rectangle.split.2x1")
                 }
@@ -43,7 +44,8 @@ public struct SessionDetailView: View {
                 .disabled(store.selectedSession == nil)
 
                 Button {
-                    store.selectedSession?.tree.splitFocusedPane(direction: .vertical)
+                    guard let tree = store.selectedSession?.tree else { return }
+                    tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
                 } label: {
                     Label("Split Vertically", systemImage: "rectangle.split.1x2")
                 }

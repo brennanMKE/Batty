@@ -75,9 +75,18 @@ public final class SplitTree {
     @discardableResult
     public func splitFocusedPane(
         direction: SplitDirection,
-        ratio: Double = 0.5
+        ratio: Double = 0.5,
+        inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane = PaneRuntime()
+        let newPane: PaneRuntime
+        if let source {
+            let sourceTab = source.activeTab
+            let cwd = sourceTab.terminal.workingDirectory
+                ?? sourceTab.terminal.configuration.workingDirectory
+            newPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: cwd)])
+        } else {
+            newPane = PaneRuntime()
+        }
         if let newRoot = SplitTreeNode.inserting(
             newPane: newPane,
             adjacentTo: focusedPaneID,
