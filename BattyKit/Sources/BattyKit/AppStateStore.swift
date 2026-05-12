@@ -2,6 +2,9 @@
 
 import Foundation
 import Observation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "AppStateStore")
 
 @Observable
 public final class AppStateStore {
@@ -206,12 +209,19 @@ public final class AppStateStore {
     public func handleWorkingDirectoryChange(forTabID tabID: UUID) {
         for session in sessions {
             let anchorTab = session.tree.root.firstLeafPane.tabs[0]
-            guard anchorTab.id == tabID else { continue }
             let cwd = anchorTab.terminal.workingDirectory
                 ?? anchorTab.terminal.configuration.workingDirectory
+            logger.debug(
+                "cwd-change tab=\(tabID, privacy: .public) anchor=\(anchorTab.id, privacy: .public) match=\(anchorTab.id == tabID, privacy: .public) cwd=\(cwd ?? "<nil>", privacy: .public)"
+            )
+            guard anchorTab.id == tabID else { continue }
             guard let cwd, !cwd.isEmpty else { return }
-            guard let cachedName = nameCache.lookup(path: cwd) else { return }
+            guard let cachedName = nameCache.lookup(path: cwd) else {
+                logger.debug("cwd-change no cache hit for \(cwd, privacy: .public)")
+                return
+            }
             guard cachedName != session.title else { return }
+            logger.debug("cwd-change applying \(cachedName, privacy: .public) (was \(session.title, privacy: .public))")
             session.title = cachedName
             return
         }
