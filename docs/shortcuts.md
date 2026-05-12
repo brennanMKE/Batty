@@ -1,0 +1,448 @@
+# Keyboard shortcuts
+
+How Batty routes, persists, and customizes keyboard shortcuts. Read
+this before touching anything in the shortcut path. Companion to
+`Concepts.md` (vocabulary) and [`view-hierarchy.md`](view-hierarchy.md)
+(why menu shortcuts can't win against the terminal NSView). Issues
+`#0062`, `#0063`, and `#0070` are the history.
+
+Batty's shortcut routing is non-obvious because it deliberately bypasses
+SwiftUI Commands for the load-bearing path. Anyone touching shortcut
+behavior needs to keep three things in mind:
+
+1. **An NSEvent local monitor sits above the menu bar and above
+   libghostty.** That monitor — not SwiftUI — is what makes Cmd-W,
+   Cmd-T, Cmd-D, etc. fire when a terminal has focus.
+2. **Most shortcuts are user-customizable** through Settings → Shortcuts
+   and persist as a JSON blob in `UserDefaults`.
+3. **A small set of combos are fixed**: positional tab/session
+   selection (`Cmd-1..9`, `Cmd-Option-1..9`) and clipboard (`Cmd-C`,
+   `Cmd-V`). These don't appear in the Settings catalog.
+
+---
+
+## 1. User-facing summary
+
+Where to change a shortcut: **Settings → Shortcuts** (per `#0070`). Each
+customizable action gets a row with a recorder field, a per-row
+**Reset** button, and a global **Reset All to Defaults** at the bottom
+of the pane.
+
+How to record a new binding:
+
+1. Click the recorder field. A tinted ring appears and the label changes
+   to "Press a shortcut…".
+2. Press the desired combo (modifiers + key). The recorder commits
+   immediately and the new binding is saved to `UserDefaults`.
+3. Esc cancels recording without modifying the existing binding.
+
+Reserved combos that the recorder refuses to assign cleanly. The
+recorder *will* save them — but the row surfaces a warning so the user
+can choose another combo:
+
+| Combo | Why reserved |
+|---|---|
+| `Cmd-Q` | macOS-wide quit |
+| `Cmd-H` | macOS-wide hide app |
+| `Cmd-M` | macOS-wide minimize window |
+| `Cmd-Tab` | system app switcher |
+| `Cmd-,` | Settings shortcut |
+
+Fixed combos (not customizable, do not appear in the Shortcuts pane):
+
+| Combo | Action |
+|---|---|
+| `Cmd-1` … `Cmd-9` | Select tab 1..9 in the focused pane |
+| `Cmd-Option-1` … `Cmd-Option-9` | Select session 1..9 in the sidebar |
+| `Cmd-C` | Copy selection to clipboard (handled by libghostty) |
+| `Cmd-V` | Paste clipboard (handled by Batty's `PasteDispatcher` menu action) |
+
+Default bindings shipped in v1 (from `ShortcutAction.defaultBinding`):
+
+| Action | Default | Notes |
+|---|---|---|
+| New Session | `Cmd-N` | Was `Cmd-Option-N`; rebound per `#0063` |
+| Close Tab | `Cmd-W` | Closes focused tab; collapses pane when last tab closes |
+| New Tab | `Cmd-T` | Inherits CWD from active tab |
+| Split Horizontally | `Cmd-D` | New pane to the right |
+| Split Vertically | `Cmd-Shift-D` | New pane below |
+| Focus Pane Left | `Cmd-Option-←` | Move focus to the pane left of current |
+| Focus Pane Right | `Cmd-Option-→` | |
+| Focus Pane Above | `Cmd-Option-↑` | |
+| Focus Pane Below | `Cmd-Option-↓` | |
+| Show Previous Tab | `Cmd-Shift-[` | Cycles within the focused pane |
+| Show Next Tab | `Cmd-Shift-]` | |
+| Toggle Sidebar | `Cmd-Ctrl-S` | Flips `UserDefaults` `SidebarPreference.hiddenKey` |
+| Toggle Bell Feed | `Cmd-Shift-N` | Posts `.battyToggleBellFeed` notification |
+
+---
+
+## 2. Catalog of customizable actions
+
+The full set is `ShortcutAction.allCases` in
+[`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutAction.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutAction.swift).
+Each case has a stable `rawValue` used as the persistence key — the
+mapping is append-only because renaming a case mid-flight would orphan
+saved bindings.
+
+| `rawValue` | Display name | Default | Action |
+|---|---|---|---|
+| `newSession` | New Session | `Cmd-N` | `store.addSession()` |
+| `closeTab` | Close Tab | `Cmd-W` | `store.closeFocusedTab()` |
+| `newTab` | New Tab | `Cmd-T` | `pane.addTab(inheritingCWDFrom: pane.activeTab)` |
+| `splitHorizontal` | Split Horizontally | `Cmd-D` | `tree.splitFocusedPane(direction: .horizontal, …)` |
+| `splitVertical` | Split Vertically | `Cmd-Shift-D` | `tree.splitFocusedPane(direction: .vertical, …)` |
+| `focusPaneLeft` | Focus Pane Left | `Cmd-Option-←` | `session.focusPane(adjacent: .left)` |
+| `focusPaneRight` | Focus Pane Right | `Cmd-Option-→` | `session.focusPane(adjacent: .right)` |
+| `focusPaneUp` | Focus Pane Above | `Cmd-Option-↑` | `session.focusPane(adjacent: .up)` |
+| `focusPaneDown` | Focus Pane Below | `Cmd-Option-↓` | `session.focusPane(adjacent: .down)` |
+| `previousTab` | Show Previous Tab | `Cmd-Shift-[` | `pane.selectPreviousTab()` |
+| `nextTab` | Show Next Tab | `Cmd-Shift-]` | `pane.selectNextTab()` |
+| `toggleSidebar` | Toggle Sidebar | `Cmd-Ctrl-S` | flips `SidebarPreference.hiddenKey` in `UserDefaults` |
+| `toggleBellFeed` | Toggle Bell Feed | `Cmd-Shift-N` | posts `.battyToggleBellFeed` |
+
+The recorder accepts:
+
+- **Modifier + character** (`t`, `[`, `/` …) — requires at least one
+  non-shift modifier. Plain characters and Shift-only combos are
+  rejected with a beep so the user can't bind `t` and shadow text input
+  in a terminal.
+- **Special keys** without modifiers — arrows, return, escape, tab,
+  space, delete. These are not text input, so they're safe as bare
+  bindings. The full set lives in `ShortcutBinding.SpecialKey`.
+
+Related issues per action: `closeTab` → `#0062`; `newSession` → `#0063`;
+the whole pane → `#0070`.
+
+---
+
+## 3. The routing architecture
+
+The load-bearing section. Batty's shortcut router is an `NSEvent` local
+monitor that sits above the menu bar and above libghostty's own
+keybinding layer. SwiftUI's `Commands` system is **not** the load-bearing
+path; menu items still exist for discoverability but their
+`.keyboardShortcut(...)` modifiers are not what makes the key combos
+fire in normal use.
+
+```
+                  key down
+                     |
+                     v
+   +--------------------------------------------+
+   | NSEvent.addLocalMonitorForEvents(.keyDown) |   installed in
+   |   -> BattyShortcuts.handle(event)          |   BattyAppDelegate
+   +--------------------------------------------+
+            |                          |
+       consumed? yes               consumed? no
+            |                          |
+            v                          v
+        return nil           NSEvent forwards normally
+        (event dropped)                |
+                                       v
+                          +-----------------------------+
+                          | menu bar key-equivalent     |
+                          | dispatch (BattyCommands)    |
+                          +-----------------------------+
+                                       |
+                                       v
+                          +-----------------------------+
+                          | NSWindow performKeyEquivalent|
+                          | (e.g. default Cmd-W close)  |
+                          +-----------------------------+
+                                       |
+                                       v
+                          +-----------------------------+
+                          | AppTerminalView.            |
+                          |   performKeyEquivalent      |
+                          | (libghostty keybinds, what  |
+                          |  little of them survive)    |
+                          +-----------------------------+
+```
+
+The monitor is installed in
+[`../Batty/BattyApp.swift`](../Batty/BattyApp.swift)
+inside `BattyAppDelegate.applicationDidFinishLaunching`:
+
+```swift
+keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+    BattyShortcuts.handle(event) ? nil : event
+}
+```
+
+The handler lives in
+[`../BattyKit/Sources/BattyKit/BattyShortcuts.swift`](../BattyKit/Sources/BattyKit/BattyShortcuts.swift).
+On each key-down event it:
+
+1. **Checks for the recorder special case.** If the key window's first
+   responder is a `RecorderView`, the user is binding a shortcut —
+   return `false` so the keystroke reaches the recorder rather than
+   firing the existing action.
+2. **Builds a candidate `ShortcutBinding`** from `event.keyCode` (for
+   special keys) or `event.charactersIgnoringModifiers` (for character
+   keys), normalized to lowercase.
+3. **Matches against `ShortcutAction.allCases`** by asking
+   `ShortcutsStore.shared.binding(for:)` for each action. First match
+   wins; runs the action via the private `run(_:store:)` switch and
+   returns `true` to consume the event.
+4. **Falls through to the fixed combos** for `Cmd-1..9` (tab selection)
+   and `Cmd-Option-1..9` (session selection). These short-circuit
+   before the recorder match because they're tested in a `switch` on
+   `(mods, chars)` after the customizable loop.
+5. Returns `false` otherwise, letting AppKit forward the event to the
+   menu bar and below.
+
+Why this exists, in two pieces:
+
+- **SwiftUI Commands can't beat NSWindow on `Cmd-W`.** Per `#0062`,
+  `BattyCommands` originally read its store via `@FocusedValue`. SwiftUI
+  focus doesn't bridge to AppKit first-responder state, so when the
+  terminal NSView had focus the focused value resolved to `nil`, the
+  menu disabled itself, and `Cmd-W` either did nothing or got
+  intercepted by NSWindow's default `performClose:`.
+- **libghostty has its own keybinding system** that competes with
+  AppKit. Cmd-bound combos walked through
+  `AppTerminalView.performKeyEquivalent` before menu items could see
+  them. The fix on the libghostty side (see Section 4 below) is to
+  clear those defaults; the fix on the AppKit side is the local
+  monitor, which fires *before* `performKeyEquivalent` does.
+
+The monitor approach also lets shortcuts work from sidebar focus,
+terminal focus, settings focus — every window in the app — without
+needing per-view bridges.
+
+### The libghostty keybind-clear
+
+libghostty ships with default Cmd-* bindings for `new_window`,
+`close_surface`, `new_tab`, `new_split`, `goto_split`, etc. Those would
+fight the NSEvent monitor (and would route to libghostty internals
+instead of Batty's `AppStateStore`), so they are cleared in
+[`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift),
+inside `applyShellAndAppearancePreferences(to:)`:
+
+```swift
+builder.withCustom("keybind", "clear")
+builder.withCustom("keybind", "cmd+c=copy_to_clipboard")
+```
+
+`keybind = clear` drops every libghostty default. `cmd+c =
+copy_to_clipboard` is re-added because the menu doesn't route through
+libghostty's copy buffer — keeping libghostty in charge of Cmd-C means
+the selection-to-clipboard path stays inside the surface. Paste is
+handled separately via Batty's `PasteDispatcher` menu action.
+
+This is also why user-set libghostty keybindings (e.g. via a `.ghostty`
+config) do not take effect inside Batty: the `clear` directive nukes
+them, and Batty's own shortcut system is the only customization layer.
+
+---
+
+## 4. Persistence
+
+`ShortcutsStore` is a `@MainActor @Observable` singleton (`.shared`).
+Its state is a `[ShortcutAction: ShortcutBinding]` dictionary.
+
+Storage details:
+
+| What | Where |
+|---|---|
+| Storage backend | `UserDefaults.standard` |
+| Storage key | `co.sstools.Batty.keyboardShortcuts` |
+| Serialized shape | `[String: ShortcutBinding]` — `actionID -> binding`, JSON-encoded |
+| Per-binding shape | `{ "key": "<char-or-specialKey-rawValue>", "modifiers": <Int> }` |
+
+`modifiers` is the raw bitfield of `SwiftUI.EventModifiers` — the same
+representation SwiftUI uses for `KeyboardShortcut`, which lets the
+store hand back a ready-made `KeyboardShortcut` via
+`keyboardShortcut(for:)` without conversion.
+
+Resilience rules:
+
+- **Unknown action IDs are silently dropped on decode.** A blob written
+  by a newer build that introduces a new action will round-trip cleanly
+  through an older build. See `loadFromDefaults(userDefaults:)` in
+  [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsStore.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsStore.swift).
+- **Missing actions fall back to `defaultBinding`.** The loader first
+  fills the dictionary with every action's default, then overlays the
+  decoded blob. An older blob lacking a newer action ends up with the
+  default for that action.
+- **Decode failures fall back to all-defaults.** A corrupt blob logs an
+  error and the user gets a clean default set; the store does not
+  refuse to start.
+
+Mutation paths, all of which call `save()` on each change:
+
+- `setBinding(_:for:)` — used by the recorder via the `ShortcutRow`
+  `bindingProxy`.
+- `resetToDefault(_:)` — per-row Reset.
+- `resetAllToDefaults()` — pane-level Reset All.
+
+Reads:
+
+- `binding(for:)` — returns the configured binding, or `defaultBinding`
+  if none is stored.
+- `keyboardShortcut(for:)` — same, converted to SwiftUI's
+  `KeyboardShortcut` for menu items.
+
+---
+
+## 5. The recorder UI
+
+The Settings → Shortcuts pane is a stack of one `ShortcutRow` per
+action. Each row owns a `KeyboardShortcutRecorder`
+(`NSViewRepresentable`) that wraps a `RecorderView` (`NSView`).
+
+```
+ShortcutsSettingsView                  pane root + "Reset All" button
+└── Form
+    └── ForEach(ShortcutAction.allCases)
+        └── ShortcutRow                 displayName + recorder + per-row Reset
+            ├── Text(displayName)
+            ├── KeyboardShortcutRecorder
+            │   └── RecorderView        the NSView that captures keys
+            ├── Button("Reset")
+            └── warning row             (collision OR reserved)
+```
+
+Files:
+
+- [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsSettingsView.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsSettingsView.swift)
+- [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutRow.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutRow.swift)
+- [`../BattyKit/Sources/BattyKit/Shortcuts/KeyboardShortcutRecorder.swift`](../BattyKit/Sources/BattyKit/Shortcuts/KeyboardShortcutRecorder.swift)
+- [`../BattyKit/Sources/BattyKit/Shortcuts/RecorderView.swift`](../BattyKit/Sources/BattyKit/Shortcuts/RecorderView.swift)
+
+### Why `RecorderView` overrides `performKeyEquivalent`
+
+AppKit dispatches modifier-bearing keystrokes as *key equivalents*
+before they reach `keyDown:`. The main menu sees those key equivalents
+first — meaning a user trying to record `Cmd-T` would just fire "New
+Tab" instead. The recorder's `performKeyEquivalent` override swallows
+the event while it's focused and recording:
+
+```swift
+override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    guard isRecording, window?.firstResponder === self else {
+        return super.performKeyEquivalent(with: event)
+    }
+    keyDown(with: event)
+    return true
+}
+```
+
+In practice the NSEvent monitor in `BattyShortcuts.handle(_:)` is what
+catches these events first (it runs before menu dispatch), and its
+"recorder is first responder" early-return passes them through to the
+recorder. `performKeyEquivalent` is a belt-and-suspenders override for
+the edge case where the monitor isn't in the loop (e.g. another window
+without the monitor installed, future tests).
+
+### What the recorder accepts and rejects
+
+`RecorderView.makeBinding(from:modifiers:)`:
+
+- **Special keys** (arrows, return, tab, space, delete, escape — minus
+  escape, which cancels recording) — accepted with or without
+  modifiers. The mapping from `event.keyCode` to
+  `ShortcutBinding.SpecialKey` lives in
+  `RecorderView.specialKey(forKeyCode:)`.
+- **Character keys** — require at least one non-shift modifier.
+  Plain `t`, Shift+`t`, etc. are rejected with `NSSound.beep()` to
+  prevent shadowing text input.
+- The recorded character is lowercased so `Cmd-T` and `Cmd-Shift-T`
+  store as `key = "t"` with different modifier bitfields.
+
+`Esc` (`kVK_Escape`) cancels recording by resigning first responder; it
+does not modify the binding.
+
+### Inline warnings
+
+`ShortcutRow` surfaces two kinds of warning rows beneath the recorder:
+
+- **Collision warning** — `store.collisions(_:excluding:)` finds other
+  actions sharing the same binding. The first one is named in
+  `"Used by <other action>"`. Collisions still save — the user picks the
+  winner by next-touch.
+- **Reserved warning** — `ShortcutsStore.isReserved(_:)` matches against
+  `ShortcutsStore.reservedShortcuts`. Reserved combos still save (per
+  the v1 trade-off described in Section 6).
+
+---
+
+## 6. Reserved combos
+
+Defined in `ShortcutsStore.reservedShortcuts`:
+
+| Combo | `ShortcutBinding` |
+|---|---|
+| `Cmd-Q` | `key="q"`, modifiers=`[.command]` |
+| `Cmd-H` | `key="h"`, modifiers=`[.command]` |
+| `Cmd-M` | `key="m"`, modifiers=`[.command]` |
+| `Cmd-Tab` | `key="tab"` (`SpecialKey.tab.rawValue`), modifiers=`[.command]` |
+| `Cmd-,` | `key=","`, modifiers=`[.command]` |
+
+The v1 behavior is **warn but allow**. The Settings UI surfaces a
+"Reserved by macOS — choose a different shortcut." row beneath the
+recorder, but the binding is still written to `UserDefaults`. Rationale
+(per `#0070`): refusing a binding outright requires either a modal
+explanation or a silent revert, both of which felt worse than a visible
+warning the user can act on with Reset.
+
+In practice the reserved combos won't fire Batty's action anyway —
+`Cmd-Q`, `Cmd-H`, `Cmd-M`, and `Cmd-Tab` are intercepted by the system
+before the NSEvent local monitor sees them, and `Cmd-,` is consumed by
+SwiftUI's `Settings` scene before the monitor runs.
+
+---
+
+## 7. Where to look in the code
+
+| File | Role |
+|---|---|
+| [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutBinding.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutBinding.swift) | Codable binding shape, `SpecialKey` enum, display string, `KeyboardShortcut` accessor |
+| [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutAction.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutAction.swift) | Catalog of customizable actions; `displayName` and `defaultBinding` |
+| [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsStore.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsStore.swift) | Singleton, `UserDefaults` persistence, collision detection, reserved set |
+| [`../BattyKit/Sources/BattyKit/Shortcuts/KeyboardShortcutRecorder.swift`](../BattyKit/Sources/BattyKit/Shortcuts/KeyboardShortcutRecorder.swift) | `NSViewRepresentable` bridge for the recorder |
+| [`../BattyKit/Sources/BattyKit/Shortcuts/RecorderView.swift`](../BattyKit/Sources/BattyKit/Shortcuts/RecorderView.swift) | `NSView` with `keyDown` / `performKeyEquivalent` capture |
+| [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutRow.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutRow.swift) | One `Form` row, with collision and reserved warnings |
+| [`../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsSettingsView.swift`](../BattyKit/Sources/BattyKit/Shortcuts/ShortcutsSettingsView.swift) | Settings pane root + "Reset All to Defaults" |
+| [`../BattyKit/Sources/BattyKit/BattyShortcuts.swift`](../BattyKit/Sources/BattyKit/BattyShortcuts.swift) | NSEvent monitor handler + action dispatch |
+| [`../Batty/BattyApp.swift`](../Batty/BattyApp.swift) | `BattyAppDelegate.applicationDidFinishLaunching` installs the monitor |
+| [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) | `keybind = clear` and `cmd+c=copy_to_clipboard` in `applyShellAndAppearancePreferences(to:)` |
+
+---
+
+## 8. Related issues and history
+
+- `#0062` — Menu shortcuts didn't fire when the terminal had focus.
+  Established that SwiftUI `@FocusedValue` can't bridge AppKit first
+  responder, and motivated the NSEvent local monitor that's now the
+  load-bearing dispatch path.
+- `#0063` — `Cmd-N` rebound from `Cmd-Option-N` for "New Session" to
+  match the macOS-wide convention.
+- `#0070` — The customization Settings pane, ported from the Issues
+  app. Source of the recorder, `ShortcutsStore`, the reserved-combo
+  warn-but-save behavior, and the JSON-in-`UserDefaults` persistence
+  format.
+
+---
+
+## Quick answer key
+
+- *Where do I change `Cmd-W`?* — Settings → Shortcuts → Close Tab.
+  Click the recorder, press the new combo. Esc to cancel.
+- *Why doesn't `Cmd-W` close the window like in other apps?* — Because
+  the NSEvent local monitor matches `Cmd-W` against the **Close Tab**
+  action first and consumes the event. `NSWindow.performClose:` never
+  sees it. If you remap `Close Tab` away from `Cmd-W`, `Cmd-W` will
+  fall through to NSWindow's default behavior.
+- *Why doesn't my libghostty `cmd+d=new_split` keybinding work?* —
+  Batty issues `keybind = clear` to libghostty in `TabRuntime`, then
+  re-adds only `cmd+c=copy_to_clipboard`. Customizations belong in
+  Settings → Shortcuts, not in a `.ghostty` config.
+- *Where is the actual key list stored?* — JSON under the
+  `co.sstools.Batty.keyboardShortcuts` key in `UserDefaults.standard`,
+  keyed by `ShortcutAction.rawValue`.
+
+---
+
+*Document version: 1 — 2026-05-12.*
