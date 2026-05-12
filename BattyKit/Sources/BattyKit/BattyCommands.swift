@@ -163,7 +163,7 @@ public struct BattyCommands: Commands {
 
             Button("Close Tab") {
                 logger.info("Cmd-W action fired (Tab → Close Tab)")
-                store.closeFocusedTab()
+                store.requestCloseFocusedTab()
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
             .disabled(store.selectedSession == nil)

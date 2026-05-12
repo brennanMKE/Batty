@@ -224,6 +224,88 @@ public final class AppStateStore {
         closeTab(id: session.focusedPane.activeTabID)
     }
 
+    /// Pending tab-close that's awaiting user confirmation. The view layer
+    /// observes this and presents a `.confirmationDialog`. Cleared on
+    /// confirm or cancel.
+    public var pendingCloseRequest: PendingCloseRequest?
+
+    /// Requests a tab close that runs through the busy check. If the tab's
+    /// terminal reports `needsConfirmClose`, sets `pendingCloseRequest`
+    /// so the view can prompt; otherwise commits the close directly.
+    public func requestCloseTab(id tabID: UUID) {
+        guard let location = locate(tabID: tabID) else { return }
+        if location.tab.terminal.needsConfirmClose {
+            let label = Self.runningLabel(for: location.tab)
+            pendingCloseRequest = PendingCloseRequest(
+                kind: .singleTab(tabID: tabID),
+                message: "\(label) is still running. Closing this tab will end it."
+            )
+        } else {
+            closeTab(id: tabID)
+        }
+    }
+
+    /// Convenience for the focused tab.
+    public func requestCloseFocusedTab() {
+        guard let session = selectedSession else { return }
+        requestCloseTab(id: session.focusedPane.activeTabID)
+    }
+
+    /// Requests "Close Other Tabs in this pane, keeping `keepingTabID`."
+    /// If any of the tabs to close are busy, prompts; otherwise commits
+    /// directly.
+    public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {
+        guard let pane = sessions
+            .flatMap({ $0.tree.allPanes })
+            .first(where: { $0.id == paneID }) else { return }
+        let victims = pane.tabs.filter { $0.id != keepingTabID }
+        let busy = victims.filter { $0.terminal.needsConfirmClose }
+        if busy.isEmpty {
+            pane.closeOtherTabs(keeping: keepingTabID)
+            return
+        }
+        let busyCount = busy.count
+        let totalVictims = victims.count
+        let message: String
+        if busyCount == totalVictims {
+            message = "\(busyCount) of these tabs are running processes. Closing them will end those processes."
+        } else {
+            message = "\(busyCount) of the \(totalVictims) tabs about to close are running processes."
+        }
+        pendingCloseRequest = PendingCloseRequest(
+            kind: .otherTabs(paneID: paneID, keepingTabID: keepingTabID),
+            message: message
+        )
+    }
+
+    /// Confirms the pending request — actually performs the close. Caller
+    /// then clears `pendingCloseRequest` (or `cancelPendingClose` does it).
+    public func confirmPendingClose() {
+        guard let request = pendingCloseRequest else { return }
+        pendingCloseRequest = nil
+        switch request.kind {
+        case .singleTab(let tabID):
+            closeTab(id: tabID)
+        case .otherTabs(let paneID, let keepingTabID):
+            guard let pane = sessions
+                .flatMap({ $0.tree.allPanes })
+                .first(where: { $0.id == paneID }) else { return }
+            pane.closeOtherTabs(keeping: keepingTabID)
+        }
+    }
+
+    public func cancelPendingClose() {
+        pendingCloseRequest = nil
+    }
+
+    private static func runningLabel(for tab: TabRuntime) -> String {
+        let title = tab.terminal.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.isEmpty || title.contains(":") || title.contains("@") {
+            return "A process"
+        }
+        return "`\(title)`"
+    }
+
     /// Marks the pane with `id` as the focused pane in its owning session.
     /// No-op if the pane id doesn't belong to any session in the store.
     /// Does not change the selected session — cross-session focus moves

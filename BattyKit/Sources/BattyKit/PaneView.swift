@@ -68,7 +68,7 @@ public struct PaneView: View {
                     hasUnseen: tab.unseenBellCount > 0,
                     onClose: {
                         if let appStore {
-                            appStore.closeTab(id: tab.id)
+                            appStore.requestCloseTab(id: tab.id)
                         } else {
                             pane.removeTab(id: tab.id)
                         }
@@ -219,13 +219,17 @@ public struct PaneView: View {
 
         Button("Close Tab") {
             if let appStore {
-                appStore.closeTab(id: tab.id)
+                appStore.requestCloseTab(id: tab.id)
             } else {
                 pane.removeTab(id: tab.id)
             }
         }
         Button("Close Other Tabs") {
-            pane.closeOtherTabs(keeping: tab.id)
+            if let appStore {
+                appStore.requestCloseOtherTabs(paneID: pane.id, keepingTabID: tab.id)
+            } else {
+                pane.closeOtherTabs(keeping: tab.id)
+            }
         }
         .disabled(pane.tabs.count < 2)
     }

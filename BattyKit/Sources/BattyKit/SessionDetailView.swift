@@ -115,6 +115,30 @@ public struct SessionDetailView: View {
                 onCancel: { pendingPaste = nil }
             )
         }
+        .confirmationDialog(
+            store.pendingCloseRequest?.title ?? "",
+            isPresented: pendingCloseBinding,
+            titleVisibility: .visible,
+            presenting: store.pendingCloseRequest
+        ) { _ in
+            Button("Close", role: .destructive) {
+                store.confirmPendingClose()
+            }
+            Button("Cancel", role: .cancel) {
+                store.cancelPendingClose()
+            }
+        } message: { request in
+            Text(request.message)
+        }
+    }
+
+    private var pendingCloseBinding: Binding<Bool> {
+        Binding(
+            get: { store.pendingCloseRequest != nil },
+            set: { newValue in
+                if !newValue { store.cancelPendingClose() }
+            }
+        )
     }
 
     private var navigationTitle: String {
