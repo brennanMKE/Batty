@@ -39,12 +39,19 @@ public final class PaneRuntime: Identifiable {
     /// Removes a tab by id. Allows the pane to become empty — callers
     /// must handle the empty case (typically by removing the pane).
     /// Use ``AppStateStore/closeTab(id:)`` for the full cascade.
+    ///
+    /// Also releases the tab's `AppTerminalView` from the
+    /// ``TerminalHostStore``. This is the one place in the app where the
+    /// long-lived terminal view is removed from the host — `closeTab` is
+    /// the only legitimate trigger for tearing down a libghostty surface
+    /// (which kills the PTY).
     public func removeTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs.remove(at: index)
         if !tabs.isEmpty, activeTabID == id {
             activeTabID = tabs[max(0, index - 1)].id
         }
+        TerminalHostStore.shared.releaseTerminalView(forTabID: id)
     }
 
     public func closeActiveTab() {
@@ -55,8 +62,12 @@ public final class PaneRuntime: Identifiable {
     /// chip context menu's "Close Other Tabs". The kept tab becomes active.
     public func closeOtherTabs(keeping id: UUID) {
         guard let kept = tabs.first(where: { $0.id == id }) else { return }
+        let removedIDs = tabs.filter { $0.id != id }.map(\.id)
         tabs = [kept]
         activeTabID = kept.id
+        for removedID in removedIDs {
+            TerminalHostStore.shared.releaseTerminalView(forTabID: removedID)
+        }
     }
 
     public func selectTab(at index: Int) {

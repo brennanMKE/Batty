@@ -7,6 +7,7 @@ public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
     @Bindable public var tree: SplitTree
     @Environment(\.appStateStore) private var appStore
+    @Environment(\.isSelectedSession) private var isSessionSelected
     @State private var isDragHovering: Bool = false
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
@@ -80,8 +81,10 @@ public struct PaneView: View {
 
             ZStack {
                 ForEach(pane.tabs) { tab in
-                    StableTerminalSurfaceView(tab: tab)
-                        .opacity(tab.id == pane.activeTabID ? 1 : 0)
+                    TerminalPlaceholderView(
+                        tab: tab,
+                        isVisible: tab.id == pane.activeTabID && isSessionSelected
+                    )
                         .allowsHitTesting(tab.id == pane.activeTabID)
                         .onDrop(
                             of: [.fileURL],

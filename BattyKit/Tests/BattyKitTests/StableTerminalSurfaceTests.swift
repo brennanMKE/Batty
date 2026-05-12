@@ -6,44 +6,49 @@ import GhosttyTerminal
 import Testing
 @testable import BattyKit
 
+/// Model-level invariants of the single-host architecture. The visual
+/// behaviour (terminal stays painted across navigation) is not testable
+/// here — that lives in AppKit's Metal-layer pipeline and SwiftUI's
+/// representable lifecycle. These tests instead cover the contract
+/// `TerminalHostStore` and `PaneRuntime` honour:
+///   * `terminalView(for:)` is idempotent.
+///   * Closing a non-active sibling tab leaves the active tab's terminal
+///     view alone.
+///   * Toggling the active tab does not nil out either tab's terminal view.
+///   * Closing a tab releases its terminal view from the host.
 @MainActor
 struct StableTerminalSurfaceTests {
 
     @Test func tabStartsWithoutAttachedNSView() {
+        let store = TerminalHostStore()
         let tab = TabRuntime()
         #expect(tab.terminalNSView == nil)
+        #expect(store.hasTerminalView(forTabID: tab.id) == false)
     }
 
-    @Test func attachingNSViewSurvivesContainerSwap() {
+    @Test func terminalViewForTabIsIdempotent() {
+        let store = TerminalHostStore()
         let tab = TabRuntime()
-        let terminal = AppTerminalView(frame: .zero)
-        terminal.delegate = tab.terminal
-        terminal.controller = tab.terminal.controller
-        tab.terminalNSView = terminal
 
-        let firstContainer = NSView(frame: .zero)
-        firstContainer.addSubview(terminal)
-        #expect(terminal.superview === firstContainer)
-        #expect(tab.terminalNSView === terminal)
+        let first = store.terminalView(for: tab)
+        let second = store.terminalView(for: tab)
 
-        terminal.removeFromSuperview()
-        let secondContainer = NSView(frame: .zero)
-        secondContainer.addSubview(terminal)
-        #expect(terminal.superview === secondContainer)
-        #expect(tab.terminalNSView === terminal)
+        #expect(first === second)
+        #expect(tab.terminalNSView === first)
+        #expect(first.superview === store.hostView)
+        #expect(store.hasTerminalView(forTabID: tab.id))
     }
 
-    @Test func tabRetainsNSViewWhileAlive() {
+    @Test func releasingTerminalViewRemovesItFromTheHost() {
+        let store = TerminalHostStore()
         let tab = TabRuntime()
-        weak var weakTerminal: AppTerminalView?
-        autoreleasepool {
-            let terminal = AppTerminalView(frame: .zero)
-            terminal.delegate = tab.terminal
-            tab.terminalNSView = terminal
-            weakTerminal = terminal
-        }
-        #expect(weakTerminal != nil)
-        #expect(weakTerminal === tab.terminalNSView)
+        let view = store.terminalView(for: tab)
+        #expect(view.superview === store.hostView)
+
+        store.releaseTerminalView(forTabID: tab.id)
+
+        #expect(view.superview == nil)
+        #expect(store.hasTerminalView(forTabID: tab.id) == false)
     }
 
     /// Closing a non-active sibling tab must leave the active tab's
@@ -91,5 +96,50 @@ struct StableTerminalSurfaceTests {
         pane.activeTabID = firstTab.id
         #expect(firstTab.terminalNSView === firstNSView)
         #expect(secondTab.terminalNSView === secondNSView)
+    }
+
+    /// Re-asserting the same selection (selected session, focused pane,
+    /// active tab) must not trigger any new terminal-view creation.
+    /// This is the core architectural invariant: navigation is pure
+    /// data mutation, never a "rebuild a new NSView" path.
+    @Test func reassertingSelectionDoesNotCreateNewTerminalViews() {
+        let store = TerminalHostStore()
+        let tab = TabRuntime()
+
+        // Touch once to create the view, then re-touch many times.
+        let original = store.terminalView(for: tab)
+        for _ in 0..<10 {
+            let again = store.terminalView(for: tab)
+            #expect(again === original)
+        }
+        #expect(tab.terminalNSView === original)
+    }
+
+    @Test func updatePlacementsTogglesVisibilityAndAdjustsFrame() {
+        let store = TerminalHostStore()
+        let tab = TabRuntime()
+        let view = store.terminalView(for: tab)
+        #expect(view.isHidden)
+
+        store.updatePlacements([
+            tab.id: TerminalHostStore.Placement(
+                frame: NSRect(x: 10, y: 20, width: 200, height: 100),
+                isVisible: true
+            )
+        ])
+        #expect(!view.isHidden)
+        #expect(view.frame == NSRect(x: 10, y: 20, width: 200, height: 100))
+
+        store.updatePlacements([
+            tab.id: TerminalHostStore.Placement(
+                frame: NSRect(x: 10, y: 20, width: 200, height: 100),
+                isVisible: false
+            )
+        ])
+        #expect(view.isHidden)
+
+        // A tab missing entirely from the placement map is also hidden.
+        store.updatePlacements([:])
+        #expect(view.isHidden)
     }
 }

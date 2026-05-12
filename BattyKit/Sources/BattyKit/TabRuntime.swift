@@ -19,10 +19,12 @@ public final class TabRuntime: Identifiable {
     public internal(set) var runningCommandDisplayName: String?
 
     /// Long-lived libghostty NSView whose lifetime is bound to this tab,
-    /// not to any SwiftUI representable. `StableTerminalSurfaceView`
-    /// re-parents this view into fresh containers as SwiftUI rebuilds the
-    /// view tree, preserving the underlying PTY and surface across tab
-    /// switches, pane focus changes, and sidebar selection.
+    /// not to any SwiftUI representable. The view is owned by
+    /// ``TerminalHostStore`` (which adds it as a subview of the persistent
+    /// per-window ``TerminalHostView`` on first appearance and removes it
+    /// on tab close); this property is the canonical back-reference for
+    /// tests and any tab-scoped consumer that needs the view directly.
+    /// Treat it as read-mostly — the host store is the authority.
     @ObservationIgnored
     public internal(set) var terminalNSView: AppTerminalView?
 

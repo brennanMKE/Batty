@@ -65,6 +65,9 @@ public final class AppStateStore {
         let session = sessions[index]
         let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
         cleanUpBellState(forTabIDs: tabIDsToClear)
+        for tabID in tabIDsToClear {
+            TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
+        }
         sessions.remove(at: index)
         if selectedSessionID == id {
             let newIndex = max(0, index - 1)

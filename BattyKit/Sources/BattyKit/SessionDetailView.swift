@@ -13,12 +13,19 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         ZStack {
+            // Install the long-lived terminal host into the window's
+            // contentView on first appearance. Zero-sized; purely a hook.
+            TerminalHostInstaller()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+
             ForEach(store.sessions) { session in
                 SplitContainerView(tree: session.tree)
                     .coordinateSpace(name: "session")
                     .onPreferenceChange(PaneFramePreferenceKey.self) { newFrames in
                         session.paneFrames.frames = newFrames
                     }
+                    .environment(\.isSelectedSession, session.id == store.selectedSessionID)
                     .opacity(session.id == store.selectedSessionID ? 1 : 0)
                     .allowsHitTesting(session.id == store.selectedSessionID)
             }
@@ -29,6 +36,9 @@ public struct SessionDetailView: View {
                     description: Text("Pick a session in the sidebar or create one with the + button.")
                 )
             }
+        }
+        .onPreferenceChange(TerminalPlacementPreferenceKey.self) { newPlacements in
+            TerminalHostStore.shared.updatePlacements(newPlacements)
         }
         .frame(minWidth: 600, minHeight: 400)
         .navigationTitle(navigationTitle)
