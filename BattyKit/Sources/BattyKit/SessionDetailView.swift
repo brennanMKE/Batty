@@ -58,6 +58,7 @@ public struct SessionDetailView: View {
                     Label("Split Horizontally", systemImage: "rectangle.split.2x1")
                 }
                 .help("Split Horizontally (\u{2318}D)")
+                .accessibilityIdentifier("toolbar.split-horizontal")
                 .disabled(store.selectedSession == nil)
 
                 Button {
@@ -67,6 +68,7 @@ public struct SessionDetailView: View {
                     Label("Split Vertically", systemImage: "rectangle.split.1x2")
                 }
                 .help("Split Vertically (\u{2318}\u{21E7}D)")
+                .accessibilityIdentifier("toolbar.split-vertical")
                 .disabled(store.selectedSession == nil)
 
                 Button {

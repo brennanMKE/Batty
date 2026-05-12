@@ -75,9 +75,11 @@ public struct PaneView: View {
                     }
                 )
                 .frame(width: chipMaxWidth)
+                .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
                 .contextMenu { tabContextMenu(for: tab) }
             }
             .clipped()
+            .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
 
             ZStack {
                 ForEach(pane.tabs) { tab in
@@ -85,6 +87,7 @@ public struct PaneView: View {
                         tab: tab,
                         isVisible: tab.id == pane.activeTabID && isSessionSelected
                     )
+                        .accessibilityIdentifier("pane-terminal.\(pane.id.uuidString)")
                         .allowsHitTesting(tab.id == pane.activeTabID)
                         .onDrop(
                             of: [.fileURL],

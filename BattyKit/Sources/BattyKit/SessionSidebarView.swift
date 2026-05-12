@@ -16,6 +16,7 @@ public struct SessionSidebarView: View {
             ForEach(store.sessions) { session in
                 SessionRow(session: session)
                     .tag(session.id as UUID?)
+                    .accessibilityIdentifier("session-row.\(session.title)")
                     .contextMenu {
                         Button("Rename") {
                             renameDraft = session.title
@@ -39,6 +40,7 @@ public struct SessionSidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .accessibilityIdentifier("session-sidebar")
         .navigationTitle("Batty")
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
