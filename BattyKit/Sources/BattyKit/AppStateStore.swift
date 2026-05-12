@@ -4,6 +4,10 @@ import Foundation
 import Observation
 import OSLog
 
+extension Notification.Name {
+    public static let battyAllSessionsClosed = Notification.Name("co.sstools.Batty.allSessionsClosed")
+}
+
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "AppStateStore")
 
 @Observable
@@ -63,7 +67,7 @@ public final class AppStateStore {
             selectedSessionID = sessions.first?.id
         }
         if sessions.isEmpty {
-            addSession()
+            NotificationCenter.default.post(name: .battyAllSessionsClosed, object: nil)
         }
     }
 

@@ -47,15 +47,25 @@ struct CloseTabCascadeTests {
         #expect(store.sessions.first?.id == firstSession.id)
     }
 
-    @Test func closingTheLastTabOfTheLastSessionRestoresADefaultSession() {
+    @Test func closingTheLastTabOfTheLastSessionEmptiesTheStoreAndPostsQuit() {
         let store = AppStateStore()
         let session = store.sessions[0]
         let onlyTabID = session.tree.allPanes[0].tabs[0].id
 
+        nonisolated(unsafe) var received = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .battyAllSessionsClosed,
+            object: nil,
+            queue: nil
+        ) { _ in
+            received = true
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
         store.closeTab(id: onlyTabID)
 
-        #expect(store.sessions.count == 1)
-        #expect(store.sessions[0].id != session.id)
+        #expect(store.sessions.isEmpty)
+        #expect(received)
     }
 
     @Test func closeOtherTabsKeepsTheTargetActive() {
