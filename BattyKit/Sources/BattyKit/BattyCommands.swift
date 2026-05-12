@@ -11,6 +11,7 @@ public struct BattyCommands: Commands {
     @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
 
     private var store: AppStateStore { WorkspaceManager.shared.store }
+    private var shortcuts: ShortcutsStore { ShortcutsStore.shared }
 
     public init() {}
 
@@ -20,7 +21,7 @@ public struct BattyCommands: Commands {
                 logger.info("Cmd-N action fired (File → New Session)")
                 store.addSession()
             }
-            .keyboardShortcut("n", modifiers: .command)
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
         }
 
         CommandGroup(after: .sidebar) {
@@ -29,7 +30,7 @@ public struct BattyCommands: Commands {
                     sidebarHidden.toggle()
                 }
             }
-            .keyboardShortcut("s", modifiers: [.command, .control])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleSidebar))
         }
 
         CommandMenu("Session") {
@@ -99,7 +100,7 @@ public struct BattyCommands: Commands {
             Button("Toggle Bell Feed") {
                 NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
             }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleBellFeed))
 
             Button("Mark All Bells Seen") {
                 store.markAllBellsSeen()
@@ -112,14 +113,14 @@ public struct BattyCommands: Commands {
                 guard let tree = store.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
             }
-            .keyboardShortcut("d", modifiers: .command)
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontal))
             .disabled(store.selectedSession == nil)
 
             Button("Split Vertically") {
                 guard let tree = store.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
             }
-            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVertical))
             .disabled(store.selectedSession == nil)
 
             Divider()
@@ -127,25 +128,25 @@ public struct BattyCommands: Commands {
             Button("Focus Pane Left") {
                 store.selectedSession?.focusPane(adjacent: .left)
             }
-            .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneLeft))
             .disabled(!canFocusAdjacentPane)
 
             Button("Focus Pane Right") {
                 store.selectedSession?.focusPane(adjacent: .right)
             }
-            .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneRight))
             .disabled(!canFocusAdjacentPane)
 
             Button("Focus Pane Above") {
                 store.selectedSession?.focusPane(adjacent: .up)
             }
-            .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneUp))
             .disabled(!canFocusAdjacentPane)
 
             Button("Focus Pane Below") {
                 store.selectedSession?.focusPane(adjacent: .down)
             }
-            .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneDown))
             .disabled(!canFocusAdjacentPane)
         }
 
@@ -153,14 +154,14 @@ public struct BattyCommands: Commands {
             Button("New Tab") {
                 store.selectedSession?.focusedPane.addTab()
             }
-            .keyboardShortcut("t", modifiers: .command)
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .newTab))
             .disabled(focusedPane == nil)
 
             Button("Close Tab") {
                 logger.info("Cmd-W action fired (Tab → Close Tab)")
                 store.closeFocusedTab()
             }
-            .keyboardShortcut("w", modifiers: .command)
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
             .disabled(store.selectedSession == nil)
 
             Divider()
@@ -168,13 +169,13 @@ public struct BattyCommands: Commands {
             Button("Show Previous Tab") {
                 store.selectedSession?.focusedPane.selectPreviousTab()
             }
-            .keyboardShortcut("[", modifiers: [.command, .shift])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .previousTab))
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
 
             Button("Show Next Tab") {
                 store.selectedSession?.focusedPane.selectNextTab()
             }
-            .keyboardShortcut("]", modifiers: [.command, .shift])
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .nextTab))
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
 
             Divider()

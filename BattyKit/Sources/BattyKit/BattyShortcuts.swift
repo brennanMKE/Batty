@@ -3,6 +3,7 @@
 import AppKit
 import Foundation
 import OSLog
+import SwiftUI
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BattyShortcuts")
 
@@ -10,6 +11,9 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// from `BattyAppDelegate` so Cmd-key shortcuts fire regardless of which view
 /// holds first responder. Bypasses SwiftUI Commands + NSWindow's default
 /// `performClose:` etc., which compete unpredictably with the terminal NSView.
+///
+/// Customizable bindings come from `ShortcutsStore.shared`. Fixed combos
+/// (`Cmd-1..9`, `Cmd-Option-1..9`) are handled separately at the bottom.
 @MainActor
 public enum BattyShortcuts {
     /// Returns true when the event was consumed.
@@ -19,66 +23,16 @@ public enum BattyShortcuts {
 
         let store = WorkspaceManager.shared.store
 
+        if let candidate = makeCandidate(from: event, mods: mods) {
+            let shortcuts = ShortcutsStore.shared
+            for action in ShortcutAction.allCases where shortcuts.binding(for: action) == candidate {
+                run(action, store: store)
+                return true
+            }
+        }
+
+        // Positional bindings — intentionally NOT customizable in v1.
         switch (mods, chars) {
-        case ([.command], "n"):
-            logger.info("Cmd-N -> addSession")
-            store.addSession()
-            return true
-
-        case ([.command], "w"):
-            logger.info("Cmd-W -> closeFocusedTab")
-            store.closeFocusedTab()
-            return true
-
-        case ([.command], "t"):
-            logger.info("Cmd-T -> addTab")
-            store.selectedSession?.focusedPane.addTab(
-                inheritingCWDFrom: store.selectedSession?.focusedPane.activeTab
-            )
-            return true
-
-        case ([.command], "d"):
-            logger.info("Cmd-D -> split horizontal")
-            if let tree = store.selectedSession?.tree {
-                tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
-            }
-            return true
-
-        case ([.command, .shift], "d"), ([.command, .shift], "D"):
-            logger.info("Cmd-Shift-D -> split vertical")
-            if let tree = store.selectedSession?.tree {
-                tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
-            }
-            return true
-
-        case ([.command, .option], _) where event.keyCode == 123:  // left arrow
-            store.selectedSession?.focusPane(adjacent: .left)
-            return true
-
-        case ([.command, .option], _) where event.keyCode == 124:  // right arrow
-            store.selectedSession?.focusPane(adjacent: .right)
-            return true
-
-        case ([.command, .option], _) where event.keyCode == 126:  // up arrow
-            store.selectedSession?.focusPane(adjacent: .up)
-            return true
-
-        case ([.command, .option], _) where event.keyCode == 125:  // down arrow
-            store.selectedSession?.focusPane(adjacent: .down)
-            return true
-
-        case ([.command, .shift], "n"), ([.command, .shift], "N"):
-            NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
-            return true
-
-        case ([.command, .shift], "["), ([.command, .shift], "{"):
-            store.selectedSession?.focusedPane.selectPreviousTab()
-            return true
-
-        case ([.command, .shift], "]"), ([.command, .shift], "}"):
-            store.selectedSession?.focusedPane.selectNextTab()
-            return true
-
         case ([.command], let digit) where digit.count == 1 && digit.first?.isWholeNumber == true:
             if let index = Int(digit), (1...9).contains(index) {
                 store.selectedSession?.focusedPane.selectTab(at: index - 1)
@@ -95,6 +49,63 @@ public enum BattyShortcuts {
 
         default:
             return false
+        }
+    }
+
+    private static func makeCandidate(from event: NSEvent, mods: NSEvent.ModifierFlags) -> ShortcutBinding? {
+        var swiftUIMods: SwiftUI.EventModifiers = []
+        if mods.contains(.command)  { swiftUIMods.insert(.command) }
+        if mods.contains(.option)   { swiftUIMods.insert(.option) }
+        if mods.contains(.shift)    { swiftUIMods.insert(.shift) }
+        if mods.contains(.control)  { swiftUIMods.insert(.control) }
+
+        if let special = RecorderView.specialKey(forKeyCode: Int(event.keyCode)) {
+            return ShortcutBinding(key: special.rawValue, modifiers: swiftUIMods.rawValue)
+        }
+        guard let first = event.charactersIgnoringModifiers?.first else {
+            return nil
+        }
+        let key = String(first).lowercased()
+        return ShortcutBinding(key: key, modifiers: swiftUIMods.rawValue)
+    }
+
+    private static func run(_ action: ShortcutAction, store: AppStateStore) {
+        logger.info("dispatching action \(action.rawValue, privacy: .public)")
+        switch action {
+        case .newSession:
+            store.addSession()
+        case .closeTab:
+            store.closeFocusedTab()
+        case .newTab:
+            store.selectedSession?.focusedPane.addTab(
+                inheritingCWDFrom: store.selectedSession?.focusedPane.activeTab
+            )
+        case .splitHorizontal:
+            if let tree = store.selectedSession?.tree {
+                tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
+            }
+        case .splitVertical:
+            if let tree = store.selectedSession?.tree {
+                tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
+            }
+        case .focusPaneLeft:
+            store.selectedSession?.focusPane(adjacent: .left)
+        case .focusPaneRight:
+            store.selectedSession?.focusPane(adjacent: .right)
+        case .focusPaneUp:
+            store.selectedSession?.focusPane(adjacent: .up)
+        case .focusPaneDown:
+            store.selectedSession?.focusPane(adjacent: .down)
+        case .previousTab:
+            store.selectedSession?.focusedPane.selectPreviousTab()
+        case .nextTab:
+            store.selectedSession?.focusedPane.selectNextTab()
+        case .toggleSidebar:
+            let defaults = UserDefaults.standard
+            let current = defaults.bool(forKey: SidebarPreference.hiddenKey)
+            defaults.set(!current, forKey: SidebarPreference.hiddenKey)
+        case .toggleBellFeed:
+            NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
         }
     }
 }

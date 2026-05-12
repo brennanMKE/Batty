@@ -15,6 +15,9 @@ public struct SettingsView: View {
             AppearanceSettingsView(store: store)
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
 
+            ShortcutsSettingsView()
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+
             NotificationsSettingsView()
                 .tabItem { Label("Notifications", systemImage: "bell") }
         }
