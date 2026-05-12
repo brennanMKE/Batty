@@ -29,7 +29,8 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   `Lakr233/libghostty-spm`. Records Path C (fork the package) as the chosen
   unblock; relevant when re-evaluating the `brennanMKE/libghostty-spm`
   fork relationship.
-
-## Upcoming
-
-- `notifications.md` — bell capture pipeline, feed, system notifications (`#0079`).
+- [`notifications.md`](notifications.md) — bell capture pipeline, the
+  bell feed, system notifications, per-session mute, focus/auto-clear,
+  and tab-close cleanup. Read this before touching `BellFeedStore`,
+  `BellNotifier`, the bell routing in `AppStateStore`, or the
+  Settings → Notifications pane.
