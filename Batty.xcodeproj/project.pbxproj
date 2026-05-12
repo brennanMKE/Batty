@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		26AA00010000000000000001 /* BattyKit in Frameworks */ = {isa = PBXBuildFile; productRef = 26AA00010000000000000002 /* BattyKit */; };
+		26AA00020000000000000001 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 26AA00020000000000000002 /* Textual */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +59,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				26AA00010000000000000001 /* BattyKit in Frameworks */,
+				26AA00020000000000000001 /* Textual in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -129,6 +131,7 @@
 			name = Batty;
 			packageProductDependencies = (
 				26AA00010000000000000002 /* BattyKit */,
+				26AA00020000000000000002 /* Textual */,
 			);
 			productName = Batty;
 			productReference = 26D5431B2FAEC4AC00BA9AF8 /* Batty.app */;
@@ -214,6 +217,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				26D543572FAED3F400BA9AF8 /* XCLocalSwiftPackageReference "BattyKit" */,
+				26AA00030000000000000001 /* XCRemoteSwiftPackageReference "textual" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 26D5431C2FAEC4AC00BA9AF8 /* Products */;
@@ -592,10 +596,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		26AA00030000000000000001 /* XCRemoteSwiftPackageReference "textual" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/textual.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		26AA00010000000000000002 /* BattyKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BattyKit;
+		};
+		26AA00020000000000000002 /* Textual */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 26AA00030000000000000001 /* XCRemoteSwiftPackageReference "textual" */;
+			productName = Textual;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

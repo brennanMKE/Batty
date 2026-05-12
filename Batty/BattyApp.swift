@@ -17,6 +17,10 @@ struct BattyApp: App {
             BattyCommands()
         }
 
+        Window("Batty Help", id: "help") {
+            HelpView()
+        }
+
         Settings {
             SettingsView()
                 .environment(\.appStateStore, WorkspaceManager.shared.store)

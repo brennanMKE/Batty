@@ -108,6 +108,10 @@ public struct BattyCommands: Commands {
             .disabled(store.bellFeed.unseenCount == 0)
         }
 
+        CommandGroup(replacing: .help) {
+            BattyHelpMenuButton()
+        }
+
         CommandMenu("Pane") {
             Button("Split Horizontally") {
                 guard let tree = store.selectedSession?.tree else { return }
@@ -224,5 +228,16 @@ public struct BattyCommands: Commands {
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
         activeThemeName = theme.name
         store.applyThemeToAllSurfaces(theme)
+    }
+}
+
+private struct BattyHelpMenuButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Batty Help") {
+            openWindow(id: "help")
+        }
+        .keyboardShortcut("?", modifiers: .command)
     }
 }
