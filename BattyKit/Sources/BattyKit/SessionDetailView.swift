@@ -149,7 +149,7 @@ public struct SessionDetailView: View {
 
     private func focusSelectedSessionTerminal() {
         guard let session = store.selectedSession else { return }
-        let pane = session.focusedPane
-        TerminalSurfaceFocuser.focusWhenReady(terminal: pane.activeTab.terminal)
+        guard let activeTab = session.focusedPane.activeTab else { return }
+        TerminalSurfaceFocuser.focusWhenReady(terminal: activeTab.terminal)
     }
 }

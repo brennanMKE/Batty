@@ -10,7 +10,7 @@ struct SplitTreeCWDTests {
     @Test func splitInheritsFocusedPaneCWD() {
         let tree = SplitTree()
         let source = tree.focusedPane
-        source.activeTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        source.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
 
         let newPane = tree.splitFocusedPane(
             direction: .horizontal,
@@ -25,7 +25,7 @@ struct SplitTreeCWDTests {
 
     @Test func splitWithoutSourceHasNoCWD() {
         let tree = SplitTree()
-        tree.focusedPane.activeTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        tree.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
 
         let newPane = tree.splitFocusedPane(direction: .horizontal)
 
@@ -35,7 +35,7 @@ struct SplitTreeCWDTests {
     @Test func splitFallsBackToConfigurationWorkingDirectory() {
         let tree = SplitTree()
         let sourcePane = tree.focusedPane
-        sourcePane.activeTab.terminal.configuration.workingDirectory = "/tmp/fallback"
+        sourcePane.activeTab?.terminal.configuration.workingDirectory = "/tmp/fallback"
 
         let newPane = tree.splitFocusedPane(
             direction: .vertical,

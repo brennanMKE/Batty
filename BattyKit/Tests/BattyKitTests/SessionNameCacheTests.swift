@@ -199,7 +199,7 @@ struct SessionNameCacheTests {
         cache.record(path: "/Users/test/Developer/Batty", name: "Batty")
         let store = AppStateStore(nameCache: cache)
         let source = store.sessions[0]
-        source.focusedPane.activeTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
 
         let created = store.addSession()
 
@@ -212,7 +212,7 @@ struct SessionNameCacheTests {
         let cache = SessionNameCache(fileURL: url, debounce: .zero)
         let store = AppStateStore(nameCache: cache)
         let source = store.sessions[0]
-        source.focusedPane.activeTab.terminal.configuration.workingDirectory = "/Users/test/Unknown"
+        source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Unknown"
 
         let created = store.addSession()
 
@@ -226,7 +226,7 @@ struct SessionNameCacheTests {
         cache.record(path: "/Users/test/Developer/Batty", name: "Batty")
         let store = AppStateStore(nameCache: cache)
         let source = store.sessions[0]
-        source.focusedPane.activeTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
 
         let created = store.addSession(title: "Custom")
 

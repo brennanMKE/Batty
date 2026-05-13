@@ -79,8 +79,7 @@ public final class SplitTree {
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
         let newPane: PaneRuntime
-        if let source {
-            let sourceTab = source.activeTab
+        if let sourceTab = source?.activeTab {
             let cwd = sourceTab.terminal.workingDirectory
                 ?? sourceTab.terminal.configuration.workingDirectory
             newPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: cwd)])

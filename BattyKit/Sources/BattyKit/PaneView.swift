@@ -140,8 +140,8 @@ public struct PaneView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
-                    .opacity(pane.activeTab.isDragHovering ? 1 : 0)
-                    .animation(.easeOut(duration: 0.12), value: pane.activeTab.isDragHovering)
+                    .opacity((pane.activeTab?.isDragHovering ?? false) ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: pane.activeTab?.isDragHovering ?? false)
                     .allowsHitTesting(false)
             }
             .overlay {

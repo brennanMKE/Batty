@@ -23,8 +23,8 @@ public final class PaneRuntime: Identifiable {
         self.unseenBellCount = unseenBellCount
     }
 
-    public var activeTab: TabRuntime {
-        tabs.first { $0.id == activeTabID } ?? tabs[0]
+    public var activeTab: TabRuntime? {
+        tabs.first { $0.id == activeTabID } ?? tabs.first
     }
 
     @discardableResult
