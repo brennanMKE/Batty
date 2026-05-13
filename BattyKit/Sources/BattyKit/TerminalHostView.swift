@@ -44,26 +44,32 @@ final class TerminalHostView: NSView {
 
     /// The host itself is decorative — it never paints. Click-throughs
     /// land on the terminal subview underneath when one is positioned
-    /// at the click point. Iterate visible subviews top-down (last-added
-    /// is topmost) and delegate to `subview.hitTest(point)`. Each
-    /// subview's hitTest handles its own coord conversion and bounds
-    /// check; we just pick the topmost non-nil result. Returning nil
-    /// when no terminal sits at the point lets the click fall through
+    /// at the click point; clicks that miss every terminal fall through
     /// to whatever SwiftUI sibling is above us in the window's view
     /// chain.
     ///
-    /// Note: do NOT add a redundant `subview.bounds.contains(local)`
-    /// pre-check here. The host has `isFlipped == true` while
-    /// `AppTerminalView` keeps the default `false`, so manually
-    /// converting the point can disagree with NSView's internal
-    /// converted-point logic on cases like a vertical split's bottom
-    /// pane (see #0090).
+    /// Delegating to `super.hitTest` is intentional — it handles the
+    /// coordinate-space conversion from `point` (which arrives in the
+    /// host's superview's coords) into the host's own coords (the host
+    /// is `isFlipped`; the SwiftUI parent typically isn't), then descends
+    /// into subviews using each subview's `frame` stored in host coords.
+    ///
+    /// The prior implementation iterated `subviews.reversed()` and called
+    /// `subview.hitTest(point)` directly without converting the
+    /// coordinate space, which produced a perfectly-symmetric top↔bottom
+    /// inversion on vertical splits (#0090): a click at the visual
+    /// bottom of the host arrived with `y` measured from the SwiftUI
+    /// parent's top, but `subview.hitTest` interpreted it against
+    /// subview frames stored in the host's flipped space, so the click
+    /// at visual y=590 was tested against subviews at host-local y=590
+    /// (= the bottom subview's frame), but the input y had been measured
+    /// from the OTHER end, etc. The default impl gets this right.
+    ///
+    /// The only customization vs default: when no subview matches but
+    /// the point IS inside our bounds, the default returns `self`,
+    /// blocking fall-through to SwiftUI siblings. Return `nil` instead.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        for subview in subviews.reversed() where !subview.isHidden {
-            if let target = subview.hitTest(point) {
-                return target
-            }
-        }
-        return nil
+        let result = super.hitTest(point)
+        return result === self ? nil : result
     }
 }
