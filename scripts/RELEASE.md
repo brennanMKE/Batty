@@ -23,6 +23,19 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 
 ## Release steps
 
+0. **Run the preflight**
+
+   ```bash
+   scripts/preflight.sh
+   ```
+
+   Walks every release-readiness gate (build, tests, version drift,
+   Sparkle plist, signing cert, notarytool profile, website env vars,
+   fork pin, working tree). Fix every `[✗]` before continuing;
+   warnings (`[!]`) are advisory but worth scanning. `--skip-build`
+   for a faster ad-hoc check, `--strict` to promote warnings to
+   failures, `--allow-dirty` for a dry-run scope.
+
 1. **Choose the version**
 
    Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in
