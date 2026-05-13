@@ -115,6 +115,67 @@ struct StableTerminalSurfaceTests {
         #expect(tab.terminalNSView === original)
     }
 
+    /// `setPlacement` updates one tab without disturbing its siblings.
+    /// This is the geometry-settling backstop for #0101 — called from
+    /// `TerminalPlaceholderView.onGeometryChange` per visible tab.
+    @Test func setPlacementForSingleTabPreservesSiblings() {
+        let store = TerminalHostStore()
+        let firstTab = TabRuntime()
+        let secondTab = TabRuntime()
+        let firstView = store.terminalView(for: firstTab)
+        let secondView = store.terminalView(for: secondTab)
+
+        store.updatePlacements([
+            firstTab.id: TerminalHostStore.Placement(
+                frame: NSRect(x: 0, y: 0, width: 100, height: 100),
+                isVisible: true
+            ),
+            secondTab.id: TerminalHostStore.Placement(
+                frame: NSRect(x: 0, y: 0, width: 200, height: 200),
+                isVisible: true
+            )
+        ])
+        #expect(firstView.frame == NSRect(x: 0, y: 0, width: 100, height: 100))
+        #expect(secondView.frame == NSRect(x: 0, y: 0, width: 200, height: 200))
+
+        store.setPlacement(
+            TerminalHostStore.Placement(
+                frame: NSRect(x: 0, y: 0, width: 300, height: 300),
+                isVisible: true
+            ),
+            forTabID: firstTab.id
+        )
+
+        #expect(firstView.frame == NSRect(x: 0, y: 0, width: 300, height: 300))
+        #expect(secondView.frame == NSRect(x: 0, y: 0, width: 200, height: 200))
+        #expect(!firstView.isHidden)
+        #expect(!secondView.isHidden)
+    }
+
+    @Test func setPlacementHidesWhenIsVisibleFalse() {
+        let store = TerminalHostStore()
+        let tab = TabRuntime()
+        let view = store.terminalView(for: tab)
+
+        store.setPlacement(
+            TerminalHostStore.Placement(
+                frame: NSRect(x: 0, y: 0, width: 100, height: 100),
+                isVisible: true
+            ),
+            forTabID: tab.id
+        )
+        #expect(!view.isHidden)
+
+        store.setPlacement(
+            TerminalHostStore.Placement(
+                frame: NSRect(x: 0, y: 0, width: 100, height: 100),
+                isVisible: false
+            ),
+            forTabID: tab.id
+        )
+        #expect(view.isHidden)
+    }
+
     @Test func updatePlacementsTogglesVisibilityAndAdjustsFrame() {
         let store = TerminalHostStore()
         let tab = TabRuntime()

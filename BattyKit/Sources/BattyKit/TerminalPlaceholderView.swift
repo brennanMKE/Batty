@@ -40,6 +40,25 @@ struct TerminalPlaceholderView: View {
                     key: TerminalPlacementPreferenceKey.self,
                     value: [tab.id: placement]
                 )
+                // Geometry-settling backstop for #0101. The
+                // PreferenceKey flow can miss the second layout pass on
+                // cold launch when the placeholder's locally proposed
+                // size doesn't change between passes but the named
+                // coordinate space resolves to a larger frame on the
+                // settled pass. `.onGeometryChange` observes the frame
+                // in the host's coordinate space directly and fires on
+                // every settle, regardless of preference-reduce
+                // deduplication.
+                .onGeometryChange(
+                    for: CGRect.self,
+                    of: { $0.frame(in: .named(TerminalHostInstaller.coordinateSpaceName)) },
+                    action: { newFrame in
+                        TerminalHostStore.shared.setPlacement(
+                            TerminalHostStore.Placement(frame: newFrame, isVisible: isVisible),
+                            forTabID: tab.id
+                        )
+                    }
+                )
                 .accessibilityIdentifier("pane-terminal.\(paneID.uuidString)")
                 .accessibilityValue(isPaneFocused ? "focused" : "unfocused")
         }

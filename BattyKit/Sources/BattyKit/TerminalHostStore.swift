@@ -99,7 +99,7 @@ public final class TerminalHostStore {
     /// Reconcile every known terminal view against the supplied
     /// placement map. Tabs with a placement become visible at the given
     /// frame; tabs without a placement (or with `isVisible == false`) are
-    /// hidden but kept attached. This is the only mutator the SwiftUI
+    /// hidden but kept attached. This is the bulk mutator the SwiftUI
     /// coordinator calls during navigation.
     public func updatePlacements(_ newPlacements: [UUID: Placement]) {
         placements = newPlacements
@@ -114,6 +114,29 @@ public final class TerminalHostStore {
             } else if !view.isHidden {
                 view.isHidden = true
             }
+        }
+    }
+
+    /// Single-tab placement update that merges into the existing map
+    /// instead of replacing it. The placeholder calls this from its
+    /// `.onGeometryChange` backstop when its frame in the host's named
+    /// coordinate space settles — a path that catches geometry changes
+    /// the `PreferenceKey` flow misses on cold launch (#0101), where the
+    /// first preference emission carries a stale frame and the second
+    /// pass doesn't re-emit because the placeholder's locally proposed
+    /// size didn't change.
+    public func setPlacement(_ placement: Placement, forTabID id: UUID) {
+        placements[id] = placement
+        guard let view = terminalViews[id] else { return }
+        if placement.isVisible {
+            if view.frame != placement.frame {
+                view.frame = placement.frame
+            }
+            if view.isHidden {
+                view.isHidden = false
+            }
+        } else if !view.isHidden {
+            view.isHidden = true
         }
     }
 
