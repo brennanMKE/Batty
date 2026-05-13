@@ -251,6 +251,21 @@ class of bugs `#0072`/`#0074`/`#0075` were filed to eliminate.
   the per-session chrome. Pane overlays (bell flash, focus border)
   live in `PaneView`, not the placeholder.
 
+- **AppKit-on-top means AppKit owns AppKit-level event registration.**
+  AppKit's drag-and-drop dispatch (and any other registration-keyed
+  event path) walks the deepest NSView at the cursor whose
+  `registerForDraggedTypes` includes a matching type. It does **not**
+  fall through to a SwiftUI sibling underneath an opaque AppKit
+  subview — `hitTest` and drag dispatch use different paths. The host
+  and its `AppTerminalView` subviews sit on top of the SwiftUI
+  placeholder, so anything that goes through AppKit registration
+  (drops, services menu, drag sources, etc.) must be registered on
+  `TerminalHostView` itself, not on a SwiftUI `.onDrop` modifier on
+  the placeholder. The fix for `#0102` adds `registerForDraggedTypes`
+  and the `draggingEntered/performDragOperation` overrides to
+  `TerminalHostView` for the file-drop path; future event paths with
+  the same shape go in the same place.
+
 These restate the rules from
 [`nsviewrepresentable-state-persistence.md`](nsviewrepresentable-state-persistence.md)
 in Batty's specific terminology.
