@@ -18,6 +18,14 @@ public final class TabRuntime: Identifiable {
 
     public internal(set) var runningCommandDisplayName: String?
 
+    /// Set by ``TerminalHostView`` while a Finder drag is hovering over
+    /// this tab's terminal subview; cleared on drag exit or drop. Drives
+    /// the accent-color overlay in ``PaneView``. Lives on the model
+    /// because the AppKit host (which receives the drag callbacks) and
+    /// the SwiftUI overlay are siblings under different parents — a model
+    /// flag is the smallest path between them.
+    public internal(set) var isDragHovering: Bool = false
+
     /// Long-lived libghostty NSView whose lifetime is bound to this tab,
     /// not to any SwiftUI representable. The view is owned by
     /// ``TerminalHostStore`` (which adds it as a subview of the persistent

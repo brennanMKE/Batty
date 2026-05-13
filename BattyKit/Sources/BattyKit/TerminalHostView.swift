@@ -3,6 +3,7 @@
 import AppKit
 import GhosttyTerminal
 import OSLog
+import UniformTypeIdentifiers
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "TerminalHostView")
 
@@ -29,12 +30,23 @@ final class TerminalHostView: NSView {
 
     override var isFlipped: Bool { true }
 
+    /// Tab whose terminal subview a Finder drag currently hovers over.
+    /// Tracked so `draggingExited` knows which tab to clear, even if the
+    /// pointer left the host without crossing a different subview.
+    private var dragHoverTabID: UUID?
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         translatesAutoresizingMaskIntoConstraints = false
         layer?.backgroundColor = NSColor.clear.cgColor
         autoresizingMask = [.width, .height]
+        // Drop-target registration MUST live on the AppKit host, not on
+        // a SwiftUI sibling. AppKit dispatches drags to the deepest view
+        // at the cursor that has registered for the type — it does not
+        // fall through an AppKit subview to a SwiftUI drop target below.
+        // See #0102 for the dispatch-path mismatch this fixes.
+        registerForDraggedTypes([.fileURL])
     }
 
     @available(*, unavailable)
@@ -71,5 +83,85 @@ final class TerminalHostView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let result = super.hitTest(point)
         return result === self ? nil : result
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard hasFileURL(in: sender) else { return [] }
+        updateHoverTab(for: sender)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard hasFileURL(in: sender) else { return [] }
+        updateHoverTab(for: sender)
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        clearHoverTab()
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        hasFileURL(in: sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer { clearHoverTab() }
+        let pasteboard = sender.draggingPasteboard
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        guard
+            let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
+            !urls.isEmpty
+        else {
+            return false
+        }
+        let pointInHost = convert(sender.draggingLocation, from: nil)
+        guard let tab = terminalTab(at: pointInHost) else {
+            logger.debug("drop ignored: no terminal under point \(String(describing: pointInHost), privacy: .public)")
+            return false
+        }
+        let paths = urls.compactMap { $0.isFileURL ? $0.path : nil }
+        guard !paths.isEmpty else { return false }
+        tab.terminal.send(ShellQuote.joinPaths(paths))
+        return true
+    }
+
+    private func hasFileURL(in sender: NSDraggingInfo) -> Bool {
+        let pasteboard = sender.draggingPasteboard
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        return pasteboard.canReadObject(forClasses: [NSURL.self], options: options)
+    }
+
+    private func updateHoverTab(for sender: NSDraggingInfo) {
+        let pointInHost = convert(sender.draggingLocation, from: nil)
+        let tab = terminalTab(at: pointInHost)
+        let nextID = tab?.id
+        if nextID == dragHoverTabID { return }
+        if let previousID = dragHoverTabID,
+           let previous = TerminalHostStore.shared.tabRuntime(forTabID: previousID) {
+            previous.isDragHovering = false
+        }
+        dragHoverTabID = nextID
+        tab?.isDragHovering = true
+    }
+
+    private func clearHoverTab() {
+        guard let id = dragHoverTabID else { return }
+        dragHoverTabID = nil
+        if let tab = TerminalHostStore.shared.tabRuntime(forTabID: id) {
+            tab.isDragHovering = false
+        }
+    }
+
+    private func terminalTab(at pointInHost: NSPoint) -> TabRuntime? {
+        for subview in subviews.reversed() {
+            guard let terminal = subview as? AppTerminalView,
+                  !terminal.isHidden,
+                  terminal.frame.contains(pointInHost),
+                  let id = TerminalHostStore.shared.tabID(for: terminal)
+            else { continue }
+            return TerminalHostStore.shared.tabRuntime(forTabID: id)
+        }
+        return nil
     }
 }

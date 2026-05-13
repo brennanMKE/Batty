@@ -45,6 +45,13 @@ public final class TerminalHostStore {
     /// also strong-references it as a subview. Both go away on close.
     private var terminalViews: [UUID: AppTerminalView] = [:]
 
+    /// `tab.id` → live ``TabRuntime``, held weakly so a tab disappearing
+    /// from the model layer (without a paired `releaseTerminalView`) does
+    /// not keep the runtime alive. Used by drag-and-drop routing in
+    /// ``TerminalHostView`` to map a hit-tested terminal subview back to
+    /// the runtime so we can send the dropped paths through its surface.
+    private var tabRuntimes: [UUID: WeakTabRuntime] = [:]
+
     /// `tab.id` → most recent placement (host-local frame + visibility
     /// flag). Stored so re-applying the latest placement on a re-mount
     /// is a single dictionary read.
@@ -74,9 +81,29 @@ public final class TerminalHostStore {
         view.translatesAutoresizingMaskIntoConstraints = true
         hostView.addSubview(view)
         terminalViews[tab.id] = view
+        tabRuntimes[tab.id] = WeakTabRuntime(tab)
         tab.terminalNSView = view
         logger.debug("created terminal view for tab \(tab.id, privacy: .public); host has \(self.terminalViews.count, privacy: .public) view(s)")
         return view
+    }
+
+    /// Look up the `tab.id` whose `AppTerminalView` is `view`. Returns
+    /// `nil` if the view isn't currently registered (e.g. the tab was
+    /// closed in the same runloop turn). Used by ``TerminalHostView`` to
+    /// resolve which terminal a drop landed on.
+    public func tabID(for view: AppTerminalView) -> UUID? {
+        for (id, registered) in terminalViews where registered === view {
+            return id
+        }
+        return nil
+    }
+
+    /// The `TabRuntime` whose terminal is tracked under `id`, or `nil` if
+    /// the runtime has been deallocated. Held weakly inside the store —
+    /// callers should not assume the returned reference will outlive the
+    /// current main-actor turn.
+    public func tabRuntime(forTabID id: UUID) -> TabRuntime? {
+        tabRuntimes[id]?.runtime
     }
 
     /// True iff a terminal view has already been created for this tab.
@@ -92,6 +119,7 @@ public final class TerminalHostStore {
     public func releaseTerminalView(forTabID id: UUID) {
         guard let view = terminalViews.removeValue(forKey: id) else { return }
         placements.removeValue(forKey: id)
+        tabRuntimes.removeValue(forKey: id)
         view.removeFromSuperview()
         logger.debug("released terminal view for tab \(id, privacy: .public); host has \(self.terminalViews.count, privacy: .public) view(s) remaining")
     }
@@ -152,5 +180,10 @@ public final class TerminalHostStore {
             self.frame = frame
             self.isVisible = isVisible
         }
+    }
+
+    private struct WeakTabRuntime {
+        weak var runtime: TabRuntime?
+        init(_ runtime: TabRuntime) { self.runtime = runtime }
     }
 }

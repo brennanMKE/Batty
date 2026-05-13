@@ -1,14 +1,12 @@
 // PaneView.swift
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
     @Bindable public var tree: SplitTree
     @Environment(\.appStateStore) private var appStore
     @Environment(\.isSelectedSession) private var isSessionSelected
-    @State private var isDragHovering: Bool = false
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
     @State private var renameDraft: String = ""
@@ -90,13 +88,6 @@ public struct PaneView: View {
                         isPaneFocused: isPaneFocused
                     )
                         .allowsHitTesting(tab.id == pane.activeTabID)
-                        .onDrop(
-                            of: [.fileURL],
-                            isTargeted: tab.id == pane.activeTabID ? $isDragHovering : .constant(false)
-                        ) { providers in
-                            guard tab.id == pane.activeTabID else { return false }
-                            return Self.handleFileDrop(providers, into: tab.terminal)
-                        }
                         .onChange(of: tab.terminal.bellCount) {
                             if let appStore {
                                 appStore.recordBellTick(forTabID: tab.id)
@@ -149,8 +140,8 @@ public struct PaneView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
-                    .opacity(isDragHovering ? 1 : 0)
-                    .animation(.easeOut(duration: 0.12), value: isDragHovering)
+                    .opacity(pane.activeTab.isDragHovering ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: pane.activeTab.isDragHovering)
                     .allowsHitTesting(false)
             }
             .overlay {
@@ -266,58 +257,6 @@ public struct PaneView: View {
         bellFlashOpacity = 1
         withAnimation(.easeOut(duration: 1.0)) {
             bellFlashOpacity = 0
-        }
-    }
-
-    static func handleFileDrop(
-        _ providers: [NSItemProvider],
-        into terminal: TerminalViewState
-    ) -> Bool {
-        let fileURLType = UTType.fileURL.identifier
-        let candidates = providers.filter { $0.hasItemConformingToTypeIdentifier(fileURLType) }
-        guard !candidates.isEmpty else { return false }
-
-        Task { @MainActor in
-            let ordered = await loadFilePaths(from: candidates, fileURLType: fileURLType)
-            guard !ordered.isEmpty else { return }
-            terminal.send(ShellQuote.joinPaths(ordered))
-        }
-        return true
-    }
-
-    private static func loadFilePaths(
-        from providers: [NSItemProvider],
-        fileURLType: String
-    ) async -> [String] {
-        var paths: [String] = []
-        for provider in providers {
-            if let path = await loadFilePath(from: provider, type: fileURLType) {
-                paths.append(path)
-            }
-        }
-        return paths
-    }
-
-    private static func loadFilePath(
-        from provider: NSItemProvider,
-        type fileURLType: String
-    ) async -> String? {
-        await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            provider.loadItem(forTypeIdentifier: fileURLType, options: nil) { item, _ in
-                let url: URL?
-                switch item {
-                case let direct as URL:
-                    url = direct
-                case let data as Data:
-                    url = URL(dataRepresentation: data, relativeTo: nil)
-                case let path as String:
-                    url = URL(string: path)
-                default:
-                    url = nil
-                }
-                let resolved = (url?.isFileURL == true) ? url?.path : nil
-                continuation.resume(returning: resolved)
-            }
         }
     }
 
