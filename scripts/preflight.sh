@@ -111,14 +111,20 @@ else
     pass "MARKETING_VERSION = $VERSION (Build.xcconfig)"
 fi
 
-# Same value should appear in every pbxproj MARKETING_VERSION line.
-if [[ -n "$VERSION" ]]; then
+# Convention since xcconfig-as-source-of-truth: MARKETING_VERSION must
+# NOT appear in pbxproj — the xcconfig provides it. Per-target overrides
+# silently win at build time, so any pbxproj entry creates drift risk.
+if grep -qE 'MARKETING_VERSION = ' "$PBXPROJ"; then
     DISTINCT=$(grep -E 'MARKETING_VERSION = ' "$PBXPROJ" | awk -F'= ' '{print $2}' | tr -d ' ;' | sort -u)
-    if [[ "$DISTINCT" == "$VERSION" ]]; then
-        pass "pbxproj MARKETING_VERSION matches"
-    else
-        fail "pbxproj MARKETING_VERSION drift: $(echo "$DISTINCT" | tr '\n' ' ')"
-    fi
+    fail "pbxproj contains MARKETING_VERSION ($DISTINCT) — should live only in Build.xcconfig"
+else
+    pass "pbxproj has no MARKETING_VERSION override (xcconfig wins)"
+fi
+
+if grep -qE 'CURRENT_PROJECT_VERSION = ' "$PBXPROJ"; then
+    fail "pbxproj contains CURRENT_PROJECT_VERSION — should live only in Build.xcconfig"
+else
+    pass "pbxproj has no CURRENT_PROJECT_VERSION override (xcconfig wins)"
 fi
 
 # SemVer-ish sanity (allow X.Y.Z plus optional -prerelease).

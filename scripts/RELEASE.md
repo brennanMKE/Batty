@@ -39,13 +39,13 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 1. **Choose the version**
 
    Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in
-   `Configuration/Build.xcconfig` AND in the matching entries inside
-   `Batty.xcodeproj/project.pbxproj` (Xcode duplicates the per-target
-   values there; xcconfig is the source of truth but per-target
-   overrides win at build time, so they must match). Convention:
-   SemVer for marketing (`1.2.0`), monotonically-increasing integer
-   for the build (`42`). Commit the bump on its own as
-   `Bump version to <X.Y.Z>`.
+   `Configuration/Build.xcconfig` — that file is the single source of
+   truth. `project.pbxproj` no longer carries per-target overrides and
+   the Info.plist reads both values via `$(VAR)` substitution. The
+   preflight enforces this: any `MARKETING_VERSION = …` line that
+   appears in `project.pbxproj` is a `[✗]`. Convention: SemVer for
+   marketing (`1.2.0`), monotonically-increasing integer for the build
+   (`42`). Commit the bump on its own as `Bump version to <X.Y.Z>`.
 
 2. **Sanity-check the build**
 
