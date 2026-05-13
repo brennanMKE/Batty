@@ -1,7 +1,10 @@
 // UpdaterController.swift
 
 import Foundation
+import OSLog
 import Sparkle
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "UpdaterController")
 
 /// Thin wrapper around Sparkle's `SPUStandardUpdaterController`. Disabled
 /// gracefully when no `SUFeedURL` is set in `Info.plist` — early-returns
@@ -30,7 +33,7 @@ public final class UpdaterController {
 
     public func checkForUpdates() {
         guard isConfigured else {
-            NSLog("UpdaterController: SUFeedURL not set in Info.plist; Check for Updates is disabled")
+            logger.info("SUFeedURL not set in Info.plist; Check for Updates is disabled")
             return
         }
         controller.checkForUpdates(nil)
