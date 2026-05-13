@@ -11,18 +11,28 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 - **Notary keychain profile.** Run `scripts/setup-keys.sh` and follow the
   prompts. This stores an app-specific Apple ID password under the
   `Batty-notary` profile that `notarytool` looks for.
-- **Sparkle EdDSA key** (only when #0038 lands): `generate_keys` stores the
-  private key in your keychain; the public key goes into `Info.plist` as
-  `SUPublicEDKey`.
+- **Sparkle EdDSA key**: `generate_keys` stores the private key in your
+  keychain; the public key goes into `Info.plist` as `SUPublicEDKey`.
+  See `scripts/SPARKLE.md`.
+- **EC2 website deploy env vars** in your shell init:
+  - `export BATTY_EC2_KEY=~/keys/batty.pem` — path to your AWS .pem
+    (must be `chmod 600`).
+  - `export BATTY_EC2_HOST=ec2-user@batty.sstools.co` — SSH login.
+  - `export BATTY_EC2_PATH=/var/www/batty` — remote document root.
+  - `export BATTY_EC2_PORT=22` — optional, defaults to 22.
 
 ## Release steps
 
 1. **Choose the version**
 
    Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in
-   `Configuration/Build.xcconfig`. Convention: SemVer for marketing
-   (`1.2.0`), monotonically-increasing integer for the build (`42`).
-   Commit the bump on its own as `Bump version to <X.Y.Z>`.
+   `Configuration/Build.xcconfig` AND in the matching entries inside
+   `Batty.xcodeproj/project.pbxproj` (Xcode duplicates the per-target
+   values there; xcconfig is the source of truth but per-target
+   overrides win at build time, so they must match). Convention:
+   SemVer for marketing (`1.2.0`), monotonically-increasing integer
+   for the build (`42`). Commit the bump on its own as
+   `Bump version to <X.Y.Z>`.
 
 2. **Sanity-check the build**
 
@@ -65,25 +75,47 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
    without right-click bypass and without "from an unidentified developer"
    warning.
 
-6. **Tag the release**
+6. **Update the appcast and changelog**
+
+   - Add a `<item>` entry to `website/appcast.xml` with the new version,
+     build number, `<sparkle:minimumSystemVersion>`, release-notes
+     link, and enclosure URL pointing at the DMG you copied into
+     `website/downloads/Batty-<X.Y.Z>.dmg`. Generate the
+     `sparkle:edSignature` via `sign_update` (see `scripts/SPARKLE.md`).
+   - Stamp `website/changelog.html` — add an `<article id="vX-Y-Z">`
+     summarising user-visible changes for this version. Link closed
+     `#NNNN` issues from the milestone.
+
+7. **Deploy the website**
 
    ```bash
-   git tag -a v<X.Y.Z> -m "Batty <X.Y.Z>"
-   git push origin v<X.Y.Z>
+   scripts/deploy-website.sh
    ```
 
-7. **Publish the appcast** (when #0038 lands)
+   Pushes `website/` to `$BATTY_EC2_HOST:$BATTY_EC2_PATH` via rsync over
+   SSH using `$BATTY_EC2_KEY`. Verifies the env vars and key
+   permissions before pushing. Sparkle clients poll the appcast on a
+   schedule, so the new version appears in "Check for Updates…" within
+   a few hours.
 
-   - Add a `<item>` entry to `appcast.xml` with the new version, build,
-     download URL, EdDSA signature, and release-notes URL.
-   - Push to wherever the appcast is hosted (decision pending — see #0038).
+8. **Tag the release**
 
-8. **Write release notes**
+   ```bash
+   scripts/tag-release.sh
+   ```
+
+   Reads `MARKETING_VERSION` from `Build.xcconfig`, creates an
+   annotated `v<X.Y.Z>` tag on the current HEAD, and prompts before
+   pushing to origin. `--push` or `--no-push` to skip the prompt.
+
+9. **Write release notes**
 
    - User-visible changes only. Match the `## Changes` section style from
      the previous tag.
    - Link any closed `#NNNN` issues for the milestone.
    - Note any known regressions or Gotchas the user should be aware of.
+   - Mirror these notes in `website/changelog.html` so the public site
+     and the git tag stay in sync.
 
 ## Troubleshooting
 
