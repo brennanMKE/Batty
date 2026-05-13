@@ -22,6 +22,8 @@ import SwiftUI
 struct TerminalPlaceholderView: View {
     let tab: TabRuntime
     let isVisible: Bool
+    let paneID: UUID
+    let isPaneFocused: Bool
 
     var body: some View {
         GeometryReader { proxy in
@@ -38,6 +40,8 @@ struct TerminalPlaceholderView: View {
                     key: TerminalPlacementPreferenceKey.self,
                     value: [tab.id: placement]
                 )
+                .accessibilityIdentifier("pane-terminal.\(paneID.uuidString)")
+                .accessibilityValue(isPaneFocused ? "focused" : "unfocused")
         }
     }
 }

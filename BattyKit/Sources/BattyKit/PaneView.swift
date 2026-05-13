@@ -85,9 +85,10 @@ public struct PaneView: View {
                 ForEach(pane.tabs) { tab in
                     TerminalPlaceholderView(
                         tab: tab,
-                        isVisible: tab.id == pane.activeTabID && isSessionSelected
+                        isVisible: tab.id == pane.activeTabID && isSessionSelected,
+                        paneID: pane.id,
+                        isPaneFocused: isPaneFocused
                     )
-                        .accessibilityIdentifier("pane-terminal.\(pane.id.uuidString)")
                         .allowsHitTesting(tab.id == pane.activeTabID)
                         .onDrop(
                             of: [.fileURL],
