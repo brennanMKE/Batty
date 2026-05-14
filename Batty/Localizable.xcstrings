@@ -10,6 +10,12 @@
             "state" : "translated",
             "value" : "Batty"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batty"
+          }
         }
       }
     },
@@ -30,6 +36,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "Paste %lld lines?"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 行をペーストしますか?"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 行をペーストしますか?"
                 }
               }
             }
@@ -58,6 +82,24 @@
               }
             }
           }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "ターミナルが %lld 個開いています。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "ターミナルが %lld 個開いています。"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -82,6 +124,24 @@
               }
             }
           }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "未読のベルイベント %lld 件"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "未読のベルイベント %lld 件"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -99,6 +159,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Batty beenden?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batty を終了しますか?"
           }
         }
       }
@@ -118,6 +184,12 @@
             "state" : "translated",
             "value" : "Beenden"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了"
+          }
         }
       }
     },
@@ -135,6 +207,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abbrechen"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キャンセル"
           }
         }
       }
