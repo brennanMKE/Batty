@@ -300,6 +300,7 @@ Use these canonical module names so issues stay consistent and groupable in the 
 | `Persistence` | Workspace serialization, `workspace.json`, restore on launch |
 | `Settings` | Settings window, `UserDefaults`, font/cursor/notification preferences |
 | `Build` | Xcode project, signing, notarization, Sparkle, terminfo / shell-integration resource bundling |
+| `Localization` | User-facing string extraction, `.xcstrings` / `Localizable.strings` catalogs, per-locale resources, locale switching |
 | `Docs` | `PRD.md`, `Concepts.md`, README, this file |
 
 If a new area emerges, add it here before using it in an issue. Don't invent module names ad-hoc.
