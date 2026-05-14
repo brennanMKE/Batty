@@ -23,6 +23,12 @@
             "value" : "Batty"
           }
         },
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batty"
+          }
+        },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -84,6 +90,24 @@
           }
         },
         "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "¿Pegar %lld línea?"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "¿Pegar %lld líneas?"
+                }
+              }
+            }
+          }
+        },
+        "es-419" : {
           "variations" : {
             "plural" : {
               "one" : {
@@ -215,6 +239,24 @@
             }
           }
         },
+        "es-419" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Hay %lld terminal abierta."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Hay %lld terminales abiertas."
+                }
+              }
+            }
+          }
+        },
         "fr" : {
           "variations" : {
             "plural" : {
@@ -329,6 +371,24 @@
             }
           }
         },
+        "es-419" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld evento de campana sin leer"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld eventos de campana sin leer"
+                }
+              }
+            }
+          }
+        },
         "fr" : {
           "variations" : {
             "plural" : {
@@ -407,6 +467,12 @@
             "value" : "¿Salir de Batty?"
           }
         },
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Salir de Batty?"
+          }
+        },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -449,6 +515,12 @@
             "value" : "Salir"
           }
         },
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salir"
+          }
+        },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
@@ -486,6 +558,12 @@
           }
         },
         "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
+          }
+        },
+        "es-419" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cancelar"
