@@ -84,10 +84,12 @@ public final class TabRuntime: Identifiable {
             // our PasteDispatcher menu action.
             builder.withCustom("keybind", "clear")
             builder.withCustom("keybind", "cmd+c=copy_to_clipboard")
-            builder.withCustom("macos-option-as-alt", "true")
             builder.withCustom("keybind", "super+left=text:\\x01")
             builder.withCustom("keybind", "super+right=text:\\x05")
             builder.withCustom("keybind", "super+backspace=text:\\x15")
+            builder.withCustom("keybind", "alt+left=text:\\x1bb")
+            builder.withCustom("keybind", "alt+right=text:\\x1bf")
+            builder.withCustom("keybind", "alt+backspace=text:\\x1b\\x7f")
         }
         terminal.controller.setTerminalConfiguration(configuration)
     }
