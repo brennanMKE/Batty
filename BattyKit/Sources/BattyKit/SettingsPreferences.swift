@@ -18,7 +18,7 @@ public enum SettingsPreference {
     public static let defaultCursorBlink: Bool = true
     public static let defaultBellSound: Bool = true
     public static let defaultSystemNotifications: Bool = true
-    public static let defaultPasteStrictness: String = PasteStrictness.alwaysOnMultiline.rawValue
+    public static let defaultPasteStrictness: String = PasteStrictness.never.rawValue
     public static let defaultConfirmQuit: Bool = true
 
     public static func detectedShell() -> String {
@@ -71,7 +71,7 @@ public enum SettingsPreference {
 
     public static func resolvedPasteStrictness() -> PasteStrictness {
         let raw = UserDefaults.standard.string(forKey: pasteStrictnessKey) ?? defaultPasteStrictness
-        return PasteStrictness(rawValue: raw) ?? .alwaysOnMultiline
+        return PasteStrictness(rawValue: raw) ?? .never
     }
 
     public static func resolvedConfirmQuit() -> Bool {
