@@ -1,0 +1,18 @@
+
+PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty
+PRODUCT_NAME = Batty
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+
+INFOPLIST_FILE = Configuration/Info.plist
+
+ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macos*] = AppIcon
+
+SDKROOT[sdk=macos*] = macosx
+
+// Avoid using double slash which becomes a comment
+HTTPS=https:/
+
+// Sparkle
+SU_FEED_URL = $HTTPS/batty.sstools.co/appcast.xml
+SU_PUBLIC_ED_KEY = 17V/QFAmgnEvb+YhA0+c/oA8TghcNVLOY5qYIa6aMZA=

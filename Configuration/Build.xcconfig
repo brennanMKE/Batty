@@ -1,9 +1,3 @@
-PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty
-PRODUCT_NAME = Batty
-MARKETING_VERSION = 1.0.0
-CURRENT_PROJECT_VERSION = 1
-
-ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macos*] = AppIcon
 
 SWIFT_VERSION = 6.0
 ENABLE_APP_SANDBOX = NO
@@ -19,9 +13,3 @@ SUPPORTS_MACCATALYST = NO
 
 CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM = XV8BAAVZ6V
-//CODE_SIGN_ENTITLEMENTS = Batty/Batty.entitlements
-
-TARGETED_DEVICE_FAMILY = 1,2
-
-// Ensure each platform uses its own SDK root, not the macOS default
-SDKROOT[sdk=macos*] = macosx
