@@ -76,7 +76,7 @@ public struct BellFeedView: View {
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
               let tab = pane.tabs.first(where: { $0.id == entry.tabID })
         else {
-            return "(closed)"
+            return String(localized: "(closed)")
         }
         let paneIndex = (session.tree.allPanes.firstIndex(where: { $0.id == pane.id }) ?? 0) + 1
         let tabIndex = (pane.tabs.firstIndex(where: { $0.id == tab.id }) ?? 0) + 1
@@ -86,9 +86,9 @@ public struct BellFeedView: View {
         } else if !tab.terminal.title.isEmpty {
             tabLabel = tab.terminal.title
         } else {
-            tabLabel = "Tab \(tabIndex)"
+            tabLabel = String(localized: "Tab \(tabIndex)")
         }
-        return "\(session.title) › Pane \(paneIndex) › \(tabLabel)"
+        return String(localized: "\(session.title) › Pane \(paneIndex) › \(tabLabel)")
     }
 }
 

@@ -34,3 +34,9 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   and tab-close cleanup. Read this before touching `BellFeedStore`,
   `BellNotifier`, the bell routing in `AppStateStore`, or the
   Settings → Notifications pane.
+- [`localization.md`](localization.md) — where user-facing strings live
+  (`Batty/Localizable.xcstrings`), how SwiftUI auto-extraction works for
+  this project, the `Text(verbatim:)` rule for the product name, and the
+  `xcodebuild -exportLocalizations` / `-importLocalizations` workflow for
+  translators. Read this before touching any user-facing literal or
+  filing a per-language localization issue.

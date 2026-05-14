@@ -25,7 +25,9 @@ public struct BattyCommands: Commands {
         }
 
         CommandGroup(after: .sidebar) {
-            Button(sidebarHidden ? "Show Sidebar" : "Hide Sidebar") {
+            Button(sidebarHidden
+                ? String(localized: "Show Sidebar")
+                : String(localized: "Hide Sidebar")) {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     sidebarHidden.toggle()
                 }
@@ -41,8 +43,10 @@ public struct BattyCommands: Commands {
             Divider()
 
             ForEach(0..<9) { index in
-                Button(sessionMenuTitle(at: index)) {
+                Button {
                     store.selectSession(at: index)
+                } label: {
+                    Text(sessionMenuTitle(at: index))
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
                 .disabled(!sessionExists(at: index))
@@ -185,8 +189,10 @@ public struct BattyCommands: Commands {
             Divider()
 
             ForEach(0..<9) { index in
-                Button(tabMenuTitle(at: index)) {
+                Button {
                     store.selectedSession?.focusedPane.selectTab(at: index)
+                } label: {
+                    Text(tabMenuTitle(at: index))
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 .disabled(!tabExists(at: index))
@@ -205,7 +211,7 @@ public struct BattyCommands: Commands {
 
     private func sessionMenuTitle(at index: Int) -> String {
         guard store.sessions.indices.contains(index) else {
-            return "Session \(index + 1)"
+            return String(localized: "Session \(index + 1)")
         }
         return store.sessions[index].title
     }
@@ -215,10 +221,11 @@ public struct BattyCommands: Commands {
     }
 
     private func tabMenuTitle(at index: Int) -> String {
+        let fallback = String(localized: "Tab \(index + 1)")
         guard let pane = focusedPane, pane.tabs.indices.contains(index) else {
-            return "Tab \(index + 1)"
+            return fallback
         }
-        return TabTitleFormatter.chipTitle(for: pane.tabs[index], fallback: "Tab \(index + 1)")
+        return TabTitleFormatter.chipTitle(for: pane.tabs[index], fallback: fallback)
     }
 
     private func tabExists(at index: Int) -> Bool {

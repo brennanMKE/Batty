@@ -3,7 +3,8 @@
 import Foundation
 
 public enum TabTitleFormatter {
-    public static func chipTitle(for tab: TabRuntime, fallback: String = "Tab") -> String {
+    public static func chipTitle(for tab: TabRuntime, fallback: String? = nil) -> String {
+        let resolvedFallback = fallback ?? String(localized: "Tab")
         if let override = tab.titleOverride, !override.isEmpty {
             return override
         }
@@ -19,7 +20,7 @@ public enum TabTitleFormatter {
             }
             return prettifyPath(cwd)
         }
-        return fallback
+        return resolvedFallback
     }
 
     /// Strips the leading `user@host:` prefix when present, leaving whatever

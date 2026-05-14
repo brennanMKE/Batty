@@ -7,7 +7,7 @@ struct HelpSidebarView: View {
 
     var body: some View {
         List(HelpCatalog.sections, selection: $selection) { section in
-            Text(section.title)
+            Text(verbatim: section.title)
                 .font(.system(size: 13))
                 .tag(section.id)
         }

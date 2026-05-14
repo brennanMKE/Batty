@@ -8,8 +8,10 @@ import SwiftUI
 struct BattyApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: BattyAppDelegate
 
+    private let mainWindowTitle: String = "Batty"
+
     var body: some Scene {
-        Window("Batty", id: "main") {
+        Window(mainWindowTitle, id: "main") {
             ContentView()
         }
         .commandsRemoved()

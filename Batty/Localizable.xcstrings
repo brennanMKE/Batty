@@ -1,0 +1,144 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Batty" : {
+      "comment" : "Product name. Most call sites should use Text(verbatim:) or a String variable so the catalog never substitutes a translation for the brand. Listed here so translators see the canonical English value.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batty"
+          }
+        }
+      }
+    },
+    "Paste %lld lines?" : {
+      "comment" : "Paste-confirmation sheet title. Pluralized.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Paste %lld line?"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Paste %lld lines?"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "There %lld open terminal(s)." : {
+      "comment" : "Body of the quit-confirmation alert. Pluralized.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "There is %lld open terminal."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "There are %lld open terminals."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld unseen bell event(s)" : {
+      "comment" : "Tooltip on the sidebar bell-count badge. Pluralized.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld unseen bell event"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld unseen bell events"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Quit Batty?" : {
+      "comment" : "Quit confirmation alert title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit Batty?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batty beenden?"
+          }
+        }
+      }
+    },
+    "Quit" : {
+      "comment" : "Quit-confirmation primary button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "comment" : "Generic cancel button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

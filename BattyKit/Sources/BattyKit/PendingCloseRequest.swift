@@ -19,8 +19,8 @@ public struct PendingCloseRequest: Identifiable, Equatable {
 
     public var title: String {
         switch kind {
-        case .singleTab: return "Close tab?"
-        case .otherTabs: return "Close other tabs?"
+        case .singleTab: return String(localized: "Close tab?")
+        case .otherTabs: return String(localized: "Close other tabs?")
         }
     }
 }

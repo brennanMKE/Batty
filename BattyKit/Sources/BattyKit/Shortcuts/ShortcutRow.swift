@@ -15,7 +15,7 @@ struct ShortcutRow: View {
 
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(action.displayName)
+                Text(verbatim: action.displayName)
                 Spacer()
                 KeyboardShortcutRecorder(binding: bindingProxy)
                     .frame(width: 130, height: KeyboardShortcutRecorder.preferredHeight)
@@ -28,9 +28,9 @@ struct ShortcutRow: View {
             }
 
             if reserved {
-                warning("Reserved by macOS — choose a different shortcut.")
+                warning(String(localized: "Reserved by macOS — choose a different shortcut."))
             } else if let other = collisions.first {
-                warning("Used by \(other.displayName)")
+                warning(String(localized: "Used by \(other.displayName)"))
             }
         }
     }
@@ -50,7 +50,7 @@ struct ShortcutRow: View {
     private func warning(_ text: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "exclamationmark.triangle.fill")
-            Text(text)
+            Text(verbatim: text)
         }
         .font(.caption)
         .foregroundStyle(Color.orange)

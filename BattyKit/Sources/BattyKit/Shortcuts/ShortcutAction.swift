@@ -28,19 +28,19 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
 
     public var displayName: String {
         switch self {
-        case .newSession:      return "New Session"
-        case .closeTab:        return "Close Tab"
-        case .newTab:          return "New Tab"
-        case .splitHorizontal: return "Split Horizontally"
-        case .splitVertical:   return "Split Vertically"
-        case .focusPaneLeft:   return "Focus Pane Left"
-        case .focusPaneRight:  return "Focus Pane Right"
-        case .focusPaneUp:     return "Focus Pane Above"
-        case .focusPaneDown:   return "Focus Pane Below"
-        case .previousTab:     return "Show Previous Tab"
-        case .nextTab:         return "Show Next Tab"
-        case .toggleSidebar:   return "Toggle Sidebar"
-        case .toggleBellFeed:  return "Toggle Bell Feed"
+        case .newSession:      return String(localized: "New Session")
+        case .closeTab:        return String(localized: "Close Tab")
+        case .newTab:          return String(localized: "New Tab")
+        case .splitHorizontal: return String(localized: "Split Horizontally")
+        case .splitVertical:   return String(localized: "Split Vertically")
+        case .focusPaneLeft:   return String(localized: "Focus Pane Left")
+        case .focusPaneRight:  return String(localized: "Focus Pane Right")
+        case .focusPaneUp:     return String(localized: "Focus Pane Above")
+        case .focusPaneDown:   return String(localized: "Focus Pane Below")
+        case .previousTab:     return String(localized: "Show Previous Tab")
+        case .nextTab:         return String(localized: "Show Next Tab")
+        case .toggleSidebar:   return String(localized: "Toggle Sidebar")
+        case .toggleBellFeed:  return String(localized: "Toggle Bell Feed")
         }
     }
 

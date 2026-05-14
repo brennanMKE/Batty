@@ -11,7 +11,7 @@ struct HelpErrorPaneView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Couldn't load \(sectionTitle)")
                     .font(.system(size: 13, weight: .semibold))
-                Text(error.localizedDescription)
+                Text(verbatim: error.localizedDescription)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)

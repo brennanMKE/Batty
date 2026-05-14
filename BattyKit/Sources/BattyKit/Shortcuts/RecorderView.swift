@@ -115,14 +115,14 @@ final class RecorderView: NSView {
         let color: NSColor
         if isRecording {
             if binding.key.isEmpty {
-                label = "Press a shortcut\u{2026}"
+                label = String(localized: "Press a shortcut…")
                 color = NSColor.secondaryLabelColor
             } else {
                 label = binding.displayString
                 color = NSColor.secondaryLabelColor
             }
         } else if binding.key.isEmpty {
-            label = "Click to record"
+            label = String(localized: "Click to record")
             color = NSColor.tertiaryLabelColor
         } else {
             label = binding.displayString

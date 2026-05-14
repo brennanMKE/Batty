@@ -28,7 +28,7 @@ public final class AppStateStore {
         self.nameCache = nameCache
         self.notifier = notifier
         if sessions.isEmpty {
-            let initial = SessionRuntime(title: "Session 1")
+            let initial = SessionRuntime(title: String(localized: "Session 1"))
             self.sessions = [initial]
             self.selectedSessionID = initial.id
         } else {
@@ -51,7 +51,7 @@ public final class AppStateStore {
             guard title == nil, let cwd = inheritedCWD, !cwd.isEmpty else { return nil }
             return nameCache.lookup(path: cwd)
         }()
-        let resolvedTitle = title ?? cachedName ?? "Session \(sessions.count + 1)"
+        let resolvedTitle = title ?? cachedName ?? String(localized: "Session \(sessions.count + 1)")
         let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: inheritedCWD)])
         let tree = SplitTree(root: .leaf(firstPane))
         let session = SessionRuntime(title: resolvedTitle, tree: tree)
@@ -107,7 +107,7 @@ public final class AppStateStore {
     public func duplicateSession(id: UUID) -> SessionRuntime? {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return nil }
         let source = sessions[index]
-        let copy = SessionRuntime(title: "\(source.title) Copy")
+        let copy = SessionRuntime(title: String(localized: "\(source.title) Copy"))
         sessions.insert(copy, at: index + 1)
         selectedSessionID = copy.id
         return copy
@@ -241,7 +241,7 @@ public final class AppStateStore {
             let label = Self.runningLabel(for: location.tab)
             pendingCloseRequest = PendingCloseRequest(
                 kind: .singleTab(tabID: tabID),
-                message: "\(label) is still running. Closing this tab will end it."
+                message: String(localized: "\(label) is still running. Closing this tab will end it.")
             )
         } else {
             closeTab(id: tabID)
@@ -271,9 +271,9 @@ public final class AppStateStore {
         let totalVictims = victims.count
         let message: String
         if busyCount == totalVictims {
-            message = "\(busyCount) of these tabs are running processes. Closing them will end those processes."
+            message = String(localized: "\(busyCount) of these tabs are running processes. Closing them will end those processes.")
         } else {
-            message = "\(busyCount) of the \(totalVictims) tabs about to close are running processes."
+            message = String(localized: "\(busyCount) of the \(totalVictims) tabs about to close are running processes.")
         }
         pendingCloseRequest = PendingCloseRequest(
             kind: .otherTabs(paneID: paneID, keepingTabID: keepingTabID),
@@ -304,7 +304,7 @@ public final class AppStateStore {
     private static func runningLabel(for tab: TabRuntime) -> String {
         let title = tab.terminal.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if title.isEmpty || title.contains(":") || title.contains("@") {
-            return "A process"
+            return String(localized: "A process")
         }
         return "`\(title)`"
     }
@@ -401,7 +401,7 @@ public final class AppStateStore {
         } else if !location.tab.terminal.title.isEmpty {
             tabLabel = location.tab.terminal.title
         } else {
-            tabLabel = "Tab \(tabIndex)"
+            tabLabel = String(localized: "Tab \(tabIndex)")
         }
         notifier.post(
             for: entry,

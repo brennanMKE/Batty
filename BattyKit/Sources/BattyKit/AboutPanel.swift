@@ -11,15 +11,13 @@ public enum AboutPanel {
         let version = info["CFBundleShortVersionString"] as? String ?? ""
         let build = info["CFBundleVersion"] as? String ?? ""
         let copyright = info["NSHumanReadableCopyright"] as? String
-            ?? "© Batty contributors"
+            ?? String(localized: "© Batty contributors")
 
+        let creditsBody = String(localized: "about.credits.body",
+            defaultValue: "\(appName) — a macOS terminal multiplexer\nBuilt on libghostty and SlidingTabs.\n\n\(copyright)",
+            comment: "Multi-line credits string for the About panel.")
         let credits = NSAttributedString(
-            string: """
-            \(appName) — a macOS terminal multiplexer
-            Built on libghostty and SlidingTabs.
-
-            \(copyright)
-            """,
+            string: creditsBody,
             attributes: [.font: NSFont.systemFont(ofSize: 11)]
         )
 

@@ -26,12 +26,10 @@ public enum QuitConfirmation {
         guard openTabs > 0 else { return true }
 
         let alert = NSAlert()
-        alert.messageText = "Quit Batty?"
-        alert.informativeText = openTabs == 1
-            ? "There is 1 open terminal."
-            : "There are \(openTabs) open terminals."
-        alert.addButton(withTitle: "Quit")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = String(localized: "Quit Batty?")
+        alert.informativeText = String(localized: "There \(openTabs) open terminal(s).")
+        alert.addButton(withTitle: String(localized: "Quit"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         alert.alertStyle = .warning
         return alert.runModal() == .alertFirstButtonReturn
     }

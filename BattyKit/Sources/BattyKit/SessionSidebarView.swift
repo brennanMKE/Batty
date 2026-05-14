@@ -26,7 +26,9 @@ public struct SessionSidebarView: View {
                             store.duplicateSession(id: session.id)
                         }
                         Divider()
-                        Button(session.notificationsMuted ? "Unmute Notifications" : "Mute Notifications") {
+                        Button(session.notificationsMuted
+                            ? String(localized: "Unmute Notifications")
+                            : String(localized: "Mute Notifications")) {
                             session.notificationsMuted.toggle()
                         }
                         Divider()
@@ -41,7 +43,7 @@ public struct SessionSidebarView: View {
         }
         .listStyle(.sidebar)
         .accessibilityIdentifier("session-sidebar")
-        .navigationTitle("Batty")
+        .navigationTitle(Text(verbatim: "Batty"))
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
                 Button {
@@ -91,13 +93,13 @@ private struct SessionRow: View {
             }
             Spacer()
             if session.unseenBellCount > 0 {
-                Text("\(session.unseenBellCount)")
+                Text(verbatim: "\(session.unseenBellCount)")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.accentColor))
-                    .help("\(session.unseenBellCount) unseen bell event\(session.unseenBellCount == 1 ? "" : "s")")
+                    .help("\(session.unseenBellCount) unseen bell event(s)")
             }
         }
     }

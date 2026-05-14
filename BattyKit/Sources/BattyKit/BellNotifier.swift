@@ -51,8 +51,8 @@ public final class BellNotifier: BellNotifying {
         guard SettingsPreference.resolvedSystemNotifications() else { return }
         guard shouldPost(for: entry) else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Batty — \(sessionTitle) › Pane \(paneIndex) › \(tabLabel)"
-        content.body = entry.message?.isEmpty == false ? entry.message! : "Bell"
+        content.title = String(localized: "Batty — \(sessionTitle) › Pane \(paneIndex) › \(tabLabel)")
+        content.body = entry.message?.isEmpty == false ? entry.message! : String(localized: "Bell")
         if SettingsPreference.resolvedBellSound() {
             content.sound = .default
         }

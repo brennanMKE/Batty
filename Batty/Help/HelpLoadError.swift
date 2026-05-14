@@ -8,7 +8,7 @@ enum HelpLoadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .resourceMissing(let name):
-            return "The bundled file \(name).md is missing from the app's Help resources."
+            return String(localized: "The bundled file \(name).md is missing from the app's Help resources.")
         }
     }
 }

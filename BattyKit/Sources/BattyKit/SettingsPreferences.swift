@@ -89,9 +89,9 @@ public enum PasteStrictness: String, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .alwaysOnMultiline: return "Always confirm multi-line"
-        case .onShellMetacharacters: return "Confirm only with shell metacharacters"
-        case .never: return "Never confirm"
+        case .alwaysOnMultiline: return String(localized: "Always confirm multi-line")
+        case .onShellMetacharacters: return String(localized: "Confirm only with shell metacharacters")
+        case .never: return String(localized: "Never confirm")
         }
     }
 
