@@ -1,7 +1,7 @@
 // swift-tools-version: 6.3
 import PackageDescription
 
-// Important: Use these settings for all libraries except CommunityCore.
+// Important: Use these settings for most targets.
 let swiftSettings: [SwiftSetting]? = [.defaultIsolation(MainActor.self)]
 
 let package = Package(
