@@ -15,19 +15,53 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
-        <article id="v0-1-0">
-            <h2>0.1.0 — TBD</h2>
+        <article id="v1-0-0">
+            <h2>1.0.0 — 2026-05-13</h2>
             <p class="meta">First public release.</p>
+            <p>
+                Batty is a native macOS terminal multiplexer built on
+                <a href="https://ghostty.org/">libghostty</a>. v1.0.0 covers
+                the full sessions / panes / tabs feature set, layout
+                persistence, the unified bell feed, and Sparkle auto-update.
+            </p>
+            <h3>Sessions, panes, and tabs</h3>
             <ul>
-                <li>Sessions sidebar with per-session bell counters and notifications mute.</li>
-                <li>Recursive horizontal / vertical splits with drag-resize and persistence.</li>
-                <li>Tab strip with auto-derived titles (project name → live OSC → cwd basename).</li>
-                <li>Bell Feed popover with click-to-jump and system notifications.</li>
-                <li>Drag-and-drop of file paths into a terminal with shell-quoted insertion.</li>
-                <li>Multi-line paste confirmation sheet.</li>
-                <li>Cmd-W busy-tab confirmation when a foreground process is running.</li>
-                <li>Auto-close on shell exit; close cascades through pane and session.</li>
-                <li>Sparkle auto-update wired to <a href="appcast.xml">appcast.xml</a>.</li>
+                <li>Sessions sidebar with per-session bell counters and a per-session notifications mute.</li>
+                <li>Recursive horizontal / vertical splits with drag-resize; split ratios persist across launches.</li>
+                <li>Tab strip with auto-derived titles (project name → live OSC title → cwd basename) and an unseen-bell dot.</li>
+                <li>Layout persistence: sessions, panes, tabs, and working directories restore on relaunch.</li>
+            </ul>
+            <h3>Terminal experience</h3>
+            <ul>
+                <li>libghostty under the hood — Metal-accelerated, true-color, ligature-friendly rendering.</li>
+                <li>IME support for CJK Romaji, dead-key composition (Option-E + E → é), and the Ctrl-Cmd-Space emoji picker.</li>
+                <li>Drag-and-drop of file paths from Finder into a pane, shell-quoted on insert.</li>
+                <li>Multi-line paste confirmation sheet (paste strictness configurable in Settings).</li>
+                <li>Cmd-W busy-tab confirmation when a foreground process is running; auto-close on shell exit cascades through pane and session.</li>
+                <li>Cmd-Q with terminals open prompts; cancel keeps the app running.</li>
+            </ul>
+            <h3>Bell feed</h3>
+            <ul>
+                <li>Every BEL and OSC 9 lands in a unified popover (Cmd-Shift-N).</li>
+                <li>Click an entry to jump to the originating tab.</li>
+                <li>Optional system notifications for background bells; per-session mute when a long build gets noisy.</li>
+            </ul>
+            <h3>Themes and settings</h3>
+            <ul>
+                <li>Live theme switching via View → Theme and Settings → Appearance; choice persists.</li>
+                <li>Settings (Cmd-,) for font size, cursor style, paste strictness, confirm-quit, bell sound, and system-notification policy.</li>
+            </ul>
+            <h3>Distribution</h3>
+            <ul>
+                <li>Signed with Developer ID, notarized, and stapled — launches on a clean Mac with no Gatekeeper warning.</li>
+                <li>Sparkle auto-update wired to <a href="appcast.xml">appcast.xml</a>; toggleable in Settings → Notifications.</li>
+                <li>Unsandboxed (terminals run arbitrary user processes) with Hardened Runtime enabled.</li>
+            </ul>
+            <h3>Known limitations</h3>
+            <ul>
+                <li>Per-tab close-confirmation is deferred until libghostty exposes a CommandStart shell-integration signal (<a href="https://github.com/brennanMKE/Batty/issues">#0036</a>). Quit-time confirmation still covers the most important case.</li>
+                <li>Window-level click-to-jump is a no-op for the single-window default; multi-window expansion comes later (<a href="https://github.com/brennanMKE/Batty/issues">#0027</a>).</li>
+                <li>Bundled terminfo / shell-integration is currently unbundled — <code>$TERM</code> falls back to <code>xterm-256color</code> and some Ghostty-specific extensions silently degrade (<a href="https://github.com/brennanMKE/Batty/issues">#0003</a>).</li>
             </ul>
         </article>
     </main>

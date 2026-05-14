@@ -6,10 +6,38 @@
     <description>Updates for Batty — a native macOS terminal multiplexer.</description>
     <language>en</language>
     <!--
-        Each release adds an <item> entry. scripts/release.sh will append
-        one per signed DMG once the release pipeline is wired into the
-        appcast. Until the first release ships, the feed is intentionally
-        empty so Sparkle reports "you're already up to date."
+        Per-release workflow (see scripts/RELEASE.md §6 and scripts/SPARKLE.md).
+
+        1. scripts/release.sh produces dist/Batty-<sha>.dmg.
+        2. cp dist/Batty-<sha>.dmg website/downloads/Batty-1.0.0.dmg
+        3. Run sign_update from
+               BattyKit/.build/artifacts/sparkle/Sparkle/bin/
+           passing the DMG path, and the keychain account flag set to
+           "Batty" (the default value of "ed25519" will not find the
+           key). See scripts/SPARKLE.md for the full command.
+           sign_update prints both sparkle:edSignature="..." and
+           length="..." attributes. Paste those values into
+           __EDDSA_SIGNATURE__ and __LENGTH_BYTES__ below.
+        4. Manually upload website/ to batty.sstools.co.
     -->
+    <item>
+      <title>1.0.0</title>
+      <pubDate>Wed, 13 May 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-0-0</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        First public release of Batty. Sessions sidebar, recursive splits,
+        tabs with auto-derived titles, unified bell feed, layout persistence,
+        Sparkle auto-update. See the full changelog for details and known
+        limitations.
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.0.0.dmg"
+        sparkle:version="1"
+        sparkle:shortVersionString="1.0.0"
+        sparkle:edSignature="mZR6jh7y5nQoS5oELL73anLrrQbpAc7h3Dc26JKhx93wyabV8ajSE1lUVDQ6z3WNIlID1Rfe5HQS5h4wW137Aw=="
+        length="19649972"
+        type="application/octet-stream" />
+    </item>
   </channel>
 </rss>

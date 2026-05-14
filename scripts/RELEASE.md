@@ -94,7 +94,9 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
      build number, `<sparkle:minimumSystemVersion>`, release-notes
      link, and enclosure URL pointing at the DMG you copied into
      `website/downloads/Batty-<X.Y.Z>.dmg`. Generate the
-     `sparkle:edSignature` via `sign_update` (see `scripts/SPARKLE.md`).
+     `sparkle:edSignature` via
+     `BattyKit/.build/artifacts/sparkle/Sparkle/bin/sign_update --account Batty`
+     (see `scripts/SPARKLE.md`; the `--account Batty` flag is required).
    - Stamp `website/changelog.html` — add an `<article id="vX-Y-Z">`
      summarising user-visible changes for this version. Link closed
      `#NNNN` issues from the milestone.

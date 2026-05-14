@@ -19,6 +19,7 @@ set -uo pipefail
 SCRIPT_DIR="${0:A:h}"
 REPO_ROOT="${SCRIPT_DIR:h}"
 XCCONFIG="$REPO_ROOT/Configuration/Build.xcconfig"
+APP_XCCONFIG="$REPO_ROOT/Configuration/App.xcconfig"
 INFO_PLIST_SRC="$REPO_ROOT/Configuration/Info.plist"
 PBXPROJ="$REPO_ROOT/Batty.xcodeproj/project.pbxproj"
 PACKAGE_SWIFT="$REPO_ROOT/BattyKit/Package.swift"
@@ -88,9 +89,14 @@ fi
 
 # Sentinel from #0003: terminfo bundled. Skip Index.noindex copies — those
 # are the indexer's product without the Run Script build phase outputs.
+# Multiple DerivedData dirs can coexist (Batty-<hash>) after Xcode reshuffles;
+# pick the most recently modified Batty.app so a stale one doesn't fail the
+# check.
 BUILT_APP=$(find ~/Library/Developer/Xcode/DerivedData/Batty-* \
     -type d -name "Batty.app" -path "*/Build/Products/Debug/*" \
-    ! -path "*Index.noindex*" 2>/dev/null | head -1)
+    ! -path "*Index.noindex*" -print0 2>/dev/null \
+    | xargs -0 stat -f '%m %N' 2>/dev/null \
+    | sort -rn | awk '{print $2; exit}')
 if [[ -n "$BUILT_APP" && -f "$BUILT_APP/Contents/Resources/terminfo/78/xterm-ghostty" ]]; then
     pass "terminfo sentinel present in built app"
 elif [[ -z "$BUILT_APP" ]]; then
@@ -103,12 +109,12 @@ fi
 
 section "Version gates"
 
-VERSION=$(grep -E '^MARKETING_VERSION' "$XCCONFIG" 2>/dev/null | head -1 | awk -F= '{print $2}' | tr -d ' ')
+VERSION=$(grep -E '^MARKETING_VERSION' "$APP_XCCONFIG" 2>/dev/null | head -1 | awk -F= '{print $2}' | tr -d ' ')
 
 if [[ -z "$VERSION" ]]; then
-    fail "MARKETING_VERSION missing from $XCCONFIG"
+    fail "MARKETING_VERSION missing from $APP_XCCONFIG"
 else
-    pass "MARKETING_VERSION = $VERSION (Build.xcconfig)"
+    pass "MARKETING_VERSION = $VERSION (App.xcconfig)"
 fi
 
 # Convention since xcconfig-as-source-of-truth: MARKETING_VERSION must
@@ -149,22 +155,24 @@ else
         fail "BattyKit/Package.swift missing Sparkle dependency"
     fi
 
-    if [[ -n "$BUILT_APP" ]]; then
-        FEED=$(plutil -extract SUFeedURL raw "$BUILT_APP/Contents/Info.plist" 2>/dev/null)
-        if [[ -n "$FEED" && "$FEED" != "(null)" ]]; then
-            pass "SUFeedURL in built Info.plist: $FEED"
-        else
-            fail "SUFeedURL missing from built Info.plist (#0097)"
-        fi
-
-        EDKEY=$(plutil -extract SUPublicEDKey raw "$BUILT_APP/Contents/Info.plist" 2>/dev/null)
-        if [[ -n "$EDKEY" && "$EDKEY" != "PLACEHOLDER_BASE64_PUBKEY_REPLACE_BEFORE_RELEASE" ]]; then
-            pass "SUPublicEDKey set in built Info.plist"
-        else
-            warn "SUPublicEDKey is still the placeholder — run Sparkle's generate_keys before release"
-        fi
+    # Source of truth: Configuration/App.xcconfig. Info.plist references
+    # $(SU_FEED_URL) / $(SU_PUBLIC_ED_KEY), so the build-time substitution
+    # is deterministic — checking xcconfig is enough and doesn't require
+    # a recent build.
+    SU_FEED=$(grep -E '^SU_FEED_URL' "$APP_XCCONFIG" 2>/dev/null \
+        | head -1 | awk -F'=' '{sub(/^[ \t]+/, "", $2); print $2}')
+    if [[ -n "$SU_FEED" ]]; then
+        pass "SU_FEED_URL set in App.xcconfig: $SU_FEED"
     else
-        warn "no built Batty.app — can't inspect Info.plist"
+        fail "SU_FEED_URL missing from App.xcconfig (#0097)"
+    fi
+
+    SU_KEY=$(grep -E '^SU_PUBLIC_ED_KEY' "$APP_XCCONFIG" 2>/dev/null \
+        | head -1 | awk -F'=' '{sub(/^[ \t]+/, "", $2); print $2}')
+    if [[ -n "$SU_KEY" && "$SU_KEY" != "PLACEHOLDER_BASE64_PUBKEY_REPLACE_BEFORE_RELEASE" ]]; then
+        pass "SU_PUBLIC_ED_KEY set in App.xcconfig"
+    else
+        warn "SU_PUBLIC_ED_KEY missing/placeholder — run Sparkle's generate_keys before release"
     fi
 fi
 
@@ -245,7 +253,7 @@ if [[ -n "${BATTY_EC2_KEY:-}" && -n "${BATTY_EC2_HOST:-}" && -n "${BATTY_EC2_PAT
         fi
     fi
 else
-    warn "BATTY_EC2_KEY / HOST / PATH not all set — deploy-website.sh will refuse to run"
+    pass "EC2 deploy env vars not set — manual upload path (deploy-website.sh disabled)"
 fi
 
 # --- Fork gate ---------------------------------------------------------------
@@ -277,13 +285,19 @@ fi
 
 section "Workspace gate"
 
-if [[ -z "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
+DIRTY=$(git -C "$REPO_ROOT" status --porcelain)
+if [[ -z "$DIRTY" ]]; then
     pass "working tree is clean"
 else
-    if (( ALLOW_DIRTY )); then
+    # Strip the 2-char status + space prefix; for renames take the post-arrow path.
+    DIRTY_PATHS=$(print -r -- "$DIRTY" | sed 's/^...//' | awk -F' -> ' '{print $NF}')
+    NON_WEBSITE=$(print -r -- "$DIRTY_PATHS" | grep -v '^website/' || true)
+    if [[ -z "$NON_WEBSITE" ]]; then
+        pass "working tree dirty only under website/ (release prep — expected)"
+    elif (( ALLOW_DIRTY )); then
         warn "working tree dirty (--allow-dirty given)"
     else
-        fail "working tree is not clean — commit or stash first"
+        fail "working tree is not clean outside website/ — commit or stash first"
     fi
 fi
 

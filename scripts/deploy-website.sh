@@ -2,10 +2,14 @@
 # Push the website/ tree to the EC2 host that serves https://batty.sstools.co/.
 #
 # Reads:
-#   BATTY_EC2_KEY    Path to the .pem file. Permissions must be 400/600.
-#   BATTY_EC2_HOST   user@host or user@public-dns (e.g. ec2-user@batty.sstools.co).
+#   BATTY_EC2_HOST   user@host or user@public-dns (e.g. ec2-user@batty.sstools.co),
+#                    or just an SSH config alias.
 #   BATTY_EC2_PATH   Absolute path on the remote, e.g. /var/www/batty.
-#   BATTY_EC2_PORT   (optional) SSH port; defaults to 22.
+#   BATTY_EC2_PORT   (optional) SSH port; defaults to whatever ~/.ssh/config says,
+#                    falling back to 22.
+#   BATTY_EC2_KEY    (optional) Path to a .pem file. Permissions must be 400/600.
+#                    Leave unset to let SSH pick the right key from ~/.ssh/config
+#                    or the default identity files.
 #
 # Idempotent. rsync --delete keeps the remote in sync with website/, so
 # files removed locally also disappear from the live site. Excludes
@@ -34,22 +38,21 @@ require_env() {
     fi
 }
 
-require_env BATTY_EC2_KEY
 require_env BATTY_EC2_HOST
 require_env BATTY_EC2_PATH
 
-PORT="${BATTY_EC2_PORT:-22}"
+if [[ -n "${BATTY_EC2_KEY:-}" ]]; then
+    if [[ ! -f "$BATTY_EC2_KEY" ]]; then
+        print -u2 "error: key file not found at $BATTY_EC2_KEY"
+        exit 1
+    fi
 
-if [[ ! -f "$BATTY_EC2_KEY" ]]; then
-    print -u2 "error: key file not found at $BATTY_EC2_KEY"
-    exit 1
-fi
-
-KEY_PERMS=$(stat -f '%Lp' "$BATTY_EC2_KEY" 2>/dev/null || stat -c '%a' "$BATTY_EC2_KEY")
-if [[ "$KEY_PERMS" != "400" && "$KEY_PERMS" != "600" ]]; then
-    print -u2 "error: $BATTY_EC2_KEY has permissions $KEY_PERMS — SSH will refuse it."
-    print -u2 "       chmod 600 \"$BATTY_EC2_KEY\""
-    exit 1
+    KEY_PERMS=$(stat -f '%Lp' "$BATTY_EC2_KEY" 2>/dev/null || stat -c '%a' "$BATTY_EC2_KEY")
+    if [[ "$KEY_PERMS" != "400" && "$KEY_PERMS" != "600" ]]; then
+        print -u2 "error: $BATTY_EC2_KEY has permissions $KEY_PERMS — SSH will refuse it."
+        print -u2 "       chmod 600 \"$BATTY_EC2_KEY\""
+        exit 1
+    fi
 fi
 
 if [[ ! -d "$SITE_DIR" ]]; then
@@ -68,12 +71,24 @@ fi
 
 # --- Deploy ------------------------------------------------------------------
 
-print "==> Deploying website to $BATTY_EC2_HOST:$BATTY_EC2_PATH"
-print "    Key:    $BATTY_EC2_KEY"
-print "    Port:   $PORT"
-print "    Source: $SITE_DIR"
+# Build SSH option list: -i and -p are only added if explicitly configured.
+# Otherwise, defer to ~/.ssh/config and the user's default identity files.
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
+if [[ -n "${BATTY_EC2_KEY:-}" ]]; then
+    SSH_OPTS+=(-i "$BATTY_EC2_KEY")
+fi
+if [[ -n "${BATTY_EC2_PORT:-}" ]]; then
+    SSH_OPTS+=(-p "$BATTY_EC2_PORT")
+fi
 
-SSH_OPTS=(-i "$BATTY_EC2_KEY" -p "$PORT" -o StrictHostKeyChecking=accept-new)
+print "==> Deploying website to $BATTY_EC2_HOST:$BATTY_EC2_PATH"
+if [[ -n "${BATTY_EC2_KEY:-}" ]]; then
+    print "    Key:    $BATTY_EC2_KEY"
+else
+    print "    Key:    (ssh default — from ~/.ssh/config / identity files)"
+fi
+print "    Port:   ${BATTY_EC2_PORT:-(ssh default)}"
+print "    Source: $SITE_DIR"
 
 # Confirm the remote path exists before pushing — rsync will create files
 # but not the leaf directory. Fail loudly if the user mistyped the path.
@@ -89,7 +104,7 @@ rsync \
     --exclude '.DS_Store' \
     --exclude '*.swp' \
     --exclude '*.bak' \
-    -e "ssh -i $BATTY_EC2_KEY -p $PORT -o StrictHostKeyChecking=accept-new" \
+    -e "ssh ${SSH_OPTS[*]}" \
     "$SITE_DIR/" \
     "$BATTY_EC2_HOST:$BATTY_EC2_PATH/"
 

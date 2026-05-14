@@ -16,16 +16,24 @@ Sparkle stays dormant.
 
    Pick whichever and remember the URL for the rest of these steps.
 
-2. **Generate an EdDSA signing key pair.** Sparkle ships `generate_keys` in
-   the SPM checkout. Build it once:
+2. **Generate an EdDSA signing key pair.** Sparkle is consumed via a
+   prebuilt XCFramework, so the helper binaries arrive as SPM *artifacts*
+   (not source under `checkouts/`). After any `swift build` /
+   `swift test` / `xcodebuild` invocation against `BattyKit`, the tools
+   land at:
 
-   ```bash
-   xcrun swift run --package-path .build/checkouts/Sparkle/bin generate_keys
+   ```
+   BattyKit/.build/artifacts/sparkle/Sparkle/bin/{generate_keys,sign_update}
    ```
 
-   The tool stores the private key in your keychain under the name
-   `https://sparkle-project.org` and prints the public key. Save the printed
-   public key somewhere — you'll embed it in step 3.
+   (or, when produced by Xcode,
+   `~/Library/Developer/Xcode/DerivedData/Batty-*/SourcePackages/artifacts/sparkle/Sparkle/bin/…`
+   — identical binary.)
+
+   See `scripts/SparkleSetup.md` for `generate_keys` invocations
+   (`--account Batty`, key import/export, etc.). The tool stores the
+   private key in your keychain under the Sparkle profile and prints
+   the public key — that's what gets embedded in step 3.
 
 3. **Add `SUFeedURL` and `SUPublicEDKey` to the Batty target's Info.plist.**
    The project uses `GENERATE_INFOPLIST_FILE = YES`, so the synthesized plist
@@ -69,14 +77,22 @@ For Sparkle to advertise the build, append a new `<item>` to
 </item>
 ```
 
-Use `sign_update` (also in Sparkle's `bin/`) to compute the EdDSA signature
-over the DMG before publishing:
+Use `sign_update` (alongside `generate_keys` in the SPM artifacts dir)
+to compute the EdDSA signature over the DMG before publishing:
 
 ```bash
-.build/checkouts/Sparkle/bin/sign_update path/to/Batty-1.0.1.dmg
+BattyKit/.build/artifacts/sparkle/Sparkle/bin/sign_update \
+    --account Batty \
+    path/to/Batty-1.0.1.dmg
 ```
 
-The output is the value for `sparkle:edSignature`.
+`--account Batty` is required: the keypair was generated with
+`generate_keys --account Batty` (see `scripts/SparkleSetup.md`).
+Without it `sign_update` looks under the default account `ed25519`
+and fails with "Signing key not found for account ed25519."
+
+The output is the value for `sparkle:edSignature`, plus a `length=`
+attribute matching the DMG's byte count.
 
 Push the updated `appcast.xml` to your hosting destination. Sparkle clients
 poll the feed and prompt the user on next launch (or via "Check for

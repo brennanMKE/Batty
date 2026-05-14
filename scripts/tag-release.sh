@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
 REPO_ROOT="${SCRIPT_DIR:h}"
-XCCONFIG="$REPO_ROOT/Configuration/Build.xcconfig"
+XCCONFIG="$REPO_ROOT/Configuration/App.xcconfig"
 
 push_mode="ask"
 for arg in "$@"; do
