@@ -1,491 +1,305 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "Batty" : {
-      "comment" : "Product name. Most call sites should use Text(verbatim:) or a String variable so the catalog never substitutes a translation for the brand. Listed here so translators see the canonical English value.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+  "sourceLanguage": "en",
+  "strings": {
+    "Batty": {
+      "comment": "Product name. Most call sites should use Text(verbatim:) or a String variable so the catalog never substitutes a translation for the brand. Listed here so translators see the canonical English value.",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "es-419" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "es-419": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
           }
         }
       }
     },
-    "Paste %lld lines?" : {
-      "comment" : "Paste-confirmation sheet title. Pluralized.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Zeile einfügen?"
+    "Paste %lld lines?": {
+      "comment": "Paste-confirmation sheet title. Pluralized.",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Zeile einfügen?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Zeilen einfügen?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Zeilen einfügen?"
                 }
               }
             }
           }
         },
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Paste %lld line?"
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Paste %lld line?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Paste %lld lines?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Paste %lld lines?"
                 }
               }
             }
           }
         },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "¿Pegar %lld línea?"
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "¿Pegar %lld línea?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "¿Pegar %lld líneas?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "¿Pegar %lld líneas?"
                 }
               }
             }
           }
         },
-        "es-419" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "¿Pegar %lld línea?"
+        "es-419": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "¿Pegar %lld línea?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "¿Pegar %lld líneas?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "¿Pegar %lld líneas?"
                 }
               }
             }
           }
         },
-        "fr" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Coller %lld ligne ?"
+        "fr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Coller %lld ligne ?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Coller %lld lignes ?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Coller %lld lignes ?"
                 }
               }
             }
           }
         },
-        "ja" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld 行をペーストしますか?"
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Incollare %lld riga?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld 行をペーストしますか?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Incollare %lld righe?"
                 }
               }
             }
           }
         },
-        "ko" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld줄을 붙여넣을까요?"
+        "ja": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 行をペーストしますか?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld줄을 붙여넣을까요?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 行をペーストしますか?"
                 }
               }
             }
           }
         },
-        "pt-BR" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Colar %lld linha?"
+        "ko": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld줄을 붙여넣을까요?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Colar %lld linhas?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld줄을 붙여넣을까요?"
                 }
               }
             }
           }
         },
-        "ru" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Вставить %lld строку?"
+        "pt-BR": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Colar %lld linha?"
                 }
               },
-              "few" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Вставить %lld строки?"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Вставить %lld строк?"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Colar %lld linhas?"
                 }
               }
             }
           }
         },
-        "zh-Hans" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "要粘贴 %lld 行吗？"
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Вставить %lld строку?"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "要粘贴 %lld 行吗？"
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Вставить %lld строки?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Вставить %lld строк?"
                 }
               }
             }
           }
         },
-        "zh-Hant" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "要貼上 %lld 行嗎？"
+        "zh-Hans": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "要粘贴 %lld 行吗？"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "要貼上 %lld 行嗎？"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "There %lld open terminal(s)." : {
-      "comment" : "Body of the quit-confirmation alert. Pluralized.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Terminal ist geöffnet."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Terminals sind geöffnet."
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "要粘贴 %lld 行吗？"
                 }
               }
             }
           }
         },
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "There is %lld open terminal."
+        "zh-Hant": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "要貼上 %lld 行嗎？"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "There are %lld open terminals."
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Hay %lld terminal abierto."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Hay %lld terminales abiertos."
-                }
-              }
-            }
-          }
-        },
-        "es-419" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Hay %lld terminal abierta."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Hay %lld terminales abiertas."
-                }
-              }
-            }
-          }
-        },
-        "fr" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld terminal est ouvert."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld terminaux sont ouverts."
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "ターミナルが %lld 個開いています。"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "ターミナルが %lld 個開いています。"
-                }
-              }
-            }
-          }
-        },
-        "ko" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "터미널 %lld개가 열려 있습니다."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "터미널 %lld개가 열려 있습니다."
-                }
-              }
-            }
-          }
-        },
-        "pt-BR" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Há %lld terminal aberto."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Há %lld terminais abertos."
-                }
-              }
-            }
-          }
-        },
-        "ru" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Открыт %lld терминал."
-                }
-              },
-              "few" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Открыто %lld терминала."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Открыто %lld терминалов."
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "有 %lld 个终端已打开。"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "有 %lld 个终端已打开。"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hant" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "有 %lld 個終端機已開啟。"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "有 %lld 個終端機已開啟。"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "要貼上 %lld 行嗎？"
                 }
               }
             }
@@ -493,209 +307,227 @@
         }
       }
     },
-    "%lld unseen bell event(s)" : {
-      "comment" : "Tooltip on the sidebar bell-count badge. Pluralized.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld ungelesenes Glockenereignis"
+    "There %lld open terminal(s).": {
+      "comment": "Body of the quit-confirmation alert. Pluralized.",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Terminal ist geöffnet."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld ungelesene Glockenereignisse"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Terminals sind geöffnet."
                 }
               }
             }
           }
         },
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld unseen bell event"
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "There is %lld open terminal."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld unseen bell events"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "There are %lld open terminals."
                 }
               }
             }
           }
         },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld evento de campana sin leer"
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Hay %lld terminal abierto."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld eventos de campana sin leer"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Hay %lld terminales abiertos."
                 }
               }
             }
           }
         },
-        "es-419" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld evento de campana sin leer"
+        "es-419": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Hay %lld terminal abierta."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld eventos de campana sin leer"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Hay %lld terminales abiertas."
                 }
               }
             }
           }
         },
-        "fr" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld événement de cloche non lu"
+        "fr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld terminal est ouvert."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld événements de cloche non lus"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld terminaux sont ouverts."
                 }
               }
             }
           }
         },
-        "ja" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "未読のベルイベント %lld 件"
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "C'è %lld terminale aperto."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "未読のベルイベント %lld 件"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Ci sono %lld terminali aperti."
                 }
               }
             }
           }
         },
-        "ko" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "확인하지 않은 벨 이벤트 %lld건"
+        "ja": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "ターミナルが %lld 個開いています。"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "확인하지 않은 벨 이벤트 %lld건"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "ターミナルが %lld 個開いています。"
                 }
               }
             }
           }
         },
-        "pt-BR" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld evento de campainha não visto"
+        "ko": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "터미널 %lld개가 열려 있습니다."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld eventos de campainha não vistos"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "터미널 %lld개가 열려 있습니다."
                 }
               }
             }
           }
         },
-        "ru" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld непросмотренное событие звонка"
+        "pt-BR": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Há %lld terminal aberto."
                 }
               },
-              "few" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld непросмотренных события звонка"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld непросмотренных событий звонка"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Há %lld terminais abertos."
                 }
               }
             }
           }
         },
-        "zh-Hans" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld 个未读响铃事件"
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Открыт %lld терминал."
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld 个未读响铃事件"
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Открыто %lld терминала."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Открыто %lld терминалов."
                 }
               }
             }
           }
         },
-        "zh-Hant" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld 個未讀響鈴事件"
+        "zh-Hans": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "有 %lld 个终端已打开。"
                 }
               },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld 個未讀響鈴事件"
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "有 %lld 个终端已打开。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "有 %lld 個終端機已開啟。"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "有 %lld 個終端機已開啟。"
                 }
               }
             }
@@ -703,222 +535,468 @@
         }
       }
     },
-    "Quit Batty?" : {
-      "comment" : "Quit confirmation alert title.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty beenden?"
+    "%lld unseen bell event(s)": {
+      "comment": "Tooltip on the sidebar bell-count badge. Pluralized.",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ungelesenes Glockenereignis"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ungelesene Glockenereignisse"
+                }
+              }
+            }
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quit Batty?"
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld unseen bell event"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld unseen bell events"
+                }
+              }
+            }
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Salir de Batty?"
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld evento de campana sin leer"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld eventos de campana sin leer"
+                }
+              }
+            }
           }
         },
-        "es-419" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Salir de Batty?"
+        "es-419": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld evento de campana sin leer"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld eventos de campana sin leer"
+                }
+              }
+            }
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quitter Batty ?"
+        "fr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld événement de cloche non lu"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld événements de cloche non lus"
+                }
+              }
+            }
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty を終了しますか?"
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld evento campanella non visualizzato"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld eventi campanella non visualizzati"
+                }
+              }
+            }
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Batty를 종료할까요?"
+        "ja": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "未読のベルイベント %lld 件"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "未読のベルイベント %lld 件"
+                }
+              }
+            }
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encerrar o Batty?"
+        "ko": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "확인하지 않은 벨 이벤트 %lld건"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "확인하지 않은 벨 이벤트 %lld건"
+                }
+              }
+            }
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Завершить Batty?"
+        "pt-BR": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld evento de campainha não visto"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld eventos de campainha não vistos"
+                }
+              }
+            }
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要退出 Batty 吗？"
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld непросмотренное событие звонка"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld непросмотренных события звонка"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld непросмотренных событий звонка"
+                }
+              }
+            }
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要結束 Batty 嗎？"
+        "zh-Hans": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 个未读响铃事件"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 个未读响铃事件"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 個未讀響鈴事件"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 個未讀響鈴事件"
+                }
+              }
+            }
           }
         }
       }
     },
-    "Quit" : {
-      "comment" : "Quit-confirmation primary button.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beenden"
+    "Quit Batty?": {
+      "comment": "Quit confirmation alert title.",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty beenden?"
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quit"
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit Batty?"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Salir"
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Salir de Batty?"
           }
         },
-        "es-419" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Salir"
+        "es-419": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Salir de Batty?"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quitter"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitter Batty ?"
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "終了"
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uscire da Batty?"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "종료"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty を終了しますか?"
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encerrar"
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty를 종료할까요?"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Завершить"
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encerrar o Batty?"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "退出"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершить Batty?"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "結束"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要退出 Batty 吗？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要結束 Batty 嗎？"
           }
         }
       }
     },
-    "Cancel" : {
-      "comment" : "Generic cancel button.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abbrechen"
+    "Quit": {
+      "comment": "Quit-confirmation primary button.",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beenden"
           }
         },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancel"
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancelar"
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salir"
           }
         },
-        "es-419" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancelar"
+        "es-419": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salir"
           }
         },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Annuler"
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitter"
           }
         },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "キャンセル"
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esci"
           }
         },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "취소"
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "終了"
           }
         },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancelar"
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "종료"
           }
         },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Отменить"
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encerrar"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取消"
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершить"
           }
         },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取消"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "結束"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "comment": "Generic cancel button.",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbrechen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar"
+          }
+        },
+        "es-419": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulla"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キャンセル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
           }
         }
       }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }
