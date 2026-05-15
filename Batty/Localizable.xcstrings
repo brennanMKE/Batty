@@ -53,6 +53,12 @@
             "value": "Batty"
           }
         },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -228,6 +234,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld줄을 붙여넣을까요?"
+                }
+              }
+            }
+          }
+        },
+        "nl": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld regel plakken?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld regels plakken?"
                 }
               }
             }
@@ -485,6 +509,24 @@
             }
           }
         },
+        "nl": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Er is %lld terminal open."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Er zijn %lld terminals open."
+                }
+              }
+            }
+          }
+        },
         "pl": {
           "variations": {
             "plural": {
@@ -737,6 +779,24 @@
             }
           }
         },
+        "nl": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ongelezen belmelding"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ongelezen belmeldingen"
+                }
+              }
+            }
+          }
+        },
         "pl": {
           "variations": {
             "plural": {
@@ -893,6 +953,12 @@
             "value": "Batty를 종료할까요?"
           }
         },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty stoppen?"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -977,6 +1043,12 @@
             "value": "종료"
           }
         },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -1059,6 +1131,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "취소"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuleer"
           }
         },
         "pl": {
