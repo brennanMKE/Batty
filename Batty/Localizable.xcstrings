@@ -58,6 +58,12 @@
             "state" : "translated",
             "value" : "Batty"
           }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batty"
+          }
         }
       }
     },
@@ -222,6 +228,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "要粘贴 %lld 行吗？"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "要貼上 %lld 行嗎？"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "要貼上 %lld 行嗎？"
                 }
               }
             }
@@ -394,6 +418,24 @@
               }
             }
           }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "有 %lld 個終端機已開啟。"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "有 %lld 個終端機已開啟。"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -562,6 +604,24 @@
               }
             }
           }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 個未讀響鈴事件"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 個未讀響鈴事件"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -621,6 +681,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要退出 Batty 吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要結束 Batty 嗎？"
           }
         }
       }
@@ -682,6 +748,12 @@
             "state" : "translated",
             "value" : "退出"
           }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結束"
+          }
         }
       }
     },
@@ -738,6 +810,12 @@
           }
         },
         "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "取消"
