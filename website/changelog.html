@@ -15,21 +15,71 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-0-1">
+            <h2>1.0.1 — 2026-05-14</h2>
+            <p class="meta">First update after launch. Cursor-motion shortcuts, friendlier paste, and a fully localized UI.</p>
+            <h3>Cursor motion at the shell prompt</h3>
+            <p>
+                The standard macOS Terminal-style shortcuts for moving and editing
+                the current command line now work out of the box:
+            </p>
+            <ul>
+                <li><kbd>Option</kbd>-<kbd>Left</kbd> / <kbd>Right</kbd> — jump one word at a time.</li>
+                <li><kbd>Option</kbd>-<kbd>Delete</kbd> — delete the previous word.</li>
+                <li><kbd>Cmd</kbd>-<kbd>Left</kbd> / <kbd>Right</kbd> — jump to the start or end of the line.</li>
+                <li><kbd>Cmd</kbd>-<kbd>Delete</kbd> — delete to the start of the line.</li>
+            </ul>
+            <p>
+                Previously Option-arrow inserted composed letters and Cmd-arrow did nothing useful.
+                (<a href="https://github.com/brennanMKE/Batty/issues">#0106</a>)
+            </p>
+            <h3>Paste confirmation</h3>
+            <p>
+                The default for multi-line paste changed from <em>always confirm</em> to
+                <em>never confirm</em> — multi-line clipboard contents now land in the terminal directly,
+                matching Terminal.app and iTerm2 defaults.
+                The picker (Cmd-, → Paste Confirmation) is unchanged for anyone who wants the safety net back —
+                pick <em>Always confirm multi-line</em> or <em>Confirm only with shell metacharacters</em>.
+                (<a href="https://github.com/brennanMKE/Batty/issues">#0105</a>)
+            </p>
+            <h3>Localized UI in 14 languages</h3>
+            <p>
+                Menus, settings, alerts, and the Help system now appear in the user's preferred macOS language.
+                Translations are provided for:
+            </p>
+            <ul>
+                <li>日本語 (Japanese), 简体中文 (Simplified Chinese), 繁體中文 (Traditional Chinese),
+                    한국어 (Korean), Deutsch (German), Français (French),
+                    Español — España, Español — Latinoamérica, Português (Brasil),
+                    Italiano (Italian), Polski (Polish), Nederlands (Dutch),
+                    Русский (Russian), Türkçe (Turkish).</li>
+            </ul>
+            <p>
+                Translations were drafted with machine assistance and have not yet been reviewed by native
+                speakers — corrections welcome via
+                <a href="https://github.com/brennanMKE/Batty/issues">GitHub Issues</a> or pull request
+                against <code>Batty/Localizable.xcstrings</code>.
+            </p>
+            <h3>Under the hood</h3>
+            <ul>
+                <li>BattyKit source files reorganized from a flat root into eight concern folders (<code>Views/</code>, <code>Runtime/</code>, <code>Model/</code>, <code>Commands/</code>, …) for easier navigation. No user-visible change. (<a href="https://github.com/brennanMKE/Batty/issues">#0122</a>)</li>
+            </ul>
+        </article>
+
         <article id="v1-0-0">
             <h2>1.0.0 — 2026-05-13</h2>
             <p class="meta">First public release.</p>
             <p>
                 Batty is a native macOS terminal multiplexer built on
                 <a href="https://ghostty.org/">libghostty</a>. v1.0.0 covers
-                the full sessions / panes / tabs feature set, layout
-                persistence, the unified bell feed, and Sparkle auto-update.
+                the full sessions / panes / tabs feature set, the unified bell
+                feed, and Sparkle auto-update.
             </p>
             <h3>Sessions, panes, and tabs</h3>
             <ul>
                 <li>Sessions sidebar with per-session bell counters and a per-session notifications mute.</li>
-                <li>Recursive horizontal / vertical splits with drag-resize; split ratios persist across launches.</li>
+                <li>Recursive horizontal / vertical splits with drag-resize.</li>
                 <li>Tab strip with auto-derived titles (project name → live OSC title → cwd basename) and an unseen-bell dot.</li>
-                <li>Layout persistence: sessions, panes, tabs, and working directories restore on relaunch.</li>
             </ul>
             <h3>Terminal experience</h3>
             <ul>
