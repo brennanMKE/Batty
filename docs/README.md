@@ -34,6 +34,11 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   and tab-close cleanup. Read this before touching `BellFeedStore`,
   `BellNotifier`, the bell routing in `AppStateStore`, or the
   Settings → Notifications pane.
+- [`source-layout.md`](source-layout.md) — how `BattyKit/Sources/BattyKit/`
+  is grouped into folders by concern (`Views/`, `Runtime/`, `Model/`,
+  `Commands/`, `Theme/`, `Settings/`, `Updater/`, `Util/`). Read this
+  before adding a new Swift file to BattyKit so it lands in the right
+  folder.
 - [`localization.md`](localization.md) — where user-facing strings live
   (`Batty/Localizable.xcstrings`), how SwiftUI auto-extraction works for
   this project, the `Text(verbatim:)` rule for the product name, and the
