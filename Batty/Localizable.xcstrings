@@ -53,6 +53,12 @@
             "value": "Batty"
           }
         },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
+          }
+        },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
@@ -222,6 +228,30 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld줄을 붙여넣을까요?"
+                }
+              }
+            }
+          }
+        },
+        "pl": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Wkleić %lld linię?"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Wkleić %lld linie?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Wkleić %lld linii?"
                 }
               }
             }
@@ -455,6 +485,30 @@
             }
           }
         },
+        "pl": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Otwarty jest %lld terminal."
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Otwarte są %lld terminale."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Otwartych jest %lld terminali."
+                }
+              }
+            }
+          }
+        },
         "pt-BR": {
           "variations": {
             "plural": {
@@ -683,6 +737,30 @@
             }
           }
         },
+        "pl": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld nieprzeczytane zdarzenie dzwonka"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld nieprzeczytane zdarzenia dzwonka"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld nieprzeczytanych zdarzeń dzwonka"
+                }
+              }
+            }
+          }
+        },
         "pt-BR": {
           "variations": {
             "plural": {
@@ -815,6 +893,12 @@
             "value": "Batty를 종료할까요?"
           }
         },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zakończyć Batty?"
+          }
+        },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
@@ -893,6 +977,12 @@
             "value": "종료"
           }
         },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zakończ"
+          }
+        },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
@@ -969,6 +1059,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "취소"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anuluj"
           }
         },
         "pt-BR": {
