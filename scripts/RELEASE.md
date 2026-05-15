@@ -133,7 +133,7 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
    scripts/tag-release.sh
    ```
 
-   Reads `MARKETING_VERSION` from `Build.xcconfig`, creates an
+   Reads `MARKETING_VERSION` from `App.xcconfig`, creates an
    annotated `v<X.Y.Z>` tag on the current HEAD, and prompts before
    pushing to origin. `--push` or `--no-push` to skip the prompt.
 

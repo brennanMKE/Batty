@@ -128,7 +128,7 @@ else
 fi
 
 if grep -qE 'CURRENT_PROJECT_VERSION = ' "$PBXPROJ"; then
-    fail "pbxproj contains CURRENT_PROJECT_VERSION — should live only in Build.xcconfig"
+    fail "pbxproj contains CURRENT_PROJECT_VERSION — should live only in App.xcconfig"
 else
     pass "pbxproj has no CURRENT_PROJECT_VERSION override (xcconfig wins)"
 fi
@@ -140,6 +140,30 @@ if [[ -n "$VERSION" ]]; then
     else
         warn "MARKETING_VERSION '$VERSION' is not strict X.Y.Z"
     fi
+fi
+
+# Build-number collision gate (#0124 follow-up): release.sh derives
+# CURRENT_PROJECT_VERSION as YYYYMMDD at archive time. Same-day re-releases
+# would produce an identical build number to the prior one, which Sparkle
+# treats as "no update available" — repeat of the 1.0.0 → 1.0.1 mistake.
+# Compare today's UTC date against the highest sparkle:version already in
+# the appcast.
+TODAY_BUILD="$(date -u +%Y%m%d)"
+APPCAST="$REPO_ROOT/website/appcast.xml"
+if [[ -f "$APPCAST" ]]; then
+    HIGHEST_BUILD=$(grep -oE 'sparkle:version="[0-9]+"' "$APPCAST" 2>/dev/null \
+        | grep -oE '[0-9]+' | sort -rn | head -1)
+    if [[ -z "$HIGHEST_BUILD" ]]; then
+        pass "appcast has no prior sparkle:version (first release)"
+    elif [[ "$HIGHEST_BUILD" -lt "$TODAY_BUILD" ]]; then
+        pass "today's build $TODAY_BUILD > highest in appcast ($HIGHEST_BUILD)"
+    elif [[ "$HIGHEST_BUILD" -eq "$TODAY_BUILD" ]]; then
+        warn "today's YYYYMMDD ($TODAY_BUILD) already in appcast — same-day re-release would collide; override release.sh BUILD_NUMBER to '$(date -u +%Y%m%d%H%M)' for this one"
+    else
+        fail "appcast has sparkle:version $HIGHEST_BUILD > today's $TODAY_BUILD (clock skew or stale appcast)"
+    fi
+else
+    warn "website/appcast.xml not found — skipping build-number collision check"
 fi
 
 # --- Sparkle gates -----------------------------------------------------------

@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # Tag the current HEAD with v<MARKETING_VERSION>. Reads the version from
-# Configuration/Build.xcconfig so the tag always matches what shipped.
+# Configuration/App.xcconfig so the tag always matches what shipped.
 #
 # Run from a clean working tree, ideally after release.sh produced a DMG
 # and after deploy-website.sh pushed the updated appcast. Prompts before
