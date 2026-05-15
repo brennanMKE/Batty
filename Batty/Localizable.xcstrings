@@ -77,6 +77,12 @@
             "value": "Batty"
           }
         },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
@@ -318,6 +324,24 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "Вставить %lld строк?"
+                }
+              }
+            }
+          }
+        },
+        "tr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld satır yapıştırılsın mı?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld satır yapıştırılsın mı?"
                 }
               }
             }
@@ -593,6 +617,24 @@
             }
           }
         },
+        "tr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld terminal açık."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld terminal açık."
+                }
+              }
+            }
+          }
+        },
         "zh-Hans": {
           "variations": {
             "plural": {
@@ -863,6 +905,24 @@
             }
           }
         },
+        "tr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld okunmamış zil olayı"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld okunmamış zil olayı"
+                }
+              }
+            }
+          }
+        },
         "zh-Hans": {
           "variations": {
             "plural": {
@@ -977,6 +1037,12 @@
             "value": "Завершить Batty?"
           }
         },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batty'den çıkılsın mı?"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
@@ -1067,6 +1133,12 @@
             "value": "Завершить"
           }
         },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çık"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
@@ -1155,6 +1227,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Отменить"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal"
           }
         },
         "zh-Hans": {
