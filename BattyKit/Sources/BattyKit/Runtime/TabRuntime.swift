@@ -37,6 +37,9 @@ public final class TabRuntime: Identifiable {
     public internal(set) var terminalNSView: AppTerminalView?
 
     @ObservationIgnored
+    let terminalDelegate: TerminalDelegateProxy
+
+    @ObservationIgnored
     private var lastObservedBellCount: Int = 0
     @ObservationIgnored
     private var lastObservedNotificationAt: Date?
@@ -54,7 +57,9 @@ public final class TabRuntime: Identifiable {
     ) {
         self.id = id
         self.titleOverride = titleOverride
-        self.terminal = TerminalViewState(theme: Self.activeTheme())
+        let state = TerminalViewState(theme: Self.activeTheme())
+        self.terminal = state
+        self.terminalDelegate = TerminalDelegateProxy(state: state)
         if let workingDirectory {
             self.terminal.configuration.workingDirectory = workingDirectory
         }

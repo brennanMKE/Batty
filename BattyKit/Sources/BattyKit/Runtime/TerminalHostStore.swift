@@ -73,7 +73,7 @@ public final class TerminalHostStore {
             return existing
         }
         let view = AppTerminalView(frame: .zero)
-        view.delegate = tab.terminal
+        view.delegate = tab.terminalDelegate
         view.controller = tab.terminal.controller
         view.configuration = tab.terminal.configuration
         view.isHidden = true
