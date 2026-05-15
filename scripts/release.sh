@@ -61,6 +61,9 @@ print "==> Cleaning previous build"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
+BUILD_NUMBER="$(date -u +%Y%m%d)"
+print "==> Build number for this release: $BUILD_NUMBER"
+
 print "==> Writing export options plist"
 cat > "$EXPORT_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -83,7 +86,8 @@ xcodebuild archive \
     -scheme "$SCHEME" \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
-    -destination 'generic/platform=macOS'
+    -destination 'generic/platform=macOS' \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 print "==> Exporting signed app"
 xcodebuild -exportArchive \
@@ -179,6 +183,7 @@ rm -rf "$BUILD_DIR"
 print
 print "Done. Distributable at:"
 print "  $DMG_PATH"
+print "  Build number: $BUILD_NUMBER  (use as sparkle:version in website/appcast.xml)"
 print
 print "On the recipient's Mac:"
 print "  - Double-click the DMG"

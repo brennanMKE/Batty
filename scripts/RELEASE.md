@@ -38,14 +38,25 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 
 1. **Choose the version**
 
-   Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in
-   `Configuration/Build.xcconfig` — that file is the single source of
-   truth. `project.pbxproj` no longer carries per-target overrides and
-   the Info.plist reads both values via `$(VAR)` substitution. The
+   Bump `MARKETING_VERSION` in `Configuration/App.xcconfig` — that
+   file is the single source of truth for the marketing version.
+   `project.pbxproj` no longer carries per-target overrides and the
+   Info.plist reads the value via `$(VAR)` substitution. The
    preflight enforces this: any `MARKETING_VERSION = …` line that
-   appears in `project.pbxproj` is a `[✗]`. Convention: SemVer for
-   marketing (`1.2.0`), monotonically-increasing integer for the build
-   (`42`). Commit the bump on its own as `Bump version to <X.Y.Z>`.
+   appears in `project.pbxproj` is a `[✗]`. SemVer convention
+   (`1.2.0`).
+
+   **Do not bump `CURRENT_PROJECT_VERSION` by hand.** `release.sh`
+   overrides it at archive time with today's UTC date in `YYYYMMDD`
+   form (e.g. `20260514`) — the monotonically-increasing build
+   number Sparkle compares against. The static value left in
+   `App.xcconfig` is only used by Xcode-driven Debug builds, which
+   Sparkle never sees. The auto-derived number is printed at the
+   end of `release.sh` so it can be pasted into `appcast.xml` as
+   `sparkle:version`.
+
+   Commit the marketing-version bump on its own as
+   `Bump version to <X.Y.Z>`.
 
 2. **Sanity-check the build**
 
@@ -90,10 +101,13 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 
 6. **Update the appcast and changelog**
 
-   - Add a `<item>` entry to `website/appcast.xml` with the new version,
-     build number, `<sparkle:minimumSystemVersion>`, release-notes
-     link, and enclosure URL pointing at the DMG you copied into
-     `website/downloads/Batty-<X.Y.Z>.dmg`. Generate the
+   - Add a `<item>` entry to `website/appcast.xml` with the new
+     `<sparkle:minimumSystemVersion>`, release-notes link, and
+     enclosure URL pointing at the DMG you copied into
+     `website/downloads/Batty-<X.Y.Z>.dmg`. Use the **build number
+     printed at the end of `release.sh`** (the `YYYYMMDD` value) for
+     `sparkle:version`, and the marketing version for
+     `sparkle:shortVersionString`. Generate the
      `sparkle:edSignature` via
      `BattyKit/.build/artifacts/sparkle/Sparkle/bin/sign_update --account Batty`
      (see `scripts/SPARKLE.md`; the `--account Batty` flag is required).
