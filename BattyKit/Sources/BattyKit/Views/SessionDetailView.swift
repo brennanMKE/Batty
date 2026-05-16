@@ -26,7 +26,7 @@ public struct SessionDetailView: View {
             TerminalHostInstaller()
 
             ForEach(store.sessions) { session in
-                SplitContainerView(tree: session.tree)
+                SplitContainerView(tree: session.tree, paneDrag: session.paneDrag)
                     .coordinateSpace(name: "session")
                     .onPreferenceChange(PaneFramePreferenceKey.self) { newFrames in
                         session.paneFrames.frames = newFrames

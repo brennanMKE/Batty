@@ -5,12 +5,14 @@ import SwiftUI
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
     @Bindable public var tree: SplitTree
+    public var paneDrag: PaneDragController?
     @Environment(\.appStateStore) private var appStore
     @Environment(\.isSelectedSession) private var isSessionSelected
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
     @State private var renameDraft: String = ""
     @State private var paneWidth: CGFloat = 0
+    @State private var paneSize: CGSize = .zero
 
     /// Approximate per-character text width at the chip's font. Used to
     /// derive a string-level char budget from the per-chip pixel budget.
@@ -26,9 +28,10 @@ public struct PaneView: View {
     private static let charBudgetMin: Int = 3
     private static let charBudgetMax: Int = 40
 
-    public init(pane: PaneRuntime, tree: SplitTree) {
+    public init(pane: PaneRuntime, tree: SplitTree, paneDrag: PaneDragController? = nil) {
         self.pane = pane
         self.tree = tree
+        self.paneDrag = paneDrag
     }
 
     private var isPaneFocused: Bool {
@@ -37,6 +40,15 @@ public struct PaneView: View {
 
     private var hasSiblingPanes: Bool {
         tree.allPanes.count > 1
+    }
+
+    private var isBeingDragged: Bool {
+        paneDrag?.draggedPaneID == pane.id
+    }
+
+    private var isPaneDropTarget: Bool {
+        guard let paneDrag, paneDrag.isDragging else { return false }
+        return paneDrag.dropTargetPaneID == pane.id
     }
 
     private var chipMaxWidth: CGFloat {
@@ -53,31 +65,36 @@ public struct PaneView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            SlidingTabBar(
-                items: $pane.tabs,
-                activeID: activeIDBinding,
-                onReorderCommit: nil,
-                onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
-            ) { tab, isActive in
-                BattyTabChip(
-                    title: chipTitle(for: tab),
-                    isActive: isActive,
-                    isPaneFocused: isPaneFocused,
-                    hasUnseen: tab.unseenBellCount > 0,
-                    onClose: {
-                        if let appStore {
-                            appStore.requestCloseTab(id: tab.id)
-                        } else {
-                            pane.removeTab(id: tab.id)
+            HStack(spacing: 0) {
+                if hasSiblingPanes {
+                    paneDragHandle
+                }
+                SlidingTabBar(
+                    items: $pane.tabs,
+                    activeID: activeIDBinding,
+                    onReorderCommit: nil,
+                    onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
+                ) { tab, isActive in
+                    BattyTabChip(
+                        title: chipTitle(for: tab),
+                        isActive: isActive,
+                        isPaneFocused: isPaneFocused,
+                        hasUnseen: tab.unseenBellCount > 0,
+                        onClose: {
+                            if let appStore {
+                                appStore.requestCloseTab(id: tab.id)
+                            } else {
+                                pane.removeTab(id: tab.id)
+                            }
                         }
-                    }
-                )
-                .frame(width: chipMaxWidth)
-                .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
-                .contextMenu { tabContextMenu(for: tab) }
+                    )
+                    .frame(width: chipMaxWidth)
+                    .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
+                    .contextMenu { tabContextMenu(for: tab) }
+                }
+                .clipped()
+                .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
             }
-            .clipped()
-            .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
 
             ZStack {
                 ForEach(pane.tabs) { tab in
@@ -157,8 +174,20 @@ public struct PaneView: View {
                     .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
                     .allowsHitTesting(false)
             }
-            .opacity(hasSiblingPanes && !isPaneFocused ? 0.7 : 1)
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.accentColor.opacity(0.18))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.accentColor, lineWidth: 3)
+                    )
+                    .opacity(isPaneDropTarget ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: isPaneDropTarget)
+                    .allowsHitTesting(false)
+            }
+            .opacity(isBeingDragged ? 0.35 : (hasSiblingPanes && !isPaneFocused ? 0.7 : 1))
             .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
+            .animation(.easeOut(duration: 0.12), value: isBeingDragged)
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
                 triggerBellFlash()
             }
@@ -173,9 +202,13 @@ public struct PaneView: View {
                         key: PaneFramePreferenceKey.self,
                         value: [pane.id: geo.frame(in: .named("session"))]
                     )
-                    .onAppear { paneWidth = geo.size.width }
-                    .onChange(of: geo.size.width) { _, newValue in
-                        paneWidth = newValue
+                    .onAppear {
+                        paneWidth = geo.size.width
+                        paneSize = geo.size
+                    }
+                    .onChange(of: geo.size) { _, newValue in
+                        paneWidth = newValue.width
+                        paneSize = newValue
                     }
             }
         }
@@ -191,6 +224,59 @@ public struct PaneView: View {
                 onCancel: { renamingTab = nil }
             )
         }
+    }
+
+    @ViewBuilder
+    private var paneDragHandle: some View {
+        Image(systemName: "rectangle.grid.1x2")
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+            .help("Drag to swap with another pane")
+            .accessibilityLabel("Pane drag handle")
+            .accessibilityIdentifier("pane-drag-handle.\(pane.id.uuidString)")
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.openHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(paneDragGesture)
+    }
+
+    private var paneDragGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named("session"))
+            .onChanged { value in
+                guard let paneDrag else { return }
+                if paneDrag.draggedPaneID == nil {
+                    appStore?.focusPane(id: pane.id)
+                    paneDrag.begin(
+                        paneID: pane.id,
+                        paneSize: paneSize,
+                        cursor: value.location
+                    )
+                }
+                paneDrag.update(cursor: value.location, frames: sessionPaneFrames)
+            }
+            .onEnded { _ in
+                guard let paneDrag else { return }
+                if let (draggedID, targetID) = paneDrag.end() {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                        _ = tree.swapPanes(draggedID, targetID)
+                    }
+                    appStore?.focusPane(id: draggedID)
+                }
+            }
+    }
+
+    private var sessionPaneFrames: [UUID: CGRect] {
+        guard let appStore, let session = appStore.sessions.first(where: { $0.tree === tree }) else {
+            return [:]
+        }
+        return session.paneFrames.frames
     }
 
     @ViewBuilder

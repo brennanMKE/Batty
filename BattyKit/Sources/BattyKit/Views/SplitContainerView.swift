@@ -4,24 +4,57 @@ import SwiftUI
 
 public struct SplitContainerView: View {
     @Bindable public var tree: SplitTree
+    public var paneDrag: PaneDragController?
 
-    public init(tree: SplitTree) {
+    public init(tree: SplitTree, paneDrag: PaneDragController? = nil) {
         self.tree = tree
+        self.paneDrag = paneDrag
     }
 
     public var body: some View {
-        SplitNodeView(tree: tree, node: tree.root)
+        ZStack(alignment: .topLeading) {
+            SplitNodeView(tree: tree, node: tree.root, paneDrag: paneDrag)
+            if let paneDrag, paneDrag.isDragging {
+                PaneDragPreview(controller: paneDrag)
+            }
+        }
+    }
+}
+
+private struct PaneDragPreview: View {
+    @Bindable var controller: PaneDragController
+
+    var body: some View {
+        let size = controller.draggedPaneSize
+        let origin = CGPoint(
+            x: controller.cursorLocation.x - size.width / 2,
+            y: controller.cursorLocation.y - size.height / 2
+        )
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color.accentColor.opacity(0.18))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 2)
+            )
+            .frame(width: size.width, height: size.height)
+            .position(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
+            .allowsHitTesting(false)
+            .transition(.opacity)
     }
 }
 
 private struct SplitNodeView: View {
     @Bindable var tree: SplitTree
     let node: SplitTreeNode
+    let paneDrag: PaneDragController?
 
     var body: AnyView {
         switch node {
         case .leaf(let pane):
-            return AnyView(PaneView(pane: pane, tree: tree))
+            return AnyView(
+                PaneView(pane: pane, tree: tree, paneDrag: paneDrag)
+                    .id(pane.id)
+            )
         case let .split(id, direction, ratio, left, right):
             return AnyView(
                 DraggableSplitView(
@@ -30,9 +63,10 @@ private struct SplitNodeView: View {
                     onRatioChange: { newRatio in
                         tree.updateRatio(forSplitID: id, to: newRatio)
                     },
-                    leftContent: { SplitNodeView(tree: tree, node: left) },
-                    rightContent: { SplitNodeView(tree: tree, node: right) }
+                    leftContent: { SplitNodeView(tree: tree, node: left, paneDrag: paneDrag) },
+                    rightContent: { SplitNodeView(tree: tree, node: right, paneDrag: paneDrag) }
                 )
+                .id(id)
             )
         }
     }

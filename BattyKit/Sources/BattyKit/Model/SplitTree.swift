@@ -126,6 +126,24 @@ public final class SplitTree {
         let clamped = max(0.05, min(0.95, newRatio))
         root = SplitTreeNode.updatingRatio(in: root, forID: id, to: clamped)
     }
+
+    /// Exchanges the two leaf panes identified by `a` and `b` so they trade
+    /// positions in the tree. The split structure (directions, ratios,
+    /// node ids) is preserved — only the `PaneRuntime` references at the
+    /// two leaves are swapped. Because `PaneRuntime` is a reference type
+    /// carrying its tabs and all per-pane runtime state, focus tracking
+    /// (which is by pane id) follows the pane automatically.
+    ///
+    /// No-op if either id is missing or `a == b`.
+    @discardableResult
+    public func swapPanes(_ a: UUID, _ b: UUID) -> Bool {
+        guard a != b else { return false }
+        guard let paneA = root.findPane(id: a), let paneB = root.findPane(id: b) else {
+            return false
+        }
+        root = SplitTreeNode.swappingLeaves(in: root, a: paneA, b: paneB)
+        return true
+    }
 }
 
 extension SplitTreeNode {
@@ -164,6 +182,26 @@ extension SplitTreeNode {
             case (let l?, let r?):
                 return .split(id: nodeID, direction: dir, ratio: ratio, left: l, right: r)
             }
+        }
+    }
+
+    static func swappingLeaves(in node: SplitTreeNode, a: PaneRuntime, b: PaneRuntime) -> SplitTreeNode {
+        switch node {
+        case .leaf(let pane):
+            if pane.id == a.id {
+                return .leaf(b)
+            } else if pane.id == b.id {
+                return .leaf(a)
+            }
+            return node
+        case .split(let id, let dir, let ratio, let left, let right):
+            return .split(
+                id: id,
+                direction: dir,
+                ratio: ratio,
+                left: swappingLeaves(in: left, a: a, b: b),
+                right: swappingLeaves(in: right, a: a, b: b)
+            )
         }
     }
 

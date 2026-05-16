@@ -16,6 +16,7 @@ public final class SessionRuntime: Identifiable {
     /// user-set name pins permanently. See `#0089`.
     public var titleOverride: Bool = false
     @ObservationIgnored public let paneFrames: PaneFrameTracker
+    public let paneDrag: PaneDragController
 
     public init(
         id: UUID = UUID(),
@@ -32,6 +33,7 @@ public final class SessionRuntime: Identifiable {
         self.notificationsMuted = notificationsMuted
         self.titleOverride = titleOverride
         self.paneFrames = PaneFrameTracker()
+        self.paneDrag = PaneDragController()
     }
 
     public var focusedPane: PaneRuntime {
