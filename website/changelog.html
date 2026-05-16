@@ -15,6 +15,47 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-0-2">
+            <h2>1.0.2 — 2026-05-16</h2>
+            <p class="meta">Clickable hyperlinks from shell programs that speak OSC 8.</p>
+            <h3>OSC 8 hyperlink support</h3>
+            <p>
+                Modern shell tools emit clickable links via OSC 8 escape sequences —
+                <code>ls --hyperlink=auto</code> turns filenames into <code>file://</code> links,
+                <code>cargo</code> and <code>gcc</code> diagnostics make
+                <code>file:line:column</code> jumpable, the <code>gh</code> CLI links PRs and issues,
+                and <code>eza</code>, <code>git</code>, <code>pytest</code>, and many others have opt-in modes.
+                Batty now renders those links with an underline and a pointing-hand cursor on hover.
+            </p>
+            <ul>
+                <li><kbd>Cmd</kbd>-click opens the URL via the system's default handler — browser for
+                    <code>http</code> / <code>https</code>, Finder or the bound app for <code>file://</code>.</li>
+                <li>Plain click is preserved so shell programs that consume mouse events
+                    (vim, less, fzf) keep working. Matches Terminal.app and iTerm2 convention.</li>
+                <li>URL schemes are restricted to <code>http</code>, <code>https</code>, <code>file</code>,
+                    <code>mailto</code>, and <code>ftp</code>; anything else is a silent no-op to keep
+                    a malicious shell program from launching arbitrary handlers.</li>
+            </ul>
+            <p>
+                Quick repro in a Batty pane:
+                <code>printf '\e]8;;https://example.com\e\\example\e]8;;\e\\\n'</code>
+                — the word <em>example</em> should be underlined and Cmd-clickable.
+                (<a href="https://github.com/brennanMKE/Batty/issues">#0125</a>)
+            </p>
+            <h3>Under the hood</h3>
+            <ul>
+                <li>Release pipeline auto-derives <code>CURRENT_PROJECT_VERSION</code> from today's UTC date
+                    (<code>YYYYMMDD</code>) so Sparkle build numbers can't collide between releases.
+                    (<a href="https://github.com/brennanMKE/Batty/issues">#0124</a>)</li>
+            </ul>
+            <h3>Known gaps</h3>
+            <ul>
+                <li>Right-click <em>Open Link</em> / <em>Copy Link</em> on a hyperlinked cell is deferred —
+                    the libghostty wrapper doesn't yet expose a menu hook. Cmd-click works; the context menu
+                    will land once the wrapper API is in place.</li>
+            </ul>
+        </article>
+
         <article id="v1-0-1">
             <h2>1.0.1 — 2026-05-14</h2>
             <p class="meta">First update after launch. Cursor-motion shortcuts, friendlier paste, and a fully localized UI.</p>
