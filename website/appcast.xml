@@ -23,6 +23,28 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.0.2</title>
+      <pubDate>Sat, 16 May 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-0-2</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        Clickable hyperlinks: OSC 8 escape sequences emitted by modern shell
+        programs (`ls --hyperlink=auto`, `cargo`, `gcc`, `gh`, and friends)
+        now render with an underline, show a pointing-hand cursor on hover,
+        and open with Cmd-click via the system's default URL handler. Plain
+        click is preserved so shell programs that consume mouse events
+        (vim, less, fzf) keep working. URL schemes are restricted to
+        `http`, `https`, `file`, `mailto`, and `ftp`.
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.0.2.dmg"
+        sparkle:version="20260516"
+        sparkle:shortVersionString="1.0.2"
+        sparkle:edSignature="/vcRlHVu/P+5gZXiZ6iR7sjMVBmgp0QA4QTCjO2SPCxlq0dG/3SPfyvQmRJtT7Jgk6/MRdsDWkfHMlvfDTjkAA=="
+        length="19669739"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.0.1</title>
       <pubDate>Thu, 14 May 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
