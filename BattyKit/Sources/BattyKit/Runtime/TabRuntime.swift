@@ -18,6 +18,12 @@ public final class TabRuntime: Identifiable {
 
     public internal(set) var runningCommandDisplayName: String?
 
+    /// Wall-clock timestamp of the last time this tab became the active
+    /// tab in the focused pane of the selected session. Drives recency
+    /// ranking in the Open Quickly panel (`#0128`). Stamped from
+    /// `AppStateStore.markActiveTabSeen()`.
+    @ObservationIgnored public var lastFocusedAt: Date?
+
     /// Set by ``TerminalHostView`` while a Finder drag is hovering over
     /// this tab's terminal subview; cleared on drag exit or drop. Drives
     /// the accent-color overlay in ``PaneView``. Lives on the model

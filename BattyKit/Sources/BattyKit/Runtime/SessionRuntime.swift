@@ -15,6 +15,10 @@ public final class SessionRuntime: Identifiable {
     /// CWD, name-cache lookups) check this and skip the rewrite — a
     /// user-set name pins permanently. See `#0089`.
     public var titleOverride: Bool = false
+    /// Wall-clock timestamp of the last time this session became the
+    /// selected session. Drives recency ranking in the Open Quickly panel
+    /// (`#0128`). Stamped from `AppStateStore.markActiveTabSeen()`.
+    @ObservationIgnored public var lastFocusedAt: Date?
     @ObservationIgnored public let paneFrames: PaneFrameTracker
     public let paneDrag: PaneDragController
 

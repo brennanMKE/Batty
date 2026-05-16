@@ -54,6 +54,10 @@ public enum BattyShortcuts {
             }
             return false
 
+        case ([.command, .shift], "o"), ([.command, .shift], "O"):
+            NotificationCenter.default.post(name: .battyOpenQuickly, object: nil)
+            return true
+
         default:
             return false
         }

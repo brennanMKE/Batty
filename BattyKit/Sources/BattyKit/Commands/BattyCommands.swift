@@ -22,6 +22,13 @@ public struct BattyCommands: Commands {
                 store.addSession()
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
+
+            Divider()
+
+            Button("Open Quickly\u{2026}") {
+                NotificationCenter.default.post(name: .battyOpenQuickly, object: nil)
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
         }
 
         CommandGroup(after: .sidebar) {

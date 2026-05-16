@@ -6,6 +6,7 @@ public struct SessionDetailView: View {
     public let store: AppStateStore
     @State private var bellFeedShown: Bool = false
     @State private var pendingPaste: PendingPaste?
+    @State private var openQuicklyShown: Bool = false
 
     public init(store: AppStateStore) {
         self.store = store
@@ -103,9 +104,15 @@ public struct SessionDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleBellFeed)) { _ in
             bellFeedShown.toggle()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .battyOpenQuickly)) { _ in
+            openQuicklyShown = true
+        }
         .onReceive(NotificationCenter.default.publisher(for: .battyRequestPaste)) { note in
             guard let pending = note.userInfo?["paste"] as? PendingPaste else { return }
             pendingPaste = pending
+        }
+        .sheet(isPresented: $openQuicklyShown) {
+            OpenQuicklyView(store: store) { openQuicklyShown = false }
         }
         .sheet(item: $pendingPaste) { pending in
             PasteConfirmationSheet(

@@ -186,6 +186,11 @@ public final class AppStateStore {
         guard let session = selectedSession else { return }
         let pane = session.focusedPane
         let tabID = pane.activeTabID
+        let now = Date()
+        session.lastFocusedAt = now
+        if let tab = pane.tabs.first(where: { $0.id == tabID }) {
+            tab.lastFocusedAt = now
+        }
         let entriesToClear = bellFeed.entries.filter { $0.tabID == tabID && !$0.seen }
         for entry in entriesToClear {
             markBellSeen(id: entry.id)
