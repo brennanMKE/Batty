@@ -38,6 +38,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             BattyShortcuts.handle(event) ? nil : event
         }
+        TerminalClickFocusMonitor.start()
         allSessionsClosedObserver = NotificationCenter.default.addObserver(
             forName: .battyAllSessionsClosed,
             object: nil,
