@@ -29,6 +29,7 @@ private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.defaultShellKey) private var shellOverride: String = ""
     @AppStorage(SettingsPreference.pasteStrictnessKey) private var pasteStrictness: String = SettingsPreference.defaultPasteStrictness
     @AppStorage(SettingsPreference.confirmQuitKey) private var confirmQuit: Bool = SettingsPreference.defaultConfirmQuit
+    @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
 
     var body: some View {
         Form {
@@ -59,6 +60,18 @@ private struct GeneralSettingsView: View {
             Section("Quit") {
                 Toggle("Confirm quit when terminals are open", isOn: $confirmQuit)
                 Text("Counts open tabs across all sessions; the prompt fires only when at least one tab exists.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Keyboard") {
+                Picker("Cmd-1…9 switches", selection: $cmdNumberTarget) {
+                    ForEach(CmdNumberTarget.allCases, id: \.rawValue) { target in
+                        Text(target.displayName).tag(target.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Text("Sessions: jump to session 1–9 with Cmd-1…9, tabs with Cmd-Option-1…9. Tabs: reversed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

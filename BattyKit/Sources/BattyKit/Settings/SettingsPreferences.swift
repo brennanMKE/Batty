@@ -12,6 +12,7 @@ public enum SettingsPreference {
     public static let systemNotificationsKey = "co.sstools.Batty.systemNotifications"
     public static let pasteStrictnessKey = "co.sstools.Batty.pasteStrictness"
     public static let confirmQuitKey = "co.sstools.Batty.confirmQuit"
+    public static let cmdNumberTargetKey = "co.sstools.Batty.cmdNumberTarget"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -20,6 +21,7 @@ public enum SettingsPreference {
     public static let defaultSystemNotifications: Bool = true
     public static let defaultPasteStrictness: String = PasteStrictness.never.rawValue
     public static let defaultConfirmQuit: Bool = true
+    public static let defaultCmdNumberTarget: String = CmdNumberTarget.sessions.rawValue
 
     public static func detectedShell() -> String {
         if let shell = ProcessInfo.processInfo.environment["SHELL"], !shell.isEmpty {
@@ -109,6 +111,18 @@ public enum PasteStrictness: String, CaseIterable, Sendable {
     }
 }
 
+public enum CmdNumberTarget: String, CaseIterable, Sendable {
+    case sessions
+    case tabs
+
+    public var displayName: String {
+        switch self {
+        case .sessions: return String(localized: "Sessions")
+        case .tabs:     return String(localized: "Tabs")
+        }
+    }
+}
+
 extension AppStateStore {
     public func applyAppearanceToAllSurfaces() {
         let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle()) ?? .block
@@ -143,6 +157,7 @@ extension SettingsPreference {
             cursorBlinkKey: defaultCursorBlink,
             bellSoundKey: defaultBellSound,
             systemNotificationsKey: defaultSystemNotifications,
+            cmdNumberTargetKey: defaultCmdNumberTarget,
         ])
     }
 }

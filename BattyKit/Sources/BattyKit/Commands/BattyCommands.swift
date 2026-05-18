@@ -9,6 +9,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 public struct BattyCommands: Commands {
     @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
     @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
+    @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
 
     private var store: AppStateStore { WorkspaceManager.shared.store }
     private var shortcuts: ShortcutsStore { ShortcutsStore.shared }
@@ -48,7 +49,10 @@ public struct BattyCommands: Commands {
                 } label: {
                     Text(sessionMenuTitle(at: index))
                 }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
+                .keyboardShortcut(
+                    KeyEquivalent(Character("\(index + 1)")),
+                    modifiers: cmdNumberSwitchesSessions ? .command : [.command, .option]
+                )
                 .disabled(!sessionExists(at: index))
             }
         }
@@ -194,10 +198,17 @@ public struct BattyCommands: Commands {
                 } label: {
                     Text(tabMenuTitle(at: index))
                 }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                .keyboardShortcut(
+                    KeyEquivalent(Character("\(index + 1)")),
+                    modifiers: cmdNumberSwitchesSessions ? [.command, .option] : .command
+                )
                 .disabled(!tabExists(at: index))
             }
         }
+    }
+
+    private var cmdNumberSwitchesSessions: Bool {
+        (CmdNumberTarget(rawValue: cmdNumberTarget) ?? .sessions) == .sessions
     }
 
     private var focusedPane: PaneRuntime? {
