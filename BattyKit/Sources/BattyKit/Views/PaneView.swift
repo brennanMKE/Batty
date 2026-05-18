@@ -1,6 +1,7 @@
 // PaneView.swift
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
@@ -11,6 +12,7 @@ public struct PaneView: View {
     @State private var renamingTab: TabRuntime?
     @State private var renameDraft: String = ""
     @State private var paneWidth: CGFloat = 0
+    @State private var isPaneSwapTarget: Bool = false
 
     /// Approximate per-character text width at the chip's font. Used to
     /// derive a string-level char budget from the per-chip pixel budget.
@@ -78,6 +80,7 @@ public struct PaneView: View {
             }
             .clipped()
             .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
+            .onDrag { NSItemProvider(object: pane.id.uuidString as NSString) }
 
             ZStack {
                 ForEach(pane.tabs) { tab in
@@ -157,6 +160,7 @@ public struct PaneView: View {
                     .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
                     .allowsHitTesting(false)
             }
+            .modifier(PaneSwapDropTarget(pane: pane, tree: tree, isTargeted: $isPaneSwapTarget))
             .opacity(hasSiblingPanes && !isPaneFocused ? 0.7 : 1)
             .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
@@ -262,6 +266,46 @@ public struct PaneView: View {
 
     private func chipTitle(for tab: TabRuntime) -> String {
         TabTitleFormatter.chipTitle(for: tab)
+    }
+}
+
+/// Adds pane-swap drop target behavior to a view. Renders a highlight border
+/// while a compatible drag hovers, and swaps the source pane with `pane`
+/// when dropped.
+///
+/// Extracted from ``PaneView`` to keep the main body below SwiftUI's
+/// type-checker complexity limit.
+private struct PaneSwapDropTarget: ViewModifier {
+    let pane: PaneRuntime
+    @Bindable var tree: SplitTree
+    @Binding var isTargeted: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .opacity(isTargeted ? 1 : 0)
+                    .animation(.easeOut(duration: 0.1), value: isTargeted)
+                    .allowsHitTesting(false)
+            }
+            .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
+                providers.first?.loadDataRepresentation(
+                    forTypeIdentifier: UTType.plainText.identifier
+                ) { data, _ in
+                    guard let data,
+                          let idString = String(data: data, encoding: .utf8),
+                          let sourceID = UUID(uuidString: idString),
+                          sourceID != pane.id
+                    else { return }
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                            tree.swapPanes(id: sourceID, with: pane.id)
+                        }
+                    }
+                }
+                return true
+            }
     }
 }
 
