@@ -126,9 +126,37 @@ public final class SplitTree {
         let clamped = max(0.05, min(0.95, newRatio))
         root = SplitTreeNode.updatingRatio(in: root, forID: id, to: clamped)
     }
+
+    /// Swaps the positions of two leaf panes in the tree. The split structure
+    /// and ratios are unchanged; only the leaf contents trade places.
+    /// No-op if either id is not found.
+    public func swapPanes(id idA: UUID, with idB: UUID) {
+        guard idA != idB,
+              let paneA = root.findPane(id: idA),
+              let paneB = root.findPane(id: idB)
+        else { return }
+        root = SplitTreeNode.swapping(paneA: paneA, paneB: paneB, in: root)
+    }
 }
 
 extension SplitTreeNode {
+    static func swapping(paneA: PaneRuntime, paneB: PaneRuntime, in node: SplitTreeNode) -> SplitTreeNode {
+        switch node {
+        case .leaf(let pane):
+            if pane.id == paneA.id { return .leaf(paneB) }
+            if pane.id == paneB.id { return .leaf(paneA) }
+            return node
+        case .split(let id, let dir, let ratio, let left, let right):
+            return .split(
+                id: id,
+                direction: dir,
+                ratio: ratio,
+                left: swapping(paneA: paneA, paneB: paneB, in: left),
+                right: swapping(paneA: paneA, paneB: paneB, in: right)
+            )
+        }
+    }
+
     static func updatingRatio(in node: SplitTreeNode, forID id: UUID, to newRatio: Double) -> SplitTreeNode {
         switch node {
         case .leaf:
