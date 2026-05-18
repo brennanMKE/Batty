@@ -22,6 +22,10 @@ let package = Package(
         ),
         .package(path: "../../SlidingTabs"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+        .package(
+            url: "https://github.com/gonzalezreal/textual.git",
+            revision: "5b06b811c0f5313b6b84bbef98c635a630638c38"
+        ),
     ],
     targets: [
         .target(
@@ -32,9 +36,11 @@ let package = Package(
                 .product(name: "GhosttyTheme", package: "libghostty-spm"),
                 .product(name: "SlidingTabs", package: "SlidingTabs"),
                 .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "Textual", package: "textual"),
             ],
             resources: [
                 .process("Resources"),
+                .copy("Help"),
             ],
             swiftSettings: swiftSettings
         ),
