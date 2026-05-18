@@ -353,6 +353,15 @@ public final class AppStateStore {
         }
     }
 
+    public func jumpToTab(sessionID: UUID, tabID: UUID) {
+        guard let session = sessions.first(where: { $0.id == sessionID }),
+              let pane = session.tree.allPanes.first(where: { $0.tabs.contains(where: { $0.id == tabID }) })
+        else { return }
+        selectedSessionID = session.id
+        session.tree.focusedPaneID = pane.id
+        pane.activeTabID = tabID
+    }
+
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
         guard let session = sessions.first(where: { $0.id == entry.sessionID }),
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
