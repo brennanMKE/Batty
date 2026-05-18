@@ -2,11 +2,13 @@
 
 import SwiftUI
 
-struct HelpView: View {
+public struct HelpView: View {
     @State private var selection: HelpSection.ID = HelpCatalog.sections.first!.id
     @State private var contentCache: [String: Result<String, Error>] = [:]
 
-    var body: some View {
+    public init() {}
+
+    public var body: some View {
         NavigationSplitView {
             HelpSidebarView(selection: $selection)
         } detail: {
@@ -49,13 +51,10 @@ struct HelpView: View {
     }
 
     private func readMarkdown(for section: HelpSection) -> Result<String, Error> {
-        guard let url = Bundle.main.url(
+        guard let url = Bundle.module.url(
             forResource: section.resourceName,
             withExtension: "md",
             subdirectory: "Help"
-        ) ?? Bundle.main.url(
-            forResource: section.resourceName,
-            withExtension: "md"
         ) else {
             return .failure(HelpLoadError.resourceMissing(section.resourceName))
         }

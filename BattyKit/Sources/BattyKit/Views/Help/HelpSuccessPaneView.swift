@@ -20,9 +20,6 @@ struct HelpSuccessPaneView: View {
     }
 
     private func bundleHelpDirectory() -> URL? {
-        if let url = Bundle.main.url(forResource: "Help", withExtension: nil) {
-            return url
-        }
-        return Bundle.main.resourceURL
+        Bundle.module.resourceURL?.appendingPathComponent("Help")
     }
 }
