@@ -27,4 +27,17 @@ extension AppStateStore {
         }
         themeChrome.update(from: theme)
     }
+
+    /// Applies the theme that should be active for the currently-selected
+    /// session: the session's `localThemeName` override when set, or the
+    /// global `ThemePreference` otherwise. Called on every session-focus
+    /// switch so the active theme tracks the selected session.
+    public func applyActiveSessionTheme() {
+        if let localName = selectedSession?.localThemeName,
+           let theme = GhosttyThemeCatalog.theme(named: localName) {
+            applyThemeToAllSurfaces(theme)
+        } else if let globalTheme = ThemePreference.activeTheme() {
+            applyThemeToAllSurfaces(globalTheme)
+        }
+    }
 }

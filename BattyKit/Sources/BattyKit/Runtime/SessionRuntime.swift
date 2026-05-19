@@ -15,6 +15,10 @@ public final class SessionRuntime: Identifiable {
     /// CWD, name-cache lookups) check this and skip the rewrite — a
     /// user-set name pins permanently. See `#0089`.
     public var titleOverride: Bool = false
+    /// Per-session theme override. When non-nil, switching to this session
+    /// applies this theme instead of the global `ThemePreference`. Not
+    /// persisted — resets to nil on every launch.
+    public var localThemeName: String? = nil
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     public init(

@@ -7,6 +7,7 @@ public struct SessionSidebarView: View {
     @Environment(\.themeChrome) private var themeChrome
     @State private var renamingSessionID: UUID?
     @State private var renameDraft: String = ""
+    @State private var themingSessionID: UUID?
 
     public init(store: AppStateStore) {
         self.store = store
@@ -33,6 +34,18 @@ public struct SessionSidebarView: View {
                         }
                         Button("Duplicate") {
                             store.duplicateSession(id: session.id)
+                        }
+                        Divider()
+                        Button("Set Session Theme\u{2026}") {
+                            themingSessionID = session.id
+                        }
+                        if session.localThemeName != nil {
+                            Button("Clear Session Theme") {
+                                session.localThemeName = nil
+                                if session.id == store.selectedSessionID {
+                                    store.applyActiveSessionTheme()
+                                }
+                            }
                         }
                         Divider()
                         Button(session.notificationsMuted
@@ -87,12 +100,33 @@ public struct SessionSidebarView: View {
                 onCancel: { renamingSessionID = nil }
             )
         }
+        .sheet(item: themingBinding) { session in
+            SessionThemeSelectorView(
+                isPresented: themingPresentedBinding,
+                store: store,
+                session: session
+            )
+        }
     }
 
     private var renamingBinding: Binding<SessionRuntime?> {
         Binding(
             get: { store.sessions.first { $0.id == renamingSessionID } },
             set: { renamingSessionID = $0?.id }
+        )
+    }
+
+    private var themingBinding: Binding<SessionRuntime?> {
+        Binding(
+            get: { store.sessions.first { $0.id == themingSessionID } },
+            set: { themingSessionID = $0?.id }
+        )
+    }
+
+    private var themingPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { themingSessionID != nil },
+            set: { if !$0 { themingSessionID = nil } }
         )
     }
 
