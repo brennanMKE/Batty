@@ -5,6 +5,9 @@ import Foundation
 public enum TabTitleFormatter {
     public static func chipTitle(for tab: TabRuntime, fallback: String? = nil) -> String {
         let resolvedFallback = fallback ?? String(localized: "Tab")
+        if let cwd = tab.terminal.workingDirectory {
+            if cwd == NSHomeDirectory() || cwd == "~" { return "~" }
+        }
         if let override = tab.titleOverride, !override.isEmpty {
             return override
         }
