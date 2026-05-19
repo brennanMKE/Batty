@@ -135,6 +135,12 @@ public struct BattyCommands: Commands {
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVertical))
             .disabled(store.selectedSession == nil)
 
+            Button("Layouts\u{2026}") {
+                NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .layoutPicker))
+            .disabled(store.selectedSession == nil)
+
             Divider()
 
             Button("Focus Pane Left") {

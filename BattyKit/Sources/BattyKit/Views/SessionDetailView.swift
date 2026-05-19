@@ -8,7 +8,9 @@ public struct SessionDetailView: View {
     @State private var bellFeedShown: Bool = false
     @State private var commandPaletteShown: Bool = false
     @State private var openQuicklyShown: Bool = false
+    @State private var layoutPickerShown: Bool = false
     @State private var pendingPaste: PendingPaste?
+    @State private var splitDetailToolbarSafeInsetTop: CGFloat = -1
 
     public init(store: AppStateStore) {
         self.store = store
@@ -46,14 +48,8 @@ public struct SessionDetailView: View {
                 )
             }
         }
-        // Themed window background fills the gaps around split panes and
-        // behind the terminal host AND extends behind the title bar so
-        // the transparent title bar adopts the themed color. Applying
-        // this as a `.background` with `ignoresSafeAreaEdges: .all`
-        // (rather than as a ZStack child with `.ignoresSafeArea()`)
-        // keeps the ZStack itself inside the safe area, so the split
-        // container's dividers don't extend up behind the title bar.
-        // #0135 round 9.
+        // Themed window background fills behind the terminal host and into
+        // the transparent title bar (`WindowChromeApplier`).
         .background(
             themeChrome?.windowBackground ?? Color.clear,
             ignoresSafeAreaEdges: .all
@@ -104,6 +100,16 @@ public struct SessionDetailView: View {
                 }
             }
         }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { splitDetailToolbarSafeInsetTop = geo.safeAreaInsets.top }
+                    .onChange(of: geo.safeAreaInsets) { _, inset in
+                        splitDetailToolbarSafeInsetTop = inset.top
+                    }
+            }
+        }
+        .environment(\.splitDetailToolbarSafeInsetTop, splitDetailToolbarSafeInsetTop)
         .onAppear {
             focusSelectedSessionTerminal()
             store.markActiveTabSeen()
@@ -124,6 +130,9 @@ public struct SessionDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleOpenQuickly)) { _ in
             openQuicklyShown.toggle()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .battyToggleLayoutPicker)) { _ in
+            layoutPickerShown.toggle()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .battyRequestPaste)) { note in
             guard let pending = note.userInfo?["paste"] as? PendingPaste else { return }
             pendingPaste = pending
@@ -143,6 +152,9 @@ public struct SessionDetailView: View {
         }
         .sheet(isPresented: $openQuicklyShown) {
             OpenQuicklyView(isPresented: $openQuicklyShown, store: store)
+        }
+        .sheet(isPresented: $layoutPickerShown) {
+            LayoutPickerView(isPresented: $layoutPickerShown, store: store)
         }
         .confirmationDialog(
             store.pendingCloseRequest?.title ?? "",

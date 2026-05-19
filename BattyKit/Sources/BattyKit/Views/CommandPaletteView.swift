@@ -223,6 +223,8 @@ struct CommandPaletteView: View {
             break
         case .openQuickly:
             NotificationCenter.default.post(name: .battyToggleOpenQuickly, object: nil)
+        case .layoutPicker:
+            NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
         }
     }
 }
