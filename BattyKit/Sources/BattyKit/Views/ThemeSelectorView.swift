@@ -122,6 +122,11 @@ struct ThemeSelectorView: View {
                     onTogglePin: { togglePin(theme.name) }
                 )
                 .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    selectedIndex = globalIndex
+                    selectTheme(theme)
+                    isPresented = false
+                }
                 .onTapGesture {
                     selectedIndex = globalIndex
                     selectTheme(theme)
@@ -280,6 +285,11 @@ struct SessionThemeSelectorView: View {
                     onTogglePin: { togglePin(theme.name) }
                 )
                 .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    selectedIndex = globalIndex
+                    selectTheme(theme)
+                    isPresented = false
+                }
                 .onTapGesture {
                     selectedIndex = globalIndex
                     selectTheme(theme)
