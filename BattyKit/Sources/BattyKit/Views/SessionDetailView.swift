@@ -16,12 +16,6 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         ZStack {
-            // Themed window background fills the gaps around split panes
-            // and behind the terminal host. Without this, a themed
-            // terminal sits inside a default-gray detail area.
-            (themeChrome?.windowBackground ?? Color.clear)
-                .ignoresSafeArea()
-
             // The long-lived terminal host fills the entire detail area.
             // It's a singleton-backed NSViewRepresentable: makeNSView
             // returns the same TerminalHostView instance every time, so
@@ -52,6 +46,18 @@ public struct SessionDetailView: View {
                 )
             }
         }
+        // Themed window background fills the gaps around split panes and
+        // behind the terminal host AND extends behind the title bar so
+        // the transparent title bar adopts the themed color. Applying
+        // this as a `.background` with `ignoresSafeAreaEdges: .all`
+        // (rather than as a ZStack child with `.ignoresSafeArea()`)
+        // keeps the ZStack itself inside the safe area, so the split
+        // container's dividers don't extend up behind the title bar.
+        // #0135 round 9.
+        .background(
+            themeChrome?.windowBackground ?? Color.clear,
+            ignoresSafeAreaEdges: .all
+        )
         .coordinateSpace(name: TerminalHostInstaller.coordinateSpaceName)
         .onPreferenceChange(TerminalPlacementPreferenceKey.self) { newPlacements in
             TerminalHostStore.shared.updatePlacements(newPlacements)
