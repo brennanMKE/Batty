@@ -1,5 +1,6 @@
 // RootWindowView.swift
 
+import AppKit
 import SwiftUI
 
 public struct RootWindowView: View {
@@ -20,6 +21,7 @@ public struct RootWindowView: View {
         }
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)
+        .background(WindowChromeApplier(chrome: store.themeChrome))
         .task { setUpNotifier() }
         .onAppear {
             columnVisibility = sidebarHidden ? .detailOnly : .all
@@ -52,4 +54,35 @@ public struct RootWindowView: View {
 
 public enum SidebarPreference {
     public static let hiddenKey = "co.sstools.Batty.sidebarHidden"
+}
+
+/// Themes the host `NSWindow` to match the active palette: paints the
+/// window background and makes the title bar transparent so it adopts the
+/// themed color uniformly. Reverts to the system default chrome (vibrant
+/// title-bar material) when no theme is active.
+private struct WindowChromeApplier: NSViewRepresentable {
+    let chrome: ThemeChrome
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = nsView.window else { return }
+            apply(palette: chrome.palette, to: window)
+        }
+    }
+
+    private func apply(palette: ChromePalette, to window: NSWindow) {
+        if let bg = palette.windowBackground {
+            window.titlebarAppearsTransparent = true
+            window.backgroundColor = NSColor(bg)
+        } else {
+            window.titlebarAppearsTransparent = false
+            window.backgroundColor = nil
+        }
+    }
 }
