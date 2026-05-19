@@ -225,6 +225,8 @@ struct CommandPaletteView: View {
             NotificationCenter.default.post(name: .battyToggleOpenQuickly, object: nil)
         case .layoutPicker:
             NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
+        case .themeSelector:
+            NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
         }
     }
 }

@@ -58,6 +58,18 @@ public struct BattyCommands: Commands {
         }
 
         CommandMenu("Theme") {
+            Button("Open Theme Selector\u{2026}") {
+                NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .themeSelector))
+
+            Button(isPinnedCurrentTheme ? "Unpin Theme" : "Pin Theme") {
+                togglePinCurrentTheme()
+            }
+            .disabled(activeThemeName.isEmpty)
+
+            Divider()
+
             ForEach(GhosttyThemeCatalog.allThemes, id: \.id) { theme in
                 Button {
                     selectTheme(theme)
@@ -247,6 +259,17 @@ public struct BattyCommands: Commands {
 
     private func tabExists(at index: Int) -> Bool {
         focusedPane?.tabs.indices.contains(index) ?? false
+    }
+
+    private var isPinnedCurrentTheme: Bool {
+        let pinned = PinnedThemes.load()
+        return PinnedThemes.contains(activeThemeName, in: pinned)
+    }
+
+    private func togglePinCurrentTheme() {
+        var pinned = PinnedThemes.load()
+        PinnedThemes.toggle(activeThemeName, in: &pinned)
+        PinnedThemes.save(pinned)
     }
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
