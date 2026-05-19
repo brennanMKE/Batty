@@ -85,14 +85,8 @@ public struct SessionDetailView: View {
         sessionStack
         .navigationTitle(navigationTitle)
         .toolbar { toolbarItems }
-        .background {
-            GeometryReader { geo in
-                Color.clear
-                    .onAppear { splitDetailToolbarSafeInsetTop = geo.safeAreaInsets.top }
-                    .onChange(of: geo.safeAreaInsets) { _, inset in
-                        splitDetailToolbarSafeInsetTop = inset.top
-                    }
-            }
+        .onGeometryChange(for: CGFloat.self, of: { $0.safeAreaInsets.top }) {
+            splitDetailToolbarSafeInsetTop = $0
         }
         .environment(\.splitDetailToolbarSafeInsetTop, splitDetailToolbarSafeInsetTop)
         .onAppear {
@@ -192,9 +186,6 @@ public struct SessionDetailView: View {
             ignoresSafeAreaEdges: .all
         )
         .coordinateSpace(name: TerminalHostInstaller.coordinateSpaceName)
-        .onPreferenceChange(TerminalPlacementPreferenceKey.self) { newPlacements in
-            TerminalHostStore.shared.updatePlacements(newPlacements)
-        }
         .frame(minWidth: 600, minHeight: 400)
     }
 

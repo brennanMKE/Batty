@@ -45,6 +45,7 @@ public struct PaneView: View {
     @State private var renameDraft: String = ""
     @State private var paneWidth: CGFloat = 0
     @State private var paneHeight: CGFloat = 0
+    @State private var frameInSession: CGRect = .zero
 
     /// Approximate per-character text width at the chip's font. Used to
     /// derive a string-level char budget from the per-chip pixel budget.
@@ -225,21 +226,15 @@ public struct PaneView: View {
             }
         }
         .background {
-            GeometryReader { geo in
-                Color.clear
-                    .preference(
-                        key: PaneFramePreferenceKey.self,
-                        value: [pane.id: geo.frame(in: .named("session"))]
-                    )
-                    .onAppear {
-                        paneWidth = geo.size.width
-                        paneHeight = geo.size.height
-                    }
-                    .onChange(of: geo.size) { _, newValue in
-                        paneWidth = newValue.width
-                        paneHeight = newValue.height
-                    }
-            }
+            Color.clear
+                .preference(key: PaneFramePreferenceKey.self, value: [pane.id: frameInSession])
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("session")) }) {
+                    frameInSession = $0
+                }
+                .onGeometryChange(for: CGSize.self, of: { $0.size }) {
+                    paneWidth = $0.width
+                    paneHeight = $0.height
+                }
         }
         .sheet(item: $renamingTab) { tab in
             RenameTabSheet(

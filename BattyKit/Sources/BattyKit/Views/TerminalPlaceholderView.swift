@@ -25,66 +25,31 @@ struct TerminalPlaceholderView: View {
     let paneID: UUID
     let isPaneFocused: Bool
 
+    @State private var lastFrame: CGRect = .zero
+
     var body: some View {
-        GeometryReader { proxy in
-            // Touch the terminal view eagerly so libghostty starts the
-            // PTY the moment the first placeholder appears. This is
-            // idempotent: subsequent calls return the same view.
-            let _ = TerminalHostStore.shared.terminalView(for: tab)
-            let placement = TerminalHostStore.Placement(
-                frame: proxy.frame(in: .named(TerminalHostInstaller.coordinateSpaceName)),
-                isVisible: isVisible
-            )
-            Color.clear
-                .preference(
-                    key: TerminalPlacementPreferenceKey.self,
-                    value: [tab.id: placement]
+        // Touch the terminal view eagerly so libghostty starts the PTY
+        // the moment the first placeholder appears. Idempotent.
+        let _ = TerminalHostStore.shared.terminalView(for: tab)
+        Color.clear
+            .onGeometryChange(
+                for: CGRect.self,
+                of: { $0.frame(in: .named(TerminalHostInstaller.coordinateSpaceName)) }
+            ) { frame in
+                lastFrame = frame
+                TerminalHostStore.shared.setPlacement(
+                    TerminalHostStore.Placement(frame: frame, isVisible: isVisible),
+                    forTabID: tab.id
                 )
-                // Geometry-settling backstop for #0101. The
-                // PreferenceKey flow can miss the second layout pass on
-                // cold launch when the placeholder's locally proposed
-                // size doesn't change between passes but the named
-                // coordinate space resolves to a larger frame on the
-                // settled pass. `.onGeometryChange` observes the frame
-                // in the host's coordinate space directly and fires on
-                // every settle, regardless of preference-reduce
-                // deduplication.
-                .onGeometryChange(
-                    for: CGRect.self,
-                    of: { $0.frame(in: .named(TerminalHostInstaller.coordinateSpaceName)) },
-                    action: { newFrame in
-                        TerminalHostStore.shared.setPlacement(
-                            TerminalHostStore.Placement(frame: newFrame, isVisible: isVisible),
-                            forTabID: tab.id
-                        )
-                    }
-                )
-                .accessibilityIdentifier("pane-terminal.\(paneID.uuidString)")
-                .accessibilityValue(isPaneFocused ? "focused" : "unfocused")
-        }
-    }
-}
-
-/// Aggregates terminal placements from every mounted ``TerminalPlaceholderView``.
-/// `SessionDetailView` reads the merged map and forwards it to the host
-/// store on every change.
-struct TerminalPlacementPreferenceKey: PreferenceKey {
-    static let defaultValue: [UUID: TerminalHostStore.Placement] = [:]
-
-    static func reduce(
-        value: inout [UUID: TerminalHostStore.Placement],
-        nextValue: () -> [UUID: TerminalHostStore.Placement]
-    ) {
-        let next = nextValue()
-        for (id, placement) in next {
-            // If the same tab id appears twice (e.g. tab visible in
-            // multiple panes — impossible by construction but defensive),
-            // the visible one wins; otherwise the latter wins.
-            if let existing = value[id], existing.isVisible, !placement.isVisible {
-                continue
             }
-            value[id] = placement
-        }
+            .onChange(of: isVisible) { _, visible in
+                TerminalHostStore.shared.setPlacement(
+                    TerminalHostStore.Placement(frame: lastFrame, isVisible: visible),
+                    forTabID: tab.id
+                )
+            }
+            .accessibilityIdentifier("pane-terminal.\(paneID.uuidString)")
+            .accessibilityValue(isPaneFocused ? "focused" : "unfocused")
     }
 }
 
