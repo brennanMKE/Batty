@@ -113,6 +113,8 @@ public enum BattyShortcuts {
             defaults.set(!current, forKey: SidebarPreference.hiddenKey)
         case .toggleBellFeed:
             NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
+        case .themeSelector:
+            NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
         }
     }
 }

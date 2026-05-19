@@ -23,6 +23,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
     case nextTab
     case toggleSidebar
     case toggleBellFeed
+    case themeSelector
 
     public var id: String { rawValue }
 
@@ -41,6 +42,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .nextTab:         return String(localized: "Show Next Tab")
         case .toggleSidebar:   return String(localized: "Toggle Sidebar")
         case .toggleBellFeed:  return String(localized: "Toggle Bell Feed")
+        case .themeSelector:   return String(localized: "Open Theme Selector")
         }
     }
 
@@ -77,6 +79,8 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
             return ShortcutBinding(key: "s", modifiers: EventModifiers([.command, .control]).rawValue)
         case .toggleBellFeed:
             return ShortcutBinding(key: "n", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .themeSelector:
+            return ShortcutBinding(key: "t", modifiers: EventModifiers([.command, .shift]).rawValue)
         }
     }
 }
