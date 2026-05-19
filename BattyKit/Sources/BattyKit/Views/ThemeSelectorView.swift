@@ -17,7 +17,6 @@ struct ThemeSelectorView: View {
     @State private var selectedIndex = 0
     @FocusState private var searchFocused: Bool
     @State private var pinnedIDs: [String] = []
-    @State private var savedThemeName: String = ""
 
     private var filteredPinned: [GhosttyThemeDefinition] {
         let pinned = GhosttyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
@@ -73,7 +72,6 @@ struct ThemeSelectorView: View {
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
         .onAppear {
-            savedThemeName = UserDefaults.standard.string(forKey: ThemePreference.defaultsKey) ?? ""
             pinnedIDs = PinnedThemes.load()
             searchFocused = true
         }
@@ -126,15 +124,16 @@ struct ThemeSelectorView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     selectedIndex = globalIndex
-                    applyLivePreview(theme)
+                    selectTheme(theme)
                 }
                 .id(theme.name)
             }
         }
     }
 
-    private func applyLivePreview(_ theme: GhosttyThemeDefinition) {
-        logger.info("live preview: \(theme.name, privacy: .public)")
+    private func selectTheme(_ theme: GhosttyThemeDefinition) {
+        logger.info("selected theme: \(theme.name, privacy: .public)")
+        UserDefaults.standard.set(theme.name, forKey: ThemePreference.defaultsKey)
         store.applyThemeToAllSurfaces(theme)
     }
 
@@ -143,17 +142,11 @@ struct ThemeSelectorView: View {
             isPresented = false
             return
         }
-        let theme = allDisplayed[selectedIndex]
-        UserDefaults.standard.set(theme.name, forKey: ThemePreference.defaultsKey)
-        store.applyThemeToAllSurfaces(theme)
+        selectTheme(allDisplayed[selectedIndex])
         isPresented = false
     }
 
     private func cancelSelection() {
-        if !savedThemeName.isEmpty,
-           let saved = GhosttyThemeCatalog.theme(named: savedThemeName) {
-            store.applyThemeToAllSurfaces(saved)
-        }
         isPresented = false
     }
 
@@ -161,7 +154,7 @@ struct ThemeSelectorView: View {
         let count = allDisplayed.count
         guard count > 0 else { return }
         selectedIndex = (selectedIndex + delta + count) % count
-        applyLivePreview(allDisplayed[selectedIndex])
+        store.applyThemeToAllSurfaces(allDisplayed[selectedIndex])
     }
 
     private func togglePin(_ name: String) {
@@ -182,7 +175,6 @@ struct SessionThemeSelectorView: View {
     @State private var selectedIndex = 0
     @FocusState private var searchFocused: Bool
     @State private var pinnedIDs: [String] = []
-    @State private var savedThemeName: String = ""
 
     private var filteredPinned: [GhosttyThemeDefinition] {
         let pinned = GhosttyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
@@ -238,9 +230,6 @@ struct SessionThemeSelectorView: View {
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
         .onAppear {
-            savedThemeName = session.localThemeName
-                ?? UserDefaults.standard.string(forKey: ThemePreference.defaultsKey)
-                ?? ""
             pinnedIDs = PinnedThemes.load()
             searchFocused = true
         }
@@ -293,14 +282,15 @@ struct SessionThemeSelectorView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     selectedIndex = globalIndex
-                    applyLivePreview(theme)
+                    selectTheme(theme)
                 }
                 .id(theme.name)
             }
         }
     }
 
-    private func applyLivePreview(_ theme: GhosttyThemeDefinition) {
+    private func selectTheme(_ theme: GhosttyThemeDefinition) {
+        session.localThemeName = theme.name
         store.applyThemeToAllSurfaces(theme)
     }
 
@@ -309,19 +299,11 @@ struct SessionThemeSelectorView: View {
             isPresented = false
             return
         }
-        let theme = allDisplayed[selectedIndex]
-        session.localThemeName = theme.name
-        store.applyThemeToAllSurfaces(theme)
+        selectTheme(allDisplayed[selectedIndex])
         isPresented = false
     }
 
     private func cancelSelection() {
-        if !savedThemeName.isEmpty,
-           let saved = GhosttyThemeCatalog.theme(named: savedThemeName) {
-            store.applyThemeToAllSurfaces(saved)
-        } else {
-            store.applyActiveSessionTheme()
-        }
         isPresented = false
     }
 
@@ -329,7 +311,7 @@ struct SessionThemeSelectorView: View {
         let count = allDisplayed.count
         guard count > 0 else { return }
         selectedIndex = (selectedIndex + delta + count) % count
-        applyLivePreview(allDisplayed[selectedIndex])
+        store.applyThemeToAllSurfaces(allDisplayed[selectedIndex])
     }
 
     private func togglePin(_ name: String) {
