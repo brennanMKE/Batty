@@ -10,6 +10,11 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   (Workspace -> Window -> Session -> Pane -> Tab -> Terminal Session) maps
   onto the SwiftUI tree and the persistent AppKit terminal host. Read this
   first before touching anything in the terminal / pane / window path.
+- [`terminal-pane-requirements.md`](terminal-pane-requirements.md) — the
+  non-negotiable behaviors every pane must preserve: pointer input, keyboard
+  input, file/text drop onto the terminal, overlay rules, and the AppKit
+  z-order constraint that makes pane-area feature work tricky. Read this
+  before adding any gesture, overlay, or drag handler to the pane body.
 - [`shortcuts.md`](shortcuts.md) — keyboard shortcut routing,
   persistence, the recorder UI, reserved combos, and why menu
   shortcuts aren't the load-bearing path. Read this before touching

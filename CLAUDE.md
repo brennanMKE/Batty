@@ -16,8 +16,18 @@ When starting any non-trivial task, read in this order:
 For any work touching the terminal / pane / tab / window path, **also read
 `docs/view-hierarchy.md` first** — it explains how the model hierarchy
 maps onto the SwiftUI tree and the persistent AppKit terminal host, and
-lists the non-negotiable rules for the terminal-host architecture. The
-`docs/` folder has additional topical guides (see `docs/README.md`).
+lists the non-negotiable rules for the terminal-host architecture.
+
+For any work that adds gestures, overlays, drag handlers, or new event
+routing to the pane body, **also read `docs/terminal-pane-requirements.md`**
+— it lists the non-negotiable terminal behaviors (pointer input, keyboard,
+file drop, text drop, IME) that every pane must preserve, the AppKit z-order
+constraint that makes this hard, and a manual checklist to run before marking
+the feature complete. The regressions in #0143 (file drops broken, clicks
+broken) are documented there as concrete examples of what goes wrong when this
+is skipped.
+
+The `docs/` folder has additional topical guides (see `docs/README.md`).
 
 ## Build / verify commands
 
