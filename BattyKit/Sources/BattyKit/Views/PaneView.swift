@@ -94,6 +94,21 @@ public struct PaneView: View {
                 }
             }
             .background(themeChrome?.chromeBackground ?? Color.clear)
+            .background {
+                // Publish the chrome strip height so an enclosing
+                // SplitContainerView can paint the chrome region of its
+                // split divider with the chrome background — so #0135
+                // round-3's chrome band reads as continuous across
+                // adjacent split panes instead of being cut by the
+                // divider rule.
+                GeometryReader { geo in
+                    Color.clear
+                        .preference(
+                            key: ChromeStripHeightPreferenceKey.self,
+                            value: geo.size.height
+                        )
+                }
+            }
 
             ZStack {
                 ForEach(pane.tabs) { tab in

@@ -14,6 +14,18 @@ public struct SplitContainerView: View {
     }
 }
 
+/// Bubbles the per-pane chrome strip height up to enclosing
+/// `DraggableSplitView`s so the divider can paint its chrome region
+/// with the chrome background, keeping the chrome band visually
+/// continuous across split panes (#0135 round 3).
+struct ChromeStripHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct SplitNodeView: View {
     @Bindable var tree: SplitTree
     let node: SplitTreeNode
@@ -47,6 +59,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
 
     @Environment(\.themeChrome) private var themeChrome
     @State private var dragStartRatio: Double?
+    @State private var chromeStripHeight: CGFloat = 0
 
     private static var dividerThickness: CGFloat { 4 }
 
@@ -62,7 +75,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                 HStack(spacing: 0) {
                     leftContent()
                         .frame(width: leftLength, height: geo.size.height)
-                    divider(totalLength: totalLength)
+                    divider(totalLength: totalLength, containerSize: geo.size)
                     rightContent()
                         .frame(width: rightLength, height: geo.size.height)
                 }
@@ -70,47 +83,90 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                 VStack(spacing: 0) {
                     leftContent()
                         .frame(width: geo.size.width, height: leftLength)
-                    divider(totalLength: totalLength)
+                    divider(totalLength: totalLength, containerSize: geo.size)
                     rightContent()
                         .frame(width: geo.size.width, height: rightLength)
                 }
             }
         }
+        .onPreferenceChange(ChromeStripHeightPreferenceKey.self) { newValue in
+            chromeStripHeight = newValue
+        }
+    }
+
+    private var dividerBodyColor: Color {
+        themeChrome?.divider ?? Color(nsColor: .separatorColor)
+    }
+
+    /// Color used to "hide" the divider inside the chrome strip region so
+    /// adjacent panes' chrome bands appear seamless. When no theme is
+    /// active, the chrome strip is `Color.clear` so we fall back to the
+    /// divider color (matches the pre-#0135-round-3 behavior).
+    private var dividerChromeColor: Color {
+        themeChrome?.chromeBackground ?? dividerBodyColor
     }
 
     @ViewBuilder
-    private func divider(totalLength: CGFloat) -> some View {
-        Rectangle()
-            .fill(themeChrome?.divider ?? Color(nsColor: .separatorColor))
-            .frame(
-                width: direction == .horizontal ? Self.dividerThickness : nil,
-                height: direction == .vertical ? Self.dividerThickness : nil
-            )
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                if hovering {
-                    if direction == .horizontal {
-                        NSCursor.resizeLeftRight.push()
-                    } else {
-                        NSCursor.resizeUpDown.push()
-                    }
-                } else {
-                    NSCursor.pop()
-                }
+    private func divider(totalLength: CGFloat, containerSize: CGSize) -> some View {
+        Group {
+            switch direction {
+            case .horizontal:
+                horizontalDivider(containerSize: containerSize)
+            case .vertical:
+                verticalDivider(containerSize: containerSize)
             }
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        guard totalLength > 0 else { return }
-                        let startRatio = dragStartRatio ?? ratio
-                        if dragStartRatio == nil { dragStartRatio = startRatio }
-                        let delta = direction == .horizontal ? value.translation.width : value.translation.height
-                        let newRatio = startRatio + (delta / totalLength)
-                        onRatioChange(newRatio)
-                    }
-                    .onEnded { _ in
-                        dragStartRatio = nil
-                    }
-            )
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering {
+                if direction == .horizontal {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.resizeUpDown.push()
+                }
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .onChanged { value in
+                    guard totalLength > 0 else { return }
+                    let startRatio = dragStartRatio ?? ratio
+                    if dragStartRatio == nil { dragStartRatio = startRatio }
+                    let delta = direction == .horizontal ? value.translation.width : value.translation.height
+                    let newRatio = startRatio + (delta / totalLength)
+                    onRatioChange(newRatio)
+                }
+                .onEnded { _ in
+                    dragStartRatio = nil
+                }
+        )
+    }
+
+    @ViewBuilder
+    private func horizontalDivider(containerSize: CGSize) -> some View {
+        let chromeHeight = min(max(chromeStripHeight, 0), containerSize.height)
+        let bodyHeight = max(0, containerSize.height - chromeHeight)
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(dividerChromeColor)
+                .frame(width: Self.dividerThickness, height: chromeHeight)
+            Rectangle()
+                .fill(dividerBodyColor)
+                .frame(width: Self.dividerThickness, height: bodyHeight)
+        }
+        .frame(width: Self.dividerThickness, height: containerSize.height)
+    }
+
+    @ViewBuilder
+    private func verticalDivider(containerSize: CGSize) -> some View {
+        // Vertical splits stack panes top/bottom; each pane's chrome
+        // strip sits at its own top edge, so a horizontal divider
+        // never intersects a chrome strip and the body color paints
+        // the whole rule.
+        Rectangle()
+            .fill(dividerBodyColor)
+            .frame(width: containerSize.width, height: Self.dividerThickness)
     }
 }
