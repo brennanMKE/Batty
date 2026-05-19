@@ -45,6 +45,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     @ViewBuilder let leftContent: () -> Left
     @ViewBuilder let rightContent: () -> Right
 
+    @Environment(\.themeChrome) private var themeChrome
     @State private var dragStartRatio: Double?
 
     private static var dividerThickness: CGFloat { 4 }
@@ -80,7 +81,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     @ViewBuilder
     private func divider(totalLength: CGFloat) -> some View {
         Rectangle()
-            .fill(Color(nsColor: .separatorColor))
+            .fill(themeChrome?.divider ?? Color(nsColor: .separatorColor))
             .frame(
                 width: direction == .horizontal ? Self.dividerThickness : nil,
                 height: direction == .vertical ? Self.dividerThickness : nil

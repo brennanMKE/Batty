@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct SessionSidebarView: View {
     @Bindable public var store: AppStateStore
+    @Environment(\.themeChrome) private var themeChrome
     @State private var renamingSessionID: UUID?
     @State private var renameDraft: String = ""
 
@@ -14,9 +15,10 @@ public struct SessionSidebarView: View {
     public var body: some View {
         List(selection: $store.selectedSessionID) {
             ForEach(store.sessions) { session in
-                SessionRow(session: session)
+                SessionRow(session: session, accent: themeChrome?.accent)
                     .tag(session.id as UUID?)
                     .accessibilityIdentifier("session-row.\(session.title)")
+                    .listRowBackground(rowBackground(for: session))
                     .contextMenu {
                         Button("Rename") {
                             renameDraft = session.title
@@ -42,6 +44,8 @@ public struct SessionSidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(themeChrome?.chromeBackground == nil ? .automatic : .hidden)
+        .background(themeChrome?.chromeBackground ?? Color.clear)
         .accessibilityIdentifier("session-sidebar")
         .navigationTitle(Text(verbatim: "Batty"))
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -58,7 +62,13 @@ public struct SessionSidebarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(.bar)
+            .background {
+                if let bg = themeChrome?.chromeBackground {
+                    bg.overlay(themeChrome?.divider ?? Color.clear, alignment: .top)
+                } else {
+                    Color.clear.background(.bar)
+                }
+            }
         }
         .sheet(item: renamingBinding) { session in
             RenameSessionSheet(
@@ -78,10 +88,20 @@ public struct SessionSidebarView: View {
             set: { renamingSessionID = $0?.id }
         )
     }
+
+    @ViewBuilder
+    private func rowBackground(for session: SessionRuntime) -> some View {
+        if let tint = themeChrome?.sidebarSelectionTint, session.id == store.selectedSessionID {
+            tint
+        } else {
+            Color.clear
+        }
+    }
 }
 
 private struct SessionRow: View {
     @Bindable var session: SessionRuntime
+    let accent: Color?
 
     var body: some View {
         HStack {
@@ -98,7 +118,7 @@ private struct SessionRow: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.accentColor))
+                    .background(Capsule().fill(accent ?? Color.accentColor))
                     .help("\(session.unseenBellCount) unseen bell event(s)")
             }
         }

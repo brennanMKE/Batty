@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct SessionDetailView: View {
     public let store: AppStateStore
+    @Environment(\.themeChrome) private var themeChrome
     @State private var bellFeedShown: Bool = false
     @State private var commandPaletteShown: Bool = false
     @State private var openQuicklyShown: Bool = false
@@ -15,6 +16,12 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         ZStack {
+            // Themed window background fills the gaps around split panes
+            // and behind the terminal host. Without this, a themed
+            // terminal sits inside a default-gray detail area.
+            (themeChrome?.windowBackground ?? Color.clear)
+                .ignoresSafeArea()
+
             // The long-lived terminal host fills the entire detail area.
             // It's a singleton-backed NSViewRepresentable: makeNSView
             // returns the same TerminalHostView instance every time, so

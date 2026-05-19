@@ -8,6 +8,7 @@ public struct PaneView: View {
     @Bindable public var tree: SplitTree
     @Environment(\.appStateStore) private var appStore
     @Environment(\.isSelectedSession) private var isSessionSelected
+    @Environment(\.themeChrome) private var themeChrome
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
     @State private var renameDraft: String = ""
@@ -54,6 +55,10 @@ public struct PaneView: View {
         return min(Self.charBudgetMax, max(Self.charBudgetMin, raw))
     }
 
+    private var accentColor: Color {
+        themeChrome?.accent ?? Color.accentColor
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -88,6 +93,7 @@ public struct PaneView: View {
                         .padding(.trailing, 8)
                 }
             }
+            .background(themeChrome?.chromeBackground ?? Color.clear)
 
             ZStack {
                 ForEach(pane.tabs) { tab in
@@ -149,25 +155,25 @@ public struct PaneView: View {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .strokeBorder(accentColor, lineWidth: 2)
                     .opacity((pane.activeTab?.isDragHovering ?? false) ? 1 : 0)
                     .animation(.easeOut(duration: 0.12), value: pane.activeTab?.isDragHovering ?? false)
                     .allowsHitTesting(false)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .strokeBorder(accentColor, lineWidth: 2)
                     .opacity(bellFlashOpacity)
                     .allowsHitTesting(false)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .strokeBorder(accentColor, lineWidth: 2)
                     .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
                     .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
                     .allowsHitTesting(false)
             }
-            .modifier(PaneSwapDropTarget(pane: pane, tree: tree, isTargeted: $isPaneSwapTarget))
+            .modifier(PaneSwapDropTarget(pane: pane, tree: tree, isTargeted: $isPaneSwapTarget, accentColor: accentColor))
             .opacity(hasSiblingPanes && !isPaneFocused ? 0.7 : 1)
             .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
@@ -242,16 +248,18 @@ public struct PaneView: View {
         let previewWidth = max(160, min(paneWidth * 0.5, 360))
         let previewHeight = max(96, min(paneHeight * 0.5, 240))
         let title = pane.activeTab.map { chipTitle(for: $0) } ?? "Pane"
+        let fill = themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor)
+        let textColor = themeChrome?.chromeForeground ?? Color.primary
         RoundedRectangle(cornerRadius: 6)
-            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
+            .fill(fill.opacity(0.92))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 2)
+                    .strokeBorder(accentColor.opacity(0.6), lineWidth: 2)
             )
             .overlay(
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(textColor)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .padding(.horizontal, 12)
@@ -341,12 +349,13 @@ private struct PaneSwapDropTarget: ViewModifier {
     let pane: PaneRuntime
     @Bindable var tree: SplitTree
     @Binding var isTargeted: Bool
+    let accentColor: Color
 
     func body(content: Content) -> some View {
         content
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .strokeBorder(accentColor, lineWidth: 3)
                     .opacity(isTargeted ? 1 : 0)
                     .animation(.easeOut(duration: 0.1), value: isTargeted)
                     .allowsHitTesting(false)
