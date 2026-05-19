@@ -52,10 +52,15 @@ Fixed combos (not customizable, do not appear in the Shortcuts pane):
 
 | Combo | Action |
 |---|---|
-| `Cmd-1` … `Cmd-9` | Select tab 1..9 in the focused pane |
-| `Cmd-Option-1` … `Cmd-Option-9` | Select session 1..9 in the sidebar |
+| `Cmd-1` … `Cmd-9` | Select session 1..9 in the sidebar *(default; swap with Cmd-Option-1..9 via Settings → General → Keyboard)* |
+| `Cmd-Option-1` … `Cmd-Option-9` | Select tab 1..9 in the focused pane *(default; swapped by the same preference)* |
 | `Cmd-C` | Copy selection to clipboard (handled by libghostty) |
 | `Cmd-V` | Paste clipboard (handled by Batty's `PasteDispatcher` menu action) |
+
+The Cmd-1..9 / Cmd-Option-1..9 pair is governed by the
+`co.sstools.Batty.cmdNumberTarget` preference (values `sessions` / `tabs`,
+default `sessions`). `BattyShortcuts.handle(_:)` reads it at dispatch time
+so the swap takes effect live with no restart.
 
 Default bindings shipped in v1 (from `ShortcutAction.defaultBinding`):
 

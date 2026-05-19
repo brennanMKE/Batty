@@ -39,17 +39,29 @@ public enum BattyShortcuts {
         }
 
         // Positional bindings — intentionally NOT customizable in v1.
+        // The preference is read at dispatch time (rather than baked into
+        // bindings registered once at launch) so the swap takes effect live.
+        let cmdSwitchesSessions = currentCmdNumberTarget() == .sessions
+
         switch (mods, chars) {
         case ([.command], let digit) where digit.count == 1 && digit.first?.isWholeNumber == true:
             if let index = Int(digit), (1...9).contains(index) {
-                store.selectedSession?.focusedPane.selectTab(at: index - 1)
+                if cmdSwitchesSessions {
+                    store.selectSession(at: index - 1)
+                } else {
+                    store.selectedSession?.focusedPane.selectTab(at: index - 1)
+                }
                 return true
             }
             return false
 
         case ([.command, .option], let digit) where digit.count == 1 && digit.first?.isWholeNumber == true:
             if let index = Int(digit), (1...9).contains(index) {
-                store.selectSession(at: index - 1)
+                if cmdSwitchesSessions {
+                    store.selectedSession?.focusedPane.selectTab(at: index - 1)
+                } else {
+                    store.selectSession(at: index - 1)
+                }
                 return true
             }
             return false
@@ -57,6 +69,12 @@ public enum BattyShortcuts {
         default:
             return false
         }
+    }
+
+    private static func currentCmdNumberTarget() -> CmdNumberTarget {
+        let raw = UserDefaults.standard.string(forKey: SettingsPreference.cmdNumberTargetKey)
+            ?? SettingsPreference.defaultCmdNumberTarget
+        return CmdNumberTarget(rawValue: raw) ?? .sessions
     }
 
     private static func makeCandidate(from event: NSEvent, mods: NSEvent.ModifierFlags) -> ShortcutBinding? {
