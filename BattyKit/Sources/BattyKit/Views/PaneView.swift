@@ -367,33 +367,22 @@ private struct PaneSwapDropTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay {
-                // Drop zone sits as a transparent SwiftUI overlay so it is
-                // evaluated above the AppKit terminal NSView in z-order.
-                // allowsHitTesting(false) prevents it from absorbing clicks
-                // destined for the terminal; the AppKit drag system routes
-                // to registered NSDraggingDestination views independently of
-                // SwiftUI's gesture hit-test, so onDrop still fires.
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
-                        providers.first?.loadDataRepresentation(
-                            forTypeIdentifier: UTType.plainText.identifier
-                        ) { data, _ in
-                            guard let data,
-                                  let idString = String(data: data, encoding: .utf8),
-                                  let sourceID = UUID(uuidString: idString),
-                                  sourceID != pane.id
-                            else { return }
-                            DispatchQueue.main.async {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                                    tree.swapPanes(id: sourceID, with: pane.id)
-                                }
-                            }
+            .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
+                providers.first?.loadDataRepresentation(
+                    forTypeIdentifier: UTType.plainText.identifier
+                ) { data, _ in
+                    guard let data,
+                          let idString = String(data: data, encoding: .utf8),
+                          let sourceID = UUID(uuidString: idString),
+                          sourceID != pane.id
+                    else { return }
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                            tree.swapPanes(id: sourceID, with: pane.id)
                         }
-                        return true
                     }
-                    .allowsHitTesting(false)
+                }
+                return true
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
