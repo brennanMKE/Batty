@@ -370,6 +370,10 @@ private struct PaneSwapDropTarget: ViewModifier {
             .overlay {
                 // Drop zone sits as a transparent SwiftUI overlay so it is
                 // evaluated above the AppKit terminal NSView in z-order.
+                // allowsHitTesting(false) prevents it from absorbing clicks
+                // destined for the terminal; the AppKit drag system routes
+                // to registered NSDraggingDestination views independently of
+                // SwiftUI's gesture hit-test, so onDrop still fires.
                 Color.clear
                     .contentShape(Rectangle())
                     .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
@@ -389,6 +393,7 @@ private struct PaneSwapDropTarget: ViewModifier {
                         }
                         return true
                     }
+                    .allowsHitTesting(false)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
