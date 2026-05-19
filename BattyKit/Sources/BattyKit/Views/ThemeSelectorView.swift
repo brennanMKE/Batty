@@ -49,6 +49,10 @@ struct ThemeSelectorView: View {
                     .onKeyPress(.downArrow) { moveSelection(1); return .handled }
                     .onKeyPress(.return) { confirmSelection(); return .handled }
                     .onKeyPress(.escape) { cancelSelection(); return .handled }
+                Spacer()
+                Text("Esc to dismiss")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
