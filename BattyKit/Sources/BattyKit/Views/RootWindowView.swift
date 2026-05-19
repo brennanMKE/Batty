@@ -1,6 +1,5 @@
 // RootWindowView.swift
 
-import AppKit
 import SwiftUI
 
 public struct RootWindowView: View {
@@ -21,7 +20,6 @@ public struct RootWindowView: View {
         }
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)
-        .background(WindowChromeApplier(chrome: store.themeChrome))
         .task { setUpNotifier() }
         .onAppear {
             columnVisibility = sidebarHidden ? .detailOnly : .all
@@ -54,40 +52,4 @@ public struct RootWindowView: View {
 
 public enum SidebarPreference {
     public static let hiddenKey = "co.sstools.Batty.sidebarHidden"
-}
-
-/// Watches `ThemeChrome` and pushes its `windowBackground` into the
-/// hosting `NSWindow`. Lives as a SwiftUI background view because that's
-/// the cheapest hook into the window's lifetime from inside the SwiftUI
-/// tree. When the chrome reverts to system default (palette has no
-/// background), we restore `titlebarAppearsTransparent = false` so the
-/// title bar gets its normal vibrant material back.
-private struct WindowChromeApplier: NSViewRepresentable {
-    let chrome: ThemeChrome
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        // Defer one runloop tick so the view is in a window before we
-        // try to mutate the window. SwiftUI calls updateNSView before
-        // the view-attach pass on first mount.
-        DispatchQueue.main.async {
-            guard let window = nsView.window else { return }
-            apply(palette: chrome.palette, to: window)
-        }
-    }
-
-    private func apply(palette: ChromePalette, to window: NSWindow) {
-        if let bg = palette.windowBackground {
-            window.titlebarAppearsTransparent = true
-            window.backgroundColor = NSColor(bg)
-        } else {
-            window.titlebarAppearsTransparent = false
-            window.backgroundColor = nil
-        }
-    }
 }
