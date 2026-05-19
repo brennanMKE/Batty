@@ -1,7 +1,38 @@
 // PaneView.swift
 
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+
+@MainActor
+@Observable
+private final class PaneSwapDragState {
+    static let shared = PaneSwapDragState()
+    private(set) var isDragging = false
+    private(set) var sourcePaneID: UUID? = nil
+    private var monitor: Any? = nil
+    private var fallbackTimer: Timer? = nil
+
+    func startDrag(from paneID: UUID) {
+        endDrag()
+        isDragging = true
+        sourcePaneID = paneID
+        monitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
+            DispatchQueue.main.async { self?.endDrag() }
+        }
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async { self?.endDrag() }
+        }
+    }
+
+    func endDrag() {
+        isDragging = false
+        sourcePaneID = nil
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+    }
+}
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
@@ -14,7 +45,6 @@ public struct PaneView: View {
     @State private var renameDraft: String = ""
     @State private var paneWidth: CGFloat = 0
     @State private var paneHeight: CGFloat = 0
-    @State private var isPaneSwapTarget: Bool = false
 
     /// Approximate per-character text width at the chip's font. Used to
     /// derive a string-level char budget from the per-chip pixel budget.
@@ -173,8 +203,12 @@ public struct PaneView: View {
                     .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
                     .allowsHitTesting(false)
             }
-            // PaneSwapDropTarget drop-highlighting disabled (#0144): SwiftUI's
-            // .onDrop blocks file drops. Proper fix tracked in #0143/#0144.
+            .overlay {
+                let state = PaneSwapDragState.shared
+                if state.isDragging, state.sourcePaneID != pane.id {
+                    PaneSwapDropZone(pane: pane, tree: tree, accentColor: accentColor)
+                }
+            }
             // Note: previously dimmed unfocused panes to 0.7 opacity here.
             // Removed in #0135 round 6 — explicit opacity puts each pane
             // body in an off-screen buffer, and the buffer edges between
@@ -244,7 +278,8 @@ public struct PaneView: View {
                 }
             }
             .onDrag {
-                NSItemProvider(object: pane.id.uuidString as NSString)
+                PaneSwapDragState.shared.startDrag(from: pane.id)
+                return NSItemProvider(object: pane.id.uuidString as NSString)
             } preview: {
                 paneDragPreview
             }
@@ -346,36 +381,47 @@ public struct PaneView: View {
     }
 }
 
-/// Adds pane-swap drop target behavior to a view. Renders a highlight border
-/// while a compatible drag hovers, and swaps the source pane with `pane`
-/// when dropped.
+/// Transparent drop zone that appears over non-source panes during a pane-swap
+/// drag. Only exists while a drag is active, so the terminal NSView receives
+/// file drops unimpeded in the normal (no-drag) state.
 ///
-/// Extracted from ``PaneView`` to keep the main body below SwiftUI's
-/// type-checker complexity limit.
-///
-/// The `.onDrop` is applied to a `Color.clear` overlay rather than to the
-/// content directly. The AppKit terminal NSView (positioned by
-/// TerminalHostStore) sits above SwiftUI in the AppKit z-order and
-/// intercepts drag events before SwiftUI's hit-test can see them. Attaching
-/// the drop handler to a transparent SwiftUI overlay ensures it is evaluated
-/// in the SwiftUI layer, above the NSView, so the drop fires reliably over
-/// the entire pane body, not just near its edges.
-private struct PaneSwapDropTarget: ViewModifier {
+/// `.onDrop` is safe here because this view only exists when a pane-swap drag
+/// is already in progress — the user is dragging a pane handle, not a Finder
+/// file, so blocking other drop types is acceptable for the duration.
+private struct PaneSwapDropZone: View {
     let pane: PaneRuntime
     @Bindable var tree: SplitTree
-    @Binding var isTargeted: Bool
     let accentColor: Color
+    @State private var isTargeted = false
 
-    func body(content: Content) -> some View {
-        // SwiftUI's .onDrop cannot be used here: its backing NSView sits above
-        // TerminalHostView in AppKit z-order (see sessionStack ZStack order in
-        // SessionDetailView). AppKit's drag-routing walks the ancestor chain of
-        // the hit-tested view; a SwiftUI .onDrop NSView is a sibling of
-        // TerminalHostView, not an ancestor, so any .onDrop registered here
-        // blocks file drops from ever reaching TerminalHostView's .fileURL
-        // registration (#0144). Pane-swap drop detection must be implemented as
-        // a custom NSDraggingDestination subview of TerminalHostView (#0143).
-        content
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
+                defer { PaneSwapDragState.shared.endDrag() }
+                providers.first?.loadDataRepresentation(
+                    forTypeIdentifier: UTType.plainText.identifier
+                ) { data, _ in
+                    guard let data,
+                          let idString = String(data: data, encoding: .utf8),
+                          let sourceID = UUID(uuidString: idString),
+                          sourceID != pane.id
+                    else { return }
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                            tree.swapPanes(id: sourceID, with: pane.id)
+                        }
+                    }
+                }
+                return true
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(accentColor, lineWidth: 3)
+                    .opacity(isTargeted ? 1 : 0)
+                    .animation(.easeOut(duration: 0.1), value: isTargeted)
+                    .allowsHitTesting(false)
+            }
     }
 }
 
