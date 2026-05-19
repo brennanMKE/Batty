@@ -9,6 +9,7 @@ public struct SessionDetailView: View {
     @State private var commandPaletteShown: Bool = false
     @State private var openQuicklyShown: Bool = false
     @State private var pendingPaste: PendingPaste?
+    @State private var splitDetailToolbarInsetTop: CGFloat = -1
 
     public init(store: AppStateStore) {
         self.store = store
@@ -98,6 +99,16 @@ public struct SessionDetailView: View {
                 }
             }
         }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { splitDetailToolbarInsetTop = geo.safeAreaInsets.top }
+                    .onChange(of: geo.safeAreaInsets) { _, inset in
+                        splitDetailToolbarInsetTop = inset.top
+                    }
+            }
+        }
+        .environment(\.splitDetailToolbarInsetTop, splitDetailToolbarInsetTop)
         .onAppear {
             focusSelectedSessionTerminal()
             store.markActiveTabSeen()

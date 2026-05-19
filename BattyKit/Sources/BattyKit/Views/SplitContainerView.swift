@@ -41,6 +41,21 @@ public struct SplitContainerView: View {
 /// in lockstep.
 private let chromeStripHeight: CGFloat = 36
 
+/// When `GeometryReader.safeAreaInsets.top` underestimates toolbar overlap —
+/// observed with transparent titlebars and themed windows — seams still appear
+/// in the unified toolbar unless the divider paints `chromeBackground` through
+/// this band. Ignored unless a themed divider chrome color is active.
+private let unifiedToolbarOverlapFallbackForThemedSplits: CGFloat = 48
+
+private func toolbarOverlapForDivider(
+    safeInsetTop: CGFloat,
+    isThemedInvisibleDividerPalette: Bool
+) -> CGFloat {
+    guard isThemedInvisibleDividerPalette else { return safeInsetTop }
+    if safeInsetTop >= 28 { return safeInsetTop }
+    return max(safeInsetTop, unifiedToolbarOverlapFallbackForThemedSplits)
+}
+
 private struct SplitNodeView: View {
     @Bindable var tree: SplitTree
     let node: SplitTreeNode
@@ -92,6 +107,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     @ViewBuilder let leftContent: () -> Left
     @ViewBuilder let rightContent: () -> Right
 
+    @Environment(\.splitDetailToolbarInsetTop) private var splitDetailToolbarInsetTop
     @State private var dragStartRatio: Double?
 
     private static var dividerThickness: CGFloat { 4 }
@@ -108,7 +124,11 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                 HStack(spacing: 0) {
                     leftContent()
                         .frame(width: leftLength, height: geo.size.height)
-                    divider(totalLength: totalLength, containerSize: geo.size)
+                    divider(
+                        totalLength: totalLength,
+                        containerSize: geo.size,
+                        safeAreaInsets: geo.safeAreaInsets
+                    )
                     rightContent()
                         .frame(width: rightLength, height: geo.size.height)
                 }
@@ -116,7 +136,11 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                 VStack(spacing: 0) {
                     leftContent()
                         .frame(width: geo.size.width, height: leftLength)
-                    divider(totalLength: totalLength, containerSize: geo.size)
+                    divider(
+                        totalLength: totalLength,
+                        containerSize: geo.size,
+                        safeAreaInsets: geo.safeAreaInsets
+                    )
                     rightContent()
                         .frame(width: geo.size.width, height: rightLength)
                 }
@@ -141,12 +165,27 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
         dividerBodyColor ?? Color(nsColor: .separatorColor)
     }
 
+    private func mergedToolbarOverlap(readerTopInset: CGFloat) -> CGFloat {
+        splitDetailToolbarInsetTop >= 0
+            ? max(readerTopInset, splitDetailToolbarInsetTop)
+            : readerTopInset
+    }
+
     @ViewBuilder
-    private func divider(totalLength: CGFloat, containerSize: CGSize) -> some View {
+    private func divider(
+        totalLength: CGFloat,
+        containerSize: CGSize,
+        safeAreaInsets: EdgeInsets = EdgeInsets()
+    ) -> some View {
         Group {
             switch direction {
             case .horizontal:
-                horizontalDivider(containerSize: containerSize)
+                horizontalDivider(
+                    containerSize: containerSize,
+                    safeInsetTop: mergedToolbarOverlap(
+                        readerTopInset: safeAreaInsets.top
+                    )
+                )
             case .vertical:
                 verticalDivider(containerSize: containerSize)
             }
@@ -180,8 +219,27 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     }
 
     @ViewBuilder
-    private func horizontalDivider(containerSize: CGSize) -> some View {
-        let chromeHeight = min(max(chromeStripHeight, 0), containerSize.height)
+    private func horizontalDivider(
+        containerSize: CGSize,
+        safeInsetTop: CGFloat
+    ) -> some View {
+        // Pane columns share the same tinted chrome beneath the unified
+        // title/toolbar strip; extend the splitter's chrome fill by the
+        // reader's top safe-area inset (plus SlidingTabBar height). When the
+        // inset bottoms out (~0 inside some GeometryReaders with transparent
+        // titlebars), use a capped fallback whenever themed chrome paints the
+        // divider so the remainder is not painted with windowBackground over
+        // chrome-colored panes.
+        let paintsThemedSplit =
+            dividerChromeColor != nil || dividerBodyColor != nil
+        let insetTop =
+            toolbarOverlapForDivider(
+                safeInsetTop: safeInsetTop,
+                isThemedInvisibleDividerPalette: paintsThemedSplit
+            )
+        let chromeReach =
+            insetTop + chromeStripHeight
+        let chromeHeight = min(containerSize.height, max(chromeStripHeight, chromeReach))
         let bodyHeight = max(0, containerSize.height - chromeHeight)
         VStack(spacing: 0) {
             Rectangle()
