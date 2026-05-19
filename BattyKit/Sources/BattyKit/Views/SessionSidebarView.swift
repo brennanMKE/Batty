@@ -15,10 +15,17 @@ public struct SessionSidebarView: View {
     public var body: some View {
         List(selection: $store.selectedSessionID) {
             ForEach(store.sessions) { session in
-                SessionRow(session: session, accent: themeChrome?.accent)
+                SessionRow(
+                    session: session,
+                    accent: themeChrome?.accent,
+                    isSelected: session.id == store.selectedSessionID,
+                    themed: themeChrome?.chromeBackground != nil
+                )
                     .tag(session.id as UUID?)
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .modifier(SidebarRowBackground(tint: rowBackground(for: session)))
+                    .modifier(SidebarRowBackground(
+                        sidebarBackground: themeChrome?.chromeBackground
+                    ))
                     .contextMenu {
                         Button("Rename") {
                             renameDraft = session.title
@@ -89,18 +96,20 @@ public struct SessionSidebarView: View {
         )
     }
 
-    private func rowBackground(for session: SessionRuntime) -> Color? {
-        guard session.id == store.selectedSessionID else { return nil }
-        return themeChrome?.sidebarSelectionTint
-    }
 }
 
 private struct SidebarRowBackground: ViewModifier {
-    let tint: Color?
+    let sidebarBackground: Color?
 
     func body(content: Content) -> some View {
-        if let tint {
-            content.listRowBackground(tint)
+        if let sidebarBackground {
+            // Painting an explicit themed background on every row suppresses
+            // SwiftUI's `.sidebar` default selection chrome — without this,
+            // the system paints a fixed dark gray block on the selected row
+            // that ignores the themed sidebar (see #0135 round 2). With no
+            // theme applied, we leave the modifier off so the default
+            // selection chrome still applies on the "Default" path.
+            content.listRowBackground(sidebarBackground)
         } else {
             content
         }
@@ -110,25 +119,38 @@ private struct SidebarRowBackground: ViewModifier {
 private struct SessionRow: View {
     @Bindable var session: SessionRuntime
     let accent: Color?
+    let isSelected: Bool
+    let themed: Bool
 
     var body: some View {
-        HStack {
-            Label {
-                Text(session.title).lineLimit(1)
-            } icon: {
-                Image(systemName: "rectangle.split.3x1")
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(isSelected && themed ? (accent ?? Color.accentColor) : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 2)
+            HStack {
+                Label {
+                    Text(session.title)
+                        .lineLimit(1)
+                        .fontWeight(isSelected && themed ? .semibold : .regular)
+                } icon: {
+                    Image(systemName: "rectangle.split.3x1")
+                        .foregroundStyle(isSelected && themed
+                            ? AnyShapeStyle(accent ?? Color.accentColor)
+                            : AnyShapeStyle(HierarchicalShapeStyle.secondary))
+                }
+                Spacer()
+                if session.unseenBellCount > 0 {
+                    Text(verbatim: "\(session.unseenBellCount)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(accent ?? Color.accentColor))
+                        .help("\(session.unseenBellCount) unseen bell event(s)")
+                }
             }
-            Spacer()
-            if session.unseenBellCount > 0 {
-                Text(verbatim: "\(session.unseenBellCount)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(accent ?? Color.accentColor))
-                    .help("\(session.unseenBellCount) unseen bell event(s)")
-            }
+            .padding(.leading, 6)
         }
     }
 }
