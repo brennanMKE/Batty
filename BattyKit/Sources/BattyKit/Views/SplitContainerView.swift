@@ -14,17 +14,16 @@ public struct SplitContainerView: View {
     }
 }
 
-/// Bubbles the per-pane chrome strip height up to enclosing
-/// `DraggableSplitView`s so the divider can paint its chrome region
-/// with the chrome background, keeping the chrome band visually
-/// continuous across split panes (#0135 round 3).
-struct ChromeStripHeightPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
+/// Height of a pane's chrome strip (the tab bar + drag handle row).
+/// Matches `SlidingTabBar`'s `barHeight` default of 36pt — the only
+/// vertically-sized element in `PaneView`'s chrome `HStack`. Held as a
+/// constant rather than measured via a `PreferenceKey` because round 3's
+/// preference-based plumbing didn't propagate through the `AnyView`
+/// wrappers in `SplitNodeView` (#0135 round 4), leaving the divider's
+/// chrome region at 0 height and painting the body color full-height.
+/// If `SlidingTabBar.barHeight` changes upstream, this must be updated
+/// in lockstep.
+private let chromeStripHeight: CGFloat = 36
 
 private struct SplitNodeView: View {
     @Bindable var tree: SplitTree
@@ -59,7 +58,6 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
 
     @Environment(\.themeChrome) private var themeChrome
     @State private var dragStartRatio: Double?
-    @State private var chromeStripHeight: CGFloat = 0
 
     private static var dividerThickness: CGFloat { 4 }
 
@@ -88,9 +86,6 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                         .frame(width: geo.size.width, height: rightLength)
                 }
             }
-        }
-        .onPreferenceChange(ChromeStripHeightPreferenceKey.self) { newValue in
-            chromeStripHeight = newValue
         }
     }
 
