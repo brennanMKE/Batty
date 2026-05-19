@@ -18,7 +18,7 @@ public struct SessionSidebarView: View {
                 SessionRow(session: session, accent: themeChrome?.accent)
                     .tag(session.id as UUID?)
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .listRowBackground(rowBackground(for: session))
+                    .modifier(SidebarRowBackground(tint: rowBackground(for: session)))
                     .contextMenu {
                         Button("Rename") {
                             renameDraft = session.title
@@ -89,12 +89,20 @@ public struct SessionSidebarView: View {
         )
     }
 
-    @ViewBuilder
-    private func rowBackground(for session: SessionRuntime) -> some View {
-        if let tint = themeChrome?.sidebarSelectionTint, session.id == store.selectedSessionID {
-            tint
+    private func rowBackground(for session: SessionRuntime) -> Color? {
+        guard session.id == store.selectedSessionID else { return nil }
+        return themeChrome?.sidebarSelectionTint
+    }
+}
+
+private struct SidebarRowBackground: ViewModifier {
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        if let tint {
+            content.listRowBackground(tint)
         } else {
-            Color.clear
+            content
         }
     }
 }
