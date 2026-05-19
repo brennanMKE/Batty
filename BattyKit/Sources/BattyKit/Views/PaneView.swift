@@ -173,7 +173,8 @@ public struct PaneView: View {
                     .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
                     .allowsHitTesting(false)
             }
-            .modifier(PaneSwapDropTarget(pane: pane, tree: tree, isTargeted: $isPaneSwapTarget, accentColor: accentColor))
+            // PaneSwapDropTarget drop-highlighting disabled (#0144): SwiftUI's
+            // .onDrop blocks file drops. Proper fix tracked in #0143/#0144.
             // Note: previously dimmed unfocused panes to 0.7 opacity here.
             // Removed in #0135 round 6 — explicit opacity puts each pane
             // body in an off-screen buffer, and the buffer edges between
@@ -366,31 +367,15 @@ private struct PaneSwapDropTarget: ViewModifier {
     let accentColor: Color
 
     func body(content: Content) -> some View {
+        // SwiftUI's .onDrop cannot be used here: its backing NSView sits above
+        // TerminalHostView in AppKit z-order (see sessionStack ZStack order in
+        // SessionDetailView). AppKit's drag-routing walks the ancestor chain of
+        // the hit-tested view; a SwiftUI .onDrop NSView is a sibling of
+        // TerminalHostView, not an ancestor, so any .onDrop registered here
+        // blocks file drops from ever reaching TerminalHostView's .fileURL
+        // registration (#0144). Pane-swap drop detection must be implemented as
+        // a custom NSDraggingDestination subview of TerminalHostView (#0143).
         content
-            .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
-                providers.first?.loadDataRepresentation(
-                    forTypeIdentifier: UTType.plainText.identifier
-                ) { data, _ in
-                    guard let data,
-                          let idString = String(data: data, encoding: .utf8),
-                          let sourceID = UUID(uuidString: idString),
-                          sourceID != pane.id
-                    else { return }
-                    DispatchQueue.main.async {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                            tree.swapPanes(id: sourceID, with: pane.id)
-                        }
-                    }
-                }
-                return true
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(accentColor, lineWidth: 3)
-                    .opacity(isTargeted ? 1 : 0)
-                    .animation(.easeOut(duration: 0.1), value: isTargeted)
-                    .allowsHitTesting(false)
-            }
     }
 }
 
