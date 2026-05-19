@@ -174,7 +174,13 @@ public struct PaneView: View {
                     .allowsHitTesting(false)
             }
             .modifier(PaneSwapDropTarget(pane: pane, tree: tree, isTargeted: $isPaneSwapTarget, accentColor: accentColor))
-            .opacity(hasSiblingPanes && !isPaneFocused ? 0.7 : 1)
+            // Note: previously dimmed unfocused panes to 0.7 opacity here.
+            // Removed in #0135 round 6 — explicit opacity puts each pane
+            // body in an off-screen buffer, and the buffer edges between
+            // adjacent .7-alpha siblings composite as thin vertical lines
+            // at the pane boundaries (the line artifact the user reported
+            // through rounds 3–5). Focus is still indicated by the accent
+            // border overlay above.
             .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
                 triggerBellFlash()
