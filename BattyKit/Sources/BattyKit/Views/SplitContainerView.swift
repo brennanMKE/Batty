@@ -47,6 +47,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
 
     @Environment(\.themeChrome) private var themeChrome
     @State private var dragStartRatio: Double?
+    @State private var containerLength: CGFloat = 0
 
     private static var dividerThickness: CGFloat { 4 }
 
@@ -63,41 +64,22 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let totalLength = direction == .horizontal ? geo.size.width : geo.size.height
-            let usable = max(0, totalLength - Self.dividerThickness)
-            let leftLength = max(0, usable * ratio)
-            let rightLength = max(0, usable - leftLength)
-
-            switch direction {
-            case .horizontal:
-                HStack(spacing: 0) {
-                    leftContent()
-                        .frame(width: leftLength, height: geo.size.height)
-                    divider(totalLength: totalLength)
-                    rightContent()
-                        .frame(width: rightLength, height: geo.size.height)
-                }
-            case .vertical:
-                VStack(spacing: 0) {
-                    leftContent()
-                        .frame(width: geo.size.width, height: leftLength)
-                    divider(totalLength: totalLength)
-                    rightContent()
-                        .frame(width: geo.size.width, height: rightLength)
-                }
-            }
+        SplitLayout(direction: direction, ratio: ratio, dividerThickness: Self.dividerThickness) {
+            leftContent()
+            divider
+            rightContent()
+        }
+        .onGeometryChange(for: CGFloat.self, of: {
+            direction == .horizontal ? $0.size.width : $0.size.height
+        }) {
+            containerLength = $0
         }
     }
 
     @ViewBuilder
-    private func divider(totalLength: CGFloat) -> some View {
+    private var divider: some View {
         Rectangle()
             .fill(dividerColor)
-            .frame(
-                width: direction == .horizontal ? Self.dividerThickness : nil,
-                height: direction == .vertical ? Self.dividerThickness : nil
-            )
             .contentShape(Rectangle())
             .onHover { hovering in
                 if hovering {
@@ -113,16 +95,64 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
-                        guard totalLength > 0 else { return }
+                        guard containerLength > 0 else { return }
                         let startRatio = dragStartRatio ?? ratio
                         if dragStartRatio == nil { dragStartRatio = startRatio }
                         let delta = direction == .horizontal ? value.translation.width : value.translation.height
-                        let newRatio = startRatio + (delta / totalLength)
+                        let newRatio = startRatio + (delta / containerLength)
                         onRatioChange(newRatio)
                     }
                     .onEnded { _ in
                         dragStartRatio = nil
                     }
             )
+    }
+}
+
+private struct SplitLayout: Layout {
+    let direction: SplitDirection
+    let ratio: Double
+    let dividerThickness: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 3 else { return }
+        let totalLength = direction == .horizontal ? bounds.width : bounds.height
+        let crossLength = direction == .horizontal ? bounds.height : bounds.width
+        let usable = max(0, totalLength - dividerThickness)
+        let leftLength = max(0, usable * ratio)
+        let rightLength = max(0, usable - leftLength)
+
+        switch direction {
+        case .horizontal:
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY),
+                proposal: ProposedViewSize(width: leftLength, height: crossLength)
+            )
+            subviews[1].place(
+                at: CGPoint(x: bounds.minX + leftLength, y: bounds.minY),
+                proposal: ProposedViewSize(width: dividerThickness, height: crossLength)
+            )
+            subviews[2].place(
+                at: CGPoint(x: bounds.minX + leftLength + dividerThickness, y: bounds.minY),
+                proposal: ProposedViewSize(width: rightLength, height: crossLength)
+            )
+        case .vertical:
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY),
+                proposal: ProposedViewSize(width: crossLength, height: leftLength)
+            )
+            subviews[1].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY + leftLength),
+                proposal: ProposedViewSize(width: crossLength, height: dividerThickness)
+            )
+            subviews[2].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY + leftLength + dividerThickness),
+                proposal: ProposedViewSize(width: crossLength, height: rightLength)
+            )
+        }
     }
 }
