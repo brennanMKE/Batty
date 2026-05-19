@@ -107,6 +107,9 @@ public struct SessionDetailView: View {
         .onChange(of: store.selectedSession?.tree.focusedPaneID) { _, _ in
             store.markActiveTabSeen()
         }
+        .onChange(of: store.selectedSession?.tree.allPanes.count) { _, _ in
+            store.applyActiveSessionTheme()
+        }
     }
 
     @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
