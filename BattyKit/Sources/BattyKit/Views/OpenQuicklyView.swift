@@ -9,14 +9,33 @@ extension Notification.Name {
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "OpenQuicklyView")
 
-private struct QuickOpenResult: Identifiable {
-    let id = UUID()
+struct QuickOpenResult: Identifiable, Equatable {
     let sessionID: UUID
     let sessionTitle: String
     let tabID: UUID
     let tabTitle: String
 
+    var id: UUID { tabID }
     var displayTitle: String { "\(sessionTitle) \u{203A} \(tabTitle)" }
+}
+
+enum OpenQuicklyFilter {
+    /// Filters and ranks results against `query`. A result matches when the
+    /// query is a subsequence of either the session title or the tab title;
+    /// scoring is the max of the two so a hit in either field bubbles to the
+    /// top. Empty query returns all results in their original order.
+    static func apply(query: String, to results: [QuickOpenResult]) -> [QuickOpenResult] {
+        guard !query.isEmpty else { return results }
+        let scored: [(QuickOpenResult, Int)] = results.compactMap { result in
+            let sessionScore = FuzzyMatcher.score(query, in: result.sessionTitle)
+            let tabScore = FuzzyMatcher.score(query, in: result.tabTitle)
+            let best = max(sessionScore, tabScore)
+            return best > 0 ? (result, best) : nil
+        }
+        return scored
+            .sorted { $0.1 > $1.1 }
+            .map { $0.0 }
+    }
 }
 
 struct OpenQuicklyView: View {
@@ -43,15 +62,11 @@ struct OpenQuicklyView: View {
     }
 
     private var filteredResults: [QuickOpenResult] {
-        guard !query.isEmpty else { return allResults }
-        return allResults
-            .filter { FuzzyMatcher.matches(query, in: $0.displayTitle) }
-            .sorted {
-                FuzzyMatcher.score(query, in: $0.displayTitle) > FuzzyMatcher.score(query, in: $1.displayTitle)
-            }
+        OpenQuicklyFilter.apply(query: query, to: allResults)
     }
 
     var body: some View {
+        let results = filteredResults
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -59,9 +74,9 @@ struct OpenQuicklyView: View {
                 TextField("Jump to session or tab…", text: $query)
                     .textFieldStyle(.plain)
                     .focused($queryFocused)
-                    .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
-                    .onKeyPress(.downArrow) { moveSelection(1); return .handled }
-                    .onKeyPress(.return) { activateSelected(); return .handled }
+                    .onKeyPress(.upArrow) { moveSelection(-1, in: results); return .handled }
+                    .onKeyPress(.downArrow) { moveSelection(1, in: results); return .handled }
+                    .onKeyPress(.return) { activate(results: results); return .handled }
                     .onKeyPress(.escape) { isPresented = false; return .handled }
             }
             .padding(.horizontal, 16)
@@ -69,7 +84,7 @@ struct OpenQuicklyView: View {
 
             Divider()
 
-            if filteredResults.isEmpty {
+            if results.isEmpty {
                 ContentUnavailableView(
                     "No Results",
                     systemImage: "magnifyingglass",
@@ -80,19 +95,20 @@ struct OpenQuicklyView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredResults.enumerated()), id: \.element.id) { idx, result in
+                            ForEach(Array(results.enumerated()), id: \.element.id) { idx, result in
                                 QuickOpenRow(result: result, isSelected: idx == selectedIndex)
-                                    .id(idx)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         selectedIndex = idx
-                                        activateSelected()
+                                        activate(results: results)
                                     }
                             }
                         }
                     }
                     .onChange(of: selectedIndex) { _, newIdx in
-                        withAnimation { proxy.scrollTo(newIdx, anchor: .center) }
+                        if results.indices.contains(newIdx) {
+                            withAnimation { proxy.scrollTo(results[newIdx].id, anchor: .center) }
+                        }
                     }
                     .onChange(of: query) { _, _ in selectedIndex = 0 }
                 }
@@ -103,15 +119,15 @@ struct OpenQuicklyView: View {
         .onAppear { queryFocused = true }
     }
 
-    private func moveSelection(_ delta: Int) {
-        let count = filteredResults.count
+    private func moveSelection(_ delta: Int, in results: [QuickOpenResult]) {
+        let count = results.count
         guard count > 0 else { return }
         selectedIndex = (selectedIndex + delta + count) % count
     }
 
-    private func activateSelected() {
-        guard filteredResults.indices.contains(selectedIndex) else { return }
-        let result = filteredResults[selectedIndex]
+    private func activate(results: [QuickOpenResult]) {
+        guard results.indices.contains(selectedIndex) else { return }
+        let result = results[selectedIndex]
         isPresented = false
         logger.info("open quickly jumping to session \(result.sessionTitle, privacy: .public) tab \(result.tabTitle, privacy: .public)")
         store.jumpToTab(sessionID: result.sessionID, tabID: result.tabID)
