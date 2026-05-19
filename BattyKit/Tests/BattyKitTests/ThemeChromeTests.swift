@@ -40,11 +40,12 @@ struct ThemeChromeTests {
         #expect(palette.tabActiveFill != nil)
     }
 
-    @Test func sidebarSelectionTintIsAlwaysNil() {
-        // Per #0135 re-open: even fully-specified themes must leave the
-        // sidebar selection tint slot unset so SwiftUI's default `List`
-        // selection chrome wins. The v1 derivation (accent at 28% alpha)
-        // read as a glaring block in vivid themes.
+    @Test func sidebarSelectionTintIsThemedAndSubtle() {
+        // Per #0135 round 5: the slot derives from foreground at 12% alpha
+        // — a subtle adaptive overlay that reads as a slight lightening
+        // on dark themes and a slight darkening on light themes, without
+        // picking up the theme accent (the round-1 derivation of accent
+        // at 28% alpha read as a glaring block in vivid themes).
         let theme = GhosttyThemeDefinition(
             name: "olive",
             background: "#1a1b26",
@@ -53,7 +54,7 @@ struct ThemeChromeTests {
             palette: [4: "7aa2f7", 6: "7dcfff"]
         )
         let palette = ChromePalette(theme: theme)
-        #expect(palette.sidebarSelectionTint == nil)
+        #expect(palette.sidebarSelectionTint != nil)
     }
 
     @Test func malformedBackgroundFallsBackToDefault() {

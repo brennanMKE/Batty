@@ -17,14 +17,14 @@ public struct SessionSidebarView: View {
             ForEach(store.sessions) { session in
                 SessionRow(
                     session: session,
-                    accent: themeChrome?.accent,
-                    isSelected: session.id == store.selectedSessionID,
-                    themed: themeChrome?.chromeBackground != nil
+                    accent: themeChrome?.accent
                 )
                     .tag(session.id as UUID?)
                     .accessibilityIdentifier("session-row.\(session.title)")
                     .modifier(SidebarRowBackground(
-                        sidebarBackground: themeChrome?.chromeBackground
+                        sidebarBackground: themeChrome?.chromeBackground,
+                        selectionTint: themeChrome?.sidebarSelectionTint,
+                        isSelected: session.id == store.selectedSessionID
                     ))
                     .contextMenu {
                         Button("Rename") {
@@ -100,16 +100,29 @@ public struct SessionSidebarView: View {
 
 private struct SidebarRowBackground: ViewModifier {
     let sidebarBackground: Color?
+    let selectionTint: Color?
+    let isSelected: Bool
 
     func body(content: Content) -> some View {
-        if let sidebarBackground {
-            // Painting an explicit themed background on every row suppresses
-            // SwiftUI's `.sidebar` default selection chrome — without this,
-            // the system paints a fixed dark gray block on the selected row
-            // that ignores the themed sidebar (see #0135 round 2). With no
-            // theme applied, we leave the modifier off so the default
-            // selection chrome still applies on the "Default" path.
-            content.listRowBackground(sidebarBackground)
+        if sidebarBackground != nil {
+            // Selected: paint sidebarBackground first, then overlay the
+            // subtle selection tint. Unselected: just sidebarBackground.
+            // Painting an explicit row background suppresses SwiftUI's
+            // `.sidebar` default selection chrome — without this, the
+            // system paints a fixed dark gray block on the selected row
+            // that ignores the themed sidebar (see #0135 round 2). The
+            // selection tint is a foreground@12% overlay (#0135 round 5),
+            // adaptive and subtle on every theme.
+            content.listRowBackground(
+                ZStack {
+                    if let sidebarBackground {
+                        sidebarBackground
+                    }
+                    if isSelected, let selectionTint {
+                        selectionTint
+                    }
+                }
+            )
         } else {
             content
         }
@@ -119,38 +132,26 @@ private struct SidebarRowBackground: ViewModifier {
 private struct SessionRow: View {
     @Bindable var session: SessionRuntime
     let accent: Color?
-    let isSelected: Bool
-    let themed: Bool
 
     var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(isSelected && themed ? (accent ?? Color.accentColor) : Color.clear)
-                .frame(width: 3)
-                .padding(.vertical, 2)
-            HStack {
-                Label {
-                    Text(session.title)
-                        .lineLimit(1)
-                        .fontWeight(isSelected && themed ? .semibold : .regular)
-                } icon: {
-                    Image(systemName: "rectangle.split.3x1")
-                        .foregroundStyle(isSelected && themed
-                            ? AnyShapeStyle(accent ?? Color.accentColor)
-                            : AnyShapeStyle(HierarchicalShapeStyle.secondary))
-                }
-                Spacer()
-                if session.unseenBellCount > 0 {
-                    Text(verbatim: "\(session.unseenBellCount)")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(accent ?? Color.accentColor))
-                        .help("\(session.unseenBellCount) unseen bell event(s)")
-                }
+        HStack {
+            Label {
+                Text(session.title)
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: "rectangle.split.3x1")
+                    .foregroundStyle(HierarchicalShapeStyle.secondary)
             }
-            .padding(.leading, 6)
+            Spacer()
+            if session.unseenBellCount > 0 {
+                Text(verbatim: "\(session.unseenBellCount)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(accent ?? Color.accentColor))
+                    .help("\(session.unseenBellCount) unseen bell event(s)")
+            }
         }
     }
 }

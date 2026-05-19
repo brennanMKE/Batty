@@ -9,8 +9,24 @@ public struct SplitContainerView: View {
         self.tree = tree
     }
 
+    @Environment(\.themeChrome) private var themeChrome
+
     public var body: some View {
-        SplitNodeView(tree: tree, node: tree.root)
+        // Resolve the divider colors at the SplitContainerView level (where
+        // `@Environment(\.themeChrome)` reliably resolves) and pass them
+        // down explicitly. Prior rounds tried to read the env at
+        // `DraggableSplitView` and via a `PreferenceKey` from `PaneView`,
+        // both of which travel through the `AnyView` wrappers in
+        // `SplitNodeView` and were not reliably propagating. Explicit
+        // parameters bypass that whole class of bug. #0135 round 5.
+        let chromeColor = themeChrome?.chromeBackground
+        let bodyColor = themeChrome?.windowBackground
+        SplitNodeView(
+            tree: tree,
+            node: tree.root,
+            dividerChromeColor: chromeColor,
+            dividerBodyColor: bodyColor
+        )
     }
 }
 
@@ -28,6 +44,8 @@ private let chromeStripHeight: CGFloat = 36
 private struct SplitNodeView: View {
     @Bindable var tree: SplitTree
     let node: SplitTreeNode
+    let dividerChromeColor: Color?
+    let dividerBodyColor: Color?
 
     var body: AnyView {
         switch node {
@@ -41,8 +59,24 @@ private struct SplitNodeView: View {
                     onRatioChange: { newRatio in
                         tree.updateRatio(forSplitID: id, to: newRatio)
                     },
-                    leftContent: { SplitNodeView(tree: tree, node: left) },
-                    rightContent: { SplitNodeView(tree: tree, node: right) }
+                    dividerChromeColor: dividerChromeColor,
+                    dividerBodyColor: dividerBodyColor,
+                    leftContent: {
+                        SplitNodeView(
+                            tree: tree,
+                            node: left,
+                            dividerChromeColor: dividerChromeColor,
+                            dividerBodyColor: dividerBodyColor
+                        )
+                    },
+                    rightContent: {
+                        SplitNodeView(
+                            tree: tree,
+                            node: right,
+                            dividerChromeColor: dividerChromeColor,
+                            dividerBodyColor: dividerBodyColor
+                        )
+                    }
                 )
             )
         }
@@ -53,10 +87,11 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     let direction: SplitDirection
     let ratio: Double
     let onRatioChange: (Double) -> Void
+    let dividerChromeColor: Color?
+    let dividerBodyColor: Color?
     @ViewBuilder let leftContent: () -> Left
     @ViewBuilder let rightContent: () -> Right
 
-    @Environment(\.themeChrome) private var themeChrome
     @State private var dragStartRatio: Double?
 
     private static var dividerThickness: CGFloat { 4 }
@@ -89,16 +124,21 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
         }
     }
 
-    private var dividerBodyColor: Color {
-        themeChrome?.divider ?? Color(nsColor: .separatorColor)
+    /// Chrome region of the divider — sits in the tab-bar strip. When
+    /// themed, matches the surrounding panes' chrome background so the
+    /// 4pt gap is invisible. When unthemed, falls back to the system
+    /// separator so the divider remains weakly visible on the default
+    /// macOS chrome (the pre-#0135 look).
+    private var resolvedChromeColor: Color {
+        dividerChromeColor ?? Color(nsColor: .separatorColor)
     }
 
-    /// Color used to "hide" the divider inside the chrome strip region so
-    /// adjacent panes' chrome bands appear seamless. When no theme is
-    /// active, the chrome strip is `Color.clear` so we fall back to the
-    /// divider color (matches the pre-#0135-round-3 behavior).
-    private var dividerChromeColor: Color {
-        themeChrome?.chromeBackground ?? dividerBodyColor
+    /// Body region of the divider — sits in the terminal canvas area.
+    /// When themed, matches the window background (which is the terminal
+    /// canvas color), so the 4pt gap is invisible against the terminal.
+    /// When unthemed, falls back to the system separator.
+    private var resolvedBodyColor: Color {
+        dividerBodyColor ?? Color(nsColor: .separatorColor)
     }
 
     @ViewBuilder
@@ -145,10 +185,10 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
         let bodyHeight = max(0, containerSize.height - chromeHeight)
         VStack(spacing: 0) {
             Rectangle()
-                .fill(dividerChromeColor)
+                .fill(resolvedChromeColor)
                 .frame(width: Self.dividerThickness, height: chromeHeight)
             Rectangle()
-                .fill(dividerBodyColor)
+                .fill(resolvedBodyColor)
                 .frame(width: Self.dividerThickness, height: bodyHeight)
         }
         .frame(width: Self.dividerThickness, height: containerSize.height)
@@ -161,7 +201,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
         // never intersects a chrome strip and the body color paints
         // the whole rule.
         Rectangle()
-            .fill(dividerBodyColor)
+            .fill(resolvedBodyColor)
             .frame(width: containerSize.width, height: Self.dividerThickness)
     }
 }

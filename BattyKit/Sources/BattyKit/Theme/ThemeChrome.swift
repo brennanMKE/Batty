@@ -130,13 +130,12 @@ public struct ChromePalette: Sendable, Equatable {
         self.tabInactiveFill = tabInactive.swiftUIColor
         self.tabActiveStroke = tabActiveStroke.swiftUIColor
         self.tabInactiveStroke = tabInactiveStroke.swiftUIColor
-        // Left intentionally nil: the v1 of #0135 derived this from the
-        // accent at 28% alpha, but saturated theme accents (olive, vivid
-        // cursor colors) read as a glaring block in the sidebar. The slot
-        // stays in the type so a future enhancement can introduce a
-        // gentler selection chrome; for now we defer to SwiftUI's default
-        // `List` selection appearance.
-        self.sidebarSelectionTint = nil
+        // Subtle adaptive selection tint: foreground at 12% alpha. Reads
+        // as a slight lightening over dark themes and a slight darkening
+        // over light themes, without picking up the theme accent (which
+        // can be a glaring saturated color — olive, vivid cursor — and
+        // dominate the row). Round 5 of #0135.
+        self.sidebarSelectionTint = fg.withAlpha(0.12).swiftUIColor
     }
 
     init(
