@@ -12,6 +12,7 @@ public struct PaneView: View {
     @State private var renamingTab: TabRuntime?
     @State private var renameDraft: String = ""
     @State private var paneWidth: CGFloat = 0
+    @State private var paneHeight: CGFloat = 0
     @State private var isPaneSwapTarget: Bool = false
 
     /// Approximate per-character text width at the chip's font. Used to
@@ -55,32 +56,38 @@ public struct PaneView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            SlidingTabBar(
-                items: $pane.tabs,
-                activeID: activeIDBinding,
-                onReorderCommit: nil,
-                onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
-            ) { tab, isActive in
-                BattyTabChip(
-                    title: chipTitle(for: tab),
-                    isActive: isActive,
-                    isPaneFocused: isPaneFocused,
-                    hasUnseen: tab.unseenBellCount > 0,
-                    onClose: {
-                        if let appStore {
-                            appStore.requestCloseTab(id: tab.id)
-                        } else {
-                            pane.removeTab(id: tab.id)
+            HStack(spacing: 0) {
+                SlidingTabBar(
+                    items: $pane.tabs,
+                    activeID: activeIDBinding,
+                    onReorderCommit: nil,
+                    onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
+                ) { tab, isActive in
+                    BattyTabChip(
+                        title: chipTitle(for: tab),
+                        isActive: isActive,
+                        isPaneFocused: isPaneFocused,
+                        hasUnseen: tab.unseenBellCount > 0,
+                        onClose: {
+                            if let appStore {
+                                appStore.requestCloseTab(id: tab.id)
+                            } else {
+                                pane.removeTab(id: tab.id)
+                            }
                         }
-                    }
-                )
-                .frame(width: chipMaxWidth)
-                .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
-                .contextMenu { tabContextMenu(for: tab) }
+                    )
+                    .frame(width: chipMaxWidth)
+                    .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
+                    .contextMenu { tabContextMenu(for: tab) }
+                }
+                .clipped()
+                .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
+
+                if hasSiblingPanes {
+                    paneDragHandle
+                        .padding(.trailing, 8)
+                }
             }
-            .clipped()
-            .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
-            .onDrag { NSItemProvider(object: pane.id.uuidString as NSString) }
 
             ZStack {
                 ForEach(pane.tabs) { tab in
@@ -177,9 +184,13 @@ public struct PaneView: View {
                         key: PaneFramePreferenceKey.self,
                         value: [pane.id: geo.frame(in: .named("session"))]
                     )
-                    .onAppear { paneWidth = geo.size.width }
-                    .onChange(of: geo.size.width) { _, newValue in
-                        paneWidth = newValue
+                    .onAppear {
+                        paneWidth = geo.size.width
+                        paneHeight = geo.size.height
+                    }
+                    .onChange(of: geo.size) { _, newValue in
+                        paneWidth = newValue.width
+                        paneHeight = newValue.height
                     }
             }
         }
@@ -195,6 +206,57 @@ public struct PaneView: View {
                 onCancel: { renamingTab = nil }
             )
         }
+    }
+
+    @ViewBuilder
+    private var paneDragHandle: some View {
+        // Drag source for #0127 pane swap — handle lives here, on the far-right
+        // of the tab bar, rather than on the SlidingTabBar itself because the
+        // bar's own per-chip tap/drag gestures win SwiftUI's priority race
+        // and the outer .onDrag on the container never fires.
+        Image(systemName: "rectangle.grid.1x2")
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 22, height: 22)
+            .contentShape(Rectangle())
+            .help("Drag to swap with another pane")
+            .accessibilityLabel("Pane drag handle")
+            .accessibilityIdentifier("pane-drag-handle.\(pane.id.uuidString)")
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.openHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .onDrag {
+                NSItemProvider(object: pane.id.uuidString as NSString)
+            } preview: {
+                paneDragPreview
+            }
+    }
+
+    @ViewBuilder
+    private var paneDragPreview: some View {
+        let previewWidth = max(160, min(paneWidth * 0.5, 360))
+        let previewHeight = max(96, min(paneHeight * 0.5, 240))
+        let title = pane.activeTab.map { chipTitle(for: $0) } ?? "Pane"
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 2)
+            )
+            .overlay(
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 12)
+            )
+            .frame(width: previewWidth, height: previewHeight)
     }
 
     @ViewBuilder
