@@ -351,6 +351,14 @@ public struct PaneView: View {
 ///
 /// Extracted from ``PaneView`` to keep the main body below SwiftUI's
 /// type-checker complexity limit.
+///
+/// The `.onDrop` is applied to a `Color.clear` overlay rather than to the
+/// content directly. The AppKit terminal NSView (positioned by
+/// TerminalHostStore) sits above SwiftUI in the AppKit z-order and
+/// intercepts drag events before SwiftUI's hit-test can see them. Attaching
+/// the drop handler to a transparent SwiftUI overlay ensures it is evaluated
+/// in the SwiftUI layer, above the NSView, so the drop fires reliably over
+/// the entire pane body, not just near its edges.
 private struct PaneSwapDropTarget: ViewModifier {
     let pane: PaneRuntime
     @Bindable var tree: SplitTree
@@ -360,28 +368,34 @@ private struct PaneSwapDropTarget: ViewModifier {
     func body(content: Content) -> some View {
         content
             .overlay {
+                // Drop zone sits as a transparent SwiftUI overlay so it is
+                // evaluated above the AppKit terminal NSView in z-order.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
+                        providers.first?.loadDataRepresentation(
+                            forTypeIdentifier: UTType.plainText.identifier
+                        ) { data, _ in
+                            guard let data,
+                                  let idString = String(data: data, encoding: .utf8),
+                                  let sourceID = UUID(uuidString: idString),
+                                  sourceID != pane.id
+                            else { return }
+                            DispatchQueue.main.async {
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                    tree.swapPanes(id: sourceID, with: pane.id)
+                                }
+                            }
+                        }
+                        return true
+                    }
+            }
+            .overlay {
                 RoundedRectangle(cornerRadius: 4)
                     .strokeBorder(accentColor, lineWidth: 3)
                     .opacity(isTargeted ? 1 : 0)
                     .animation(.easeOut(duration: 0.1), value: isTargeted)
                     .allowsHitTesting(false)
-            }
-            .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
-                providers.first?.loadDataRepresentation(
-                    forTypeIdentifier: UTType.plainText.identifier
-                ) { data, _ in
-                    guard let data,
-                          let idString = String(data: data, encoding: .utf8),
-                          let sourceID = UUID(uuidString: idString),
-                          sourceID != pane.id
-                    else { return }
-                    DispatchQueue.main.async {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                            tree.swapPanes(id: sourceID, with: pane.id)
-                        }
-                    }
-                }
-                return true
             }
     }
 }
