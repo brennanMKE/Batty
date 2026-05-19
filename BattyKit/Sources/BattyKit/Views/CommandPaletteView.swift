@@ -11,10 +11,30 @@ extension Notification.Name {
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "CommandPaletteView")
 
 struct PaletteCommand: Identifiable {
-    let id = UUID()
+    /// Stable, content-derived id. `allCommands` is a computed property that
+    /// re-runs on every body evaluation; if `id` were a fresh `UUID()` per
+    /// access SwiftUI's `ForEach` would see new identities each render and
+    /// the filtered output could render with stale row labels.
+    let id: String
     let title: String
     let keyHint: String?
     let action: @MainActor () -> Void
+}
+
+enum CommandPaletteFilter {
+    /// Filters and ranks commands against `query`. A command matches when the
+    /// query is a subsequence of its title. Empty query returns all commands
+    /// in their original order.
+    static func apply(query: String, to commands: [PaletteCommand]) -> [PaletteCommand] {
+        guard !query.isEmpty else { return commands }
+        let scored: [(PaletteCommand, Int)] = commands.compactMap { cmd in
+            let score = FuzzyMatcher.score(query, in: cmd.title)
+            return score > 0 ? (cmd, score) : nil
+        }
+        return scored
+            .sorted { $0.1 > $1.1 }
+            .map { $0.0 }
+    }
 }
 
 struct CommandPaletteView: View {
@@ -32,6 +52,7 @@ struct CommandPaletteView: View {
         for action in ShortcutAction.allCases where action != .commandPalette {
             let hint = shortcuts.binding(for: action).displayString
             cmds.append(PaletteCommand(
+                id: "action:\(action.rawValue)",
                 title: action.displayName,
                 keyHint: hint.isEmpty ? nil : hint,
                 action: { self.dispatch(action) }
@@ -39,6 +60,7 @@ struct CommandPaletteView: View {
         }
 
         cmds.append(PaletteCommand(
+            id: "extra:duplicateSession",
             title: String(localized: "Duplicate Session"),
             keyHint: nil,
             action: {
@@ -49,6 +71,7 @@ struct CommandPaletteView: View {
         ))
 
         cmds.append(PaletteCommand(
+            id: "extra:markAllBellsSeen",
             title: String(localized: "Mark All Bells Seen"),
             keyHint: nil,
             action: { store.markAllBellsSeen() }
@@ -56,6 +79,7 @@ struct CommandPaletteView: View {
 
         if UpdaterController.shared.isConfigured {
             cmds.append(PaletteCommand(
+                id: "extra:checkForUpdates",
                 title: String(localized: "Check for Updates…"),
                 keyHint: nil,
                 action: { UpdaterController.shared.checkForUpdates() }
@@ -63,6 +87,7 @@ struct CommandPaletteView: View {
         }
 
         cmds.append(PaletteCommand(
+            id: "extra:aboutBatty",
             title: String(localized: "About Batty"),
             keyHint: nil,
             action: { AboutPanel.show() }
@@ -70,6 +95,7 @@ struct CommandPaletteView: View {
 
         for theme in GhosttyThemeCatalog.allThemes {
             cmds.append(PaletteCommand(
+                id: "theme:\(theme.name)",
                 title: String(localized: "Theme: \(theme.name)"),
                 keyHint: nil,
                 action: {
@@ -83,13 +109,14 @@ struct CommandPaletteView: View {
     }
 
     private var filteredCommands: [PaletteCommand] {
-        guard !query.isEmpty else { return allCommands }
-        return allCommands
-            .filter { FuzzyMatcher.matches(query, in: $0.title) }
-            .sorted { FuzzyMatcher.score(query, in: $0.title) > FuzzyMatcher.score(query, in: $1.title) }
+        CommandPaletteFilter.apply(query: query, to: allCommands)
     }
 
     var body: some View {
+        // Snapshot once per render so ForEach, key handlers, and Return
+        // activation all see the same list — avoids SwiftUI identity
+        // confusion when the filter is re-evaluated mid-body.
+        let commands = filteredCommands
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -97,9 +124,9 @@ struct CommandPaletteView: View {
                 TextField("Filter commands…", text: $query)
                     .textFieldStyle(.plain)
                     .focused($queryFocused)
-                    .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
-                    .onKeyPress(.downArrow) { moveSelection(1); return .handled }
-                    .onKeyPress(.return) { executeSelected(); return .handled }
+                    .onKeyPress(.upArrow) { moveSelection(-1, in: commands); return .handled }
+                    .onKeyPress(.downArrow) { moveSelection(1, in: commands); return .handled }
+                    .onKeyPress(.return) { activate(commands: commands); return .handled }
                     .onKeyPress(.escape) { isPresented = false; return .handled }
             }
             .padding(.horizontal, 16)
@@ -107,7 +134,7 @@ struct CommandPaletteView: View {
 
             Divider()
 
-            if filteredCommands.isEmpty {
+            if commands.isEmpty {
                 ContentUnavailableView(
                     "No Commands Found",
                     systemImage: "magnifyingglass",
@@ -118,19 +145,20 @@ struct CommandPaletteView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredCommands.enumerated()), id: \.element.id) { idx, cmd in
+                            ForEach(Array(commands.enumerated()), id: \.element.id) { idx, cmd in
                                 PaletteCommandRow(command: cmd, isSelected: idx == selectedIndex)
-                                    .id(idx)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         selectedIndex = idx
-                                        executeSelected()
+                                        activate(commands: commands)
                                     }
                             }
                         }
                     }
                     .onChange(of: selectedIndex) { _, newIdx in
-                        withAnimation { proxy.scrollTo(newIdx, anchor: .center) }
+                        if commands.indices.contains(newIdx) {
+                            withAnimation { proxy.scrollTo(commands[newIdx].id, anchor: .center) }
+                        }
                     }
                     .onChange(of: query) { _, _ in selectedIndex = 0 }
                 }
@@ -141,15 +169,15 @@ struct CommandPaletteView: View {
         .onAppear { queryFocused = true }
     }
 
-    private func moveSelection(_ delta: Int) {
-        let count = filteredCommands.count
+    private func moveSelection(_ delta: Int, in commands: [PaletteCommand]) {
+        let count = commands.count
         guard count > 0 else { return }
         selectedIndex = (selectedIndex + delta + count) % count
     }
 
-    private func executeSelected() {
-        guard filteredCommands.indices.contains(selectedIndex) else { return }
-        let cmd = filteredCommands[selectedIndex]
+    private func activate(commands: [PaletteCommand]) {
+        guard commands.indices.contains(selectedIndex) else { return }
+        let cmd = commands[selectedIndex]
         isPresented = false
         cmd.action()
     }
