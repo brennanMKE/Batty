@@ -2,6 +2,9 @@
 
 import Foundation
 import Observation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "SplitTree")
 
 public indirect enum SplitTreeNode {
     case leaf(PaneRuntime)
@@ -131,10 +134,18 @@ public final class SplitTree {
     /// and ratios are unchanged; only the leaf contents trade places.
     /// No-op if either id is not found.
     public func swapPanes(id idA: UUID, with idB: UUID) {
-        guard idA != idB,
-              let paneA = root.findPane(id: idA),
-              let paneB = root.findPane(id: idB)
-        else { return }
+        guard idA != idB else {
+            logger.notice("split-tree: swapPanes no-op reason=same-id id=\(idA, privacy: .public)")
+            return
+        }
+        guard let paneA = root.findPane(id: idA) else {
+            logger.notice("split-tree: swapPanes no-op missing=A id=\(idA, privacy: .public) other=\(idB, privacy: .public)")
+            return
+        }
+        guard let paneB = root.findPane(id: idB) else {
+            logger.notice("split-tree: swapPanes no-op missing=B id=\(idB, privacy: .public) other=\(idA, privacy: .public)")
+            return
+        }
         root = SplitTreeNode.swapping(paneA: paneA, paneB: paneB, in: root)
     }
 }

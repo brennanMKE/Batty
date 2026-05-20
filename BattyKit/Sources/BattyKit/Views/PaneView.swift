@@ -225,7 +225,10 @@ public struct PaneView: View {
             }
             .overlay {
                 let state = PaneSwapDragState.shared
-                if state.isDragging, state.sourcePaneID != pane.id {
+                if state.isDragging,
+                   let sourceID = state.sourcePaneID,
+                   sourceID != pane.id,
+                   tree.root.findPane(id: sourceID) != nil {
                     PaneSwapDropZone(pane: pane, tree: tree, accentColor: accentColor)
                 }
             }
