@@ -46,7 +46,9 @@ final class TerminalHostView: NSView {
         // at the cursor that has registered for the type — it does not
         // fall through an AppKit subview to a SwiftUI drop target below.
         // See #0102 for the dispatch-path mismatch this fixes.
-        registerForDraggedTypes([.fileURL])
+        let types: [NSPasteboard.PasteboardType] = [.fileURL]
+        registerForDraggedTypes(types)
+        logger.info("file-drop: registered types=\(types.map(\.rawValue).joined(separator: ","), privacy: .public)")
     }
 
     @available(*, unavailable)
@@ -86,8 +88,16 @@ final class TerminalHostView: NSView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard hasFileURL(in: sender) else { return [] }
+        let hasFile = hasFileURL(in: sender)
+        let types = sender.draggingPasteboard.types?.map(\.rawValue).joined(separator: ",") ?? ""
+        let pointInHost = convert(sender.draggingLocation, from: nil)
+        guard hasFile else {
+            logger.debug("file-drop: entered hasFile=N types=\(types, privacy: .public) op=none")
+            return []
+        }
         updateHoverTab(for: sender)
+        let hoverDesc = dragHoverTabID?.uuidString ?? "nil"
+        logger.debug("file-drop: entered hasFile=Y types=\(types, privacy: .public) point=\(String(describing: pointInHost), privacy: .public) hover=\(hoverDesc, privacy: .public) op=copy")
         return .copy
     }
 
@@ -98,31 +108,41 @@ final class TerminalHostView: NSView {
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
+        let previousDesc = dragHoverTabID?.uuidString ?? "nil"
+        logger.debug("file-drop: exited previousHover=\(previousDesc, privacy: .public)")
         clearHoverTab()
     }
 
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        hasFileURL(in: sender)
+        let hasFile = hasFileURL(in: sender)
+        logger.debug("file-drop: prepare hasFile=\(hasFile ? "Y" : "N", privacy: .public) accept=\(hasFile ? "Y" : "N", privacy: .public)")
+        return hasFile
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         defer { clearHoverTab() }
         let pasteboard = sender.draggingPasteboard
         let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let pointInHost = convert(sender.draggingLocation, from: nil)
         guard
             let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
             !urls.isEmpty
         else {
+            logger.notice("file-drop: perform point=\(String(describing: pointInHost), privacy: .public) urls=0 success=false")
             return false
         }
-        let pointInHost = convert(sender.draggingLocation, from: nil)
         guard let tab = terminalTab(at: pointInHost) else {
-            logger.debug("drop ignored: no terminal under point \(String(describing: pointInHost), privacy: .public)")
+            logger.notice("file-drop: perform point=\(String(describing: pointInHost), privacy: .public) tab=nil urls=\(urls.count, privacy: .public) success=false reason=no-terminal-under-point")
             return false
         }
         let paths = urls.compactMap { $0.isFileURL ? $0.path : nil }
-        guard !paths.isEmpty else { return false }
-        tab.terminal.send(ShellQuote.joinPaths(paths))
+        guard !paths.isEmpty else {
+            logger.notice("file-drop: perform tab=\(tab.id, privacy: .public) urls=\(urls.count, privacy: .public) paths=0 success=false")
+            return false
+        }
+        let joined = ShellQuote.joinPaths(paths)
+        tab.terminal.send(joined)
+        logger.info("file-drop: perform tab=\(tab.id, privacy: .public) urls=\(urls.count, privacy: .public) paths=\(paths.count, privacy: .public) joinedLen=\(joined.count, privacy: .public) success=true")
         return true
     }
 
@@ -137,12 +157,18 @@ final class TerminalHostView: NSView {
         let tab = terminalTab(at: pointInHost)
         let nextID = tab?.id
         if nextID == dragHoverTabID { return }
+        let previousDesc = dragHoverTabID?.uuidString ?? "nil"
         if let previousID = dragHoverTabID,
            let previous = TerminalHostStore.shared.tabRuntime(forTabID: previousID) {
             previous.isDragHovering = false
         }
         dragHoverTabID = nextID
         tab?.isDragHovering = true
+        if let nextID {
+            logger.debug("file-drop: hover \(previousDesc, privacy: .public) -> \(nextID, privacy: .public)")
+        } else {
+            logger.debug("file-drop: hover \(previousDesc, privacy: .public) -> nil (left all terminal subviews)")
+        }
     }
 
     private func clearHoverTab() {

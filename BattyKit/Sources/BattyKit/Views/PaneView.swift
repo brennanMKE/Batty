@@ -1,8 +1,18 @@
 // PaneView.swift
 
 import AppKit
+import OSLog
 import SwiftUI
 import UniformTypeIdentifiers
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "PaneView")
+
+private enum EndDragTrigger: String {
+    case mouseUp
+    case fallbackTimer
+    case dropDefer
+    case startDragReplaced
+}
 
 @MainActor
 @Observable
@@ -14,23 +24,32 @@ private final class PaneSwapDragState {
     private var fallbackTimer: Timer? = nil
 
     func startDrag(from paneID: UUID) {
-        endDrag()
+        let hadPrior = isDragging
+        endDrag(trigger: .startDragReplaced)
         isDragging = true
         sourcePaneID = paneID
         monitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
-            DispatchQueue.main.async { self?.endDrag() }
+            DispatchQueue.main.async { self?.endDrag(trigger: .mouseUp) }
         }
+        let monitorInstalled = monitor != nil
         fallbackTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
-            DispatchQueue.main.async { self?.endDrag() }
+            DispatchQueue.main.async {
+                logger.notice("pane-swap: fallback timer fired (30s) — cleaning up leaked drag state")
+                self?.endDrag(trigger: .fallbackTimer)
+            }
         }
+        logger.info("pane-swap: startDrag source=\(paneID, privacy: .public) priorActive=\(hadPrior ? "Y" : "N", privacy: .public) monitor=\(monitorInstalled ? "Y" : "N", privacy: .public)")
     }
 
-    func endDrag() {
+    func endDrag(trigger: EndDragTrigger) {
+        let prior = sourcePaneID?.uuidString ?? "nil"
+        let wasActive = isDragging
         isDragging = false
         sourcePaneID = nil
         if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
         fallbackTimer?.invalidate()
         fallbackTimer = nil
+        logger.info("pane-swap: endDrag source=\(prior, privacy: .public) trigger=\(trigger.rawValue, privacy: .public) wasActive=\(wasActive ? "Y" : "N", privacy: .public)")
     }
 }
 
@@ -273,6 +292,7 @@ public struct PaneView: View {
                 }
             }
             .onDrag {
+                logger.info("pane-swap: onDrag closure fired pane=\(pane.id, privacy: .public)")
                 PaneSwapDragState.shared.startDrag(from: pane.id)
                 return NSItemProvider(object: pane.id.uuidString as NSString)
             } preview: {
@@ -392,19 +412,39 @@ private struct PaneSwapDropZone: View {
     var body: some View {
         Color.clear
             .contentShape(Rectangle())
+            .onAppear {
+                logger.debug("pane-swap: drop-zone mounted pane=\(pane.id, privacy: .public)")
+            }
+            .onDisappear {
+                logger.debug("pane-swap: drop-zone unmounted pane=\(pane.id, privacy: .public)")
+            }
             .onDrop(of: [.plainText], isTargeted: $isTargeted) { providers in
-                defer { PaneSwapDragState.shared.endDrag() }
+                defer { PaneSwapDragState.shared.endDrag(trigger: .dropDefer) }
+                let targetID = pane.id
+                let providerCount = providers.count
                 providers.first?.loadDataRepresentation(
                     forTypeIdentifier: UTType.plainText.identifier
                 ) { data, _ in
-                    guard let data,
-                          let idString = String(data: data, encoding: .utf8),
-                          let sourceID = UUID(uuidString: idString),
-                          sourceID != pane.id
-                    else { return }
+                    guard let data else {
+                        logger.notice("pane-swap: drop on=\(targetID, privacy: .public) providers=\(providerCount, privacy: .public) load=failed")
+                        return
+                    }
+                    guard let idString = String(data: data, encoding: .utf8) else {
+                        logger.notice("pane-swap: drop on=\(targetID, privacy: .public) providers=\(providerCount, privacy: .public) load=not-utf8")
+                        return
+                    }
+                    guard let sourceID = UUID(uuidString: idString) else {
+                        logger.notice("pane-swap: drop on=\(targetID, privacy: .public) providers=\(providerCount, privacy: .public) load=not-a-uuid")
+                        return
+                    }
+                    guard sourceID != targetID else {
+                        logger.info("pane-swap: drop on=\(targetID, privacy: .public) source=\(sourceID, privacy: .public) swap=false reason=self-drop")
+                        return
+                    }
                     DispatchQueue.main.async {
+                        logger.info("pane-swap: swap source=\(sourceID, privacy: .public) target=\(targetID, privacy: .public)")
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                            tree.swapPanes(id: sourceID, with: pane.id)
+                            tree.swapPanes(id: sourceID, with: targetID)
                         }
                     }
                 }
