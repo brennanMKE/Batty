@@ -2,6 +2,7 @@
 
 set -euo pipefail
 
+APP_NAME="Batty Beta"
 PROJECT="Batty.xcodeproj"
 SCHEME="Batty (Beta)"
 CONFIGURATION="Debug"
@@ -30,18 +31,18 @@ for ACTION in "${ACTIONS[@]}"; do
                 -scheme "$SCHEME" \
                 -configuration "$CONFIGURATION" \
                 -derivedDataPath "$BUILD_DIR"
-            APP_PATH=$(find "$BUILD_DIR" -name "Batty Beta.app" -type d | head -1)
+            APP_PATH=$(find "$BUILD_DIR" -name "$APP_NAME.app" -type d | head -1)
             if [[ -z "$APP_PATH" ]]; then
-                echo "Error: Batty Beta.app not found in $BUILD_DIR" >&2
+                echo "Error: $APP_NAME.app not found in $BUILD_DIR" >&2
                 exit 1
             fi
             open "$APP_PATH"
             ;;
         terminate)
-            if pkill -x "Batty Beta"; then
-                echo "Batty Beta terminated."
+            if pkill -x "$APP_NAME"; then
+                echo "$APP_NAME terminated."
             else
-                echo "Batty Beta is not running." >&2
+                echo "$APP_NAME is not running." >&2
             fi
             ;;
         screenshot)
