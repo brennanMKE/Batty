@@ -172,10 +172,7 @@ private struct SessionRow: View {
             Button("Reset Name") {
                 store.clearSessionName(id: session.id)
             }
-            .disabled(!session.titleOverride)
-            Button("Duplicate") {
-                store.duplicateSession(id: session.id)
-            }
+            .disabled(AppStateStore.isDefaultSessionTitle(session.title))
             Divider()
             Button("Set Session Theme\u{2026}") { onTheme() }
             if session.localThemeName != nil {

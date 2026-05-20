@@ -100,6 +100,12 @@ public final class SessionNameCache {
         return entry.name
     }
 
+    public func removeName(forPath path: String) {
+        guard entriesByPath[path] != nil else { return }
+        entriesByPath.removeValue(forKey: path)
+        scheduleSave()
+    }
+
     public func record(path: String, name: String) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !path.isEmpty, !trimmedName.isEmpty else { return }

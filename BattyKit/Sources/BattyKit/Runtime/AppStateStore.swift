@@ -103,10 +103,7 @@ public final class AppStateStore {
         let cwd = anchorTab.terminal.workingDirectory
             ?? anchorTab.terminal.configuration.workingDirectory
         guard let cwd, !cwd.isEmpty else { return }
-        if let cachedName = nameCache.lookup(path: cwd) {
-            session.title = cachedName
-            return
-        }
+        nameCache.removeName(forPath: cwd)
         if let derivedName = ProjectNameResolver.shared.resolve(at: cwd) {
             session.title = derivedName
         }
