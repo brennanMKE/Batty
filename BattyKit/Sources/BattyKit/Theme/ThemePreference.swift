@@ -16,6 +16,8 @@ public enum ThemePreference {
 }
 
 extension AppStateStore {
+    /// Applies a theme to every surface in every session. Used by the global
+    /// theme selector when the user explicitly picks a theme for all open sessions.
     public func applyThemeToAllSurfaces(_ theme: GhosttyThemeDefinition) {
         let terminalTheme = theme.toTerminalTheme()
         for session in sessions {
@@ -28,16 +30,30 @@ extension AppStateStore {
         themeChrome.update(from: theme)
     }
 
-    /// Applies the theme that should be active for the currently-selected
-    /// session: the session's `localThemeName` override when set, or the
-    /// global `ThemePreference` otherwise. Called on every session-focus
-    /// switch so the active theme tracks the selected session.
+    /// Applies a theme only to the surfaces of one session. Used when setting
+    /// or restoring a session-local theme override.
+    public func applyTheme(_ theme: GhosttyThemeDefinition, to session: SessionRuntime) {
+        let terminalTheme = theme.toTerminalTheme()
+        for pane in session.tree.allPanes {
+            for tab in pane.tabs {
+                tab.terminal.controller.setTheme(terminalTheme)
+            }
+        }
+        themeChrome.update(from: theme)
+    }
+
+    /// Applies the session-local theme to the currently-selected session's
+    /// surfaces when it has a `localThemeName` override. Resets the window
+    /// chrome to the system default when no override is set. The global
+    /// `ThemePreference` is intentionally NOT used as a fallback here — new
+    /// sessions always start unthemed.
     public func applyActiveSessionTheme() {
-        if let localName = selectedSession?.localThemeName,
+        guard let session = selectedSession else { return }
+        if let localName = session.localThemeName,
            let theme = GhosttyThemeCatalog.theme(named: localName) {
-            applyThemeToAllSurfaces(theme)
-        } else if let globalTheme = ThemePreference.activeTheme() {
-            applyThemeToAllSurfaces(globalTheme)
+            applyTheme(theme, to: session)
+        } else {
+            themeChrome.update(from: nil)
         }
     }
 }

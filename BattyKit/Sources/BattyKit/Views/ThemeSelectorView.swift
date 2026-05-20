@@ -301,7 +301,7 @@ struct SessionThemeSelectorView: View {
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
         session.localThemeName = theme.name
-        store.applyThemeToAllSurfaces(theme)
+        store.applyTheme(theme, to: session)
     }
 
     private func confirmSelection() {
@@ -321,7 +321,7 @@ struct SessionThemeSelectorView: View {
         let count = allDisplayed.count
         guard count > 0 else { return }
         selectedIndex = (selectedIndex + delta + count) % count
-        store.applyThemeToAllSurfaces(allDisplayed[selectedIndex])
+        store.applyTheme(allDisplayed[selectedIndex], to: session)
     }
 
     private func togglePin(_ name: String) {

@@ -57,7 +57,7 @@ public final class TabRuntime: Identifiable {
     ) {
         self.id = id
         self.titleOverride = titleOverride
-        let state = TerminalViewState(theme: Self.activeTheme())
+        let state = TerminalViewState(theme: .default)
         self.terminal = state
         self.terminalDelegate = TerminalDelegateProxy(state: state)
         if let workingDirectory {
@@ -183,14 +183,4 @@ public final class TabRuntime: Identifiable {
         }
     }
 
-    private static func activeTheme() -> TerminalTheme {
-        guard
-            let name = UserDefaults.standard.string(forKey: ThemePreference.defaultsKey),
-            !name.isEmpty,
-            let definition = GhosttyThemeCatalog.theme(named: name)
-        else {
-            return .default
-        }
-        return definition.toTerminalTheme()
-    }
 }
