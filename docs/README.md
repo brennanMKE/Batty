@@ -50,3 +50,6 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   `xcodebuild -exportLocalizations` / `-importLocalizations` workflow for
   translators. Read this before touching any user-facing literal or
   filing a per-language localization issue.
+- [`VisualDebugging.md`](VisualDebugging.md) — how to use `build.sh` and
+  `screenshot.sh` to build, launch, and capture screenshots of the Beta
+  build from the command line without opening Xcode.

@@ -1,5 +1,5 @@
 {
-  "originHash" : "6c66d74c11e3f53d367361237a46c18119fae57b562d9452e3305b2ec9c6ca41",
+  "originHash" : "d7b55dc4675795fee24a3446adb030b5be1e26b0f19a651c96c8de2213dadda8",
   "pins" : [
     {
       "identity" : "libghostty-spm",
@@ -50,7 +50,6 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/gonzalezreal/textual.git",
       "state" : {
-        "branch" : "main",
         "revision" : "5b06b811c0f5313b6b84bbef98c635a630638c38"
       }
     }

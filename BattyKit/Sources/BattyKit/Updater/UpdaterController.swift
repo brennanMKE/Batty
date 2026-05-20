@@ -7,9 +7,8 @@ import Sparkle
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "UpdaterController")
 
 /// Thin wrapper around Sparkle's `SPUStandardUpdaterController`. Disabled
-/// gracefully when no `SUFeedURL` is set in `Info.plist` — early-returns
-/// from `checkForUpdates()` so the menu item works as a no-op during
-/// development before the appcast is hosted.
+/// entirely when no `SUFeedURL` is set in `Info.plist` — the updater is not
+/// started, so no first-launch consent dialogs appear in Beta builds.
 @MainActor
 public final class UpdaterController {
     public static let shared = UpdaterController()
@@ -24,8 +23,9 @@ public final class UpdaterController {
     }
 
     private init() {
+        let hasFeedURL = (Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String).map { !$0.isEmpty } ?? false
         self.controller = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: hasFeedURL,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
