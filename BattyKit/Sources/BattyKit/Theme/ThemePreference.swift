@@ -19,20 +19,24 @@ public enum ThemePreference {
 }
 
 extension AppStateStore {
-    /// Applies a theme to every surface in every session. Used by the global
-    /// theme selector when the user explicitly picks a theme for all open sessions.
+    /// Applies a theme to every session that has no local override. Used by
+    /// the global theme selector — does NOT write `localThemeName` on any
+    /// session, so they remain "following global" and will pick up future
+    /// global-theme changes automatically.
     public func applyThemeToAllSurfaces(_ theme: GhosttyThemeDefinition) {
-        logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) sessions=\(self.sessions.count, privacy: .public)")
+        let unoverridden = sessions.filter { $0.localThemeName == nil }
+        logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) unoverridden=\(unoverridden.count, privacy: .public)/\(self.sessions.count, privacy: .public)")
         let terminalTheme = theme.toTerminalTheme()
-        for session in sessions {
-            session.localThemeName = theme.name
+        for session in unoverridden {
             for pane in session.tree.allPanes {
                 for tab in pane.tabs {
                     tab.terminal.controller.setTheme(terminalTheme)
                 }
             }
         }
-        themeChrome.update(from: theme)
+        if selectedSession?.localThemeName == nil {
+            themeChrome.update(from: theme)
+        }
     }
 
     /// Applies a theme only to the surfaces of one session. Used when setting
@@ -48,22 +52,23 @@ extension AppStateStore {
         themeChrome.update(from: theme)
     }
 
-    /// Applies the session-local theme to the currently-selected session's
-    /// surfaces when it has a `localThemeName` override. Resets the window
-    /// chrome to the system default when no override is set. The global
-    /// `ThemePreference` is intentionally NOT used as a fallback here — new
-    /// sessions always start unthemed.
+    /// Applies the effective theme for the currently-selected session.
+    /// Resolves the fallback chain: session-local override → global UserDefaults
+    /// key → system default. Called on every session switch and on first appear.
     public func applyActiveSessionTheme() {
         guard let session = selectedSession else {
             logger.debug("applyActiveSessionTheme: no selected session")
             return
         }
-        if let localName = session.localThemeName,
-           let theme = GhosttyThemeCatalog.theme(named: localName) {
-            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) localTheme=\(localName, privacy: .public)")
+        let themeName = session.localThemeName
+            ?? UserDefaults.standard.string(forKey: ThemePreference.defaultsKey)
+        if let name = themeName, !name.isEmpty,
+           let theme = GhosttyThemeCatalog.theme(named: name) {
+            let source = session.localThemeName != nil ? "local" : "global"
+            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) theme=\(name, privacy: .public) source=\(source, privacy: .public)")
             applyTheme(theme, to: session)
         } else {
-            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) localTheme=nil → resetting chrome")
+            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) no theme → resetting chrome")
             themeChrome.update(from: nil)
         }
     }
