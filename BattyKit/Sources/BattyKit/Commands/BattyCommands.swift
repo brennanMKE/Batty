@@ -23,23 +23,48 @@ public struct BattyCommands: Commands {
                 store.addSession()
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
+
+            Divider()
+
+            Button {
+                NotificationCenter.default.post(name: .battyToggleOpenQuickly, object: nil)
+            } label: {
+                Label("Open Quickly\u{2026}", systemImage: "bolt")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .openQuickly))
+            .disabled(store.selectedSession == nil)
         }
 
         CommandGroup(after: .sidebar) {
-            Button(sidebarHidden
-                ? String(localized: "Show Sidebar")
-                : String(localized: "Hide Sidebar")) {
+            Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     sidebarHidden.toggle()
                 }
+            } label: {
+                Label(
+                    sidebarHidden ? String(localized: "Show Sidebar") : String(localized: "Hide Sidebar"),
+                    systemImage: "sidebar.left"
+                )
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleSidebar))
         }
 
         CommandMenu("Session") {
-            Button("New Session") {
+            Button {
                 store.addSession()
+            } label: {
+                Label("New Session", systemImage: "plus.square")
             }
+
+            Divider()
+
+            Button {
+                NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
+            } label: {
+                Label("Choose Layout\u{2026}", systemImage: "rectangle.3.group")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .layoutPicker))
+            .disabled(store.selectedSession?.tree.allPanes.count != 1)
 
             Divider()
 
@@ -58,13 +83,20 @@ public struct BattyCommands: Commands {
         }
 
         CommandMenu("Theme") {
-            Button("Open Theme Selector\u{2026}") {
+            Button {
                 NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
+            } label: {
+                Label("Open Theme Selector\u{2026}", systemImage: "paintbrush")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .themeSelector))
 
-            Button(isPinnedCurrentTheme ? "Unpin Theme" : "Pin Theme") {
+            Button {
                 togglePinCurrentTheme()
+            } label: {
+                Label(
+                    isPinnedCurrentTheme ? String(localized: "Unpin Theme") : String(localized: "Pin Theme"),
+                    systemImage: isPinnedCurrentTheme ? "pin.slash" : "pin"
+                )
             }
             .disabled(activeThemeName.isEmpty)
 
@@ -117,13 +149,17 @@ public struct BattyCommands: Commands {
         }
 
         CommandGroup(after: .windowArrangement) {
-            Button("Toggle Bell Feed") {
+            Button {
                 NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
+            } label: {
+                Label("Toggle Bell Feed", systemImage: "bell")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleBellFeed))
 
-            Button("Mark All Bells Seen") {
+            Button {
                 store.markAllBellsSeen()
+            } label: {
+                Label("Mark All Bells Seen", systemImage: "bell.slash")
             }
             .disabled(store.bellFeed.unseenCount == 0)
         }
@@ -133,77 +169,99 @@ public struct BattyCommands: Commands {
         }
 
         CommandMenu("Pane") {
-            Button("Split Horizontally") {
+            Button {
                 guard let tree = store.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
+            } label: {
+                Label("Split Horizontally", systemImage: "rectangle.split.2x1")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontal))
             .disabled(store.selectedSession == nil)
 
-            Button("Split Vertically") {
+            Button {
                 guard let tree = store.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
+            } label: {
+                Label("Split Vertically", systemImage: "rectangle.split.1x2")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVertical))
             .disabled(store.selectedSession == nil)
 
-            Button("Layouts\u{2026}") {
+            Button {
                 NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
+            } label: {
+                Label("Layouts\u{2026}", systemImage: "rectangle.3.group")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .layoutPicker))
-            .disabled(store.selectedSession == nil)
+            .disabled(store.selectedSession?.tree.allPanes.count != 1)
 
             Divider()
 
-            Button("Focus Pane Left") {
+            Button {
                 store.selectedSession?.focusPane(adjacent: .left)
+            } label: {
+                Label("Focus Pane Left", systemImage: "arrow.left")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneLeft))
             .disabled(!canFocusAdjacentPane)
 
-            Button("Focus Pane Right") {
+            Button {
                 store.selectedSession?.focusPane(adjacent: .right)
+            } label: {
+                Label("Focus Pane Right", systemImage: "arrow.right")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneRight))
             .disabled(!canFocusAdjacentPane)
 
-            Button("Focus Pane Above") {
+            Button {
                 store.selectedSession?.focusPane(adjacent: .up)
+            } label: {
+                Label("Focus Pane Above", systemImage: "arrow.up")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneUp))
             .disabled(!canFocusAdjacentPane)
 
-            Button("Focus Pane Below") {
+            Button {
                 store.selectedSession?.focusPane(adjacent: .down)
+            } label: {
+                Label("Focus Pane Below", systemImage: "arrow.down")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneDown))
             .disabled(!canFocusAdjacentPane)
         }
 
         CommandMenu("Tab") {
-            Button("New Tab") {
+            Button {
                 store.selectedSession?.focusedPane.addTab()
+            } label: {
+                Label("New Tab", systemImage: "plus")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .newTab))
             .disabled(focusedPane == nil)
 
-            Button("Close Tab") {
+            Button {
                 logger.info("Cmd-W action fired (Tab → Close Tab)")
                 store.requestCloseFocusedTab()
+            } label: {
+                Label("Close Tab", systemImage: "xmark")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
             .disabled(store.selectedSession == nil)
 
             Divider()
 
-            Button("Show Previous Tab") {
+            Button {
                 store.selectedSession?.focusedPane.selectPreviousTab()
+            } label: {
+                Label("Show Previous Tab", systemImage: "chevron.left")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .previousTab))
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
 
-            Button("Show Next Tab") {
+            Button {
                 store.selectedSession?.focusedPane.selectNextTab()
+            } label: {
+                Label("Show Next Tab", systemImage: "chevron.right")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .nextTab))
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
