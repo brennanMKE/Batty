@@ -28,7 +28,7 @@ public final class AppStateStore {
         self.bellFeed = bellFeed
         self.nameCache = nameCache
         self.notifier = notifier
-        self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme()))
+        self.themeChrome = ThemeChrome()
         if sessions.isEmpty {
             let initial = SessionRuntime(title: String(localized: "Session 1"))
             self.sessions = [initial]

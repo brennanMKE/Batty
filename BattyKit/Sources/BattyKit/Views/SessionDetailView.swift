@@ -92,6 +92,7 @@ public struct SessionDetailView: View {
         .onAppear {
             focusSelectedSessionTerminal()
             store.markActiveTabSeen()
+            store.applyActiveSessionTheme()
         }
         .onChange(of: store.selectedSessionID) { _, _ in
             focusSelectedSessionTerminal()
