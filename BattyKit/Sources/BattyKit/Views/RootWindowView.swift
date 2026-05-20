@@ -21,7 +21,7 @@ public struct RootWindowView: View {
         }
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)
-        .background(WindowChromeApplier(chrome: store.themeChrome))
+        .background(WindowChromeApplier(palette: store.themeChrome.palette))
         .task { setUpNotifier() }
         .onAppear {
             columnVisibility = sidebarHidden ? .detailOnly : .all
@@ -61,7 +61,7 @@ public enum SidebarPreference {
 /// themed color uniformly. Reverts to the system default chrome (vibrant
 /// title-bar material) when no theme is active.
 private struct WindowChromeApplier: NSViewRepresentable {
-    let chrome: ThemeChrome
+    let palette: ChromePalette
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -72,7 +72,7 @@ private struct WindowChromeApplier: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
             guard let window = nsView.window else { return }
-            apply(palette: chrome.palette, to: window)
+            apply(palette: palette, to: window)
         }
     }
 
