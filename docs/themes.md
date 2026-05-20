@@ -308,7 +308,100 @@ picks up catalog changes.
 
 ---
 
-## 9. Adding a new theme (developer workflow)
+## 9. Global theme and session-local overrides
+
+Batty has a two-tier theme system: a **global theme** that applies
+app-wide and a **session-local override** that applies to one session.
+The two tiers form a simple fallback chain:
+
+```
+session.localThemeName  →  ThemePreference (UserDefaults)  →  system default
+       (per-session)              (global)                      (nil palette)
+```
+
+### Global theme
+
+`ThemePreference.defaultsKey` in `UserDefaults.standard` is the
+global theme. It persists across launches. All sessions whose
+`localThemeName` is `nil` inherit it. This is the same key described
+in section 3.
+
+### Session-local override
+
+`SessionRuntime.localThemeName: String?` holds a per-session override.
+It is `nil` by default and is **not persisted** — every session starts
+`nil` on every launch.
+
+- `nil` → this session follows the global theme. Changing the global
+  theme immediately reflects on this session.
+- non-nil → this session uses its own theme, regardless of the global.
+  Changing the global theme does **not** affect this session.
+
+The session-local picker (`SessionThemeSelectorView`) is the only
+thing that sets `localThemeName`. It sets the override AND calls
+`applyTheme(_:to:)` to apply it immediately.
+
+### Switching sessions
+
+`applyActiveSessionTheme()` fires on every session switch. It
+resolves the effective theme for the newly-selected session using the
+fallback chain:
+
+1. If `session.localThemeName` is set → use that theme.
+2. Else if the global `UserDefaults` key is set → use that theme.
+3. Else → call `themeChrome.update(from: nil)` to revert to the
+   system default chrome.
+
+The chrome always reflects the selected session's **effective theme**.
+Terminal surfaces in the selected session are re-themed via
+`setTheme()` on each switch (in case the effective theme changed while
+the session was not selected).
+
+### Changing the global theme
+
+When the user picks a theme from the global selector (Cmd-Shift-T),
+Theme menu, or Settings:
+
+- The name is written to `UserDefaults` (persists).
+- `applyThemeToAllSurfaces(_:)` applies the new theme to **every
+  session whose `localThemeName` is `nil`**. Sessions with a
+  local override keep their local theme and are not touched.
+- `themeChrome.update(from:)` is called only if the currently-selected
+  session has no local override (i.e., it follows global).
+
+`applyThemeToAllSurfaces` must **not** write `localThemeName` on any
+session — the sessions remain "following global" so that the next
+global-theme change still propagates to them.
+
+### New-tab initialization
+
+`TabRuntime.init()` calls `Self.activeTheme()` which reads the global
+`UserDefaults` key. This bakes the current global theme into the
+libghostty config before the surface is created. The tab therefore
+displays the correct background immediately, before
+`applyActiveSessionTheme()` fires. Sessions with `localThemeName`
+set will have their terminal re-themed via `setTheme()` when the
+session is next selected (after surface connect).
+
+### Clearing a local override
+
+Set `session.localThemeName = nil` and call
+`applyActiveSessionTheme()`. The session immediately picks up the
+current global theme.
+
+### Invariants
+
+- `localThemeName` is never persisted. Every launch starts all
+  sessions with `nil` (global fallback).
+- `applyThemeToAllSurfaces` is for changing the global theme visually
+  on all unoverridden sessions. It must not touch `localThemeName`.
+- `applyTheme(_:to:)` applies visually to one session but does **not**
+  set `localThemeName`. That is `SessionThemeSelectorView`'s job.
+- The chrome always matches the selected session's effective theme.
+
+---
+
+## 10. Adding a new theme (developer workflow)
 
 In v1, themes are baked into the libghostty-spm fork. To add one:
 
@@ -360,4 +453,4 @@ In v1, themes are baked into the libghostty-spm fork. To add one:
 
 ---
 
-*Document version: 1 — 2026-05-12.*
+*Document version: 2 — 2026-05-20. Added section 9 (global theme and session-local overrides).*
