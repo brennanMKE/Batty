@@ -25,6 +25,7 @@ extension AppStateStore {
         logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) sessions=\(self.sessions.count, privacy: .public)")
         let terminalTheme = theme.toTerminalTheme()
         for session in sessions {
+            session.localThemeName = theme.name
             for pane in session.tree.allPanes {
                 for tab in pane.tabs {
                     tab.terminal.controller.setTheme(terminalTheme)
