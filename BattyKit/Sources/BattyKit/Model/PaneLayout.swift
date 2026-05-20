@@ -138,59 +138,59 @@ public enum PaneLayout: String, CaseIterable, Identifiable {
             break
 
         case .horizontalSplit:
-            tree.splitFocusedPane(direction: .horizontal)
+            tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
 
         case .verticalSplit:
-            tree.splitFocusedPane(direction: .vertical)
+            tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
 
         case .threeColumns:
             // primary | B | C
             // Focused = primary. Split horizontally at 1/3 → pane B takes the right 2/3.
             // Then set focused to B and split horizontally at 0.5 → B | C.
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .horizontal, ratio: 1.0 / 3.0)
+            let paneB = tree.splitFocusedPane(direction: .horizontal, ratio: 1.0 / 3.0, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
-            tree.splitFocusedPane(direction: .horizontal, ratio: 0.5)
+            tree.splitFocusedPane(direction: .horizontal, ratio: 0.5, inheritingFrom: primary)
 
         case .threeRows:
             // primary / B / C
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .vertical, ratio: 1.0 / 3.0)
+            let paneB = tree.splitFocusedPane(direction: .vertical, ratio: 1.0 / 3.0, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
-            tree.splitFocusedPane(direction: .vertical, ratio: 0.5)
+            tree.splitFocusedPane(direction: .vertical, ratio: 0.5, inheritingFrom: primary)
 
         case .mainLeftTwoRight:
             // primary | (B / C)
             // Split primary horizontally → B (right half). Then split B vertically → C.
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .horizontal)
+            let paneB = tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
-            tree.splitFocusedPane(direction: .vertical)
+            tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
 
         case .mainRightTwoLeft:
             // (primary / C) | B
             // Split primary horizontally → B (right). Then split primary vertically → C.
             tree.focusedPaneID = primary.id
-            tree.splitFocusedPane(direction: .horizontal)
+            tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
             tree.focusedPaneID = primary.id
-            tree.splitFocusedPane(direction: .vertical)
+            tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
 
         case .mainTopTwoBottom:
             // primary / (B | C)
             // Split primary vertically → B (bottom half). Then split B horizontally → C.
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .vertical)
+            let paneB = tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
-            tree.splitFocusedPane(direction: .horizontal)
+            tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
 
         case .mainBottomTwoTop:
             // (primary | C) / B
             // Split primary vertically → B (bottom). Then split primary horizontally → C.
             // B is the wide bottom pane; primary and C are the two top panes.
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .vertical)
+            let paneB = tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
             tree.focusedPaneID = primary.id
-            tree.splitFocusedPane(direction: .horizontal)
+            tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
 
         case .twoByTwoGrid:
@@ -198,11 +198,11 @@ public enum PaneLayout: String, CaseIterable, Identifiable {
             // Split primary horizontally → pane B. Split primary vertically → pane C.
             // Set focused to B, split vertically → pane D.
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .horizontal)
+            let paneB = tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
             tree.focusedPaneID = primary.id
-            tree.splitFocusedPane(direction: .vertical)
+            tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
-            tree.splitFocusedPane(direction: .vertical)
+            tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
         }
 
         tree.focusedPaneID = primary.id
