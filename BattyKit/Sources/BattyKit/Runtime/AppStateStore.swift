@@ -106,6 +106,11 @@ public final class AppStateStore {
         nameCache.removeName(forPath: cwd)
         if let derivedName = ProjectNameResolver.shared.resolve(at: cwd) {
             session.title = derivedName
+            return
+        }
+        let basename = URL(fileURLWithPath: cwd).lastPathComponent
+        if !basename.isEmpty {
+            session.title = basename
         }
     }
 
