@@ -1,6 +1,9 @@
 // SessionDetailView.swift
 
+import OSLog
 import SwiftUI
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "SessionDetailView")
 
 public struct SessionDetailView: View {
     public let store: AppStateStore
@@ -90,11 +93,13 @@ public struct SessionDetailView: View {
         }
         .environment(\.splitDetailToolbarSafeInsetTop, splitDetailToolbarSafeInsetTop)
         .onAppear {
+            logger.debug("onAppear: selectedSession=\(store.selectedSession?.title ?? "nil", privacy: .public)")
             focusSelectedSessionTerminal()
             store.markActiveTabSeen()
             store.applyActiveSessionTheme()
         }
-        .onChange(of: store.selectedSessionID) { _, _ in
+        .onChange(of: store.selectedSessionID) { old, new in
+            logger.debug("selectedSessionID changed: \(old?.uuidString ?? "nil", privacy: .public) → \(new?.uuidString ?? "nil", privacy: .public)")
             focusSelectedSessionTerminal()
             store.markActiveTabSeen()
             store.applyActiveSessionTheme()
@@ -102,7 +107,8 @@ public struct SessionDetailView: View {
         .onChange(of: store.selectedSession?.tree.focusedPaneID) { _, _ in
             store.markActiveTabSeen()
         }
-        .onChange(of: store.selectedSession?.tree.allPanes.count) { _, _ in
+        .onChange(of: store.selectedSession?.tree.allPanes.count) { _, newCount in
+            logger.debug("allPanes.count changed → \(newCount ?? 0, privacy: .public); re-applying theme")
             store.applyActiveSessionTheme()
         }
     }

@@ -1,6 +1,9 @@
 // ThemePreference.swift
 
 import Foundation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ThemePreference")
 
 public enum ThemePreference {
     public static let defaultsKey = "co.sstools.Batty.themeName"
@@ -19,6 +22,7 @@ extension AppStateStore {
     /// Applies a theme to every surface in every session. Used by the global
     /// theme selector when the user explicitly picks a theme for all open sessions.
     public func applyThemeToAllSurfaces(_ theme: GhosttyThemeDefinition) {
+        logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) sessions=\(self.sessions.count, privacy: .public)")
         let terminalTheme = theme.toTerminalTheme()
         for session in sessions {
             for pane in session.tree.allPanes {
@@ -33,6 +37,7 @@ extension AppStateStore {
     /// Applies a theme only to the surfaces of one session. Used when setting
     /// or restoring a session-local theme override.
     public func applyTheme(_ theme: GhosttyThemeDefinition, to session: SessionRuntime) {
+        logger.info("applyTheme: theme=\(theme.name, privacy: .public) session=\(session.title, privacy: .public)")
         let terminalTheme = theme.toTerminalTheme()
         for pane in session.tree.allPanes {
             for tab in pane.tabs {
@@ -48,11 +53,16 @@ extension AppStateStore {
     /// `ThemePreference` is intentionally NOT used as a fallback here — new
     /// sessions always start unthemed.
     public func applyActiveSessionTheme() {
-        guard let session = selectedSession else { return }
+        guard let session = selectedSession else {
+            logger.debug("applyActiveSessionTheme: no selected session")
+            return
+        }
         if let localName = session.localThemeName,
            let theme = GhosttyThemeCatalog.theme(named: localName) {
+            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) localTheme=\(localName, privacy: .public)")
             applyTheme(theme, to: session)
         } else {
+            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) localTheme=nil → resetting chrome")
             themeChrome.update(from: nil)
         }
     }
