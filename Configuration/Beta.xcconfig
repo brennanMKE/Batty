@@ -1,0 +1,9 @@
+// Beta.xcconfig — development build overrides
+// Applied when the "Batty (Beta)" scheme is selected.
+
+PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty.beta
+PRODUCT_NAME = Batty Beta
+
+// Sparkle disabled for dev builds — no update prompts during development.
+SU_FEED_URL =
+SU_PUBLIC_ED_KEY =

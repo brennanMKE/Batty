@@ -16,3 +16,8 @@ HTTPS=https:/
 // Sparkle
 SU_FEED_URL = $HTTPS/batty.sstools.co/appcast.xml
 SU_PUBLIC_ED_KEY = 17V/QFAmgnEvb+YhA0+c/oA8TghcNVLOY5qYIa6aMZA=
+
+// Environment override — written by scripts/set-environment.sh before each build.
+// The ? makes it optional so builds work on a fresh clone without Active.xcconfig.
+// Values in Active.xcconfig override the defaults above.
+#include? "Active.xcconfig"

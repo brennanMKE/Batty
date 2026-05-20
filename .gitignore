@@ -1,4 +1,5 @@
 .DS_Store
+Configuration/Active.xcconfig
 build/
 .build/
 xcuserdata/
