@@ -18,50 +18,23 @@ public struct SessionSidebarView: View {
             ForEach(store.sessions) { session in
                 SessionRow(
                     session: session,
-                    accent: themeChrome?.accent
-                )
-                    .tag(session.id as UUID?)
-                    .accessibilityIdentifier("session-row.\(session.title)")
-                    .modifier(SidebarRowBackground(
-                        sidebarBackground: themeChrome?.chromeBackground,
-                        selectionTint: themeChrome?.sidebarSelectionTint,
-                        isSelected: session.id == store.selectedSessionID
-                    ))
-                    .contextMenu {
-                        Button("Rename") {
-                            renameDraft = session.title
-                            renamingSessionID = session.id
-                        }
-                        Button("Reset Name") {
-                            store.clearSessionName(id: session.id)
-                        }
-                        .disabled(!session.titleOverride)
-                        Button("Duplicate") {
-                            store.duplicateSession(id: session.id)
-                        }
-                        Divider()
-                        Button("Set Session Theme\u{2026}") {
-                            themingSessionID = session.id
-                        }
-                        if session.localThemeName != nil {
-                            Button("Clear Session Theme") {
-                                session.localThemeName = nil
-                                if session.id == store.selectedSessionID {
-                                    store.applyActiveSessionTheme()
-                                }
-                            }
-                        }
-                        Divider()
-                        Button(session.notificationsMuted
-                            ? String(localized: "Unmute Notifications")
-                            : String(localized: "Mute Notifications")) {
-                            session.notificationsMuted.toggle()
-                        }
-                        Divider()
-                        Button("Close", role: .destructive) {
-                            store.removeSession(id: session.id)
-                        }
+                    store: store,
+                    accent: themeChrome?.accent,
+                    onRename: {
+                        renameDraft = session.title
+                        renamingSessionID = session.id
+                    },
+                    onTheme: {
+                        themingSessionID = session.id
                     }
+                )
+                .tag(session.id as UUID?)
+                .accessibilityIdentifier("session-row.\(session.title)")
+                .modifier(SidebarRowBackground(
+                    sidebarBackground: themeChrome?.chromeBackground,
+                    selectionTint: themeChrome?.sidebarSelectionTint,
+                    isSelected: session.id == store.selectedSessionID
+                ))
             }
             .onMove { source, destination in
                 store.moveSessions(fromOffsets: source, toOffset: destination)
@@ -169,7 +142,10 @@ private struct SidebarRowBackground: ViewModifier {
 
 private struct SessionRow: View {
     @Bindable var session: SessionRuntime
+    let store: AppStateStore
     let accent: Color?
+    let onRename: () -> Void
+    let onTheme: () -> Void
 
     var body: some View {
         HStack {
@@ -189,6 +165,36 @@ private struct SessionRow: View {
                     .padding(.vertical, 2)
                     .background(Capsule().fill(accent ?? Color.accentColor))
                     .help("\(session.unseenBellCount) unseen bell event(s)")
+            }
+        }
+        .contextMenu {
+            Button("Rename") { onRename() }
+            Button("Reset Name") {
+                store.clearSessionName(id: session.id)
+            }
+            .disabled(!session.titleOverride)
+            Button("Duplicate") {
+                store.duplicateSession(id: session.id)
+            }
+            Divider()
+            Button("Set Session Theme\u{2026}") { onTheme() }
+            if session.localThemeName != nil {
+                Button("Clear Session Theme") {
+                    session.localThemeName = nil
+                    if session.id == store.selectedSessionID {
+                        store.applyActiveSessionTheme()
+                    }
+                }
+            }
+            Divider()
+            Button(session.notificationsMuted
+                ? String(localized: "Unmute Notifications")
+                : String(localized: "Mute Notifications")) {
+                session.notificationsMuted.toggle()
+            }
+            Divider()
+            Button("Close", role: .destructive) {
+                store.removeSession(id: session.id)
             }
         }
     }
