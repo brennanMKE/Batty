@@ -1,0 +1,5 @@
+// AppBeta.xcconfig — Batty target base configuration for Beta builds.
+// Inherits all App.xcconfig settings then overrides with Beta values so
+// Xcode can resolve PRODUCT_NAME at scheme-load time (before any pre-actions).
+#include "App.xcconfig"
+#include "Beta.xcconfig"
