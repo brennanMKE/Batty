@@ -32,6 +32,10 @@ public struct SessionSidebarView: View {
                             renameDraft = session.title
                             renamingSessionID = session.id
                         }
+                        Button("Reset Name") {
+                            store.clearSessionName(id: session.id)
+                        }
+                        .disabled(!session.titleOverride)
                         Button("Duplicate") {
                             store.duplicateSession(id: session.id)
                         }

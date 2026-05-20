@@ -96,6 +96,22 @@ public final class AppStateStore {
         nameCache.record(path: cwd, name: trimmed)
     }
 
+    public func clearSessionName(id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        session.titleOverride = false
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        let cwd = anchorTab.terminal.workingDirectory
+            ?? anchorTab.terminal.configuration.workingDirectory
+        guard let cwd, !cwd.isEmpty else { return }
+        if let cachedName = nameCache.lookup(path: cwd) {
+            session.title = cachedName
+            return
+        }
+        if let derivedName = ProjectNameResolver.shared.resolve(at: cwd) {
+            session.title = derivedName
+        }
+    }
+
     private static let defaultSessionTitlePattern: Regex<Substring> = {
         // swiftlint:disable:next force_try
         try! Regex(#"^Session \d+$"#)
