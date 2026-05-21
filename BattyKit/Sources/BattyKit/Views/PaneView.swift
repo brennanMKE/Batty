@@ -91,6 +91,13 @@ public struct PaneView: View {
                     .contextMenu { tabContextMenu(for: tab) }
                 }
                 .clipped()
+                // .contain marks the tab bar as a container so children stay
+                // as discrete accessibility elements with their own ids. Without
+                // this, SwiftUI on macOS folds the bar into a leaf and the
+                // identifier propagates down to every child Button — chip,
+                // close, and "+" all end up with identifier "tab-bar.<uuid>",
+                // and `tab-chip.<title>` becomes unfindable.
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
 
                 if hasSiblingPanes {
