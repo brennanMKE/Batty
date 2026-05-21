@@ -48,8 +48,9 @@ struct TerminalPlaceholderView: View {
                     forTabID: tab.id
                 )
             }
+            .accessibilityElement()
+            .accessibilityLabel(isPaneFocused ? "focused" : "unfocused")
             .accessibilityIdentifier("pane-terminal.\(paneID.uuidString)")
-            .accessibilityValue(isPaneFocused ? "focused" : "unfocused")
     }
 }
 

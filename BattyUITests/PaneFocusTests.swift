@@ -182,13 +182,16 @@ nonisolated final class PaneFocusTests: XCTestCase {
     }
 
     /// Index of the focused pane in `panesQuery` iteration order, or `nil`
-    /// when no pane reports `focused`. PaneView sets `accessibilityValue`
-    /// to `"focused"` / `"unfocused"` from `isPaneFocused`.
+    /// when no pane reports `focused`. `TerminalPlaceholderView` sets
+    /// `accessibilityLabel` to `"focused"` / `"unfocused"` from
+    /// `isPaneFocused` — label rather than value because
+    /// `.accessibilityValue` does not propagate on a `Color.clear`-rooted
+    /// SwiftUI view in this macOS SDK.
     @MainActor
     private func focusedIndex(in app: XCUIApplication) -> Int? {
         let panes = panesQuery(in: app)
         for i in 0..<panes.count {
-            if (panes.element(boundBy: i).value as? String) == "focused" {
+            if panes.element(boundBy: i).label == "focused" {
                 return i
             }
         }

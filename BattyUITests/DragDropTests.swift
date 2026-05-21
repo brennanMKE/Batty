@@ -311,7 +311,7 @@ nonisolated final class DragDropTests: XCTestCase {
     private func focusedIndex(in app: XCUIApplication) -> Int? {
         let panes = panesQuery(in: app)
         for i in 0..<panes.count {
-            if (panes.element(boundBy: i).value as? String) == "focused" {
+            if panes.element(boundBy: i).label == "focused" {
                 return i
             }
         }
@@ -323,7 +323,7 @@ nonisolated final class DragDropTests: XCTestCase {
         let panes = panesQuery(in: app)
         var count = 0
         for i in 0..<panes.count {
-            if (panes.element(boundBy: i).value as? String) == "focused" {
+            if panes.element(boundBy: i).label == "focused" {
                 count += 1
             }
         }
