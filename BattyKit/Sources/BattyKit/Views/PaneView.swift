@@ -264,7 +264,9 @@ public struct PaneView: View {
                 placeholder: tab.terminal.title,
                 onCommit: {
                     let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let prior = tab.titleOverride
                     tab.titleOverride = trimmed.isEmpty ? nil : trimmed
+                    logger.info("tab-rename: commit tab=\(tab.id, privacy: .public) prior=\(prior ?? "nil", privacy: .public) new=\(tab.titleOverride ?? "nil", privacy: .public)")
                     renamingTab = nil
                 },
                 onCancel: { renamingTab = nil }
@@ -278,7 +280,7 @@ public struct PaneView: View {
         // of the tab bar, rather than on the SlidingTabBar itself because the
         // bar's own per-chip tap/drag gestures win SwiftUI's priority race
         // and the outer .onDrag on the container never fires.
-        Image(systemName: "rectangle.grid.1x2")
+        Image(systemName: "squareshape.split.2x2.dotted.inside")
             .symbolRenderingMode(.hierarchical)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.secondary)
@@ -334,6 +336,7 @@ public struct PaneView: View {
             renamingTab = tab
         }
         Button("Reset Title") {
+            logger.info("tab-rename: reset tab=\(tab.id, privacy: .public) prior=\(tab.titleOverride ?? "nil", privacy: .public)")
             tab.titleOverride = nil
         }
         .disabled(tab.titleOverride == nil)

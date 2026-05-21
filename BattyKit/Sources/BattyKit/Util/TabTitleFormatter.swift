@@ -1,28 +1,42 @@
 // TabTitleFormatter.swift
 
 import Foundation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "TabTitleFormatter")
 
 public enum TabTitleFormatter {
     public static func chipTitle(for tab: TabRuntime, fallback: String? = nil) -> String {
         let resolvedFallback = fallback ?? String(localized: "Tab")
-        if let cwd = tab.terminal.workingDirectory {
-            if cwd == NSHomeDirectory() || cwd == "~" { return "~" }
-        }
         if let override = tab.titleOverride, !override.isEmpty {
+            logger.debug("tab-rename: chipTitle tab=\(tab.id, privacy: .public) branch=override value=\(override, privacy: .public)")
             return override
         }
+        if let cwd = tab.terminal.workingDirectory {
+            if cwd == NSHomeDirectory() || cwd == "~" {
+                logger.debug("tab-rename: chipTitle tab=\(tab.id, privacy: .public) branch=home")
+                return "~"
+            }
+        }
         if let running = tab.runningCommandDisplayName, !running.isEmpty {
+            logger.debug("tab-rename: chipTitle tab=\(tab.id, privacy: .public) branch=running value=\(running, privacy: .public)")
             return running
         }
         if let stripped = stripShellPromptPrefix(tab.terminal.title), !stripped.isEmpty {
-            return prettifyPath(stripped)
+            let result = prettifyPath(stripped)
+            logger.debug("tab-rename: chipTitle tab=\(tab.id, privacy: .public) branch=shellTitle value=\(result, privacy: .public)")
+            return result
         }
         if let cwd = tab.terminal.workingDirectory, !cwd.isEmpty {
             if let projectName = ProjectNameResolver.shared.resolve(at: cwd), !projectName.isEmpty {
+                logger.debug("tab-rename: chipTitle tab=\(tab.id, privacy: .public) branch=projectName value=\(projectName, privacy: .public)")
                 return projectName
             }
-            return prettifyPath(cwd)
+            let result = prettifyPath(cwd)
+            logger.debug("tab-rename: chipTitle tab=\(tab.id, privacy: .public) branch=cwd value=\(result, privacy: .public)")
+            return result
         }
+        logger.debug("tab-rename: chipTitle tab=\(tab.id, privacy: .public) branch=fallback")
         return resolvedFallback
     }
 
