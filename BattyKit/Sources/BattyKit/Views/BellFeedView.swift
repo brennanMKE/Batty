@@ -5,12 +5,18 @@ import SwiftUI
 public struct BellFeedView: View {
     let store: AppStateStore
     let onJump: ((BellFeedEntry) -> Void)?
+    let onDismiss: (() -> Void)?
 
     @State private var selectedEntryID: UUID?
 
-    public init(store: AppStateStore, onJump: ((BellFeedEntry) -> Void)? = nil) {
+    public init(
+        store: AppStateStore,
+        onJump: ((BellFeedEntry) -> Void)? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
         self.store = store
         self.onJump = onJump
+        self.onDismiss = onDismiss
     }
 
     public var body: some View {
@@ -46,9 +52,34 @@ public struct BellFeedView: View {
                     handleJump(to: entry)
                     return .handled
                 }
+                .onKeyPress(.escape) {
+                    onDismiss?()
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    moveSelection(by: -1)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    moveSelection(by: 1)
+                    return .handled
+                }
             }
         }
         .frame(width: 360, height: 420)
+        .onAppear {
+            if selectedEntryID == nil {
+                selectedEntryID = store.bellFeed.entries.first?.id
+            }
+        }
+    }
+
+    private func moveSelection(by delta: Int) {
+        let entries = store.bellFeed.entries
+        guard !entries.isEmpty else { return }
+        let currentIndex = entries.firstIndex(where: { $0.id == selectedEntryID }) ?? -1
+        let nextIndex = (currentIndex + delta + entries.count) % entries.count
+        selectedEntryID = entries[nextIndex].id
     }
 
     private var header: some View {

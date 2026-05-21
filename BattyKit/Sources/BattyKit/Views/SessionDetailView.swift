@@ -146,10 +146,14 @@ public struct SessionDetailView: View {
             }
             .help("Bell Feed (\u{2318}\u{21E7}N)")
             .popover(isPresented: $bellFeedShown, arrowEdge: .top) {
-                BellFeedView(store: store) { entry in
-                    bellFeedShown = false
-                    store.jumpToBellEntry(entry)
-                }
+                BellFeedView(
+                    store: store,
+                    onJump: { entry in
+                        bellFeedShown = false
+                        store.jumpToBellEntry(entry)
+                    },
+                    onDismiss: { bellFeedShown = false }
+                )
             }
         }
     }

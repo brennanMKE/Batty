@@ -84,7 +84,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .toggleSidebar:
             return ShortcutBinding(key: "b", modifiers: EventModifiers([.command]).rawValue)
         case .toggleBellFeed:
-            return ShortcutBinding(key: "n", modifiers: EventModifiers([.command, .shift]).rawValue)
+            return ShortcutBinding(key: "b", modifiers: EventModifiers([.command, .shift]).rawValue)
         case .commandPalette:
             return ShortcutBinding(key: "p", modifiers: EventModifiers([.command, .shift]).rawValue)
         case .openQuickly:
