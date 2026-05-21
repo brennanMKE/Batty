@@ -24,6 +24,15 @@ public enum BattyShortcuts {
         if NSApp.keyWindow?.firstResponder is RecorderView {
             return false
         }
+        // The key monitor is global, so without this gate Cmd-W in the
+        // Settings panel would fire `closeTab` against the background main
+        // window — closing its last tab, cascading to session removal, and
+        // terminating the app. Only run main-window-scoped shortcuts when
+        // the main Batty window is actually key; otherwise let macOS handle
+        // the event (Cmd-W → NSWindow.performClose: on the focused panel).
+        if !mainWindowIsKey() {
+            return false
+        }
 
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers ?? ""
@@ -69,6 +78,24 @@ public enum BattyShortcuts {
         default:
             return false
         }
+    }
+
+    /// True when `NSApp.keyWindow` is the main Batty content window
+    /// (i.e. the window that hosts sessions, panes, and tabs), as opposed
+    /// to the Settings panel, Help window, or no window at all. Used to
+    /// scope tab/pane/session shortcuts so they don't fire against the
+    /// background main window when a different panel has focus.
+    private static func mainWindowIsKey() -> Bool {
+        guard let key = NSApp.keyWindow else { return false }
+        // SwiftUI's `Window(_, id: "main")` sets the underlying NSWindow's
+        // identifier to a string containing the scene id.
+        if let rawID = key.identifier?.rawValue, rawID.contains("main") {
+            return true
+        }
+        // Fall back to the documented main-window title (`mainWindowTitle`
+        // in `BattyApp`). Settings / Help / panel windows have different
+        // titles.
+        return key.title == "Batty"
     }
 
     private static func currentCmdNumberTarget() -> CmdNumberTarget {
