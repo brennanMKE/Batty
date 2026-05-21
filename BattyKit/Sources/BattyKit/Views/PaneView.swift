@@ -7,51 +7,6 @@ import UniformTypeIdentifiers
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "PaneView")
 
-private enum EndDragTrigger: String {
-    case mouseUp
-    case fallbackTimer
-    case dropDefer
-    case startDragReplaced
-}
-
-@MainActor
-@Observable
-private final class PaneSwapDragState {
-    static let shared = PaneSwapDragState()
-    private(set) var isDragging = false
-    private(set) var sourcePaneID: UUID? = nil
-    private var monitor: Any? = nil
-    private var fallbackTimer: Timer? = nil
-
-    func startDrag(from paneID: UUID) {
-        let hadPrior = isDragging
-        endDrag(trigger: .startDragReplaced)
-        isDragging = true
-        sourcePaneID = paneID
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
-            DispatchQueue.main.async { self?.endDrag(trigger: .mouseUp) }
-        }
-        let monitorInstalled = monitor != nil
-        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
-            DispatchQueue.main.async {
-                logger.notice("pane-swap: fallback timer fired (30s) — cleaning up leaked drag state")
-                self?.endDrag(trigger: .fallbackTimer)
-            }
-        }
-        logger.info("pane-swap: startDrag source=\(paneID, privacy: .public) priorActive=\(hadPrior ? "Y" : "N", privacy: .public) monitor=\(monitorInstalled ? "Y" : "N", privacy: .public)")
-    }
-
-    func endDrag(trigger: EndDragTrigger) {
-        let prior = sourcePaneID?.uuidString ?? "nil"
-        let wasActive = isDragging
-        isDragging = false
-        sourcePaneID = nil
-        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
-        fallbackTimer?.invalidate()
-        fallbackTimer = nil
-        logger.info("pane-swap: endDrag source=\(prior, privacy: .public) trigger=\(trigger.rawValue, privacy: .public) wasActive=\(wasActive ? "Y" : "N", privacy: .public)")
-    }
-}
 
 public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
@@ -418,6 +373,7 @@ private struct PaneSwapDropZone: View {
     var body: some View {
         Color.clear
             .contentShape(Rectangle())
+            .accessibilityIdentifier("pane-drop-zone.\(pane.id.uuidString)")
             .onAppear {
                 logger.debug("pane-swap: drop-zone mounted pane=\(pane.id, privacy: .public)")
             }

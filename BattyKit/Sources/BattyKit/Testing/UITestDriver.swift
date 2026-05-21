@@ -161,6 +161,23 @@ public enum UITestDriver {
             }
             store.applyTheme(theme, to: session)
 
+        case .beginPaneSwapDrag(let paneIndex):
+            guard let session = store.selectedSession else {
+                logger.notice("ui-test: beginPaneSwapDrag no selected session")
+                return
+            }
+            let panes = session.tree.allPanes
+            guard panes.indices.contains(paneIndex) else {
+                logger.notice("ui-test: beginPaneSwapDrag index=\(paneIndex, privacy: .public) out-of-range count=\(panes.count, privacy: .public)")
+                return
+            }
+            logger.info("ui-test: beginPaneSwapDrag pane=\(panes[paneIndex].id, privacy: .public)")
+            PaneSwapDragState.shared.startDrag(from: panes[paneIndex].id)
+
+        case .endPaneSwapDrag:
+            logger.info("ui-test: endPaneSwapDrag")
+            PaneSwapDragState.shared.endDrag(trigger: .startDragReplaced)
+
         case .dropFileURLs(let urls, let paneIndex):
             guard let session = store.selectedSession else {
                 logger.notice("ui-test: dropFileURLs no selected session")
@@ -207,6 +224,8 @@ public enum UITestIntent: Decodable, Sendable {
     case swapPanes(at: Int, with: Int)
     case applyTheme(name: String)
     case applyThemeToActiveSession(name: String)
+    case beginPaneSwapDrag(at: Int)
+    case endPaneSwapDrag
     case dropFileURLs(urls: [String], ontoPaneAt: Int)
 
     var intentName: String {
@@ -226,6 +245,8 @@ public enum UITestIntent: Decodable, Sendable {
         case .swapPanes: return "swapPanes"
         case .applyTheme: return "applyTheme"
         case .applyThemeToActiveSession: return "applyThemeToActiveSession"
+        case .beginPaneSwapDrag: return "beginPaneSwapDrag"
+        case .endPaneSwapDrag: return "endPaneSwapDrag"
         case .dropFileURLs: return "dropFileURLs"
         }
     }
@@ -271,6 +292,10 @@ public enum UITestIntent: Decodable, Sendable {
             self = .applyTheme(name: try c.decode(String.self, forKey: .name))
         case "applyThemeToActiveSession":
             self = .applyThemeToActiveSession(name: try c.decode(String.self, forKey: .name))
+        case "beginPaneSwapDrag":
+            self = .beginPaneSwapDrag(at: try c.decode(Int.self, forKey: .at))
+        case "endPaneSwapDrag":
+            self = .endPaneSwapDrag
         case "dropFileURLs":
             self = .dropFileURLs(
                 urls: try c.decode([String].self, forKey: .urls),
