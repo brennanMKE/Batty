@@ -37,10 +37,14 @@ nonisolated final class ModalConfirmationTests: XCTestCase {
         XCTAssertNil(BattyUITestHarness.waitForDriverErrors(), "Driver script failed")
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
 
-        let chipsBefore = app.descendants(matching: .any)
+        let chipsQuery = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'tab-chip.'"))
-        XCTAssertTrue(waitFor({ chipsBefore.count >= 2 }, timeout: 5),
+        XCTAssertTrue(waitFor({ chipsQuery.count >= 2 }, timeout: 5),
                       "Expected at least 2 chips before close")
+        // Snapshot the count: XCUIElementQuery.count re-evaluates on every
+        // read, so comparing a "before" query against an "after" query later
+        // always reflects current state. The Int snapshot is the real baseline.
+        let chipsBefore = chipsQuery.count
 
         // Cmd-W closes the active tab. At a clean prompt this must not show a dialog.
         app.typeKey("w", modifierFlags: [.command])
@@ -53,10 +57,8 @@ nonisolated final class ModalConfirmationTests: XCTestCase {
         )
 
         // The tab count should have dropped by one.
-        let chipsAfter = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH 'tab-chip.'"))
         XCTAssertTrue(
-            waitFor({ chipsAfter.count < chipsBefore.count }, timeout: 5),
+            waitFor({ chipsQuery.count < chipsBefore }, timeout: 5),
             "Cmd-W must close the tab without a confirmation prompt"
         )
     }
