@@ -17,13 +17,15 @@ nonisolated final class LifecycleTests: XCTestCase {
 
         let rowsBefore = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'session-row.'")).count
-        app.typeKey("n", modifierFlags: [.command, .option])
+        // newSession defaults to Cmd-N (see ShortcutAction.defaultBinding).
+        // The test name is historical — the action is what matters.
+        app.typeKey("n", modifierFlags: [.command])
 
         XCTAssertTrue(waitFor({
             app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH 'session-row.'")).count
                 > rowsBefore
-        }, timeout: 5), "Expected a new session row after Cmd-Option-N")
+        }, timeout: 5), "Expected a new session row after the newSession shortcut")
     }
 
     @MainActor
