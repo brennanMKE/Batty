@@ -38,11 +38,18 @@ xcodebuild -scheme Batty -destination 'platform=macOS' build
 # Build + run all unit and UI tests
 xcodebuild -scheme Batty -destination 'platform=macOS' test
 
+# Run UI tests (use this script, not raw `xcodebuild test`)
+scripts/run-ui-tests.sh                              # all UI tests
+scripts/run-ui-tests.sh BattyUITests/TabRenameTests  # one class
+scripts/run-ui-tests.sh BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle  # one test
+
 # Open in Xcode for live development, breakpoints, SwiftUI previews
 open Batty.xcodeproj
 ```
 
 Always confirm the headless `xcodebuild` invocation passes before committing — Xcode previews are not a build pass.
+
+**Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test`.** Xcode builds `BattyUITests-Runner.app` by dropping our xctest bundle into Apple's signed XCTRunner template without re-signing the outer app. Ad-hoc local builds end up with a broken signature ("code has no resources but signature indicates they must be present"), which AppleSystemPolicy treats as a tampered Apple binary — macOS Gatekeeper translocates the runner to `~/.Trash` and kills it before `xcodebuild test` can bootstrap. The script re-signs the runner + host app ad-hoc after `build-for-testing` and then invokes `test-without-building`, sidestepping the trash-prompt loop.
 
 ## Release / distribution
 
