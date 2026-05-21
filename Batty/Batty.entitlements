@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Allow JIT compilation (Node, modern Python, JVMs, etc.) -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<!-- Allow DYLD_* environment variables (debug builds, DYLD_LIBRARY_PATH, asan) -->
+	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<true/>
+</dict>
+</plist>

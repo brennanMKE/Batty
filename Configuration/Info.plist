@@ -22,6 +22,18 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Batty needs access to your Desktop so shell commands you run can read and write files there.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Batty needs access to your Documents so shell commands you run can read and write files there.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Batty needs access to your Downloads so shell commands you run can read and write files there.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Batty needs access to removable volumes so shell commands you run can read and write files there.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Batty needs access to network volumes so shell commands you run can read and write files there.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Batty needs local-network access so shell commands you run can reach devices on your local network (mDNS, Bonjour, intranet services).</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>
