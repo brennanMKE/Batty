@@ -102,6 +102,8 @@ struct OpenQuicklyView: View {
                                         selectedIndex = idx
                                         activate(results: results)
                                     }
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityIdentifier("open-quickly.row")
                             }
                         }
                     }

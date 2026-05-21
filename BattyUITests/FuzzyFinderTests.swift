@@ -161,10 +161,11 @@ nonisolated final class FuzzyFinderTests: XCTestCase {
 
         // With 3 sessions (default + Notes + Dev) there should be at least 3 rows.
         // The exact count depends on tab configuration; use a floor.
-        let rows = picker.descendants(matching: .cell)
+        let rows = app.descendants(matching: .any)
+            .matching(identifier: "open-quickly.row")
         XCTAssertTrue(
             waitFor({ rows.count >= 3 }, timeout: 5),
-            "Open Quickly must list at least one result per session"
+            "Open Quickly must list at least one result per session (got \(rows.count))"
         )
     }
 
