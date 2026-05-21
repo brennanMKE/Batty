@@ -75,7 +75,7 @@ nonisolated final class BellFeedTests: XCTestCase {
             .firstMatch
         XCTAssertTrue(pane.waitForExistence(timeout: 5))
         pane.click()
-        Thread.sleep(forTimeInterval: 0.5)
+        BattyUITestHarness.pause(0.5)
 
         // Send a BEL byte. The terminal must be accepting keyboard input for
         // this to work; it's intentionally fragile for CI — the test verifies
@@ -83,7 +83,7 @@ nonisolated final class BellFeedTests: XCTestCase {
         app.typeText("printf '\\a'\n")
 
         // Open the bell feed and check for an entry.
-        Thread.sleep(forTimeInterval: 1.0)
+        BattyUITestHarness.pause(1.0)
         app.typeKey("n", modifierFlags: [.command, .shift])
 
         let entries = app.descendants(matching: .any)
@@ -130,13 +130,4 @@ nonisolated final class BellFeedTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    private func waitFor(_ predicate: @escaping () -> Bool, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return true }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        return predicate()
-    }
 }

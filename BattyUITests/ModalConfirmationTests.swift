@@ -83,7 +83,7 @@ nonisolated final class ModalConfirmationTests: XCTestCase {
             .firstMatch
         XCTAssertTrue(pane.waitForExistence(timeout: 5))
         pane.click()
-        Thread.sleep(forTimeInterval: 0.3)
+        BattyUITestHarness.pause(0.3)
 
         // Set the pasteboard to a single-line string programmatically.
         // (In a real environment this would use NSPasteboard; here we
@@ -100,13 +100,4 @@ nonisolated final class ModalConfirmationTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    private func waitFor(_ predicate: @escaping () -> Bool, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return true }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        return predicate()
-    }
 }

@@ -42,7 +42,7 @@ nonisolated final class TerminalPersistenceTests: XCTestCase {
         // Create a second session, then jump back. The original session's
         // background shell must still be ticking the sentinel.
         app.typeKey("n", modifierFlags: [.command, .option])
-        Thread.sleep(forTimeInterval: 0.5)
+        BattyUITestHarness.pause(0.5)
         // Touch the first session's row to switch back.
         let firstSessionRow = BattyUITestHarness.sessionRow(named: "Session 1", in: app)
         if firstSessionRow.exists {

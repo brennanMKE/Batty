@@ -160,13 +160,4 @@ nonisolated final class TabRenameTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    private func waitFor(_ predicate: @escaping () -> Bool, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return true }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        return predicate()
-    }
 }

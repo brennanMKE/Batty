@@ -39,7 +39,7 @@ nonisolated final class WorkspacePersistenceTests: XCTestCase {
         XCTAssertTrue(beta1.waitForExistence(timeout: 5), "Beta must appear in launch 1")
 
         // Allow workspace save to settle (structural-change save is async).
-        Thread.sleep(forTimeInterval: 1.5)
+        BattyUITestHarness.pause(1.5)
         app1.terminate()
 
         // Launch 2: no script — workspace should restore.
@@ -75,7 +75,7 @@ nonisolated final class WorkspacePersistenceTests: XCTestCase {
             "Launch 1 must show 4 panes"
         )
 
-        Thread.sleep(forTimeInterval: 1.5)
+        BattyUITestHarness.pause(1.5)
         app1.terminate()
 
         // Launch 2: assert 4 panes restored.
@@ -104,7 +104,7 @@ nonisolated final class WorkspacePersistenceTests: XCTestCase {
             .matching(identifier: "tab-chip.PersistentTab").firstMatch
         XCTAssertTrue(chip1.waitForExistence(timeout: 5), "Renamed chip must appear in launch 1")
 
-        Thread.sleep(forTimeInterval: 1.5)
+        BattyUITestHarness.pause(1.5)
         app1.terminate()
 
         // Launch 2: assert chip still has the override.
@@ -126,14 +126,5 @@ nonisolated final class WorkspacePersistenceTests: XCTestCase {
     private func panesQuery(in app: XCUIApplication) -> XCUIElementQuery {
         app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'pane-terminal.'"))
-    }
-
-    private func waitFor(_ predicate: @escaping () -> Bool, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return true }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        return predicate()
     }
 }
