@@ -256,7 +256,7 @@ Per `#0068`, each session carries a `notificationsMuted` flag:
 | Where | What |
 |---|---|
 | `SessionRuntime.notificationsMuted: Bool` | Runtime state. `@Observable` via the surrounding class; defaults to `false`. |
-| `LayoutModel.Session.notificationsMuted: Bool` | Codable schema field. `decodeIfPresent ?? false` so older `workspace.json` blobs round-trip cleanly. |
+| `SessionRuntime.notificationsMuted: Bool` (persisted side) | Runtime state only. Mute state does not survive a relaunch — each session starts unmuted. |
 | Sidebar right-click → "Mute Notifications" / "Unmute Notifications" | The user-facing toggle. Lives in `SessionSidebarView`. |
 
 The gate in `AppStateStore.postNotification(for:at:)`:
@@ -281,10 +281,7 @@ Behavior contract:
   request carries `.default` sound; it does not stop libghostty from
   ringing in-surface.
 
-`LayoutModel.Session.notificationsMuted` is currently a write-only
-field: per `#0055`, workspace restore defaults to off, so muted state
-does not survive a relaunch. The field will activate when an opt-in
-restore feature lands.
+Mute state does not survive a relaunch — each session starts unmuted on launch.
 
 ---
 
@@ -410,10 +407,9 @@ the tab doesn't need a delayed banner for the same bell.
 - *What's the keyboard shortcut for the bell feed?* — `Cmd-Shift-N` by
   default. Customizable at Settings → Shortcuts → "Toggle Bell Feed".
   See [`shortcuts.md`](shortcuts.md).
-- *Where is mute persisted?* — `LayoutModel.Session.notificationsMuted`
-  in `workspace.json`. The field is written today but does not survive
-  a relaunch because workspace restore defaults to off (per `#0055`);
-  it activates when an opt-in restore feature lands.
+- *Where is mute persisted?* — It isn't. Mute state lives in
+  `SessionRuntime.notificationsMuted` for the duration of the app session
+  only; it resets to `false` on relaunch.
 
 ---
 

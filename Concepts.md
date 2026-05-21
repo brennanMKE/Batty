@@ -20,7 +20,7 @@ Window
 Containment, top to bottom: **Window → Session → Pane → Tab → Terminal Session.**
 Layout glue: **Split** nodes arrange Panes within a Session.
 Customization: **Theme**.
-Cross-cutting state: **Focus**, **Bell event**, **Bell Feed**, **Workspace**, **Surface registry**.
+Cross-cutting state: **Focus**, **Bell event**, **Bell Feed**, **Surface registry**.
 
 ---
 
@@ -221,7 +221,7 @@ The unified, app-wide list of recent **Bell events** across every Terminal Sessi
   4. Activate the source Tab inside that Pane.
   5. Mark the entry seen and decrement unseen counters at every level.
 - **Same flow** is invoked when the user taps a System notification posted by Batty.
-- **Lifetime:** persisted in the Workspace file; survives quit/relaunch.
+- **Lifetime:** in-memory only; does not survive a relaunch.
 
 ---
 
@@ -239,24 +239,6 @@ A `UNNotificationRequest` posted via Apple's `UserNotifications` framework — t
 ---
 
 # State & infrastructure
-
-## Workspace
-
-The single canonical persistence document for the user's layout and history.
-
-- **Location:** `~/Library/Application Support/Batty/workspace.json`.
-- **Schema (Codable):**
-  - Ordered list of **Windows**, each with frame state and selected Session id.
-  - For each Window: an ordered list of **Sessions** with id, title, icon/color, and `focusedPaneID`.
-  - For each Session: the full **Split tree** with `direction` / `ratio` for every Split and a Pane at every leaf.
-  - For each Pane: ordered Tab list, `activeTabID`, and per-Pane focus marker.
-  - For each Tab: id, title override, surfaceID, last-known cwd, last-set title.
-  - Bell Feed history (capped).
-- **Write cadence:** on quit, on every Session/Pane/Tab structural change (debounced), and every 30 seconds while running.
-- **Read cadence:** **none by default.** Workspace persistence is write-only — launch always starts with a single fresh Window containing one Session, one Pane, one Tab, one Terminal Session, matching the behavior of Terminal.app, Ghostty, iTerm2, and other native terminal apps. The file is kept on disk as a diagnostic snapshot and to preserve the option of adding an opt-in "Restore Previous Layout" command later. (Layout restoration is wrong-by-default for a terminal app: the user's "documents" are running shell processes, and those can't actually be restored — only the surface of the previous layout, full of stale prompts and missing context.)
-- **Failure mode:** since the file isn't read on launch, a missing or unparseable file is harmless. The recovery path (`workspace.json.broken-<timestamp>` rename) still runs if a future opt-in restore command exercises the load path.
-
----
 
 ## Surface registry
 
@@ -283,8 +265,6 @@ User-controlled preferences that are *not* layout. Stored in `UserDefaults`.
 - **Paste confirmation strictness** (see PRD §11).
 - **Confirm on close with running processes** (yes/no).
 
-Settings is *not* a Workspace concern — preferences travel with the user across workspaces; Workspace travels with the layout.
-
 ---
 
-*Document version: 0.2 — 2026-05-08. Adds Split, Sidebar, Theme, Bell Feed, System notification, Workspace, and Settings. Update whenever a new term gets introduced in the PRD or in issues.*
+*Document version: 0.3 — 2026-05-20. Removes Workspace persistence (never a planned feature). Update whenever a new term gets introduced in the PRD or in issues.*

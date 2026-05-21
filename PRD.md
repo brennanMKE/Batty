@@ -44,8 +44,7 @@ The "Bat / Ghost / tty" naming theme is a wink at Ghostty — Batty is Ghostty's
 2. **Sessions in a sidebar.** Each session is a named workspace containing one or more panes. The sidebar is collapsible.
 3. **Splits and tabs that just work.** Toolbar buttons (`rectangle.split.2x1`, `rectangle.split.1x2`) and Cmd-D / Cmd-Shift-D split the focused pane. Each pane has its own SlidingTabs bar; Cmd-T / Cmd-W / Cmd-1..9 navigate within the focused pane.
 4. **Notification feed.** Capture terminal-bell events from every surface, surface them in a unified feed, click an entry to bring the source forward (right session → right pane → right tab).
-5. **Persistence.** Quit and relaunch — same sessions, panes, tabs, splits, and working directories. (Shells re-launch fresh; we don't try to restore process state.)
-6. **Native rendering.** Use libghostty for the actual terminal — fonts, ligatures, GPU rendering, escape sequences all come for free.
+5. **Native rendering.** Use libghostty for the actual terminal — fonts, ligatures, GPU rendering, escape sequences all come for free.
 7. **Keyboard-first.** Every action that matters has a keybinding. Mouse is supported but not required.
 8. **Theme support.** Read Ghostty `.ghostty` theme files so I can use the existing 200+ themes without re-creating them.
 
@@ -183,17 +182,6 @@ Tab:
 - Cmd-N opens an additional window. Each window has its own sidebar of sessions and its own selected session — windows do not share session lists.
 - Standard macOS window behavior (zoom, minimize, full-screen).
 
-### 6.7 Persistence
-
-- On quit (and every 30 seconds while running), serialize:
-  - All open windows and which session is selected in each.
-  - For each window: the ordered session list.
-  - For each session: the split tree, the focused pane, and for each pane the ordered tab list, active tab, and per-tab title overrides.
-  - For each surface: working directory at last known moment, last-set title.
-  - Notification feed history (capped, see §6.13).
-- Stored at `~/Library/Application Support/Batty/workspace.json`.
-- On launch, replay into new windows. **Shells start fresh** in the saved cwd — we don't try to restore running processes.
-
 ### 6.8 Themes
 
 - Read Ghostty-format theme files from:
@@ -253,7 +241,7 @@ A "feed" of bell events across every surface, plus per-tab, per-pane, and per-se
 #### The feed
 
 - Accessed via a toolbar button (bell SF Symbol: `bell.badge` when unseen, `bell` when clean) and Cmd-Shift-N.
-- Renders as a popover or sheet listing recent events newest-first, scrollable, persisted across launches up to a cap (e.g. 200 entries).
+- Renders as a popover or sheet listing recent events newest-first, scrollable, capped at 200 entries (in-memory only; does not survive relaunch).
 - Each entry shows:
   - Timestamp (relative: "2m ago").
   - Path: `<Session> › <Pane> › <Tab>`.
@@ -309,7 +297,7 @@ See `batty-getting-started.md` for the deep dive. Short version:
 - **Terminal surface** — provided by **`GhosttyTerminal`**'s `TerminalSurfaceView` (SwiftUI) / `TerminalView` (NSView typealias). The wrapper handles Metal layer sizing, key/mouse forwarding, IME (`NSTextInputClient`), and the libghostty IO/render thread plumbing — we do not re-implement these. Drag-and-drop (`NSDraggingDestination`) is layered on top via either a SwiftUI `.onDrop` overlay or a thin `AppTerminalView` subclass in `BattyKit`.
 - **Bell + surface events** — `GhosttyTerminal`'s split delegate protocols (`TerminalSurfaceBellDelegate`, `TerminalSurfaceDesktopNotificationDelegate`, `TerminalSurfaceTitleDelegate`, `TerminalSurfacePwdDelegate`, `TerminalSurfaceFocusDelegate`, `TerminalSurfaceCloseDelegate`) feed our `BellFeedStore` and per-tab title/cwd state. No raw libghostty callback wiring needed.
 - **`BellFeedStore`** — `@Observable` actor-backed store collecting bell events, exposing aggregated unseen counts to sidebar/pane/tab views.
-- **Persistence layer** — Codable structs serialize the full session/split/pane/tab tree.
+- **`AppStateStore`** — `@Observable` singleton owning all runtime session/split/pane/tab state. No persistence layer.
 
 The lower-level libghostty C surface (`GhosttyKit`) is still re-exported by `BattyKit` for cases where we need direct access (e.g. `ghostty_surface_text` for drag-drop injection if `GhosttyTerminal` doesn't expose a high-level send-text API).
 
@@ -317,10 +305,10 @@ The lower-level libghostty C surface (`GhosttyKit`) is still re-exported by `Bat
 
 The repo is split into two Swift modules:
 
-- **`BattyKit`** (Swift Package, `BattyKit/Package.swift`) — holds the bulk of the code: data models, persistence, theme adapters, layout views, bell-feed store, and integration with the `GhosttyTerminal` SwiftUI surface. Owns the SPM dependencies: `libghostty-spm` (re-exporting `GhosttyKit`, `GhosttyTerminal`, and `GhosttyTheme`) and `SlidingTabs`. Re-exports them via `@_exported import` so consumers just `import BattyKit` to get everything.
+- **`BattyKit`** (Swift Package, `BattyKit/Package.swift`) — holds the bulk of the code: data models, theme adapters, layout views, bell-feed store, and integration with the `GhosttyTerminal` SwiftUI surface. Owns the SPM dependencies: `libghostty-spm` (re-exporting `GhosttyKit`, `GhosttyTerminal`, and `GhosttyTheme`) and `SlidingTabs`. Re-exports them via `@_exported import` so consumers just `import BattyKit` to get everything.
 - **`Batty`** (Xcode app target) — kept deliberately lightweight: `@main BattyApp`, top-level `Scene` and `WindowGroup` wiring, app-level menus, and any glue code that has to live in the app target (Sparkle integration, app-lifecycle delegates). Consumes `BattyKit` as a local SPM dependency.
 
-This keeps the app target thin, makes the bulk of the code unit-testable in `BattyKitTests` (which has full access to `import BattyKit`), and gives each piece of code direct access to the libghostty Swift wrappers without having to round-trip through the app target. New Swift files for layout, models, persistence, theming, and views should land in `BattyKit/Sources/BattyKit/`; reserve `Batty/` for code that genuinely has to be in the app bundle.
+This keeps the app target thin, makes the bulk of the code unit-testable in `BattyKitTests` (which has full access to `import BattyKit`), and gives each piece of code direct access to the libghostty Swift wrappers without having to round-trip through the app target. New Swift files for layout, models, theming, and views should land in `BattyKit/Sources/BattyKit/`; reserve `Batty/` for code that genuinely has to be in the app bundle.
 
 ### Dependencies
 
@@ -330,11 +318,11 @@ This keeps the app target thin, makes the bulk of the code unit-testable in `Bat
 | `GhosttyTerminal` | `libghostty-spm` | Swift wrapper providing `TerminalSurfaceView` (SwiftUI), `TerminalView` (NSView), `TerminalViewState` (`@Observable`), the split delegate protocols (bell, OSC 9, title, pwd, focus, close), and `TerminalKeyEventHandler`. Replaces what we'd otherwise build from scratch for M1 |
 | `GhosttyTheme` | `libghostty-spm` | 485 prebuilt themes via `GhosttyThemeCatalog` plus `GhosttyThemeDefinition` types and a `+TerminalConfiguration` adapter that produces a config applicable to `TerminalViewState.theme` |
 | `SlidingTabs` | Local SPM at `/Users/brennan/Developer/brennanMKE/SlidingTabs` (or its GitHub URL) | Per-pane tab bar with drag-reorder and unseen-dot |
-| `Sparkle` | SPM | Auto-update for non-App-Store distribution (M10) |
+| `Sparkle` | SPM | Auto-update for non-App-Store distribution (M9) |
 
 `GhosttyKit`, `GhosttyTerminal`, `GhosttyTheme`, and `SlidingTabs` are declared as dependencies of **`BattyKit`**, not the app target. `Sparkle` will likely live in the app target since it integrates with `NSApplication`.
 
-**Use existing dependencies before writing new code.** Where `libghostty-spm`'s wrappers, delegate protocols, or theme catalog already cover a requirement, use them. Implement custom code only where there's a real gap (e.g. drag-drop, our specific multi-session/multi-pane UI, persistence model, bell aggregation). This rule supersedes the original "build our own NSView" plan implied by earlier drafts of this PRD.
+**Use existing dependencies before writing new code.** Where `libghostty-spm`'s wrappers, delegate protocols, or theme catalog already cover a requirement, use them. Implement custom code only where there's a real gap (e.g. drag-drop, our specific multi-session/multi-pane UI, bell aggregation). This rule supersedes the original "build our own NSView" plan implied by earlier drafts of this PRD.
 
 ### Integration path
 
@@ -353,12 +341,11 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 | **M4 — Splits** | `SplitNode` tree replaces the single-pane layout. SF Symbol split buttons + Cmd-D / Cmd-Shift-D split the focused pane. Drag-to-resize dividers, focus movement, and resize keybindings all work. Closing the last tab in a pane collapses the split. |
 | **M5 — Drag & drop files** | Dropping files from Finder onto a pane inserts shell-quoted paths via `ghostty_surface_text`. Drag-over highlight on the target pane. |
 | **M6 — Notifications & bell feed** | Bell hook captures BEL + OSC 9 events. Feed popover lists events. Clicking an entry brings the source forward (window → session → pane → tab). Per-tab unseen dot via SlidingTabs. System notifications when not frontmost. |
-| **M7 — Persistence** | Quit and relaunch restores sessions, split trees, panes, tabs, cwds, and feed history. |
-| **M8 — Themes** | Theme picker in the View menu. Ghostty `.ghostty` theme files load. |
-| **M9 — Polish** | Settings window. Paste-confirmation sheet. Close-confirmation when processes are running. App icon. About panel. |
-| **M10 — Ship v1** | Code-signed, notarized, distributed via direct download (not App Store; sandbox doesn't fit a terminal). Sparkle for auto-updates. |
+| **M7 — Themes** | Theme picker in the View menu. Ghostty `.ghostty` theme files load. |
+| **M8 — Polish** | Settings window. Paste-confirmation sheet. Close-confirmation when processes are running. App icon. About panel. |
+| **M9 — Ship v1** | Code-signed, notarized, distributed via direct download (not App Store; sandbox doesn't fit a terminal). Sparkle for auto-updates. |
 
-**Stop point for v1: end of M10.** Anything beyond is v2 territory.
+**Stop point for v1: end of M9.** Anything beyond is v2 territory.
 
 ---
 
@@ -382,11 +369,11 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 - **Background-surface cost.** Keeping all surfaces in non-active sessions and non-active tabs alive means N tabs × M panes × K sessions, which can balloon. Mitigation: monitor real-world memory; consider lazy "freeze" as a v2 optimization (see §10).
 - **Split divider implementation.** SwiftUI's `HSplitView` / `VSplitView` work but are limited; we may need a custom divider for live ratio updates and persistence. Decide during M4.
 - **Resource bundle correctness.** terminfo + shell-integration must land in `.app/Contents/Resources/` exactly right or shell integration silently degrades. Mitigation: build phase script; smoke test on every build.
-- **Code signing & notarization.** Required for distribution outside the App Store. Mitigation: set up Developer ID + notary workflow before M10.
+- **Code signing & notarization.** Required for distribution outside the App Store. Mitigation: set up Developer ID + notary workflow before M9.
 - **SwiftUI ↔ NSView lifecycle bugs.** SwiftUI loves to rebuild views; we must not let that recreate live surfaces. Mitigation: surface registry indirection, plus careful `dismantleNSView`.
 - **Metal layer sizing on resize.** Get `drawableSize` wrong and text blurs or clips. Mitigation: follow Kytos' notes; test resize aggressively.
 - **macOS 15 floor.** SlidingTabs requires macOS 15. Acceptable for me; flag if a wider audience is targeted later.
-- **Open question:** how strict should paste confirmation be? Confirm on any newline, or only on multi-line + suspicious commands? (Decide during M9.)
+- **Open question:** how strict should paste confirmation be? Confirm on any newline, or only on multi-line + suspicious commands? (Decide during M8.)
 
 ---
 
@@ -395,8 +382,7 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 Batty v1 ships when:
 
 1. I've replaced my current tmux-like app with Batty for at least two weeks of daily work without falling back.
-2. Layout persistence has survived 10+ relaunches without data loss or crashes.
-3. The bell feed has caught at least one background event I would have otherwise missed.
+2. The bell feed has caught at least one background event I would have otherwise missed.
 4. No reproducible crash for a week of daily use.
 5. The keybindings in §5 all work without conflict against system shortcuts.
 

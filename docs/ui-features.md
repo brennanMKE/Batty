@@ -3,7 +3,7 @@
 This document is the authoritative reference for each major UI feature area in
 Batty. Read it before modifying any of the behaviors listed here: drag-and-drop,
 tab and session rename, theme application, layout picker, bell feed, tab chip
-rendering, workspace persistence, settings sheet, sidebar toggle, fuzzy finders,
+rendering, settings sheet, sidebar toggle, fuzzy finders,
 and modal confirmation flows. Each section describes what the feature does, the
 invariants it must preserve, the regression history that established those
 invariants, and the accessibility identifiers used for test assertions. Issue
@@ -375,61 +375,6 @@ untruncated title is exposed via `accessibilityLabel` for assertions.
   title.
 - `add-tab-button.<paneID>` — the `+` button inside `SlidingTabBar`.
 - `tab-bar.<paneID>` — the tab bar container used to assert frame width bounds.
-
----
-
-## Workspace persistence
-
-The Workspace file (`~/Library/Application Support/Batty/workspace.json`) is
-the canonical persistence document for the user's layout and history. It is
-written on every structural change (debounced), every 30 seconds while the app
-is running, and on quit. It is not read on launch by default — Batty always
-starts with a single fresh Window, Session, Pane, Tab, and Terminal Session
-(matching the behavior of Terminal.app, Ghostty, and iTerm2). The file is kept
-as a diagnostic snapshot and to preserve the option of an opt-in restore command
-in the future.
-
-The schema is Codable and includes: ordered Windows with frame state and selected
-Session id; per-Window ordered Sessions with id, title, icon, and
-`focusedPaneID`; per-Session Split trees with direction/ratio at each node and a
-Pane at each leaf; per-Pane Tab list, `activeTabID`; per-Tab title override,
-`surfaceID`, and last-known cwd; and Bell Feed history (capped).
-
-**Invariants:**
-
-- Structural changes (Session, Pane, Tab create/close/rename, Split change)
-  trigger a debounced save. The workspace file's mtime must advance after a
-  structural change even if the user does not quit.
-- Title overrides, Tab ordering, Pane layouts, and Session ordering are all
-  preserved in the schema and must round-trip cleanly through Codable
-  encode/decode.
-- A missing or unparseable workspace file is harmless: the app launches with a
-  default Session and must not crash. The recovery path renames the corrupt file
-  to `workspace.json.broken-<timestamp>` so the user can recover it manually.
-- Tests must redirect the workspace path via `BATTY_UI_TEST_TEMP_HOME` so they
-  do not touch the real workspace file in `~/Library/Application Support/Batty/`.
-- Running processes (shells, editors, etc.) are not restored. Only layout
-  structure and static metadata (title overrides, cwd snapshots) survive a
-  relaunch.
-
-**Regression patterns:**
-
-- `[0029]` / `[0030]` — Codable schema and save triggers. The schema was right
-  but the trigger path (structural change, periodic) was missing or unreliable.
-- `[0031]` — Workspace load path with corrupt-file recovery. The recovery path
-  did not rename the bad file, so subsequent launches kept crashing on the same
-  unreadable content.
-- `[0055]` — Workspace restoration is not normal terminal-app behavior. The
-  chosen semantics (clean launch by default) must be documented and tested
-  explicitly to prevent future attempts to re-enable restore-by-default without
-  deliberation.
-
-**Accessibility identifiers / driver intents:**
-
-- `workspacePath` driver intent — writes the resolved `workspace.json` path to
-  a sentinel file so tests can locate it under the temp home.
-- `setWorkspaceSaveInterval(seconds:)` driver intent — drops the periodic save
-  interval for the idle-save test (or accept that the idle path is manual-only).
 
 ---
 

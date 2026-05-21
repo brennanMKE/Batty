@@ -11,8 +11,8 @@ no `Package.swift` change.
 | Folder | Holds | Examples |
 |---|---|---|
 | `Views/` | SwiftUI views and view-level UI surfaces | `RootWindowView`, `SessionSidebarView`, `PaneView`, `BellFeedView`, `SettingsView`, `AboutPanel`, `TerminalHostView` |
-| `Runtime/` | Long-lived stores, runtimes, and registries that own mutable state | `AppStateStore`, `SessionRuntime`, `PaneRuntime`, `TabRuntime`, `WorkspaceStore`, `BellFeedStore`, `SurfaceRegistry` |
-| `Model/` | Pure value types — `Codable`, `Sendable`, no view or libghostty types embedded | `LayoutModel`, `SplitTree`, `Workspace`, `WorkspaceConversion`, `SessionNameCache` |
+| `Runtime/` | Long-lived stores, runtimes, and registries that own mutable state | `AppStateStore`, `SessionRuntime`, `PaneRuntime`, `TabRuntime`, `BellFeedStore`, `SurfaceRegistry` |
+| `Model/` | Pure value types — `Codable`, `Sendable`, no view or libghostty types embedded | `LayoutModel`, `SplitTree`, `SessionNameCache` |
 | `Commands/` | Menu commands, keyboard shortcuts, focus plumbing, command-level state | `BattyCommands`, `BattyShortcuts`, `FocusedValues`, `PaneFocus`, `TerminalSurfaceFocuser` |
 | `Theme/` | Theme model and preference | `Theme`, `ThemePreference` |
 | `Settings/` | Settings-window preference types | `SettingsPreferences` |
