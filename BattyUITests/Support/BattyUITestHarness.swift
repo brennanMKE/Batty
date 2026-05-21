@@ -128,7 +128,11 @@ nonisolated enum BattyUITestHarness {
 
     @MainActor
     static func sidebar(in app: XCUIApplication) -> XCUIElement {
-        app.collectionViews["session-sidebar"].firstMatch
+        let collection = app.collectionViews["session-sidebar"].firstMatch
+        if collection.exists { return collection }
+        let outline = app.outlines["session-sidebar"].firstMatch
+        if outline.exists { return outline }
+        return app.descendants(matching: .any).matching(identifier: "session-sidebar").firstMatch
     }
 
     @MainActor
