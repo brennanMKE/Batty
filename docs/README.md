@@ -53,3 +53,10 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
 - [`VisualDebugging.md`](VisualDebugging.md) — how to use `build.sh` and
   `screenshot.sh` to build, launch, and capture screenshots of the Beta
   build from the command line without opening Xcode.
+- [`ui-features.md`](ui-features.md) — the authoritative behavioral reference
+  for all major UI feature areas: drag-and-drop, tab and session rename, theme
+  application, layout picker, bell feed, tab chip rendering, workspace
+  persistence, settings sheet, sidebar toggle, fuzzy finders, and modal
+  confirmation flows. Covers invariants, regression history, and accessibility
+  identifiers for each area. Read this before modifying any of those features
+  or their UI tests.
