@@ -23,6 +23,7 @@ public struct RootWindowView: View {
         .environment(\.themeChrome, store.themeChrome)
         .background(WindowChromeApplier(palette: store.themeChrome.palette))
         .task { setUpNotifier() }
+        .task { UITestDriver.runIfNeeded(store: store) }
         .onAppear {
             columnVisibility = sidebarHidden ? .detailOnly : .all
         }
