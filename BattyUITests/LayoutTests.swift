@@ -37,11 +37,11 @@ nonisolated final class LayoutTests: XCTestCase {
         )
     }
 
-    /// twoColumn produces 2 panes.
+    /// horizontalSplit produces 2 panes side by side.
     @MainActor
     func testTwoColumnProducesTwoPanes() throws {
         let app = BattyUITestHarness.launchBatty(script: [
-            ["intent": "applyLayout", "layout": "twoColumn"]
+            ["intent": "applyLayout", "layout": "horizontalSplit"]
         ])
         defer { app.terminate() }
 
@@ -50,14 +50,14 @@ nonisolated final class LayoutTests: XCTestCase {
 
         let panes = panesQuery(in: app)
         XCTAssertTrue(waitFor({ panes.count == 2 }, timeout: 10),
-                      "twoColumn must produce exactly 2 panes; got \(panes.count)")
+                      "horizontalSplit must produce exactly 2 panes; got \(panes.count)")
     }
 
-    /// twoRow produces 2 panes.
+    /// verticalSplit produces 2 panes stacked vertically.
     @MainActor
     func testTwoRowProducesTwoPanes() throws {
         let app = BattyUITestHarness.launchBatty(script: [
-            ["intent": "applyLayout", "layout": "twoRow"]
+            ["intent": "applyLayout", "layout": "verticalSplit"]
         ])
         defer { app.terminate() }
 
@@ -66,14 +66,14 @@ nonisolated final class LayoutTests: XCTestCase {
 
         let panes = panesQuery(in: app)
         XCTAssertTrue(waitFor({ panes.count == 2 }, timeout: 10),
-                      "twoRow must produce exactly 2 panes; got \(panes.count)")
+                      "verticalSplit must produce exactly 2 panes; got \(panes.count)")
     }
 
-    /// threeColumn produces 3 panes.
+    /// threeColumns produces 3 panes side by side.
     @MainActor
     func testThreeColumnProducesThreePanes() throws {
         let app = BattyUITestHarness.launchBatty(script: [
-            ["intent": "applyLayout", "layout": "threeColumn"]
+            ["intent": "applyLayout", "layout": "threeColumns"]
         ])
         defer { app.terminate() }
 
@@ -82,7 +82,7 @@ nonisolated final class LayoutTests: XCTestCase {
 
         let panes = panesQuery(in: app)
         XCTAssertTrue(waitFor({ panes.count == 3 }, timeout: 10),
-                      "threeColumn must produce exactly 3 panes; got \(panes.count)")
+                      "threeColumns must produce exactly 3 panes; got \(panes.count)")
     }
 
     /// mainLeftTwoRight produces 3 panes.
