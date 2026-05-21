@@ -166,6 +166,7 @@ struct CommandPaletteView: View {
         }
         .frame(width: 580, height: 420)
         .background(.regularMaterial)
+        .accessibilityIdentifier("command-palette.root")
         .onAppear { queryFocused = true }
     }
 

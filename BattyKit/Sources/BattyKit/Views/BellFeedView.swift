@@ -34,8 +34,10 @@ public struct BellFeedView: View {
                         .tag(entry.id)
                         .contentShape(Rectangle())
                         .onTapGesture { handleJump(to: entry) }
+                        .accessibilityIdentifier("bell-feed-entry.\(entry.id.uuidString)")
                     }
                 }
+                .accessibilityIdentifier("bell-feed.list")
                 .listStyle(.plain)
                 .onKeyPress(.return) {
                     guard let id = selectedEntryID,

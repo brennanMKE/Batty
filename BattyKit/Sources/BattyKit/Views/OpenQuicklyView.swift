@@ -116,6 +116,7 @@ struct OpenQuicklyView: View {
         }
         .frame(width: 540, height: 380)
         .background(.regularMaterial)
+        .accessibilityIdentifier("open-quickly.root")
         .onAppear { queryFocused = true }
     }
 
