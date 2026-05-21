@@ -15,7 +15,7 @@
                   <BuildableReference
                      BuildableIdentifier = "primary"
                      BlueprintIdentifier = "26D5431A2FAEC4AC00BA9AF8"
-                     BuildableName = "Batty Beta.app"
+                     BuildableName = "Batty.app"
                      BlueprintName = "Batty"
                      ReferencedContainer = "container:Batty.xcodeproj">
                   </BuildableReference>
@@ -33,7 +33,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "26D5431A2FAEC4AC00BA9AF8"
-               BuildableName = "Batty Beta.app"
+               BuildableName = "Batty.app"
                BlueprintName = "Batty"
                ReferencedContainer = "container:Batty.xcodeproj">
             </BuildableReference>
@@ -73,7 +73,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "26D5431A2FAEC4AC00BA9AF8"
-            BuildableName = "Batty Beta.app"
+            BuildableName = "Batty.app"
             BlueprintName = "Batty"
             ReferencedContainer = "container:Batty.xcodeproj">
          </BuildableReference>
@@ -90,7 +90,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "26D5431A2FAEC4AC00BA9AF8"
-            BuildableName = "Batty Beta.app"
+            BuildableName = "Batty.app"
             BlueprintName = "Batty"
             ReferencedContainer = "container:Batty.xcodeproj">
          </BuildableReference>
