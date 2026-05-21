@@ -1,7 +1,7 @@
 // BattyTests.swift
 
 import Testing
-@testable import Batty
+@testable import BattyKit
 
 struct BattyTests {
 
