@@ -9,7 +9,7 @@ public struct RootWindowView: View {
     @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
 
     public init(store: AppStateStore? = nil) {
-        _store = State(initialValue: store ?? WorkspaceManager.shared.store)
+        _store = State(initialValue: store ?? AppStateStore.shared)
     }
 
     public var body: some View {

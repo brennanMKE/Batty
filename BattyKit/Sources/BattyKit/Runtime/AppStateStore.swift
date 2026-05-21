@@ -12,6 +12,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 
 @Observable
 public final class AppStateStore {
+    public static let shared = AppStateStore()
     public private(set) var sessions: [SessionRuntime]
     public var selectedSessionID: UUID?
     public let bellFeed: BellFeedStore

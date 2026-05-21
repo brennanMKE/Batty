@@ -28,7 +28,7 @@ public enum BattyShortcuts {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers ?? ""
 
-        let store = WorkspaceManager.shared.store
+        let store = AppStateStore.shared
 
         if let candidate = makeCandidate(from: event, mods: mods) {
             let shortcuts = ShortcutsStore.shared

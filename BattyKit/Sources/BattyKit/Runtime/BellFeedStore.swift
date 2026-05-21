@@ -7,6 +7,40 @@ extension Notification.Name {
     public static let battyToggleBellFeed = Notification.Name("co.sstools.Batty.toggleBellFeed")
 }
 
+public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var timestamp: Date
+    public var windowID: UUID
+    public var sessionID: UUID
+    public var paneID: UUID
+    public var tabID: UUID
+    public var surfaceID: UUID
+    public var message: String?
+    public var seen: Bool
+
+    public init(
+        id: UUID = UUID(),
+        timestamp: Date,
+        windowID: UUID,
+        sessionID: UUID,
+        paneID: UUID,
+        tabID: UUID,
+        surfaceID: UUID,
+        message: String? = nil,
+        seen: Bool = false
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.windowID = windowID
+        self.sessionID = sessionID
+        self.paneID = paneID
+        self.tabID = tabID
+        self.surfaceID = surfaceID
+        self.message = message
+        self.seen = seen
+    }
+}
+
 @Observable
 @MainActor
 public final class BellFeedStore {

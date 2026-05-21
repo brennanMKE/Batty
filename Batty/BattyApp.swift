@@ -25,7 +25,7 @@ struct BattyApp: App {
 
         Settings {
             SettingsView()
-                .environment(\.appStateStore, WorkspaceManager.shared.store)
+                .environment(\.appStateStore, AppStateStore.shared)
         }
     }
 }
@@ -49,7 +49,8 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if QuitConfirmation.shouldQuitOrPrompt(store: WorkspaceManager.shared.store) {
+        if QuitConfirmation.shouldQuitOrPrompt(store: AppStateStore.shared) {
+            AppStateStore.shared.nameCache.save()
             return .terminateNow
         }
         return .terminateCancel

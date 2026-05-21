@@ -11,7 +11,7 @@ public struct BattyCommands: Commands {
     @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
 
-    private var store: AppStateStore { WorkspaceManager.shared.store }
+    private var store: AppStateStore { AppStateStore.shared }
     private var shortcuts: ShortcutsStore { ShortcutsStore.shared }
 
     public init() {}
