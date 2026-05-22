@@ -10,10 +10,11 @@ set -euo pipefail
 SCRIPT_DIR="${0:A:h}"
 REPO_ROOT="${SCRIPT_DIR:h}"
 PROJECT="$REPO_ROOT/Batty.xcodeproj"
-SCHEME="Batty"
+SCHEME="Batty (Prod)"
+APP_NAME="Batty"
 BUILD_DIR="$REPO_ROOT/build"
 DIST_DIR="$REPO_ROOT/dist"
-ARCHIVE_PATH="$BUILD_DIR/$SCHEME.xcarchive"
+ARCHIVE_PATH="$BUILD_DIR/$APP_NAME.xcarchive"
 EXPORT_DIR="$BUILD_DIR/Export"
 EXPORT_PLIST="$BUILD_DIR/exportOptions.plist"
 
@@ -95,7 +96,7 @@ xcodebuild -exportArchive \
     -exportPath "$EXPORT_DIR" \
     -exportOptionsPlist "$EXPORT_PLIST"
 
-APP_PATH="$EXPORT_DIR/$SCHEME.app"
+APP_PATH="$EXPORT_DIR/$APP_NAME.app"
 if [[ ! -d "$APP_PATH" ]]; then
     print -u2 "error: exported app not found at $APP_PATH"
     exit 1
@@ -135,8 +136,8 @@ create-dmg \
     --window-pos 200 120 \
     --window-size 600 400 \
     --icon-size 100 \
-    --icon "$SCHEME.app" 175 190 \
-    --hide-extension "$SCHEME.app" \
+    --icon "$APP_NAME.app" 175 190 \
+    --hide-extension "$APP_NAME.app" \
     --app-drop-link 425 190 \
     --no-internet-enable \
     "$WORK_DMG" \
