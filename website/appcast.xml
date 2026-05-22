@@ -23,6 +23,25 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.0.3</title>
+      <pubDate>Thu, 21 May 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-0-3</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        Cmd-W in the Settings window now dismisses it instead of quitting Batty.
+        The global shortcut handler was intercepting the keystroke before AppKit
+        could route it to the sheet. libghostty updated to the latest upstream
+        revision.
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.0.3.dmg"
+        sparkle:version="20260521"
+        sparkle:shortVersionString="1.0.3"
+        sparkle:edSignature="tpasbfYwQdXl81YKH9rWwaanK7xwRwAdYzFDFehoYjrjHSaid77M7VMqRvP4Hcod7YM2+Ud78mTGComMSuP3BQ=="
+        length="19977762"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.0.2</title>
       <pubDate>Sat, 16 May 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>

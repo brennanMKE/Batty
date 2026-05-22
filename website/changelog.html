@@ -15,6 +15,29 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-0-3">
+            <h2>1.0.3 — 2026-05-21</h2>
+            <p class="meta">Bug-fix release. Cmd-W in Settings now dismisses the sheet instead of quitting the app.</p>
+            <h3>Bug fixes</h3>
+            <ul>
+                <li>
+                    <kbd>Cmd</kbd>-<kbd>W</kbd> in the Settings window now dismisses it instead of quitting Batty.
+                    The global shortcut handler was intercepting the keystroke before AppKit could route it
+                    to the sheet. BattyShortcuts is now scoped to the main terminal window, so standard
+                    AppKit sheet dismissal takes over when Settings is frontmost.
+                    (<a href="https://github.com/brennanMKE/Batty/issues">#0196</a>)
+                </li>
+            </ul>
+            <h3>Under the hood</h3>
+            <ul>
+                <li>libghostty dependency updated to the latest upstream revision.</li>
+                <li>Comprehensive UI test suite added: tab lifecycle, pane focus, sidebar, drag-and-drop,
+                    Open Quickly, tab rename, and modal confirmation flows. The test runner now ships
+                    as <code>scripts/run-ui-tests.sh</code> to work around a macOS Gatekeeper signing
+                    quirk with the Xcode UI test runner.</li>
+            </ul>
+        </article>
+
         <article id="v1-0-2">
             <h2>1.0.2 — 2026-05-16</h2>
             <p class="meta">Clickable hyperlinks from shell programs that speak OSC 8.</p>
