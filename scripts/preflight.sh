@@ -68,7 +68,7 @@ if (( SKIP_BUILD )); then
     pass "build/test skipped (--skip-build)"
 else
     if DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-        xcodebuild -scheme Batty -destination 'platform=macOS' \
+        xcodebuild -scheme 'Batty (Prod)' -destination 'platform=macOS' \
         CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
         build >/tmp/batty-preflight-build.log 2>&1; then
         pass "xcodebuild build"
