@@ -82,6 +82,20 @@ h1 {
 
 .cta:hover { background: var(--accent-strong); text-decoration: none; }
 
+.cta-secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    margin-left: 12px;
+}
+
+.cta-secondary:hover {
+    background: rgba(177, 140, 255, 0.1);
+    color: var(--accent-strong);
+    border-color: var(--accent-strong);
+    text-decoration: none;
+}
+
 .subnote { color: var(--fg-muted); font-size: 14px; margin: 14px 0 0; }
 
 /* --- Main sections ---------------------------------------------------- */
@@ -219,4 +233,5 @@ footer nav a {
     h1 { font-size: 44px; }
     .hero { padding: 64px 16px 48px; }
     .hero-icon { width: 144px; height: 144px; }
+    .cta-secondary { margin-left: 0; margin-top: 12px; }
 }
