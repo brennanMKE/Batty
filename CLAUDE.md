@@ -33,10 +33,10 @@ The `docs/` folder has additional topical guides (see `docs/README.md`).
 
 ```bash
 # Build only (the canonical "did I break the build?" check)
-xcodebuild -scheme Batty -destination 'platform=macOS' build
+scripts/build.sh
 
 # Build + run all unit and UI tests
-xcodebuild -scheme Batty -destination 'platform=macOS' test
+scripts/build.sh test
 
 # Run UI tests (use this script, not raw `xcodebuild test`)
 scripts/run-ui-tests.sh                              # all UI tests
@@ -47,7 +47,9 @@ scripts/run-ui-tests.sh BattyUITests/TabRenameTests/testRenameActiveTabUpdatesCh
 open Batty.xcodeproj
 ```
 
-Always confirm the headless `xcodebuild` invocation passes before committing — Xcode previews are not a build pass.
+`scripts/build.sh` is a wrapper around `xcodebuild` that applies a workaround for an upstream `libghostty.framework` macOS-slice packaging bug (see `issues/0212.md`). Raw `xcodebuild ... build` will fail at the embed-frameworks validation step — always go through the wrapper. The actual scheme is `Batty (Prod)`, not `Batty`.
+
+Always confirm the headless `scripts/build.sh` invocation passes before committing — Xcode previews are not a build pass.
 
 **Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test`.** Xcode builds `BattyUITests-Runner.app` by dropping our xctest bundle into Apple's signed XCTRunner template without re-signing the outer app. Ad-hoc local builds end up with a broken signature ("code has no resources but signature indicates they must be present"), which AppleSystemPolicy treats as a tampered Apple binary — macOS Gatekeeper translocates the runner to `~/.Trash` and kills it before `xcodebuild test` can bootstrap. The script re-signs the runner + host app ad-hoc after `build-for-testing` and then invokes `test-without-building`, sidestepping the trash-prompt loop.
 

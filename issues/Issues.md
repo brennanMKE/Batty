@@ -210,16 +210,18 @@ Status flow: `open` → `in-progress` → `resolved`. **Never set `closed`** —
 The canonical "did I break the build?" check is:
 
 ```bash
-xcodebuild -scheme Batty -destination 'platform=macOS' build
+scripts/build.sh
 ```
 
 To also run unit and UI tests:
 
 ```bash
-xcodebuild -scheme Batty -destination 'platform=macOS' test
+scripts/build.sh test
 ```
 
-Open the project in Xcode (`open Batty.xcodeproj`) for live development, breakpoints, and SwiftUI previews — but always confirm the headless `xcodebuild` invocation passes before committing.
+`scripts/build.sh` is a wrapper that resolves SPM packages, applies a workaround for the upstream `libghostty.framework` macOS-slice packaging bug (see [[0212]]), then invokes `xcodebuild`. Raw `xcodebuild -scheme "Batty (Prod)" -destination 'platform=macOS' build` will fail at the embed-frameworks validation step — always go through the wrapper. The actual scheme is `Batty (Prod)`, not `Batty`.
+
+Open the project in Xcode (`open Batty.xcodeproj`) for live development, breakpoints, and SwiftUI previews — but always confirm the headless `scripts/build.sh` invocation passes before committing.
 
 ### When the subagent can't finish
 
