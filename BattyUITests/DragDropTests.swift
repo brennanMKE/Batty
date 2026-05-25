@@ -26,10 +26,20 @@ nonisolated final class DragDropTests: XCTestCase {
 
     /// Single-session swap via intent. Would have caught [[0127]]-reopening
     /// and the model-write side of [[0143]].
+    ///
+    /// Intent dispatch only runs once at launch (from `BATTY_UI_TEST_SCRIPT`),
+    /// and pane UUIDs are minted per-launch — so a "capture IDs, then swap,
+    /// then compare" test would need two launches whose IDs cannot be
+    /// correlated. Instead we run a single launch that applies the layout
+    /// and the swap in one script, then assert the swap's structural
+    /// invariant: four panes, all with distinct IDs (no duplication, no
+    /// loss). A broken swap that left position 0 referencing the old pane
+    /// while position 2 was overwritten would fail the uniqueness check.
     @MainActor
     func testIntentSwapChangesTabBarOrder() throws {
         let app = BattyUITestHarness.launchBatty(script: [
-            ["intent": "applyLayout", "layout": "twoByTwoGrid"]
+            ["intent": "applyLayout", "layout": "twoByTwoGrid"],
+            ["intent": "swapPanes", "at": 0, "with": 2]
         ])
         defer { app.terminate() }
 
@@ -38,38 +48,15 @@ nonisolated final class DragDropTests: XCTestCase {
 
         let tabBars = tabBarsQuery(in: app)
         XCTAssertTrue(waitFor({ tabBars.count == 4 }, timeout: 10),
-                      "Expected 4 tab-bar elements after twoByTwoGrid layout")
-
-        // Record the first and third pane IDs before the swap.
-        let idBefore0 = tabBars.element(boundBy: 0).identifier
-        let idBefore2 = tabBars.element(boundBy: 2).identifier
-        XCTAssertNotEqual(idBefore0, idBefore2, "Panes 0 and 2 should be distinct before swap")
-
-        // Swap pane 0 and pane 2 via the intent — no NSDraggingSession involved.
-        // Regression test for [[0127]]: the swap should succeed even without real drag.
-        let app2 = BattyUITestHarness.launchBatty(script: [
-            ["intent": "applyLayout", "layout": "twoByTwoGrid"],
-            ["intent": "swapPanes", "at": 0, "with": 2]
-        ])
-        defer { app2.terminate() }
-
-        XCTAssertNil(BattyUITestHarness.waitForDriverErrors(), "Driver script failed")
-        XCTAssertTrue(app2.windows.firstMatch.waitForExistence(timeout: 10))
-
-        let tabBars2 = tabBarsQuery(in: app2)
-        XCTAssertTrue(waitFor({ tabBars2.count == 4 }, timeout: 10),
                       "Expected 4 tab-bar elements after twoByTwoGrid + swap")
 
-        // After swapping 0 ↔ 2, position 0 should hold what was at position 2.
-        let idAfter0 = tabBars2.element(boundBy: 0).identifier
-        let idAfter2 = tabBars2.element(boundBy: 2).identifier
-        XCTAssertNotEqual(idAfter0, idAfter2, "Panes should still be distinct after swap")
-        // Verify that the two panes moved relative to each other. We can't
-        // assert the exact IDs without capturing them from the first launch, but
-        // we can at least verify that the swap didn't silently no-op (the layout
-        // still has 4 panes in a grid and the IDs are valid).
-        XCTAssertTrue(idAfter0.hasPrefix("tab-bar."), "Position 0 should be a tab-bar element after swap")
-        XCTAssertTrue(idAfter2.hasPrefix("tab-bar."), "Position 2 should be a tab-bar element after swap")
+        let ids = (0..<4).map { tabBars.element(boundBy: $0).identifier }
+        for (i, id) in ids.enumerated() {
+            XCTAssertTrue(id.hasPrefix("tab-bar."),
+                          "Position \(i) should be a tab-bar element; got '\(id)'")
+        }
+        XCTAssertEqual(Set(ids).count, 4,
+                       "All 4 pane IDs must be unique after swap; got \(ids)")
     }
 
     /// Self-drop is a no-op — swapping a pane with itself must not change the tree.
