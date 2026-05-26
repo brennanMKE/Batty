@@ -37,7 +37,6 @@ public final class ThemeChrome {
     public var chromeForeground: Color? { palette.chromeForeground }
     public var chromeMutedForeground: Color? { palette.chromeMutedForeground }
     public var accent: Color? { palette.accent }
-    public var accentForeground: Color? { palette.accentForeground }
     public var divider: Color? { palette.divider }
     public var focusBorder: Color? { palette.accent }
     public var tabActiveFill: Color? { palette.tabActiveFill }
@@ -53,7 +52,6 @@ public struct ChromePalette: Sendable, Equatable {
     public let chromeForeground: Color?
     public let chromeMutedForeground: Color?
     public let accent: Color?
-    public let accentForeground: Color?
     public let divider: Color?
     public let tabActiveFill: Color?
     public let tabInactiveFill: Color?
@@ -67,7 +65,6 @@ public struct ChromePalette: Sendable, Equatable {
         chromeForeground: nil,
         chromeMutedForeground: nil,
         accent: nil,
-        accentForeground: nil,
         divider: nil,
         tabActiveFill: nil,
         tabInactiveFill: nil,
@@ -128,16 +125,6 @@ public struct ChromePalette: Sendable, Equatable {
         self.chromeForeground = fg.swiftUIColor
         self.chromeMutedForeground = mutedFG.swiftUIColor
         self.accent = accentRGB.swiftUIColor
-        // Pick whichever of pure white / pure black has the better WCAG
-        // contrast against the chosen accent. Without this, badges that
-        // hard-code `.white` text on the accent fill disappear when the
-        // theme's accent is itself near-white (e.g. light themes whose
-        // cursor is a pale cream). See #0211.
-        self.accentForeground = ChromePalette.preferLegible(
-            primary: RGBColor(red: 1, green: 1, blue: 1),
-            alternate: RGBColor(red: 0, green: 0, blue: 0),
-            against: accentRGB
-        ).swiftUIColor
         self.divider = divider.swiftUIColor
         self.tabActiveFill = tabActive.swiftUIColor
         self.tabInactiveFill = tabInactive.swiftUIColor
@@ -157,7 +144,6 @@ public struct ChromePalette: Sendable, Equatable {
         chromeForeground: Color?,
         chromeMutedForeground: Color?,
         accent: Color?,
-        accentForeground: Color?,
         divider: Color?,
         tabActiveFill: Color?,
         tabInactiveFill: Color?,
@@ -170,7 +156,6 @@ public struct ChromePalette: Sendable, Equatable {
         self.chromeForeground = chromeForeground
         self.chromeMutedForeground = chromeMutedForeground
         self.accent = accent
-        self.accentForeground = accentForeground
         self.divider = divider
         self.tabActiveFill = tabActiveFill
         self.tabInactiveFill = tabInactiveFill

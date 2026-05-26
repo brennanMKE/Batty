@@ -20,7 +20,6 @@ public struct SessionSidebarView: View {
                     session: session,
                     store: store,
                     accent: themeChrome?.accent,
-                    accentForeground: themeChrome?.accentForeground,
                     onRename: {
                         renameDraft = session.title
                         renamingSessionID = session.id
@@ -145,7 +144,6 @@ private struct SessionRow: View {
     @Bindable var session: SessionRuntime
     let store: AppStateStore
     let accent: Color?
-    let accentForeground: Color?
     let onRename: () -> Void
     let onTheme: () -> Void
 
@@ -162,10 +160,9 @@ private struct SessionRow: View {
             if session.unseenBellCount > 0 {
                 Text(verbatim: "\(session.unseenBellCount)")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(accentForeground ?? .white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(accent ?? Color.accentColor))
+                    .background(Capsule().stroke(accent ?? Color.accentColor, lineWidth: 1))
                     .help("\(session.unseenBellCount) unseen bell event(s)")
             }
         }
