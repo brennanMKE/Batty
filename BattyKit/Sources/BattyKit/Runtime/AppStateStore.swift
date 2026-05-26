@@ -350,28 +350,52 @@ public final class AppStateStore {
     /// Mirrors the write rule in `renameSession` — only the anchor tab's CWD
     /// drives auto-naming. Cache hits beat project-name extraction so that
     /// a previously-typed rename in this CWD always wins (`#0058` + `#0089`).
+    ///
+    /// Single-pane sessions also reset to the default `Session N` title
+    /// when CWD moves *out* of any project directory (no cache hit, no
+    /// project rule match). Multi-pane sessions are skipped entirely —
+    /// each pane has its own CWD and picking one would be arbitrary
+    /// (`#0213`).
     public func handleWorkingDirectoryChange(forTabID tabID: UUID) {
-        for session in sessions {
+        for (index, session) in sessions.enumerated() {
             let anchorTab = session.tree.root.firstLeafPane.tabs[0]
             guard anchorTab.id == tabID else { continue }
             guard !session.titleOverride else { return }
+            guard session.tree.allPanes.count == 1 else { return }
             let cwd = anchorTab.terminal.workingDirectory
                 ?? anchorTab.terminal.configuration.workingDirectory
             guard let cwd, !cwd.isEmpty else { return }
-            if let cachedName = nameCache.lookup(path: cwd) {
-                guard cachedName != session.title else { return }
-                logger.info("auto-rename session \(session.title, privacy: .public) -> \(cachedName, privacy: .public) for cwd=\(cwd, privacy: .public)")
-                session.title = cachedName
-                return
-            }
-            if let derivedName = ProjectNameResolver.shared.resolve(at: cwd) {
-                guard derivedName != session.title else { return }
-                logger.info("project-rename session \(session.title, privacy: .public) -> \(derivedName, privacy: .public) for cwd=\(cwd, privacy: .public)")
-                session.title = derivedName
-                return
-            }
+            let resolved = Self.resolveAutoTitle(
+                forCWD: cwd,
+                sessionIndex: index,
+                cache: nameCache,
+                resolver: ProjectNameResolver.shared
+            )
+            guard resolved != session.title else { return }
+            logger.info("auto-rename session \(session.title, privacy: .public) -> \(resolved, privacy: .public) for cwd=\(cwd, privacy: .public)")
+            session.title = resolved
             return
         }
+    }
+
+    /// Pure decision function for the single-pane CWD-driven auto-naming
+    /// chain: cache hit > project-name extraction > default `Session N`.
+    /// The default is the only branch that resets a title when the shell
+    /// walks *out* of a project directory (`#0213`). Caller is responsible
+    /// for the single-pane and `titleOverride` gates.
+    static func resolveAutoTitle(
+        forCWD cwd: String,
+        sessionIndex: Int,
+        cache: SessionNameCache,
+        resolver: ProjectNameResolver.Resolver
+    ) -> String {
+        if let cachedName = cache.lookup(path: cwd) {
+            return cachedName
+        }
+        if let derivedName = resolver.resolve(at: cwd) {
+            return derivedName
+        }
+        return String(localized: "Session \(sessionIndex + 1)")
     }
 
     public func jumpToTab(sessionID: UUID, tabID: UUID) {
