@@ -219,7 +219,7 @@ To also run unit and UI tests:
 scripts/build.sh test
 ```
 
-`scripts/build.sh` is a wrapper that resolves SPM packages, applies a workaround for the upstream `libghostty.framework` macOS-slice packaging bug (see [[0212]]), then invokes `xcodebuild`. Raw `xcodebuild -scheme "Batty (Prod)" -destination 'platform=macOS' build` will fail at the embed-frameworks validation step — always go through the wrapper. The actual scheme is `Batty (Prod)`, not `Batty`.
+`scripts/build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. The actual scheme is `Batty (Prod)`, not `Batty`.
 
 Open the project in Xcode (`open Batty.xcodeproj`) for live development, breakpoints, and SwiftUI previews — but always confirm the headless `scripts/build.sh` invocation passes before committing.
 

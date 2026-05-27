@@ -47,7 +47,7 @@ scripts/run-ui-tests.sh BattyUITests/TabRenameTests/testRenameActiveTabUpdatesCh
 open Batty.xcodeproj
 ```
 
-`scripts/build.sh` is a wrapper around `xcodebuild` that applies a workaround for an upstream `libghostty.framework` macOS-slice packaging bug (see `issues/0212.md`). Raw `xcodebuild ... build` will fail at the embed-frameworks validation step — always go through the wrapper. The actual scheme is `Batty (Prod)`, not `Batty`.
+`scripts/build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. Direct `xcodebuild` calls work too; the wrapper is a convenience. The actual scheme is `Batty (Prod)`, not `Batty`.
 
 Always confirm the headless `scripts/build.sh` invocation passes before committing — Xcode previews are not a build pass.
 

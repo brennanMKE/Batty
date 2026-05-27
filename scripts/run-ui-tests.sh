@@ -41,16 +41,6 @@ DESTINATION="platform=macOS"
 
 cd "$REPO_ROOT"
 
-# The upstream libghostty.framework macOS slice is packaged as a shallow
-# bundle and Xcode's embed-frameworks validation rejects it. Resolve SPM
-# first, then reshape the slice in-place, then build the test bundle.
-# See issues/0212.md.
-print "==> Resolving SPM packages..."
-xcodebuild -scheme "$SCHEME" -destination "$DESTINATION" -resolvePackageDependencies 2>&1 | tail -3
-
-print "==> Patching libghostty.framework macOS slice..."
-"$REPO_ROOT/scripts/fix-libghostty-framework.sh"
-
 print "==> Building test bundle..."
 xcodebuild \
     -scheme "$SCHEME" \
