@@ -58,14 +58,24 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
    Commit the marketing-version bump on its own as
    `Bump version to <X.Y.Z>`.
 
-2. **Sanity-check the build**
+2. **Sanity-check the build and run tests**
 
    ```bash
-   xcodebuild -scheme Batty -destination 'platform=macOS' build
-   xcrun swift test --package-path BattyKit
+   scripts/build.sh          # confirms the build is clean
+   scripts/build.sh unit     # BattyKit unit tests — fast, <30 s
+   scripts/run-ui-tests.sh   # full UI test suite — ~10 min, locks the machine
    ```
 
-   Both should pass clean. Don't proceed if anything is red.
+   All three must pass clean. Don't proceed if anything is red.
+
+   **Run the preflight on the Mac mini**, not the MacBook. The UI test
+   suite locks the machine for ~10 minutes. The Mac mini keeps your
+   development machine free.
+
+   UI tests are the gate for releases. Any regression found here must be
+   fixed and tracked as a new issue before cutting the release — do not
+   ship over a failing UI test. Unit tests (`scripts/build.sh unit`)
+   should already be passing from routine development commits.
 
 3. **Run the release pipeline**
 

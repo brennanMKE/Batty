@@ -35,10 +35,10 @@ The `docs/` folder has additional topical guides (see `docs/README.md`).
 # Build only (the canonical "did I break the build?" check)
 scripts/build.sh
 
-# Build + run all unit and UI tests
-scripts/build.sh test
+# Run BattyKit unit tests — fast, no UI, runs before every commit
+scripts/build.sh unit
 
-# Run UI tests (use this script, not raw `xcodebuild test`)
+# Run UI tests (slow; blocks the machine; run on the Mac mini for preflight/release)
 scripts/run-ui-tests.sh                              # all UI tests
 scripts/run-ui-tests.sh BattyUITests/TabRenameTests  # one class
 scripts/run-ui-tests.sh BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle  # one test
@@ -46,6 +46,11 @@ scripts/run-ui-tests.sh BattyUITests/TabRenameTests/testRenameActiveTabUpdatesCh
 # Open in Xcode for live development, breakpoints, SwiftUI previews
 open Batty.xcodeproj
 ```
+
+**Test strategy:**
+
+- **Unit tests** (`scripts/build.sh unit`) — run `BattyKitTests` via the `BattyKit` scheme. Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. In Xcode's Test Navigator, select the `BattyKit` scheme to see and run these tests.
+- **UI tests** (`scripts/run-ui-tests.sh`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
 
 `scripts/build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. Direct `xcodebuild` calls work too; the wrapper is a convenience. The actual scheme is `Batty (Prod)`, not `Batty`.
 
