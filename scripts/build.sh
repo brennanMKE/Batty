@@ -16,10 +16,10 @@ SCHEME="${SCHEME:-Batty (Prod)}"
 
 cd "$REPO"
 
-# "unit" is a special action: run BattyKitTests via the BattyKit package scheme.
+# "unit" is a special action: run BattyTests only (no UI tests).
 if [[ "${1:-}" == "unit" ]]; then
-    print "==> xcodebuild test (BattyKit unit tests)"
-    exec xcodebuild test -scheme "BattyKit" -destination 'platform=macOS'
+    print "==> xcodebuild test (unit tests only)"
+    exec xcodebuild test -scheme "$SCHEME" -destination 'platform=macOS' -only-testing:BattyTests
 fi
 
 ACTION_ARGS=("$@")
