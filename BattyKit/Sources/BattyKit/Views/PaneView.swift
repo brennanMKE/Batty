@@ -143,7 +143,8 @@ public struct PaneView: View {
                             }
                         }
                         .task(id: tab.id) {
-                            tab.terminal.onClose = { [weak appStore, weak pane] _ in
+                            tab.terminal.onClose = { [weak appStore, weak pane] processAlive in
+                                logger.info("onClose tab=\(tab.id, privacy: .public) processAlive=\(processAlive)")
                                 if let appStore {
                                     appStore.closeTab(id: tab.id)
                                 } else {

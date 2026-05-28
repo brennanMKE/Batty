@@ -47,16 +47,17 @@ struct CloseTabCascadeTests {
         #expect(store.sessions.first?.id == firstSession.id)
     }
 
-    @Test func closingLastSessionTabResetsToFreshSession() {
+    @Test func closingLastSessionTabEmptiesTheStore() {
         let store = AppStateStore()
-        let closedSessionID = store.sessions[0].id
         let onlyTabID = store.sessions[0].tree.allPanes[0].tabs[0].id
+
+        nonisolated(unsafe) var called = false
+        store.onAllSessionsClosed = { called = true }
 
         store.closeTab(id: onlyTabID)
 
-        #expect(store.sessions.count == 1)
-        #expect(store.sessions[0].id != closedSessionID)
-        #expect(store.selectedSessionID == store.sessions[0].id)
+        #expect(store.sessions.isEmpty)
+        #expect(called)
     }
 
     @Test func closeOtherTabsKeepsTheTargetActive() {

@@ -15,6 +15,9 @@ public final class AppStateStore {
     public let nameCache: SessionNameCache
     public let themeChrome: ThemeChrome
     @ObservationIgnored public var notifier: BellNotifying?
+    /// Called when `removeSession` empties `sessions`. Nil in unit tests;
+    /// the app delegate sets this to terminate the process. (#0217)
+    @ObservationIgnored public var onAllSessionsClosed: (() -> Void)?
 
     public init(
         sessions: [SessionRuntime] = [],
@@ -60,8 +63,12 @@ public final class AppStateStore {
     }
 
     public func removeSession(id: UUID) {
-        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else {
+            logger.warning("removeSession id=\(id, privacy: .public) not found in store")
+            return
+        }
         let session = sessions[index]
+        logger.info("removeSession id=\(id, privacy: .public) title='\(session.title, privacy: .public)' sessionsAfter=\(self.sessions.count - 1)")
         let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
         cleanUpBellState(forTabIDs: tabIDsToClear)
         for tabID in tabIDsToClear {
@@ -73,14 +80,8 @@ public final class AppStateStore {
             selectedSessionID = sessions.indices.contains(newIndex) ? sessions[newIndex].id : nil
         }
         if sessions.isEmpty {
-            // All sessions closed (e.g. every shell exited on its own). Rather than
-            // terminating, reset to a fresh default session so the app stays alive.
-            // The user can always quit explicitly via Cmd-Q, which routes through
-            // applicationShouldTerminate and the confirm-quit dialog. (#0217)
-            let initial = SessionRuntime(title: String(localized: "Session 1"))
-            sessions.append(initial)
-            selectedSessionID = initial.id
-            logger.info("all sessions closed; reset to default session \(initial.id, privacy: .public)")
+            logger.info("removeSession all sessions gone; invoking onAllSessionsClosed")
+            onAllSessionsClosed?()
         }
     }
 
@@ -229,19 +230,25 @@ public final class AppStateStore {
     /// Restores a single default session if the close would leave the store
     /// with zero sessions, mirroring `removeSession`'s recovery.
     public func closeTab(id tabID: UUID) {
+        let totalTabs = sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
+        logger.info("closeTab tab=\(tabID, privacy: .public) sessions=\(self.sessions.count) totalTabs=\(totalTabs)")
         for session in sessions {
             for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
                 cleanUpBellState(forTabIDs: [tabID])
                 pane.removeTab(id: tabID)
+                logger.info("closeTab removed tab=\(tabID, privacy: .public) pane=\(pane.id, privacy: .public) session=\(session.id, privacy: .public) paneTabsRemaining=\(pane.tabs.count)")
                 if pane.tabs.isEmpty {
+                    logger.info("closeTab pane=\(pane.id, privacy: .public) empty; removing from tree")
                     let treeEmptied = session.tree.removePane(id: pane.id)
                     if treeEmptied {
+                        logger.info("closeTab tree empty for session=\(session.id, privacy: .public); removing session")
                         removeSession(id: session.id)
                     }
                 }
                 return
             }
         }
+        logger.warning("closeTab tab=\(tabID, privacy: .public) not found in any session")
     }
 
     /// Closes the currently-focused tab in the selected session, cascading

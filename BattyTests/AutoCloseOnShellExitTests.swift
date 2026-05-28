@@ -25,20 +25,20 @@ struct AutoCloseOnShellExitTests {
         #expect(!pane.tabs.contains { $0.id == tabAID })
     }
 
-    @Test func onCloseOnLastTabOfLastSessionResetsToFreshSession() {
+    @Test func onCloseOnLastTabOfLastSessionEmptiesTheStore() {
         let store = AppStateStore()
-        let session = store.sessions[0]
-        let tab = session.tree.allPanes[0].tabs[0]
-        let originalSessionID = session.id
-        let originalTabID = tab.id
+        let tab = store.sessions[0].tree.allPanes[0].tabs[0]
+        let tabID = tab.id
+
+        nonisolated(unsafe) var called = false
+        store.onAllSessionsClosed = { called = true }
 
         tab.terminal.onClose = { [weak store] _ in
-            store?.closeTab(id: originalTabID)
+            store?.closeTab(id: tabID)
         }
         tab.terminal.onClose?(false)
 
-        #expect(store.sessions.count == 1)
-        #expect(!store.sessions.contains { $0.id == originalSessionID })
-        #expect(store.selectedSessionID == store.sessions[0].id)
+        #expect(store.sessions.isEmpty)
+        #expect(called)
     }
 }

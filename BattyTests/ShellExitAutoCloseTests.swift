@@ -34,17 +34,18 @@ struct ShellExitAutoCloseTests {
         #expect(store.sessions.count == 1)
     }
 
-    @Test func shellExitOnLastTabResetsToFreshSession() {
+    @Test func shellExitOnLastTabEmptiesTheStore() {
         let store = AppStateStore()
-        let closedSessionID = store.sessions[0].id
         let tab = store.sessions[0].tree.allPanes[0].tabs[0]
         wireAutoClose(tab: tab, store: store)
 
+        nonisolated(unsafe) var called = false
+        store.onAllSessionsClosed = { called = true }
+
         tab.terminal.onClose?(false)
 
-        #expect(store.sessions.count == 1)
-        #expect(store.sessions[0].id != closedSessionID)
-        #expect(store.selectedSessionID == store.sessions[0].id)
+        #expect(store.sessions.isEmpty)
+        #expect(called)
     }
 
     @Test func shellExitIgnoresProcessAliveFlag() {

@@ -2,7 +2,10 @@
 
 import AppKit
 import BattyKit
+import OSLog
 import SwiftUI
+
+private let logger = Logger(subsystem: "co.sstools.Batty", category: "BattyApp")
 
 @main
 struct BattyApp: App {
@@ -38,13 +41,22 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
             BattyShortcuts.handle(event) ? nil : event
         }
         TerminalClickFocusMonitor.start()
+        AppStateStore.shared.onAllSessionsClosed = {
+            logger.info("onAllSessionsClosed fired; terminating app")
+            NSApp.terminate(nil)
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if QuitConfirmation.shouldQuitOrPrompt(store: AppStateStore.shared) {
-            AppStateStore.shared.nameCache.save()
+        let store = AppStateStore.shared
+        let openTabs = store.sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
+        logger.info("applicationShouldTerminate sessions=\(store.sessions.count) openTabs=\(openTabs)")
+        if QuitConfirmation.shouldQuitOrPrompt(store: store) {
+            store.nameCache.save()
+            logger.info("applicationShouldTerminate -> terminateNow")
             return .terminateNow
         }
+        logger.info("applicationShouldTerminate -> terminateCancel (prompt shown)")
         return .terminateCancel
     }
 }
