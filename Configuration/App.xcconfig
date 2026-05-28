@@ -8,8 +8,6 @@ INFOPLIST_FILE = Configuration/Info.plist
 
 ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macos*] = AppIcon
 
-SDKROOT[sdk=macos*] = macosx
-
 // Avoid using double slash which becomes a comment
 HTTPS=https:/
 
