@@ -32,20 +32,12 @@ struct BattyApp: App {
 
 final class BattyAppDelegate: NSObject, NSApplicationDelegate {
     private var keyMonitor: Any?
-    private var allSessionsClosedObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             BattyShortcuts.handle(event) ? nil : event
         }
         TerminalClickFocusMonitor.start()
-        allSessionsClosedObserver = NotificationCenter.default.addObserver(
-            forName: .battyAllSessionsClosed,
-            object: nil,
-            queue: .main
-        ) { _ in
-            NSApp.terminate(nil)
-        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

@@ -4,10 +4,6 @@ import Foundation
 import Observation
 import OSLog
 
-extension Notification.Name {
-    public static let battyAllSessionsClosed = Notification.Name("co.sstools.Batty.allSessionsClosed")
-}
-
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "AppStateStore")
 
 @Observable
@@ -77,7 +73,14 @@ public final class AppStateStore {
             selectedSessionID = sessions.indices.contains(newIndex) ? sessions[newIndex].id : nil
         }
         if sessions.isEmpty {
-            NotificationCenter.default.post(name: .battyAllSessionsClosed, object: nil)
+            // All sessions closed (e.g. every shell exited on its own). Rather than
+            // terminating, reset to a fresh default session so the app stays alive.
+            // The user can always quit explicitly via Cmd-Q, which routes through
+            // applicationShouldTerminate and the confirm-quit dialog. (#0217)
+            let initial = SessionRuntime(title: String(localized: "Session 1"))
+            sessions.append(initial)
+            selectedSessionID = initial.id
+            logger.info("all sessions closed; reset to default session \(initial.id, privacy: .public)")
         }
     }
 
