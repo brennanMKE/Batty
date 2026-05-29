@@ -6,10 +6,8 @@ import Testing
 
 struct ProjectNameResolverTests {
     private static let fixturesURL: URL = {
-        URL(fileURLWithPath: "\(#filePath)")
-            .deletingLastPathComponent()  // BattyTests/
-            .deletingLastPathComponent()  // repo root
-            .appendingPathComponent("BattyKit/Tests/BattyKitTests/Fixtures")
+        Bundle.module.url(forResource: "Fixtures", withExtension: nil)
+            ?? Bundle.module.bundleURL.appendingPathComponent("Fixtures")
     }()
 
     private static let resolver = ProjectNameResolver.Resolver(rules: ProjectNameRules.bundled)

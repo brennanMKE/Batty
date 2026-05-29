@@ -50,6 +50,16 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "BattyKitTests"
+               BuildableName = "BattyKitTests"
+               BlueprintName = "BattyKitTests"
+               ReferencedContainer = "container:BattyKit">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "26D543272FAEC4AD00BA9AF8"
                BuildableName = "BattyTests.xctest"
                BlueprintName = "BattyTests"
