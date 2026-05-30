@@ -58,6 +58,11 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
    Commit the marketing-version bump on its own as
    `Bump version to <X.Y.Z>`.
 
+   The preflight enforces that you actually bumped: its version gate
+   `[✗]`-fails if `MARKETING_VERSION` is not strictly greater than the
+   newest version already in `appcast.xml`. Forgetting this bump is what
+   shipped a "1.0.3" DMG that self-reported as 1.0.2 (#0226).
+
 2. **Sanity-check the build and run tests**
 
    ```bash
@@ -111,16 +116,29 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 
 6. **Update the appcast and changelog**
 
-   - Add a `<item>` entry to `website/appcast.xml` with the new
-     `<sparkle:minimumSystemVersion>`, release-notes link, and
-     enclosure URL pointing at the DMG you copied into
-     `website/downloads/Batty-<X.Y.Z>.dmg`. Use the **build number
-     printed at the end of `release.sh`** (the `YYYYMMDD` value) for
-     `sparkle:version`, and the marketing version for
-     `sparkle:shortVersionString`. Generate the
-     `sparkle:edSignature` via
-     `BattyKit/.build/artifacts/sparkle/Sparkle/bin/sign_update --account Batty`
-     (see `scripts/SPARKLE.md`; the `--account Batty` flag is required).
+   - **Generate the `<item>` from the DMG — do not hand-type it.**
+     `release.sh` prints a ready-to-paste `<item>` at the end of its
+     run; you can also regenerate it any time with:
+
+     ```bash
+     scripts/appcast-item.sh dist/Batty-<sha>.dmg
+     ```
+
+     Every attribute (`sparkle:version`, `sparkle:shortVersionString`,
+     `length`, `sparkle:edSignature`) is read from the artifact itself,
+     so the appcast can't drift from the DMG. **This is the fix for
+     #0226**, where a hand-typed `sparkle:version` (20260521) didn't
+     match the DMG's real `CFBundleVersion` (20260522) and the marketing
+     version was never bumped (the "1.0.3" DMG self-reported as 1.0.2),
+     producing a "You're up to date" dialog that named a newer version.
+   - Paste the generated `<item>` as the **first** item in
+     `website/appcast.xml` (newest first), fill in its `<description>`
+     release notes, and copy the DMG to
+     `website/downloads/Batty-<X.Y.Z>.dmg`.
+   - Re-run `scripts/preflight.sh` after pasting — the
+     "Appcast ↔ DMG consistency" gate mounts the newest item's DMG and
+     verifies its real version fields and byte length match the
+     advertised attributes.
    - Stamp `website/changelog.html` — add an `<article id="vX-Y-Z">`
      summarising user-visible changes for this version. Link closed
      `#NNNN` issues from the milestone.

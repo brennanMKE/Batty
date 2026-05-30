@@ -60,25 +60,31 @@ Sparkle stays dormant.
 ## Per-release
 
 The release pipeline (`scripts/release.sh`) produces `dist/Batty-<sha>.dmg`.
-For Sparkle to advertise the build, append a new `<item>` to
-`appcast.xml`:
+For Sparkle to advertise the build, append a new `<item>` to `appcast.xml` —
+but **generate it from the DMG rather than hand-typing it**:
 
-```xml
-<item>
-  <title>1.0.1</title>
-  <pubDate>Mon, 12 May 2026 00:00:00 +0000</pubDate>
-  <enclosure
-    url="https://your-host/Batty-1.0.1.dmg"
-    sparkle:version="42"
-    sparkle:shortVersionString="1.0.1"
-    sparkle:edSignature="EDDSA_SIG_FROM_sign_update"
-    length="12345678"
-    type="application/octet-stream" />
-</item>
+```bash
+scripts/appcast-item.sh dist/Batty-<sha>.dmg
 ```
 
-Use `sign_update` (alongside `generate_keys` in the SPM artifacts dir)
-to compute the EdDSA signature over the DMG before publishing:
+`release.sh` also prints this block at the end of its run. The script mounts
+the DMG, reads `CFBundleShortVersionString` / `CFBundleVersion` from the app
+bundle inside, computes the byte length, and runs `sign_update` for the EdDSA
+signature — so every attribute is derived from the artifact and the appcast
+cannot drift from the DMG. Paste the output as the first `<item>` (newest
+first) and fill in its `<description>`.
+
+> **Why this is automated (#0226):** 1.0.3 shipped with a hand-typed
+> `sparkle:version="20260521"` while the DMG's real `CFBundleVersion` was
+> `20260522`, and a marketing version that was never bumped
+> (`CFBundleShortVersionString=1.0.2` inside a DMG named "1.0.3"). Sparkle
+> compares `CFBundleVersion` for the update decision but prints the marketing
+> strings in its dialog, so clients saw "You're up to date" naming 1.0.3 as
+> newest while reporting "1.0.2" as installed. Deriving the item from the
+> artifact removes both failure modes.
+
+Under the hood the generator calls `sign_update` (alongside `generate_keys`
+in the SPM artifacts dir):
 
 ```bash
 BattyKit/.build/artifacts/sparkle/Sparkle/bin/sign_update \

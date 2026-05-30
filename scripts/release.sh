@@ -105,6 +105,33 @@ fi
 print "==> Verifying app signature"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
+# Version-consistency gate (#0226): confirm the *built* bundle carries the
+# versions we expect before it gets packaged and notarized. Two failure modes
+# this catches:
+#   - CFBundleShortVersionString != MARKETING_VERSION from App.xcconfig — a
+#     per-target pbxproj override or stale build setting won and the marketing
+#     version drifted (1.0.3 shipped as 1.0.2).
+#   - CFBundleVersion != the build number we injected — the archive didn't
+#     honor the CURRENT_PROJECT_VERSION override, so Sparkle's comparison key
+#     would be wrong.
+# Failing here is cheap; discovering it in users' update dialogs is not.
+EXPECTED_SHORT=$(grep -E '^MARKETING_VERSION' "$REPO_ROOT/Configuration/App.xcconfig" \
+    | head -1 | awk -F= '{print $2}' | tr -d ' ')
+ACTUAL_SHORT=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")
+ACTUAL_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist")
+if [[ "$ACTUAL_SHORT" != "$EXPECTED_SHORT" ]]; then
+    print -u2 "error: built CFBundleShortVersionString ($ACTUAL_SHORT) != MARKETING_VERSION ($EXPECTED_SHORT)"
+    print -u2 "       The bundle's marketing version drifted from App.xcconfig. Check for a"
+    print -u2 "       per-target MARKETING_VERSION override in project.pbxproj (preflight flags this)."
+    exit 1
+fi
+if [[ "$ACTUAL_BUILD" != "$BUILD_NUMBER" ]]; then
+    print -u2 "error: built CFBundleVersion ($ACTUAL_BUILD) != injected build number ($BUILD_NUMBER)"
+    print -u2 "       The archive did not honor CURRENT_PROJECT_VERSION=$BUILD_NUMBER."
+    exit 1
+fi
+print "==> Version check: $ACTUAL_SHORT (build $ACTUAL_BUILD) matches App.xcconfig + build number"
+
 # AppIcon.icns is generated from Assets.xcassets/AppIcon.appiconset during the
 # build and lives inside the built bundle. The same file drives both the
 # mounted volume's Finder icon (--volicon below) and the DMG file's Finder
@@ -184,7 +211,19 @@ rm -rf "$BUILD_DIR"
 print
 print "Done. Distributable at:"
 print "  $DMG_PATH"
-print "  Build number: $BUILD_NUMBER  (use as sparkle:version in website/appcast.xml)"
+print "  Build number: $BUILD_NUMBER"
+print
+
+# Emit a ready-to-paste appcast <item> derived from the artifact itself, so
+# sparkle:version / sparkle:shortVersionString / length / edSignature can never
+# be hand-typed out of sync with the DMG (#0226). Best-effort: if the Sparkle
+# signing key isn't available on this machine the release still succeeded — the
+# operator can run scripts/appcast-item.sh later.
+print "==> Appcast item for website/appcast.xml (paste as the first <item>):"
+print
+if ! "$SCRIPT_DIR/appcast-item.sh" "$DMG_PATH"; then
+    print -u2 "note: could not auto-generate the appcast item; run scripts/appcast-item.sh \"$DMG_PATH\" manually."
+fi
 print
 print "On the recipient's Mac:"
 print "  - Double-click the DMG"
