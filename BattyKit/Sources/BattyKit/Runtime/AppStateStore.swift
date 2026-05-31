@@ -57,6 +57,13 @@ public final class AppStateStore {
         let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: inheritedCWD)])
         let tree = SplitTree(root: .leaf(firstPane))
         let session = SessionRuntime(title: resolvedTitle, tree: tree)
+        // An explicitly-provided title is an authored name; pin it so cwd-driven
+        // auto-naming (#0213/#0227) can't overwrite it — same contract as
+        // renameSession. Auto-derived titles (nil arg → cache/project/default)
+        // stay live so they keep tracking the cwd.
+        if title != nil {
+            session.titleOverride = true
+        }
         sessions.append(session)
         selectedSessionID = session.id
         return session

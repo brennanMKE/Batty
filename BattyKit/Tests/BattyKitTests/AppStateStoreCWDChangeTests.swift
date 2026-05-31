@@ -216,6 +216,25 @@ struct AppStateStoreCWDChangeTests {
         #expect(sessionB.title == "Session 2")
     }
 
+    /// A session created with an explicit title is pinned (titleOverride) so
+    /// the now-reliable cwd auto-naming (#0227) can't clobber it. Without this,
+    /// createSession("Beta") was overwritten the moment the surface reported a
+    /// cwd, which broke the multi-session UI tests.
+    @Test func explicitlyTitledSessionIsNotClobberedByCDChange() {
+        let (store, url) = makeStore()
+        defer { cleanup(url) }
+        store.nameCache.record(path: "/Users/test/Developer/Batty", name: "Batty")
+
+        let session = store.addSession(title: "Beta")
+        #expect(session.titleOverride == true)
+
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+
+        #expect(session.title == "Beta")
+    }
+
     @Test func resolveAutoTitleReturnsCacheHitWhenPresent() {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-resolve-\(UUID().uuidString)")
