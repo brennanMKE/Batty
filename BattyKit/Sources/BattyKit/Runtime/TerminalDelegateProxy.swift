@@ -25,6 +25,15 @@ final class TerminalDelegateProxy: NSObject,
 
     private(set) var hoveredURL: String?
 
+    /// Fires on every working-directory change libghostty reports, after the
+    /// new path has been written to `state`. The host wires this to drive
+    /// session auto-naming directly, rather than relying on a SwiftUI
+    /// `.onChange` over `state.workingDirectory` — that property is a Combine
+    /// `@Published` on an `ObservableObject`, which the `@Observable` model
+    /// layer does not track, so the view-driven path fired only opportunistically
+    /// and left names stuck on the initial directory (#0226-adjacent; see #0227).
+    var onWorkingDirectoryChange: ((String) -> Void)?
+
     init(state: TerminalViewState) {
         self.state = state
     }
@@ -55,6 +64,7 @@ final class TerminalDelegateProxy: NSObject,
 
     func terminalDidChangeWorkingDirectory(_ path: String) {
         state.terminalDidChangeWorkingDirectory(path)
+        onWorkingDirectoryChange?(path)
     }
 
     func terminalDidFinishCommand(exitCode: Int?, durationNanos: UInt64) {

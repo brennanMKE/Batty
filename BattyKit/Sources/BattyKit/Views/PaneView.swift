@@ -130,9 +130,6 @@ public struct PaneView: View {
                                 tab.recordDesktopNotificationIfNeeded()
                             }
                         }
-                        .onChange(of: tab.terminal.workingDirectory) {
-                            appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
-                        }
                         .modifier(TabRunningCommandObserver(tab: tab))
                         .onChange(of: tab.terminal.isFocused) { _, isFocused in
                             guard isFocused else { return }
@@ -151,6 +148,17 @@ public struct PaneView: View {
                                     pane?.removeTab(id: tab.id)
                                 }
                             }
+                            // Drive auto-naming from libghostty's authoritative pwd
+                            // signal, not a SwiftUI .onChange over the Combine-backed
+                            // workingDirectory — that fired only on incidental
+                            // re-renders and left names stuck on the initial cwd (#0227).
+                            tab.terminalDelegate.onWorkingDirectoryChange = { [weak appStore] _ in
+                                appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
+                            }
+                            // Initial resolve in case the surface reported its cwd
+                            // before this wiring ran (the callback only catches
+                            // changes after it's set).
+                            appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
                         }
                         .onAppear {
                             guard tab.id == pane.activeTabID, isPaneFocused else { return }

@@ -189,6 +189,33 @@ struct AppStateStoreCWDChangeTests {
         #expect(session.title == "Frontend")
     }
 
+    // Repro for the reported release blocker: a session created via addSession
+    // (not the launch session) inherits the current cwd and its name, but must
+    // still reset when the user cd's it elsewhere.
+    @Test func newlyCreatedSessionResetsNameAfterLeavingInheritedProjectDir() {
+        let (store, url) = makeStore()
+        defer { cleanup(url) }
+        store.nameCache.record(path: "/Users/test/Developer/Batty", name: "Batty")
+
+        // Launch session sits in the Batty project dir and is named for it.
+        let sessionA = store.sessions[0]
+        let anchorA = sessionA.tree.root.firstLeafPane.tabs[0]
+        anchorA.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        store.handleWorkingDirectoryChange(forTabID: anchorA.id)
+        #expect(sessionA.title == "Batty")
+
+        // Create a new session while in Batty — it inherits the cwd and name.
+        let sessionB = store.addSession()
+        let anchorB = sessionB.tree.root.firstLeafPane.tabs[0]
+        #expect(sessionB.title == "Batty")
+
+        // User cd's the new session to a non-project folder: name must drop "Batty".
+        anchorB.terminal.configuration.workingDirectory = "/Users/test/no-project-here"
+        store.handleWorkingDirectoryChange(forTabID: anchorB.id)
+
+        #expect(sessionB.title == "Session 2")
+    }
+
     @Test func resolveAutoTitleReturnsCacheHitWhenPresent() {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-resolve-\(UUID().uuidString)")
