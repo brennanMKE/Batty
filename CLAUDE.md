@@ -27,6 +27,20 @@ the feature complete. The regressions in #0143 (file drops broken, clicks
 broken) are documented there as concrete examples of what goes wrong when this
 is skipped.
 
+For any work that writes `@Observable` / `@State` properties from view-driven
+code (`body`, `onChange`, `onAppear`, `onGeometryChange`) — and for *any*
+change to focus or selection flow — **also read
+`docs/swiftui-observation-rules.md` first; it is binding.** Core invariant:
+view update must be pure; mutation belongs to event handlers and code outside
+the update transaction. `NSHostingView` runs SwiftUI updates inside AppKit's
+layout pass, so SwiftUI callbacks must never synchronously call
+layout-re-entrant AppKit APIs (`makeFirstResponder`, frame writes,
+`addSubview`). `@Observable` notifies on every write, including equal-value
+writes, so view-triggered writes form feedback loops. Never "fix" a
+mutate-during-update violation by hopping the write into a `Task` — that
+trades a crash for a race (the #0229 click regression). Restructure *which
+code writes* instead.
+
 The `docs/` folder has additional topical guides (see `docs/README.md`).
 
 ## Build / verify commands
