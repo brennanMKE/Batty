@@ -354,7 +354,17 @@ public final class AppStateStore {
     public func focusPane(id: UUID) {
         for session in sessions {
             if session.tree.allPanes.contains(where: { $0.id == id }) {
-                session.tree.focusedPaneID = id
+                // Idempotent: `focusedPaneID` is on an @Observable, and an
+                // equal-value write still fires `withMutation`, re-invalidating
+                // every PaneView. The terminal-focus round-trip
+                // (PaneView.onChange(isPaneFocused) -> focusWhenReady ->
+                // makeFirstResponder -> terminal.isFocused flip ->
+                // onChange(isFocused) -> focusPane(id:)) re-asserts the same id;
+                // without this guard that becomes an unbounded body /
+                // AppKit-layout feedback loop (#0229).
+                if session.tree.focusedPaneID != id {
+                    session.tree.focusedPaneID = id
+                }
                 return
             }
         }
