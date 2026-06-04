@@ -7,12 +7,15 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
 ## Available
 
 - [`swiftui-observation-rules.md`](swiftui-observation-rules.md) — binding
-  rules for state mutation with SwiftUI + Observation: view update must be
-  pure, AppKit interop hazards (`NSHostingView` runs updates inside
-  `-[NSView layout]`), `@Observable` notify-on-every-write semantics, and
-  the single-authority pattern for two-way model ↔ AppKit sync. Read this
-  before writing to any `@Observable` property from view-driven code, and
-  before any change to focus or selection flow. `#0229` is the case study.
+  rules for state mutation with SwiftUI + Observation: view construction is
+  pure, `onChange`/`onAppear` writes audited by trigger origin, observed-state
+  ownership rules (`@State` / plain property / `@Bindable` / `@Environment` /
+  `@ObservationIgnored`), notify-on-every-write semantics and dependency
+  granularity, AppKit interop hazards (`NSHostingView` runs updates inside
+  `-[NSView layout]`), and the single-authority pattern for two-way
+  model ↔ AppKit sync. Read this before writing to any `@Observable`
+  property from view-driven code, and before any change to focus or
+  selection flow. `#0229` is the case study.
 - [`view-hierarchy.md`](view-hierarchy.md) — how the model hierarchy
   (Workspace -> Window -> Session -> Pane -> Tab -> Terminal Session) maps
   onto the SwiftUI tree and the persistent AppKit terminal host. Read this
