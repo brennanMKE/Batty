@@ -20,10 +20,15 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// when a mouse button goes down.
 ///
 /// The model-level focus follow-up (`tree.focusedPaneID`, the focus-border
-/// overlay, etc.) is driven by the existing `PaneView.onChange(of:
-/// tab.terminal.isFocused)` hook: `becomeFirstResponder` calls
-/// `core.setFocus(true)` which fans out through the focus delegate to
-/// the view state's `isFocused` flag.
+/// overlay, etc.) happens here too, synchronously, via
+/// `AppStateStore.focusPane(containingTabID:)`. It must NOT be inferred
+/// from the terminal's `isFocused` flips downstream: libghostty flips
+/// `isFocused` on existing surfaces when a new surface is created (observed
+/// in #0230's trace during Cmd-D splits), so an isFocused-driven model
+/// write cannot distinguish a real click from surface churn — that
+/// ambiguity was the feedback-loop edge behind #0229. This monitor is the
+/// single declared writer for the AppKit-initiated focus direction; the
+/// model-initiated direction lives in `TerminalSurfaceFocuser`.
 @MainActor
 public enum TerminalClickFocusMonitor {
     private static var monitor: Any?
@@ -51,8 +56,16 @@ public enum TerminalClickFocusMonitor {
         guard let rootView = window.contentView?.superview ?? window.contentView else { return }
         guard let hit = rootView.hitTest(event.locationInWindow) else { return }
         guard let terminal = appTerminalAncestor(of: hit) else { return }
-        if window.firstResponder === terminal { return }
-        window.makeFirstResponder(terminal)
+        if window.firstResponder !== terminal {
+            window.makeFirstResponder(terminal)
+        }
+        // Model follow-up even when the terminal was already first
+        // responder — the model can lag AppKit (e.g. focus moved by a
+        // means the model never saw), and a click is an unambiguous
+        // statement of which pane the user wants selected.
+        guard let tabID = TerminalHostStore.shared.tabID(for: terminal) else { return }
+        logger.debug("click-focus: tab=\(tabID, privacy: .public)")
+        AppStateStore.shared.focusPane(containingTabID: tabID)
     }
 
     private static func appTerminalAncestor(of view: NSView) -> AppTerminalView? {

@@ -42,14 +42,28 @@ enum TerminalSurfaceFocuser {
         guard let window = view.window else { return false }
         if view.isHidden { return false }
         if window.firstResponder === view { return true }
+        logger.debug("promote: tab=\(tab.id, privacy: .public)")
         window.makeFirstResponder(view)
         return true
     }
 
-    /// Retry variant. The first attempt happens immediately; subsequent
-    /// attempts are scheduled at a back-off until the view is locatable
-    /// and visible. Bounded so a closed/replaced tab does not leak retry
-    /// tasks.
+    /// Monotonic token. Each `focusWhenReady` call invalidates every
+    /// pending promotion attempt (first or retry) from earlier calls, so
+    /// only the newest focus intent can ever reach `makeFirstResponder`.
+    /// Without this, a stale retry for the previously focused tab can
+    /// re-promote it after focus has moved on, dragging the model back
+    /// through the isFocused echo — the ping-pong loop behind #0229's
+    /// crash and the focus-drag-back regression on the split tests (#0230).
+    private static var generation = 0
+
+    /// Retry variant. Every attempt — including the first — runs on a
+    /// subsequent main-actor turn, never synchronously. All call sites are
+    /// SwiftUI-driven callbacks (`onChange` / `onAppear`), which
+    /// `NSHostingView` can execute inside AppKit's layout pass; promoting
+    /// first responder there re-enters layout and flips `isFocused`
+    /// observables mid-pass (the #0229 crash class — see
+    /// docs/swiftui-observation-rules.md). The hop is safe *only* because
+    /// `generation` guarantees a superseded promotion can never fire late.
     ///
     /// Why multiple retries: a newly inserted session's pane and its
     /// terminal `AppTerminalView` traverse three independent runloop turns
@@ -57,16 +71,18 @@ enum TerminalSurfaceFocuser {
     /// `TerminalHostStore.terminalView(for:)` creates and attaches the
     /// `AppTerminalView` (`isHidden = true`); (2) the placeholder reports
     /// its frame via `PreferenceKey`; (3) `TerminalHostStore.updatePlacements`
-    /// unhides the view. The Task is scheduled inside the same runloop
-    /// turn that triggered focus, so step 1 may not have happened yet —
-    /// hence the first 16 ms tick. The 800 ms tail catches slow cold
-    /// launches where the first preference-key emission carries a stale
-    /// frame and the geometry-settling backstop in `TerminalPlaceholderView`
-    /// is the one that finally unhides the view.
+    /// unhides the view. The 800 ms tail catches slow cold launches where
+    /// the first preference-key emission carries a stale frame and the
+    /// geometry-settling backstop in `TerminalPlaceholderView` is the one
+    /// that finally unhides the view.
     static func focusWhenReady(tab: TabRuntime) {
-        if focus(tab: tab) { return }
+        generation += 1
+        let requested = generation
         Task { @MainActor [weak tab] in
-            let delays: [Duration] = [
+            // nil = no sleep: the first attempt still runs on a fresh
+            // main-actor turn, just without added latency.
+            let delays: [Duration?] = [
+                nil,
                 .milliseconds(16),
                 .milliseconds(50),
                 .milliseconds(150),
@@ -74,11 +90,12 @@ enum TerminalSurfaceFocuser {
                 .milliseconds(800),
             ]
             for delay in delays {
-                try? await Task.sleep(for: delay)
+                if let delay { try? await Task.sleep(for: delay) }
+                guard requested == Self.generation else { return }
                 guard let tab else { return }
                 if focus(tab: tab) { return }
             }
-            logger.debug("focus skipped: tab \(tab?.id.uuidString ?? "<gone>", privacy: .public) had no visible AppTerminalView after \(delays.count, privacy: .public) retries")
+            logger.debug("focus skipped: tab \(tab?.id.uuidString ?? "<gone>", privacy: .public) had no visible AppTerminalView after \(delays.count - 1, privacy: .public) retries")
         }
     }
 }

@@ -131,26 +131,17 @@ public struct PaneView: View {
                             }
                         }
                         .modifier(TabRunningCommandObserver(tab: tab))
-                        .onChange(of: tab.terminal.isFocused) { _, isFocused in
-                            guard isFocused else { return }
-                            // Defer the focusedPaneID write off the current
-                            // runloop turn. `isFocused` flips synchronously inside
-                            // `makeFirstResponder`, which AppKit may call from
-                            // within its `_NSViewLayout` pass (cross-split focus
-                            // moves do exactly this). Writing this @Observable
-                            // there makes SwiftUI dirty constraints mid-layout
-                            // (`_postWindowNeedsUpdateConstraints`), which AppKit
-                            // answers with an NSException — the crash in #0229.
-                            // The hop moves the mutation out of the layout pass.
-                            let paneID = pane.id
-                            Task { @MainActor [weak appStore, weak tree] in
-                                if let appStore {
-                                    appStore.focusPane(id: paneID)
-                                } else {
-                                    tree?.focusedPaneID = paneID
-                                }
-                            }
-                        }
+                        // Deliberately NO .onChange(of: tab.terminal.isFocused)
+                        // model write here. libghostty flips isFocused on
+                        // existing surfaces during surface creation (#0230
+                        // trace), so a model write keyed on that flip cannot
+                        // distinguish a user click from churn — it reverted
+                        // focus after every split and was the feedback-loop
+                        // edge behind #0229's crash. The AppKit-initiated
+                        // direction is written by TerminalClickFocusMonitor;
+                        // the model-initiated direction by
+                        // TerminalSurfaceFocuser. See
+                        // docs/swiftui-observation-rules.md.
                         .task(id: tab.id) {
                             tab.terminal.onClose = { [weak appStore, weak pane] processAlive in
                                 logger.info("onClose tab=\(tab.id, privacy: .public) processAlive=\(processAlive)")

@@ -356,15 +356,28 @@ public final class AppStateStore {
             if session.tree.allPanes.contains(where: { $0.id == id }) {
                 // Idempotent: `focusedPaneID` is on an @Observable, and an
                 // equal-value write still fires `withMutation`, re-invalidating
-                // every PaneView. The terminal-focus round-trip
-                // (PaneView.onChange(isPaneFocused) -> focusWhenReady ->
-                // makeFirstResponder -> terminal.isFocused flip ->
-                // onChange(isFocused) -> focusPane(id:)) re-asserts the same id;
-                // without this guard that becomes an unbounded body /
-                // AppKit-layout feedback loop (#0229).
+                // every PaneView. Callers legitimately re-assert the current
+                // pane (chip selection, repeated clicks in the focused
+                // terminal); skipping the equal-value write keeps those from
+                // rippling a no-op invalidation through every pane (#0229).
                 if session.tree.focusedPaneID != id {
+                    logger.debug("focusPane: \(session.tree.focusedPaneID, privacy: .public) -> \(id, privacy: .public)")
                     session.tree.focusedPaneID = id
                 }
+                return
+            }
+        }
+    }
+
+    /// Focus the pane that owns the tab with `tabID`. The model-side
+    /// follow-up to a user click on a terminal: `TerminalClickFocusMonitor`
+    /// resolves the clicked `AppTerminalView` to its tab and calls this so
+    /// the click is the single declared writer for the AppKit-initiated
+    /// focus direction (#0230). No-op if no pane owns the tab.
+    public func focusPane(containingTabID tabID: UUID) {
+        for session in sessions {
+            for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
+                focusPane(id: pane.id)
                 return
             }
         }
