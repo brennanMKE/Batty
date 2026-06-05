@@ -28,8 +28,9 @@ manifests under specific timing.
 
 ## What counts as SwiftUI-driven update code
 
-**Always forbidden to write observed state from** (these run during
-reconciliation/layout, unconditionally):
+**Forbidden by default to write observed state from** (these run during
+reconciliation/layout, and any exception must be a documented Batty
+architecture exception rather than a local workaround):
 
 - `body`, and every computed property or helper it calls
 - view `init`s (SwiftUI constructs views freely while diffing)
@@ -64,15 +65,19 @@ loop, not noise.
 | Situation | Use |
 |---|---|
 | View owns a reference-type `@Observable` model's lifetime | `@State private var` |
-| View only reads an observable passed from a parent (`PaneView`'s `pane: PaneRuntime`, `tree: SplitTree`) | plain `let` property |
-| View needs bindings into an observable, or mutates its fields directly | `@Bindable` |
+| View only reads an observable passed from a parent | plain property (`let` when possible) |
+| View needs projected bindings into an observable (`$model.property`) | `@Bindable` |
 | App-wide store/service (`AppStateStore`) | `@Environment` |
 | Caches, delegates, closures, pending `Task`s, timers inside an `@Observable` type | `@ObservationIgnored` — implementation details must not invalidate views |
 | Hot-path store mutators that callers may re-assert (`AppStateStore.focusPane(id:)`) | make the API idempotent at the store (`if x != newValue`), never rely on call-site discipline |
 
+Direct mutations of an observable model should normally live behind explicit
+store/model methods. Use `@Bindable` in a view when SwiftUI needs the projected
+binding, not just because the view has a reference to an observable.
+
 `@State` stays `private`. Avoid `ObservableObject` / `@Published` /
-`@StateObject` / `@ObservedObject` / `@EnvironmentObject` except when
-bridging legacy or third-party code.
+`@StateObject` / `@ObservedObject` / `@EnvironmentObject` except when bridging
+legacy or third-party code.
 
 ## Observation semantics and dependency granularity
 
@@ -128,23 +133,36 @@ beyond that shape goes through an event handler or the store, not the update.
 
 When one fact lives in two places — *which pane is focused* is both
 `SplitTree.focusedPaneID` (model) and `NSWindow.firstResponder` (AppKit) —
-every sync path must declare a direction, and the echo must be **dead-ended
-structurally**:
+every sync path must declare a direction, and each direction gets exactly
+**one declared writer**:
 
 - **Model-initiated** (keyboard command writes model → view reacts → AppKit
-  follows): the AppKit side effect will echo back through the observable
-  flip. The echo handler must not write the model again — it already holds
-  the value. Suppress the echo with a programmatic-change token, ownership
-  flag, or explicit source check. **Equality guards at the store boundary are
-  required but not sufficient**: with two panes, echoes alternate between
-  *different* values and an equality guard never trips (verified in `#0229`).
-- **AppKit-initiated** (user clicks; `TerminalClickFocusMonitor` promotes
-  first responder): the model must follow. This runs during event dispatch —
-  outside any update transaction — so a synchronous model write here is
-  correct and *required*; the interaction depends on winning that ordering.
+  follows): the follow-up into AppKit runs on a fresh main-actor turn, never
+  inside the update transaction, and carries a staleness guard (generation
+  token) so a superseded follow-up can never fire late
+  (`TerminalSurfaceFocuser`).
+- **AppKit-initiated** (user clicks): the code that *embodies the intent* —
+  `TerminalClickFocusMonitor`, during event dispatch — writes the model
+  itself, synchronously. The interaction depends on winning that ordering.
 
-Choose one authority per fact, write down the direction of each path, and
-identify which mechanism kills the echo before merging.
+**An observed property is evidence that something changed, not evidence of
+intent.** Never reconstruct user intent from downstream observable effects —
+libghostty flips `isFocused` on *existing* surfaces when a new surface is
+created (`#0230` trace), so a model write keyed on that flip cannot tell a
+click from churn. No context audit fixes a handler whose trigger doesn't
+mean what it assumes. Route intent from its source as an explicit command;
+Observation is for rendering, not for round-tripping authority between two
+state holders.
+
+The strongest dead end is therefore **no echo handler at all** — `#0230`
+deleted the `isFocused → focusedPaneID` write rather than guarding it. Where
+an echo handler must exist, a store-level equality guard handles same-value
+echoes, and a programmatic-change token / source check / staleness predicate
+handles different-value ones — but guards damp the loop; removing the
+inference removes it (`#0229` proved equality-only and re-timing both fail).
+
+Choose one authority per fact, write down the direction and single writer of
+each path, and delete inferred echoes before reaching for guards.
 
 ## `Task` and async work
 
@@ -163,7 +181,9 @@ identify which mechanism kills the echo before merging.
 1. List every property the change writes, and the exact context each write
    runs in (event handler? `onChange`? synchronous callee of an AppKit call?).
 2. For each `onChange`/`onAppear` write: who flips the observed value, and in
-   what context? Event-origin or layout/focus/geometry-origin?
+   what context? Event-origin or layout/focus/geometry-origin? And does the
+   flip *mean* what the handler assumes — can the library flip it as a side
+   effect (surface-creation churn, `#0230`) rather than as user intent?
 3. List who observes each written property and what they do on invalidation.
    If any observer's reaction can write state, name the dead end.
 4. For crashes, read `asiBacktraces` in the `.ips` before trusting the
@@ -184,23 +204,32 @@ identify which mechanism kills the echo before merging.
 | `EXC_BREAKPOINT` via `+[NSApplication _crashOnException:]`, all-AppKit stack with `_NSViewLayout` | Observable write or constraint-dirtying/responder AppKit call landed inside the layout pass — read `asiBacktraces` |
 | Beachball / "app not idle" timeouts in UI tests | Same loop, pre-crash phase |
 | A fix silences the warning but clicks / focus / keyboard input break | The write moved to the wrong owner or lost a race it used to win — restructure direction, don't re-time |
+| Selection / focus reverts right after a split or new-surface creation | Library churn flipped an observed flag on an untouched object and a handler treated it as intent — look for intent reconstructed from observable effects (`#0230`) |
 
-## Case study: #0229
+## Case study: #0229 / #0230
 
-One bug, three lessons:
+One bug, four lessons:
 
-- **The crash:** Cmd-Option-arrow wrote `focusedPaneID` (model-initiated);
-  the view reacted by calling `makeFirstResponder` from `onChange` — inside
-  the layout pass — and the echo handler wrote the model again mid-layout.
-  NSException, `_crashOnException`. The decisive evidence was
-  `asiBacktraces`, naming SwiftUI's `ObservationGraphMutation` →
+- **The crash (#0229):** Cmd-Option-arrow wrote `focusedPaneID`
+  (model-initiated); the view reacted by calling `makeFirstResponder` from
+  `onChange` — inside the layout pass — and the echo handler wrote the model
+  again mid-layout. NSException, `_crashOnException`. The decisive evidence
+  was `asiBacktraces`, naming SwiftUI's `ObservationGraphMutation` →
   `_postWindowNeedsUpdateConstraints` chain.
-- **The loop:** with two panes, stale focus-retry tasks re-promoted the old
-  pane, so model and first responder ping-ponged between *different* values.
-  A store-level idempotence guard alone did not stop it (verified: crash
-  reproduced with the guard in place) — only structural echo suppression
-  kills this class.
-- **The regression:** deferring the echo write into a `Task` stopped the
-  crash but broke the AppKit-initiated direction — click-to-focus — because
-  the deferred write lost the ordering it used to win synchronously. Timing
-  fixes trade one undefined behavior for another.
+- **The loop (#0229):** with two panes, stale focus-retry tasks re-promoted
+  the old pane, so model and first responder ping-ponged between *different*
+  values. A store-level idempotence guard alone did not stop it (verified:
+  crash reproduced with the guard in place).
+- **The regression (#0229):** deferring the echo write into a `Task` stopped
+  the crash but broke the AppKit-initiated direction — click-to-focus —
+  because the deferred write lost the ordering it used to win synchronously.
+  Timing fixes trade one undefined behavior for another.
+- **The resolution (#0230):** a live trace showed the echo's trigger was
+  never trustworthy — libghostty flips `isFocused` on existing surfaces at
+  surface creation, so the handler reverted focus after *every* split, and
+  the baseline only looked correct because a second echo healed it. The fix
+  deleted the inference entirely (intent routed from the click monitor;
+  promotion deferred + generation-guarded), and the four click UI tests that
+  had been failing for a week — dismissed as "environmental" — went green:
+  they had been detecting this bug all along. Three analysis passes argued
+  about write *context*; only tracing the trigger's *meaning* found the bug.
