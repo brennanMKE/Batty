@@ -23,6 +23,26 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.0.4</title>
+      <pubDate>Fri, 05 Jun 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-0-4</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        Fixes a crash and an infinite render loop when moving focus across
+        split panes with Cmd-Option-arrows, makes clicking an unfocused pane
+        reliably select it, and keeps session auto-naming in sync with the
+        shell's working directory (hand-renamed sessions keep their titles).
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.0.4.dmg"
+        sparkle:version="20260605"
+        sparkle:shortVersionString="1.0.4"
+        sparkle:edSignature="lx38NqG6p9apxli6H9nGFqcBX7AHMCTgrtlZUPe5lXYLT9SM77Dhjn5paDSzyuwF2IV3FL/UTqbKOWM7gHV5Ag=="
+        length="20037429"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>1.0.3</title>
       <pubDate>Thu, 21 May 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>

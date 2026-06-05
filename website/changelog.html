@@ -15,6 +15,42 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-0-4">
+            <h2>1.0.4 — 2026-06-05</h2>
+            <p class="meta">Stability release. Fixes a crash and an infinite render loop in split-pane
+            focus navigation, makes click-to-select panes reliable, and keeps session auto-naming in
+            sync with the shell's working directory.</p>
+            <h3>Bug fixes</h3>
+            <ul>
+                <li>
+                    Moving focus across a split with <kbd>Cmd</kbd>-<kbd>Option</kbd>-arrows no longer
+                    crashes the app. An AppKit layout exception was triggered by a focus feedback loop
+                    between the terminal's focus state and the pane model; the same loop could saturate
+                    the event loop after creating a split. Focus changes are now routed explicitly from
+                    their source — clicks and keyboard commands — instead of being inferred from
+                    terminal focus flips. (#0229, #0230)
+                </li>
+                <li>
+                    Clicking a pane that isn't focused now reliably selects it, and pane selection no
+                    longer silently reverts right after creating a split. (#0230)
+                </li>
+                <li>
+                    Session auto-naming now follows the shell's working directory dependably — names
+                    update on <code>cd</code> even when nothing else redraws the pane — and a session
+                    you've renamed by hand keeps its title instead of being overwritten by directory
+                    changes. (#0227)
+                </li>
+            </ul>
+            <h3>Under the hood</h3>
+            <ul>
+                <li>Strict Swift concurrency checking enabled across the project.</li>
+                <li>UI test coverage added for cd-driven session rename and reset. (#0228)</li>
+                <li>New focus-architecture rules documented in-repo; the split-pane focus path was
+                    audited against them end to end. The four click-to-focus UI tests are green again
+                    and act as regression guards for pane selection.</li>
+            </ul>
+        </article>
+
         <article id="v1-0-3">
             <h2>1.0.3 — 2026-05-21</h2>
             <p class="meta">Bug-fix release. Cmd-W in Settings now dismisses the sheet instead of quitting the app.</p>
