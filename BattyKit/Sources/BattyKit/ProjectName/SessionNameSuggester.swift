@@ -2,6 +2,7 @@
 
 import Foundation
 import OSLog
+import os
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -40,6 +41,124 @@ public enum SessionNameSuggestion {
     }
 }
 
+/// Thread-safe single-value box the SetSessionName tool writes into during
+/// inference. First-call-wins: if the model calls the tool more than once,
+/// the first name sticks and later calls are reported back as ignored —
+/// deterministic if the model loops, and the confirmation message
+/// discourages further calls.
+nonisolated final class SuggestedNameBox: Sendable {
+    private let state = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+    init() {}
+
+    /// Returns `true` when this call stored the name, `false` when a
+    /// previous call already won.
+    @discardableResult
+    func set(_ name: String) -> Bool {
+        state.withLock { current in
+            guard current == nil else { return false }
+            current = name
+            return true
+        }
+    }
+
+    var value: String? {
+        state.withLock { $0 }
+    }
+}
+
+/// Availability-independent logic backing the FoundationModels tools, kept
+/// separate so it stays unit-testable on machines that can't run the model.
+nonisolated enum SessionNameToolSupport {
+    static let excerptByteLimit = 4096
+    static let unreadableFileMessage = "(not a readable text file)"
+    static let unknownFileMessage = "(no such file in the folder listing)"
+
+    /// Returns the beginning of a top-level file, or a short diagnostic
+    /// message the model can act on. `allowedNames` is the precomputed set
+    /// of top-level entry names shown in the prompt; any `fileName` outside
+    /// it is rejected, which rules out path traversal by construction
+    /// (directory listings never contain `/`).
+    static func readExcerpt(
+        fileName: String,
+        folderPath: String,
+        allowedNames: Set<String>,
+        byteLimit: Int = excerptByteLimit
+    ) -> String {
+        guard allowedNames.contains(fileName) else { return unknownFileMessage }
+        let url = URL(fileURLWithPath: folderPath).appendingPathComponent(fileName)
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return unreadableFileMessage }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: byteLimit), !data.isEmpty else {
+            return unreadableFileMessage
+        }
+        guard let text = decodeUTF8Prefix(data) else { return unreadableFileMessage }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? unreadableFileMessage : text
+    }
+
+    /// The byte cap can split a multi-byte UTF-8 sequence; dropping up to
+    /// three trailing bytes distinguishes a truncated text file from a
+    /// genuinely binary one.
+    private static func decodeUTF8Prefix(_ data: Data) -> String? {
+        var slice = data[...]
+        for _ in 0...3 {
+            if let text = String(data: slice, encoding: .utf8) { return text }
+            guard slice.count > 1 else { return nil }
+            slice = slice.dropLast()
+        }
+        return nil
+    }
+}
+
+#if canImport(FoundationModels)
+
+@available(macOS 26.0, *)
+nonisolated struct ReadFileTool: Tool {
+    let name = "readFile"
+    let description = "Read the beginning of one top-level file in the folder to learn what it is about."
+
+    @Generable
+    struct Arguments {
+        @Guide(description: "Exact file name from the folder listing, e.g. README.md")
+        let fileName: String
+    }
+
+    let folderPath: String
+    let allowedNames: Set<String>
+
+    func call(arguments: Arguments) async throws -> String {
+        SessionNameToolSupport.readExcerpt(
+            fileName: arguments.fileName,
+            folderPath: folderPath,
+            allowedNames: allowedNames
+        )
+    }
+}
+
+@available(macOS 26.0, *)
+nonisolated struct SetSessionNameTool: Tool {
+    let name = "setSessionName"
+    let description = "Set the session name. Call at most once, with a short 2-4 word name, no punctuation."
+
+    @Generable
+    struct Arguments {
+        @Guide(description: "The session name: 2-4 words, no punctuation, no quotes")
+        let name: String
+    }
+
+    let box: SuggestedNameBox
+
+    func call(arguments: Arguments) async throws -> String {
+        if box.set(arguments.name) {
+            return "Session name set to \(arguments.name)."
+        }
+        return "Session name was already set; the first name is kept."
+    }
+}
+
+#endif
+
 /// On-device FoundationModels-backed suggester. Requires macOS 26+ and an
 /// available system language model (Apple Intelligence enabled, model
 /// downloaded). On every other configuration `suggestName` returns `nil`
@@ -50,8 +169,12 @@ public final class FoundationModelsNameSuggester: SessionNameSuggesting {
 
     static let instructions = """
         You name terminal sessions after the folder the user is working in. \
-        Reply with only 2-4 words, no punctuation, no quotes. \
-        Reply NONE if the folder path and contents give no meaningful signal \
+        You are given the folder path and a listing of its top-level entries. \
+        You may call readFile on at most 2-3 promising entries from the \
+        listing (README, manifest, or notes files) to learn what the folder \
+        contains. Then either call setSessionName exactly once with a short \
+        name of 2-4 words and no punctuation, or finish without calling \
+        setSessionName if the path and contents give no meaningful signal \
         (temporary folders, untitled folders, random hashes).
         """
 
@@ -76,21 +199,31 @@ public final class FoundationModelsNameSuggester: SessionNameSuggesting {
             logger.info("system language model unavailable; skipping AI session naming")
             return nil
         }
-        let prompt = Self.prompt(forPath: path, entries: Self.topLevelEntries(atPath: path))
+        let entries = Self.topLevelEntries(atPath: path)
+        let box = SuggestedNameBox()
+        // A dedicated session per request keeps the naming instructions
+        // tight and avoids sharing context with any other model use. The
+        // name lands in the box via the tool; the final response text is
+        // ignored — finishing without a setSessionName call is the
+        // "no good name" outcome.
+        let session = LanguageModelSession(
+            tools: [
+                ReadFileTool(folderPath: path, allowedNames: Set(entries)),
+                SetSessionNameTool(box: box),
+            ],
+            instructions: Self.instructions
+        )
         do {
-            // A dedicated session per request keeps the naming instructions
-            // tight and avoids sharing context with any other model use.
-            let session = LanguageModelSession(instructions: Self.instructions)
-            let response = try await session.respond(to: prompt)
-            let raw = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            logger.info("suggestion for \(path, privacy: .public): '\(raw, privacy: .public)'")
-            return raw.isEmpty ? nil : raw
+            _ = try await session.respond(to: Self.prompt(forPath: path, entries: entries))
         } catch is CancellationError {
             return nil
         } catch {
             logger.error("session name suggestion failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
+        let name = box.value
+        logger.info("suggestion for \(path, privacy: .public): '\(name ?? "(none)", privacy: .public)'")
+        return name
         #else
         return nil
         #endif
@@ -106,7 +239,7 @@ public final class FoundationModelsNameSuggester: SessionNameSuggesting {
         if !entries.isEmpty {
             lines.append("Top-level contents: \(entries.joined(separator: ", "))")
         }
-        lines.append("Session name:")
+        lines.append("Name this session, or finish without setting a name if there is no meaningful signal.")
         return lines.joined(separator: "\n")
     }
 }
