@@ -426,13 +426,18 @@ public final class AppStateStore {
                 forCWD: cwd,
                 sessionIndex: index,
                 cache: nameCache,
-                resolver: ProjectNameResolver.shared
+                resolver: ProjectNameResolver.shared,
+                nameFromFiles: SettingsPreference.resolvedAutoNameFromFiles()
             )
             if Self.isDefaultSessionTitle(resolved) {
                 // Deterministic chain missed — AI fallback (#0231). A
                 // memoized suggestion stands in for the default directly;
-                // an unknown path kicks off an async request.
-                if let memoized = nameSuggestionMemo[cwd] {
+                // an unknown path kicks off an async request. The settings
+                // toggle (#0233) gates the whole AI step, memo included —
+                // a memoized AI name is still automatic naming.
+                if !SettingsPreference.resolvedAutoNameWithAI() {
+                    cancelNameSuggestion(forSessionID: session.id)
+                } else if let memoized = nameSuggestionMemo[cwd] {
                     cancelNameSuggestion(forSessionID: session.id)
                     if let name = memoized {
                         resolved = name
@@ -507,17 +512,21 @@ public final class AppStateStore {
     /// chain: cache hit > project-name extraction > default `Session N`.
     /// The default is the only branch that resets a title when the shell
     /// walks *out* of a project directory (`#0213`). Caller is responsible
-    /// for the single-pane and `titleOverride` gates.
+    /// for the single-pane and `titleOverride` gates, and for resolving
+    /// `nameFromFiles` from settings (#0233) — no `UserDefaults` reads here.
+    /// Cache hits stay live with `nameFromFiles` off: they record explicit
+    /// user renames, not automatic naming.
     static func resolveAutoTitle(
         forCWD cwd: String,
         sessionIndex: Int,
         cache: SessionNameCache,
-        resolver: ProjectNameResolver.Resolver
+        resolver: ProjectNameResolver.Resolver,
+        nameFromFiles: Bool = true
     ) -> String {
         if let cachedName = cache.lookup(path: cwd) {
             return cachedName
         }
-        if let derivedName = resolver.resolve(at: cwd) {
+        if nameFromFiles, let derivedName = resolver.resolve(at: cwd) {
             return derivedName
         }
         return String(localized: "Session \(sessionIndex + 1)")

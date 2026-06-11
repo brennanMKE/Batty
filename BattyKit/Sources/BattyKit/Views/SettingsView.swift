@@ -30,6 +30,13 @@ private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.pasteStrictnessKey) private var pasteStrictness: String = SettingsPreference.defaultPasteStrictness
     @AppStorage(SettingsPreference.confirmQuitKey) private var confirmQuit: Bool = SettingsPreference.defaultConfirmQuit
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
+    @AppStorage(SettingsPreference.autoNameFromFilesKey) private var autoNameFromFiles: Bool = SettingsPreference.defaultAutoNameFromFiles
+    @AppStorage(SettingsPreference.autoNameWithAIKey) private var autoNameWithAI: Bool = SettingsPreference.defaultAutoNameWithAI
+
+    private var aiNamingSupported: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
 
     var body: some View {
         Form {
@@ -62,6 +69,21 @@ private struct GeneralSettingsView: View {
                 Text("Counts open tabs across all sessions; the prompt fires only when at least one tab exists.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Session Naming") {
+                Toggle("Name sessions from project files", isOn: $autoNameFromFiles)
+                Toggle("Use Apple Intelligence to suggest names", isOn: $autoNameWithAI)
+                    .disabled(!aiNamingSupported)
+                if aiNamingSupported {
+                    Text("Applies when the shell changes directory. Manual renames always win.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Requires macOS 26")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Keyboard") {

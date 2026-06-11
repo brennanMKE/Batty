@@ -299,6 +299,141 @@ struct AISessionNamingTests {
         #expect(restoredSession.title == "Session 1")
     }
 
+    // MARK: - Settings toggles (#0233)
+
+    /// Keys stay non-default only inside the synchronous body so parallel
+    /// main-actor tests can't observe them across a suspension point.
+    private func withPreferences(_ values: [String: Bool], _ body: () -> Void) {
+        let defaults = UserDefaults.standard
+        for (key, value) in values { defaults.set(value, forKey: key) }
+        defer { for key in values.keys { defaults.removeObject(forKey: key) } }
+        body()
+    }
+
+    @Test func fileDerivationSkippedWhenToggleOff() throws {
+        let projectDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-toggle-project-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: projectDir.appendingPathComponent("Demo.xcodeproj"),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: projectDir) }
+
+        let (store, url) = makeStore(suggester: nil)
+        defer { cleanup(url) }
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = projectDir.path
+        withPreferences([SettingsPreference.autoNameFromFilesKey: false]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
+
+        #expect(session.title == "Session 1")
+    }
+
+    @Test func aiFallbackStillRunsWhenFileNamingOff() async throws {
+        let projectDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-toggle-ai-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: projectDir.appendingPathComponent("Demo.xcodeproj"),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: projectDir) }
+
+        let suggester = RecordingSuggester(result: "AI Name")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = projectDir.path
+        withPreferences([SettingsPreference.autoNameFromFilesKey: false]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
+        await awaitSuggestion(store, sessionID: session.id)
+
+        #expect(session.title == "AI Name")
+        #expect(suggester.requestedPaths == [projectDir.path])
+    }
+
+    @Test func aiNeverScheduledWhenToggleOff() {
+        let suggester = RecordingSuggester(result: "AI Name")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/no-project-here"
+        withPreferences([SettingsPreference.autoNameWithAIKey: false]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
+
+        #expect(session.title == "Session 1")
+        #expect(store.nameSuggestionTasks[session.id] == nil)
+        #expect(suggester.requestedPaths.isEmpty)
+    }
+
+    @Test func cacheHitStillAppliesWithBothTogglesOff() {
+        let suggester = RecordingSuggester(result: "AI Name")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+        store.nameCache.record(path: "/Users/test/Developer/Batty", name: "Batty")
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        withPreferences([
+            SettingsPreference.autoNameFromFilesKey: false,
+            SettingsPreference.autoNameWithAIKey: false,
+        ]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
+
+        #expect(session.title == "Batty")
+        #expect(suggester.requestedPaths.isEmpty)
+    }
+
+    @Test func userRenameStillPinsWithBothTogglesOff() {
+        let (store, url) = makeStore(suggester: nil)
+        defer { cleanup(url) }
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
+        withPreferences([
+            SettingsPreference.autoNameFromFilesKey: false,
+            SettingsPreference.autoNameWithAIKey: false,
+        ]) {
+            store.renameSession(id: session.id, to: "Frontend")
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
+
+        #expect(session.title == "Frontend")
+        #expect(session.titleOverride == true)
+    }
+
+    @Test func nextCwdReportWithAIToggleOffCancelsInFlightSuggestion() async {
+        let suggester = RecordingSuggester(result: "Cool Name")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        let inflight = store.nameSuggestionTasks[session.id]
+        #expect(inflight != nil)
+
+        withPreferences([SettingsPreference.autoNameWithAIKey: false]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
+        #expect(store.nameSuggestionTasks[session.id] == nil)
+        await inflight?.task.value
+
+        #expect(session.title == "Session 1")
+    }
+
     // MARK: - Sanitizer
 
     @Test func sanitizeAcceptsShortCleanNames() {
