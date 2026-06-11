@@ -73,6 +73,10 @@ nonisolated enum SessionNameToolSupport {
     static let excerptByteLimit = 4096
     static let unreadableFileMessage = "(not a readable text file)"
     static let unknownFileMessage = "(no such file in the folder listing)"
+    static let directoryEntryMessage = "(this entry is a folder, not a readable file)"
+    static let permissionDeniedMessage = "(permission denied reading this file)"
+    static let emptyFileMessage = "(this file is empty)"
+    static let readErrorMessage = "(could not read this file)"
 
     /// Returns the beginning of a top-level file, or a short diagnostic
     /// message the model can act on. `allowedNames` is the precomputed set
@@ -90,21 +94,71 @@ nonisolated enum SessionNameToolSupport {
             return unknownFileMessage
         }
         let url = URL(fileURLWithPath: folderPath).appendingPathComponent(fileName)
-        guard let data = readPrefix(of: url, byteLimit: byteLimit),
-              let text = decodeUTF8Prefix(data),
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logger.info("readFile \(fileName, privacy: .public): unreadable, returning fallback")
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            logger.info("readFile \(fileName, privacy: .public): entry is a directory")
+            return directoryEntryMessage
+        }
+        // isReadableFile uses access(2), which never triggers a macOS TCC
+        // consent prompt, whereas open(2) in a TCC-protected folder does —
+        // so this check must come before opening. A TOCTOU race here just
+        // falls through to the open error below.
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            logger.error("readFile \(fileName, privacy: .public): no read permission at \(url.path, privacy: .public)")
+            return permissionDeniedMessage
+        }
+        let handle: FileHandle
+        do {
+            handle = try FileHandle(forReadingFrom: url)
+        } catch {
+            logger.error("readFile \(fileName, privacy: .public): open failed: \(describe(error), privacy: .public)")
+            return isPermissionError(error) ? permissionDeniedMessage : readErrorMessage
+        }
+        defer { try? handle.close() }
+        let data: Data
+        do {
+            data = try handle.read(upToCount: byteLimit) ?? Data()
+        } catch {
+            logger.error("readFile \(fileName, privacy: .public): read failed: \(describe(error), privacy: .public)")
+            return isPermissionError(error) ? permissionDeniedMessage : readErrorMessage
+        }
+        guard !data.isEmpty else {
+            logger.info("readFile \(fileName, privacy: .public): file is empty")
+            return emptyFileMessage
+        }
+        guard let text = decodeUTF8Prefix(data) else {
+            logger.info("readFile \(fileName, privacy: .public): content is not UTF-8 text")
             return unreadableFileMessage
+        }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            logger.info("readFile \(fileName, privacy: .public): file is empty")
+            return emptyFileMessage
         }
         logger.info("readFile \(fileName, privacy: .public): read \(data.count) bytes")
         return text
     }
 
-    private static func readPrefix(of url: URL, byteLimit: Int) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: byteLimit), !data.isEmpty else { return nil }
-        return data
+    private static func describe(_ error: Error) -> String {
+        let description = (error as NSError).localizedDescription
+        if let code = posixCode(of: error) {
+            return "\(description) (POSIX \(code))"
+        }
+        return description
+    }
+
+    private static func posixCode(of error: Error) -> Int32? {
+        var nsError = error as NSError
+        while true {
+            if nsError.domain == NSPOSIXErrorDomain { return Int32(nsError.code) }
+            guard let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError else { return nil }
+            nsError = underlying
+        }
+    }
+
+    private static func isPermissionError(_ error: Error) -> Bool {
+        if let code = posixCode(of: error), code == EACCES || code == EPERM { return true }
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoPermissionError
     }
 
     /// The byte cap can split a multi-byte UTF-8 sequence; dropping up to
@@ -255,9 +309,21 @@ public final class FoundationModelsNameSuggester: SessionNameSuggesting {
     static func prompt(forPath path: String, entries: [String]) -> String {
         var lines = ["Folder path: \(path)"]
         if !entries.isEmpty {
-            lines.append("Top-level contents: \(entries.joined(separator: ", "))")
+            let listing = entries.map { listingLine(forEntry: $0, inFolderAtPath: path) }
+            lines.append("Top-level contents: \(listing.joined(separator: ", "))")
         }
         lines.append("Name this session, or finish without setting a name if there is no meaningful signal.")
         return lines.joined(separator: "\n")
+    }
+
+    /// Prompt-text annotation only: the readFile allowed-name set keeps the
+    /// raw entry names, so the model's tool arguments still match the listing.
+    static func listingLine(forEntry entry: String, inFolderAtPath path: String) -> String {
+        let entryPath = URL(fileURLWithPath: path).appendingPathComponent(entry).path
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: entryPath, isDirectory: &isDirectory), isDirectory.boolValue {
+            return "\(entry) (folder)"
+        }
+        return entry
     }
 }

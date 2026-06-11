@@ -106,7 +106,7 @@ struct SessionNameToolTests {
         #expect(result == String(repeating: "a", count: SessionNameToolSupport.excerptByteLimit - 1))
     }
 
-    @Test func directoryEntryReturnsFallbackMessage() throws {
+    @Test func directoryEntryReturnsFolderMessage() throws {
         let folder = try makeTempFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
         try FileManager.default.createDirectory(
@@ -119,10 +119,27 @@ struct SessionNameToolTests {
             folderPath: folder.path,
             allowedNames: ["Sources"]
         )
-        #expect(result == SessionNameToolSupport.unreadableFileMessage)
+        #expect(result == SessionNameToolSupport.directoryEntryMessage)
     }
 
-    @Test func emptyFileReturnsFallbackMessage() throws {
+    // Root bypasses POSIX permission checks, so mode 000 is still readable.
+    @Test(.enabled(if: getuid() != 0))
+    func unreadablePermissionsReturnPermissionDeniedMessage() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("locked.txt")
+        try "secret".write(to: file, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+
+        let result = SessionNameToolSupport.readExcerpt(
+            fileName: "locked.txt",
+            folderPath: folder.path,
+            allowedNames: ["locked.txt"]
+        )
+        #expect(result == SessionNameToolSupport.permissionDeniedMessage)
+    }
+
+    @Test func emptyFileReturnsEmptyMessage() throws {
         let folder = try makeTempFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
         FileManager.default.createFile(atPath: folder.appendingPathComponent("empty.txt").path, contents: nil)
@@ -132,7 +149,38 @@ struct SessionNameToolTests {
             folderPath: folder.path,
             allowedNames: ["empty.txt"]
         )
-        #expect(result == SessionNameToolSupport.unreadableFileMessage)
+        #expect(result == SessionNameToolSupport.emptyFileMessage)
+    }
+
+    @Test func whitespaceOnlyFileReturnsEmptyMessage() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try "  \n\t\n".write(to: folder.appendingPathComponent("blank.txt"), atomically: true, encoding: .utf8)
+
+        let result = SessionNameToolSupport.readExcerpt(
+            fileName: "blank.txt",
+            folderPath: folder.path,
+            allowedNames: ["blank.txt"]
+        )
+        #expect(result == SessionNameToolSupport.emptyFileMessage)
+    }
+
+    // MARK: - Prompt listing annotation
+
+    @Test func listingLineAnnotatesFoldersOnly() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try "hello".write(to: folder.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            at: folder.appendingPathComponent("src"),
+            withIntermediateDirectories: true
+        )
+
+        #expect(FoundationModelsNameSuggester.listingLine(forEntry: "src", inFolderAtPath: folder.path) == "src (folder)")
+        #expect(FoundationModelsNameSuggester.listingLine(forEntry: "README.md", inFolderAtPath: folder.path) == "README.md")
+
+        let prompt = FoundationModelsNameSuggester.prompt(forPath: folder.path, entries: ["README.md", "src"])
+        #expect(prompt.contains("README.md, src (folder)"))
     }
 
     // MARK: - SuggestedNameBox semantics (first-call-wins)
