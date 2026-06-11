@@ -31,7 +31,7 @@ Cross-cutting state: **Focus**, **Bell event**, **Bell Feed**, **Surface registr
 A standard macOS `NSWindow` rendered by SwiftUI.
 
 - **Default count:** 1. Most users run Batty in a single window.
-- **Multi-window:** supported for users with multiple displays. Open with Cmd-N. Each Window is independent — its own Sidebar list of Sessions, its own selected Session.
+- **Multi-window:** planned, not yet implemented (#0234; design in `docs/multi-window-design.md`) — for users with multiple displays. Will open with Shift-Cmd-N (Cmd-N creates a new Session, per #0063). Each Window is independent — its own Sidebar list of Sessions, its own selected Session.
 - **Contains:** a collapsible left **Sidebar** plus a **Detail Area** that shows the currently selected Session.
 - **Lifecycle:** lives until the user closes it (Cmd-W on the window chrome) or quits the app. Closing the last window does not quit the app on macOS by default.
 - **Persisted:** ordered list of Windows, the selected Session in each, and frame/zoom state.
@@ -206,7 +206,7 @@ The unified, app-wide list of recent **Bell events** across every Terminal Sessi
 
 - **Access:**
   - Toolbar button using the SF Symbol `bell.badge` when there are unseen events, `bell` when clean.
-  - Keybinding: Cmd-Shift-N.
+  - Keybinding: Cmd-Shift-B (customizable in Settings → Keyboard).
   - Renders as a popover (or sheet) attached to the bell button.
 - **Contents:** newest-first, scrollable, capped (e.g. 200 entries) and persisted across launches.
 - **Each entry shows:**

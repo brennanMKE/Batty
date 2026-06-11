@@ -16,6 +16,13 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   model ↔ AppKit sync. Read this before writing to any `@Observable`
   property from view-driven code, and before any change to focus or
   selection flow. `#0229` is the case study.
+- [`multi-window-design.md`](multi-window-design.md) — the design source
+  for multi-window support (#0234 umbrella): partitioned session ownership,
+  one `TerminalHostView` per window, the `WindowGroup(for: WindowID.self)`
+  scene, the `WindowRuntime` per-window state container, window-set
+  restoration, the Shift-Cmd-N New Window action, termination semantics,
+  and the per-phase regression-risk register. Read this before working any
+  of the #0235–#0240 children.
 - [`view-hierarchy.md`](view-hierarchy.md) — how the model hierarchy
   (Workspace -> Window -> Session -> Pane -> Tab -> Terminal Session) maps
   onto the SwiftUI tree and the persistent AppKit terminal host. Read this

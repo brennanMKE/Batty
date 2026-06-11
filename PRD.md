@@ -130,7 +130,7 @@ Tab:
 └── surfaceID: UUID              [→ a libghostty surface]
 ```
 
-- **Window** — the macOS window. Single window is the default; users with multiple displays can open more (Cmd-N). Each window is independent.
+- **Window** — the macOS window. Single window is the default; multi-window is planned (#0234) so users with multiple displays can open more (Shift-Cmd-N; Cmd-N creates a new session per #0063). Each window is independent.
 - **Session** — a named workspace in the sidebar. Owns a `SplitNode` root and a `focusedPaneID`.
 - **SplitNode** — recursive `enum`: `leaf(Pane)` or `split(direction, ratio, left, right)`. Splits can nest arbitrarily.
 - **Pane** — a leaf of the split tree. One visible region. Has its own SlidingTabs bar with `tabs: [Tab]` and `activeTabID`. A new pane is born with one tab containing one fresh surface.
@@ -179,7 +179,7 @@ Tab:
 ### 6.6 Windows
 
 - **Single window is the default** and the primary supported workflow.
-- Cmd-N opens an additional window. Each window has its own sidebar of sessions and its own selected session — windows do not share session lists.
+- Multi-window is planned, not yet implemented (#0234; design in `docs/multi-window-design.md`): Shift-Cmd-N will open an additional window (Cmd-N creates a new session, per #0063). Each window has its own sidebar of sessions and its own selected session — windows do not share session lists.
 - Standard macOS window behavior (zoom, minimize, full-screen).
 
 ### 6.8 Themes
