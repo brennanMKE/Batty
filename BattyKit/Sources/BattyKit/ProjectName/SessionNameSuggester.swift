@@ -85,16 +85,26 @@ nonisolated enum SessionNameToolSupport {
         allowedNames: Set<String>,
         byteLimit: Int = excerptByteLimit
     ) -> String {
-        guard allowedNames.contains(fileName) else { return unknownFileMessage }
+        guard allowedNames.contains(fileName) else {
+            logger.info("readFile \(fileName, privacy: .public): rejected, not in the folder listing")
+            return unknownFileMessage
+        }
         let url = URL(fileURLWithPath: folderPath).appendingPathComponent(fileName)
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return unreadableFileMessage }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: byteLimit), !data.isEmpty else {
+        guard let data = readPrefix(of: url, byteLimit: byteLimit),
+              let text = decodeUTF8Prefix(data),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            logger.info("readFile \(fileName, privacy: .public): unreadable, returning fallback")
             return unreadableFileMessage
         }
-        guard let text = decodeUTF8Prefix(data) else { return unreadableFileMessage }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? unreadableFileMessage : text
+        logger.info("readFile \(fileName, privacy: .public): read \(data.count) bytes")
+        return text
+    }
+
+    private static func readPrefix(of url: URL, byteLimit: Int) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: byteLimit), !data.isEmpty else { return nil }
+        return data
     }
 
     /// The byte cap can split a multi-byte UTF-8 sequence; dropping up to
@@ -151,8 +161,10 @@ nonisolated struct SetSessionNameTool: Tool {
 
     func call(arguments: Arguments) async throws -> String {
         if box.set(arguments.name) {
+            logger.info("setSessionName '\(arguments.name, privacy: .public)': accepted")
             return "Session name set to \(arguments.name)."
         }
+        logger.info("setSessionName '\(arguments.name, privacy: .public)': ignored, a name was already set")
         return "Session name was already set; the first name is kept."
     }
 }
@@ -200,6 +212,7 @@ public final class FoundationModelsNameSuggester: SessionNameSuggesting {
             return nil
         }
         let entries = Self.topLevelEntries(atPath: path)
+        logger.info("suggesting name for \(path, privacy: .public) with \(entries.count) top-level entries")
         let box = SuggestedNameBox()
         // A dedicated session per request keeps the naming instructions
         // tight and avoids sharing context with any other model use. The
@@ -213,6 +226,7 @@ public final class FoundationModelsNameSuggester: SessionNameSuggesting {
             ],
             instructions: Self.instructions
         )
+        let start = Date()
         do {
             _ = try await session.respond(to: Self.prompt(forPath: path, entries: entries))
         } catch is CancellationError {
@@ -221,8 +235,12 @@ public final class FoundationModelsNameSuggester: SessionNameSuggesting {
             logger.error("session name suggestion failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
-        let name = box.value
-        logger.info("suggestion for \(path, privacy: .public): '\(name ?? "(none)", privacy: .public)'")
+        let elapsed = Date().timeIntervalSince(start)
+        guard let name = box.value else {
+            logger.info("suggestion for \(path, privacy: .public): model finished without calling setSessionName (\(elapsed, format: .fixed(precision: 1))s)")
+            return nil
+        }
+        logger.info("suggestion for \(path, privacy: .public): '\(name, privacy: .public)' via setSessionName (\(elapsed, format: .fixed(precision: 1))s)")
         return name
         #else
         return nil
