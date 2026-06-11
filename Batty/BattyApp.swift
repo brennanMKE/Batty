@@ -41,6 +41,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
             BattyShortcuts.handle(event) ? nil : event
         }
         TerminalClickFocusMonitor.start()
+        AppStateStore.shared.nameSuggester = FoundationModelsNameSuggester.makeIfAvailable()
         AppStateStore.shared.onAllSessionsClosed = {
             logger.info("onAllSessionsClosed fired; terminating app")
             NSApp.terminate(nil)

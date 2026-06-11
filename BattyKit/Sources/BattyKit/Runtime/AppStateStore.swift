@@ -18,6 +18,20 @@ public final class AppStateStore {
     /// Called when `removeSession` empties `sessions`. Nil in unit tests;
     /// the app delegate sets this to terminate the process. (#0217)
     @ObservationIgnored public var onAllSessionsClosed: (() -> Void)?
+    /// AI fallback for session auto-naming (#0231). Nil disables the AI
+    /// step entirely — the deterministic chain behaves exactly as before.
+    /// The app delegate wires `FoundationModelsNameSuggester.makeIfAvailable()`.
+    @ObservationIgnored public var nameSuggester: SessionNameSuggesting?
+    /// One in-flight AI naming request per session, keyed by session id and
+    /// tagged with the cwd it was issued for so a repeat report of the same
+    /// cwd doesn't cancel-and-restart the request.
+    @ObservationIgnored var nameSuggestionTasks: [UUID: (path: String, task: Task<Void, Never>)] = [:]
+    /// In-memory memo of path -> suggestion (or nil for NONE/junk/error) so
+    /// repeated cds into the same folder don't re-prompt the model. Distinct
+    /// from `SessionNameCache` and deliberately never persisted — AI names
+    /// are ephemeral and must re-resolve on every launch.
+    @ObservationIgnored private var nameSuggestionMemo: [String: String?] = [:]
+    private static let nameSuggestionMemoCap = 256
 
     public init(
         sessions: [SessionRuntime] = [],
@@ -76,6 +90,7 @@ public final class AppStateStore {
         }
         let session = sessions[index]
         logger.info("removeSession id=\(id, privacy: .public) title='\(session.title, privacy: .public)' sessionsAfter=\(self.sessions.count - 1)")
+        cancelNameSuggestion(forSessionID: id)
         let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
         cleanUpBellState(forTabIDs: tabIDsToClear)
         for tabID in tabIDsToClear {
@@ -98,8 +113,10 @@ public final class AppStateStore {
         guard let session = sessions.first(where: { $0.id == id }) else { return }
         session.title = trimmed
         // A user-set rename pins the title — subsequent auto-naming
-        // paths (name cache, project-name resolver) must respect it.
+        // paths (name cache, project-name resolver, AI suggestion) must
+        // respect it.
         session.titleOverride = true
+        cancelNameSuggestion(forSessionID: id)
         guard !Self.isDefaultSessionTitle(trimmed) else { return }
         let firstTab = session.tree.root.firstLeafPane.tabs[0]
         let cwd = firstTab.terminal.workingDirectory
@@ -405,17 +422,85 @@ public final class AppStateStore {
             let cwd = anchorTab.terminal.workingDirectory
                 ?? anchorTab.terminal.configuration.workingDirectory
             guard let cwd, !cwd.isEmpty else { return }
-            let resolved = Self.resolveAutoTitle(
+            var resolved = Self.resolveAutoTitle(
                 forCWD: cwd,
                 sessionIndex: index,
                 cache: nameCache,
                 resolver: ProjectNameResolver.shared
             )
+            if Self.isDefaultSessionTitle(resolved) {
+                // Deterministic chain missed — AI fallback (#0231). A
+                // memoized suggestion stands in for the default directly;
+                // an unknown path kicks off an async request.
+                if let memoized = nameSuggestionMemo[cwd] {
+                    cancelNameSuggestion(forSessionID: session.id)
+                    if let name = memoized {
+                        resolved = name
+                    }
+                } else {
+                    scheduleNameSuggestion(for: session, cwd: cwd)
+                }
+            } else {
+                cancelNameSuggestion(forSessionID: session.id)
+            }
             guard resolved != session.title else { return }
             logger.info("auto-rename session \(session.title, privacy: .public) -> \(resolved, privacy: .public) for cwd=\(cwd, privacy: .public)")
             session.title = resolved
             return
         }
+    }
+
+    private func cancelNameSuggestion(forSessionID sessionID: UUID) {
+        guard let inflight = nameSuggestionTasks[sessionID] else { return }
+        inflight.task.cancel()
+        nameSuggestionTasks[sessionID] = nil
+    }
+
+    /// Kicks off the async AI naming request for `cwd`. The deterministic
+    /// title has already settled synchronously; the suggestion applies later
+    /// only if nothing superseded it (see `applySuggestedName`). The result —
+    /// including "no name" — is memoized so repeat visits don't re-prompt.
+    private func scheduleNameSuggestion(for session: SessionRuntime, cwd: String) {
+        guard let suggester = nameSuggester else { return }
+        if let inflight = nameSuggestionTasks[session.id] {
+            if inflight.path == cwd { return }
+            inflight.task.cancel()
+            nameSuggestionTasks[session.id] = nil
+        }
+        let sessionID = session.id
+        let task = Task { [weak self] in
+            let raw = await suggester.suggestName(forPath: cwd)
+            guard let self, !Task.isCancelled else { return }
+            self.nameSuggestionTasks[sessionID] = nil
+            let name = raw.flatMap(SessionNameSuggestion.sanitize)
+            if self.nameSuggestionMemo.count >= Self.nameSuggestionMemoCap {
+                self.nameSuggestionMemo.removeAll(keepingCapacity: true)
+            }
+            self.nameSuggestionMemo.updateValue(name, forKey: cwd)
+            guard let name else { return }
+            self.applySuggestedName(name, toSessionID: sessionID, forCWD: cwd)
+        }
+        nameSuggestionTasks[sessionID] = (path: cwd, task: task)
+    }
+
+    /// Applies an AI suggestion only if the world hasn't moved on since the
+    /// request was issued: the session still exists, is still single-pane,
+    /// the user hasn't renamed it, the anchor cwd is unchanged, and the title
+    /// is still the default (no newer resolution superseded the request).
+    /// Deliberately never writes `nameCache` and never sets `titleOverride` —
+    /// an AI suggestion has the same standing as a rules-derived name: a
+    /// later cd re-resolves it and only an explicit user rename is stored.
+    private func applySuggestedName(_ name: String, toSessionID sessionID: UUID, forCWD cwd: String) {
+        guard let session = sessions.first(where: { $0.id == sessionID }) else { return }
+        guard !session.titleOverride else { return }
+        guard session.tree.allPanes.count == 1 else { return }
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        let currentCWD = anchorTab.terminal.workingDirectory
+            ?? anchorTab.terminal.configuration.workingDirectory
+        guard currentCWD == cwd else { return }
+        guard Self.isDefaultSessionTitle(session.title) else { return }
+        logger.info("AI auto-name session \(session.title, privacy: .public) -> \(name, privacy: .public) for cwd=\(cwd, privacy: .public)")
+        session.title = name
     }
 
     /// Pure decision function for the single-pane CWD-driven auto-naming
