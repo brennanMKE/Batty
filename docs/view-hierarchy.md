@@ -133,40 +133,40 @@ Notes on the layout:
 
 The load-bearing section. After `#0072` -> `#0074` -> `#0075` Phase 2,
 the terminal NSViews live outside SwiftUI's rebuild path entirely.
+`#0236` extended the design to support one host per content window
+(see amendments in §§4–6 below and `docs/multi-window-design.md` §3).
 
 ```
               SwiftUI                                AppKit
               -------                                ------
 
-         TerminalHostInstaller
+         TerminalHostInstaller(windowID: W)
          (NSViewRepresentable)  ------\
                                        \
                                         \
                                          v
                                   TerminalHostStore.shared       (singleton, @MainActor)
                                   --------------------------
-                                   .hostView : TerminalHostView   <----+
-                                   .terminalViews :                    |
-                                       [UUID: AppTerminalView]         | strong ref
-                                                                       | from store
+                                   .hosts :                             |
+                                       [WindowID: TerminalHostView]    | one host per
+                                   .terminalViews :                    | content window
+                                       [UUID: AppTerminalView]         |
+                                   .tabWindowMap :                     | strong ref
+                                       [UUID: WindowID]                | from store
                                                                        |
         TerminalPlaceholderView                                        |
         (per-tab; geometry probe)                                      |
-            preference(TerminalPlacementPreferenceKey)                 |
-              [TabID: Placement(frame, isVisible)]                     |
-                |                                                      |
-                v                                                      |
-        SessionDetailView.onPreferenceChange                           |
-              -> TerminalHostStore.shared.updatePlacements(_:)         |
+            onGeometryChange / onChange(of: isVisible)                 |
+              -> TerminalHostStore.shared.setPlacement(_:forTabID:)    |
                                                                        |
                                                                        v
-                                                       TerminalHostView (NSView, isFlipped=true)
-                                                       --------------------------------------
-                                                       subviews (one per live TabRuntime):
-                                                          AppTerminalView (#tab-A) frame, isHidden
-                                                          AppTerminalView (#tab-B) frame, isHidden
-                                                          AppTerminalView (#tab-C) frame, isHidden
-                                                          ...
+                                                   TerminalHostView (NSView, isFlipped=true)
+                                                   — one per content window —
+                                                   subviews (one per live TabRuntime in window):
+                                                      AppTerminalView (#tab-A) frame, isHidden
+                                                      AppTerminalView (#tab-B) frame, isHidden
+                                                      AppTerminalView (#tab-C) frame, isHidden
+                                                      ...
 ```
 
 Why this exists. SwiftUI tears down `NSViewRepresentable` hosts on
@@ -176,24 +176,28 @@ representable to be dismantled and re-made. Pre-`#0075`, hosting the
 `AppTerminalView` directly inside a per-pane `NSViewRepresentable`
 meant SwiftUI could (and did) destroy the underlying `ghostty_surface_t`
 and kill the shell. The persistent-host design moves ownership of the
-`AppTerminalView` from the representable to the singleton:
+`AppTerminalView` from the representable to the store:
 
 - `TerminalHostStore.shared` lives for the lifetime of the process.
-- `TerminalHostStore.shared.hostView` is a single `TerminalHostView`
-  `NSView`, created once.
+- `TerminalHostStore.shared.hostView(forWindowID:)` lazily creates and
+  permanently owns one `TerminalHostView` per content `WindowID`.
 - `TerminalHostInstaller.makeNSView(context:)` returns that **same
-  instance** every call. SwiftUI is free to dismantle and remake the
-  representable; the host and every terminal subview survive in the
-  store. This is Pattern 3 from
+  instance** for the window every call. SwiftUI is free to dismantle and
+  remake the representable; the host and every terminal subview survive
+  in the store. This is Pattern 3 from
   [`nsviewrepresentable-state-persistence.md`](nsviewrepresentable-state-persistence.md).
 - Each `TabRuntime` gets its `AppTerminalView` created lazily in
-  `TerminalHostStore.terminalView(for:)`, added to the host **once**,
-  and **never reparented**.
-- SwiftUI's per-pane `TerminalPlaceholderView` reports its frame in a
-  named coordinate space via `TerminalPlacementPreferenceKey`.
-  `SessionDetailView` aggregates those frames and forwards them to
-  `TerminalHostStore.updatePlacements(_:)`, which translates them into
-  `frame` updates and `isHidden` toggles on the matching subviews.
+  `TerminalHostStore.terminalView(for:windowID:)`, added to **that
+  window's host** once, and **never reparented** — not even to another
+  window's host (amendment 1 in §4 below).
+- `TerminalPlaceholderView` reads its `windowID` from the SwiftUI
+  environment (set by `SessionDetailView`) and passes it to
+  `terminalView(for:windowID:)`. Geometry reporting goes directly to
+  `TerminalHostStore.setPlacement(_:forTabID:)` via `onGeometryChange`
+  and `onChange(of: isVisible)`.
+- Placement updates are scoped per window via
+  `updatePlacements(_:forWindowID:)` so one window's preference
+  emissions cannot affect another window's terminals (amendment 4 in §4).
 
 This mirrors the **Surface registry** rule in CLAUDE.md: SwiftUI only
 ever stores `surfaceID: UUID`, never the C handle; view rebuilds must
@@ -203,16 +207,16 @@ stores at most `tab.id`, the host store maps `tab.id` to the live
 
 Key files:
 
-- [`../BattyKit/Sources/BattyKit/TerminalHostStore.swift`](../BattyKit/Sources/BattyKit/TerminalHostStore.swift)
-  — the singleton; the only mutator is `updatePlacements(_:)`.
-- [`../BattyKit/Sources/BattyKit/TerminalHostView.swift`](../BattyKit/Sources/BattyKit/TerminalHostView.swift)
+- [`../BattyKit/Sources/BattyKit/Runtime/TerminalHostStore.swift`](../BattyKit/Sources/BattyKit/Runtime/TerminalHostStore.swift)
+  — the process-wide host registry; placement mutators are window-scoped.
+- [`../BattyKit/Sources/BattyKit/Views/TerminalHostView.swift`](../BattyKit/Sources/BattyKit/Views/TerminalHostView.swift)
   — the persistent container `NSView` (`isFlipped = true` to match
   SwiftUI coordinates).
-- [`../BattyKit/Sources/BattyKit/TerminalHostInstaller.swift`](../BattyKit/Sources/BattyKit/TerminalHostInstaller.swift)
-  — the `NSViewRepresentable` shim. `makeNSView` returns the singleton;
-  `updateNSView` and `dismantleNSView` are no-ops by design.
-- [`../BattyKit/Sources/BattyKit/TerminalPlaceholderView.swift`](../BattyKit/Sources/BattyKit/TerminalPlaceholderView.swift)
-  — the geometry probe + `PreferenceKey` that drives placement.
+- [`../BattyKit/Sources/BattyKit/Util/TerminalHostInstaller.swift`](../BattyKit/Sources/BattyKit/Util/TerminalHostInstaller.swift)
+  — the `NSViewRepresentable` shim. `makeNSView` returns the per-window
+  host; `updateNSView` and `dismantleNSView` are no-ops by design.
+- [`../BattyKit/Sources/BattyKit/Views/TerminalPlaceholderView.swift`](../BattyKit/Sources/BattyKit/Views/TerminalPlaceholderView.swift)
+  — the geometry probe that drives per-tab placement.
 
 ---
 
@@ -220,20 +224,24 @@ Key files:
 
 These are non-negotiable. Violating any one of them re-introduces the
 class of bugs `#0072`/`#0074`/`#0075` were filed to eliminate.
+Amendments 1–4 were added in `#0236` to extend the rules to a
+multi-window topology; they do not change single-window behavior.
 
 - **Never call `removeFromSuperview()` on an `AppTerminalView` outside
   the tab-close path.** The only legitimate caller is
-  `TerminalHostStore.releaseTerminalView(forTabID:)`, which itself is
-  only invoked from `AppStateStore.closeTab(id:)`. If you find yourself
-  reaching for `removeFromSuperview()` elsewhere, you are wrong.
+  `TerminalHostStore.releaseTerminalView(forTabID:)`, which is invoked
+  from `AppStateStore.closeTab(id:)` (for per-tab close) and from the
+  window-close cascade (routing through the same per-tab close path for
+  every tab in the closing window). If you find yourself reaching for
+  `removeFromSuperview()` elsewhere, you are wrong.
 
 - **Never replace the host's `subviews` array.** Treat `host.subviews`
   as append-only-and-individually-removable. Wholesale replacement
   destroys every live PTY.
 
 - **Never recreate a tab's `AppTerminalView` while the `TabRuntime` is
-  alive.** `TerminalHostStore.terminalView(for:)` is idempotent: it
-  returns the existing view on every call after the first. If you
+  alive.** `TerminalHostStore.terminalView(for:windowID:)` is idempotent:
+  it returns the existing view on every call after the first. If you
   bypass it to build a fresh `AppTerminalView`, the old one stays in
   the host, the new one isn't tracked, and bell/title/focus events
   scatter.
@@ -241,8 +249,8 @@ class of bugs `#0072`/`#0074`/`#0075` were filed to eliminate.
 - **`updateNSView` is a no-op (or property mutation only).** The
   `TerminalHostInstaller` ships an explicitly empty `updateNSView`. Do
   not add `addSubview`/`removeFromSuperview` to it. Geometry flows
-  through `TerminalHostStore.updatePlacements(_:)`, not through
-  representable updates.
+  through `TerminalHostStore.setPlacement(_:forTabID:)` and
+  `updatePlacements(_:forWindowID:)`, not through representable updates.
 
 - **The placeholder is empty by design.** Don't put SwiftUI content
   inside `TerminalPlaceholderView` expecting it to overlay the
@@ -266,6 +274,43 @@ class of bugs `#0072`/`#0074`/`#0075` were filed to eliminate.
   `TerminalHostView` for the file-drop path; future event paths with
   the same shape go in the same place.
 
+**Amendment 1 (`#0236`) — cross-window reparenting is forbidden.**
+An `AppTerminalView` is added to exactly one window's `TerminalHostView`
+and never moves to another host. The §5 invariant is per-window: once
+`view.window` is set to a content `NSWindow`, it stays that window for
+the entire lifetime of the `AppTerminalView`. Moving a session between
+windows would require reparenting the `AppTerminalView` across hosts,
+which is forbidden; see `docs/multi-window-design.md` §10 (out of
+scope for v1). `TerminalHostStore.terminalView(for:windowID:)` logs an
+error and returns the existing view if called with a mismatched
+`windowID` for a tab that's already registered.
+
+**Amendment 2 (`#0236`) — window close routes through the per-tab
+close path.**
+`releaseTerminalView(forTabID:)` remains the **sole** `removeFromSuperview`
+caller. Window close calls `closeTab(id:)` (or its cascade) for every
+tab in the window, which invokes `releaseTerminalView`. After all tabs
+are released, `releaseHost(forWindowID:)` drops the host entry from the
+registry. A host is never torn down while it still contains terminal
+subviews — `releaseHost` logs a warning and is a no-op if orphaned
+tab entries remain.
+
+**Amendment 3 (`#0236`) — per-window placement maps guard cross-window
+churn.**
+`updatePlacements(_:forWindowID:)` touches only the terminal views whose
+`tabWindowMap[tabID] == windowID`. One window's preference emissions
+(from its `TerminalPlaceholderView` subtree) can never hide or resize
+another window's terminals.
+
+**Amendment 4 (`#0236`) — window close must not disturb surviving
+windows' terminal state.**
+When a window closes, its SwiftUI tree unmounts, which may trigger
+`onPreferenceChange` or `onGeometryChange` callbacks. These must only
+emit into that window's placement scope. The per-window placement
+isolation (Amendment 3) is the guard: surviving windows' terminals
+are unaffected because the closing window's callbacks are scoped to its
+own `windowID`.
+
 These restate the rules from
 [`nsviewrepresentable-state-persistence.md`](nsviewrepresentable-state-persistence.md)
 in Batty's specific terminology.
@@ -274,7 +319,9 @@ in Batty's specific terminology.
 
 ## 5. Lifecycle of a terminal NSView
 
-A timeline from `TabRuntime.init` through tab close.
+A timeline from `TabRuntime.init` through tab close (single window;
+multi-window is identical per window, with the `windowID` scoping at
+each step).
 
 ```
   time
@@ -285,45 +332,53 @@ A timeline from `TabRuntime.init` through tab close.
    |    [no AppTerminalView yet; no PTY yet]
    |
    |  First mount of TerminalPlaceholderView for this tab
-   |    body calls TerminalHostStore.shared.terminalView(for:)
+   |    reads windowID from SwiftUI environment (set by SessionDetailView)
+   |    body calls TerminalHostStore.shared.terminalView(for:windowID:)
    |    store lazily creates AppTerminalView
    |    store sets isHidden = true on the new view
-   |    store calls host.addSubview(view)
+   |    store calls hostView(forWindowID:).addSubview(view)
    |    store records terminalViews[tab.id] = view
+   |    store records tabWindowMap[tab.id] = windowID
    |    tab.terminalNSView = view
-   |    log: "created terminal view for tab <UUID>"
+   |    log: "created terminal view for tab <UUID> in window <UUID>"
    |
    |  AppKit walks viewDidMoveToWindow up the new subtree
    |    libghostty observes a non-nil window
    |    PTY spawns, IO/render threads start, display link binds
    |    log (libghostty): "io_exec: started subcommand"
-   |    log: "attached host to window"  (first mount only)
+   |    log: "attached host to window"  (first mount for this window only)
    |
    |  Subsequent SwiftUI activity (selection, splits, sidebar toggle,
    |  pane focus change, window resize, NSViewRepresentable churn)
-   |    placeholder reports a new frame via PreferenceKey
-   |    SessionDetailView.onPreferenceChange
-   |      -> TerminalHostStore.updatePlacements(_:)
+   |    placeholder's onGeometryChange / onChange(of: isVisible)
+   |      -> TerminalHostStore.setPlacement(_:forTabID:)
    |    store mutates view.frame and view.isHidden only
    |    viewDidMoveToWindow does NOT fire again
    |    PTY untouched, scrollback untouched, selection untouched
    |
-   |  AppStateStore.closeTab(id:)
+   |  WindowRuntime.closeTab(id:)  [or window-close cascade]
    |    TerminalHostStore.releaseTerminalView(forTabID:)
    |      terminalViews.removeValue(forKey: id)
    |      placements.removeValue(forKey: id)
+   |      tabWindowMap.removeValue(forKey: id)
    |      view.removeFromSuperview()
    |    viewDidMoveToWindow(nil) fires inside libghostty
    |    surface coordinator deinit -> ghostty_surface_free
    |    PTY killed, Metal resources released
    |    log: "released terminal view for tab <UUID>"
    |
+   |  [Window close only] — after ALL tabs in the window released:
+   |    TerminalHostStore.releaseHost(forWindowID:)
+   |    hosts.removeValue(forKey: windowID)
+   |    log: "released host for window <UUID>"
+   |
    v
 ```
 
 The invariant: between steps 2 and 5, `view.window` is the same
-NSWindow for the entire lifetime of the `AppTerminalView`. Any other
-behavior is a bug.
+NSWindow for the entire lifetime of the `AppTerminalView`. This is a
+per-window invariant: no reparenting across hosts is permitted
+(Amendment 1 in §4).
 
 ---
 
@@ -335,9 +390,11 @@ is what *normal* looks like.
 
 | Signal | Category | What "good" looks like |
 |---|---|---|
-| `created terminal view for tab <UUID>` | `TerminalHostStore` | Fires **exactly once per tab**, at first appearance. |
+| `created terminal view for tab <UUID> in window <UUID>` | `TerminalHostStore` | Fires **exactly once per tab**, at first appearance. |
 | `released terminal view for tab <UUID>` | `TerminalHostStore` | Fires **exactly once per closed tab**, at `closeTab(id:)`. |
-| `attached host to window` | `TerminalHostView` | Fires **once at app launch**. More than once means the singleton is being recreated — the persistence is broken. |
+| `created host for window <UUID>` | `TerminalHostStore` | Fires **once per content window**, when that window's host is first requested. |
+| `released host for window <UUID>` | `TerminalHostStore` | Fires **once per content window close**, after all the window's tabs have been released. |
+| `attached host to window` | `TerminalHostView` | Fires **once per content window**, when that window's host first lands in the window. More than once **for the same window** means the host is being recreated — the persistence is broken. |
 | libghostty `io_exec: started subcommand` | (libghostty internal) | Fires **only on tab create**. Firing during navigation, selection, or resize means a PTY is being respawned — the persistence is broken. |
 | `focus skipped: no AppTerminalView matched the requested terminal state` | various | **A brief one at cold launch is expected** (focus runs before the first placeholder mount). Persistent or repeated ones during navigation mean the host attach is broken. |
 
@@ -345,34 +402,40 @@ Quick diagnostic playbook:
 
 - **Terminal is blank after switching session.** The placeholder is
   reporting frames but the host isn't applying them. Check
-  `TerminalHostStore.updatePlacements(_:)` is being called from
-  `SessionDetailView.onPreferenceChange`. Check the placement's
+  `TerminalHostStore.setPlacement(_:forTabID:)` is being called from
+  `TerminalPlaceholderView.onGeometryChange`. Check the placement's
   `isVisible` for the active tab.
 - **Terminal reappears empty after the sidebar collapse.** The
   representable was torn down and `makeNSView` built a *new* host
-  instead of returning the singleton. Verify
+  instead of returning the window's existing one. Verify
   `TerminalHostInstaller.makeNSView` returns
-  `TerminalHostStore.shared.hostView` (not `TerminalHostView(frame: .zero)`).
-- **Multiple shell prompts appear when opening a tab.** `terminalView(for:)`
+  `TerminalHostStore.shared.hostView(forWindowID: windowID)` (not a
+  freshly constructed `TerminalHostView(frame: .zero)`).
+- **Multiple shell prompts appear when opening a tab.** `terminalView(for:windowID:)`
   was bypassed and a fresh `AppTerminalView` was constructed. The new view
   spawns a new PTY; the old one is still attached. Always go through the
   store.
 - **Click in a terminal doesn't focus it / clicks pass through the
   terminal area.** Hit-testing on `TerminalHostView` is custom (see the
   file); a `frame` mismatch between the placeholder and the host's
-  subview makes the click miss. Log the preference-key payload and the
+  subview makes the click miss. Log the `setPlacement` calls and the
   host subview's `frame` for the same tab id and compare.
 - **PTY survives after the tab chip is gone.** The `closeTab` path
   didn't call `releaseTerminalView(forTabID:)`. Check the close path
-  in `AppStateStore`.
+  in `WindowRuntime`.
+- **`releaseHost` logs a warning and the host stays.** A tab's
+  `releaseTerminalView` wasn't called before `releaseHost`. The window-
+  close path must iterate all tabs in the window's sessions and close
+  each one before calling `releaseHost`.
 
 ---
 
 ## Quick answer key for new contributors
 
-- *Where does a tab's NSView live?* — Inside `TerminalHostStore.shared.hostView`,
-  as one of its `subviews`. Created lazily in
-  `TerminalHostStore.terminalView(for:)`. Released by
+- *Where does a tab's NSView live?* — Inside the `TerminalHostView` for
+  its window (`TerminalHostStore.shared.hostView(forWindowID: tab's window)`),
+  as one of its `subviews`. Created lazily via
+  `TerminalHostStore.terminalView(for:windowID:)`. Released by
   `TerminalHostStore.releaseTerminalView(forTabID:)` on `closeTab`.
 - *What happens when SwiftUI tears down a `PaneView`?* — Nothing
   destructive to the terminal. The placeholder stops reporting frames;
@@ -381,10 +444,12 @@ Quick diagnostic playbook:
   with its PTY running. If the pane re-appears, the placeholder mounts
   again and the host re-shows the view at the new frame.
 - *Where do I look if the terminal is blank?* — Three places, in order:
-  (1) is `TerminalHostInstaller` returning the singleton? (2) is the
-  placeholder reporting a frame with `isVisible == true`? (3) is the
-  host's matching subview unhidden and at the reported frame?
+  (1) is `TerminalHostInstaller` returning the same host for this window
+  (not a fresh one)? (2) is the placeholder reporting a frame with
+  `isVisible == true`? (3) is the host's matching subview unhidden and
+  at the reported frame?
 
 ---
 
-*Document version: 1 — 2026-05-12.*
+*Document version: 2 — 2026-06-15. §§3–6 amended in #0236 for
+per-window host topology (one TerminalHostView per content window).*

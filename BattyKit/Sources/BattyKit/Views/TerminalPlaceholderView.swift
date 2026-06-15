@@ -25,12 +25,22 @@ struct TerminalPlaceholderView: View {
     let paneID: UUID
     let isPaneFocused: Bool
 
+    @Environment(\.windowID) private var windowID
+
     @State private var lastFrame: CGRect = .zero
 
     var body: some View {
         // Touch the terminal view eagerly so libghostty starts the PTY
-        // the moment the first placeholder appears. Idempotent.
-        let _ = TerminalHostStore.shared.terminalView(for: tab)
+        // the moment the first placeholder appears. Idempotent — the
+        // store returns the existing view on every call after the first.
+        //
+        // `windowID` is set in the environment by `SessionDetailView`
+        // (via `.environment(\.windowID, store.windows[0].id)`), so it is
+        // always non-nil here. The force-unwrap is deliberately a crash:
+        // a nil windowID means the view is mounted outside its intended
+        // host hierarchy, and crashing early surfaces that misconfiguration.
+        let windowID = windowID!
+        let _ = TerminalHostStore.shared.terminalView(for: tab, windowID: windowID)
         Color.clear
             .onGeometryChange(
                 for: CGRect.self,

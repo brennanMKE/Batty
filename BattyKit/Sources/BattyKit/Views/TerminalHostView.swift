@@ -30,6 +30,15 @@ final class TerminalHostView: NSView {
 
     override var isFlipped: Bool { true }
 
+    /// Set by ``TerminalHostStore`` immediately after creation so
+    /// `viewDidMoveToWindow` can include the window ID in its log line.
+    var windowID: WindowID?
+
+    /// The `NSWindow` the host was most recently logged as attached to.
+    /// Compared in `viewDidMoveToWindow` to suppress duplicate log lines
+    /// when AppKit fires the callback more than once for the same window.
+    private weak var attachedWindow: NSWindow?
+
     /// Tab whose terminal subview a Finder drag currently hovers over.
     /// Tracked so `draggingExited` knows which tab to clear, even if the
     /// pointer left the host without crossing a different subview.
@@ -54,6 +63,14 @@ final class TerminalHostView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let newWindow = self.window, newWindow !== attachedWindow else { return }
+        attachedWindow = newWindow
+        let idDesc = windowID.map { $0.value.uuidString } ?? "unknown"
+        logger.info("attached host to window \(idDesc, privacy: .public)")
     }
 
     /// The host itself is decorative — it never paints. Click-throughs
