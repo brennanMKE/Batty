@@ -9,15 +9,20 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 @Observable
 public final class AppStateStore {
     public static let shared = AppStateStore()
-    public private(set) var sessions: [SessionRuntime]
-    public var selectedSessionID: UUID?
+
+    // MARK: - Global services (cross-window)
+
     public let bellFeed: BellFeedStore
     public let nameCache: SessionNameCache
     public let themeChrome: ThemeChrome
     @ObservationIgnored public var notifier: BellNotifying?
-    /// Called when `removeSession` empties `sessions`. Nil in unit tests;
-    /// the app delegate sets this to terminate the process. (#0217)
-    @ObservationIgnored public var onAllSessionsClosed: (() -> Void)?
+    /// Called when `removeSession` empties the window's `sessions`. Nil in
+    /// unit tests; the app delegate sets this to terminate the process.
+    /// Forwarded to `windows[0].onAllSessionsClosed`.
+    @ObservationIgnored public var onAllSessionsClosed: (() -> Void)? {
+        get { windows[0].onAllSessionsClosed }
+        set { windows[0].onAllSessionsClosed = newValue }
+    }
     /// AI fallback for session auto-naming (#0231). Nil disables the AI
     /// step entirely — the deterministic chain behaves exactly as before.
     /// The app delegate wires `FoundationModelsNameSuggester.makeIfAvailable()`.
@@ -33,6 +38,19 @@ public final class AppStateStore {
     @ObservationIgnored private var nameSuggestionMemo: [String: String?] = [:]
     private static let nameSuggestionMemoCap = 256
 
+    // MARK: - Per-window state
+
+    /// All content windows. One element in the current (phase 2) single-window
+    /// era; grows in `#0237` when `New Window` is added.
+    @ObservationIgnored public private(set) var windows: [WindowRuntime]
+
+    /// Returns the `WindowRuntime` whose `id` matches, or `nil` if not found.
+    public func windowRuntime(for windowID: WindowID) -> WindowRuntime? {
+        windows.first { $0.id == windowID }
+    }
+
+    // MARK: - Init
+
     public init(
         sessions: [SessionRuntime] = [],
         bellFeed: BellFeedStore = BellFeedStore(),
@@ -43,141 +61,148 @@ public final class AppStateStore {
         self.nameCache = nameCache
         self.notifier = notifier
         self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme()))
-        if sessions.isEmpty {
-            let initial = SessionRuntime(title: String(localized: "Session 1"))
-            self.sessions = [initial]
-            self.selectedSessionID = initial.id
-        } else {
-            self.sessions = sessions
-            self.selectedSessionID = sessions.first?.id
-        }
+        let window = WindowRuntime(
+            sessions: sessions,
+            bellFeed: bellFeed,
+            nameCache: nameCache
+        )
+        self.windows = [window]
+    }
+
+    // MARK: - Per-window forwarding shims (resolve to windows[0])
+    //
+    // Every property and method below is a thin forwarder to the single
+    // WindowRuntime. All existing call sites — app code, views, shortcuts,
+    // tests — continue to resolve through AppStateStore unchanged. When
+    // #0237 adds multiple windows, callers that need to target a specific
+    // window will switch to windowRuntime(for:) directly.
+
+    public var sessions: [SessionRuntime] {
+        windows[0].sessions
+    }
+
+    public var selectedSessionID: UUID? {
+        get { windows[0].selectedSessionID }
+        set { windows[0].selectedSessionID = newValue }
     }
 
     public var selectedSession: SessionRuntime? {
-        guard let id = selectedSessionID else { return nil }
-        return sessions.first { $0.id == id }
+        windows[0].selectedSession
+    }
+
+    public var pendingCloseRequest: PendingCloseRequest? {
+        get { windows[0].pendingCloseRequest }
+        set { windows[0].pendingCloseRequest = newValue }
     }
 
     @discardableResult
     public func addSession(title: String? = nil) -> SessionRuntime {
-        let sourceTab = selectedSession?.focusedPane.activeTab
-        let inheritedCWD = sourceTab?.terminal.workingDirectory
-            ?? sourceTab?.terminal.configuration.workingDirectory
-        let cachedName: String? = {
-            guard title == nil, let cwd = inheritedCWD, !cwd.isEmpty else { return nil }
-            return nameCache.lookup(path: cwd)
-        }()
-        let resolvedTitle = title ?? cachedName ?? String(localized: "Session \(sessions.count + 1)")
-        let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: inheritedCWD)])
-        let tree = SplitTree(root: .leaf(firstPane))
-        let session = SessionRuntime(title: resolvedTitle, tree: tree)
-        // An explicitly-provided title is an authored name; pin it so cwd-driven
-        // auto-naming (#0213/#0227) can't overwrite it — same contract as
-        // renameSession. Auto-derived titles (nil arg → cache/project/default)
-        // stay live so they keep tracking the cwd.
-        if title != nil {
-            session.titleOverride = true
-        }
-        sessions.append(session)
-        selectedSessionID = session.id
-        return session
+        windows[0].addSession(title: title)
     }
 
     public func removeSession(id: UUID) {
-        guard let index = sessions.firstIndex(where: { $0.id == id }) else {
-            logger.warning("removeSession id=\(id, privacy: .public) not found in store")
-            return
-        }
-        let session = sessions[index]
-        logger.info("removeSession id=\(id, privacy: .public) title='\(session.title, privacy: .public)' sessionsAfter=\(self.sessions.count - 1)")
         cancelNameSuggestion(forSessionID: id)
-        let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
-        cleanUpBellState(forTabIDs: tabIDsToClear)
-        for tabID in tabIDsToClear {
-            TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
-        }
-        sessions.remove(at: index)
-        if selectedSessionID == id {
-            let newIndex = max(0, index - 1)
-            selectedSessionID = sessions.indices.contains(newIndex) ? sessions[newIndex].id : nil
-        }
-        if sessions.isEmpty {
-            logger.info("removeSession all sessions gone; invoking onAllSessionsClosed")
-            onAllSessionsClosed?()
-        }
+        windows[0].removeSession(id: id)
     }
 
     public func renameSession(id: UUID, to newTitle: String) {
-        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
-        session.title = trimmed
-        // A user-set rename pins the title — subsequent auto-naming
-        // paths (name cache, project-name resolver, AI suggestion) must
-        // respect it.
-        session.titleOverride = true
+        windows[0].renameSession(id: id, to: newTitle)
+        // Cancel any in-flight AI naming — an explicit user rename pins
+        // the title and must not be overwritten by a late suggestion.
         cancelNameSuggestion(forSessionID: id)
-        guard !Self.isDefaultSessionTitle(trimmed) else { return }
-        let firstTab = session.tree.root.firstLeafPane.tabs[0]
-        let cwd = firstTab.terminal.workingDirectory
-            ?? firstTab.terminal.configuration.workingDirectory
-        guard let cwd, !cwd.isEmpty else { return }
-        nameCache.record(path: cwd, name: trimmed)
     }
 
     public func clearSessionName(id: UUID) {
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
-        session.titleOverride = false
-        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
-        let cwd = anchorTab.terminal.workingDirectory
-            ?? anchorTab.terminal.configuration.workingDirectory
-        guard let cwd, !cwd.isEmpty else { return }
-        nameCache.removeName(forPath: cwd)
-        if let derivedName = ProjectNameResolver.shared.resolve(at: cwd) {
-            session.title = derivedName
-            return
-        }
-        let basename = URL(fileURLWithPath: cwd).lastPathComponent
-        if !basename.isEmpty {
-            session.title = basename
-        }
-    }
-
-    private static let defaultSessionTitlePattern: Regex<Substring> = {
-        // swiftlint:disable:next force_try
-        try! Regex(#"^Session \d+$"#)
-    }()
-
-    static func isDefaultSessionTitle(_ title: String) -> Bool {
-        title.wholeMatch(of: defaultSessionTitlePattern) != nil
+        windows[0].clearSessionName(id: id)
     }
 
     @discardableResult
     public func duplicateSession(id: UUID) -> SessionRuntime? {
-        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return nil }
-        let source = sessions[index]
-        let copy = SessionRuntime(title: String(localized: "\(source.title) Copy"))
-        sessions.insert(copy, at: index + 1)
-        selectedSessionID = copy.id
-        return copy
+        windows[0].duplicateSession(id: id)
     }
 
     public func moveSessions(fromOffsets source: IndexSet, toOffset destination: Int) {
-        sessions.move(fromOffsets: source, toOffset: destination)
+        windows[0].moveSessions(fromOffsets: source, toOffset: destination)
     }
 
     public func selectSession(at index: Int) {
-        guard sessions.indices.contains(index) else { return }
-        selectedSessionID = sessions[index].id
+        windows[0].selectSession(at: index)
     }
 
-    // MARK: - Bell event routing
+    public func closeTab(id tabID: UUID) {
+        windows[0].closeTab(id: tabID)
+    }
+
+    public func closeFocusedTab() {
+        windows[0].closeFocusedTab()
+    }
+
+    public func requestCloseTab(id tabID: UUID) {
+        windows[0].requestCloseTab(id: tabID)
+    }
+
+    public func requestCloseFocusedTab() {
+        windows[0].requestCloseFocusedTab()
+    }
+
+    public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {
+        windows[0].requestCloseOtherTabs(paneID: paneID, keepingTabID: keepingTabID)
+    }
+
+    public func confirmPendingClose() {
+        windows[0].confirmPendingClose()
+    }
+
+    public func cancelPendingClose() {
+        windows[0].cancelPendingClose()
+    }
+
+    public func focusPane(id: UUID) {
+        windows[0].focusPane(id: id)
+    }
+
+    public func focusPane(containingTabID tabID: UUID) {
+        windows[0].focusPane(containingTabID: tabID)
+    }
+
+    public func jumpToTab(sessionID: UUID, tabID: UUID) {
+        windows[0].jumpToTab(sessionID: sessionID, tabID: tabID)
+    }
+
+    public func markActiveTabSeen() {
+        windows[0].markActiveTabSeen()
+    }
+
+    // MARK: - Bell event routing (global — searches across all windows)
 
     public func recordBellTick(forTabID tabID: UUID, surfaceID: UUID = UUID(), windowID: UUID = UUID()) {
-        guard let location = locate(tabID: tabID) else { return }
-        let delta = location.tab.recordBellTickIfNeeded()
-        guard delta > 0 else { return }
-        for _ in 0..<delta {
+        for window in windows {
+            guard let location = window.locate(tabID: tabID) else { continue }
+            let delta = location.tab.recordBellTickIfNeeded()
+            guard delta > 0 else { return }
+            for _ in 0..<delta {
+                let entry = BellFeedEntry(
+                    timestamp: location.tab.lastBellAt ?? Date(),
+                    windowID: windowID,
+                    sessionID: location.session.id,
+                    paneID: location.pane.id,
+                    tabID: location.tab.id,
+                    surfaceID: surfaceID,
+                    message: nil,
+                    seen: location.isFocused
+                )
+                bellFeed.record(entry)
+                window.propagateUnseen(at: location)
+                postNotification(for: entry, at: location)
+            }
+            return
+        }
+    }
+
+    public func recordDesktopNotification(forTabID tabID: UUID, surfaceID: UUID = UUID(), windowID: UUID = UUID()) {
+        for window in windows {
+            guard let location = window.locate(tabID: tabID) else { continue }
+            guard location.tab.recordDesktopNotificationIfNeeded() else { return }
             let entry = BellFeedEntry(
                 timestamp: location.tab.lastBellAt ?? Date(),
                 windowID: windowID,
@@ -185,220 +210,39 @@ public final class AppStateStore {
                 paneID: location.pane.id,
                 tabID: location.tab.id,
                 surfaceID: surfaceID,
-                message: nil,
+                message: location.tab.lastBellMessage,
                 seen: location.isFocused
             )
             bellFeed.record(entry)
-            propagateUnseen(at: location)
+            window.propagateUnseen(at: location)
             postNotification(for: entry, at: location)
+            return
         }
-    }
-
-    public func recordDesktopNotification(forTabID tabID: UUID, surfaceID: UUID = UUID(), windowID: UUID = UUID()) {
-        guard let location = locate(tabID: tabID) else { return }
-        guard location.tab.recordDesktopNotificationIfNeeded() else { return }
-        let entry = BellFeedEntry(
-            timestamp: location.tab.lastBellAt ?? Date(),
-            windowID: windowID,
-            sessionID: location.session.id,
-            paneID: location.pane.id,
-            tabID: location.tab.id,
-            surfaceID: surfaceID,
-            message: location.tab.lastBellMessage,
-            seen: location.isFocused
-        )
-        bellFeed.record(entry)
-        propagateUnseen(at: location)
-        postNotification(for: entry, at: location)
     }
 
     public func markBellSeen(id: UUID) {
         guard let entry = bellFeed.markSeen(id: id) else { return }
-        decrementUnseen(for: entry)
+        for window in windows {
+            window.decrementUnseen(for: entry)
+        }
     }
 
     public func markAllBellsSeen() {
         let touched = bellFeed.markAllSeen()
         for entry in touched {
-            decrementUnseen(for: entry)
-        }
-    }
-
-    /// Marks every bell-feed entry whose `tabID` matches the actively viewed
-    /// tab as seen, then zeroes the tab's `unseenBellCount` (with cascade
-    /// onto the pane and session aggregates) to cover entries that were
-    /// evicted from the feed cap before they could be cleared. Called on
-    /// every focus-changing path — sidebar selection, pane focus, tab
-    /// switch — so visiting a tab acknowledges its bells the way Mail,
-    /// iMessage, and Slack do.
-    public func markActiveTabSeen() {
-        guard let session = selectedSession else { return }
-        let pane = session.focusedPane
-        let tabID = pane.activeTabID
-        let entriesToClear = bellFeed.entries.filter { $0.tabID == tabID && !$0.seen }
-        for entry in entriesToClear {
-            markBellSeen(id: entry.id)
-        }
-        guard let tab = pane.tabs.first(where: { $0.id == tabID }) else { return }
-        guard tab.unseenBellCount > 0 else { return }
-        let residual = tab.unseenBellCount
-        tab.unseenBellCount = 0
-        pane.unseenBellCount = max(0, pane.unseenBellCount - residual)
-        session.unseenBellCount = max(0, session.unseenBellCount - residual)
-    }
-
-    // MARK: - Tab close cascade
-
-    /// Closes a specific tab, cascading through pane and session teardown
-    /// when it was the last tab in its pane / the last pane in its session.
-    /// Restores a single default session if the close would leave the store
-    /// with zero sessions, mirroring `removeSession`'s recovery.
-    public func closeTab(id tabID: UUID) {
-        let totalTabs = sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
-        logger.info("closeTab tab=\(tabID, privacy: .public) sessions=\(self.sessions.count) totalTabs=\(totalTabs)")
-        for session in sessions {
-            for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
-                cleanUpBellState(forTabIDs: [tabID])
-                pane.removeTab(id: tabID)
-                logger.info("closeTab removed tab=\(tabID, privacy: .public) pane=\(pane.id, privacy: .public) session=\(session.id, privacy: .public) paneTabsRemaining=\(pane.tabs.count)")
-                if pane.tabs.isEmpty {
-                    logger.info("closeTab pane=\(pane.id, privacy: .public) empty; removing from tree")
-                    let treeEmptied = session.tree.removePane(id: pane.id)
-                    if treeEmptied {
-                        logger.info("closeTab tree empty for session=\(session.id, privacy: .public); removing session")
-                        removeSession(id: session.id)
-                    }
-                }
-                return
-            }
-        }
-        logger.warning("closeTab tab=\(tabID, privacy: .public) not found in any session")
-    }
-
-    /// Closes the currently-focused tab in the selected session, cascading
-    /// through pane and session teardown as needed.
-    public func closeFocusedTab() {
-        guard let session = selectedSession else { return }
-        closeTab(id: session.focusedPane.activeTabID)
-    }
-
-    /// Pending tab-close that's awaiting user confirmation. The view layer
-    /// observes this and presents a `.confirmationDialog`. Cleared on
-    /// confirm or cancel.
-    public var pendingCloseRequest: PendingCloseRequest?
-
-    /// Requests a tab close that runs through the busy check. If the tab's
-    /// terminal reports `needsConfirmClose`, sets `pendingCloseRequest`
-    /// so the view can prompt; otherwise commits the close directly.
-    public func requestCloseTab(id tabID: UUID) {
-        guard let location = locate(tabID: tabID) else { return }
-        if location.tab.terminal.needsConfirmClose {
-            let label = Self.runningLabel(for: location.tab)
-            pendingCloseRequest = PendingCloseRequest(
-                kind: .singleTab(tabID: tabID),
-                message: String(localized: "\(label) is still running. Closing this tab will end it.")
-            )
-        } else {
-            closeTab(id: tabID)
-        }
-    }
-
-    /// Convenience for the focused tab.
-    public func requestCloseFocusedTab() {
-        guard let session = selectedSession else { return }
-        requestCloseTab(id: session.focusedPane.activeTabID)
-    }
-
-    /// Requests "Close Other Tabs in this pane, keeping `keepingTabID`."
-    /// If any of the tabs to close are busy, prompts; otherwise commits
-    /// directly.
-    public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {
-        guard let pane = sessions
-            .flatMap({ $0.tree.allPanes })
-            .first(where: { $0.id == paneID }) else { return }
-        let victims = pane.tabs.filter { $0.id != keepingTabID }
-        let busy = victims.filter { $0.terminal.needsConfirmClose }
-        if busy.isEmpty {
-            pane.closeOtherTabs(keeping: keepingTabID)
-            return
-        }
-        let busyCount = busy.count
-        let totalVictims = victims.count
-        let message: String
-        if busyCount == totalVictims {
-            message = String(localized: "\(busyCount) of these tabs are running processes. Closing them will end those processes.")
-        } else {
-            message = String(localized: "\(busyCount) of the \(totalVictims) tabs about to close are running processes.")
-        }
-        pendingCloseRequest = PendingCloseRequest(
-            kind: .otherTabs(paneID: paneID, keepingTabID: keepingTabID),
-            message: message
-        )
-    }
-
-    /// Confirms the pending request — actually performs the close. Caller
-    /// then clears `pendingCloseRequest` (or `cancelPendingClose` does it).
-    public func confirmPendingClose() {
-        guard let request = pendingCloseRequest else { return }
-        pendingCloseRequest = nil
-        switch request.kind {
-        case .singleTab(let tabID):
-            closeTab(id: tabID)
-        case .otherTabs(let paneID, let keepingTabID):
-            guard let pane = sessions
-                .flatMap({ $0.tree.allPanes })
-                .first(where: { $0.id == paneID }) else { return }
-            pane.closeOtherTabs(keeping: keepingTabID)
-        }
-    }
-
-    public func cancelPendingClose() {
-        pendingCloseRequest = nil
-    }
-
-    private static func runningLabel(for tab: TabRuntime) -> String {
-        let title = tab.terminal.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if title.isEmpty || title.contains(":") || title.contains("@") {
-            return String(localized: "A process")
-        }
-        return "`\(title)`"
-    }
-
-    /// Marks the pane with `id` as the focused pane in its owning session.
-    /// No-op if the pane id doesn't belong to any session in the store.
-    /// Does not change the selected session — cross-session focus moves
-    /// belong to `jumpToBellEntry` / sidebar selection.
-    public func focusPane(id: UUID) {
-        for session in sessions {
-            if session.tree.allPanes.contains(where: { $0.id == id }) {
-                // Idempotent: `focusedPaneID` is on an @Observable, and an
-                // equal-value write still fires `withMutation`, re-invalidating
-                // every PaneView. Callers legitimately re-assert the current
-                // pane (chip selection, repeated clicks in the focused
-                // terminal); skipping the equal-value write keeps those from
-                // rippling a no-op invalidation through every pane (#0229).
-                if session.tree.focusedPaneID != id {
-                    logger.debug("focusPane: \(session.tree.focusedPaneID, privacy: .public) -> \(id, privacy: .public)")
-                    session.tree.focusedPaneID = id
-                }
-                return
+            for window in windows {
+                window.decrementUnseen(for: entry)
             }
         }
     }
 
-    /// Focus the pane that owns the tab with `tabID`. The model-side
-    /// follow-up to a user click on a terminal: `TerminalClickFocusMonitor`
-    /// resolves the clicked `AppTerminalView` to its tab and calls this so
-    /// the click is the single declared writer for the AppKit-initiated
-    /// focus direction (#0230). No-op if no pane owns the tab.
-    public func focusPane(containingTabID tabID: UUID) {
-        for session in sessions {
-            for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
-                focusPane(id: pane.id)
-                return
-            }
+    public func jumpToBellEntry(_ entry: BellFeedEntry) {
+        for window in windows {
+            window.jumpToBellEntry(entry)
         }
     }
+
+    // MARK: - CWD-driven auto-naming (global — AI machinery stays process-wide)
 
     /// When the anchor tab (first leaf pane's first tab) of a session moves
     /// to a CWD that has a cached name OR matches a project-name rule,
@@ -532,53 +376,18 @@ public final class AppStateStore {
         return String(localized: "Session \(sessionIndex + 1)")
     }
 
-    public func jumpToTab(sessionID: UUID, tabID: UUID) {
-        guard let session = sessions.first(where: { $0.id == sessionID }),
-              let pane = session.tree.allPanes.first(where: { $0.tabs.contains(where: { $0.id == tabID }) })
-        else { return }
-        selectedSessionID = session.id
-        session.tree.focusedPaneID = pane.id
-        pane.activeTabID = tabID
+    public static func isDefaultSessionTitle(_ title: String) -> Bool {
+        title.wholeMatch(of: defaultSessionTitlePattern) != nil
     }
 
-    public func jumpToBellEntry(_ entry: BellFeedEntry) {
-        guard let session = sessions.first(where: { $0.id == entry.sessionID }),
-              let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
-              pane.tabs.contains(where: { $0.id == entry.tabID })
-        else { return }
-        selectedSessionID = session.id
-        session.tree.focusedPaneID = pane.id
-        pane.activeTabID = entry.tabID
-    }
+    private static let defaultSessionTitlePattern: Regex<Substring> = {
+        // swiftlint:disable:next force_try
+        try! Regex(#"^Session \d+$"#)
+    }()
 
-    private struct BellLocation {
-        let session: SessionRuntime
-        let pane: PaneRuntime
-        let tab: TabRuntime
-        let isFocused: Bool
-    }
+    // MARK: - Private helpers
 
-    private func locate(tabID: UUID) -> BellLocation? {
-        for session in sessions {
-            for pane in session.tree.allPanes {
-                guard let tab = pane.tabs.first(where: { $0.id == tabID }) else { continue }
-                let isFocused = session.id == selectedSessionID
-                    && session.tree.focusedPaneID == pane.id
-                    && pane.activeTabID == tab.id
-                return BellLocation(session: session, pane: pane, tab: tab, isFocused: isFocused)
-            }
-        }
-        return nil
-    }
-
-    private func propagateUnseen(at location: BellLocation) {
-        guard !location.isFocused else { return }
-        location.tab.unseenBellCount += 1
-        location.pane.unseenBellCount += 1
-        location.session.unseenBellCount += 1
-    }
-
-    private func postNotification(for entry: BellFeedEntry, at location: BellLocation) {
+    private func postNotification(for entry: BellFeedEntry, at location: WindowRuntime.BellLocation) {
         guard let notifier else { return }
         guard !location.session.notificationsMuted else { return }
         let paneIndex = (location.session.tree.allPanes.firstIndex { $0.id == location.pane.id } ?? 0) + 1
@@ -597,24 +406,5 @@ public final class AppStateStore {
             paneIndex: paneIndex,
             tabLabel: tabLabel
         )
-    }
-
-    private func decrementUnseen(for entry: BellFeedEntry) {
-        for session in sessions where session.id == entry.sessionID {
-            if session.unseenBellCount > 0 { session.unseenBellCount -= 1 }
-            for pane in session.tree.allPanes where pane.id == entry.paneID {
-                if pane.unseenBellCount > 0 { pane.unseenBellCount -= 1 }
-                for tab in pane.tabs where tab.id == entry.tabID {
-                    if tab.unseenBellCount > 0 { tab.unseenBellCount -= 1 }
-                }
-            }
-        }
-    }
-
-    private func cleanUpBellState(forTabIDs tabIDs: Set<UUID>) {
-        let removed = bellFeed.removeEntries(matchingTabIDs: tabIDs)
-        for entry in removed where !entry.seen {
-            decrementUnseen(for: entry)
-        }
     }
 }
