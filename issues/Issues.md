@@ -12,6 +12,7 @@ The `# Batty` heading above matches the `name` field in `issues/project.json`. `
 issues/
 ├── project.json       # canonical project name + repo URL
 ├── Issues.md          # this file
+├── model-pricing.json # daily-refreshed model price cache (see "Token usage and cost tracking")
 ├── 0001.md            # one file per issue
 ├── 0001/              # optional sibling folder for screenshots, crash logs, etc.
 │   └── screenshot.png
@@ -58,7 +59,7 @@ The most important rule of this workflow: an issue must **never** be marked `res
 
 Leave status at `open` (or `in-progress` if work has started) until the user confirms in words like "close this", "this is fixed", "mark resolved", or "won't fix". When in doubt, ask.
 
-The deliberate exception: a subagent that finishes a fix may set `resolved` (work-is-done-but-not-confirmed). It must not set `closed` — that's the user's call. This separation is the entire reason `resolved` and `closed` are different states.
+The deliberate exception: an issue may be set to `resolved` (work-is-done-but-not-confirmed) when the work has passed this project's review gate — see "Resolving an issue" below. That transition is made by the orchestrator after the reviewer approves, never by the implementer subagent itself. Nothing and nobody but the user sets `closed`. This separation is the entire reason `resolved` and `closed` are different states.
 
 ## Git tracking
 
@@ -71,24 +72,28 @@ git rev-parse --is-inside-work-tree 2>/dev/null   # is this a git repo?
 git check-ignore -q issues/                        # exit 0 = ignored, 1 = tracked
 ```
 
-When tracked, each lifecycle event produces its own commit:
+Issue work happens on **per-issue branches** (`issue/NNNN`) that land on `main` as a single squash commit (see "Resolving an issue" below). That splits commits into two regimes.
+
+Commits on **`main`**:
 
 | Event | What's committed | Commit message |
 |---|---|---|
 | Initial setup | `project.json` + `Issues.md` together | `Add issue tracker setup` (or bundle with the first `#NNNN` commit) |
 | File a new issue | the new `NNNN.md` (and `project.json` / `Issues.md` if newly created) | `#NNNN <issue title>` |
 | Edit project config | `project.json` only | `Update project config` (or e.g. `Update project URL`) |
-| Resolve — code commit | code changes only | `#NNNN <verb> <title>` |
-| Resolve — resolution commit | markdown update (status + Closed + Commit + summary) | `#NNNN Resolve: <title>` |
+| Approved issue lands (squash merge of `issue/NNNN`) | everything the branch touched — code, `NNNN.md` resolution sections, work-log rows | `#NNNN <verb> <title>` (single line, kept simple — the issue file carries the detail) |
 | Bail with notes | markdown only | `#NNNN Notes: <brief>` |
+| Daily pricing refresh | `model-pricing.json` only | `Update model pricing` |
 | User-confirmed close | markdown only | `#NNNN Close` |
 | Won't fix | markdown only | `#NNNN Won't fix` |
 
-**Working-copy-only changes (no commit):**
+Commits on an **issue branch** (`issue/NNNN`): commit freely — implementation checkpoints, the `in-progress` status flip, review-round fixes, work-log rows, the resolution markdown. Prefix messages with `#NNNN`. Granularity doesn't matter: there may be five or more commits on the branch, and the squash merge collapses them all into one commit on `main`.
 
-- Setting status to `in-progress` at the start of work — transient; the resolve commits supersede it. Committing every status flip would create noise.
+**Why a branch per issue, squashed on merge:** stalled work is never discarded — a bailed attempt stays on its branch for the next try to resume; the implementer can checkpoint without polluting `main`; the reviewer examines exactly the diff that will land (`git diff main...issue/NNNN`); and `main` stays readable — one `#NNNN` commit per issue, greppable with `git log --grep='#NNNN'`.
 
-**Why two commits to resolve, not one:** the **Commit** metadata row records the hash of the code-fix commit, and that hash isn't known until *after* the code commit lands. Splitting resolution into a code commit and a resolution commit keeps each commit single-purpose ("fix the code", "document the fix") and lets the resolution commit reference the hash cleanly.
+**Branches are kept after the merge.** The squash carries the content to `main`, but the retained branch preserves the commit-by-commit history (checkpoints, review rounds, fixes) for later review via `git log main..issue/NNNN`. Issue branches are local working history — they normally aren't pushed to the remote, and they're never deleted.
+
+Note: the Mac app renders the checked-out working copy, so while `issue/NNNN` is checked out it shows that branch's state of the issue (e.g. `in-progress`). After the merge, `main` shows it `resolved`.
 
 ## Issue file format
 
@@ -137,7 +142,7 @@ Any additional context, guesses at root cause, related code locations.
 - **Dates** are `YYYY-MM-DD`.
 - **Module** can list multiple modules separated by ` / ` (e.g. `Pane / Tabs`).
 - **Platform** is `macOS` for almost every issue in this project. Use `All` only if it genuinely spans build/CI/docs concerns.
-- When status moves to `resolved` or `closed`, add a `**Closed**` row with today's date. When the move to `resolved` is the result of a fix commit, also add a `**Commit**` row with the short hash (`git rev-parse --short HEAD`).
+- When status moves to `resolved` or `closed`, add a `**Closed**` row with today's date. When the move to `resolved` comes from a review-approved issue branch, also add a `**Branch**` row (`issue/NNNN`). There is no `**Commit**` row: the squash-merge hash doesn't exist until after the issue file's content is final, so the landing commit is identified by its `#NNNN` message instead (`git log --oneline --grep='#NNNN'`).
 - Steps / Expected / Actual / Attachments / Notes are conventional but not all required — for design-refinement or feature-gap issues, Description alone is fine.
 
 ## Filing a new issue
@@ -148,29 +153,53 @@ Any additional context, guesses at root cause, related code locations.
 4. Set status to `open`.
 5. Use today's date for First seen.
 6. Phrase the title as a single declarative sentence describing the bug or the feature gap, not a question or a fix description.
-7. **Commit the new file** with message `#NNNN <issue title>` so the issue enters git history with its `open` status.
+7. **Commit the new file** with message `#NNNN <issue title>` so the issue enters git history with its `open` status. Filing happens on `main` — it's not issue work, just recording the report.
 
 ## Updating an issue
 
 Edit the file in place. The Mac app picks up changes automatically — no follow-up command. Touch only the rows or sections that changed; don't reformat the rest.
 
-When status moves to `resolved` or `closed`, add a `**Closed**` row with the date. When the move to `resolved` was driven by a fix commit, also add a `**Commit**` row with the short hash. For any move toward `resolved`, `closed`, or `wontfix`, the "Critical rule" near the top of this file applies — those transitions require explicit user confirmation, not inference.
+When status moves to `resolved` or `closed`, add a `**Closed**` row with the date. When the move to `resolved` was driven by a review-approved issue branch, also add a `**Branch**` row. For any move toward `resolved`, `closed`, or `wontfix`, the "Critical rule" near the top of this file applies — those transitions require explicit user confirmation, not inference.
 
-## Resolving an issue (the standard workflow)
+Ad-hoc edits (a note, a screenshot, a manual field change) happen on `main`. Edits that belong to active issue work — the `in-progress` flip, work-log rows, resolution sections — happen on the issue's branch and reach `main` through the squash merge (see "Resolving an issue").
 
-Each open issue is handled by a fresh subagent. The orchestrator picks the issue; the subagent does the work in isolation and returns when done.
+## Resolving an issue (the review-gated branch workflow)
 
-### Orchestrator: pick and dispatch
+The standard workflow: **all work for an issue happens on a branch named for the issue** (`issue/NNNN`), and **nothing reaches `main` until an independent review approves the diff** — at which point the branch lands as a single squash commit. The branch may accumulate five or more commits while the work is in flight; `main` only ever sees one. Each issue runs through a three-role loop:
 
-1. List `issues/*.md` (skip `Issues.md`). Pick the lowest-numbered file whose status is `open`.
-2. Spawn a fresh subagent with the issue id and instructions to follow the resolve workflow below.
-3. When the subagent returns, move on to the next open issue (or stop if only one was requested).
+- **Implementer subagent** — model pinned to **Sonnet**. Implements and verifies the change on the issue branch, committing checkpoints freely as it goes. Never touches `main`.
+- **Reviewer subagent** — model pinned to **Opus**. Reviews the branch diff against the issue. Returns approve or request-changes. Does **not** edit code, commit, or change status.
+- **Orchestrator** (the main session) — picks issues, creates the branch, dispatches both subagents, routes review feedback back to the implementer, records work-log rows on the branch, and — only after approval — marks the issue `resolved` and squash-merges the branch to `main`.
+
+Issues are worked **one at a time, in ascending order**. Every branch is cut from `main`, so never run two implementers in parallel and never stack one issue branch on another — later issues often depend on decisions that land with earlier ones.
+
+### Orchestrator: branch → dispatch → review-gate → squash-merge
+
+1. **Refresh the pricing cache if stale.** If `issues/model-pricing.json` is missing or its `fetched` date isn't today, fetch current model prices and rewrite it on `main` (once per day, not per issue). See "Token usage and cost tracking" below.
+2. List `issues/*.md` (skip `Issues.md`). Pick the lowest-numbered file whose status is `open`.
+3. **Create the issue branch** from a clean `main`: `git switch -c issue/NNNN main`. If the branch already exists from a previous bailed attempt, resume it instead: `git switch issue/NNNN` (read the bail Notes on the issue first). If it exists because the issue was already merged and has been reopened, don't reuse it — the old branch predates the squash; start fresh with a suffixed name (`issue/NNNN-2`).
+4. **Dispatch the implementer** — a fresh subagent with the model pinned to Sonnet, given the issue id and instructions to follow "Implementer subagent" below: read `issues/Issues.md` and `CLAUDE.md` first to absorb project conventions, then read `issues/NNNN.md` for the issue itself. It works on the issue branch and returns a summary of what changed, how it was verified, and what it committed.
+5. **Record the implementer's usage** — append a `## Work log` row (see "Token usage and cost tracking") and commit it on the branch.
+6. **Dispatch the reviewer** — a fresh subagent with the model pinned to Opus, given the issue id and the implementer's summary, following "Reviewer subagent" below. A fresh reviewer per round; don't reuse a reviewer across issues.
+7. **Commit the review result on the branch.** The reviewer itself never commits, so the orchestrator records each round's outcome: commit message `#NNNN Review: <approve | request changes>` with the verdict's findings in the body, plus the reviewer's work-log row in the issue file. Every round leaves its own commit — the branch history shows what review asked for and what changed in response.
+8. **If the reviewer requested changes**, send the findings back to the **same implementer agent** (continue it — its context is intact) to address, re-verify, and commit on the branch, then dispatch a fresh review round. If three rounds don't converge, bail per "When the implementer can't finish" — the branch keeps every attempt; nothing is discarded.
+9. **On approval, wrap up the issue file on the branch**: mark it `resolved` (see "Updating the issue on resolve" below) and make sure the `## Work log` carries a row for every implementer and reviewer round with the final cost total. Commit that markdown update — it's the branch's final commit.
+10. **Squash-merge to `main`, keeping the branch:**
+
+    ```bash
+    git switch main
+    git merge --squash issue/NNNN
+    git commit -m "#NNNN <verb> <title>"
+    ```
+
+    One commit, one simple one-line message — the issue file carries the detail (root cause, fix, review, verification, files changed, costs). **Do not delete the branch.** The retained branch preserves the commit-by-commit history — implementation checkpoints, review rounds, fixes — for later review (`git log main..issue/NNNN`). Note that git won't show a squash-merged branch as merged; that's expected. These branches are local working history: don't push them unless the user asks.
+11. Move on to the next open issue (or stop if only one was requested, or the user wants to review before continuing).
 
 If the user names a specific issue ("fix 0046"), dispatch to that id directly.
 
-### Subagent: claim → fix → build → commit → resolve
+### Implementer subagent (Sonnet): claim → fix → verify → checkpoint
 
-A subagent starts with fresh context, so its first job is loading the project's conventions before touching anything.
+The implementer starts with fresh context, so its first job is loading the project's conventions before touching anything. You are already on the issue branch (`issue/NNNN`) — confirm with `git branch --show-current` before committing anything, and stay there: never switch branches, never touch `main`, never merge.
 
 1. **Orient in the project.** Read these in order, every time:
    - **`issues/Issues.md`** (this file) — status vocabulary, module conventions, build/verify command, commit conventions, project-specific rules. **Authoritative for issue-tracking workflow.**
@@ -181,29 +210,58 @@ A subagent starts with fresh context, so its first job is loading the project's 
 
    If two project guides disagree, prefer `CLAUDE.md` for code/repo conventions and this file for issue-tracking specifics.
 
-2. **Set status to `in-progress`** in the markdown — working copy only, no commit. The Mac app picks it up immediately.
-3. **Make the code changes** required to fix the bug.
-4. **Run the project build / verification command** (see below) and confirm it passes. Fix failures caused by your changes. If the build was already failing before you started, note it on the issue and bail — don't fix unrelated breakage.
+2. **Set status to `in-progress`** in the markdown and commit it on the branch (`#NNNN Claim`). The Mac app picks it up immediately, signaling the issue is claimed.
+3. **Make the code changes** required by the issue, committing checkpoints on the branch as you go — messages prefixed `#NNNN`, granularity at your discretion (it all squashes into one commit on `main`).
+4. **Build *and* run the project's verification command, and confirm tests actually executed and passed.** This step is mandatory and cannot be shortcutted.
 
-5. **Make the code commit.** Stage *only the code changes* (not the issue markdown yet). The message starts with `#NNNN` and a short, declarative title — pick the verb that actually fits (`Fix`, `Add`, `Refactor`, `Update`, `Remove`, etc.); not every issue is a bug fix. Leave a blank line after the title, then add a paragraph of details.
+   - **Compilation is not verification.** "It builds" / "it compiles" / "no type errors" does not count. Tests must actually run — unit tests execute, UI tests run, the app launches, whatever the project defines as proof. A green build with zero tests run is a failure of this step.
+   - **If you wrote or modified tests as part of the fix, you MUST execute those specific tests and observe them pass.** Confirm the test names you added appear in the run output, the counts increased, and the result was success. A test that compiles but never ran proves nothing.
+   - **Read the output, don't just check the exit code.** "0 tests run", "skipped", "no tests found", or a "build succeeded" line with no test summary are red flags even when the exit code is 0.
+   - **If verification cannot be run in your environment** (hardware required, sandbox, missing credentials, machine locked by the UI suite), you have not verified the change. Do not hand it to review as verified — bail per "When the implementer can't finish" below, naming the verification step you couldn't run.
+   - **If the build was already failing before you started**, note it on the issue and bail — don't fix unrelated breakage.
 
-6. **Capture the commit hash** with `git rev-parse --short HEAD`.
+5. **Commit your final state on the branch, but do not touch the issue markdown beyond the `in-progress` flip** — the resolution sections are the orchestrator's job, after review. Commit messages start with `#NNNN` and a short, declarative title — pick the verb that actually fits (`Fix`, `Add`, `Refactor`, `Update`, `Remove`, etc.); not every issue is a bug fix. If `CLAUDE.md` or recent `git log` defines a different convention, follow that instead.
 
-7. **Update the issue markdown** to mark it resolved:
-   - Change Status to `resolved`.
-   - Add a `**Closed**` row with today's date.
-   - Add a `**Commit**` row with the short hash from step 6.
+6. **Return to the orchestrator** with: what changed and why, the files touched, the exact verification command(s) run and what was observed, and anything the reviewer should scrutinize (trade-offs, workarounds, choices that constrain later issues).
 
-   Then add a structured summary in this order so the issue becomes a primary-source record:
+When the orchestrator sends back review findings, address every item (or push back with a concrete reason), re-run verification, commit on the branch, and return an updated summary the same way.
 
-   - **`## Root cause`** — what was actually wrong (often different from the original report).
-   - **`## Fix`** — the approach taken.
-   - **`## Files changed`** — bulleted list, one bullet per file, with a short note describing what changed in each.
-   - **`## Gotchas`** *(optional)* — surprises, dead ends, non-obvious behavior, or anything a future engineer working on similar code should know. Skip if nothing is notable. libghostty quirks, SwiftUI ↔ NSView lifecycle gotchas, Metal layer sizing surprises, and IME edge cases are exactly the kind of thing that belongs here.
+### Reviewer subagent (Opus): review the branch before it lands
 
-8. **Make the resolution commit.** Stage `issues/NNNN.md` and commit with message `#NNNN Resolve: <title>`. Body briefly notes which code commit it pairs with (the hash from step 6).
+The reviewer also starts fresh: read `issues/Issues.md`, `CLAUDE.md`, `PRD.md`/`Concepts.md` as needed, and `issues/NNNN.md` with its attachments, then examine the branch with `git diff main...HEAD` — that is exactly the diff the squash merge will land on `main`. (`git log main..HEAD --oneline` shows the checkpoint history if the path the implementer took matters.)
 
-Status flow: `open` → `in-progress` → `resolved`. **Never set `closed`** — the user does that after verifying the fix.
+Judge the diff against:
+
+- **The issue itself** — does the change deliver the Expected behavior (and the parent umbrella's acceptance criteria, if there is one)?
+- **Correctness and idiom** — sensible design, project conventions respected, code that reads like the surrounding code. For Batty this includes the binding architecture docs: `docs/view-hierarchy.md`, `docs/terminal-pane-requirements.md`, and `docs/swiftui-observation-rules.md` when the diff touches the terminal/pane/tab/window path, gestures/overlays, or focus/selection/observed-state writes.
+- **Verification credibility** — did the implementer's verification actually demonstrate the behavior, or just compile? Re-run the build/verify command if in doubt.
+- **Downstream impact** — does the change box in a later issue (see the issue's Relation section)?
+
+Return a verdict: **Approve**, or **Request changes** with a specific, actionable list — file, problem, what would satisfy the objection. Review only; never edit code, never commit, never change issue status.
+
+### Updating the issue on resolve (orchestrator, after approval, on the branch)
+
+This is the branch's final commit before the squash merge. Edit the metadata table:
+
+- Change Status to `resolved`.
+- Add a `**Closed**` row with today's date.
+- Add a `**Branch**` row with the branch name (`issue/NNNN`). No `**Commit**` row — the squash commit's hash doesn't exist yet when this file is written; the landing commit is found by its message: `git log --oneline --grep='#NNNN'`.
+
+Then add a structured summary in this order so the issue becomes a primary-source record of why the change happened. **All resolution sections go AFTER `## Description`** — never between the metadata table and Description, where the Mac app's frontmatter parser will eat them.
+
+- **`## Resolution notes`** *(optional but recommended)* — a one-line blockquote summary `> 🟢 Resolved YYYY-MM-DD — <one sentence>.` plus 1–2 follow-up sentences if useful. This is what the user reads first on the Mac app's detail view; keep it terse.
+- **`## Root cause`** — what was actually wrong (often different from the original report). For feature/prototype issues, describe the starting state instead.
+- **`## Fix`** — the approach taken.
+- **`## Review`** — who reviewed (model), how many rounds, and a one-line note of what the review changed (or "approved first pass").
+- **`## Verification`** — the exact command(s) run and what was observed (e.g. "`scripts/build.sh unit` — 277 tests in 36 suites passed including the 3 new tests in `SessionNameToolTests`"). If new tests were added, name them and confirm they ran. Mandatory — this is the audit trail that distinguishes "verified" from "compiled and hoped". For UI work the implementer can't run locally, say so here and in Gotchas, and mark `resolved` (the user's visual sign-off is what moves it to `closed`).
+- **`## Files changed`** — a bulleted list, one bullet per file touched, with a short note describing what changed in each.
+- **`## Gotchas`** *(optional)* — surprises, dead ends, non-obvious behavior, or anything a future engineer working on similar code should know. Skip if nothing is notable. libghostty quirks, SwiftUI ↔ NSView lifecycle gotchas, Metal layer sizing surprises, and IME edge cases are exactly the kind of thing that belongs here.
+
+**No dangling follow-ups.** If the resolution carved out scope that won't be addressed, file that follow-up as its own ticket before marking this one resolved, and link it bidirectionally (parent's Resolution notes → child; child's Relation → parent). A "follow-up" sentence with no ticket behind it disappears the moment the issue gets closed.
+
+If the issue is a child of an umbrella, update its row in the umbrella's Children table to `resolved` in the same commit, so the umbrella's state lands with the merge.
+
+Status flow: `open` → `in-progress` → `resolved`. **Never set `closed`** — the user does that after verifying the fix in the Mac app.
 
 ### Build / verify command for this project
 
@@ -213,27 +271,84 @@ The canonical "did I break the build?" check is:
 scripts/build.sh
 ```
 
-To also run unit and UI tests:
+To run the fast `BattyKit` unit tests (the pre-commit gate — <30s, no UI, no machine lock):
 
 ```bash
-scripts/build.sh test
+scripts/build.sh unit
 ```
 
-`scripts/build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. The actual scheme is `Batty (Prod)`, not `Batty`.
+The UI suite is slow (~10 min), locks the machine, and runs only for release preflight or when adding/fixing a UI-level feature — on the Mac mini, not the MacBook:
 
-Open the project in Xcode (`open Batty.xcodeproj`) for live development, breakpoints, and SwiftUI previews — but always confirm the headless `scripts/build.sh` invocation passes before committing.
+```bash
+scripts/run-ui-tests.sh                              # all UI tests
+scripts/run-ui-tests.sh BattyUITests/TabRenameTests  # one class
+```
 
-### When the subagent can't finish
+`scripts/build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `scripts/build.sh` invocation passes before committing; Xcode previews are not a build pass. See `CLAUDE.md` for the full test strategy.
 
-If the bug is unreproducible, out of scope, or the build won't pass after reasonable effort:
+### When the implementer can't finish
 
-1. **Discard or stash any partial code changes** so the bail doesn't accidentally include half-done work.
-2. **Revert status to `open`** in the issue markdown so the issue goes back into the queue.
-3. **Add a `## Notes` section** describing what was tried, why work stopped, and what you'd try next. Be specific.
-4. Commit the markdown change with message `#NNNN Notes: <one-line bail summary>`.
+If the issue is unreproducible, out of scope, the build won't pass after reasonable effort, or three review rounds don't converge, the work is parked on the branch — never discarded:
+
+1. **Commit everything in flight on the branch**, including half-done work (`#NNNN WIP: <state>`). The branch is the parking spot; the next attempt resumes from it.
+2. **Switch back to `main`** and leave the branch in place — branches are never deleted in this workflow; a parked branch is the next attempt's starting point.
+3. **On `main`, add a `## Notes` section** to the issue describing what was tried, why work stopped, what you'd try next, and naming the branch (`Work parked on issue/NNNN`). For a review-deadlock bail, include the unresolved review findings verbatim. Append the work-log rows for the failed sessions here too — they're real costs, and the branch's copy of the file won't reach `main`. Status on `main` is still `open` (the `in-progress` flip only ever existed on the branch).
+4. Commit the markdown change on `main` with message `#NNNN Notes: <one-line bail summary>` (the orchestrator does this).
 5. Return with a one-line summary of why work stalled.
 
 Never use `wontfix` or `closed` to escape a stuck issue.
+
+## Token usage and cost tracking
+
+Every subagent dispatch gets a usage record on the issue it worked: which model did the work, exactly how many tokens it consumed, and an estimated cost. The **orchestrator** records this after the subagent returns — a subagent can't measure its own totals. In the review-gated workflow that means one row per session: each implementer round **and** each reviewer round gets its own row, so an issue's true cost includes its reviews. Rows are appended and committed on the issue branch as each round finishes, so they land on `main` inside the squash commit; rows for a bailed attempt go into the `## Notes` added on `main` instead, since the branch's copy of the file never merges.
+
+### Pricing cache (`issues/model-pricing.json`)
+
+Anthropic publishes prices on the docs site (no API endpoint). Fetch once per day, cache to:
+
+```json
+{
+  "fetched": "YYYY-MM-DD",
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "currency": "USD per MTok",
+  "models": {
+    "claude-sonnet-4-6": { "input": 3.00, "output": 15.00, "cache_write_5m": 3.75, "cache_read": 0.30 },
+    "claude-opus-4-8": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_read": 0.50 }
+  }
+}
+```
+
+Include at least the implementer model (Sonnet) and reviewer model (Opus) since both bill against every issue. If `fetched` is today, use as-is. If the fetch fails, use the stale cache and note the staleness next to the cost; with no cache at all, record tokens and model with `—` for cost. Never trust example numbers over a fresh fetch.
+
+### Getting exact token counts
+
+Claude Code writes each subagent's transcript to `~/.claude/projects/<project-slug>/<session-id>/subagents/agent-<id>.jsonl`, where `<project-slug>` is the working directory with `/`, `.`, and `_` replaced by `-`. Assistant lines carry `message.usage` (exact `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`) and `message.model`.
+
+**Dedupe by `requestId`** — one API response can span several JSONL lines repeating the same usage object; summing every line over-counts. Find the newest agent file mentioning the issue id, keep one usage entry per `requestId`, and sum.
+
+```
+cost = (input × input_rate + output × output_rate
+      + cache_read × cache_read_rate + cache_write × cache_write_5m_rate) / 1,000,000
+```
+
+If no transcript is available (different harness), record whatever total the harness reported, or `—`. Never fabricate counts.
+
+### The `## Work log` section
+
+One row per work session, conventionally the last section of the issue file (always after `## Description`). Note the Model column — implementer rows show the Sonnet id, reviewer rows the Opus id:
+
+```markdown
+## Work log
+
+| Date | Model | Input | Output | Cache read | Cache write | Cost |
+|---|---|---|---|---|---|---|
+| 2026-06-15 | claude-sonnet-4-6 | 5,300 | 18,000 | 1,200,000 | 70,000 | $1.02 |
+| 2026-06-15 | claude-opus-4-8 | 4,800 | 6,000 | 480,000 | 30,000 | $0.58 |
+
+**Total: $1.60**
+```
+
+Update the `**Total**` line whenever a row is appended. Bails get a row too. Don't reformat existing rows.
 
 ## Attachments
 
