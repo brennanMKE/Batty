@@ -71,11 +71,7 @@ public final class TabRuntime: Identifiable {
     }
 
     private static func activeTheme() -> TerminalTheme {
-        guard
-            let name = UserDefaults.standard.string(forKey: ThemePreference.defaultsKey),
-            !name.isEmpty,
-            let definition = GhosttyThemeCatalog.theme(named: name)
-        else { return .default }
+        guard let definition = ThemePreference.activeTheme() else { return .default }
         return definition.toTerminalTheme()
     }
 

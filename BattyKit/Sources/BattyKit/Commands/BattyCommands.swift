@@ -19,8 +19,15 @@ private struct NewWindowButton: View {
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BattyCommands")
 
 public struct BattyCommands: Commands {
-    @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
+    @AppStorage(ThemePreference.darkDefaultsKey) private var darkThemeName: String = ""
+    @AppStorage(ThemePreference.lightDefaultsKey) private var lightThemeName: String = ""
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// The theme name for whichever appearance is currently active.
+    private var activeThemeName: String {
+        colorScheme == .dark ? darkThemeName : lightThemeName
+    }
 
     private var store: AppStateStore { AppStateStore.shared }
     private var shortcuts: ShortcutsStore { ShortcutsStore.shared }
@@ -349,7 +356,11 @@ public struct BattyCommands: Commands {
     }
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
-        activeThemeName = theme.name
+        if colorScheme == .dark {
+            darkThemeName = theme.name
+        } else {
+            lightThemeName = theme.name
+        }
         store.applyThemeToAllSurfaces(theme)
     }
 }

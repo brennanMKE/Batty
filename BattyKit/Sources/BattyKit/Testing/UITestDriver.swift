@@ -1,5 +1,6 @@
 // UITestDriver.swift
 
+import AppKit
 import Foundation
 import OSLog
 
@@ -147,7 +148,8 @@ public enum UITestDriver {
                 logger.notice("ui-test: applyTheme not-found name=\(name, privacy: .public)")
                 return
             }
-            UserDefaults.standard.set(name, forKey: ThemePreference.defaultsKey)
+            let key = ThemePreference.defaultsKey(isDark: NSApp.effectiveAppearance.isDark)
+            UserDefaults.standard.set(name, forKey: key)
             store.applyThemeToAllSurfaces(theme)
 
         case .applyThemeToActiveSession(let name):

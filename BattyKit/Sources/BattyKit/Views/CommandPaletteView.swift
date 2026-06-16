@@ -100,7 +100,8 @@ struct CommandPaletteView: View {
                 title: String(localized: "Theme: \(theme.name)"),
                 keyHint: nil,
                 action: {
-                    UserDefaults.standard.set(theme.name, forKey: ThemePreference.defaultsKey)
+                    let key = ThemePreference.defaultsKey(isDark: NSApp.effectiveAppearance.isDark)
+                    UserDefaults.standard.set(theme.name, forKey: key)
                     store.applyThemeToAllSurfaces(theme)
                 }
             ))

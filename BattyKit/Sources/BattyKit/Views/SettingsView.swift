@@ -109,7 +109,23 @@ private struct AppearanceSettingsView: View {
     @AppStorage(SettingsPreference.fontSizeKey) private var fontSize: Double = SettingsPreference.defaultFontSize
     @AppStorage(SettingsPreference.cursorStyleKey) private var cursorStyle: String = SettingsPreference.defaultCursorStyle
     @AppStorage(SettingsPreference.cursorBlinkKey) private var cursorBlink: Bool = SettingsPreference.defaultCursorBlink
-    @AppStorage(ThemePreference.defaultsKey) private var themeName: String = ""
+    @AppStorage(ThemePreference.darkDefaultsKey) private var darkThemeName: String = ""
+    @AppStorage(ThemePreference.lightDefaultsKey) private var lightThemeName: String = ""
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// The theme name for whichever appearance is currently displayed in the
+    /// Settings window. Reads from and writes to the matching per-appearance
+    /// slot so the picker shows the right selection without affecting the
+    /// other appearance's choice.
+    private var themeBinding: Binding<String> {
+        colorScheme == .dark ? $darkThemeName : $lightThemeName
+    }
+
+    /// Label for the Theme section header so the user knows which slot is
+    /// being edited.
+    private var themeLabel: String {
+        colorScheme == .dark ? "Theme (Dark)" : "Theme (Light)"
+    }
 
     var body: some View {
         Form {
@@ -138,15 +154,15 @@ private struct AppearanceSettingsView: View {
                     .onChange(of: cursorBlink) { applyAppearance() }
             }
 
-            Section("Theme") {
-                Picker("Theme", selection: $themeName) {
+            Section(themeLabel) {
+                Picker("Theme", selection: themeBinding) {
                     Text("Default").tag("")
                     ForEach(GhosttyThemeCatalog.allThemes, id: \.id) { theme in
                         Text(theme.name).tag(theme.name)
                     }
                 }
                 .pickerStyle(.menu)
-                .onChange(of: themeName) { _, newValue in
+                .onChange(of: themeBinding.wrappedValue) { _, newValue in
                     guard let store, !newValue.isEmpty,
                           let theme = GhosttyThemeCatalog.theme(named: newValue)
                     else { return }

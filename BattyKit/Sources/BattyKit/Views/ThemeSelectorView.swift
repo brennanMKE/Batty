@@ -1,5 +1,6 @@
 // ThemeSelectorView.swift
 
+import AppKit
 import OSLog
 import SwiftUI
 
@@ -137,8 +138,10 @@ struct ThemeSelectorView: View {
     }
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
-        logger.info("selected theme: \(theme.name, privacy: .public)")
-        UserDefaults.standard.set(theme.name, forKey: ThemePreference.defaultsKey)
+        let isDark = NSApp.effectiveAppearance.isDark
+        logger.info("selected theme: \(theme.name, privacy: .public) isDark=\(isDark, privacy: .public)")
+        let key = ThemePreference.defaultsKey(isDark: isDark)
+        UserDefaults.standard.set(theme.name, forKey: key)
         store.applyThemeToAllSurfaces(theme)
     }
 
