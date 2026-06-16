@@ -20,10 +20,18 @@ public final class WindowRuntime {
     public private(set) var sessions: [SessionRuntime]
     public var selectedSessionID: UUID?
     public var pendingCloseRequest: PendingCloseRequest?
-    /// Called when `removeSession` empties `sessions`. The app delegate
-    /// currently wires this to terminate the process; in multi-window it
-    /// will close the owning window instead.
+    /// Called when `removeSession` empties `sessions`. Set by `AppStateStore`
+    /// on new runtimes to close the owning window; `RootWindowView` replaces
+    /// it with a closure that calls `NSWindow.performClose` on the live window.
     @ObservationIgnored public var onAllSessionsClosed: (() -> Void)?
+    /// Called by `onAllSessionsClosed` to close the owning NSWindow.
+    /// Set by `RootWindowView` once the NSWindow is known. The level of
+    /// indirection (closure vs. direct NSWindow reference) keeps NSWindow
+    /// out of the pure-model layer. `AppStateStore.windowRuntime(for:)`
+    /// seeds a no-op default that logs a warning if the window hasn't
+    /// set it yet — possible on very early session close before the view
+    /// tree is live.
+    @ObservationIgnored public var closeWindowCallback: (() -> Void)?
 
     // Injected from AppStateStore — global services shared across windows.
     @ObservationIgnored let bellFeed: BellFeedStore
@@ -343,8 +351,20 @@ public final class WindowRuntime {
         return nil
     }
 
+    /// Increments unseen counters when `isFocused` is false. Standard path
+    /// for within-window unseen propagation.
     func propagateUnseen(at location: BellLocation) {
         guard !location.isFocused else { return }
+        location.tab.unseenBellCount += 1
+        location.pane.unseenBellCount += 1
+        location.session.unseenBellCount += 1
+    }
+
+    /// Increments unseen counters regardless of `location.isFocused`.
+    /// Called by `AppStateStore` when the entry was determined unseen at
+    /// the cross-window level (owning window not key, or tab not focused)
+    /// — the `isFocused` guard in `propagateUnseen(at:)` must not run here.
+    func propagateUnseenForced(at location: BellLocation) {
         location.tab.unseenBellCount += 1
         location.pane.unseenBellCount += 1
         location.session.unseenBellCount += 1

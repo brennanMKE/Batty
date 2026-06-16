@@ -1,7 +1,10 @@
 // RootWindowView.swift
 
 import AppKit
+import OSLog
 import SwiftUI
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "RootWindowView")
 
 extension Notification.Name {
     public static let battyToggleSidebar = Notification.Name("co.sstools.Batty.toggleSidebar")
@@ -36,6 +39,7 @@ public struct RootWindowView: View {
         .environment(\.themeChrome, store.themeChrome)
         .background(WindowChromeApplier(palette: store.themeChrome.palette))
         .background(WindowIDRegistrar(windowID: windowID))
+        .background(WindowLifecycleController(windowID: windowID, store: store))
         .task { setUpNotifier() }
         .task { UITestDriver.runIfNeeded(store: store) }
         .onAppear {
@@ -86,6 +90,120 @@ public struct RootWindowView: View {
         }
         store.notifier = notifier
         notifier.ensureAuthorization()
+    }
+}
+
+/// Manages the window lifecycle for a single content window:
+///   - wires `WindowRuntime.closeWindowCallback` so a "last session closed"
+///     event closes the NSWindow;
+///   - installs itself as `NSWindowDelegate` to intercept the close button
+///     (`windowShouldClose`) and prompt when live sessions are present;
+///   - tears down the window's terminal host and registry entries on close.
+///
+/// Placed in the SwiftUI tree as an invisible `NSViewRepresentable` so it
+/// has access to the hosting `NSWindow` via `updateNSView`. Follows the
+/// same deferred pattern as `WindowChromeApplier` and `WindowIDRegistrar`:
+/// all AppKit side-effects are dispatched off the update pass to avoid
+/// running inside the layout pass (`docs/swiftui-observation-rules.md`
+/// AppKit interop section).
+private struct WindowLifecycleController: NSViewRepresentable {
+    let windowID: WindowID
+    let store: AppStateStore
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        let id = windowID
+        let appStore = store
+        DispatchQueue.main.async {
+            guard let window = nsView.window else { return }
+            // Install delegate (idempotent — coordinator is retained by context).
+            if window.delegate == nil || !(window.delegate is WindowDelegate) {
+                window.delegate = context.coordinator
+            }
+            // Wire closeWindowCallback on the runtime so onAllSessionsClosed
+            // (last session closed) closes the NSWindow.
+            let runtime = appStore.windowRuntime(for: id)
+            if runtime.closeWindowCallback == nil {
+                runtime.closeWindowCallback = { [weak window] in
+                    logger.info("closeWindowCallback: closing windowID=\(id.value, privacy: .public)")
+                    window?.performClose(nil)
+                }
+            }
+        }
+    }
+
+    func makeCoordinator() -> WindowDelegate {
+        WindowDelegate(windowID: windowID, store: store)
+    }
+}
+
+/// `NSWindowDelegate` for a content window. Handles confirmation on close and
+/// teardown of the window's terminal host and registry entries.
+final class WindowDelegate: NSObject, NSWindowDelegate {
+    private let windowID: WindowID
+    private let store: AppStateStore
+
+    init(windowID: WindowID, store: AppStateStore) {
+        self.windowID = windowID
+        self.store = store
+    }
+
+    /// Intercepts the close button and the programmatic `performClose(_:)` path.
+    /// Prompts when any tab in the window has a running process and the
+    /// "Confirm on close" setting is enabled — same contract as `QuitConfirmation`.
+    /// Returns `true` to allow the close; `false` to cancel it.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        let runtime = store.windowRuntime(for: windowID)
+        guard QuitConfirmation.windowNeedsConfirmClose(window: runtime) else {
+            return true
+        }
+        let busyCount = runtime.sessions.reduce(0) { acc, session in
+            acc + session.tree.allPanes.reduce(0) { $0 + $1.tabs.filter { $0.terminal.needsConfirmClose }.count }
+        }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Close Window?")
+        alert.informativeText = String(localized: "There are \(busyCount) running process(es) in this window. Closing it will end them.")
+        alert.addButton(withTitle: String(localized: "Close"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.alertStyle = .warning
+        let result = alert.runModal()
+        return result == .alertFirstButtonReturn
+    }
+
+    /// Tears down the window's resources after the window has closed:
+    ///   1. Clean up bell-feed state for all tabs in the window.
+    ///   2. Release every terminal view in the window's host.
+    ///   3. Release the host itself.
+    ///   4. Remove the window from the NSWindow ↔ WindowID registry (this
+    ///      also triggers `terminateIfLastContentWindowGone` on the store).
+    ///   5. Remove the `WindowRuntime` from `AppStateStore.windows`.
+    func windowWillClose(_ notification: Notification) {
+        logger.info("windowWillClose windowID=\(self.windowID.value, privacy: .public)")
+        let runtime = store.windowRuntime(for: self.windowID)
+        // 1. Bell-feed cleanup: collect all tab IDs in the window.
+        let allTabIDs = Set(runtime.sessions.flatMap { session in
+            session.tree.allPanes.flatMap { $0.tabs.map(\.id) }
+        })
+        if !allTabIDs.isEmpty {
+            runtime.cleanUpBellState(forTabIDs: allTabIDs)
+        }
+        // 2. Release terminal views (the only sanctioned removeFromSuperview path).
+        for tabID in allTabIDs {
+            TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
+        }
+        // 3. Release the host (gated: waits until all tab views are gone).
+        TerminalHostStore.shared.releaseHost(forWindowID: windowID)
+        // 4. Unregister the NSWindow from the store (triggers termination check).
+        if let nsWindow = notification.object as? NSWindow {
+            store.unregisterNSWindow(nsWindow)
+        }
+        // 5. Remove the WindowRuntime from the windows list.
+        store.removeWindow(id: windowID)
     }
 }
 

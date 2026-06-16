@@ -24,6 +24,11 @@ public struct BattyCommands: Commands {
 
     private var store: AppStateStore { AppStateStore.shared }
     private var shortcuts: ShortcutsStore { ShortcutsStore.shared }
+    /// The key content window's runtime. Menu commands that operate on sessions,
+    /// panes, or tabs target this runtime instead of windows[0] (#0239: carried
+    /// over from #0237). Falls back to store.windows[0] so previews/tests
+    /// without a key window still compile without force-unwrapping.
+    private var keyWindow: WindowRuntime { store.keyWindowRuntime() ?? store.windows[0] }
 
     public init() {}
 
@@ -35,7 +40,7 @@ public struct BattyCommands: Commands {
 
             Button("New Session") {
                 logger.info("Cmd-N action fired (File → New Session)")
-                store.addSession()
+                keyWindow.addSession()
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
 
@@ -47,7 +52,7 @@ public struct BattyCommands: Commands {
                 Label("Open Quickly\u{2026}", systemImage: "bolt")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .openQuickly))
-            .disabled(store.selectedSession == nil)
+            .disabled(keyWindow.selectedSession == nil)
         }
 
         CommandGroup(after: .sidebar) {
@@ -64,7 +69,7 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Session") {
             Button {
-                store.addSession()
+                keyWindow.addSession()
             } label: {
                 Label("New Session", systemImage: "plus.square")
             }
@@ -77,13 +82,13 @@ public struct BattyCommands: Commands {
                 Label("Choose Layout\u{2026}", systemImage: "rectangle.3.group")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .layoutPicker))
-            .disabled(store.selectedSession?.tree.allPanes.count != 1)
+            .disabled(keyWindow.selectedSession?.tree.allPanes.count != 1)
 
             Divider()
 
             ForEach(0..<9) { index in
                 Button {
-                    store.selectSession(at: index)
+                    keyWindow.selectSession(at: index)
                 } label: {
                     Text(sessionMenuTitle(at: index))
                 }
@@ -183,22 +188,22 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Pane") {
             Button {
-                guard let tree = store.selectedSession?.tree else { return }
+                guard let tree = keyWindow.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
             } label: {
                 Label("Split Horizontally", systemImage: "rectangle.split.2x1")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontal))
-            .disabled(store.selectedSession == nil)
+            .disabled(keyWindow.selectedSession == nil)
 
             Button {
-                guard let tree = store.selectedSession?.tree else { return }
+                guard let tree = keyWindow.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
             } label: {
                 Label("Split Vertically", systemImage: "rectangle.split.1x2")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVertical))
-            .disabled(store.selectedSession == nil)
+            .disabled(keyWindow.selectedSession == nil)
 
             Button {
                 NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
@@ -206,12 +211,12 @@ public struct BattyCommands: Commands {
                 Label("Layouts\u{2026}", systemImage: "rectangle.3.group")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .layoutPicker))
-            .disabled(store.selectedSession?.tree.allPanes.count != 1)
+            .disabled(keyWindow.selectedSession?.tree.allPanes.count != 1)
 
             Divider()
 
             Button {
-                store.selectedSession?.focusPane(adjacent: .left)
+                keyWindow.selectedSession?.focusPane(adjacent: .left)
             } label: {
                 Label("Focus Pane Left", systemImage: "arrow.left")
             }
@@ -219,7 +224,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                store.selectedSession?.focusPane(adjacent: .right)
+                keyWindow.selectedSession?.focusPane(adjacent: .right)
             } label: {
                 Label("Focus Pane Right", systemImage: "arrow.right")
             }
@@ -227,7 +232,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                store.selectedSession?.focusPane(adjacent: .up)
+                keyWindow.selectedSession?.focusPane(adjacent: .up)
             } label: {
                 Label("Focus Pane Above", systemImage: "arrow.up")
             }
@@ -235,7 +240,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                store.selectedSession?.focusPane(adjacent: .down)
+                keyWindow.selectedSession?.focusPane(adjacent: .down)
             } label: {
                 Label("Focus Pane Below", systemImage: "arrow.down")
             }
@@ -245,7 +250,7 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Tab") {
             Button {
-                store.selectedSession?.focusedPane.addTab()
+                keyWindow.selectedSession?.focusedPane.addTab()
             } label: {
                 Label("New Tab", systemImage: "plus")
             }
@@ -254,17 +259,17 @@ public struct BattyCommands: Commands {
 
             Button {
                 logger.info("Cmd-W action fired (Tab → Close Tab)")
-                store.requestCloseFocusedTab()
+                keyWindow.requestCloseFocusedTab()
             } label: {
                 Label("Close Tab", systemImage: "xmark")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
-            .disabled(store.selectedSession == nil)
+            .disabled(keyWindow.selectedSession == nil)
 
             Divider()
 
             Button {
-                store.selectedSession?.focusedPane.selectPreviousTab()
+                keyWindow.selectedSession?.focusedPane.selectPreviousTab()
             } label: {
                 Label("Show Previous Tab", systemImage: "chevron.left")
             }
@@ -272,7 +277,7 @@ public struct BattyCommands: Commands {
             .disabled((focusedPane?.tabs.count ?? 0) < 2)
 
             Button {
-                store.selectedSession?.focusedPane.selectNextTab()
+                keyWindow.selectedSession?.focusedPane.selectNextTab()
             } label: {
                 Label("Show Next Tab", systemImage: "chevron.right")
             }
@@ -283,7 +288,7 @@ public struct BattyCommands: Commands {
 
             ForEach(0..<9) { index in
                 Button {
-                    store.selectedSession?.focusedPane.selectTab(at: index)
+                    keyWindow.selectedSession?.focusedPane.selectTab(at: index)
                 } label: {
                     Text(tabMenuTitle(at: index))
                 }
@@ -301,23 +306,23 @@ public struct BattyCommands: Commands {
     }
 
     private var focusedPane: PaneRuntime? {
-        store.selectedSession?.focusedPane
+        keyWindow.selectedSession?.focusedPane
     }
 
     private var canFocusAdjacentPane: Bool {
-        guard let session = store.selectedSession else { return false }
+        guard let session = keyWindow.selectedSession else { return false }
         return session.tree.allPanes.count > 1
     }
 
     private func sessionMenuTitle(at index: Int) -> String {
-        guard store.sessions.indices.contains(index) else {
+        guard keyWindow.sessions.indices.contains(index) else {
             return String(localized: "Session \(index + 1)")
         }
-        return store.sessions[index].title
+        return keyWindow.sessions[index].title
     }
 
     private func sessionExists(at index: Int) -> Bool {
-        store.sessions.indices.contains(index)
+        keyWindow.sessions.indices.contains(index)
     }
 
     private func tabMenuTitle(at index: Int) -> String {

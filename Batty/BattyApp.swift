@@ -43,16 +43,19 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         }
         TerminalClickFocusMonitor.start()
         AppStateStore.shared.nameSuggester = FoundationModelsNameSuggester.makeIfAvailable()
-        AppStateStore.shared.onAllSessionsClosed = {
-            logger.info("onAllSessionsClosed fired; terminating app")
-            NSApp.terminate(nil)
-        }
+        // onAllSessionsClosed is wired per-window in AppStateStore.init and
+        // windowRuntime(for:) — each window's closure closes itself when its
+        // last session goes. The app terminates when the last content window
+        // is unregistered (AppStateStore.unregisterNSWindow →
+        // terminateIfLastContentWindowGone). No app-level terminate hook here.
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let store = AppStateStore.shared
-        let openTabs = store.sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
-        logger.info("applicationShouldTerminate sessions=\(store.sessions.count) openTabs=\(openTabs)")
+        let totalTabs = store.windows.reduce(0) { acc, w in
+            acc + w.sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
+        }
+        logger.info("applicationShouldTerminate windows=\(store.windows.count, privacy: .public) totalTabs=\(totalTabs, privacy: .public)")
         if QuitConfirmation.shouldQuitOrPrompt(store: store) {
             store.nameCache.save()
             logger.info("applicationShouldTerminate -> terminateNow")

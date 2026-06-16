@@ -20,6 +20,12 @@ public final class AppStateStore {
     /// Called when `removeSession` empties the window's `sessions`. Nil in
     /// unit tests; the app delegate sets this to terminate the process.
     /// Forwarded to `windows[0].onAllSessionsClosed`.
+    /// Called when `removeSession` empties the **first** window's `sessions`.
+    /// Forwarded to `windows[0].onAllSessionsClosed` for backward compat with
+    /// the single-window era. `#0239`: each window now has its own
+    /// `onAllSessionsClosed` closure that closes the window instead of
+    /// terminating the app; `BattyApp` wires this shim to the app-level
+    /// hook that quits when the last content window has been closed.
     @ObservationIgnored public var onAllSessionsClosed: (() -> Void)? {
         get { windows[0].onAllSessionsClosed }
         set { windows[0].onAllSessionsClosed = newValue }
@@ -73,8 +79,49 @@ public final class AppStateStore {
             bellFeed: bellFeed,
             nameCache: nameCache
         )
+        // Wire onAllSessionsClosed: closing the last session in a window
+        // closes the window itself. RootWindowView maps this to an NSWindow
+        // close via the window-close callback set in its view tree. The
+        // app terminates separately when the last content window closes
+        // (observed in unregisterNSWindow / windowWillClose path).
+        // This closure is replaced by `RootWindowView` when the window's
+        // view tree is live.
+        runtime.onAllSessionsClosed = { [weak runtime] in
+            guard let runtime else { return }
+            logger.info("onAllSessionsClosed windowID=\(runtime.id.value, privacy: .public): no sessions remaining; requesting window close")
+            runtime.closeWindowCallback?()
+        }
         windows.append(runtime)
         return runtime
+    }
+
+    /// Removes the `WindowRuntime` with the given `id` from `windows`.
+    /// Called from the window-close teardown path after all tabs in the
+    /// window have been released. Safe to call with an unknown id.
+    public func removeWindow(id windowID: WindowID) {
+        windows.removeAll { $0.id == windowID }
+        logger.info("removeWindow windowID=\(windowID.value, privacy: .public); remaining windows=\(self.windows.count, privacy: .public)")
+        // If no registered content windows remain and there was more than
+        // one, the app can terminate. With a single-window history the
+        // normal path is the onAllSessionsClosed → window close → this
+        // remove → terminateIfLastContentWindowGone sequence.
+        terminateIfLastContentWindowGone()
+    }
+
+    /// Terminates the app when no content windows remain in the registry.
+    /// A content window is one registered via `registerNSWindow(_:for:)`.
+    /// Help and Settings are not registered and therefore not counted.
+    private func terminateIfLastContentWindowGone() {
+        // The nsWindowMap only contains live registered windows. When it's
+        // empty, all content windows have closed.
+        guard nsWindowMap.isEmpty else { return }
+        // Guard: if there are still WindowRuntime entries that haven't been
+        // removed yet (e.g. due to concurrent teardown), also check windows.
+        // A window with sessions still attached is not truly gone.
+        guard windows.allSatisfy({ $0.sessions.isEmpty }) else { return }
+        logger.info("terminateIfLastContentWindowGone: no content windows remain; terminating")
+        nameCache.save()
+        NSApp.terminate(nil)
     }
 
     // MARK: - NSWindow ↔ WindowID registry
@@ -88,23 +135,28 @@ public final class AppStateStore {
     }
 
     /// Removes a closed window from the registry. Called from the window's
-    /// view-tree teardown path.
+    /// NSWindowDelegate `windowWillClose` path after teardown (releasing
+    /// tabs, host). Triggers app termination when the last content window
+    /// has been closed.
     public func unregisterNSWindow(_ nsWindow: NSWindow) {
         nsWindowMap.removeValue(forKey: ObjectIdentifier(nsWindow))
+        logger.info("unregisterNSWindow: registered content windows remaining=\(self.nsWindowMap.count, privacy: .public)")
+        terminateIfLastContentWindowGone()
     }
 
     /// True when `NSApp.keyWindow` is a registered content window (as opposed
     /// to Settings, Help, or panels). Replaces the `mainWindowIsKey()` heuristic
     /// that breaks under `WindowGroup` (identifiers differ per window).
     public func keyWindowIsContentWindow() -> Bool {
-        guard let key = NSApp.keyWindow else { return false }
+        guard let key = NSApplication.shared.keyWindow else { return false }
         return nsWindowMap[ObjectIdentifier(key)] != nil
     }
 
     /// The `WindowRuntime` for the currently-key content window, if any.
+    /// Returns `nil` in unit-test contexts where no window is key.
     /// Used by `BattyShortcuts` to target shortcut dispatch at the right window.
     public func keyWindowRuntime() -> WindowRuntime? {
-        guard let key = NSApp.keyWindow,
+        guard let key = NSApplication.shared.keyWindow,
               let windowID = nsWindowMap[ObjectIdentifier(key)] else { return nil }
         return windows.first { $0.id == windowID }
     }
@@ -126,6 +178,14 @@ public final class AppStateStore {
             bellFeed: bellFeed,
             nameCache: nameCache
         )
+        // Wire the initial window the same way windowRuntime(for:) wires
+        // newly created windows: onAllSessionsClosed → closeWindowCallback.
+        // RootWindowView sets closeWindowCallback once the NSWindow is live.
+        window.onAllSessionsClosed = { [weak window] in
+            guard let window else { return }
+            logger.info("onAllSessionsClosed windowID=\(window.id.value, privacy: .public): no sessions remaining; requesting window close")
+            window.closeWindowCallback?()
+        }
         self.windows = [window]
     }
 
@@ -229,52 +289,84 @@ public final class AppStateStore {
         windows[0].jumpToTab(sessionID: sessionID, tabID: tabID)
     }
 
+    /// Marks the active tab in the key content window as seen. Falls back to
+    /// `windows[0]` when no key window is identified (unit-test context, or
+    /// before the first window registers). In multi-window production, the
+    /// `PaneView.onChange(of: pane.activeTabID)` call site uses this to clear
+    /// bells for whichever tab just became active in the key window — a tab
+    /// in a non-key window gaining a new active tab doesn't clear its bells.
     public func markActiveTabSeen() {
-        windows[0].markActiveTabSeen()
+        (keyWindowRuntime() ?? windows[0]).markActiveTabSeen()
     }
 
     // MARK: - Bell event routing (global — searches across all windows)
 
-    public func recordBellTick(forTabID tabID: UUID, surfaceID: UUID = UUID(), windowID: UUID = UUID()) {
+    /// Records a BEL tick from the tab with `tabID`. The `windowID` field
+    /// on the resulting `BellFeedEntry` is set to the owning window's ID
+    /// (retired: the throwaway `UUID()` default from before #0239).
+    /// A bell counts as "seen at creation" only when the tab is the active
+    /// focused tab AND, when multiple content windows are registered, the
+    /// owning window is the key window. In single-window mode (no registered
+    /// key window, as in unit tests), `isFocused` alone determines seen-ness.
+    public func recordBellTick(forTabID tabID: UUID, surfaceID: UUID = UUID()) {
+        let keyWindowID = keyWindowRuntime()?.id
+        let multiWindow = keyWindowID != nil
         for window in windows {
             guard let location = window.locate(tabID: tabID) else { continue }
             let delta = location.tab.recordBellTickIfNeeded()
             guard delta > 0 else { return }
+            // In multi-window mode: seen requires both in-window focus AND key-window.
+            // In single-window / no-key-window mode: isFocused alone (preserves
+            // existing single-window test semantics).
+            let isOwnerKey = !multiWindow || window.id == keyWindowID
+            let effectivelySeen = location.isFocused && isOwnerKey
             for _ in 0..<delta {
                 let entry = BellFeedEntry(
                     timestamp: location.tab.lastBellAt ?? Date(),
-                    windowID: windowID,
+                    windowID: window.id.value,
                     sessionID: location.session.id,
                     paneID: location.pane.id,
                     tabID: location.tab.id,
                     surfaceID: surfaceID,
                     message: nil,
-                    seen: location.isFocused
+                    seen: effectivelySeen
                 )
                 bellFeed.record(entry)
-                window.propagateUnseen(at: location)
+                if !effectivelySeen {
+                    window.propagateUnseenForced(at: location)
+                }
                 postNotification(for: entry, at: location)
             }
             return
         }
     }
 
-    public func recordDesktopNotification(forTabID tabID: UUID, surfaceID: UUID = UUID(), windowID: UUID = UUID()) {
+    /// Records a desktop notification event (OSC 9 / OSC 777) from the tab
+    /// with `tabID`. `windowID` on the entry carries the real owning window's
+    /// ID; in multi-window mode a bell is only "seen at creation" if the owning
+    /// window is the key content window and the tab is the focused active tab.
+    public func recordDesktopNotification(forTabID tabID: UUID, surfaceID: UUID = UUID()) {
+        let keyWindowID = keyWindowRuntime()?.id
+        let multiWindow = keyWindowID != nil
         for window in windows {
             guard let location = window.locate(tabID: tabID) else { continue }
             guard location.tab.recordDesktopNotificationIfNeeded() else { return }
+            let isOwnerKey = !multiWindow || window.id == keyWindowID
+            let effectivelySeen = location.isFocused && isOwnerKey
             let entry = BellFeedEntry(
                 timestamp: location.tab.lastBellAt ?? Date(),
-                windowID: windowID,
+                windowID: window.id.value,
                 sessionID: location.session.id,
                 paneID: location.pane.id,
                 tabID: location.tab.id,
                 surfaceID: surfaceID,
                 message: location.tab.lastBellMessage,
-                seen: location.isFocused
+                seen: effectivelySeen
             )
             bellFeed.record(entry)
-            window.propagateUnseen(at: location)
+            if !effectivelySeen {
+                window.propagateUnseenForced(at: location)
+            }
             postNotification(for: entry, at: location)
             return
         }
@@ -296,10 +388,39 @@ public final class AppStateStore {
         }
     }
 
+    /// Jumps to the bell feed entry's owning window, makes it key and front
+    /// (event-origin call — legal only from a user gesture such as a feed
+    /// click or notification tap, never from view-update code), then navigates
+    /// to the session/pane/tab. If the entry's window is no longer registered
+    /// (the window was closed), the entry is marked seen and the jump no-ops.
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
-        for window in windows {
-            window.jumpToBellEntry(entry)
+        // Resolve owning window by matching windowID in the entry.
+        let owningWindowID = WindowID(entry.windowID)
+        guard let owningWindow = windows.first(where: { $0.id == owningWindowID }) else {
+            // Dead-window entry: mark seen and bail.
+            logger.info("jumpToBellEntry: owning windowID=\(entry.windowID, privacy: .public) no longer live; marking entry seen")
+            markBellSeen(id: entry.id)
+            return
         }
+        // Bring the owning window forward. makeKeyAndOrderFront is a
+        // responder-changing AppKit call: legal here because jumpToBellEntry
+        // is only called from feed-click / notification-tap event handlers.
+        if let nsWindow = nsWindow(for: owningWindowID) {
+            logger.info("jumpToBellEntry: making window \(owningWindowID.value, privacy: .public) key and front")
+            nsWindow.makeKeyAndOrderFront(nil)
+        }
+        owningWindow.jumpToBellEntry(entry)
+    }
+
+    /// Returns the `NSWindow` registered for `windowID`, if any.
+    public func nsWindow(for windowID: WindowID) -> NSWindow? {
+        for (key, id) in nsWindowMap where id == windowID {
+            // Reverse-lookup: ObjectIdentifier → NSWindow requires iterating
+            // all windows to find the one whose identifier matches. Since the
+            // map is small (one entry per content window), this is fine.
+            return NSApp.windows.first { ObjectIdentifier($0) == key }
+        }
+        return nil
     }
 
     // MARK: - CWD-driven auto-naming (global — AI machinery stays process-wide)

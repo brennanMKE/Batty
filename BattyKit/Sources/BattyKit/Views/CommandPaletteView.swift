@@ -64,8 +64,9 @@ struct CommandPaletteView: View {
             title: String(localized: "Duplicate Session"),
             keyHint: nil,
             action: {
-                if let id = store.selectedSessionID {
-                    store.duplicateSession(id: id)
+                let w = store.keyWindowRuntime() ?? store.windows[0]
+                if let id = w.selectedSessionID {
+                    w.duplicateSession(id: id)
                 }
             }
         ))
@@ -185,35 +186,39 @@ struct CommandPaletteView: View {
 
     private func dispatch(_ action: ShortcutAction) {
         logger.info("command palette dispatching \(action.rawValue, privacy: .public)")
+        // Target the key window's runtime for per-window actions (#0239:
+        // carried over from #0237). Falls back to windows[0] without a
+        // key window (previews, tests).
+        let window = store.keyWindowRuntime() ?? store.windows[0]
         switch action {
         case .newSession:
-            store.addSession()
+            window.addSession()
         case .closeTab:
-            store.requestCloseFocusedTab()
+            window.requestCloseFocusedTab()
         case .newTab:
-            store.selectedSession?.focusedPane.addTab(
-                inheritingCWDFrom: store.selectedSession?.focusedPane.activeTab
+            window.selectedSession?.focusedPane.addTab(
+                inheritingCWDFrom: window.selectedSession?.focusedPane.activeTab
             )
         case .splitHorizontal:
-            if let tree = store.selectedSession?.tree {
+            if let tree = window.selectedSession?.tree {
                 tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
             }
         case .splitVertical:
-            if let tree = store.selectedSession?.tree {
+            if let tree = window.selectedSession?.tree {
                 tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
             }
         case .focusPaneLeft:
-            store.selectedSession?.focusPane(adjacent: .left)
+            window.selectedSession?.focusPane(adjacent: .left)
         case .focusPaneRight:
-            store.selectedSession?.focusPane(adjacent: .right)
+            window.selectedSession?.focusPane(adjacent: .right)
         case .focusPaneUp:
-            store.selectedSession?.focusPane(adjacent: .up)
+            window.selectedSession?.focusPane(adjacent: .up)
         case .focusPaneDown:
-            store.selectedSession?.focusPane(adjacent: .down)
+            window.selectedSession?.focusPane(adjacent: .down)
         case .previousTab:
-            store.selectedSession?.focusedPane.selectPreviousTab()
+            window.selectedSession?.focusedPane.selectPreviousTab()
         case .nextTab:
-            store.selectedSession?.focusedPane.selectNextTab()
+            window.selectedSession?.focusedPane.selectNextTab()
         case .toggleSidebar:
             NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
         case .toggleBellFeed:

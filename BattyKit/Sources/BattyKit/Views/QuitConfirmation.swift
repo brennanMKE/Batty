@@ -20,8 +20,12 @@ public enum QuitConfirmation {
         if isInUITestMode { return true }
         guard SettingsPreference.resolvedConfirmQuit() else { return true }
         guard let store else { return true }
-        let openTabs = store.sessions.reduce(0) { acc, session in
-            acc + session.tree.allPanes.reduce(0) { $0 + $1.tabs.count }
+        // Walk all windows' sessions so a Cmd-Q with running processes in
+        // any window triggers the confirmation (#0239: widened from windows[0]).
+        let openTabs = store.windows.reduce(0) { windowAcc, window in
+            windowAcc + window.sessions.reduce(0) { sessionAcc, session in
+                sessionAcc + session.tree.allPanes.reduce(0) { $0 + $1.tabs.count }
+            }
         }
         guard openTabs > 0 else { return true }
 
@@ -32,5 +36,18 @@ public enum QuitConfirmation {
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.alertStyle = .warning
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Whether any tab across all windows of `store` has a running process
+    /// that needs confirmation before close. Used by the window-close path
+    /// to decide whether to prompt before tearing down a single window.
+    public static func windowNeedsConfirmClose(window: WindowRuntime) -> Bool {
+        if isInUITestMode { return false }
+        guard SettingsPreference.resolvedConfirmQuit() else { return false }
+        return window.sessions.contains { session in
+            session.tree.allPanes.contains { pane in
+                pane.tabs.contains { $0.terminal.needsConfirmClose }
+            }
+        }
     }
 }

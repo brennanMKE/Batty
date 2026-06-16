@@ -105,7 +105,10 @@ public struct BellFeedView: View {
     }
 
     private func pathLabel(for entry: BellFeedEntry) -> String {
-        guard let session = store.sessions.first(where: { $0.id == entry.sessionID }),
+        // Search all windows' sessions to find the owning session (#0239:
+        // entries can belong to any window's sessions, not just windows[0]).
+        let allSessions = store.windows.flatMap { $0.sessions }
+        guard let session = allSessions.first(where: { $0.id == entry.sessionID }),
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
               let tab = pane.tabs.first(where: { $0.id == entry.tabID })
         else {
