@@ -1,5 +1,6 @@
 // AppStateStore.swift
 
+import AppKit
 import Foundation
 import Observation
 import OSLog
@@ -27,6 +28,17 @@ public final class AppStateStore {
     /// step entirely — the deterministic chain behaves exactly as before.
     /// The app delegate wires `FoundationModelsNameSuggester.makeIfAvailable()`.
     @ObservationIgnored public var nameSuggester: SessionNameSuggesting?
+    /// Called by `BattyShortcuts` (the NSEvent-monitor path) to open a new
+    /// content window. The app delegate wires this to SwiftUI's captured
+    /// `OpenWindowAction` — same wiring style as `onAllSessionsClosed`. Nil
+    /// in unit tests and before the delegate sets it.
+    @ObservationIgnored public var openWindowAction: (() -> Void)?
+    /// NSWindow → WindowID mapping. Populated from each window's view tree
+    /// (via `WindowIDRegistrar`) so `BattyShortcuts` can identify the key
+    /// window's `WindowRuntime` without relying on window-title heuristics.
+    /// `@ObservationIgnored` — populated from AppKit callbacks, not from
+    /// SwiftUI-update code (the #0229 hazard class).
+    @ObservationIgnored private var nsWindowMap: [ObjectIdentifier: WindowID] = [:]
     /// One in-flight AI naming request per session, keyed by session id and
     /// tagged with the cwd it was issued for so a repeat report of the same
     /// cwd doesn't cancel-and-restart the request.
@@ -44,9 +56,57 @@ public final class AppStateStore {
     /// era; grows in `#0237` when `New Window` is added.
     @ObservationIgnored public private(set) var windows: [WindowRuntime]
 
-    /// Returns the `WindowRuntime` whose `id` matches, or `nil` if not found.
-    public func windowRuntime(for windowID: WindowID) -> WindowRuntime? {
-        windows.first { $0.id == windowID }
+    /// Returns the `WindowRuntime` for `windowID`, creating one lazily if
+    /// it does not yet exist. This is the single path for launch, New Window,
+    /// and restoration — all converge here so a new scene and a new runtime
+    /// are always created together. The initial window seeded in `init` uses
+    /// a known `WindowID`; subsequent windows create a fresh runtime with a
+    /// fresh `Session 1` in `$HOME` (no cross-window CWD inheritance).
+    public func windowRuntime(for windowID: WindowID) -> WindowRuntime {
+        if let existing = windows.first(where: { $0.id == windowID }) {
+            return existing
+        }
+        logger.info("windowRuntime: creating new runtime for windowID=\(windowID.value, privacy: .public)")
+        let runtime = WindowRuntime(
+            id: windowID,
+            sessions: [],
+            bellFeed: bellFeed,
+            nameCache: nameCache
+        )
+        windows.append(runtime)
+        return runtime
+    }
+
+    // MARK: - NSWindow ↔ WindowID registry
+
+    /// Registers the association between an `NSWindow` and its `WindowID`.
+    /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
+    /// the hosting NSWindow is known (from `updateNSView`, deferred off the
+    /// update pass). Safe to call multiple times — idempotent per window.
+    public func registerNSWindow(_ nsWindow: NSWindow, for windowID: WindowID) {
+        nsWindowMap[ObjectIdentifier(nsWindow)] = windowID
+    }
+
+    /// Removes a closed window from the registry. Called from the window's
+    /// view-tree teardown path.
+    public func unregisterNSWindow(_ nsWindow: NSWindow) {
+        nsWindowMap.removeValue(forKey: ObjectIdentifier(nsWindow))
+    }
+
+    /// True when `NSApp.keyWindow` is a registered content window (as opposed
+    /// to Settings, Help, or panels). Replaces the `mainWindowIsKey()` heuristic
+    /// that breaks under `WindowGroup` (identifiers differ per window).
+    public func keyWindowIsContentWindow() -> Bool {
+        guard let key = NSApp.keyWindow else { return false }
+        return nsWindowMap[ObjectIdentifier(key)] != nil
+    }
+
+    /// The `WindowRuntime` for the currently-key content window, if any.
+    /// Used by `BattyShortcuts` to target shortcut dispatch at the right window.
+    public func keyWindowRuntime() -> WindowRuntime? {
+        guard let key = NSApp.keyWindow,
+              let windowID = nsWindowMap[ObjectIdentifier(key)] else { return nil }
+        return windows.first { $0.id == windowID }
     }
 
     // MARK: - Init

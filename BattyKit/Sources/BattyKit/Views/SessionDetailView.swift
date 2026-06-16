@@ -7,6 +7,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 
 public struct SessionDetailView: View {
     public let store: AppStateStore
+    public let windowRuntime: WindowRuntime
     @Environment(\.themeChrome) private var themeChrome
     @State private var bellFeedShown: Bool = false
     @State private var commandPaletteShown: Bool = false
@@ -16,8 +17,9 @@ public struct SessionDetailView: View {
     @State private var pendingPaste: PendingPaste?
     @State private var splitDetailToolbarSafeInsetTop: CGFloat = -1
 
-    public init(store: AppStateStore) {
+    public init(store: AppStateStore, windowID: WindowID) {
         self.store = store
+        self.windowRuntime = store.windowRuntime(for: windowID)
     }
 
     public var body: some View {
@@ -68,16 +70,16 @@ public struct SessionDetailView: View {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)
         }
         .confirmationDialog(
-            store.pendingCloseRequest?.title ?? "",
+            windowRuntime.pendingCloseRequest?.title ?? "",
             isPresented: pendingCloseBinding,
             titleVisibility: .visible,
-            presenting: store.pendingCloseRequest
+            presenting: windowRuntime.pendingCloseRequest
         ) { _ in
             Button("Close", role: .destructive) {
-                store.confirmPendingClose()
+                windowRuntime.confirmPendingClose()
             }
             Button("Cancel", role: .cancel) {
-                store.cancelPendingClose()
+                windowRuntime.cancelPendingClose()
             }
         } message: { request in
             Text(request.message)
@@ -93,47 +95,47 @@ public struct SessionDetailView: View {
         }
         .environment(\.splitDetailToolbarSafeInsetTop, splitDetailToolbarSafeInsetTop)
         .onAppear {
-            logger.debug("onAppear: selectedSession=\(store.selectedSession?.title ?? "nil", privacy: .public)")
+            logger.debug("onAppear: selectedSession=\(windowRuntime.selectedSession?.title ?? "nil", privacy: .public)")
             focusSelectedSessionTerminal()
-            store.markActiveTabSeen()
-            store.applyActiveSessionTheme()
+            windowRuntime.markActiveTabSeen()
+            store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
         }
-        .onChange(of: store.selectedSessionID) { old, new in
+        .onChange(of: windowRuntime.selectedSessionID) { old, new in
             logger.debug("selectedSessionID changed: \(old?.uuidString ?? "nil", privacy: .public) → \(new?.uuidString ?? "nil", privacy: .public)")
             focusSelectedSessionTerminal()
-            store.markActiveTabSeen()
-            store.applyActiveSessionTheme()
+            windowRuntime.markActiveTabSeen()
+            store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
         }
-        .onChange(of: store.selectedSession?.tree.focusedPaneID) { _, _ in
-            store.markActiveTabSeen()
+        .onChange(of: windowRuntime.selectedSession?.tree.focusedPaneID) { _, _ in
+            windowRuntime.markActiveTabSeen()
         }
-        .onChange(of: store.selectedSession?.tree.allPanes.count) { _, newCount in
+        .onChange(of: windowRuntime.selectedSession?.tree.allPanes.count) { _, newCount in
             logger.debug("allPanes.count changed → \(newCount ?? 0, privacy: .public); re-applying theme")
-            store.applyActiveSessionTheme()
+            store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
         }
     }
 
     @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
         ToolbarItemGroup {
             Button {
-                guard let tree = store.selectedSession?.tree else { return }
+                guard let tree = windowRuntime.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
             } label: {
                 Label("Split Horizontally", systemImage: "rectangle.split.2x1")
             }
             .help("Split Horizontally (\u{2318}D)")
             .accessibilityIdentifier("toolbar.split-horizontal")
-            .disabled(store.selectedSession == nil)
+            .disabled(windowRuntime.selectedSession == nil)
 
             Button {
-                guard let tree = store.selectedSession?.tree else { return }
+                guard let tree = windowRuntime.selectedSession?.tree else { return }
                 tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
             } label: {
                 Label("Split Vertically", systemImage: "rectangle.split.1x2")
             }
             .help("Split Vertically (\u{2318}\u{21E7}D)")
             .accessibilityIdentifier("toolbar.split-vertical")
-            .disabled(store.selectedSession == nil)
+            .disabled(windowRuntime.selectedSession == nil)
 
             Button {
                 bellFeedShown.toggle()
@@ -170,19 +172,19 @@ public struct SessionDetailView: View {
             // AppKit hit-testing on TerminalHostView routes clicks inside a
             // visible terminal frame to that terminal; clicks outside fall
             // through to SwiftUI.
-            TerminalHostInstaller(windowID: store.windows[0].id)
+            TerminalHostInstaller(windowID: windowRuntime.id)
 
-            ForEach(store.sessions) { session in
+            ForEach(windowRuntime.sessions) { session in
                 SplitContainerView(tree: session.tree)
                     .coordinateSpace(name: "session")
                     .onPreferenceChange(PaneFramePreferenceKey.self) { newFrames in
                         session.paneFrames.frames = newFrames
                     }
-                    .environment(\.isSelectedSession, session.id == store.selectedSessionID)
-                    .opacity(session.id == store.selectedSessionID ? 1 : 0)
-                    .allowsHitTesting(session.id == store.selectedSessionID)
+                    .environment(\.isSelectedSession, session.id == windowRuntime.selectedSessionID)
+                    .opacity(session.id == windowRuntime.selectedSessionID ? 1 : 0)
+                    .allowsHitTesting(session.id == windowRuntime.selectedSessionID)
             }
-            if store.selectedSession == nil {
+            if windowRuntime.selectedSession == nil {
                 ContentUnavailableView(
                     "No Session Selected",
                     systemImage: "rectangle.split.3x1",
@@ -197,25 +199,25 @@ public struct SessionDetailView: View {
             ignoresSafeAreaEdges: .all
         )
         .coordinateSpace(name: TerminalHostInstaller.coordinateSpaceName)
-        .environment(\.windowID, store.windows[0].id)
+        .environment(\.windowID, windowRuntime.id)
         .frame(minWidth: 600, minHeight: 400)
     }
 
     private var pendingCloseBinding: Binding<Bool> {
         Binding(
-            get: { store.pendingCloseRequest != nil },
+            get: { windowRuntime.pendingCloseRequest != nil },
             set: { newValue in
-                if !newValue { store.cancelPendingClose() }
+                if !newValue { windowRuntime.cancelPendingClose() }
             }
         )
     }
 
     private var navigationTitle: String {
-        store.selectedSession?.title ?? "Batty"
+        windowRuntime.selectedSession?.title ?? "Batty"
     }
 
     private func focusSelectedSessionTerminal() {
-        guard let session = store.selectedSession else { return }
+        guard let session = windowRuntime.selectedSession else { return }
         guard let activeTab = session.focusedPane.activeTab else { return }
         TerminalSurfaceFocuser.focusWhenReady(tab: activeTab)
     }

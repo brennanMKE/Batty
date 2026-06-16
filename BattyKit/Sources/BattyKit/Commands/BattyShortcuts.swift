@@ -27,25 +27,25 @@ public enum BattyShortcuts {
         // The key monitor is global, so without this gate Cmd-W in the
         // Settings panel would fire `closeTab` against the background main
         // window — closing its last tab, cascading to session removal, and
-        // terminating the app. Only run main-window-scoped shortcuts when
-        // the main Batty window is actually key; otherwise let macOS handle
-        // the event (Cmd-W → NSWindow.performClose: on the focused panel).
-        if !mainWindowIsKey() {
-            return false
-        }
+        // terminating the app. Only run content-window shortcuts when a
+        // registered content window is key; Settings / Help / panels are
+        // excluded by not being in the NSWindow↔WindowID registry.
+        let appStore = AppStateStore.shared
+        guard appStore.keyWindowIsContentWindow() else { return false }
 
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers ?? ""
 
-        let store = AppStateStore.shared
-
         if let candidate = makeCandidate(from: event, mods: mods) {
             let shortcuts = ShortcutsStore.shared
             for action in ShortcutAction.allCases where shortcuts.binding(for: action) == candidate {
-                run(action, store: store)
+                run(action, appStore: appStore)
                 return true
             }
         }
+
+        // Per-window dispatch for positional bindings targets the key window's runtime.
+        guard let windowRuntime = appStore.keyWindowRuntime() else { return false }
 
         // Positional bindings — intentionally NOT customizable in v1.
         // The preference is read at dispatch time (rather than baked into
@@ -56,9 +56,9 @@ public enum BattyShortcuts {
         case ([.command], let digit) where digit.count == 1 && digit.first?.isWholeNumber == true:
             if let index = Int(digit), (1...9).contains(index) {
                 if cmdSwitchesSessions {
-                    store.selectSession(at: index - 1)
+                    windowRuntime.selectSession(at: index - 1)
                 } else {
-                    store.selectedSession?.focusedPane.selectTab(at: index - 1)
+                    windowRuntime.selectedSession?.focusedPane.selectTab(at: index - 1)
                 }
                 return true
             }
@@ -67,9 +67,9 @@ public enum BattyShortcuts {
         case ([.command, .option], let digit) where digit.count == 1 && digit.first?.isWholeNumber == true:
             if let index = Int(digit), (1...9).contains(index) {
                 if cmdSwitchesSessions {
-                    store.selectedSession?.focusedPane.selectTab(at: index - 1)
+                    windowRuntime.selectedSession?.focusedPane.selectTab(at: index - 1)
                 } else {
-                    store.selectSession(at: index - 1)
+                    windowRuntime.selectSession(at: index - 1)
                 }
                 return true
             }
@@ -78,24 +78,6 @@ public enum BattyShortcuts {
         default:
             return false
         }
-    }
-
-    /// True when `NSApp.keyWindow` is the main Batty content window
-    /// (i.e. the window that hosts sessions, panes, and tabs), as opposed
-    /// to the Settings panel, Help window, or no window at all. Used to
-    /// scope tab/pane/session shortcuts so they don't fire against the
-    /// background main window when a different panel has focus.
-    private static func mainWindowIsKey() -> Bool {
-        guard let key = NSApp.keyWindow else { return false }
-        // SwiftUI's `Window(_, id: "main")` sets the underlying NSWindow's
-        // identifier to a string containing the scene id.
-        if let rawID = key.identifier?.rawValue, rawID.contains("main") {
-            return true
-        }
-        // Fall back to the documented main-window title (`mainWindowTitle`
-        // in `BattyApp`). Settings / Help / panel windows have different
-        // titles.
-        return key.title == "Batty"
     }
 
     private static func currentCmdNumberTarget() -> CmdNumberTarget {
@@ -121,37 +103,43 @@ public enum BattyShortcuts {
         return ShortcutBinding(key: key, modifiers: swiftUIMods.rawValue)
     }
 
-    private static func run(_ action: ShortcutAction, store: AppStateStore) {
+    private static func run(_ action: ShortcutAction, appStore: AppStateStore) {
         logger.info("dispatching action \(action.rawValue, privacy: .public)")
+        // New Window is app-level; all other actions target the key window's runtime.
+        if action == .newWindow {
+            appStore.openWindowAction?()
+            return
+        }
+        guard let window = appStore.keyWindowRuntime() else { return }
         switch action {
         case .newSession:
-            store.addSession()
+            window.addSession()
         case .closeTab:
-            store.closeFocusedTab()
+            window.closeFocusedTab()
         case .newTab:
-            store.selectedSession?.focusedPane.addTab(
-                inheritingCWDFrom: store.selectedSession?.focusedPane.activeTab
+            window.selectedSession?.focusedPane.addTab(
+                inheritingCWDFrom: window.selectedSession?.focusedPane.activeTab
             )
         case .splitHorizontal:
-            if let tree = store.selectedSession?.tree {
+            if let tree = window.selectedSession?.tree {
                 tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
             }
         case .splitVertical:
-            if let tree = store.selectedSession?.tree {
+            if let tree = window.selectedSession?.tree {
                 tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
             }
         case .focusPaneLeft:
-            store.selectedSession?.focusPane(adjacent: .left)
+            window.selectedSession?.focusPane(adjacent: .left)
         case .focusPaneRight:
-            store.selectedSession?.focusPane(adjacent: .right)
+            window.selectedSession?.focusPane(adjacent: .right)
         case .focusPaneUp:
-            store.selectedSession?.focusPane(adjacent: .up)
+            window.selectedSession?.focusPane(adjacent: .up)
         case .focusPaneDown:
-            store.selectedSession?.focusPane(adjacent: .down)
+            window.selectedSession?.focusPane(adjacent: .down)
         case .previousTab:
-            store.selectedSession?.focusedPane.selectPreviousTab()
+            window.selectedSession?.focusedPane.selectPreviousTab()
         case .nextTab:
-            store.selectedSession?.focusedPane.selectNextTab()
+            window.selectedSession?.focusedPane.selectNextTab()
         case .toggleSidebar:
             let defaults = UserDefaults.standard
             let current = defaults.bool(forKey: SidebarPreference.hiddenKey)
@@ -166,6 +154,9 @@ public enum BattyShortcuts {
             NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
         case .themeSelector:
             NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
+        case .newWindow:
+            // Already handled above; unreachable.
+            break
         }
     }
 }

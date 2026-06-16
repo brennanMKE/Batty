@@ -56,7 +56,14 @@ extension AppStateStore {
     /// Resolves the fallback chain: session-local override → global UserDefaults
     /// key → system default. Called on every session switch and on first appear.
     public func applyActiveSessionTheme() {
-        guard let session = selectedSession else {
+        applyActiveSessionTheme(for: selectedSession)
+    }
+
+    /// Applies the effective theme for a specific session. Called by
+    /// per-window views that resolve the selected session from their own
+    /// `WindowRuntime` rather than the global forwarding shim.
+    public func applyActiveSessionTheme(for session: SessionRuntime?) {
+        guard let session else {
             logger.debug("applyActiveSessionTheme: no selected session")
             return
         }

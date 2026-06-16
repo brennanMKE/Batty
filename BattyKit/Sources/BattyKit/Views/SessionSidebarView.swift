@@ -3,22 +3,25 @@
 import SwiftUI
 
 public struct SessionSidebarView: View {
-    @Bindable public var store: AppStateStore
+    @Bindable public var windowRuntime: WindowRuntime
+    public let store: AppStateStore
     @Environment(\.themeChrome) private var themeChrome
     @State private var renamingSessionID: UUID?
     @State private var renameDraft: String = ""
     @State private var themingSessionID: UUID?
 
-    public init(store: AppStateStore) {
+    public init(store: AppStateStore, windowID: WindowID) {
         self.store = store
+        self.windowRuntime = store.windowRuntime(for: windowID)
     }
 
     public var body: some View {
-        List(selection: $store.selectedSessionID) {
-            ForEach(store.sessions) { session in
+        List(selection: $windowRuntime.selectedSessionID) {
+            ForEach(windowRuntime.sessions) { session in
                 SessionRow(
                     session: session,
                     store: store,
+                    windowRuntime: windowRuntime,
                     accent: themeChrome?.accent,
                     onRename: {
                         renameDraft = session.title
@@ -33,11 +36,11 @@ public struct SessionSidebarView: View {
                 .modifier(SidebarRowBackground(
                     sidebarBackground: themeChrome?.chromeBackground,
                     selectionTint: themeChrome?.sidebarSelectionTint,
-                    isSelected: session.id == store.selectedSessionID
+                    isSelected: session.id == windowRuntime.selectedSessionID
                 ))
             }
             .onMove { source, destination in
-                store.moveSessions(fromOffsets: source, toOffset: destination)
+                windowRuntime.moveSessions(fromOffsets: source, toOffset: destination)
             }
         }
         .listStyle(.sidebar)
@@ -48,7 +51,7 @@ public struct SessionSidebarView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
                 Button {
-                    store.addSession()
+                    windowRuntime.addSession()
                 } label: {
                     Image(systemName: "plus")
                         .frame(width: 22, height: 22)
@@ -71,7 +74,7 @@ public struct SessionSidebarView: View {
             RenameSessionSheet(
                 title: $renameDraft,
                 onCommit: {
-                    store.renameSession(id: session.id, to: renameDraft)
+                    windowRuntime.renameSession(id: session.id, to: renameDraft)
                     renamingSessionID = nil
                 },
                 onCancel: { renamingSessionID = nil }
@@ -88,14 +91,14 @@ public struct SessionSidebarView: View {
 
     private var renamingBinding: Binding<SessionRuntime?> {
         Binding(
-            get: { store.sessions.first { $0.id == renamingSessionID } },
+            get: { windowRuntime.sessions.first { $0.id == renamingSessionID } },
             set: { renamingSessionID = $0?.id }
         )
     }
 
     private var themingBinding: Binding<SessionRuntime?> {
         Binding(
-            get: { store.sessions.first { $0.id == themingSessionID } },
+            get: { windowRuntime.sessions.first { $0.id == themingSessionID } },
             set: { themingSessionID = $0?.id }
         )
     }
@@ -143,6 +146,7 @@ private struct SidebarRowBackground: ViewModifier {
 private struct SessionRow: View {
     @Bindable var session: SessionRuntime
     let store: AppStateStore
+    let windowRuntime: WindowRuntime
     let accent: Color?
     let onRename: () -> Void
     let onTheme: () -> Void
@@ -169,7 +173,7 @@ private struct SessionRow: View {
         .contextMenu {
             Button("Rename") { onRename() }
             Button("Reset Name") {
-                store.clearSessionName(id: session.id)
+                windowRuntime.clearSessionName(id: session.id)
             }
             .disabled(AppStateStore.isDefaultSessionTitle(session.title))
             Divider()
@@ -177,8 +181,8 @@ private struct SessionRow: View {
             if session.localThemeName != nil {
                 Button("Clear Session Theme") {
                     session.localThemeName = nil
-                    if session.id == store.selectedSessionID {
-                        store.applyActiveSessionTheme()
+                    if session.id == windowRuntime.selectedSessionID {
+                        store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
                     }
                 }
             }
@@ -190,7 +194,7 @@ private struct SessionRow: View {
             }
             Divider()
             Button("Close", role: .destructive) {
-                store.removeSession(id: session.id)
+                windowRuntime.removeSession(id: session.id)
             }
         }
     }

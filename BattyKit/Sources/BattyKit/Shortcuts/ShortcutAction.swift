@@ -27,6 +27,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
     case openQuickly
     case layoutPicker
     case themeSelector
+    case newWindow
 
     public var id: String { rawValue }
 
@@ -49,6 +50,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .openQuickly:     return String(localized: "Open Quickly")
         case .layoutPicker:    return String(localized: "Open Layout Picker")
         case .themeSelector:   return String(localized: "Open Theme Selector")
+        case .newWindow:       return String(localized: "New Window")
         }
     }
 
@@ -93,6 +95,8 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
             return ShortcutBinding(key: "l", modifiers: EventModifiers([.command, .shift]).rawValue)
         case .themeSelector:
             return ShortcutBinding(key: "t", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .newWindow:
+            return ShortcutBinding(key: "n", modifiers: EventModifiers([.command, .shift]).rawValue)
         }
     }
 }

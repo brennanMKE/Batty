@@ -11,11 +11,12 @@ private let logger = Logger(subsystem: "co.sstools.Batty", category: "BattyApp")
 struct BattyApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: BattyAppDelegate
 
-    private let mainWindowTitle: String = "Batty"
-
     var body: some Scene {
-        Window(mainWindowTitle, id: "main") {
-            ContentView()
+        WindowGroup(for: WindowID.self) { $windowID in
+            ContentView(windowID: windowID ?? WindowID())
+                .background(OpenWindowHookInstaller())
+        } defaultValue: {
+            WindowID()
         }
         .commandsRemoved()
         .commands {
@@ -59,5 +60,23 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         }
         logger.info("applicationShouldTerminate -> terminateCancel (prompt shown)")
         return .terminateCancel
+    }
+}
+
+/// Wires the SwiftUI `openWindow` action into `AppStateStore` so the
+/// NSEvent-monitor path (`BattyShortcuts`) can open new windows without an
+/// `@Environment` reference. Placed in the content scene's view tree so the
+/// action is always live while any content window exists.
+private struct OpenWindowHookInstaller: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .onAppear {
+                AppStateStore.shared.openWindowAction = {
+                    logger.info("openWindowAction: opening new content window")
+                    openWindow(value: WindowID())
+                }
+            }
     }
 }

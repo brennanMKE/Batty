@@ -5,23 +5,26 @@ import SwiftUI
 
 public struct RootWindowView: View {
     @State private var store: AppStateStore
+    private let windowID: WindowID
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
 
-    public init(store: AppStateStore? = nil) {
+    public init(windowID: WindowID, store: AppStateStore? = nil) {
+        self.windowID = windowID
         _store = State(initialValue: store ?? AppStateStore.shared)
     }
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            SessionSidebarView(store: store)
+            SessionSidebarView(store: store, windowID: windowID)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
-            SessionDetailView(store: store)
+            SessionDetailView(store: store, windowID: windowID)
         }
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)
         .background(WindowChromeApplier(palette: store.themeChrome.palette))
+        .background(WindowIDRegistrar(windowID: windowID))
         .task { setUpNotifier() }
         .task { UITestDriver.runIfNeeded(store: store) }
         .onAppear {

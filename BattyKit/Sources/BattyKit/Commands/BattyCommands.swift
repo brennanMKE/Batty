@@ -4,6 +4,18 @@ import AppKit
 import OSLog
 import SwiftUI
 
+private struct NewWindowButton: View {
+    @Environment(\.openWindow) private var openWindow
+    let shortcuts: ShortcutsStore
+
+    var body: some View {
+        Button("New Window") {
+            openWindow(value: WindowID())
+        }
+        .keyboardShortcut(shortcuts.keyboardShortcut(for: .newWindow))
+    }
+}
+
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BattyCommands")
 
 public struct BattyCommands: Commands {
@@ -18,6 +30,10 @@ public struct BattyCommands: Commands {
 
     public var body: some Commands {
         CommandGroup(replacing: .newItem) {
+            NewWindowButton(shortcuts: shortcuts)
+
+            Divider()
+
             Button("New Session") {
                 logger.info("Cmd-N action fired (File → New Session)")
                 store.addSession()
