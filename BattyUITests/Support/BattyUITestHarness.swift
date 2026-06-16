@@ -135,6 +135,18 @@ nonisolated enum BattyUITestHarness {
         return app.descendants(matching: .any).matching(identifier: "session-sidebar").firstMatch
     }
 
+    /// Returns the sidebar element scoped to the given window — avoids the
+    /// `firstMatch` ambiguity when multiple windows are open. Pass
+    /// `app.windows.element(boundBy: N)` as `window`.
+    @MainActor
+    static func sidebar(in window: XCUIElement) -> XCUIElement {
+        let collection = window.collectionViews["session-sidebar"].firstMatch
+        if collection.exists { return collection }
+        let outline = window.outlines["session-sidebar"].firstMatch
+        if outline.exists { return outline }
+        return window.descendants(matching: .any).matching(identifier: "session-sidebar").firstMatch
+    }
+
     @MainActor
     static func sessionRow(named title: String, in app: XCUIApplication) -> XCUIElement {
         let identifier = "session-row.\(title)"

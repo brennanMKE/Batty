@@ -215,9 +215,7 @@ struct CommandPaletteView: View {
         case .nextTab:
             store.selectedSession?.focusedPane.selectNextTab()
         case .toggleSidebar:
-            let defaults = UserDefaults.standard
-            let current = defaults.bool(forKey: SidebarPreference.hiddenKey)
-            defaults.set(!current, forKey: SidebarPreference.hiddenKey)
+            NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
         case .toggleBellFeed:
             NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
         case .commandPalette:

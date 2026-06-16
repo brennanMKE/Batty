@@ -19,7 +19,6 @@ private struct NewWindowButton: View {
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BattyCommands")
 
 public struct BattyCommands: Commands {
-    @AppStorage(SidebarPreference.hiddenKey) private var sidebarHidden: Bool = false
     @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
 
@@ -53,12 +52,10 @@ public struct BattyCommands: Commands {
 
         CommandGroup(after: .sidebar) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    sidebarHidden.toggle()
-                }
+                NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
             } label: {
                 Label(
-                    sidebarHidden ? String(localized: "Show Sidebar") : String(localized: "Hide Sidebar"),
+                    String(localized: "Toggle Sidebar"),
                     systemImage: "sidebar.left"
                 )
             }
