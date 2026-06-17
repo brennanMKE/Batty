@@ -28,22 +28,33 @@ public struct SessionDetailView: View {
 
     @ViewBuilder private var decoratedStack: some View {
         configuredStack
+        // Each window has its own SessionDetailView subscribed to the same
+        // app-wide NotificationCenter, so every one of these toggles is
+        // delivered to every window. Only the key content window may act —
+        // otherwise a single Cmd-shortcut opens the picker in all windows
+        // (#0242). Same guard as the sidebar toggle in RootWindowView.
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleBellFeed)) { _ in
+            guard isKeyWindow else { return }
             bellFeedShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleCommandPalette)) { _ in
+            guard isKeyWindow else { return }
             commandPaletteShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleOpenQuickly)) { _ in
+            guard isKeyWindow else { return }
             openQuicklyShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleLayoutPicker)) { _ in
+            guard isKeyWindow else { return }
             layoutPickerShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleThemeSelector)) { _ in
+            guard isKeyWindow else { return }
             themeSelectorShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyRequestPaste)) { note in
+            guard isKeyWindow else { return }
             guard let pending = note.userInfo?["paste"] as? PendingPaste else { return }
             pendingPaste = pending
         }
@@ -201,6 +212,10 @@ public struct SessionDetailView: View {
         .coordinateSpace(name: TerminalHostInstaller.coordinateSpaceName)
         .environment(\.windowID, windowRuntime.id)
         .frame(minWidth: 600, minHeight: 400)
+    }
+
+    private var isKeyWindow: Bool {
+        store.keyWindowRuntime()?.id == windowRuntime.id
     }
 
     private var pendingCloseBinding: Binding<Bool> {
