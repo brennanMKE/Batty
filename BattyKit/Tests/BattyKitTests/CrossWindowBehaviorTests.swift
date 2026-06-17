@@ -287,6 +287,42 @@ struct CrossWindowBehaviorTests {
                 "Newly created window runtime's onAllSessionsClosed must call closeWindowCallback")
     }
 
+    // MARK: - Global theme application across windows (#0243)
+
+    @Test func applyThemeToAllSurfacesRethemesEveryWindow() {
+        let store = AppStateStore()
+        let w1 = store.windows[0]
+        let w2 = store.windowRuntime(for: WindowID())
+
+        // Two distinct catalog themes so the applied theme differs from
+        // whatever each surface initialised with, and from each other.
+        let themeA = GhosttyThemeCatalog.allThemes[0]
+        let themeB = GhosttyThemeCatalog.allThemes[1]
+
+        func allTabs(_ w: WindowRuntime) -> [TabRuntime] {
+            w.sessions.flatMap { $0.tree.allPanes.flatMap(\.tabs) }
+        }
+
+        store.applyThemeToAllSurfaces(themeA)
+        let expectedA = themeA.toTerminalTheme()
+        for tab in allTabs(w1) + allTabs(w2) {
+            #expect(tab.terminal.controller.theme == expectedA)
+        }
+
+        store.applyThemeToAllSurfaces(themeB)
+        let expectedB = themeB.toTerminalTheme()
+        // The second window's surfaces in particular must update — the #0243
+        // regression left them stale because the apply loop only walked the
+        // windows[0] sessions shim, never the other windows.
+        for tab in allTabs(w2) {
+            #expect(tab.terminal.controller.theme == expectedB,
+                    "Second window's surfaces must be re-themed by the global theme apply (#0243)")
+        }
+        for tab in allTabs(w1) {
+            #expect(tab.terminal.controller.theme == expectedB)
+        }
+    }
+
     @Test func onAllSessionsClosedIsTriggeredWhenSessionsEmpty() {
         let store = AppStateStore()
         var closeCalled = false

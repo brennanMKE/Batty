@@ -128,9 +128,14 @@ extension AppStateStore {
     /// session, so they remain "following global" and will pick up future
     /// global-theme changes automatically.
     public func applyThemeToAllSurfaces(_ theme: GhosttyThemeDefinition) {
-        let unoverridden = sessions.filter { $0.localThemeName == nil }
-        logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) unoverridden=\(unoverridden.count, privacy: .public)/\(self.sessions.count, privacy: .public)")
+        // The global theme is app-wide (per-window themes are out of scope —
+        // multi-window-design.md §10), so re-theme every window's surfaces,
+        // not just windows[0]. The `sessions` shim resolves to windows[0]
+        // only; iterating `windows` directly avoids re-theming a single
+        // window and leaving the others (and often the key window) stale.
         let terminalTheme = theme.toTerminalTheme()
+        let unoverridden = windows.flatMap { $0.sessions }.filter { $0.localThemeName == nil }
+        logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) unoverridden=\(unoverridden.count, privacy: .public) windows=\(self.windows.count, privacy: .public)")
         for session in unoverridden {
             for pane in session.tree.allPanes {
                 for tab in pane.tabs {
