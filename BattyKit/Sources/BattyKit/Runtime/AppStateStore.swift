@@ -189,104 +189,158 @@ public final class AppStateStore {
         self.windows = [window]
     }
 
-    // MARK: - Per-window forwarding shims (resolve to windows[0])
+    // MARK: - Per-window forwarding shims
     //
-    // Every property and method below is a thin forwarder to the single
-    // WindowRuntime. All existing call sites — app code, views, shortcuts,
-    // tests — continue to resolve through AppStateStore unchanged. When
-    // #0237 adds multiple windows, callers that need to target a specific
-    // window will switch to windowRuntime(for:) directly.
+    // Read-property shims resolve to windows[0]. They are only used from
+    // unit-test and UITestDriver contexts where a single window is present;
+    // view code uses the per-window `WindowRuntime` from the environment
+    // directly. Redefining them to call `keyWindowRuntime()` would break
+    // the observation contract — `keyWindowRuntime()` reads
+    // `NSApplication.shared.keyWindow`, which is not @Observable, so views
+    // reading these computed properties would not re-invalidate when the key
+    // window changes (#0248 view-read-path caution).
+    //
+    // Action shims (below) resolve to the key window so that operations
+    // dispatched from NSEvent monitors and other app-global paths target the
+    // window the user is interacting with, not always windows[0].
 
     public var sessions: [SessionRuntime] {
+        // windows[0]: read-only shim used only in unit tests and UITestDriver.
         windows[0].sessions
     }
 
     public var selectedSessionID: UUID? {
+        // windows[0]: read-only shim used only in unit tests and UITestDriver.
         get { windows[0].selectedSessionID }
         set { windows[0].selectedSessionID = newValue }
     }
 
     public var selectedSession: SessionRuntime? {
+        // windows[0]: read-only shim used only in unit tests and UITestDriver.
         windows[0].selectedSession
     }
 
     public var pendingCloseRequest: PendingCloseRequest? {
+        // windows[0]: read-only shim used only in unit tests and UITestDriver.
         get { windows[0].pendingCloseRequest }
         set { windows[0].pendingCloseRequest = newValue }
     }
 
     @discardableResult
     public func addSession(title: String? = nil) -> SessionRuntime {
-        windows[0].addSession(title: title)
+        (keyWindowRuntime() ?? windows[0]).addSession(title: title)
     }
 
     public func removeSession(id: UUID) {
         cancelNameSuggestion(forSessionID: id)
-        windows[0].removeSession(id: id)
+        // Locate the owning window by session ID — the session may be in any window.
+        windowOwning(sessionID: id)?.removeSession(id: id)
     }
 
     public func renameSession(id: UUID, to newTitle: String) {
-        windows[0].renameSession(id: id, to: newTitle)
+        // Locate the owning window by session ID — the session may be in any window.
+        windowOwning(sessionID: id)?.renameSession(id: id, to: newTitle)
         // Cancel any in-flight AI naming — an explicit user rename pins
         // the title and must not be overwritten by a late suggestion.
         cancelNameSuggestion(forSessionID: id)
     }
 
     public func clearSessionName(id: UUID) {
-        windows[0].clearSessionName(id: id)
+        // Locate the owning window by session ID — the session may be in any window.
+        windowOwning(sessionID: id)?.clearSessionName(id: id)
     }
 
     @discardableResult
     public func duplicateSession(id: UUID) -> SessionRuntime? {
-        windows[0].duplicateSession(id: id)
+        windowOwning(sessionID: id)?.duplicateSession(id: id)
     }
 
     public func moveSessions(fromOffsets source: IndexSet, toOffset destination: Int) {
-        windows[0].moveSessions(fromOffsets: source, toOffset: destination)
+        (keyWindowRuntime() ?? windows[0]).moveSessions(fromOffsets: source, toOffset: destination)
     }
 
     public func selectSession(at index: Int) {
-        windows[0].selectSession(at: index)
+        (keyWindowRuntime() ?? windows[0]).selectSession(at: index)
     }
 
     public func closeTab(id tabID: UUID) {
-        windows[0].closeTab(id: tabID)
+        // Locate the owning window to route the close to the correct
+        // WindowRuntime rather than defaulting to windows[0].
+        for window in windows {
+            if window.locate(tabID: tabID) != nil {
+                window.closeTab(id: tabID)
+                return
+            }
+        }
     }
 
     public func closeFocusedTab() {
-        windows[0].closeFocusedTab()
+        (keyWindowRuntime() ?? windows[0]).closeFocusedTab()
     }
 
     public func requestCloseTab(id tabID: UUID) {
-        windows[0].requestCloseTab(id: tabID)
+        // Locate the owning window so the close-confirmation sheet appears
+        // on the correct window's session, not always windows[0].
+        for window in windows {
+            if window.locate(tabID: tabID) != nil {
+                window.requestCloseTab(id: tabID)
+                return
+            }
+        }
     }
 
     public func requestCloseFocusedTab() {
-        windows[0].requestCloseFocusedTab()
+        (keyWindowRuntime() ?? windows[0]).requestCloseFocusedTab()
     }
 
     public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {
-        windows[0].requestCloseOtherTabs(paneID: paneID, keepingTabID: keepingTabID)
+        // Locate the owning window via pane ID so the operation targets
+        // the correct window, not always windows[0].
+        for window in windows {
+            if window.sessions.contains(where: { $0.tree.allPanes.contains(where: { $0.id == paneID }) }) {
+                window.requestCloseOtherTabs(paneID: paneID, keepingTabID: keepingTabID)
+                return
+            }
+        }
     }
 
     public func confirmPendingClose() {
-        windows[0].confirmPendingClose()
+        (keyWindowRuntime() ?? windows[0]).confirmPendingClose()
     }
 
     public func cancelPendingClose() {
-        windows[0].cancelPendingClose()
+        (keyWindowRuntime() ?? windows[0]).cancelPendingClose()
     }
 
     public func focusPane(id: UUID) {
-        windows[0].focusPane(id: id)
+        // Locate the pane's owning window so focus is applied to the
+        // correct WindowRuntime rather than always windows[0].
+        for window in windows {
+            if window.sessions.contains(where: { $0.tree.allPanes.contains(where: { $0.id == id }) }) {
+                window.focusPane(id: id)
+                return
+            }
+        }
     }
 
     public func focusPane(containingTabID tabID: UUID) {
-        windows[0].focusPane(containingTabID: tabID)
+        // Locate the owning window via tab ID. This is also called from
+        // TerminalClickFocusMonitor (event origin), so using the owning
+        // window is more precise than keyWindowRuntime() — the clicked
+        // terminal's window IS the target, and it may not yet be key
+        // (the AppKit makeFirstResponder call comes in the same event).
+        for window in windows {
+            if window.locate(tabID: tabID) != nil {
+                window.focusPane(containingTabID: tabID)
+                return
+            }
+        }
     }
 
     public func jumpToTab(sessionID: UUID, tabID: UUID) {
-        windows[0].jumpToTab(sessionID: sessionID, tabID: tabID)
+        // Locate the owning window by session ID so the jump navigates the
+        // correct window's state, not always windows[0].
+        windowOwning(sessionID: sessionID)?.jumpToTab(sessionID: sessionID, tabID: tabID)
     }
 
     /// Marks the active tab in the key content window as seen. Falls back to
@@ -439,44 +493,49 @@ public final class AppStateStore {
     /// each pane has its own CWD and picking one would be arbitrary
     /// (`#0213`).
     public func handleWorkingDirectoryChange(forTabID tabID: UUID) {
-        for (index, session) in sessions.enumerated() {
-            let anchorTab = session.tree.root.firstLeafPane.tabs[0]
-            guard anchorTab.id == tabID else { continue }
-            guard !session.titleOverride else { return }
-            guard session.tree.allPanes.count == 1 else { return }
-            let cwd = anchorTab.terminal.workingDirectory
-                ?? anchorTab.terminal.configuration.workingDirectory
-            guard let cwd, !cwd.isEmpty else { return }
-            var resolved = Self.resolveAutoTitle(
-                forCWD: cwd,
-                sessionIndex: index,
-                cache: nameCache,
-                resolver: ProjectNameResolver.shared,
-                nameFromFiles: SettingsPreference.resolvedAutoNameFromFiles()
-            )
-            if Self.isDefaultSessionTitle(resolved) {
-                // Deterministic chain missed — AI fallback (#0231). A
-                // memoized suggestion stands in for the default directly;
-                // an unknown path kicks off an async request. The settings
-                // toggle (#0233) gates the whole AI step, memo included —
-                // a memoized AI name is still automatic naming.
-                if !SettingsPreference.resolvedAutoNameWithAI() {
-                    cancelNameSuggestion(forSessionID: session.id)
-                } else if let memoized = nameSuggestionMemo[cwd] {
-                    cancelNameSuggestion(forSessionID: session.id)
-                    if let name = memoized {
-                        resolved = name
+        // Search across ALL windows — the `sessions` shim resolves to
+        // windows[0] only, so using it here would silently skip sessions in
+        // every other window (#0248 trigger bug).
+        for window in windows {
+            for (index, session) in window.sessions.enumerated() {
+                let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+                guard anchorTab.id == tabID else { continue }
+                guard !session.titleOverride else { return }
+                guard session.tree.allPanes.count == 1 else { return }
+                let cwd = anchorTab.terminal.workingDirectory
+                    ?? anchorTab.terminal.configuration.workingDirectory
+                guard let cwd, !cwd.isEmpty else { return }
+                var resolved = Self.resolveAutoTitle(
+                    forCWD: cwd,
+                    sessionIndex: index,
+                    cache: nameCache,
+                    resolver: ProjectNameResolver.shared,
+                    nameFromFiles: SettingsPreference.resolvedAutoNameFromFiles()
+                )
+                if Self.isDefaultSessionTitle(resolved) {
+                    // Deterministic chain missed — AI fallback (#0231). A
+                    // memoized suggestion stands in for the default directly;
+                    // an unknown path kicks off an async request. The settings
+                    // toggle (#0233) gates the whole AI step, memo included —
+                    // a memoized AI name is still automatic naming.
+                    if !SettingsPreference.resolvedAutoNameWithAI() {
+                        cancelNameSuggestion(forSessionID: session.id)
+                    } else if let memoized = nameSuggestionMemo[cwd] {
+                        cancelNameSuggestion(forSessionID: session.id)
+                        if let name = memoized {
+                            resolved = name
+                        }
+                    } else {
+                        scheduleNameSuggestion(for: session, cwd: cwd)
                     }
                 } else {
-                    scheduleNameSuggestion(for: session, cwd: cwd)
+                    cancelNameSuggestion(forSessionID: session.id)
                 }
-            } else {
-                cancelNameSuggestion(forSessionID: session.id)
+                guard resolved != session.title else { return }
+                logger.info("auto-rename session \(session.title, privacy: .public) -> \(resolved, privacy: .public) for cwd=\(cwd, privacy: .public)")
+                session.title = resolved
+                return
             }
-            guard resolved != session.title else { return }
-            logger.info("auto-rename session \(session.title, privacy: .public) -> \(resolved, privacy: .public) for cwd=\(cwd, privacy: .public)")
-            session.title = resolved
-            return
         }
     }
 
@@ -521,7 +580,11 @@ public final class AppStateStore {
     /// an AI suggestion has the same standing as a rules-derived name: a
     /// later cd re-resolves it and only an explicit user rename is stored.
     private func applySuggestedName(_ name: String, toSessionID sessionID: UUID, forCWD cwd: String) {
-        guard let session = sessions.first(where: { $0.id == sessionID }) else { return }
+        // Search across ALL windows — the `sessions` shim resolves to
+        // windows[0] only, so using it here would silently fail for sessions
+        // in other windows (#0248).
+        let session = windows.lazy.flatMap(\.sessions).first { $0.id == sessionID }
+        guard let session else { return }
         guard !session.titleOverride else { return }
         guard session.tree.allPanes.count == 1 else { return }
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
@@ -567,6 +630,14 @@ public final class AppStateStore {
     }()
 
     // MARK: - Private helpers
+
+    /// Returns the `WindowRuntime` that owns the session with `sessionID`,
+    /// searching across all registered windows. Used by the action shims that
+    /// route operations by session ID (rename, remove, clear, duplicate) so
+    /// they always target the correct window rather than defaulting to windows[0].
+    private func windowOwning(sessionID: UUID) -> WindowRuntime? {
+        windows.first { $0.sessions.contains(where: { $0.id == sessionID }) }
+    }
 
     private func postNotification(for entry: BellFeedEntry, at location: WindowRuntime.BellLocation) {
         guard let notifier else { return }

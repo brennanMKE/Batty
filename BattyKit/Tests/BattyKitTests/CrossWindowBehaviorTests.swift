@@ -323,6 +323,34 @@ struct CrossWindowBehaviorTests {
         }
     }
 
+    // MARK: - Global appearance application across windows (#0248)
+
+    @Test func applyAppearanceToAllSurfacesUpdatesEveryWindow() {
+        let store = AppStateStore()
+        let w2 = store.windowRuntime(for: WindowID())
+
+        func allTabs(_ w: WindowRuntime) -> [TabRuntime] {
+            w.sessions.flatMap { $0.tree.allPanes.flatMap(\.tabs) }
+        }
+
+        // Stamp w2's tabs with TerminalConfiguration.default — a known configuration
+        // that differs from the settings-derived one (different font size, no keybinds).
+        // This is the "before" state that must be overwritten by the call below.
+        for tab in allTabs(w2) {
+            tab.terminal.controller.setTerminalConfiguration(.default)
+        }
+        let before = allTabs(w2)[0].terminal.controller.terminalConfiguration
+
+        // Apply settings-derived appearance to all surfaces.
+        store.applyAppearanceToAllSurfaces()
+
+        let after = allTabs(w2)[0].terminal.controller.terminalConfiguration
+        // The #0248 regression: the old loop used the `sessions` shim (→ windows[0])
+        // so w2's tabs were never updated.  The fix iterates windows.flatMap.
+        #expect(after != before,
+                "applyAppearanceToAllSurfaces must update surfaces in every window, not only windows[0] (#0248)")
+    }
+
     @Test func onAllSessionsClosedIsTriggeredWhenSessionsEmpty() {
         let store = AppStateStore()
         var closeCalled = false

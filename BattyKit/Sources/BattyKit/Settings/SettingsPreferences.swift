@@ -157,7 +157,10 @@ extension AppStateStore {
             builder.withCustom("keybind", "alt+right=text:\\x1bf")
             builder.withCustom("keybind", "alt+backspace=text:\\x1b\\x7f")
         }
-        for session in sessions {
+        // Appearance settings are app-wide, so apply to every window's surfaces.
+        // The `sessions` shim resolves to windows[0] only; iterating `windows`
+        // directly avoids leaving other windows (often the key window) stale (#0248).
+        for session in windows.flatMap({ $0.sessions }) {
             for pane in session.tree.allPanes {
                 for tab in pane.tabs {
                     tab.terminal.controller.setTerminalConfiguration(configuration)

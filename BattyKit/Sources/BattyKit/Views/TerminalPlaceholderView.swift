@@ -35,7 +35,7 @@ struct TerminalPlaceholderView: View {
         // store returns the existing view on every call after the first.
         //
         // `windowID` is set in the environment by `SessionDetailView`
-        // (via `.environment(\.windowID, store.windows[0].id)`), so it is
+        // (via `.environment(\.windowID, windowRuntime.id)`), so it is
         // always non-nil here. The force-unwrap is deliberately a crash:
         // a nil windowID means the view is mounted outside its intended
         // host hierarchy, and crashing early surfaces that misconfiguration.

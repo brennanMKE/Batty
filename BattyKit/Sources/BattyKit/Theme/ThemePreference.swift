@@ -143,6 +143,11 @@ extension AppStateStore {
                 }
             }
         }
+        // windows[0] shim: themeChrome is a single app-wide object; the
+        // decision whether to update it only needs any representative "is there
+        // a local override active?" signal.  windows[0]'s selected session is
+        // acceptable here because global-theme changes always originate from
+        // the Settings panel, which is not tied to a specific content window.
         if selectedSession?.localThemeName == nil {
             themeChrome.update(from: theme)
         }
@@ -204,6 +209,9 @@ extension AppStateStore {
         } else {
             // No global theme stored for this appearance — reset chrome only
             // for sessions that follow the global theme.
+            // windows[0] shim: same rationale as applyThemeToAllSurfaces —
+            // themeChrome is app-wide and the appearance-change event
+            // (AppKit KVO) is not scoped to a particular window.
             if selectedSession?.localThemeName == nil {
                 themeChrome.update(from: nil)
             }
