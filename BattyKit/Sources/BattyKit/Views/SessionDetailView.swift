@@ -72,10 +72,10 @@ public struct SessionDetailView: View {
             CommandPaletteView(isPresented: $commandPaletteShown, store: store)
         }
         .sheet(isPresented: $openQuicklyShown) {
-            OpenQuicklyView(isPresented: $openQuicklyShown, store: store)
+            OpenQuicklyView(isPresented: $openQuicklyShown, windowRuntime: windowRuntime)
         }
         .sheet(isPresented: $layoutPickerShown) {
-            LayoutPickerView(isPresented: $layoutPickerShown, store: store)
+            LayoutPickerView(isPresented: $layoutPickerShown, windowRuntime: windowRuntime)
         }
         .sheet(isPresented: $themeSelectorShown) {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)

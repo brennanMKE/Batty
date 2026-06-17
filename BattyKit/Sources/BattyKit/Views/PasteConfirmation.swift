@@ -102,7 +102,9 @@ public enum PasteDispatcher {
     }
 
     private static func focusedTerminalTab(in store: AppStateStore) -> TabRuntime? {
-        store.selectedSession?.focusedPane.activeTab
+        // Resolve against the key content window, not the windows[0] shim, so
+        // paste targets the terminal the user is actually looking at (#0244).
+        (store.keyWindowRuntime() ?? store.windows[0]).selectedSession?.focusedPane.activeTab
     }
 
     private static var isEditingTextField: Bool {

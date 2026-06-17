@@ -11,7 +11,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 
 struct LayoutPickerView: View {
     @Binding var isPresented: Bool
-    let store: AppStateStore
+    let windowRuntime: WindowRuntime
 
     @Environment(\.themeChrome) private var themeChrome
     @State private var selectedIndex = 0
@@ -94,7 +94,7 @@ struct LayoutPickerView: View {
     private func activate() {
         let layout = layouts[selectedIndex]
         logger.info("layout picker applying \(layout.rawValue, privacy: .public)")
-        if let tree = store.selectedSession?.tree {
+        if let tree = windowRuntime.selectedSession?.tree {
             layout.apply(to: tree)
         }
         isPresented = false

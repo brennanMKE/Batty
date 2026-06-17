@@ -40,14 +40,14 @@ enum OpenQuicklyFilter {
 
 struct OpenQuicklyView: View {
     @Binding var isPresented: Bool
-    let store: AppStateStore
+    let windowRuntime: WindowRuntime
 
     @State private var query = ""
     @State private var selectedIndex = 0
     @FocusState private var queryFocused: Bool
 
     private var allResults: [QuickOpenResult] {
-        store.sessions.flatMap { session in
+        windowRuntime.sessions.flatMap { session in
             session.tree.allPanes.flatMap { pane in
                 pane.tabs.map { tab in
                     QuickOpenResult(
@@ -133,7 +133,7 @@ struct OpenQuicklyView: View {
         let result = results[selectedIndex]
         isPresented = false
         logger.info("open quickly jumping to session \(result.sessionTitle, privacy: .public) tab \(result.tabTitle, privacy: .public)")
-        store.jumpToTab(sessionID: result.sessionID, tabID: result.tabID)
+        windowRuntime.jumpToTab(sessionID: result.sessionID, tabID: result.tabID)
     }
 }
 
