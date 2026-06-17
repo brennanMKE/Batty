@@ -113,20 +113,6 @@ private struct AppearanceSettingsView: View {
     @AppStorage(ThemePreference.lightDefaultsKey) private var lightThemeName: String = ""
     @Environment(\.colorScheme) private var colorScheme
 
-    /// The theme name for whichever appearance is currently displayed in the
-    /// Settings window. Reads from and writes to the matching per-appearance
-    /// slot so the picker shows the right selection without affecting the
-    /// other appearance's choice.
-    private var themeBinding: Binding<String> {
-        colorScheme == .dark ? $darkThemeName : $lightThemeName
-    }
-
-    /// Label for the Theme section header so the user knows which slot is
-    /// being edited.
-    private var themeLabel: String {
-        colorScheme == .dark ? "Theme (Dark)" : "Theme (Light)"
-    }
-
     var body: some View {
         Form {
             Section("Font") {
@@ -154,24 +140,34 @@ private struct AppearanceSettingsView: View {
                     .onChange(of: cursorBlink) { applyAppearance() }
             }
 
-            Section(themeLabel) {
-                Picker("Theme", selection: themeBinding) {
-                    Text("Default").tag("")
-                    ForEach(GhosttyThemeCatalog.allThemes, id: \.id) { theme in
-                        Text(theme.name).tag(theme.name)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: themeBinding.wrappedValue) { _, newValue in
-                    guard let store, !newValue.isEmpty,
-                          let theme = GhosttyThemeCatalog.theme(named: newValue)
-                    else { return }
-                    store.applyThemeToAllSurfaces(theme)
-                }
+            Section("Theme") {
+                themePicker("Light", selection: $lightThemeName, appliesNow: colorScheme == .light)
+                themePicker("Dark", selection: $darkThemeName, appliesNow: colorScheme == .dark)
             }
         }
         .formStyle(.grouped)
         .padding(20)
+    }
+
+    /// A per-appearance theme picker. `appliesNow` is true for the slot that
+    /// matches the currently-displayed appearance — only that slot re-themes
+    /// live surfaces on change. The off-appearance slot just persists; the
+    /// `AppearanceObserver` applies it when the system switches to it.
+    @ViewBuilder
+    private func themePicker(_ label: String, selection: Binding<String>, appliesNow: Bool) -> some View {
+        Picker(label, selection: selection) {
+            Text("Default").tag("")
+            ForEach(GhosttyThemeCatalog.allThemes, id: \.id) { theme in
+                Text(theme.name).tag(theme.name)
+            }
+        }
+        .pickerStyle(.menu)
+        .onChange(of: selection.wrappedValue) { _, newValue in
+            guard appliesNow, let store, !newValue.isEmpty,
+                  let theme = GhosttyThemeCatalog.theme(named: newValue)
+            else { return }
+            store.applyThemeToAllSurfaces(theme)
+        }
     }
 
     private func applyAppearance() {
