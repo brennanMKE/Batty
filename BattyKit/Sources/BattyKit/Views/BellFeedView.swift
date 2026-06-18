@@ -150,8 +150,8 @@ private struct BellFeedRow: View {
                         .foregroundStyle(.secondary)
                         .help(entry.timestamp.formatted(date: .abbreviated, time: .standard))
                 }
-                if let message = entry.message, !message.isEmpty {
-                    Text(message)
+                if let display = entry.summary ?? entry.message, !display.isEmpty {
+                    Text(display)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

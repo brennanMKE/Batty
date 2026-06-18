@@ -15,6 +15,7 @@ public enum SettingsPreference {
     public static let cmdNumberTargetKey = "co.sstools.Batty.cmdNumberTarget"
     public static let autoNameFromFilesKey = "co.sstools.Batty.autoNameFromFiles"
     public static let autoNameWithAIKey = "co.sstools.Batty.autoNameWithAI"
+    public static let summarizeNotificationsWithAIKey = "co.sstools.Batty.summarizeNotificationsWithAI"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -26,6 +27,7 @@ public enum SettingsPreference {
     public static let defaultCmdNumberTarget: String = CmdNumberTarget.sessions.rawValue
     public static let defaultAutoNameFromFiles: Bool = true
     public static let defaultAutoNameWithAI: Bool = true
+    public static let defaultSummarizeNotificationsWithAI: Bool = true
 
     public static func detectedShell() -> String {
         if let shell = ProcessInfo.processInfo.environment["SHELL"], !shell.isEmpty {
@@ -99,6 +101,13 @@ public enum SettingsPreference {
             return defaultAutoNameWithAI
         }
         return UserDefaults.standard.bool(forKey: autoNameWithAIKey)
+    }
+
+    public static func resolvedSummarizeNotificationsWithAI() -> Bool {
+        if UserDefaults.standard.object(forKey: summarizeNotificationsWithAIKey) == nil {
+            return defaultSummarizeNotificationsWithAI
+        }
+        return UserDefaults.standard.bool(forKey: summarizeNotificationsWithAIKey)
     }
 }
 

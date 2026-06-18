@@ -178,12 +178,29 @@ private struct AppearanceSettingsView: View {
 private struct NotificationsSettingsView: View {
     @AppStorage(SettingsPreference.bellSoundKey) private var bellSound: Bool = SettingsPreference.defaultBellSound
     @AppStorage(SettingsPreference.systemNotificationsKey) private var systemNotifications: Bool = SettingsPreference.defaultSystemNotifications
+    @AppStorage(SettingsPreference.summarizeNotificationsWithAIKey) private var summarizeWithAI: Bool = SettingsPreference.defaultSummarizeNotificationsWithAI
+
+    private var aiSummarySupported: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
 
     var body: some View {
         Form {
             Section("Bell") {
                 Toggle("Play sound", isOn: $bellSound)
                 Toggle("Show system notifications", isOn: $systemNotifications)
+                Toggle("Use Apple Intelligence to summarize notifications", isOn: $summarizeWithAI)
+                    .disabled(!aiSummarySupported)
+                if aiSummarySupported {
+                    Text("Generates a short description of each bell so bursts of notifications are distinguishable. On-device only.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Requires macOS 26")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Text("Per-Session mute lives on the Session row's right-click menu.")
                 .font(.caption)

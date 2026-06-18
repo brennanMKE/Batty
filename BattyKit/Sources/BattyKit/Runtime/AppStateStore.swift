@@ -34,6 +34,9 @@ public final class AppStateStore {
     /// step entirely — the deterministic chain behaves exactly as before.
     /// The app delegate wires `FoundationModelsNameSuggester.makeIfAvailable()`.
     @ObservationIgnored public var nameSuggester: SessionNameSuggesting?
+    /// AI notification summarizer (#0246). Nil disables summarization. The
+    /// app delegate wires `FoundationModelsNotificationSummarizer.makeIfAvailable()`.
+    @ObservationIgnored public var notificationSummarizer: NotificationSummarizing?
     /// Called by `BattyShortcuts` (the NSEvent-monitor path) to open a new
     /// content window. The app delegate wires this to SwiftUI's captured
     /// `OpenWindowAction` — same wiring style as `onAllSessionsClosed`. Nil
@@ -390,6 +393,7 @@ public final class AppStateStore {
                     window.propagateUnseenForced(at: location)
                 }
                 postNotification(for: entry, at: location)
+                scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
             }
             return
         }
@@ -422,6 +426,7 @@ public final class AppStateStore {
                 window.propagateUnseenForced(at: location)
             }
             postNotification(for: entry, at: location)
+            scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
             return
         }
     }
@@ -658,5 +663,28 @@ public final class AppStateStore {
             paneIndex: paneIndex,
             tabLabel: tabLabel
         )
+    }
+
+    /// Kicks off async AI summarization for a newly-recorded bell entry.
+    /// The entry appears in the feed immediately with today's fallback text;
+    /// the summary is written back when the model responds. A nil summarizer,
+    /// disabled toggle, or model error leaves the entry unchanged.
+    private func scheduleSummarization(for entry: BellFeedEntry, tabTitle: String, sessionTitle: String) {
+        guard let summarizer = notificationSummarizer else { return }
+        guard SettingsPreference.resolvedSummarizeNotificationsWithAI() else { return }
+        let entryID = entry.id
+        let message = entry.message
+        let tabTitleCopy = tabTitle
+        let sessionTitleCopy = sessionTitle
+        Task { [weak self] in
+            let raw = await summarizer.summarize(
+                message: message,
+                tabTitle: tabTitleCopy.isEmpty ? nil : tabTitleCopy,
+                sessionTitle: sessionTitleCopy.isEmpty ? nil : sessionTitleCopy
+            )
+            guard let self, !Task.isCancelled else { return }
+            guard let summary = raw.flatMap(NotificationSummary.sanitize) else { return }
+            self.bellFeed.updateSummary(summary, forEntryID: entryID)
+        }
     }
 }

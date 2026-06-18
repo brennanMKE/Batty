@@ -16,6 +16,10 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
     public var tabID: UUID
     public var surfaceID: UUID
     public var message: String?
+    /// AI-generated summary of the notification content. Populated
+    /// asynchronously after the entry is recorded; nil until the model
+    /// responds or when Foundation Models is unavailable / disabled.
+    public var summary: String?
     public var seen: Bool
 
     public init(
@@ -27,6 +31,7 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
         tabID: UUID,
         surfaceID: UUID,
         message: String? = nil,
+        summary: String? = nil,
         seen: Bool = false
     ) {
         self.id = id
@@ -37,6 +42,7 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
         self.tabID = tabID
         self.surfaceID = surfaceID
         self.message = message
+        self.summary = summary
         self.seen = seen
     }
 }
@@ -83,6 +89,14 @@ public final class BellFeedStore {
 
     public var unseenCount: Int {
         entries.lazy.filter { !$0.seen }.count
+    }
+
+    /// Updates the AI summary for the entry with the given id. A no-op when
+    /// the entry is not found or when `summary` is nil (preserves the existing
+    /// value). This is the only sanctioned write path for async summarization.
+    public func updateSummary(_ summary: String, forEntryID id: UUID) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[index].summary = summary
     }
 
     public func unseenCount(forTabID tabID: UUID) -> Int {
