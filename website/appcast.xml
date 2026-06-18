@@ -22,6 +22,30 @@
 
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
+        <item>
+      <title>1.0.5</title>
+      <pubDate>Thu, 18 Jun 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-0-5</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        Adds multiple windows (Shift-Cmd-N) — each with its own sessions,
+        selection, and restored frame, with bell notifications routed to the
+        owning window. Terminal themes now follow Light/Dark mode with a
+        separate theme per appearance. On macOS 26 with Apple Intelligence,
+        on-device Foundation Models can name sessions from folder contents and
+        summarize bell notifications into distinguishable phrases (both
+        toggleable in Settings; cleanly off on earlier systems). Also fixes
+        theme, layout, paste, and picker actions to target the window you're
+        actually using in a multi-window setup.
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.0.5.dmg"
+        sparkle:version="20260618"
+        sparkle:shortVersionString="1.0.5"
+        sparkle:edSignature="bCDLQVzmho5nVA3XaUmA88HjwROMMbjA6aYoc1IiKJIgqKNtJWvLp9MR56kfBxsm+wgGrQF5i/lfBlH+HD/HCQ=="
+        length="20221677"
+        type="application/octet-stream" />
+    </item>
     <item>
       <title>1.0.4</title>
       <pubDate>Fri, 05 Jun 2026 00:00:00 +0000</pubDate>

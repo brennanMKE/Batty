@@ -15,6 +15,61 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-0-5">
+            <h2>1.0.5 — 2026-06-18</h2>
+            <p class="meta">Multiple windows, on-device AI for session naming and bell notifications, and
+            terminal themes that follow Light/Dark mode. The AI features require macOS 26 with Apple
+            Intelligence; on earlier systems Batty runs exactly as before with those features disabled.</p>
+            <h3>New features</h3>
+            <ul>
+                <li>
+                    <strong>Multiple windows.</strong> Open additional windows with
+                    <kbd>Shift</kbd>-<kbd>Cmd</kbd>-<kbd>N</kbd> (rebindable in Settings → Keyboard) —
+                    handy across multiple displays. Each window is independent, with its own sidebar of
+                    sessions and its own selection; <kbd>Cmd</kbd>-<kbd>N</kbd> still creates a new
+                    session in the focused window. Windows restore on relaunch with their frames and
+                    per-window sidebar state, bell notifications route to the window that owns the
+                    session, and the app quits when the last window closes. (#0234, #0235–#0239)
+                </li>
+                <li>
+                    <strong>AI session naming.</strong> When a session enters a folder with no
+                    recognizable project markers, Batty can name it using Apple's on-device Foundation
+                    Models, reading the path and a few top-level files to suggest a short name. It runs
+                    entirely on-device, never overrides a name you set yourself, and falls back to the
+                    default when there's no good signal. Toggle it in Settings → General → Session
+                    Naming. (#0231, #0232, #0233)
+                </li>
+                <li>
+                    <strong>AI bell-notification summaries.</strong> A burst of bells used to all read
+                    "Bell". Batty can now summarize each notification into a short, distinguishable
+                    phrase shown in the Bell Feed, generated on-device. On by default; turn it off in
+                    Settings → Notifications. (#0246)
+                </li>
+                <li>
+                    <strong>Themes follow Light/Dark mode.</strong> Batty stores a separate theme per
+                    appearance, so your terminal can use one theme in Light mode and another in Dark,
+                    switching live with the system. Settings → Appearance has separate Light and Dark
+                    theme pickers. (#0241, #0245)
+                </li>
+            </ul>
+            <h3>Bug fixes</h3>
+            <ul>
+                <li>
+                    Theme changes, layout application, Open Quickly, paste, and the theme picker now act
+                    on the window you're actually using instead of always the first window. (#0242,
+                    #0244)
+                </li>
+                <li>
+                    Changing the global theme re-themes terminal panes in every window, not just the
+                    first. (#0243)
+                </li>
+                <li>
+                    Audited and corrected the remaining window-targeting paths so session, tab, pane,
+                    and auto-naming operations apply to the key window in a multi-window setup. (#0248)
+                </li>
+            </ul>
+        </article>
+
         <article id="v1-0-4">
             <h2>1.0.4 — 2026-06-05</h2>
             <p class="meta">Stability release. Fixes a crash and an infinite render loop in split-pane
