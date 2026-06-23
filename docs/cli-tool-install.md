@@ -8,6 +8,16 @@ This guide is for a Batty engineer. It explains supacode's exact mechanism
 (with file/line references into `../supacode`), then a step-by-step plan to
 replicate it for `batty`, and the gotchas.
 
+**Batty deviates from supacode in one deliberate way:** supacode defines its CLI
+as a standalone Xcode (Tuist) command-line-tool target. Batty instead defines
+the CLI as an **`executableTarget` inside the `BattyKit` Swift package**. The
+governing principle for Batty is *keep as much code as possible in the Swift
+package* — the CLI needs the model layer (`Session`, `Pane`, `Tab`,
+`SplitNode`, workspace types, any app-IPC client), all of which live in
+BattyKit, so the CLI is built from the package and `import`s `BattyKit`
+directly. The app bundle just embeds the built binary. The privilege-escalation
+and install mechanics are otherwise identical to supacode.
+
 ---
 
 ## 1. Summary of supacode's approach
@@ -317,45 +327,102 @@ ln -s  ->  /usr/local/bin/supacode  (privileged via NSAppleScript)
 
 ## 4. Step-by-step: replicate this for `batty`
 
-Batty is a `.xcodeproj` (not Tuist), so the target/phase wiring is done in
-Xcode rather than `Project.swift`, but the runtime code is identical.
+The CLI target is defined in the **`BattyKit` Swift package** (top goal: keep as
+much code as possible in the package). The package *builds* the `batty`
+executable and lets it share BattyKit code; the `Batty.xcodeproj` app target
+only *embeds and installs* the built binary. The runtime install code is
+identical to supacode.
 
-### 4.1 Create the `batty` CLI target
+> **Why the package, not a standalone Xcode CLI target:** the CLI needs Batty's
+> model layer (`Session`, `Pane`, `Tab`, `SplitNode`, workspace types, any
+> app-IPC client), which all live in BattyKit. A package `executableTarget` can
+> `import BattyKit` directly with zero duplication, and `swift run batty` keeps
+> the package self-contained (consistent with the "BattyKit must stand on its
+> own" convention in `CLAUDE.md`). A standalone Xcode CLI target would have to
+> link BattyKit as a library to get the same thing — more wiring, less of the
+> code in the package.
 
-1. In `Batty.xcodeproj`, **File ▸ New ▸ Target ▸ Command Line Tool**
-   (macOS). Name it `batty-cli` (or similar). Set:
-   - `PRODUCT_NAME = batty` (so the produced binary is literally `batty`).
-   - `SKIP_INSTALL = YES`.
-   - `ENABLE_HARDENED_RUNTIME = YES`.
-   - You can leave code signing to the bundle pass (supacode used
-     `CODE_SIGNING_ALLOWED = NO` on the CLI target and let the app's signing
-     pass cover the embedded copy).
-   - Deployment target matching the app (Batty is macOS 15.6+).
-2. Write the CLI entry point. If you want subcommands, add
-   `swift-argument-parser` as a package dependency (supacode does), e.g.:
+### 4.1 Define the `batty` executable target in `BattyKit/Package.swift`
 
-   ```swift
-   import ArgumentParser
+Add an `.executable` product and an `.executableTarget` to
+`BattyKit/Package.swift`. Reuse the shared `swiftSettings` so the CLI gets the
+same Swift 6 / `MainActor` default-isolation / StrictConcurrency settings as the
+rest of the package:
 
-   @main
-   struct BattyCLI: ParsableCommand {
-     static let configuration = CommandConfiguration(
-       commandName: "batty",
-       abstract: "Control Batty from the command line."
-       // subcommands: [...]
-     )
-   }
-   ```
+```swift
+products: [
+    .library(name: "BattyKit", targets: ["BattyKit"]),
+    .executable(name: "batty", targets: ["batty"]),        // new
+],
+dependencies: [
+    // ...existing deps...
+    // Add only if you want subcommands/flag parsing:
+    // .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+],
+targets: [
+    .target(name: "BattyKit", /* ...unchanged... */),
+    .executableTarget(                                      // new
+        name: "batty",
+        dependencies: [
+            "BattyKit",                                     // the payoff: share the model layer
+            // .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        ],
+        swiftSettings: swiftSettings
+    ),
+    .testTarget(name: "BattyKitTests", /* ...unchanged... */),
+]
+```
 
-   A plain `main.swift` with no dependency works too if the tool is simple.
-3. **Make the `Batty` app target depend on `batty-cli`** (Build Phases ▸
-   Dependencies, or it falls out of the embed phase ordering). This guarantees
-   the CLI is built before the copy phase runs.
+Sources live at `BattyKit/Sources/batty/`. The entry point can be a simple
+`main.swift`, or — if you want subcommands — a `swift-argument-parser` program:
+
+```swift
+import ArgumentParser
+import BattyKit
+
+@main
+struct BattyCLI: ParsableCommand {
+  static let configuration = CommandConfiguration(
+    commandName: "batty",
+    abstract: "Control Batty from the command line."
+    // subcommands: [...]
+  )
+}
+```
+
+The product name is `batty`, so SwiftPM/Xcode builds an executable literally
+named `batty` into `BUILT_PRODUCTS_DIR` — exactly the path the embed phase in
+§4.2 probes.
+
+Notes specific to a package executable:
+
+- **`@main` under `MainActor` default isolation.** Because `swiftSettings`
+  applies `.defaultIsolation(MainActor.self)`, the `@main` entry is main-actor
+  isolated. That's fine for a CLI; keep async work explicit if you spawn it.
+- **Verify it builds from the package:** `cd BattyKit && swift build` (and
+  `swift run batty --help`) should produce and run the tool with no Xcode
+  involved. This is the litmus test that the code is genuinely package-owned.
+- **The workspace must own the package** (per the BattyKit sole-owner rule in
+  `CLAUDE.md` / project memory) so the new executable product is visible to the
+  app target. Don't re-add a bare `XCLocalSwiftPackageReference`.
 
 ### 4.2 Embed the built CLI into the app bundle
 
-Add a **Run Script** build phase to the **Batty app target**, ordered *after*
-the CLI has built. Script body (adapted from
+Xcode automatically links *library* products an app target depends on, but it
+does **not** copy a package's *executable* product into the bundle — so the
+package builds `batty`, and the app target embeds it.
+
+First, **make the Batty app target depend on the `batty` executable product** so
+it is built before the copy runs (app target ▸ Build Phases ▸ Dependencies, or
+the "+" under the package's products). Heads-up: Xcode's handling of a *package
+executable product* as an app-target dependency is less trodden than a native
+target dependency — after wiring it, confirm a clean app build actually
+produces `${BUILT_PRODUCTS_DIR}/batty`. If it won't attach cleanly in your Xcode
+version, the fallback is to have the Run Script below invoke the build itself,
+but try the dependency route first.
+
+Then add a **Run Script** build phase to the **Batty app target**, ordered
+*after* the CLI has built. Script body (adapted from supacode's
 `scripts/embed-runtime-assets.sh`):
 
 ```bash
@@ -385,9 +452,11 @@ Result: `Batty.app/Contents/Resources/bin/batty`.
 
 ### 4.3 Add the installer (Swift)
 
-Drop a `CLIInstaller.swift` into a Batty source folder (e.g. the main app
-target or BattyKit). This is essentially a verbatim port — rename
-`supacode → batty`:
+Put `CLIInstaller.swift` in **BattyKit** (keep-code-in-the-package goal); the
+Settings UI in the app target calls it. It only touches `Bundle.main`,
+`FileManager`, and `NSAppleScript`, so it has no app-target dependencies and
+belongs in the package. This is essentially a verbatim port of supacode's —
+rename `supacode → batty`:
 
 ```swift
 import Foundation
@@ -560,10 +629,27 @@ the admin auth covers). Specifically:
   `NSAppleScript`: works, but the auth dialog is then branded as
   *osascript / Script Editor* rather than your app. In-process `NSAppleScript`
   is what gives the dialog the Batty icon and name — keep it in-process.
+- **Package `executableTarget` vs standalone Xcode command-line-tool target.**
+  supacode used a standalone Tuist `commandLineTool` target. Batty uses a
+  package `executableTarget` (§4.1) because the top code-management goal is to
+  keep as much as possible in BattyKit, and the CLI needs BattyKit's model
+  layer. The cost is that Xcode won't auto-embed a *package executable product*
+  into the bundle — you add the app→executable dependency and the copy phase
+  yourself (§4.2). A standalone Xcode target embeds slightly more turnkey but
+  would either duplicate the model code or link BattyKit anyway; given the
+  keep-it-in-the-package goal, the package target wins.
 
 ---
 
-## References (in `../supacode`)
+## References
+
+For Batty, the CLI target is defined in `BattyKit/Package.swift` as an
+`executableTarget` (sources under `BattyKit/Sources/batty/`), not as a separate
+Xcode target. The supacode references below show the *standalone-target* variant
+Batty deliberately diverges from — they remain the canonical source for the
+install/escalation code, which Batty ports verbatim.
+
+In `../supacode`:
 
 - `SupacodeSettingsShared/BusinessLogic/CLIInstaller.swift` — the installer
   (install/uninstall/runPrivileged).
