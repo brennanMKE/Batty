@@ -21,7 +21,10 @@ public struct BattyURLHandler {
             logger.info("Ignoring unrecognized batty:// URL: \(url.absoluteString, privacy: .public)")
             return
         }
-        logger.info("Creating session at path: \(path, privacy: .public)")
-        store.addSession(workingDirectory: path)
+        let windowsBefore = store.windows.count
+        let registeredBefore = store.registeredContentWindowCount
+        logger.debug("BattyURLHandler.handle: path=\(path, privacy: .public) windowRuntimes=\(windowsBefore, privacy: .public) registeredContentWindows=\(registeredBefore, privacy: .public)")
+        let session = store.addSession(workingDirectory: path)
+        logger.debug("BattyURLHandler.handle: session created id=\(session.id, privacy: .public) windowRuntimes=\(store.windows.count, privacy: .public)")
     }
 }

@@ -138,12 +138,21 @@ public final class AppStateStore {
 
     // MARK: - NSWindow ↔ WindowID registry
 
+    /// The number of registered content windows. Used by `BattyAppDelegate` to
+    /// log the window count when handling external URL events — helps diagnose
+    /// whether SwiftUI created a spurious second window (#0251 second root cause).
+    public var registeredContentWindowCount: Int { nsWindowMap.count }
+
     /// Registers the association between an `NSWindow` and its `WindowID`.
     /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
     /// the hosting NSWindow is known (from `updateNSView`, deferred off the
     /// update pass). Safe to call multiple times — idempotent per window.
     public func registerNSWindow(_ nsWindow: NSWindow, for windowID: WindowID) {
+        let wasNew = nsWindowMap[ObjectIdentifier(nsWindow)] == nil
         nsWindowMap[ObjectIdentifier(nsWindow)] = windowID
+        if wasNew {
+            logger.debug("registerNSWindow: windowID=\(windowID.value, privacy: .public) registeredContentWindows=\(self.nsWindowMap.count, privacy: .public)")
+        }
     }
 
     /// Removes a closed window from the registry. Called from the window's
@@ -260,7 +269,9 @@ public final class AppStateStore {
         // delivered before WindowIDRegistrar fires — #0251). Falls back to
         // windows[0] only in unit-test contexts where no NSWindow is registered
         // and windows[0] is the canonical single runtime.
-        (anyContentWindowRuntime() ?? windows[0]).addSession(title: title, workingDirectory: workingDirectory)
+        let target = anyContentWindowRuntime() ?? windows[0]
+        logger.debug("addSession: targeting windowID=\(target.id.value, privacy: .public) totalWindows=\(self.windows.count, privacy: .public) registeredContentWindows=\(self.nsWindowMap.count, privacy: .public) workingDirectory=\(workingDirectory ?? "<nil>", privacy: .public)")
+        return target.addSession(title: title, workingDirectory: workingDirectory)
     }
 
     public func removeSession(id: UUID) {

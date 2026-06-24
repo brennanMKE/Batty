@@ -23,6 +23,17 @@ struct BattyApp: App {
             // while the visible window shows an empty windows[1] — #0251.
             AppStateStore.shared.initialWindowID
         }
+        // Suppress SwiftUI's default behavior of opening a new window for
+        // external URL events (batty://). Without this, the OS delivers the
+        // URL to both NSApplicationDelegate.application(_:open:) (correct —
+        // our handler adds the session to the active window) AND to SwiftUI's
+        // scene machinery, which spawns an extra empty window. Passing an empty
+        // set means this scene does not volunteer to match any external event
+        // by activity/URL type — it won't be selected as a target for a new
+        // scene, so no extra window opens. Cmd-N and openWindow(value:) are
+        // internal SwiftUI actions and are unaffected by handlesExternalEvents
+        // — only OS-delivered URL opens are suppressed. (#0251 second root cause)
+        .handlesExternalEvents(matching: Set())
         .commandsRemoved()
         .commands {
             BattyCommands()
@@ -31,6 +42,14 @@ struct BattyApp: App {
         Window("Batty Help", id: "help") {
             HelpView()
         }
+        // Also decline external URL events here. When the content WindowGroup
+        // above stops volunteering for batty:// opens, SwiftUI otherwise falls
+        // back to the next scene that *does* accept external events — this Help
+        // window — and opens it. Declining here too means no scene volunteers,
+        // so the OS-delivered URL is handled only by application(_:open:) and no
+        // stray window (content or Help) appears. Opening Help via the menu uses
+        // the internal openWindow(id: "help") action, which is unaffected. (#0251)
+        .handlesExternalEvents(matching: Set())
 
         Settings {
             SettingsView()
@@ -59,8 +78,11 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
+        let store = AppStateStore.shared
+        let registeredWindowCount = store.registeredContentWindowCount
+        logger.info("application(_:open:) urls=\(urls.map(\.absoluteString).joined(separator: ", "), privacy: .public) registeredContentWindows=\(registeredWindowCount, privacy: .public)")
         for url in urls where url.scheme == "batty" {
-            BattyURLHandler.handle(url, store: AppStateStore.shared)
+            BattyURLHandler.handle(url, store: store)
         }
     }
 
