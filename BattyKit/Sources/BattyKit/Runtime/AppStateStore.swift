@@ -65,6 +65,15 @@ public final class AppStateStore {
     /// era; grows in `#0237` when `New Window` is added.
     @ObservationIgnored public private(set) var windows: [WindowRuntime]
 
+    /// The `WindowID` that `BattyApp`'s `WindowGroup` must use as its
+    /// `defaultValue`. Exposing it here lets SwiftUI reuse `windows[0]`
+    /// (seeded in `init`) for the first on-screen window rather than creating
+    /// a phantom second runtime — the root cause of the #0251 wrong-window bug
+    /// where `batty <path>` sessions landed in a runtime SwiftUI never showed.
+    public var initialWindowID: WindowID {
+        windows[0].id
+    }
+
     /// Returns the `WindowRuntime` for `windowID`, creating one lazily if
     /// it does not yet exist. This is the single path for launch, New Window,
     /// and restoration — all converge here so a new scene and a new runtime
@@ -164,6 +173,20 @@ public final class AppStateStore {
         return windows.first { $0.id == windowID }
     }
 
+    /// The `WindowRuntime` for any registered content window. Used as a
+    /// fallback when `keyWindowRuntime()` is nil but the app-level URL handler
+    /// needs to target a visible window (e.g. `batty <path>` during the brief
+    /// interval between window creation and NSWindow registration). Returns the
+    /// key-window runtime when available; falls back to the first registered
+    /// window. Returns nil when no window is registered (unit-test context or
+    /// before the first content window appears in the view hierarchy).
+    public func anyContentWindowRuntime() -> WindowRuntime? {
+        if let key = keyWindowRuntime() { return key }
+        // Find any registered content window and return its runtime.
+        guard let windowID = nsWindowMap.values.first else { return nil }
+        return windows.first { $0.id == windowID }
+    }
+
     // MARK: - Init
 
     public init(
@@ -231,7 +254,13 @@ public final class AppStateStore {
 
     @discardableResult
     public func addSession(title: String? = nil, workingDirectory: String? = nil) -> SessionRuntime {
-        (keyWindowRuntime() ?? windows[0]).addSession(title: title, workingDirectory: workingDirectory)
+        // anyContentWindowRuntime() tries keyWindowRuntime() first (the normal
+        // in-app path), then any registered content window (the URL-handler
+        // path when the key window hasn't been registered yet, e.g. batty <path>
+        // delivered before WindowIDRegistrar fires — #0251). Falls back to
+        // windows[0] only in unit-test contexts where no NSWindow is registered
+        // and windows[0] is the canonical single runtime.
+        (anyContentWindowRuntime() ?? windows[0]).addSession(title: title, workingDirectory: workingDirectory)
     }
 
     public func removeSession(id: UUID) {

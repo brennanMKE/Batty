@@ -13,10 +13,15 @@ struct BattyApp: App {
 
     var body: some Scene {
         WindowGroup(for: WindowID.self) { $windowID in
-            ContentView(windowID: windowID ?? WindowID())
+            ContentView(windowID: windowID ?? AppStateStore.shared.initialWindowID)
                 .background(OpenWindowHookInstaller())
         } defaultValue: {
-            WindowID()
+            // Return the WindowID already seeded in AppStateStore.shared.windows[0]
+            // so that SwiftUI's first content window reuses the existing runtime
+            // rather than creating a phantom second one. A phantom second runtime
+            // causes batty <path> sessions to land in windows[0] (the phantom)
+            // while the visible window shows an empty windows[1] — #0251.
+            AppStateStore.shared.initialWindowID
         }
         .commandsRemoved()
         .commands {
