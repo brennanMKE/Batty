@@ -17,6 +17,10 @@ let package = Package(
             name: "BattyKit",
             targets: ["BattyKit"]
         ),
+        .executable(
+            name: "batty",
+            targets: ["batty"]
+        ),
     ],
     dependencies: [
         .package(
@@ -45,6 +49,11 @@ let package = Package(
                 .process("Resources"),
                 .copy("Help"),
             ],
+            swiftSettings: swiftSettings
+        ),
+        .executableTarget(
+            name: "batty",
+            dependencies: ["BattyKit"],
             swiftSettings: swiftSettings
         ),
         .testTarget(

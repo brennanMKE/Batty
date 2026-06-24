@@ -126,6 +126,7 @@
 				26D543182FAEC4AC00BA9AF8 /* Frameworks */,
 				26D543192FAEC4AC00BA9AF8 /* Resources */,
 				26B100010000000000000001 /* Bundle Ghostty Resources */,
+				26B100020000000000000002 /* Embed CLI */,
 			);
 			buildRules = (
 			);
@@ -281,6 +282,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
 			shellScript = "\"$SRCROOT/scripts/bundle-ghostty-resources.sh\"\n";
+		};
+		26B100020000000000000002 /* Embed CLI */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 0;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed CLI";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/bin/batty",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "set -euo pipefail\nconfig=\"$(echo \"${CONFIGURATION}\" | tr '[:upper:]' '[:lower:]')\"\narchflags=()\nfor a in ${ARCHS}; do archflags+=(--arch \"$a\"); done\ncd \"${SRCROOT}/BattyKit\"\nxcrun swift build --product batty -c \"${config}\" \"${archflags[@]}\"\nbuilt=\"$(xcrun swift build --product batty -c \"${config}\" \"${archflags[@]}\" --show-bin-path)/batty\"\ndest=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin\"\nrm -rf \"${dest}\"\nmkdir -p \"${dest}\"\n/bin/cp -f \"${built}\" \"${dest}/batty\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

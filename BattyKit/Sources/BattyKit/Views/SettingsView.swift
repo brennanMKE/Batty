@@ -20,6 +20,9 @@ public struct SettingsView: View {
 
             NotificationsSettingsView()
                 .tabItem { Label("Notifications", systemImage: "bell") }
+
+            AdvancedSettingsView()
+                .tabItem { Label("Advanced", systemImage: "terminal") }
         }
         .frame(minWidth: 460, minHeight: 320)
     }
@@ -209,5 +212,109 @@ private struct NotificationsSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(20)
+    }
+}
+
+// MARK: - Advanced
+
+@Observable
+private final class CLIInstallModel {
+    enum State {
+        case checking
+        case installed
+        case notInstalled
+        case installing
+        case uninstalling
+        case failed(String)
+    }
+
+    var state: State = .checking
+
+    private let installer = CLIInstaller()
+
+    func checkInstalled() {
+        state = installer.isInstalled() ? .installed : .notInstalled
+    }
+
+    func install() {
+        state = .installing
+        do {
+            try installer.install()
+            state = .installed
+        } catch CLIInstallerError.cancelled {
+            state = .notInstalled
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func uninstall() {
+        state = .uninstalling
+        do {
+            try installer.uninstall()
+            state = .notInstalled
+        } catch CLIInstallerError.cancelled {
+            state = .installed
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+}
+
+private struct AdvancedSettingsView: View {
+    @State private var cliModel = CLIInstallModel()
+
+    var body: some View {
+        Form {
+            Section("Command-Line Tool") {
+                CLIInstallRow(model: cliModel)
+            }
+        }
+        .formStyle(.grouped)
+        .padding(20)
+        .onAppear {
+            cliModel.checkInstalled()
+        }
+    }
+}
+
+private struct CLIInstallRow: View {
+    @Bindable var model: CLIInstallModel
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("batty")
+                Text("Symlinks `batty` to /usr/local/bin. Not required to run Batty.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if case .failed(let reason) = model.state {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            Spacer()
+            switch model.state {
+            case .checking:
+                ProgressView().controlSize(.small)
+            case .notInstalled, .failed:
+                Button("Install") {
+                    model.install()
+                }
+            case .installed:
+                Button("Uninstall", role: .destructive) {
+                    model.uninstall()
+                }
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            case .installing:
+                ProgressView().controlSize(.small)
+                Text("Installing\u{2026}").foregroundStyle(.secondary)
+            case .uninstalling:
+                ProgressView().controlSize(.small)
+                Text("Uninstalling\u{2026}").foregroundStyle(.secondary)
+            }
+        }
     }
 }

@@ -409,44 +409,61 @@ Notes specific to a package executable:
 ### 4.2 Embed the built CLI into the app bundle
 
 Xcode automatically links *library* products an app target depends on, but it
-does **not** copy a package's *executable* product into the bundle — so the
-package builds `batty`, and the app target embeds it.
+does **not** copy a package's *executable* product into the bundle.
 
-First, **make the Batty app target depend on the `batty` executable product** so
-it is built before the copy runs (app target ▸ Build Phases ▸ Dependencies, or
-the "+" under the package's products). Heads-up: Xcode's handling of a *package
-executable product* as an app-target dependency is less trodden than a native
-target dependency — after wiring it, confirm a clean app build actually
-produces `${BUILT_PRODUCTS_DIR}/batty`. If it won't attach cleanly in your Xcode
-version, the fallback is to have the Run Script below invoke the build itself,
-but try the dependency route first.
+> **WARNING — do NOT add the `batty` executable as an `XCSwiftPackageProductDependency`
+> on the app target.** Wiring a package *executable* product as an Xcode
+> app-target dependency (via `packageProductDependencies` in `project.pbxproj`)
+> pulls the executable into the `Batty (Prod)` scheme's build graph. With it in
+> the graph, Xcode's xcodebuild test runner can no longer resolve BattyKit's
+> `Bundle.module` resource bundle (`BattyKit_BattyKit.bundle`) — the
+> `BattyKitTests` bundle crashes on launch with:
+> ```
+> BattyKit/resource_bundle_accessor.swift:44: Fatal error: unable to find bundle named BattyKit_BattyKit
+> ** TEST FAILED **
+> ```
+> This breaks the mandatory `scripts/build.sh unit` gate (372 tests). The fix
+> is to never add the executable product as an Xcode dependency — instead, let
+> the Run Script phase invoke `swift build` to build it from the package.
 
-Then add a **Run Script** build phase to the **Batty app target**, ordered
-*after* the CLI has built. Script body (adapted from supacode's
-`scripts/embed-runtime-assets.sh`):
+Add an **"Embed CLI" Run Script** build phase to the **Batty app target**. The
+script invokes `swift build` inside the BattyKit package directory and copies
+the resulting binary into the bundle. This way the executable never enters the
+Xcode build graph, and the test-runner's resource-bundle resolution stays intact.
+
+Script body (inline in the Run Script phase — do not put this in `scripts/`, which
+is a restricted area):
 
 ```bash
 set -euo pipefail
-dest_dir="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin"
-cli=""
-for c in "${BUILT_PRODUCTS_DIR}/batty" \
-         "${UNINSTALLED_PRODUCTS_DIR}/${PLATFORM_NAME}/batty"; do
-  [ -x "$c" ] && cli="$c" && break
-done
-[ -n "$cli" ] || { echo "error: missing built batty executable" >&2; exit 1; }
-rm -rf "$dest_dir"
-mkdir -p "$dest_dir"
-/bin/cp -f "$cli" "$dest_dir/batty"
+config="$(echo "${CONFIGURATION}" | tr '[:upper:]' '[:lower:]')"
+archflags=()
+for a in ${ARCHS}; do archflags+=(--arch "$a"); done
+cd "${SRCROOT}/BattyKit"
+xcrun swift build --product batty -c "${config}" "${archflags[@]}"
+built="$(xcrun swift build --product batty -c "${config}" "${archflags[@]}" --show-bin-path)/batty"
+dest="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin"
+rm -rf "${dest}"
+mkdir -p "${dest}"
+/bin/cp -f "${built}" "${dest}/batty"
 ```
 
 Declare its **output file** as
 `$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/bin/batty` so Xcode
-tracks it and re-signs it. (supacode declared input/output paths and used
-`basedOnDependencyAnalysis: false` to always run.)
+tracks it and re-signs it as part of the app-bundle signing pass.
 
-Per Batty's `CLAUDE.md`, `scripts/` is a restricted area — if you put the embed
-logic in a script there, get user confirmation; an inline Run Script phase on
-the app target avoids touching `scripts/`.
+The `--arch` loop assembles the arch flags for a **single** `swift build`
+invocation: when `ARCHS` contains multiple architectures the command becomes
+`swift build … --arch arm64 --arch x86_64`, which SwiftPM resolves to one
+universal binary at a single `--show-bin-path` location. For single-arch Debug
+builds (arm64) it's one `--arch` flag and a single-arch Mach-O. **The
+universal/Release archive path has not been exercised locally** — only the
+single-arch Debug build is verified; confirm the embedded binary's
+architectures with `lipo -info` when first cutting a release.
+
+Per Batty's `CLAUDE.md`, `scripts/` is a restricted area — the embed
+logic lives inline in the Run Script phase on the app target, not in a file
+under `scripts/`.
 
 Result: `Batty.app/Contents/Resources/bin/batty`.
 
@@ -633,11 +650,13 @@ the admin auth covers). Specifically:
   supacode used a standalone Tuist `commandLineTool` target. Batty uses a
   package `executableTarget` (§4.1) because the top code-management goal is to
   keep as much as possible in BattyKit, and the CLI needs BattyKit's model
-  layer. The cost is that Xcode won't auto-embed a *package executable product*
-  into the bundle — you add the app→executable dependency and the copy phase
-  yourself (§4.2). A standalone Xcode target embeds slightly more turnkey but
-  would either duplicate the model code or link BattyKit anyway; given the
-  keep-it-in-the-package goal, the package target wins.
+  layer. The embedding is done by having the Run Script invoke `swift build`
+  directly from the package (§4.2) — **not** by wiring a `XCSwiftPackageProductDependency`
+  on the app target, which would break the `BattyKitTests` bundle-resource
+  resolution and fail the `scripts/build.sh unit` gate. A standalone Xcode
+  target would embed slightly more turnkey but would either duplicate the model
+  code or link BattyKit anyway; given the keep-it-in-the-package goal, the
+  package target wins.
 
 ---
 
