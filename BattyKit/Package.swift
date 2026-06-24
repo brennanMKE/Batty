@@ -33,6 +33,7 @@ let package = Package(
             url: "https://github.com/gonzalezreal/textual.git",
             revision: "5b06b811c0f5313b6b84bbef98c635a630638c38"
         ),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
     ],
     targets: [
         .target(
@@ -53,7 +54,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "batty",
-            dependencies: ["BattyKit"],
+            dependencies: [
+                "BattyKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
             swiftSettings: swiftSettings
         ),
         .testTarget(

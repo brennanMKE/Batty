@@ -34,6 +34,17 @@
 	<string>Batty needs access to network volumes so shell commands you run can read and write files there.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Batty needs local-network access so shell commands you run can reach devices on your local network (mDNS, Bonjour, intranet services).</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>batty</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>Batty CLI IPC</string>
+		</dict>
+	</array>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

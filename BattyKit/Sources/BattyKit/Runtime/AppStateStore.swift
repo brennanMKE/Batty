@@ -230,8 +230,8 @@ public final class AppStateStore {
     }
 
     @discardableResult
-    public func addSession(title: String? = nil) -> SessionRuntime {
-        (keyWindowRuntime() ?? windows[0]).addSession(title: title)
+    public func addSession(title: String? = nil, workingDirectory: String? = nil) -> SessionRuntime {
+        (keyWindowRuntime() ?? windows[0]).addSession(title: title, workingDirectory: workingDirectory)
     }
 
     public func removeSession(id: UUID) {

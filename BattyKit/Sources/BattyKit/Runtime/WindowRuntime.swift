@@ -64,16 +64,22 @@ public final class WindowRuntime {
     // MARK: - Session CRUD
 
     @discardableResult
-    public func addSession(title: String? = nil) -> SessionRuntime {
+    public func addSession(title: String? = nil, workingDirectory: String? = nil) -> SessionRuntime {
         let sourceTab = selectedSession?.focusedPane.activeTab
-        let inheritedCWD = sourceTab?.terminal.workingDirectory
-            ?? sourceTab?.terminal.configuration.workingDirectory
+        // An explicit workingDirectory overrides CWD inheritance.
+        let effectiveCWD: String?
+        if let explicit = workingDirectory, !explicit.isEmpty {
+            effectiveCWD = explicit
+        } else {
+            effectiveCWD = sourceTab?.terminal.workingDirectory
+                ?? sourceTab?.terminal.configuration.workingDirectory
+        }
         let cachedName: String? = {
-            guard title == nil, let cwd = inheritedCWD, !cwd.isEmpty else { return nil }
+            guard title == nil, let cwd = effectiveCWD, !cwd.isEmpty else { return nil }
             return nameCache.lookup(path: cwd)
         }()
         let resolvedTitle = title ?? cachedName ?? String(localized: "Session \(sessions.count + 1)")
-        let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: inheritedCWD)])
+        let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: effectiveCWD)])
         let tree = SplitTree(root: .leaf(firstPane))
         let session = SessionRuntime(title: resolvedTitle, tree: tree)
         if title != nil {

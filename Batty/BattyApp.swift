@@ -53,6 +53,12 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         // terminateIfLastContentWindowGone). No app-level terminate hook here.
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "batty" {
+            BattyURLHandler.handle(url, store: AppStateStore.shared)
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let store = AppStateStore.shared
         let totalTabs = store.windows.reduce(0) { acc, w in
