@@ -3,6 +3,8 @@ Configuration/Active.xcconfig
 build/
 .build/
 xcuserdata/
+# Xcode-generated Swift package metadata (schemes carry transient run state)
+.swiftpm/
 dist/
 *.dmg
 screenshots/
