@@ -30,12 +30,19 @@ self-contained. Full code references are in the source inventory; categories
 mirror the repo layout.
 
 ### A. Agent orchestration **[CORE / HEAVY]**
-Hooks injected into six agents' config dirs that emit OSC 3008 escape sequences
-for agent state (`busy`/`awaiting_input`/`idle`/`notify`); live **agent presence
-badges** on sidebar rows & tabs; a `kill(pid,0)` liveness sweep; presence
-persisted across relaunch; rich agent notifications (title+body over the OSC
-stream, works over SSH); a "CLI skill" file installed so agents learn the
-`supacode` CLI; auto-update of agent integrations.
+Hooks injected into six agents' config dirs that emit a **supacode-private escape
+sequence** carrying agent state (`busy`/`awaiting_input`/`idle`/`notify`). The
+sequence is `ESC]3008;<action>=<agent>;event=…ESC\` — supacode calls it a "UAPI
+hierarchical context signal," but **"OSC 3008" is not a standard terminal code**;
+it's a number supacode chose for its own protocol and made work by **patching
+Ghostty** (`patches/ghostty-osc3008-context-signal.patch` adds a new
+`GHOSTTY_ACTION_CONTEXT_SIGNAL`). Stock terminals ignore it. On top of that:
+live **agent presence badges** on sidebar rows & tabs; a `kill(pid,0)` liveness
+sweep; presence persisted across relaunch; rich agent notifications (title+body
+ride the same stream, so it works over SSH); a "CLI skill" file installed so
+agents learn the `supacode` CLI; auto-update of agent integrations. *Note for
+Batty:* this whole feature requires **forking/patching Ghostty**, whereas Batty
+consumes prebuilt `libghostty-spm` — another reason it's off-mission here.
 
 ### B. Git worktree management **[CORE / HEAVY]**
 Each sidebar row **is a git worktree** (not a directory). Create (with
