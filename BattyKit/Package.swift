@@ -36,9 +36,18 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
     ],
     targets: [
+        // Dependency-free core shared by the GUI app and the `batty` CLI.
+        // Keeping it free of Sparkle/libghostty/etc. lets the CLI link only
+        // this — otherwise the CLI transitively drags in Sparkle and crashes
+        // at launch from the app bundle (no rpath to Contents/Frameworks).
+        .target(
+            name: "BattyCLICore",
+            swiftSettings: swiftSettings
+        ),
         .target(
             name: "BattyKit",
             dependencies: [
+                "BattyCLICore",
                 .product(name: "GhosttyKit", package: "libghostty-spm"),
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "GhosttyTheme", package: "libghostty-spm"),
@@ -55,7 +64,7 @@ let package = Package(
         .executableTarget(
             name: "batty",
             dependencies: [
-                "BattyKit",
+                "BattyCLICore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: swiftSettings

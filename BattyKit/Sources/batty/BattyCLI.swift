@@ -1,7 +1,7 @@
 // BattyCLI.swift
 
 import ArgumentParser
-import BattyKit
+import BattyCLICore
 import Foundation
 
 @main
@@ -9,7 +9,7 @@ struct BattyCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "batty",
         abstract: "Control Batty from the command line.",
-        version: "0.1.0"
+        version: resolveAppVersion()
     )
 
     @Argument(help: "Directory for the new session. Defaults to the current directory.")

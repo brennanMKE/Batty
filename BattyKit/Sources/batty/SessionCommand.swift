@@ -1,8 +1,37 @@
 // SessionCommand.swift
 
 import ArgumentParser
-import BattyKit
+import BattyCLICore
 import Foundation
+
+// MARK: - Version
+
+/// Resolves the version string for `batty --version`.
+///
+/// The installed CLI is a symlink into the app bundle at
+/// `<App>.app/Contents/Resources/bin/batty`, so the app's `Info.plist` sits two
+/// directories up at `Contents/Info.plist`. Reading `CFBundleShortVersionString`
+/// from there keeps `batty --version` matched to the installed app with no
+/// build-time stamping. Falls back to `"unknown"` when run outside a bundle
+/// (e.g. straight from the SwiftPM build directory).
+nonisolated func resolveAppVersion() -> String {
+    guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() else {
+        return "unknown"
+    }
+    let infoPlist = executable
+        .deletingLastPathComponent()  // bin/
+        .deletingLastPathComponent()  // Resources/
+        .deletingLastPathComponent()  // Contents/
+        .appending(path: "Info.plist", directoryHint: .notDirectory)
+    guard let data = try? Data(contentsOf: infoPlist),
+          let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+          let info = plist as? [String: Any],
+          let version = info["CFBundleShortVersionString"] as? String
+    else {
+        return "unknown"
+    }
+    return version
+}
 
 // MARK: - Path resolution
 

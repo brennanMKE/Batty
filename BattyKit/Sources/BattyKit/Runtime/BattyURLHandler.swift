@@ -1,5 +1,6 @@
 // BattyURLHandler.swift
 
+import BattyCLICore
 import Foundation
 import OSLog
 
