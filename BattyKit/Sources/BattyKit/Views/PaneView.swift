@@ -26,8 +26,12 @@ public struct PaneView: View {
     private static let approxCharWidth: CGFloat = 7
     /// Per-chip non-text overhead (icon + close button + padding).
     private static let chipChromeWidth: CGFloat = 36
-    /// Per-bar overhead (horizontal padding + "+" button + spacing).
+    /// SlidingTabBar's own per-bar overhead: 2×12 h-padding + 22 "+" button = 46,
+    /// plus a small layout buffer = 56.
     private static let barChromeWidth: CGFloat = 56
+    /// Width consumed by paneDragHandle when sibling panes are present:
+    /// icon frame (22) + trailing padding (8) = 30.
+    private static let dragHandleWidth: CGFloat = 30
     /// Absolute clamps so chips don't disappear in tiny panes or grow
     /// absurdly wide in huge ones.
     private static let chipMinWidth: CGFloat = 60
@@ -50,7 +54,13 @@ public struct PaneView: View {
 
     private var chipMaxWidth: CGFloat {
         let count = max(1, CGFloat(pane.tabs.count))
-        let available = max(0, paneWidth - Self.barChromeWidth)
+        // When sibling panes are present, paneDragHandle (22pt icon + 8pt trailing
+        // padding = 30pt) sits in the same HStack as SlidingTabBar and reduces the
+        // width SlidingTabBar actually receives. Without this deduction the inner
+        // fixedSize HStack inside SlidingTabBar overflows the pane's allocated width
+        // and bleeds visually into the adjacent pane (the merged-tab-bar symptom).
+        let reservation = hasSiblingPanes ? Self.dragHandleWidth : 0
+        let available = max(0, paneWidth - Self.barChromeWidth - reservation)
         let perChip = (available / count) - 6  // SlidingTabBar's default spacing
         return min(Self.chipMaxWidthCap, max(Self.chipMinWidth, perChip))
     }
@@ -177,43 +187,6 @@ public struct PaneView: View {
                         }
                 }
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(accentColor, lineWidth: 2)
-                    .opacity((pane.activeTab?.isDragHovering ?? false) ? 1 : 0)
-                    .animation(.easeOut(duration: 0.12), value: pane.activeTab?.isDragHovering ?? false)
-                    .allowsHitTesting(false)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(accentColor, lineWidth: 2)
-                    .opacity(bellFlashOpacity)
-                    .allowsHitTesting(false)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(accentColor, lineWidth: 2)
-                    .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
-                    .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
-                    .allowsHitTesting(false)
-            }
-            .overlay {
-                let state = PaneSwapDragState.shared
-                if state.isDragging,
-                   let sourceID = state.sourcePaneID,
-                   sourceID != pane.id,
-                   tree.root.findPane(id: sourceID) != nil {
-                    PaneSwapDropZone(pane: pane, tree: tree, accentColor: accentColor)
-                }
-            }
-            // Note: previously dimmed unfocused panes to 0.7 opacity here.
-            // Removed in #0135 round 6 — explicit opacity puts each pane
-            // body in an off-screen buffer, and the buffer edges between
-            // adjacent .7-alpha siblings composite as thin vertical lines
-            // at the pane boundaries (the line artifact the user reported
-            // through rounds 3–5). Focus is still indicated by the accent
-            // border overlay above.
-            .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
                 triggerBellFlash()
             }
@@ -221,6 +194,48 @@ public struct PaneView: View {
                 appStore?.markActiveTabSeen()
             }
         }
+        // .clipped() constrains the tab bar row to the pane's allocated width.
+        // Without it, SlidingTabBar's inner fixedSize HStack can overflow into
+        // the adjacent pane when multiple tabs fill the bar, producing the
+        // merged-tab-bar appearance from #0253.
+        //
+        // Note: previously dimmed unfocused panes to 0.7 opacity here.
+        // Removed in #0135 round 6 — explicit opacity puts each pane
+        // body in an off-screen buffer, and the buffer edges between
+        // adjacent .7-alpha siblings composite as thin vertical lines
+        // at the pane boundaries. No opacity change here; .clipped() uses
+        // a CALayer clip and does not introduce an off-screen buffer.
+        .clipped()
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(accentColor, lineWidth: 2)
+                .opacity((pane.activeTab?.isDragHovering ?? false) ? 1 : 0)
+                .animation(.easeOut(duration: 0.12), value: pane.activeTab?.isDragHovering ?? false)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(accentColor, lineWidth: 2)
+                .opacity(bellFlashOpacity)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(accentColor, lineWidth: 2)
+                .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
+                .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            let state = PaneSwapDragState.shared
+            if state.isDragging,
+               let sourceID = state.sourcePaneID,
+               sourceID != pane.id,
+               tree.root.findPane(id: sourceID) != nil {
+                PaneSwapDropZone(pane: pane, tree: tree, accentColor: accentColor)
+            }
+        }
+        .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
         .background {
             Color.clear
                 .preference(key: PaneFramePreferenceKey.self, value: [pane.id: frameInSession])
