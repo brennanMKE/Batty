@@ -6,6 +6,24 @@ import OSLog
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "SplitTree")
 
+// Used internally by rebalancingChain to signal whether paneID was found reachable
+// through a contiguous same-direction chain from the current node.
+private enum ChainSearchResult {
+    case notFound
+    // paneID is in this subtree, reachable through a D-direction chain from this node.
+    case foundInDChain(SplitTreeNode)
+    // paneID is in this subtree, but the path crossed a perpendicular split.
+    case foundBelowBreak(SplitTreeNode)
+
+    var updatedNode: SplitTreeNode? {
+        switch self {
+        case .notFound: return nil
+        case .foundInDChain(let n): return n
+        case .foundBelowBreak(let n): return n
+        }
+    }
+}
+
 public indirect enum SplitTreeNode {
     case leaf(PaneRuntime)
     case split(id: UUID, direction: SplitDirection, ratio: Double, left: SplitTreeNode, right: SplitTreeNode)
@@ -75,6 +93,13 @@ public final class SplitTree {
         root.allLeafPanes
     }
 
+    /// Splits the focused pane, adding a new pane along `direction`.
+    ///
+    /// After insertion, every leaf in the contiguous same-direction chain that
+    /// contains the new pane is re-equalized to an even 1/n fraction (#0255).
+    /// Because of that, `ratio` no longer affects the final geometry of a
+    /// same-axis split — it is retained for API compatibility but overridden by
+    /// the equalization pass. A perpendicular split starts a fresh 50/50 axis.
     @discardableResult
     public func splitFocusedPane(
         direction: SplitDirection,
@@ -96,7 +121,15 @@ public final class SplitTree {
             ratio: ratio,
             into: root
         ) {
-            root = newRoot
+            // Rebalance the contiguous same-direction chain containing newPane so
+            // all leaves in that chain have equal fractions (1/n).
+            let result = SplitTreeNode.rebalancingChain(
+                containing: newPane.id,
+                direction: direction,
+                in: newRoot,
+                parentIsDSplit: false
+            )
+            root = result.updatedNode ?? newRoot
             focusedPaneID = newPane.id
         }
         return newPane
@@ -244,6 +277,116 @@ extension SplitTreeNode {
                 return .split(id: nodeID, direction: dir, ratio: r, left: left, right: newRight)
             }
             return nil
+        }
+    }
+
+    // MARK: - Same-axis equalization
+
+    /// Finds the maximal contiguous same-direction chain containing `paneID` and rebalances
+    /// every ratio in that chain so all its leaf units get an equal fraction (1/n).
+    /// A "chain leaf unit" is either an actual leaf pane or a perpendicular-direction subtree
+    /// (which counts as one opaque unit). Perpendicular splits are never rebalanced here.
+    ///
+    /// `parentIsDSplit`: pass `true` when the calling split's direction equals `direction`.
+    ///   The chain root is the highest D-split that has no D-split parent — identified by
+    ///   `parentIsDSplit == false`. Rebalancing is applied only at the chain root.
+    fileprivate static func rebalancingChain(
+        containing paneID: UUID,
+        direction: SplitDirection,
+        in node: SplitTreeNode,
+        parentIsDSplit: Bool
+    ) -> ChainSearchResult {
+        switch node {
+        case .leaf(let pane):
+            guard pane.id == paneID else { return .notFound }
+            return .foundInDChain(node)
+
+        case .split(let id, let dir, let ratio, let left, let right):
+            if dir == direction {
+                // We're in a D-split. Recurse with parentIsDSplit=true so children know they
+                // are inside a D-chain and should not trigger chain-root rebalancing.
+                let leftResult = rebalancingChain(containing: paneID, direction: direction, in: left, parentIsDSplit: true)
+                let rightResult = rebalancingChain(containing: paneID, direction: direction, in: right, parentIsDSplit: true)
+
+                switch (leftResult, rightResult) {
+                case (.notFound, .notFound):
+                    return .notFound
+
+                case (.foundInDChain(let newLeft), _):
+                    let updated = SplitTreeNode.split(id: id, direction: dir, ratio: ratio, left: newLeft, right: right)
+                    if !parentIsDSplit {
+                        // This is the chain root: apply equalization to the whole chain.
+                        return .foundInDChain(rebalancedChain(updated, direction: direction))
+                    }
+                    return .foundInDChain(updated)
+
+                case (_, .foundInDChain(let newRight)):
+                    let updated = SplitTreeNode.split(id: id, direction: dir, ratio: ratio, left: left, right: newRight)
+                    if !parentIsDSplit {
+                        return .foundInDChain(rebalancedChain(updated, direction: direction))
+                    }
+                    return .foundInDChain(updated)
+
+                // paneID was found but its path crossed a perpendicular split inside this D-subtree.
+                // Propagate without rebalancing the outer D-chain.
+                case (.foundBelowBreak(let newLeft), _):
+                    return .foundBelowBreak(.split(id: id, direction: dir, ratio: ratio, left: newLeft, right: right))
+
+                case (_, .foundBelowBreak(let newRight)):
+                    return .foundBelowBreak(.split(id: id, direction: dir, ratio: ratio, left: left, right: newRight))
+                }
+            } else {
+                // Non-D split breaks the chain. Recurse with parentIsDSplit=false so the next
+                // D-split below will be treated as its own chain root.
+                let leftResult = rebalancingChain(containing: paneID, direction: direction, in: left, parentIsDSplit: false)
+                let rightResult = rebalancingChain(containing: paneID, direction: direction, in: right, parentIsDSplit: false)
+
+                switch (leftResult, rightResult) {
+                case (.notFound, .notFound):
+                    return .notFound
+                case (.foundInDChain(let newLeft), _):
+                    return .foundBelowBreak(.split(id: id, direction: dir, ratio: ratio, left: newLeft, right: right))
+                case (.foundBelowBreak(let newLeft), _):
+                    return .foundBelowBreak(.split(id: id, direction: dir, ratio: ratio, left: newLeft, right: right))
+                case (_, .foundInDChain(let newRight)):
+                    return .foundBelowBreak(.split(id: id, direction: dir, ratio: ratio, left: left, right: newRight))
+                case (_, .foundBelowBreak(let newRight)):
+                    return .foundBelowBreak(.split(id: id, direction: dir, ratio: ratio, left: left, right: newRight))
+                }
+            }
+        }
+    }
+
+    /// Sets the ratio of every D-direction split in this subtree so all chain leaves
+    /// get equal fractions. Perpendicular splits are treated as single opaque units.
+    fileprivate static func rebalancedChain(_ node: SplitTreeNode, direction: SplitDirection) -> SplitTreeNode {
+        switch node {
+        case .leaf:
+            return node
+        case .split(let id, let dir, _, let left, let right):
+            guard dir == direction else { return node }
+            let leftCount = countChainLeaves(left, direction: direction)
+            let rightCount = countChainLeaves(right, direction: direction)
+            let total = leftCount + rightCount
+            return .split(
+                id: id,
+                direction: dir,
+                ratio: Double(leftCount) / Double(total),
+                left: rebalancedChain(left, direction: direction),
+                right: rebalancedChain(right, direction: direction)
+            )
+        }
+    }
+
+    /// Counts the number of "chain leaf units" in a same-direction chain.
+    /// Actual leaves and perpendicular-direction subtrees each count as 1.
+    fileprivate static func countChainLeaves(_ node: SplitTreeNode, direction: SplitDirection) -> Int {
+        switch node {
+        case .leaf:
+            return 1
+        case .split(_, let dir, _, let left, let right):
+            guard dir == direction else { return 1 }
+            return countChainLeaves(left, direction: direction) + countChainLeaves(right, direction: direction)
         }
     }
 }

@@ -144,20 +144,20 @@ public enum PaneLayout: String, CaseIterable, Identifiable {
             tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
 
         case .threeColumns:
-            // primary | B | C
-            // Focused = primary. Split horizontally at 1/3 → pane B takes the right 2/3.
-            // Then set focused to B and split horizontally at 0.5 → B | C.
+            // primary | B | C. Split twice along the same axis; same-axis
+            // equalization (#0255) makes all three columns 1/3 each, so no
+            // explicit ratio is needed (it would be overridden anyway).
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .horizontal, ratio: 1.0 / 3.0, inheritingFrom: primary)
+            let paneB = tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
-            tree.splitFocusedPane(direction: .horizontal, ratio: 0.5, inheritingFrom: primary)
+            tree.splitFocusedPane(direction: .horizontal, inheritingFrom: primary)
 
         case .threeRows:
-            // primary / B / C
+            // primary / B / C. Same-axis equalization yields 1/3 each.
             tree.focusedPaneID = primary.id
-            let paneB = tree.splitFocusedPane(direction: .vertical, ratio: 1.0 / 3.0, inheritingFrom: primary)
+            let paneB = tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
             tree.focusedPaneID = paneB.id
-            tree.splitFocusedPane(direction: .vertical, ratio: 0.5, inheritingFrom: primary)
+            tree.splitFocusedPane(direction: .vertical, inheritingFrom: primary)
 
         case .mainLeftTwoRight:
             // primary | (B / C)
