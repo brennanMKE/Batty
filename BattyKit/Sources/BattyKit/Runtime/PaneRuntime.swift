@@ -9,11 +9,16 @@ public final class PaneRuntime: Identifiable {
     public var tabs: [TabRuntime]
     public var activeTabID: UUID
     public internal(set) var unseenBellCount: Int = 0
+    /// Whether this pane is hidden from view. The Ghostty surface (PTY +
+    /// scrollback) keeps running; only the placement in `TerminalHostStore`
+    /// is zeroed. Tree structure is unchanged — hidden is a leaf property.
+    public var isHidden: Bool = false
 
     public init(
         id: UUID = UUID(),
         tabs: [TabRuntime]? = nil,
-        unseenBellCount: Int = 0
+        unseenBellCount: Int = 0,
+        isHidden: Bool = false
     ) {
         self.id = id
         let initial = tabs ?? [TabRuntime()]
@@ -21,6 +26,12 @@ public final class PaneRuntime: Identifiable {
         self.tabs = initial
         self.activeTabID = initial[0].id
         self.unseenBellCount = unseenBellCount
+        self.isHidden = isHidden
+    }
+
+    /// A `Pane` value-type snapshot suitable for workspace persistence.
+    public func snapshot() -> Pane {
+        Pane(id: id, isHidden: isHidden)
     }
 
     public var activeTab: TabRuntime? {

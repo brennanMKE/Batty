@@ -291,6 +291,50 @@ public final class WindowRuntime {
         }
     }
 
+    // MARK: - Pane hide / show
+
+    /// Hides the pane with `id`. No-op when the pane is already hidden or when
+    /// it is the last visible pane in its session (the ≥1 visible invariant).
+    /// Moves focus to the nearest visible sibling when the focused pane is hidden.
+    public func hidePane(id: UUID) {
+        for session in sessions {
+            guard let pane = session.tree.allPanes.first(where: { $0.id == id }) else { continue }
+            guard !pane.isHidden else { return }
+            guard session.tree.visiblePanes.count > 1 else {
+                logger.notice("hidePane: refused id=\(id, privacy: .public) — last visible pane in session")
+                return
+            }
+            // Move focus before hiding so `focusedPaneID` never references a hidden pane.
+            if session.tree.focusedPaneID == id {
+                if let nextVisible = session.tree.visiblePanes.first(where: { $0.id != id }) {
+                    session.tree.focusedPaneID = nextVisible.id
+                }
+            }
+            pane.isHidden = true
+            // Hide every terminal view in the pane without releasing it —
+            // TerminalPlaceholderView is unmounted while the pane is hidden
+            // so its onGeometryChange never fires. Drive TerminalHostStore
+            // directly so the AppTerminalView isn't left floating (#0256).
+            for tab in pane.tabs {
+                TerminalHostStore.shared.setPlacement(
+                    TerminalHostStore.Placement(frame: .zero, isVisible: false),
+                    forTabID: tab.id
+                )
+            }
+            return
+        }
+    }
+
+    /// Un-hides the pane with `id`. No-op when the pane is already visible.
+    public func showPane(id: UUID) {
+        for session in sessions {
+            guard let pane = session.tree.allPanes.first(where: { $0.id == id }) else { continue }
+            guard pane.isHidden else { return }
+            pane.isHidden = false
+            return
+        }
+    }
+
     // MARK: - Navigation
 
     public func jumpToTab(sessionID: UUID, tabID: UUID) {
@@ -307,6 +351,12 @@ public final class WindowRuntime {
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
               pane.tabs.contains(where: { $0.id == entry.tabID })
         else { return }
+        // Un-hide the pane before navigating to it — a bell from a hidden
+        // pane's surface must be reachable via the feed (#0256). Route
+        // through showPane so any future host-side wiring stays in one place.
+        if pane.isHidden {
+            showPane(id: pane.id)
+        }
         selectedSessionID = session.id
         session.tree.focusedPaneID = pane.id
         pane.activeTabID = entry.tabID

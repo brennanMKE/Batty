@@ -170,6 +170,13 @@ public final class TerminalHostStore {
         terminalViews[id] != nil
     }
 
+    /// The most-recently-applied placement for `id`, or `nil` if no placement
+    /// has been set for this tab. Used by unit tests to verify that hide/show
+    /// paths drive the store correctly.
+    func placement(forTabID id: UUID) -> Placement? {
+        placements[id]
+    }
+
     /// Remove and release the terminal view for `tabID`. Called only when
     /// the tab is being closed for real (see `AppStateStore.closeTab(id:)`).
     /// libghostty's `viewDidMoveToWindow(nil)` plus the coordinator's

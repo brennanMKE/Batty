@@ -366,6 +366,27 @@ public final class AppStateStore {
         }
     }
 
+    /// Hides the pane with `id`, routing to the owning window. No-op when the
+    /// pane is the last visible pane in its session (≥1 visible invariant).
+    public func hidePane(id: UUID) {
+        for window in windows {
+            if window.sessions.contains(where: { $0.tree.allPanes.contains(where: { $0.id == id }) }) {
+                window.hidePane(id: id)
+                return
+            }
+        }
+    }
+
+    /// Un-hides the pane with `id`, routing to the owning window.
+    public func showPane(id: UUID) {
+        for window in windows {
+            if window.sessions.contains(where: { $0.tree.allPanes.contains(where: { $0.id == id }) }) {
+                window.showPane(id: id)
+                return
+            }
+        }
+    }
+
     public func focusPane(containingTabID tabID: UUID) {
         // Locate the owning window via tab ID. This is also called from
         // TerminalClickFocusMonitor (event origin), so using the owning

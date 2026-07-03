@@ -49,7 +49,7 @@ public struct PaneView: View {
     }
 
     private var hasSiblingPanes: Bool {
-        tree.allPanes.count > 1
+        tree.visiblePanes.count > 1
     }
 
     private var chipMaxWidth: CGFloat {
@@ -114,6 +114,7 @@ public struct PaneView: View {
                     paneDragHandle
                         .padding(.trailing, 8)
                 }
+                paneEyeButton
             }
             .background(themeChrome?.chromeBackground ?? Color.clear)
 
@@ -292,6 +293,30 @@ public struct PaneView: View {
             } preview: {
                 paneDragPreview
             }
+    }
+
+    /// Eye button that hides the pane. Disabled when this is the last visible
+    /// pane in the session (enforces the ≥1 visible pane invariant). Routes
+    /// through AppStateStore → WindowRuntime so TerminalHostStore is always
+    /// driven. Event-origin (button tap) — safe per
+    /// `docs/swiftui-observation-rules.md`.
+    @ViewBuilder
+    private var paneEyeButton: some View {
+        Button {
+            guard let appStore else { return }
+            appStore.hidePane(id: pane.id)
+        } label: {
+            Image(systemName: "eye.slash")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help("Hide pane")
+        .disabled(tree.visiblePanes.count <= 1)
+        .padding(.trailing, 4)
+        .accessibilityIdentifier("pane-eye-button.\(pane.id.uuidString)")
     }
 
     @ViewBuilder

@@ -21,8 +21,25 @@ private struct SplitNodeView: View {
     var body: AnyView {
         switch node {
         case .leaf(let pane):
+            // Hidden leaf: zero-size placeholder. The surface stays alive in
+            // TerminalHostStore because no placement is reported and the
+            // AppTerminalView stays in the host with isHidden = true (#0256).
+            if pane.isHidden {
+                return AnyView(Color.clear.frame(width: 0, height: 0))
+            }
             return AnyView(PaneView(pane: pane, tree: tree))
+
         case let .split(id, direction, ratio, left, right):
+            // If one arm is entirely hidden, give the visible arm 100% with
+            // no divider. The stored `ratio` is preserved so it's restored
+            // when the pane is un-hidden (the next split re-equalizes only
+            // visible panes, so the ratio reflects the visible share).
+            if left.isEntirelyHidden {
+                return AnyView(SplitNodeView(tree: tree, node: right))
+            }
+            if right.isEntirelyHidden {
+                return AnyView(SplitNodeView(tree: tree, node: left))
+            }
             return AnyView(
                 DraggableSplitView(
                     direction: direction,

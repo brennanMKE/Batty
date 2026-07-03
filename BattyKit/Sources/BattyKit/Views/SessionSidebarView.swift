@@ -38,6 +38,28 @@ public struct SessionSidebarView: View {
                     selectionTint: themeChrome?.sidebarSelectionTint,
                     isSelected: session.id == windowRuntime.selectedSessionID
                 ))
+
+                // Pane rows: shown when the session has >1 pane (split).
+                // Each row carries the eye toggle and bell badge.
+                // Non-selectable — they carry no List tag (#0256).
+                if session.tree.allPanes.count > 1 {
+                    ForEach(Array(session.tree.allPanes.enumerated()), id: \.element.id) { index, pane in
+                        PaneRow(
+                            pane: pane,
+                            paneIndex: index + 1,
+                            session: session,
+                            windowRuntime: windowRuntime,
+                            accent: themeChrome?.accent
+                        )
+                        .listRowInsets(EdgeInsets(top: 2, leading: 28, bottom: 2, trailing: 8))
+                        .modifier(SidebarRowBackground(
+                            sidebarBackground: themeChrome?.chromeBackground,
+                            selectionTint: nil,
+                            isSelected: false
+                        ))
+                        .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
+                    }
+                }
             }
             .onMove { source, destination in
                 windowRuntime.moveSessions(fromOffsets: source, toOffset: destination)
@@ -196,6 +218,80 @@ private struct SessionRow: View {
             Button("Close", role: .destructive) {
                 windowRuntime.removeSession(id: session.id)
             }
+        }
+    }
+}
+
+private struct PaneRow: View {
+    @Bindable var pane: PaneRuntime
+    let paneIndex: Int
+    @Bindable var session: SessionRuntime
+    @Bindable var windowRuntime: WindowRuntime
+    let accent: Color?
+
+    private var paneLabel: String {
+        if let activeTab = pane.activeTab {
+            let title: String
+            if let override = activeTab.titleOverride, !override.isEmpty {
+                title = override
+            } else {
+                title = activeTab.terminal.title
+            }
+            if !title.isEmpty { return title }
+        }
+        return String(localized: "Pane \(paneIndex)")
+    }
+
+    /// Eye can always be toggled to show; can only hide when other visible panes exist.
+    private var eyeEnabled: Bool {
+        pane.isHidden || session.tree.visiblePanes.count > 1
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: pane.isHidden ? "eye.slash" : "eye")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .frame(width: 14)
+
+            Text(paneLabel)
+                .font(.caption)
+                .lineLimit(1)
+                .foregroundStyle(pane.isHidden ? Color.secondary : Color.primary)
+
+            Spacer()
+
+            if pane.unseenBellCount > 0 {
+                Text(verbatim: "\(pane.unseenBellCount)")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().stroke(accent ?? Color.accentColor, lineWidth: 1))
+                    .help("\(pane.unseenBellCount) unseen bell event(s)")
+            }
+
+            Button {
+                toggleVisibility()
+            } label: {
+                Image(systemName: pane.isHidden ? "eye" : "eye.slash")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.borderless)
+            .help(pane.isHidden ? "Show pane" : "Hide pane")
+            .disabled(!eyeEnabled)
+            .accessibilityIdentifier("pane-eye-toggle.\(pane.id.uuidString)")
+        }
+    }
+
+    /// Toggle hide/show through WindowRuntime so every entry point drives
+    /// TerminalHostStore and the last-visible guard together. Event-origin
+    /// (button tap) — safe per `docs/swiftui-observation-rules.md`.
+    private func toggleVisibility() {
+        if pane.isHidden {
+            windowRuntime.showPane(id: pane.id)
+        } else {
+            windowRuntime.hidePane(id: pane.id)
         }
     }
 }

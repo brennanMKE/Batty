@@ -66,6 +66,28 @@ extension SplitTreeNode {
         }
     }
 
+    /// All leaf panes in this subtree whose `isHidden` is `false`.
+    public var visibleLeafPanes: [PaneRuntime] {
+        switch self {
+        case .leaf(let pane):
+            return pane.isHidden ? [] : [pane]
+        case .split(_, _, _, let left, let right):
+            return left.visibleLeafPanes + right.visibleLeafPanes
+        }
+    }
+
+    /// `true` when every leaf pane in this subtree is hidden.
+    /// Used by `SplitNodeView` to collapse layout space for fully-hidden
+    /// sub-trees and to suppress dividers adjacent to them.
+    public var isEntirelyHidden: Bool {
+        switch self {
+        case .leaf(let pane):
+            return pane.isHidden
+        case .split(_, _, _, let left, let right):
+            return left.isEntirelyHidden && right.isEntirelyHidden
+        }
+    }
+
     public func contains(paneID: UUID) -> Bool {
         findPane(id: paneID) != nil
     }
@@ -91,6 +113,11 @@ public final class SplitTree {
 
     public var allPanes: [PaneRuntime] {
         root.allLeafPanes
+    }
+
+    /// All panes in the tree whose `isHidden` is `false`.
+    public var visiblePanes: [PaneRuntime] {
+        root.visibleLeafPanes
     }
 
     /// Splits the focused pane, adding a new pane along `direction`.
@@ -357,8 +384,16 @@ extension SplitTreeNode {
         }
     }
 
-    /// Sets the ratio of every D-direction split in this subtree so all chain leaves
-    /// get equal fractions. Perpendicular splits are treated as single opaque units.
+    /// Sets the ratio of every D-direction split in this subtree so all visible
+    /// chain leaves get equal fractions. Perpendicular splits are treated as
+    /// single opaque units. Hidden leaves receive a ratio of 0 so they consume
+    /// no rendered space and the stored ratio is restored when un-hidden by the
+    /// next equalization pass on the next split.
+    ///
+    /// When all leaves in both arms are hidden (`total == 0`), the existing
+    /// ratio is preserved unchanged — an all-hidden subtree is an edge case
+    /// that cannot occur under the "≥1 visible pane" invariant, but the guard
+    /// keeps ratio finite if the invariant is momentarily violated.
     fileprivate static func rebalancedChain(_ node: SplitTreeNode, direction: SplitDirection) -> SplitTreeNode {
         switch node {
         case .leaf:
@@ -368,6 +403,10 @@ extension SplitTreeNode {
             let leftCount = countChainLeaves(left, direction: direction)
             let rightCount = countChainLeaves(right, direction: direction)
             let total = leftCount + rightCount
+            guard total > 0 else {
+                // All hidden — preserve the stored ratio unchanged.
+                return node
+            }
             return .split(
                 id: id,
                 direction: dir,
@@ -378,14 +417,20 @@ extension SplitTreeNode {
         }
     }
 
-    /// Counts the number of "chain leaf units" in a same-direction chain.
-    /// Actual leaves and perpendicular-direction subtrees each count as 1.
+    /// Counts the number of visible "chain leaf units" in a same-direction chain.
+    /// Hidden leaves count as 0; visible leaves count as 1.
+    /// Perpendicular-direction subtrees count as 0 if entirely hidden, 1 otherwise.
+    /// This ensures equalization after a split distributes space only among
+    /// visible panes — a hidden pane does not receive a fractional share (#0256).
     fileprivate static func countChainLeaves(_ node: SplitTreeNode, direction: SplitDirection) -> Int {
         switch node {
-        case .leaf:
-            return 1
+        case .leaf(let pane):
+            return pane.isHidden ? 0 : 1
         case .split(_, let dir, _, let left, let right):
-            guard dir == direction else { return 1 }
+            guard dir == direction else {
+                // Perpendicular subtree counts as one opaque unit if any pane is visible.
+                return node.isEntirelyHidden ? 0 : 1
+            }
             return countChainLeaves(left, direction: direction) + countChainLeaves(right, direction: direction)
         }
     }
