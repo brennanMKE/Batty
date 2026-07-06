@@ -59,6 +59,16 @@ defaults CLI flags to them (supacode `SUPACODE_SURFACE_ID`, cmux
   (no socket). Add a **minimal read-only Unix socket** later, and only if the
   query/agent-wait features earn it. Design the grammar so socket-backed verbs
   slot in without changing the one-way ones.
+- **Amendment (#0257, 2026-07-06):** *topology* queries (`list`, `session info`)
+  don't actually need the socket — the app can maintain an atomic, debounced
+  JSON state snapshot (`~/Library/Application Support/Batty/state.json`) that
+  the CLI reads directly. A third IPC path between one-way URL and two-way
+  socket; see #0257 § "Agent context & session topology". The socket remains
+  required only for live reads (`read`, `wait`, `send`, `events`). Two related
+  one-way tricks from the same revision: mutation URLs carry **explicit target
+  ids** (resolved flag → env → focused) so a background-session pane can be
+  split without stealing focus, and creation verbs use **client-generated
+  UUIDs** so the CLI can print the new object's id despite fire-and-forget IPC.
 
 ### 1.4 Machine-readable output & scripting hygiene
 - `--json` on every query verb (cmux does this pervasively) — agents/scripts are
