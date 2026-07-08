@@ -2,6 +2,41 @@
 
 import SwiftUI
 
+private struct EnvironmentPaneAllottedSizeKey: EnvironmentKey {
+    static let defaultValue: CGSize? = nil
+}
+
+extension EnvironmentValues {
+    /// The exact width/height `SplitLayout.placeSubviews` allotted to this
+    /// branch of the split tree. Set by `DraggableSplitView` from a
+    /// `GeometryReader`-measured size (never from a child's own reported
+    /// frame), and read by `PaneView` to clamp its own frame before
+    /// `.overlay` and `.clipped()` run.
+    ///
+    /// Why this exists (#0261): `SlidingTabBar`'s tab-chip row uses
+    /// `.fixedSize()` internally so chips don't get squashed illegibly.
+    /// When a pane is too narrow to fit its chips at their minimum width,
+    /// the chip row — and therefore `PaneView`'s outer `VStack` — reports
+    /// an ideal size *wider* than what `SplitLayout` proposed, because
+    /// SwiftUI containers propagate a refusing child's ideal size upward
+    /// rather than clamping to the proposal. `SplitLayout`'s divider and
+    /// the next pane are still placed at the originally-computed position,
+    /// unaware of the overflow, so the two disagree. `PaneView`'s focus
+    /// highlight (and the bell-flash / drag-hover / swap-target overlays
+    /// that share its shape) are plain `.overlay`s, which track whatever
+    /// frame `PaneView` actually renders at — so they inherited the
+    /// oversized frame and drew past the true divider position. Reading
+    /// the allotted size here and applying it as a hard `.frame(width:
+    /// height:)` before `.clipped()`/`.overlay()` forces `PaneView` back
+    /// to the size `SplitLayout` actually gave it; any tab-chip content
+    /// that still doesn't fit is clipped instead of bleeding into the
+    /// neighboring pane.
+    var paneAllottedSize: CGSize? {
+        get { self[EnvironmentPaneAllottedSizeKey.self] }
+        set { self[EnvironmentPaneAllottedSizeKey.self] = newValue }
+    }
+}
+
 public struct SplitContainerView: View {
     @Bindable public var tree: SplitTree
 
@@ -68,6 +103,19 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
 
     private static var dividerThickness: CGFloat { 4 }
 
+    /// The size `SplitLayout.placeSubviews` will allot to a child, given
+    /// this container's own current size. Computed synchronously from a
+    /// `GeometryReader` (not from a child's self-reported frame) so it
+    /// can't be corrupted by a child that refuses to shrink — see
+    /// ``EnvironmentValues/paneAllottedSize`` for why this exists (#0261).
+    private func allottedSize(containerSize: CGSize, main: CGFloat) -> CGSize? {
+        let crossLength = direction == .horizontal ? containerSize.height : containerSize.width
+        guard main > 0, crossLength > 0 else { return nil }
+        return direction == .horizontal
+            ? CGSize(width: main, height: crossLength)
+            : CGSize(width: crossLength, height: main)
+    }
+
     /// A single visible themed divider painted uniformly along its full
     /// length — this is the pre-#0135 design (intentionally-visible
     /// macOS-style split separator), with the system separator color
@@ -81,10 +129,19 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     }
 
     var body: some View {
-        SplitLayout(direction: direction, ratio: ratio, dividerThickness: Self.dividerThickness) {
-            leftContent()
-            divider
-            rightContent()
+        GeometryReader { proxy in
+            let totalLength = direction == .horizontal ? proxy.size.width : proxy.size.height
+            let usable = max(0, totalLength - Self.dividerThickness)
+            let leftLength = max(0, usable * ratio)
+            let rightLength = max(0, usable - leftLength)
+
+            SplitLayout(direction: direction, ratio: ratio, dividerThickness: Self.dividerThickness) {
+                leftContent()
+                    .environment(\.paneAllottedSize, allottedSize(containerSize: proxy.size, main: leftLength))
+                divider
+                rightContent()
+                    .environment(\.paneAllottedSize, allottedSize(containerSize: proxy.size, main: rightLength))
+            }
         }
         .onGeometryChange(for: CGFloat.self, of: {
             direction == .horizontal ? $0.size.width : $0.size.height

@@ -14,6 +14,7 @@ public struct PaneView: View {
     @Environment(\.appStateStore) private var appStore
     @Environment(\.isSelectedSession) private var isSessionSelected
     @Environment(\.themeChrome) private var themeChrome
+    @Environment(\.paneAllottedSize) private var allottedSize
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
     @State private var renameDraft: String = ""
@@ -195,6 +196,20 @@ public struct PaneView: View {
                 appStore?.markActiveTabSeen()
             }
         }
+        // Hard-clamp to the size SplitLayout actually allotted this pane
+        // *before* .clipped()/.overlay() run. Without this, a tab bar that
+        // can't fit its chips at their minimum width (SlidingTabBar's inner
+        // fixedSize HStack) makes this VStack report an ideal size wider
+        // than the proposal, and everything anchored to that size — the
+        // focus-highlight overlay below in particular — draws past the
+        // real divider position (#0261). `allottedSize` is nil outside a
+        // split (a single unsplit pane), so this is a no-op there.
+        //
+        // `.topLeading` (not the default `.center`) so any tab-strip
+        // overflow clips off the trailing/bottom edges only, preserving
+        // the leading (first / active) tabs — this matches the pre-fix
+        // leading-anchored `SplitLayout.place(at: minX/minY)` behavior.
+        .frame(width: allottedSize?.width, height: allottedSize?.height, alignment: .topLeading)
         // .clipped() constrains the tab bar row to the pane's allocated width.
         // Without it, SlidingTabBar's inner fixedSize HStack can overflow into
         // the adjacent pane when multiple tabs fill the bar, producing the
