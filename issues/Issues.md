@@ -147,6 +147,8 @@ Any additional context, guesses at root cause, related code locations.
 
 ## Filing a new issue
 
+New issues are filed by a **filer subagent pinned to the top available model** (currently **Fable**, `claude-fable-5` — the newest, most capable tier). The orchestrator (main session) dispatches a fresh Fable subagent with the report details and instructions to follow the steps below; the subagent reads `issues/Issues.md` first to absorb these conventions, then creates and commits the `NNNN.md` file on `main`. Filing is not issue work — no branch, no review gate — just recording the report. As newer top-tier models ship, update "currently Fable" here to name the new top model; the rule is "top available model", not "Fable" specifically.
+
 1. Confirm `issues/project.json` exists. If missing, create it (see schema above) before filing the first issue — `name` should match this guide's heading; `url` is the project's canonical web URL (HTTPS, not SSH).
 2. Find the highest existing `NNNN.md` and increment. Start at `0001` if the folder is empty. Skip past reserved high numbers (e.g. `8888`, `9999` for test issues).
 3. Create `issues/NNNN.md` from the template.
@@ -167,8 +169,8 @@ Ad-hoc edits (a note, a screenshot, a manual field change) happen on `main`. Edi
 
 The standard workflow: **all work for an issue happens on a branch named for the issue** (`issue/NNNN`), and **nothing reaches `main` until an independent review approves the diff** — at which point the branch lands as a single squash commit. The branch may accumulate five or more commits while the work is in flight; `main` only ever sees one. Each issue runs through a three-role loop:
 
-- **Implementer subagent** — model pinned to **Sonnet**. Implements and verifies the change on the issue branch, committing checkpoints freely as it goes. Never touches `main`.
-- **Reviewer subagent** — model pinned to **Opus**. Reviews the branch diff against the issue. Returns approve or request-changes. Does **not** edit code, commit, or change status.
+- **Implementer subagent** — model pinned to **Sonnet** (`claude-sonnet-5`). Implements and verifies the change on the issue branch, committing checkpoints freely as it goes. Never touches `main`.
+- **Reviewer subagent** — model pinned to **Opus** (`claude-opus-4-8`). Reviews the branch diff against the issue. Returns approve or request-changes. Does **not** edit code, commit, or change status.
 - **Orchestrator** (the main session) — picks issues, creates the branch, dispatches both subagents, routes review feedback back to the implementer, records work-log rows on the branch, and — only after approval — marks the issue `resolved` and squash-merges the branch to `main`.
 
 Issues are worked **one at a time, in ascending order**. Every branch is cut from `main`, so never run two implementers in parallel and never stack one issue branch on another — later issues often depend on decisions that land with earlier ones.
@@ -312,13 +314,14 @@ Anthropic publishes prices on the docs site (no API endpoint). Fetch once per da
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "currency": "USD per MTok",
   "models": {
-    "claude-sonnet-4-6": { "input": 3.00, "output": 15.00, "cache_write_5m": 3.75, "cache_read": 0.30 },
+    "claude-fable-5": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_read": 0.50 },
+    "claude-sonnet-5": { "input": 3.00, "output": 15.00, "cache_write_5m": 3.75, "cache_read": 0.30 },
     "claude-opus-4-8": { "input": 5.00, "output": 25.00, "cache_write_5m": 6.25, "cache_read": 0.50 }
   }
 }
 ```
 
-Include at least the implementer model (Sonnet) and reviewer model (Opus) since both bill against every issue. If `fetched` is today, use as-is. If the fetch fails, use the stale cache and note the staleness next to the cost; with no cache at all, record tokens and model with `—` for cost. Never trust example numbers over a fresh fetch.
+Include at least the filer model (Fable — the top available model), the implementer model (Sonnet), and the reviewer model (Opus), since all three bill against issue work. The ids above reflect the current tiers (`claude-fable-5`, `claude-sonnet-5`, `claude-opus-4-8`); the rates are illustrative placeholders until a fresh fetch confirms them. If `fetched` is today, use as-is. If the fetch fails, use the stale cache and note the staleness next to the cost; with no cache at all, record tokens and model with `—` for cost. Never trust example numbers over a fresh fetch.
 
 ### Getting exact token counts
 
@@ -342,7 +345,7 @@ One row per work session, conventionally the last section of the issue file (alw
 
 | Date | Model | Input | Output | Cache read | Cache write | Cost |
 |---|---|---|---|---|---|---|
-| 2026-06-15 | claude-sonnet-4-6 | 5,300 | 18,000 | 1,200,000 | 70,000 | $1.02 |
+| 2026-06-15 | claude-sonnet-5 | 5,300 | 18,000 | 1,200,000 | 70,000 | $1.02 |
 | 2026-06-15 | claude-opus-4-8 | 4,800 | 6,000 | 480,000 | 30,000 | $0.58 |
 
 **Total: $1.60**
