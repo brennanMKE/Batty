@@ -16,7 +16,7 @@ public struct SessionSidebarView: View {
     }
 
     public var body: some View {
-        List(selection: $windowRuntime.selectedSessionID) {
+        List(selection: sidebarSelection) {
             ForEach(windowRuntime.sessions) { session in
                 SessionRow(
                     session: session,
@@ -39,10 +39,16 @@ public struct SessionSidebarView: View {
                     isSelected: session.id == windowRuntime.selectedSessionID
                 ))
 
-                // Pane rows: shown when the session has >1 pane (split).
-                // Each row carries the eye toggle and bell badge.
-                // Non-selectable — they carry no List tag (#0256).
-                if session.tree.allPanes.count > 1 {
+                // Pane rows: shown when the session row's chevron is
+                // expanded (any pane count). Each row carries the eye toggle
+                // and bell badge. `selectionDisabled` is required: even
+                // without a `.tag()`, macOS List derives an implicit
+                // selection value from the ForEach identity, and `pane.id`
+                // type-matches the UUID? selection — clicking a row would
+                // write a pane id into selectedSessionID (#0258). Tapping a
+                // row instead selects the owning session and focuses
+                // (un-hiding if needed).
+                if session.isPaneListExpanded {
                     ForEach(Array(session.tree.allPanes.enumerated()), id: \.element.id) { index, pane in
                         PaneRow(
                             pane: pane,
@@ -51,6 +57,7 @@ public struct SessionSidebarView: View {
                             windowRuntime: windowRuntime,
                             accent: themeChrome?.accent
                         )
+                        .selectionDisabled()
                         .listRowInsets(EdgeInsets(top: 2, leading: 28, bottom: 2, trailing: 8))
                         .modifier(SidebarRowBackground(
                             sidebarBackground: themeChrome?.chromeBackground,
@@ -109,6 +116,17 @@ public struct SessionSidebarView: View {
                 session: session
             )
         }
+    }
+
+    /// Routes List selection writes through the validated setter so pane ids
+    /// (implicit-identity selection, #0258) and nil (empty-area click) never
+    /// reach `selectedSessionID`. SwiftUI re-reads the getter after a rejected
+    /// write and the List snaps back to the real selection.
+    private var sidebarSelection: Binding<UUID?> {
+        Binding(
+            get: { windowRuntime.selectedSessionID },
+            set: { windowRuntime.setSelectedSession(id: $0) }
+        )
     }
 
     private var renamingBinding: Binding<SessionRuntime?> {
@@ -175,6 +193,24 @@ private struct SessionRow: View {
 
     var body: some View {
         HStack {
+            // Disclosure chevron for the session's pane list: points right
+            // when collapsed, rotates to point down when expanded (#0258).
+            // Present even for single-pane sessions.
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    session.isPaneListExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(HierarchicalShapeStyle.secondary)
+                    .rotationEffect(.degrees(session.isPaneListExpanded ? 90 : 0))
+                    .frame(width: 14, height: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .help(session.isPaneListExpanded ? "Collapse panes" : "Expand panes")
+            .accessibilityIdentifier("session-disclosure.\(session.id.uuidString)")
             Label {
                 Text(session.title)
                     .lineLimit(1)
@@ -249,11 +285,6 @@ private struct PaneRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: pane.isHidden ? "eye.slash" : "eye")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .frame(width: 14)
-
             Text(paneLabel)
                 .font(.caption)
                 .lineLimit(1)
@@ -270,10 +301,12 @@ private struct PaneRow: View {
                     .help("\(pane.unseenBellCount) unseen bell event(s)")
             }
 
+            // The single visibility control: shows current state
+            // (eye = visible, eye.slash = hidden), click toggles.
             Button {
                 toggleVisibility()
             } label: {
-                Image(systemName: pane.isHidden ? "eye" : "eye.slash")
+                Image(systemName: pane.isHidden ? "eye.slash" : "eye")
                     .font(.system(size: 10, weight: .semibold))
                     .frame(width: 18, height: 18)
             }
@@ -281,6 +314,10 @@ private struct PaneRow: View {
             .help(pane.isHidden ? "Show pane" : "Hide pane")
             .disabled(!eyeEnabled)
             .accessibilityIdentifier("pane-eye-toggle.\(pane.id.uuidString)")
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            activate()
         }
     }
 
@@ -293,6 +330,18 @@ private struct PaneRow: View {
         } else {
             windowRuntime.hidePane(id: pane.id)
         }
+    }
+
+    /// Row tap: select the owning session, restore the pane if hidden
+    /// (#0256's "selecting a hidden pane's row restores it"), and focus it.
+    /// Event-origin writes; pane rows are `selectionDisabled` so this is the
+    /// row's only activation path (#0258).
+    private func activate() {
+        windowRuntime.setSelectedSession(id: session.id)
+        if pane.isHidden {
+            windowRuntime.showPane(id: pane.id)
+        }
+        windowRuntime.focusPane(id: pane.id)
     }
 }
 

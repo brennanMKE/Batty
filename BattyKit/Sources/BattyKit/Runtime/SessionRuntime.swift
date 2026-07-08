@@ -19,6 +19,10 @@ public final class SessionRuntime: Identifiable {
     /// applies this theme instead of the global `ThemePreference`. Not
     /// persisted — resets to nil on every launch.
     public var localThemeName: String? = nil
+    /// Whether the sidebar shows this session's pane rows. Collapsed by
+    /// default; `WindowRuntime.hidePane` expands it so a just-hidden pane's
+    /// restore control is always reachable (#0258). Not persisted.
+    public var isPaneListExpanded: Bool = false
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     public init(

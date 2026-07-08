@@ -164,6 +164,22 @@ public final class WindowRuntime {
         selectedSessionID = sessions[index].id
     }
 
+    /// Single entry point for sidebar `List` selection writes. macOS `List`
+    /// derives an implicit selection value from each row's ForEach identity
+    /// even without an explicit `.tag()`, so pane rows can offer pane ids and
+    /// an empty-area click offers nil (#0258). Both are rejected: while
+    /// sessions exist, some session is always selected. Idempotent — an
+    /// equal-value write on an @Observable still notifies (#0229).
+    public func setSelectedSession(id: UUID?) {
+        guard let id, sessions.contains(where: { $0.id == id }) else {
+            logger.notice("setSelectedSession: rejected id=\(id?.uuidString ?? "nil", privacy: .public) — not a session in this window")
+            return
+        }
+        if selectedSessionID != id {
+            selectedSessionID = id
+        }
+    }
+
     // MARK: - Tab close cascade
 
     public func closeTab(id tabID: UUID) {
@@ -311,6 +327,9 @@ public final class WindowRuntime {
                 }
             }
             pane.isHidden = true
+            // Expand the session's sidebar pane list so the just-hidden
+            // pane's restore control is reachable without hunting (#0258).
+            session.isPaneListExpanded = true
             // Hide every terminal view in the pane without releasing it —
             // TerminalPlaceholderView is unmounted while the pane is hidden
             // so its onGeometryChange never fires. Drive TerminalHostStore
