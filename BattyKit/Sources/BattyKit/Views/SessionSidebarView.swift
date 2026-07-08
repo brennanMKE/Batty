@@ -48,24 +48,32 @@ public struct SessionSidebarView: View {
                 // write a pane id into selectedSessionID (#0258). Tapping a
                 // row instead selects the owning session and focuses
                 // (un-hiding if needed).
-                if session.isPaneListExpanded {
-                    ForEach(Array(session.tree.allPanes.enumerated()), id: \.element.id) { index, pane in
-                        PaneRow(
-                            pane: pane,
-                            paneIndex: index + 1,
-                            session: session,
-                            windowRuntime: windowRuntime,
-                            accent: themeChrome?.accent
-                        )
-                        .selectionDisabled()
-                        .listRowInsets(EdgeInsets(top: 2, leading: 28, bottom: 2, trailing: 8))
-                        .modifier(SidebarRowBackground(
-                            sidebarBackground: themeChrome?.chromeBackground,
-                            selectionTint: nil,
-                            isSelected: false
-                        ))
-                        .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
-                    }
+                //
+                // Collapse is modeled as an EMPTY ForEach data array, not an
+                // `if` around the ForEach: macOS List animates row
+                // inserts/removals only for ForEach data diffs — an `if`
+                // adding/removing the whole ForEach is a structural change
+                // the NSTableView-backed list applies without animation,
+                // even inside withAnimation (#0258 follow-up).
+                ForEach(
+                    Array((session.isPaneListExpanded ? session.tree.allPanes : []).enumerated()),
+                    id: \.element.id
+                ) { index, pane in
+                    PaneRow(
+                        pane: pane,
+                        paneIndex: index + 1,
+                        session: session,
+                        windowRuntime: windowRuntime,
+                        accent: themeChrome?.accent
+                    )
+                    .selectionDisabled()
+                    .listRowInsets(EdgeInsets(top: 2, leading: 28, bottom: 2, trailing: 8))
+                    .modifier(SidebarRowBackground(
+                        sidebarBackground: themeChrome?.chromeBackground,
+                        selectionTint: nil,
+                        isSelected: false
+                    ))
+                    .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
                 }
             }
             .onMove { source, destination in
