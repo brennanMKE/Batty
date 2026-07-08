@@ -18,19 +18,56 @@ public struct SessionSidebarView: View {
     public var body: some View {
         List(selection: sidebarSelection) {
             ForEach(windowRuntime.sessions) { session in
-                SessionRow(
-                    session: session,
-                    store: store,
-                    windowRuntime: windowRuntime,
-                    accent: themeChrome?.accent,
-                    onRename: {
-                        renameDraft = session.title
-                        renamingSessionID = session.id
-                    },
-                    onTheme: {
-                        themingSessionID = session.id
+                // Native outline disclosure per session: the sidebar List
+                // maps DisclosureGroup onto NSOutlineView expansion, which
+                // is the only path that gives the animated height
+                // reveal/collapse (chevron rotates right→down, rows slide
+                // over a duration). Hand-rolled variants — `if` around the
+                // ForEach, empty-data ForEach — apply without animation on
+                // the NSTableView-backed List (#0258 follow-up).
+                //
+                // Pane rows: `selectionDisabled` is required — even without
+                // a `.tag()`, macOS List derives an implicit selection value
+                // from the ForEach identity, and `pane.id` type-matches the
+                // UUID? selection; clicking a row would write a pane id into
+                // selectedSessionID (#0258). Tapping a row instead selects
+                // the owning session and focuses (un-hiding if needed).
+                DisclosureGroup(isExpanded: Binding(
+                    get: { session.isPaneListExpanded },
+                    set: { session.isPaneListExpanded = $0 }
+                )) {
+                    ForEach(Array(session.tree.allPanes.enumerated()), id: \.element.id) { index, pane in
+                        PaneRow(
+                            pane: pane,
+                            paneIndex: index + 1,
+                            session: session,
+                            windowRuntime: windowRuntime,
+                            accent: themeChrome?.accent
+                        )
+                        .selectionDisabled()
+                        .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
+                        .modifier(SidebarRowBackground(
+                            sidebarBackground: themeChrome?.chromeBackground,
+                            selectionTint: nil,
+                            isSelected: false
+                        ))
+                        .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
                     }
-                )
+                } label: {
+                    SessionRow(
+                        session: session,
+                        store: store,
+                        windowRuntime: windowRuntime,
+                        accent: themeChrome?.accent,
+                        onRename: {
+                            renameDraft = session.title
+                            renamingSessionID = session.id
+                        },
+                        onTheme: {
+                            themingSessionID = session.id
+                        }
+                    )
+                }
                 .tag(session.id as UUID?)
                 .accessibilityIdentifier("session-row.\(session.title)")
                 .modifier(SidebarRowBackground(
@@ -38,43 +75,6 @@ public struct SessionSidebarView: View {
                     selectionTint: themeChrome?.sidebarSelectionTint,
                     isSelected: session.id == windowRuntime.selectedSessionID
                 ))
-
-                // Pane rows: shown when the session row's chevron is
-                // expanded (any pane count). Each row carries the eye toggle
-                // and bell badge. `selectionDisabled` is required: even
-                // without a `.tag()`, macOS List derives an implicit
-                // selection value from the ForEach identity, and `pane.id`
-                // type-matches the UUID? selection — clicking a row would
-                // write a pane id into selectedSessionID (#0258). Tapping a
-                // row instead selects the owning session and focuses
-                // (un-hiding if needed).
-                //
-                // Collapse is modeled as an EMPTY ForEach data array, not an
-                // `if` around the ForEach: macOS List animates row
-                // inserts/removals only for ForEach data diffs — an `if`
-                // adding/removing the whole ForEach is a structural change
-                // the NSTableView-backed list applies without animation,
-                // even inside withAnimation (#0258 follow-up).
-                ForEach(
-                    Array((session.isPaneListExpanded ? session.tree.allPanes : []).enumerated()),
-                    id: \.element.id
-                ) { index, pane in
-                    PaneRow(
-                        pane: pane,
-                        paneIndex: index + 1,
-                        session: session,
-                        windowRuntime: windowRuntime,
-                        accent: themeChrome?.accent
-                    )
-                    .selectionDisabled()
-                    .listRowInsets(EdgeInsets(top: 2, leading: 28, bottom: 2, trailing: 8))
-                    .modifier(SidebarRowBackground(
-                        sidebarBackground: themeChrome?.chromeBackground,
-                        selectionTint: nil,
-                        isSelected: false
-                    ))
-                    .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
-                }
             }
             .onMove { source, destination in
                 windowRuntime.moveSessions(fromOffsets: source, toOffset: destination)
@@ -201,24 +201,6 @@ private struct SessionRow: View {
 
     var body: some View {
         HStack {
-            // Disclosure chevron for the session's pane list: points right
-            // when collapsed, rotates to point down when expanded (#0258).
-            // Present even for single-pane sessions.
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    session.isPaneListExpanded.toggle()
-                }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(HierarchicalShapeStyle.secondary)
-                    .rotationEffect(.degrees(session.isPaneListExpanded ? 90 : 0))
-                    .frame(width: 14, height: 14)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .help(session.isPaneListExpanded ? "Collapse panes" : "Expand panes")
-            .accessibilityIdentifier("session-disclosure.\(session.id.uuidString)")
             Label {
                 Text(session.title)
                     .lineLimit(1)
