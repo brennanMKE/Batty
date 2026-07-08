@@ -36,10 +36,9 @@ public struct SessionSidebarView: View {
                     get: { session.isPaneListExpanded },
                     set: { session.isPaneListExpanded = $0 }
                 )) {
-                    ForEach(Array(session.tree.allPanes.enumerated()), id: \.element.id) { index, pane in
+                    ForEach(session.tree.allPanes) { pane in
                         PaneRow(
                             pane: pane,
-                            paneIndex: index + 1,
                             session: session,
                             windowRuntime: windowRuntime,
                             accent: themeChrome?.accent
@@ -250,22 +249,22 @@ private struct SessionRow: View {
 
 private struct PaneRow: View {
     @Bindable var pane: PaneRuntime
-    let paneIndex: Int
     @Bindable var session: SessionRuntime
     @Bindable var windowRuntime: WindowRuntime
     let accent: Color?
 
-    /// Same formatting as the tab chips (`user@host:` prefix stripped,
-    /// path prettified) — the raw terminal title shows the hostname,
-    /// which is noise in the sidebar (#0258).
+    /// Column/row position (`1/1`, `2/1`, `1/3`, …) instead of the pane's
+    /// path — the path gave no way to tell where a pane sat in the split
+    /// layout and went stale on `cd` (#0259). When the active tab has a
+    /// user rename, the custom name is appended after the position so
+    /// renamed panes stay identifiable; unrenamed panes show the position
+    /// alone. Hidden panes keep the same coordinates as their tree slot.
     private var paneLabel: String {
-        guard let activeTab = pane.activeTab else {
-            return String(localized: "Pane \(paneIndex)")
+        let position = session.tree.panePositions[pane.id]?.label ?? "?/?"
+        guard let override = pane.activeTab?.titleOverride, !override.isEmpty else {
+            return position
         }
-        return TabTitleFormatter.chipTitle(
-            for: activeTab,
-            fallback: String(localized: "Pane \(paneIndex)")
-        )
+        return "\(position) — \(override)"
     }
 
     /// Eye can always be toggled to show; can only hide when other visible panes exist.

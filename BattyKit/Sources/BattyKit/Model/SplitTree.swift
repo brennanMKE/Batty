@@ -434,4 +434,91 @@ extension SplitTreeNode {
             return countChainLeaves(left, direction: direction) + countChainLeaves(right, direction: direction)
         }
     }
+
+    // MARK: - Pane positions (#0259)
+
+    /// Column/row coordinates for every leaf pane in this subtree, derived
+    /// purely from tree shape (no rendered geometry involved) so it works
+    /// identically for the selected session, background sessions, hidden
+    /// panes, and headless callers like the CLI (#0257).
+    ///
+    /// The tree is projected onto a virtual grid where every subtree
+    /// occupies a rectangle: a `.horizontal` split places its children's
+    /// rectangles side by side (the right child's columns start after the
+    /// left child's full column span), a `.vertical` split stacks them
+    /// (rows advance by the upper child's full row span), and a leaf is the
+    /// top-left cell of its rectangle. Sibling rectangles are disjoint along
+    /// the split axis, so every pane gets a unique coordinate for any tree
+    /// shape. Span reservation is what makes mixed nesting safe: in
+    /// `horizontal(vertical(horizontal(A,B), C), D)` the left subtree spans
+    /// two columns, so D lands at 3/1 instead of colliding with B at 2/1 —
+    /// the coordinates order panes the same way their rendered frame origins
+    /// do, at the cost of an occasional gap in the numbering (there is no
+    /// pane at 2/2 or 3/... other than D). Hidden panes are not
+    /// special-cased: they occupy the same tree slot whether hidden or not,
+    /// so they keep their coordinates (#0256).
+    public func panePositions() -> [UUID: PanePosition] {
+        var result: [UUID: PanePosition] = [:]
+        assignPositions(into: &result, column: 1, row: 1)
+        return result
+    }
+
+    /// The (columns, rows) extent of the virtual-grid rectangle this
+    /// subtree occupies: a split sums its children's spans along the split
+    /// axis and takes the max across it.
+    private var gridSpan: (columns: Int, rows: Int) {
+        switch self {
+        case .leaf:
+            return (1, 1)
+        case .split(_, .horizontal, _, let left, let right):
+            let l = left.gridSpan
+            let r = right.gridSpan
+            return (l.columns + r.columns, max(l.rows, r.rows))
+        case .split(_, .vertical, _, let left, let right):
+            let l = left.gridSpan
+            let r = right.gridSpan
+            return (max(l.columns, r.columns), l.rows + r.rows)
+        }
+    }
+
+    private func assignPositions(
+        into result: inout [UUID: PanePosition],
+        column: Int,
+        row: Int
+    ) {
+        switch self {
+        case .leaf(let pane):
+            result[pane.id] = PanePosition(column: column, row: row)
+        case .split(_, .horizontal, _, let left, let right):
+            left.assignPositions(into: &result, column: column, row: row)
+            right.assignPositions(into: &result, column: column + left.gridSpan.columns, row: row)
+        case .split(_, .vertical, _, let left, let right):
+            left.assignPositions(into: &result, column: column, row: row)
+            right.assignPositions(into: &result, column: column, row: row + left.gridSpan.rows)
+        }
+    }
+}
+
+/// A pane's column/row coordinates within its session's split layout, as
+/// shown in the sidebar pane row (#0259): `1/1` is the first pane, `2/1` is
+/// a horizontal sibling (second column, first row), `1/3` is the third pane
+/// in a vertical chain (first column, third row).
+public struct PanePosition: Hashable, Sendable {
+    public let column: Int
+    public let row: Int
+
+    public init(column: Int, row: Int) {
+        self.column = column
+        self.row = row
+    }
+
+    public var label: String { "\(column)/\(row)" }
+}
+
+extension SplitTree {
+    /// Column/row coordinates for every pane currently in the tree, keyed by
+    /// pane id. See `SplitTreeNode.panePositions()` for the derivation rule.
+    public var panePositions: [UUID: PanePosition] {
+        root.panePositions()
+    }
 }
