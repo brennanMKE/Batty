@@ -285,7 +285,6 @@
 		};
 		26B100020000000000000002 /* Embed CLI */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 0;
 			buildActionMask = 2147483647;
 			files = (
 			);
