@@ -255,17 +255,17 @@ private struct PaneRow: View {
     @Bindable var windowRuntime: WindowRuntime
     let accent: Color?
 
+    /// Same formatting as the tab chips (`user@host:` prefix stripped,
+    /// path prettified) — the raw terminal title shows the hostname,
+    /// which is noise in the sidebar (#0258).
     private var paneLabel: String {
-        if let activeTab = pane.activeTab {
-            let title: String
-            if let override = activeTab.titleOverride, !override.isEmpty {
-                title = override
-            } else {
-                title = activeTab.terminal.title
-            }
-            if !title.isEmpty { return title }
+        guard let activeTab = pane.activeTab else {
+            return String(localized: "Pane \(paneIndex)")
         }
-        return String(localized: "Pane \(paneIndex)")
+        return TabTitleFormatter.chipTitle(
+            for: activeTab,
+            fallback: String(localized: "Pane \(paneIndex)")
+        )
     }
 
     /// Eye can always be toggled to show; can only hide when other visible panes exist.
