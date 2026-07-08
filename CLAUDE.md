@@ -145,12 +145,16 @@ Don't modify these without explicit user confirmation:
 
 ## Issue tracker workflow
 
-See `issues/Issues.md` for the full workflow. Short version:
+See `issues/Issues.md` for the full workflow — **read it before touching any issue; it is authoritative and more detailed than this summary.** Short version:
 
 - Each issue is `issues/NNNN.md` with a metadata table at the top.
 - Status: `open` → `in-progress` → `resolved` → `closed`. **Never set `closed`** — that's the user's transition after they verify.
-- Status set to `in-progress` is a working-copy edit only; no commit.
-- The standard fix flow is **two commits per issue**: one for the code (`#NNNN <verb> <title>`), one for the resolution markdown (`#NNNN Resolve: <title>`).
+- **Resolving an issue is review-gated and role-split (binding, for cost and quality):**
+  - All work happens on a branch `issue/NNNN`; `main` receives one squash commit after review approval. The branch is kept, never pushed or deleted.
+  - An **implementer subagent pinned to Sonnet** does the code work and verification on the branch.
+  - A **reviewer subagent pinned to Opus** reviews `git diff main...HEAD`; approve or request-changes. Findings route back to the *same* implementer agent.
+  - The **main session orchestrates only** — it files issues, creates branches, dispatches the subagents, records review/work-log commits, and squash-merges after approval. It does **not** implement or review inline, even for small follow-ups; those go back to the implementer agent.
+  - `resolved` is set only after the reviewer approves. Metadata gets a `**Branch**` row (no `**Commit**` row); the issue file carries per-round `## Work log` cost rows.
 - Module names are listed in `issues/Issues.md` under "Module conventions for this project". Don't invent new ones ad-hoc.
 
 ## Authoring rules
