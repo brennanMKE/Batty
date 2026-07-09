@@ -1,5 +1,6 @@
 // SessionDetailView.swift
 
+import AppKit
 import OSLog
 import SwiftUI
 
@@ -130,21 +131,29 @@ public struct SessionDetailView: View {
         ToolbarItemGroup {
             Button {
                 guard let tree = windowRuntime.selectedSession?.tree else { return }
-                tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
+                if NSEvent.modifierFlags.contains(.option) {
+                    tree.splitFullDimension(direction: .horizontal, inheritingFrom: tree.focusedPane)
+                } else {
+                    tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
+                }
             } label: {
                 Label("Split Horizontally", systemImage: "rectangle.split.2x1")
             }
-            .help("Split Horizontally (\u{2318}D)")
+            .help("Split Horizontally (\u{2318}D) \u{2014} Option for a full-height column (\u{2325}\u{2318}D)")
             .accessibilityIdentifier("toolbar.split-horizontal")
             .disabled(windowRuntime.selectedSession == nil)
 
             Button {
                 guard let tree = windowRuntime.selectedSession?.tree else { return }
-                tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
+                if NSEvent.modifierFlags.contains(.option) {
+                    tree.splitFullDimension(direction: .vertical, inheritingFrom: tree.focusedPane)
+                } else {
+                    tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
+                }
             } label: {
                 Label("Split Vertically", systemImage: "rectangle.split.1x2")
             }
-            .help("Split Vertically (\u{2318}\u{21E7}D)")
+            .help("Split Vertically (\u{2318}\u{21E7}D) \u{2014} Option for a full-width row (\u{2325}\u{2318}\u{21E7}D)")
             .accessibilityIdentifier("toolbar.split-vertical")
             .disabled(windowRuntime.selectedSession == nil)
 

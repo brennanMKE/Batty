@@ -208,6 +208,14 @@ struct CommandPaletteView: View {
             if let tree = window.selectedSession?.tree {
                 tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
             }
+        case .splitFullHeightColumn:
+            if let tree = window.selectedSession?.tree {
+                tree.splitFullDimension(direction: .horizontal, inheritingFrom: tree.focusedPane)
+            }
+        case .splitFullWidthRow:
+            if let tree = window.selectedSession?.tree {
+                tree.splitFullDimension(direction: .vertical, inheritingFrom: tree.focusedPane)
+            }
         case .focusPaneLeft:
             window.selectedSession?.focusPane(adjacent: .left)
         case .focusPaneRight:

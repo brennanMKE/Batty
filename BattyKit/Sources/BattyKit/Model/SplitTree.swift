@@ -133,14 +133,7 @@ public final class SplitTree {
         ratio: Double = 0.5,
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane: PaneRuntime
-        if let sourceTab = source?.activeTab {
-            let cwd = sourceTab.terminal.workingDirectory
-                ?? sourceTab.terminal.configuration.workingDirectory
-            newPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: cwd)])
-        } else {
-            newPane = PaneRuntime()
-        }
+        let newPane = Self.makePane(inheritingFrom: source)
         if let newRoot = SplitTreeNode.inserting(
             newPane: newPane,
             adjacentTo: focusedPaneID,
@@ -160,6 +153,41 @@ public final class SplitTree {
             focusedPaneID = newPane.id
         }
         return newPane
+    }
+
+    /// Wraps the whole tree in a new top-level split, adding a pane that
+    /// spans the Session's full width (`.vertical` — new bottom row) or
+    /// full height (`.horizontal` — new trailing column), instead of
+    /// splitting only within the focused pane's bounds like
+    /// `splitFocusedPane` does (#0262). The existing tree becomes the
+    /// left/top child unchanged — no leaf pane is touched, so every
+    /// existing Terminal Session survives the restructuring — and the new
+    /// pane is the right/bottom child, matching `inserting(...)`'s
+    /// convention of placing a new pane after the one it splits from.
+    ///
+    /// Unlike `splitFocusedPane`, this never chain-rebalances: it is a
+    /// single wrap of whatever the tree currently is, so the new pane
+    /// simply takes an even half (`ratio` default 0.5) of the outermost
+    /// dimension regardless of how many panes already exist.
+    @discardableResult
+    public func splitFullDimension(
+        direction: SplitDirection,
+        ratio: Double = 0.5,
+        inheritingFrom source: PaneRuntime? = nil
+    ) -> PaneRuntime {
+        let newPane = Self.makePane(inheritingFrom: source)
+        root = .split(id: UUID(), direction: direction, ratio: ratio, left: root, right: .leaf(newPane))
+        focusedPaneID = newPane.id
+        return newPane
+    }
+
+    private static func makePane(inheritingFrom source: PaneRuntime?) -> PaneRuntime {
+        guard let sourceTab = source?.activeTab else {
+            return PaneRuntime()
+        }
+        let cwd = sourceTab.terminal.workingDirectory
+            ?? sourceTab.terminal.configuration.workingDirectory
+        return PaneRuntime(tabs: [TabRuntime(workingDirectory: cwd)])
     }
 
     public func removeFocusedPane() {

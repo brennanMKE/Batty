@@ -213,6 +213,24 @@ public struct BattyCommands: Commands {
             .disabled(keyWindow.selectedSession == nil)
 
             Button {
+                guard let tree = keyWindow.selectedSession?.tree else { return }
+                tree.splitFullDimension(direction: .horizontal, inheritingFrom: tree.focusedPane)
+            } label: {
+                Label("Split Full-Height Column", systemImage: "rectangle.split.2x1")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitFullHeightColumn))
+            .disabled(keyWindow.selectedSession == nil)
+
+            Button {
+                guard let tree = keyWindow.selectedSession?.tree else { return }
+                tree.splitFullDimension(direction: .vertical, inheritingFrom: tree.focusedPane)
+            } label: {
+                Label("Split Full-Width Row", systemImage: "rectangle.split.1x2")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitFullWidthRow))
+            .disabled(keyWindow.selectedSession == nil)
+
+            Button {
                 NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
             } label: {
                 Label("Layouts\u{2026}", systemImage: "rectangle.3.group")

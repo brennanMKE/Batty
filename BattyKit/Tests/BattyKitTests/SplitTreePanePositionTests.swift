@@ -202,6 +202,45 @@ struct SplitTreePanePositionTests {
         #expect(Set(positions.values).count == positions.count)
     }
 
+    // MARK: - Root-level full-dimension wrap (#0262)
+
+    /// Option-Cmd-D: the new pane becomes a trailing full-height column,
+    /// landing one column past whatever the existing tree already spans —
+    /// the same "2/1" slot a plain horizontal split of a lone pane would
+    /// produce, since a full-dimension wrap and an ordinary split of a
+    /// single-pane tree are the same shape.
+    @Test func fullDimensionHorizontalWrapAddsATrailingColumn() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        tree.splitFocusedPane(direction: .vertical)
+        let paneB = tree.allPanes.first { $0.id != paneA.id }!
+
+        let paneC = tree.splitFullDimension(direction: .horizontal)
+
+        let positions = tree.panePositions
+        #expect(positions[paneA.id]?.label == "1/1")
+        #expect(positions[paneB.id]?.label == "1/2")
+        #expect(positions[paneC.id]?.label == "2/1")
+        #expect(Set(positions.values).count == positions.count)
+    }
+
+    /// Option-Shift-Cmd-D: the new pane becomes a trailing full-width row,
+    /// landing one row past whatever the existing tree already spans.
+    @Test func fullDimensionVerticalWrapAddsATrailingRow() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        tree.splitFocusedPane(direction: .horizontal)
+        let paneB = tree.allPanes.first { $0.id != paneA.id }!
+
+        let paneC = tree.splitFullDimension(direction: .vertical)
+
+        let positions = tree.panePositions
+        #expect(positions[paneA.id]?.label == "1/1")
+        #expect(positions[paneB.id]?.label == "2/1")
+        #expect(positions[paneC.id]?.label == "1/2")
+        #expect(Set(positions.values).count == positions.count)
+    }
+
     // MARK: - Every pane gets a unique position
 
     private func expectUniquePositions(in tree: SplitTree) {

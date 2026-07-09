@@ -15,6 +15,8 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
     case newTab
     case splitHorizontal
     case splitVertical
+    case splitFullHeightColumn
+    case splitFullWidthRow
     case focusPaneLeft
     case focusPaneRight
     case focusPaneUp
@@ -38,6 +40,8 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .newTab:          return String(localized: "New Tab")
         case .splitHorizontal: return String(localized: "Split Horizontally")
         case .splitVertical:   return String(localized: "Split Vertically")
+        case .splitFullHeightColumn: return String(localized: "Split Full-Height Column")
+        case .splitFullWidthRow:     return String(localized: "Split Full-Width Row")
         case .focusPaneLeft:   return String(localized: "Focus Pane Left")
         case .focusPaneRight:  return String(localized: "Focus Pane Right")
         case .focusPaneUp:     return String(localized: "Focus Pane Above")
@@ -67,6 +71,10 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
             return ShortcutBinding(key: "d", modifiers: EventModifiers([.command]).rawValue)
         case .splitVertical:
             return ShortcutBinding(key: "d", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .splitFullHeightColumn:
+            return ShortcutBinding(key: "d", modifiers: EventModifiers([.command, .option]).rawValue)
+        case .splitFullWidthRow:
+            return ShortcutBinding(key: "d", modifiers: EventModifiers([.command, .shift, .option]).rawValue)
         case .focusPaneLeft:
             return ShortcutBinding(key: ShortcutBinding.SpecialKey.leftArrow.rawValue,
                                    modifiers: EventModifiers([.command, .option]).rawValue)
