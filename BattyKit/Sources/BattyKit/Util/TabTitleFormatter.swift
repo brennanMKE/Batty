@@ -8,7 +8,10 @@ public enum TabTitleFormatter {
         if let override = tab.titleOverride, !override.isEmpty {
             return override
         }
-        if let cwd = tab.terminal.workingDirectory {
+        // `tab.workingDirectory`, not `tab.terminal.workingDirectory` — the
+        // latter is Combine-backed and invisible to Observation, which left
+        // this chip stuck on the tab's initial directory after `cd` (#0260).
+        if let cwd = tab.workingDirectory {
             if cwd == NSHomeDirectory() || cwd == "~" {
                 return "~"
             }
@@ -19,7 +22,15 @@ public enum TabTitleFormatter {
         if let stripped = stripShellPromptPrefix(tab.terminal.title), !stripped.isEmpty {
             return prettifyPath(stripped)
         }
-        if let cwd = tab.terminal.workingDirectory, !cwd.isEmpty {
+        // AI-suggested name (Apple Intelligence, gated by the auto-name
+        // setting — see AppStateStore.updateTabAutoName(for:)) takes the
+        // slot the project-name/prettified-path fallback used to own
+        // outright; a live title or running command is still more specific
+        // and wins above.
+        if let aiName = tab.aiSuggestedName, !aiName.isEmpty {
+            return aiName
+        }
+        if let cwd = tab.workingDirectory, !cwd.isEmpty {
             if let projectName = ProjectNameResolver.shared.resolve(at: cwd), !projectName.isEmpty {
                 return projectName
             }

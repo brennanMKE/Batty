@@ -167,13 +167,22 @@ public struct PaneView: View {
                             // signal, not a SwiftUI .onChange over the Combine-backed
                             // workingDirectory — that fired only on incidental
                             // re-renders and left names stuck on the initial cwd (#0227).
+                            // syncWorkingDirectoryFromTerminal() bridges the same
+                            // signal into tab.workingDirectory, the Observation-tracked
+                            // mirror TabTitleFormatter reads, so the chip (and, via the
+                            // pane's first tab, the sidebar pane row) re-render too
+                            // (#0260 — the tab-chip half of the #0227 staleness class).
                             tab.terminalDelegate.onWorkingDirectoryChange = { [weak appStore] _ in
+                                tab.syncWorkingDirectoryFromTerminal()
                                 appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
+                                appStore?.updateTabAutoName(for: tab)
                             }
                             // Initial resolve in case the surface reported its cwd
                             // before this wiring ran (the callback only catches
                             // changes after it's set).
+                            tab.syncWorkingDirectoryFromTerminal()
                             appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
+                            appStore?.updateTabAutoName(for: tab)
                         }
                         .onAppear {
                             guard tab.id == pane.activeTabID, isPaneFocused else { return }
@@ -272,6 +281,10 @@ public struct PaneView: View {
                     let prior = tab.titleOverride
                     tab.titleOverride = trimmed.isEmpty ? nil : trimmed
                     logger.info("tab-rename: commit tab=\(tab.id, privacy: .public) prior=\(prior ?? "nil", privacy: .public) new=\(tab.titleOverride ?? "nil", privacy: .public)")
+                    // An empty commit clears the override the same way Reset
+                    // Title does — resume auto-naming immediately rather than
+                    // waiting for the next cwd change to notice.
+                    appStore?.updateTabAutoName(for: tab)
                     renamingTab = nil
                 },
                 onCancel: { renamingTab = nil }
@@ -367,6 +380,9 @@ public struct PaneView: View {
         Button("Reset Title") {
             logger.info("tab-rename: reset tab=\(tab.id, privacy: .public) prior=\(tab.titleOverride ?? "nil", privacy: .public)")
             tab.titleOverride = nil
+            // Auto-naming resumes immediately rather than waiting for the
+            // next cwd change to notice the override is gone.
+            appStore?.updateTabAutoName(for: tab)
         }
         .disabled(tab.titleOverride == nil)
 

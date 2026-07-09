@@ -18,6 +18,28 @@ public final class TabRuntime: Identifiable {
 
     public internal(set) var runningCommandDisplayName: String?
 
+    /// Observation-tracked mirror of `terminal.workingDirectory`. That
+    /// property is Combine `@Published` on an `ObservableObject`
+    /// (`TerminalViewState`, from the GhosttyTerminal package), which the
+    /// `@Observable` view layer does not track — reading it from `body`
+    /// left tab chips and the sidebar pane row stuck on the tab's initial
+    /// directory after `cd` (#0260, following the session-title staleness
+    /// fixed the same way in #0227). View-reachable code (``TabTitleFormatter``)
+    /// must read this mirror, never `terminal.workingDirectory` directly;
+    /// non-view event-handler code (``AppStateStore``) may still read the
+    /// live Combine value since it isn't gated by Observation there.
+    /// Written only via ``syncWorkingDirectoryFromTerminal()``, called from
+    /// the pwd delegate callback (event-origin, not view-update code).
+    public internal(set) var workingDirectory: String?
+
+    /// Per-cwd name suggested by the on-device model (mirrors the session
+    /// auto-naming mechanism — see `AppStateStore.updateTabAutoName(for:)`).
+    /// `nil` means "no AI name for the current directory": suggestion
+    /// disabled, model unavailable, no signal, or not yet resolved.
+    /// ``TabTitleFormatter`` only consults this after every more specific
+    /// signal (override, live title, running command) has come up empty.
+    public internal(set) var aiSuggestedName: String?
+
     /// Set by ``TerminalHostView`` while a Finder drag is hovering over
     /// this tab's terminal subview; cleared on drag exit or drop. Drives
     /// the accent-color overlay in ``PaneView``. Lives on the model
@@ -57,6 +79,7 @@ public final class TabRuntime: Identifiable {
     ) {
         self.id = id
         self.titleOverride = titleOverride
+        self.workingDirectory = workingDirectory
         let state = TerminalViewState(theme: Self.activeTheme())
         self.terminal = state
         self.terminalDelegate = TerminalDelegateProxy(state: state)
@@ -102,6 +125,21 @@ public final class TabRuntime: Identifiable {
             builder.withCustom("keybind", "alt+backspace=text:\\x1b\\x7f")
         }
         terminal.controller.setTerminalConfiguration(configuration)
+    }
+
+    /// Bridges libghostty's authoritative pwd signal into ``workingDirectory``.
+    /// Idempotent (an equal-value write is skipped, matching the
+    /// store-mutator convention in `docs/swiftui-observation-rules.md`) so
+    /// repeat calls for a cwd that hasn't moved don't re-notify Observation.
+    /// Call from event-driven contexts only: the pwd delegate callback, and
+    /// the one-time initial-resolve check for a cwd libghostty may have
+    /// already reported before the callback was wired.
+    @discardableResult
+    public func syncWorkingDirectoryFromTerminal() -> Bool {
+        let resolved = terminal.workingDirectory ?? terminal.configuration.workingDirectory
+        guard resolved != workingDirectory else { return false }
+        workingDirectory = resolved
+        return true
     }
 
     @discardableResult

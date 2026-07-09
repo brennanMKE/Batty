@@ -58,6 +58,12 @@ public final class AppStateStore {
     /// are ephemeral and must re-resolve on every launch.
     @ObservationIgnored private var nameSuggestionMemo: [String: String?] = [:]
     private static let nameSuggestionMemoCap = 256
+    /// One in-flight AI naming request per Tab, keyed by tab id (#0260).
+    /// Shares `nameSuggestionMemo` with session naming — both are keyed
+    /// purely by cwd, so a directory named for one session's anchor tab
+    /// answers every other tab's request for that same directory without
+    /// a second on-device model call.
+    @ObservationIgnored var tabNameSuggestionTasks: [UUID: (path: String, task: Task<Void, Never>)] = [:]
 
     // MARK: - Per-window state
 
@@ -307,6 +313,7 @@ public final class AppStateStore {
     }
 
     public func closeTab(id tabID: UUID) {
+        cancelTabNameSuggestion(forTabID: tabID)
         // Locate the owning window to route the close to the correct
         // WindowRuntime rather than defaulting to windows[0].
         for window in windows {
@@ -694,6 +701,93 @@ public final class AppStateStore {
         // swiftlint:disable:next force_try
         try! Regex(#"^Session \d+$"#)
     }()
+
+    // MARK: - Tab-level CWD-driven auto-naming (#0260)
+
+    /// Auto-names a single Tab's chip from its working directory, using the
+    /// same on-device suggester and per-cwd memo as session auto-naming
+    /// (`handleWorkingDirectoryChange(forTabID:)` above). Runs for every
+    /// tab in every pane — unlike session naming there is no multi-pane
+    /// ambiguity to dodge (#0213): each tab has its own cwd, so each tab
+    /// gets its own suggestion. The sidebar pane row (#0259) shows this
+    /// same value for a pane's first tab; see `SessionSidebarView.PaneRow`.
+    ///
+    /// Never overwrites `tab.titleOverride` — an explicit rename pins the
+    /// chip until the user resets it, mirroring the session pin.
+    public func updateTabAutoName(for tab: TabRuntime) {
+        guard tab.titleOverride == nil else {
+            cancelTabNameSuggestion(forTabID: tab.id)
+            return
+        }
+        guard SettingsPreference.resolvedAutoNameWithAI() else {
+            cancelTabNameSuggestion(forTabID: tab.id)
+            return
+        }
+        let cwd = tab.terminal.workingDirectory ?? tab.terminal.configuration.workingDirectory
+        guard let cwd, !cwd.isEmpty else {
+            cancelTabNameSuggestion(forTabID: tab.id)
+            if tab.aiSuggestedName != nil {
+                tab.aiSuggestedName = nil
+            }
+            return
+        }
+        if let memoized = nameSuggestionMemo[cwd] {
+            cancelTabNameSuggestion(forTabID: tab.id)
+            if tab.aiSuggestedName != memoized {
+                tab.aiSuggestedName = memoized
+            }
+            return
+        }
+        // Not memoized yet — clear any name left over from a prior cwd so
+        // the chip falls through to the deterministic chain (project name /
+        // prettified path) while the request is in flight, exactly as
+        // session naming lets the deterministic title stand until the AI
+        // fallback resolves.
+        if tab.aiSuggestedName != nil {
+            tab.aiSuggestedName = nil
+        }
+        scheduleTabNameSuggestion(for: tab, cwd: cwd)
+    }
+
+    private func cancelTabNameSuggestion(forTabID tabID: UUID) {
+        guard let inflight = tabNameSuggestionTasks[tabID] else { return }
+        inflight.task.cancel()
+        tabNameSuggestionTasks[tabID] = nil
+    }
+
+    private func scheduleTabNameSuggestion(for tab: TabRuntime, cwd: String) {
+        guard let suggester = nameSuggester else { return }
+        let tabID = tab.id
+        if let inflight = tabNameSuggestionTasks[tabID] {
+            if inflight.path == cwd { return }
+            inflight.task.cancel()
+            tabNameSuggestionTasks[tabID] = nil
+        }
+        let task = Task { [weak self, weak tab] in
+            let raw = await suggester.suggestName(forPath: cwd)
+            guard let self, !Task.isCancelled else { return }
+            self.tabNameSuggestionTasks[tabID] = nil
+            let name = raw.flatMap(SessionNameSuggestion.sanitize)
+            if self.nameSuggestionMemo.count >= Self.nameSuggestionMemoCap {
+                self.nameSuggestionMemo.removeAll(keepingCapacity: true)
+            }
+            self.nameSuggestionMemo.updateValue(name, forKey: cwd)
+            guard let name, let tab else { return }
+            self.applySuggestedTabName(name, tab: tab, forCWD: cwd)
+        }
+        tabNameSuggestionTasks[tabID] = (path: cwd, task: task)
+    }
+
+    /// Applies an AI suggestion only if the tab hasn't moved on since the
+    /// request was issued: no user rename landed, and the cwd is unchanged.
+    /// Never writes `titleOverride` — same standing as session naming, a
+    /// later `cd` re-resolves it.
+    private func applySuggestedTabName(_ name: String, tab: TabRuntime, forCWD cwd: String) {
+        guard tab.titleOverride == nil else { return }
+        let currentCWD = tab.terminal.workingDirectory ?? tab.terminal.configuration.workingDirectory
+        guard currentCWD == cwd else { return }
+        tab.aiSuggestedName = name
+    }
 
     // MARK: - Private helpers
 

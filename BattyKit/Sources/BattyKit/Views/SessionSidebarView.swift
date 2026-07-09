@@ -247,7 +247,7 @@ private struct SessionRow: View {
     }
 }
 
-private struct PaneRow: View {
+struct PaneRow: View {
     @Bindable var pane: PaneRuntime
     @Bindable var session: SessionRuntime
     @Bindable var windowRuntime: WindowRuntime
@@ -255,16 +255,23 @@ private struct PaneRow: View {
 
     /// Column/row position (`1/1`, `2/1`, `1/3`, …) instead of the pane's
     /// path — the path gave no way to tell where a pane sat in the split
-    /// layout and went stale on `cd` (#0259). When the active tab has a
-    /// user rename, the custom name is appended after the position so
-    /// renamed panes stay identifiable; unrenamed panes show the position
-    /// alone. Hidden panes keep the same coordinates as their tree slot.
+    /// layout and went stale on `cd` (#0259) — with the pane's **first**
+    /// tab's chip value appended (#0260), so the row and that tab's chip
+    /// always agree. "First" means first in tab order, independent of
+    /// which tab is active or how tabs get reordered — the row describes
+    /// the *pane*, and a pane's identity-bearing tab is its first one, the
+    /// same rule ``AppStateStore``'s session anchor-tab naming uses one
+    /// level up. Hidden panes keep the same coordinates as their tree slot.
     private var paneLabel: String {
-        let position = session.tree.panePositions[pane.id]?.label ?? "?/?"
-        guard let override = pane.activeTab?.titleOverride, !override.isEmpty else {
-            return position
-        }
-        return "\(position) — \(override)"
+        Self.label(
+            position: session.tree.panePositions[pane.id]?.label ?? "?/?",
+            firstTab: pane.tabs.first
+        )
+    }
+
+    static func label(position: String, firstTab: TabRuntime?) -> String {
+        guard let firstTab else { return position }
+        return "\(position) — \(TabTitleFormatter.chipTitle(for: firstTab))"
     }
 
     /// Eye can always be toggled to show; can only hide when other visible panes exist.
