@@ -302,4 +302,106 @@ struct SplitTreePanePositionTests {
         bothArms.splitFocusedPane(direction: .vertical)
         expectUniquePositions(in: bothArms)
     }
+
+    // MARK: - Row-major sort for the sidebar pane list (#0263)
+
+    /// The exact repro from the issue: split A horizontally (B lands beside
+    /// it at 2/1), then split A vertically (C lands below it at 1/2). The
+    /// tree is `horizontal(vertical(A, C), B)`; tree-traversal order
+    /// (`allPanes`) is A, C, B — row 2's pane (B) is *not* last. Row-major
+    /// order must be A (1/1), B (2/1), C (1/2).
+    @Test func rowMajorSortMatchesIssueRepro() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        tree.splitFocusedPane(direction: .horizontal)
+        let paneB = tree.allPanes.first { $0.id != paneA.id }!
+
+        tree.focusedPaneID = paneA.id
+        tree.splitFocusedPane(direction: .vertical)
+        let paneC = tree.allPanes.first { ![paneA.id, paneB.id].contains($0.id) }!
+
+        #expect(tree.panePositions[paneA.id]?.label == "1/1")
+        #expect(tree.panePositions[paneB.id]?.label == "2/1")
+        #expect(tree.panePositions[paneC.id]?.label == "1/2")
+
+        // Sanity check: allPanes is tree-traversal order, not row-major.
+        #expect(tree.allPanes.map(\.id) == [paneA.id, paneC.id, paneB.id])
+
+        #expect(tree.panesSortedByRowThenColumn.map(\.id) == [paneA.id, paneB.id, paneC.id])
+    }
+
+    /// Span-reservation repro (review finding 1): A (1/1), B (2/1), C
+    /// (1/2), D (3/1). Row-major must list all of row 1 (A, B, D) before
+    /// row 2's lone pane (C).
+    @Test func rowMajorSortHandlesColumnSpanReservation() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        tree.splitFocusedPane(direction: .horizontal)
+        let paneD = tree.allPanes.first { $0.id != paneA.id }!
+
+        tree.focusedPaneID = paneA.id
+        tree.splitFocusedPane(direction: .vertical)
+        let paneC = tree.allPanes.first { ![paneA.id, paneD.id].contains($0.id) }!
+
+        tree.focusedPaneID = paneA.id
+        tree.splitFocusedPane(direction: .horizontal)
+        let paneB = tree.allPanes.first { ![paneA.id, paneC.id, paneD.id].contains($0.id) }!
+
+        #expect(tree.panesSortedByRowThenColumn.map(\.id) == [paneA.id, paneB.id, paneD.id, paneC.id])
+    }
+
+    /// A single row of three panes (A 1/1, B 2/1, C 3/1, built by chaining
+    /// horizontal splits) is already row-major by construction, so sorting
+    /// must be a no-op reordering — this guards against a sort that
+    /// accidentally scrambles an already-correct order.
+    @Test func rowMajorSortIsNoOpWhenAlreadyRowMajor() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        tree.splitFocusedPane(direction: .horizontal)
+        let paneB = tree.allPanes.first { $0.id != paneA.id }!
+
+        tree.focusedPaneID = paneB.id
+        tree.splitFocusedPane(direction: .horizontal)
+        let paneC = tree.allPanes.first { ![paneA.id, paneB.id].contains($0.id) }!
+
+        #expect(tree.panePositions[paneA.id]?.label == "1/1")
+        #expect(tree.panePositions[paneB.id]?.label == "2/1")
+        #expect(tree.panePositions[paneC.id]?.label == "3/1")
+
+        #expect(tree.allPanes.map(\.id) == [paneA.id, paneB.id, paneC.id])
+        #expect(tree.panesSortedByRowThenColumn.map(\.id) == [paneA.id, paneB.id, paneC.id])
+    }
+
+    /// Hidden panes (#0256) keep their tree slot and must stay in the
+    /// row-major order at that slot — hiding a pane doesn't remove it from
+    /// the sidebar list, only from rendering.
+    @Test func rowMajorSortIncludesHiddenPanesAtTheirSlot() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        tree.splitFocusedPane(direction: .horizontal)
+        let paneB = tree.allPanes.first { $0.id != paneA.id }!
+
+        tree.focusedPaneID = paneA.id
+        tree.splitFocusedPane(direction: .vertical)
+        let paneC = tree.allPanes.first { ![paneA.id, paneB.id].contains($0.id) }!
+
+        paneB.isHidden = true
+
+        #expect(tree.panesSortedByRowThenColumn.map(\.id) == [paneA.id, paneB.id, paneC.id])
+    }
+
+    /// Every pane appears exactly once in the sorted order, across the same
+    /// varied layouts `everyPaneHasAUniquePosition` exercises.
+    @Test func rowMajorSortContainsEveryPaneExactlyOnce() {
+        let tree = SplitTree()
+        let aA = tree.focusedPane
+        for depth in 0..<6 {
+            tree.focusedPaneID = aA.id
+            tree.splitFocusedPane(direction: depth.isMultiple(of: 2) ? .horizontal : .vertical)
+        }
+
+        let sorted = tree.panesSortedByRowThenColumn
+        #expect(sorted.count == tree.allPanes.count)
+        #expect(Set(sorted.map(\.id)) == Set(tree.allPanes.map(\.id)))
+    }
 }

@@ -36,7 +36,7 @@ public struct SessionSidebarView: View {
                     get: { session.isPaneListExpanded },
                     set: { session.isPaneListExpanded = $0 }
                 )) {
-                    ForEach(session.tree.allPanes) { pane in
+                    ForEach(session.tree.panesSortedByRowThenColumn) { pane in
                         PaneRow(
                             pane: pane,
                             session: session,

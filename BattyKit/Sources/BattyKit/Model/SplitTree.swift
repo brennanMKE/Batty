@@ -549,4 +549,24 @@ extension SplitTree {
     public var panePositions: [UUID: PanePosition] {
         root.panePositions()
     }
+
+    /// All panes ordered row-major — every pane in row 1 left-to-right, then
+    /// row 2, and so on — for the sidebar pane list (#0263). `allPanes` is
+    /// tree-traversal order (depth-first), which is not row-major in general
+    /// (e.g. `horizontal(vertical(A, C), B)` lists A, C, B even though B is
+    /// row 2 and C is row 1). This is derived fresh from `panePositions`
+    /// each time rather than stored, so it self-maintains through splits,
+    /// closes, and rearrangements without any ordering state to keep in
+    /// sync.
+    public var panesSortedByRowThenColumn: [PaneRuntime] {
+        let positions = panePositions
+        return allPanes.sorted { lhs, rhs in
+            let lhsPosition = positions[lhs.id] ?? PanePosition(column: 0, row: 0)
+            let rhsPosition = positions[rhs.id] ?? PanePosition(column: 0, row: 0)
+            if lhsPosition.row != rhsPosition.row {
+                return lhsPosition.row < rhsPosition.row
+            }
+            return lhsPosition.column < rhsPosition.column
+        }
+    }
 }
