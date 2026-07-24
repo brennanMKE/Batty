@@ -77,3 +77,19 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   confirmation flows. Covers invariants, regression history, and accessibility
   identifiers for each area. Read this before modifying any of those features
   or their UI tests.
+- [`batty-cli-install.md`](batty-cli-install.md) — the as-built record of
+  the `batty` CLI: the `BattyCLICore`/`BattyKit`/`batty` package target
+  split, the exact argument surface and `batty://` URL it constructs today,
+  the app-side `BattyURLHandler` routing, the "Embed CLI" Xcode build
+  phase, `/usr/local/bin` installation via `CLIInstaller`, signing/
+  notarization status, and current test coverage — traced end to end from
+  a `batty <path>` invocation to a new Session. **Differs from
+  [`cli-tool-install.md`](cli-tool-install.md)**, which is a prescriptive
+  design survey of *supacode*'s installer plus a "replicate this for
+  batty" plan written before (and only partially updated during)
+  implementation — it still shows the CLI depending on the full `BattyKit`
+  library and treats CLI↔app IPC as an open question, both of which the
+  shipped code superseded (`BattyCLICore` split per `#0252`; `batty://`
+  URL scheme per `#0250`/`#0257`). Read `batty-cli-install.md` for current
+  behavior; read `cli-tool-install.md` only for supacode-comparison
+  history.
