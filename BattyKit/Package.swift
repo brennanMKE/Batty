@@ -44,10 +44,22 @@ let package = Package(
             name: "BattyCLICore",
             swiftSettings: swiftSettings
         ),
+        // Dependency-free shared XPC contract (protocol trio, JSON-in-Data
+        // payloads, service names, exit codes) for the app, the broker
+        // agent (#0270), and the `batty` CLI (#0271). Foundation only, no
+        // product dependencies — same discipline as BattyCLICore, and for
+        // the same reason: the broker sits outside Contents/Frameworks/
+        // reach just like the CLI does, so anything it links must not
+        // transitively drag in Sparkle/libghostty/etc.
+        .target(
+            name: "BattyXPCCore",
+            swiftSettings: swiftSettings
+        ),
         .target(
             name: "BattyKit",
             dependencies: [
                 "BattyCLICore",
+                "BattyXPCCore",
                 .product(name: "GhosttyKit", package: "libghostty-spm"),
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "GhosttyTheme", package: "libghostty-spm"),
