@@ -27,6 +27,11 @@ private nonisolated func roundTripOffActor(_ response: XPCResponse) throws -> XP
     return try JSONDecoder().decode(XPCResponse.self, from: data)
 }
 
+private nonisolated func roundTripOffActor(_ payload: StatusPayload) throws -> StatusPayload {
+    let data = try JSONEncoder().encode(payload)
+    return try JSONDecoder().decode(StatusPayload.self, from: data)
+}
+
 private nonisolated func callOffActor(_ broker: any BrokerProtocol) {
     broker.brokerPing { _ in }
     // registerAppEndpoint/appEndpoint (#0270's real call sites) were the
@@ -41,6 +46,12 @@ private nonisolated func callOffActor(_ broker: any BrokerProtocol) {
 
 private nonisolated func callOffActor(_ appService: any AppServiceProtocol) {
     appService.perform(Data()) { _ in }
+    // ping (#0271's real call site — AppServiceClient.status's error paths
+    // and PingCommand-equivalent use — was the one AppServiceProtocol
+    // requirement #0269 flagged as still compiling with `nonisolated`
+    // stripped) closes that gap the same way registerAppEndpoint/
+    // appEndpoint were closed for BrokerProtocol in #0270.
+    appService.ping { _ in }
 }
 
 /// No XPC involved — pure round-trip and constant-derivation checks for the
@@ -147,5 +158,42 @@ struct XPCContractTests {
             XPCExitCode.sessionTerminated,
         ]
         #expect(codes.count == 4)
+    }
+
+    // MARK: - StatusPayload (#0271) round trips
+
+    @Test func statusPayloadRoundTrips() throws {
+        let payload = StatusPayload(pid: 4242, uptimeSeconds: 12.5, windowCount: 1, sessionCount: 3, tabCount: 5)
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(StatusPayload.self, from: data)
+        #expect(decoded == payload)
+        #expect(decoded.pid == 4242)
+        #expect(decoded.uptimeSeconds == 12.5)
+        #expect(decoded.windowCount == 1)
+        #expect(decoded.sessionCount == 3)
+        #expect(decoded.tabCount == 5)
+    }
+
+    @Test func statusPayloadRoundTripsInsideXPCResponsePayload() throws {
+        let payload = StatusPayload(pid: 1, uptimeSeconds: 0, windowCount: 0, sessionCount: 0, tabCount: 0)
+        let payloadData = try JSONEncoder().encode(payload)
+        let response = XPCResponse(ok: true, payload: payloadData)
+        let responseData = try JSONEncoder().encode(response)
+        let decodedResponse = try JSONDecoder().decode(XPCResponse.self, from: responseData)
+        let decodedPayload = try JSONDecoder().decode(StatusPayload.self, from: decodedResponse.payload!)
+        #expect(decodedPayload == payload)
+    }
+
+    @Test func statusPayloadRoundTripsOffActor() throws {
+        let decoded = try roundTripOffActor(StatusPayload(pid: 7, uptimeSeconds: 1, windowCount: 1, sessionCount: 1, tabCount: 1))
+        #expect(decoded.pid == 7)
+    }
+
+    @Test func xpcVerbStatusMatchesLiteral() {
+        // XPCVerb.status is the single source of truth AppXPCService's
+        // dispatch and every CLI call site (AppServiceClient,
+        // XPCContractTests's own fixtures) share instead of repeating the
+        // string.
+        #expect(XPCVerb.status == "status")
     }
 }

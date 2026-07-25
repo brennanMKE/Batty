@@ -33,4 +33,14 @@ public nonisolated enum ServiceNames {
     /// embedding script and any Swift call site share one source of truth
     /// instead of repeating the literal).
     public static let agentBundleProgram = "Contents/Resources/bin/BattyBroker"
+
+    /// The main app's bundle identifier, for the CLI to launch it by
+    /// (`docs/xpc/xpc-cli-architecture.md` "Launching the app on demand").
+    /// Deliberately the Prod identifier, not derived from anything variant
+    /// -aware: #0270's Gotchas record that `broker` itself is invariant
+    /// across Prod/Beta and the broker ships Prod-only, so every XPC verb
+    /// is permanently Prod-only in practice — a Beta `batty status` would
+    /// resolve and drive Prod's app whenever Prod's agent is registered.
+    /// That cross-variant hazard is #0270's, not this constant's, to fix.
+    public static let appBundleIdentifier = "co.sstools.Batty"
 }

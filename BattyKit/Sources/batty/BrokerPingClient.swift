@@ -19,36 +19,7 @@ nonisolated enum BrokerPingClient {
     }
 
     static func ping(timeout: TimeInterval) -> Outcome {
-        // Guards the single transition from "waiting" to "finished" against
-        // the reply block, the error handler, and the invalidation handler
-        // all being capable of firing — an error handler and a reply firing
-        // together is exactly the shape the reference doc's `ResumeOnce`
-        // wrapper exists to guard (`docs/xpc/xpc-cli-architecture.md`
-        // "Request/reply").
-        final class Once: @unchecked Sendable {
-            private let lock = NSLock()
-            private var finished = false
-            private var outcome = Outcome(reachable: false, message: nil)
-            private let semaphore = DispatchSemaphore(value: 0)
-
-            func finish(_ outcome: Outcome) {
-                lock.lock()
-                defer { lock.unlock() }
-                guard !finished else { return }
-                finished = true
-                self.outcome = outcome
-                semaphore.signal()
-            }
-
-            func wait(timeout: TimeInterval) -> Outcome {
-                _ = semaphore.wait(timeout: .now() + timeout)
-                lock.lock()
-                defer { lock.unlock() }
-                return outcome
-            }
-        }
-
-        let once = Once()
+        let once = XPCOnce(defaultValue: Outcome(reachable: false, message: nil))
         let connection = NSXPCConnection(machServiceName: ServiceNames.broker)
         connection.remoteObjectInterface = XPCInterfaces.broker
         connection.interruptionHandler = { @Sendable in once.finish(Outcome(reachable: false, message: nil)) }

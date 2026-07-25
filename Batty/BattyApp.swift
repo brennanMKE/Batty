@@ -61,6 +61,7 @@ struct BattyApp: App {
 final class BattyAppDelegate: NSObject, NSApplicationDelegate {
     private var keyMonitor: Any?
     private var appearanceObserver: AppearanceObserver?
+    private let xpcCoordinator = AppXPCCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -75,6 +76,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         // last session goes. The app terminates when the last content window
         // is unregistered (AppStateStore.unregisterNSWindow →
         // terminateIfLastContentWindowGone). No app-level terminate hook here.
+        xpcCoordinator.start()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

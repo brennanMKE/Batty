@@ -16,6 +16,12 @@ public final class AppStateStore {
     public let bellFeed: BellFeedStore
     public let nameCache: SessionNameCache
     public let themeChrome: ThemeChrome
+    /// Set once, at construction. `AppStateStore.shared` is created on the
+    /// first access early in app startup (`BattyApp`'s `WindowGroup`
+    /// `defaultValue`), so this closely approximates process launch time —
+    /// good enough for `statusPayload()`'s `uptimeSeconds` without needing a
+    /// kernel-level process-start-time lookup.
+    public let launchDate = Date()
     @ObservationIgnored public var notifier: BellNotifying?
     /// Called when `removeSession` empties the window's `sessions`. Nil in
     /// unit tests; the app delegate sets this to terminate the process.
@@ -148,6 +154,25 @@ public final class AppStateStore {
     /// log the window count when handling external URL events — helps diagnose
     /// whether SwiftUI created a spurious second window (#0251 second root cause).
     public var registeredContentWindowCount: Int { nsWindowMap.count }
+
+    // MARK: - XPC status (#0271)
+
+    /// Snapshots current app state for the `status` XPC verb. Tab counting
+    /// mirrors `BattyAppDelegate.applicationShouldTerminate`'s `totalTabs`
+    /// computation — both walk every window's sessions' `tree.allPanes`.
+    public func statusPayload() -> StatusPayload {
+        let totalSessions = windows.reduce(0) { $0 + $1.sessions.count }
+        let totalTabs = windows.reduce(0) { acc, window in
+            acc + window.sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
+        }
+        return StatusPayload(
+            pid: ProcessInfo.processInfo.processIdentifier,
+            uptimeSeconds: Date().timeIntervalSince(launchDate),
+            windowCount: windows.count,
+            sessionCount: totalSessions,
+            tabCount: totalTabs
+        )
+    }
 
     /// Registers the association between an `NSWindow` and its `WindowID`.
     /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
