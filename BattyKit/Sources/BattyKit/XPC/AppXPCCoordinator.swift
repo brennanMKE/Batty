@@ -66,6 +66,16 @@ public final class AppXPCCoordinator {
         }
 
         let listener = NSXPCListener.anonymous()
+        // #0273: same peer requirement as the broker (`main.swift` in
+        // BattyBroker) — see `PeerCodeSigningRequirement` for why a `nil`
+        // team identifier (ad-hoc/unsigned dev build) deliberately skips
+        // enforcement rather than failing every local connection closed.
+        if let requirement = PeerCodeSigningRequirement.requirement(forTeamIdentifier: OwnCodeSigningIdentity.currentTeamIdentifier()) {
+            listener.setConnectionCodeSigningRequirement(requirement)
+            logger.info("peer code-signing requirement enforced")
+        } else {
+            logger.notice("running unsigned/ad-hoc — accepting any peer (dev-only)")
+        }
         let delegate = AppXPCListenerDelegate(exportedObject: service, connectionRegistry: connectionRegistry)
         listener.delegate = delegate
         listener.resume()

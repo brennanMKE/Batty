@@ -117,8 +117,10 @@ else
         fi
         TEAM=$(print -r -- "$CS_OUT" | awk -F= '/^TeamIdentifier=/ { print $2 }')
         IDENT=$(print -r -- "$CS_OUT" | awk -F= '/^Identifier=/ { print $2 }')
+        APP_AUTHORITY=$(codesign -dvvv "$APP" 2>&1 | awk -F= '/^Authority=/ { print $2; exit }')
         print "    TeamIdentifier: $TEAM"
         print "    Bundle identifier: $IDENT"
+        print "    Authority: $APP_AUTHORITY"
 
         step "Gatekeeper assessment (inner app)"
         if spctl --assess --type execute --verbose=4 "$APP" 2>&1 | grep -q "source=Notarized Developer ID"; then
@@ -126,6 +128,73 @@ else
         else
             fail "app not accepted by Gatekeeper"
         fi
+
+        # #0273: Contents/Resources/bin is sealed as a *resource*, not
+        # nested code, so the --deep --strict check above never looks at
+        # either binary dropped there -- an ad-hoc-signed CLI or agent
+        # passes it silently. Inspect both directly. The secure-timestamp
+        # check exists because this is the exact defect #0273 fixed: the
+        # broker's Embed-phase signing used --timestamp=none unconditionally
+        # (copied from a reference project that never notarized), which
+        # Apple's notary service rejects for a Developer ID-signed nested
+        # binary -- if this DMG notarized successfully at all, every
+        # binary in it must already carry one, but assert it directly
+        # rather than inferring it from that.
+        for rel_path in "Contents/Resources/bin/BattyBroker" "Contents/Resources/bin/batty"; do
+            step "Direct signature check: $rel_path (not covered by --deep --strict)"
+            bin_path="$APP/$rel_path"
+            if [[ ! -f "$bin_path" ]]; then
+                fail "$rel_path missing from app bundle"
+                continue
+            fi
+
+            CS_BIN_OUT=$(codesign -dv "$bin_path" 2>&1)
+            print -r -- "$CS_BIN_OUT" | sed 's/^/    /'
+
+            if print -r -- "$CS_BIN_OUT" | grep -q "flags=.*adhoc"; then
+                fail "$rel_path is ad-hoc signed — not notarization-grade"
+            else
+                pass "$rel_path is not ad-hoc signed"
+            fi
+
+            BIN_TEAM=$(print -r -- "$CS_BIN_OUT" | awk -F= '/^TeamIdentifier=/ { print $2 }')
+            if [[ -n "$TEAM" && "$BIN_TEAM" == "$TEAM" ]]; then
+                pass "$rel_path TeamIdentifier matches the app's ($BIN_TEAM)"
+            else
+                fail "$rel_path TeamIdentifier is '$BIN_TEAM', expected the app's '$TEAM'"
+            fi
+
+            # Team ID alone isn't enough: an Apple Development and a
+            # Developer ID Application certificate share the same
+            # TeamIdentifier, but only the latter is notarization-eligible.
+            # This is the check that would catch #0270's "presumed but not
+            # independently verified" gap in docs/batty-cli-install.md §6.
+            BIN_AUTHORITY=$(codesign -dvvv "$bin_path" 2>&1 | awk -F= '/^Authority=/ { print $2; exit }')
+            if [[ -n "$APP_AUTHORITY" && "$BIN_AUTHORITY" == "$APP_AUTHORITY" ]]; then
+                pass "$rel_path Authority matches the app's ($BIN_AUTHORITY)"
+            else
+                fail "$rel_path Authority is '$BIN_AUTHORITY', expected the app's '$APP_AUTHORITY' — same team, wrong certificate type"
+            fi
+
+            if print -r -- "$CS_BIN_OUT" | grep -q "flags=.*runtime"; then
+                pass "$rel_path hardened runtime enabled"
+            else
+                fail "$rel_path hardened runtime NOT enabled"
+            fi
+
+            if print -r -- "$CS_BIN_OUT" | grep -q "^Timestamp="; then
+                pass "$rel_path carries a secure timestamp"
+            else
+                fail "$rel_path has no secure timestamp — Apple's notary service should have rejected this (#0273)"
+            fi
+
+            RPATH_COUNT=$(otool -L "$bin_path" 2>/dev/null | grep -c '@rpath')
+            if [[ "$RPATH_COUNT" -eq 0 ]]; then
+                pass "$rel_path has no @rpath dependencies"
+            else
+                fail "$rel_path has $RPATH_COUNT @rpath dependencies — will crash at launch outside Xcode (#0252)"
+            fi
+        done
     fi
 fi
 

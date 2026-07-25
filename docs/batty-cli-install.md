@@ -759,47 +759,70 @@ but never actually get a chance to render before the call returns.
 
 ### 6. Signing, entitlements, notarization
 
+**Updated by `#0273`, which independently measured this rather than
+presuming it — the two claims this section used to make (Xcode's
+automatic-signing pass re-signs a loose `Resources/bin/*` Mach-O; `#0249`'s
+"re-signed by the app pass") are both **false** for a plain build action.**
+
 - **Hardened Runtime** is on for the app (`ENABLE_HARDENED_RUNTIME = YES`
   in the Release/Debug build configurations of the `Batty` target in
   `project.pbxproj`).
-- **The embed phase does not itself codesign `bin/batty`** — it is a
-  plain `cp`. Inspecting a locally-built Debug app
-  (`Batty.app/Contents/Resources/bin/batty`) shows an **ad-hoc** signature
-  (`codesign -dv` reports `flags=0x2(adhoc)`, `TeamIdentifier=not set`),
-  which is a byproduct of SwiftPM/Swift toolchain ad-hoc-signing Mach-O
-  executables at build time on Apple Silicon (required for arm64 code to
-  run at all), not anything Batty's build does deliberately.
-- **What happens to that signature during a real Release/notarized build
-  is not fully verified from static inspection alone.** `#0249`'s own
-  verification notes flag this explicitly as unverified ("Universal/Release
-  arch path is unverified... only the single-arch Debug build was
-  exercised"), and `#0252` repeats the same caveat. `scripts/release.sh`
-  (read, not run, per project rules) runs `xcodebuild archive` +
-  `xcodebuild -exportArchive` with `signingStyle: automatic` and then
-  `codesign --verify --deep --strict --verbose=2 "$APP_PATH"` as a
-  post-export gate — but the script contains **no line that specifically
-  names `bin/batty`, `Resources/bin`, or re-signs a loose executable**;
-  grepping the whole script for `batty`/`bin/batty`/`codesign` turns up
-  only the generic post-export verification and the DMG-signing step
-  further down. In other words: the mechanism that gets `bin/batty` from
-  "ad-hoc signed by swift build" to "signed with the Developer ID identity
-  + hardened runtime + secure timestamp that Apple's notarization service
-  requires for every executable in the bundle" is presumed to be Xcode's
-  own automatic-signing pass during `xcodebuild archive`/`-exportArchive`
-  (which is documented by Apple to re-sign bundle contents, including
-  loose Mach-O binaries, as part of producing a distributable archive),
-  but this repo does not contain code that proves it, and no notarized
-  build was inspected as part of writing this doc (per the "never run
-  `release.sh` autonomously" rule). **Treat this as not independently
-  verified** if you are relying on the exact signing state of the shipped
-  `bin/batty` for a security-sensitive design.
-- `#0249`'s verification log does assert, for a plain (non-notarized)
+- **Measured directly: nothing re-signs `bin/batty` during a plain
+  `xcodebuild build`, in any configuration.** `#0273` ran real signed
+  builds (`xcodebuild build`, Debug and Release, `CODE_SIGNING_ALLOWED=YES`)
+  and inspected `Contents/Resources/bin/batty` with `codesign -dv` before
+  and after the app's own codesign pass ran: it stayed **ad-hoc**
+  (`flags=0x2(adhoc)`, `TeamIdentifier=not set`) throughout. This disproves
+  `#0249`'s "re-signed by the app pass" note (below) as a general claim —
+  whatever that observation was based on, it does not reproduce for a
+  Resources-sealed loose Mach-O signed by a normal build.
+- **Fix (`#0273`): the "Embed CLI" Run Script phase now signs `bin/batty`
+  explicitly**, the same way the "Embed Broker" phase (`#0270`) already
+  signed `BattyBroker` — `codesign --force --sign
+  "${EXPANDED_CODE_SIGN_IDENTITY}" --options runtime …`, guarded on
+  `CODE_SIGNING_ALLOWED`. Both binaries pick up a secure `--timestamp` only
+  when `${ACTION} = install` (Xcode's Archive action, confirmed by
+  instrumenting the phase and running a real `xcodebuild archive` — Archive
+  builds with `ACTION=install` regardless of `CONFIGURATION`); every other
+  build (including `-configuration Release build`) keeps
+  `--timestamp=none` so it never depends on reaching Apple's timestamp
+  authority over the network.
+- **What happens during `-exportArchive` to a loose `Resources/bin/*`
+  binary is still not independently verified end-to-end** — this
+  machine's keychain holds only an `Apple Development` identity, no
+  `Developer ID Application` certificate, so `#0273` could not run the
+  real export step. What *is* measured: instrumenting the Embed phases and
+  running a real `xcodebuild archive` (no export) shows both `bin/batty`
+  and `BattyBroker`, inside the archive, signed with `Authority=Apple
+  Development: Brennan Stehling (…)` — i.e. archive-time signing uses
+  whatever identity Automatic signing resolves for that build, the same as
+  the rest of the archived app at that point, not yet the Developer ID
+  identity `-exportArchive` applies to the app bundle itself.
+  `-exportArchive`'s re-signing is documented to reach **nested code**
+  (`Contents/Frameworks/*`, the main executable); `Resources/bin/*` is
+  sealed as a *resource*, not nested code (the same fact that makes
+  `codesign --deep --strict` blind to it — see the traps in `issues/0270.md`
+  and `issues/0273.md`), so the strong expectation is that export leaves
+  these two binaries at whatever identity the archive-time Embed phase
+  used, same as an ordinary build. **`scripts/release.sh` no longer relies
+  on this being true either way**: right after export, it explicitly
+  re-signs both binaries with the same Developer ID identity/options the
+  app was just exported with, then re-signs the app bundle itself so its
+  resource seal (`Contents/_CodeSignature/CodeResources`) reflects the
+  now-modified files. Re-signing something already correctly signed is a
+  no-op in effect, so this is safe regardless of what export turns out to
+  do — but the underlying "does export touch it" question is still open;
+  see `issues/0273.md` for the exact steps needed to close it (a Developer
+  ID certificate plus a real, user-authorized release run).
+- `#0249`'s verification log asserted, for a plain (non-notarized)
   `scripts/build.sh` run: "embedded binary confirmed at
   `Batty.app/Contents/Resources/bin/batty` (Mach-O 64-bit executable
-  arm64, **re-signed by the app pass**)" — i.e. the app-level codesign
-  pass that Xcode runs even for a local build does touch it. This is
-  consistent with, but not the same guarantee as, notarization-grade
-  signing.
+  arm64, **re-signed by the app pass**)". `#0273` could not reproduce this
+  under the same conditions (plain signed build, `codesign -dv` showed
+  ad-hoc both before and after). Treat that earlier note as **superseded**,
+  not as evidence of any re-signing mechanism — the CLI's signature only
+  changed once `#0273` added an explicit `codesign` call to the Embed CLI
+  phase.
 
 ### 7. Testing
 

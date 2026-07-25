@@ -102,8 +102,118 @@ if [[ ! -d "$APP_PATH" ]]; then
     exit 1
 fi
 
+# #0273: Contents/Resources/bin/{BattyBroker,batty} are sealed as
+# *resources*, not nested code. -exportArchive's re-signing pass reaches
+# nested code (Contents/Frameworks/*, the main executable); a loose Mach-O
+# sitting under Resources/ is not that, and Archive-time signing (confirmed
+# directly, by instrumenting the Embed phases and running a real `xcodebuild
+# archive`) stamps them with whatever identity Automatic signing resolved
+# for that build -- Apple Development on a machine with no Developer ID
+# certificate, and unverified either way on one that has one, since export
+# behavior on loose resource binaries could not be tested here. Re-sign both
+# explicitly with the same Developer ID identity/options the app itself was
+# just exported with, then re-sign the app bundle so its resource seal
+# (Contents/_CodeSignature/CodeResources) reflects the now-modified file
+# bytes -- otherwise the app's own signature verification below would fail
+# against files it no longer recognizes. Re-signing something that turns out
+# to already be correctly signed is harmless and produces the same end
+# state, so this is safe regardless of what -exportArchive actually does.
+print "==> Re-signing embedded agent + CLI with the Developer ID identity (#0273)"
+ENTITLEMENTS_PLIST="$BUILD_DIR/app-entitlements.plist"
+codesign -d --entitlements - --xml "$APP_PATH" 2>/dev/null > "$ENTITLEMENTS_PLIST" || true
+for rel_path in "Contents/Resources/bin/BattyBroker" "Contents/Resources/bin/batty"; do
+    bin_path="$APP_PATH/$rel_path"
+    if [[ ! -f "$bin_path" ]]; then
+        print -u2 "error: $rel_path missing from exported app"
+        exit 1
+    fi
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin_path"
+    print "    re-signed: $rel_path"
+done
+if [[ -s "$ENTITLEMENTS_PLIST" ]]; then
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
+        --entitlements "$ENTITLEMENTS_PLIST" "$APP_PATH"
+else
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$APP_PATH"
+fi
+print "    re-signed: $APP_NAME.app (resource seal updated)"
+
 print "==> Verifying app signature"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+# Contents/Resources/bin is sealed as a *resource*, not nested code, so
+# --deep --strict above never inspects either binary dropped there — an
+# ad-hoc-signed or timestamp-less CLI/agent would pass it silently and only
+# surface as a notarization rejection several minutes later, after the slow
+# submit-and-wait round trip below. Fail fast, before that cost, by
+# inspecting each directly for exactly what the notary service checks:
+# Developer ID (not ad-hoc), the app's own team, hardened runtime, and a
+# secure timestamp. This should always pass now that the re-sign above ran
+# unconditionally, but it stays as a genuine assertion rather than a
+# tautology — a future edit that removes or reorders the re-sign step would
+# still be caught here.
+print "==> Verifying embedded agent + CLI signatures directly (not covered by --deep --strict)"
+APP_CS_OUT=$(codesign -dv "$APP_PATH" 2>&1)
+APP_TEAM=$(print -r -- "$APP_CS_OUT" | awk -F= '/^TeamIdentifier=/ { print $2 }')
+# `exit` inside the awk action would close the pipe while codesign is still
+# writing its multi-line -dvvv output, so codesign gets SIGPIPE, the pipeline
+# returns 141, and `set -o pipefail` + `set -e` (line 8) would abort the
+# whole release right here, every time — reproduced 10/10 in review. The
+# `!seen` guard keeps only the first (leaf) match without closing the pipe
+# early.
+APP_AUTHORITY=$(codesign -dvvv "$APP_PATH" 2>&1 | awk -F= '/^Authority=/ && !seen { print $2; seen = 1 }')
+if [[ "$APP_AUTHORITY" != "$SIGN_IDENTITY" ]]; then
+    print -u2 "error: exported app's Authority is '$APP_AUTHORITY', expected '$SIGN_IDENTITY'"
+    print -u2 "       -exportArchive did not sign with the Developer ID identity requested above."
+    exit 1
+fi
+for rel_path in "Contents/Resources/bin/BattyBroker" "Contents/Resources/bin/batty"; do
+    bin_path="$APP_PATH/$rel_path"
+    if [[ ! -f "$bin_path" ]]; then
+        print -u2 "error: $rel_path missing from exported app"
+        exit 1
+    fi
+
+    CS_BIN_OUT=$(codesign -dv "$bin_path" 2>&1)
+    if print -r -- "$CS_BIN_OUT" | grep -q "flags=.*adhoc"; then
+        print -u2 "error: $rel_path is ad-hoc signed — will fail notarization"
+        exit 1
+    fi
+
+    BIN_TEAM=$(print -r -- "$CS_BIN_OUT" | awk -F= '/^TeamIdentifier=/ { print $2 }')
+    if [[ "$BIN_TEAM" != "$APP_TEAM" ]]; then
+        print -u2 "error: $rel_path TeamIdentifier is '$BIN_TEAM', expected the app's '$APP_TEAM'"
+        exit 1
+    fi
+
+    # Team ID alone isn't enough: an Apple Development and a Developer ID
+    # Application certificate share the same TeamIdentifier, but only the
+    # latter is notarization-eligible. Require the identical Authority as
+    # the app itself — this is the check that would have caught #0270's
+    # "presumed but not independently verified" gap in
+    # docs/batty-cli-install.md §6 (whether archive/export actually re-signs
+    # a loose Resources/bin/* binary with the distribution identity, or
+    # leaves it however the build-time Embed phase signed it) had the
+    # re-sign step above not closed it directly.
+    BIN_AUTHORITY=$(codesign -dvvv "$bin_path" 2>&1 | awk -F= '/^Authority=/ && !seen { print $2; seen = 1 }')
+    if [[ "$BIN_AUTHORITY" != "$APP_AUTHORITY" ]]; then
+        print -u2 "error: $rel_path Authority is '$BIN_AUTHORITY', expected the app's '$APP_AUTHORITY'"
+        print -u2 "       Same team, wrong certificate type — not notarization-eligible."
+        exit 1
+    fi
+
+    if ! print -r -- "$CS_BIN_OUT" | grep -q "flags=.*runtime"; then
+        print -u2 "error: $rel_path does not have hardened runtime enabled"
+        exit 1
+    fi
+
+    if ! print -r -- "$CS_BIN_OUT" | grep -q "^Timestamp="; then
+        print -u2 "error: $rel_path has no secure timestamp — the notary service will reject it"
+        exit 1
+    fi
+
+    print "    OK: $rel_path (Authority=$BIN_AUTHORITY, hardened runtime, secure timestamp)"
+done
 
 # Version-consistency gate (#0226): confirm the *built* bundle carries the
 # versions we expect before it gets packaged and notarized. Two failure modes

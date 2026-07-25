@@ -14,6 +14,19 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 let broker = Broker()
 let delegate = BrokerListenerDelegate(exportedObject: broker)
 let listener = NSXPCListener(machServiceName: ServiceNames.broker)
+
+// #0273: only accept connections from binaries signed with the broker's own
+// team identity. `currentTeamIdentifier()` is `nil` for an ad-hoc/unsigned
+// local iteration build (CODE_SIGNING_ALLOWED=NO), in which case no
+// requirement is set at all — see `PeerCodeSigningRequirement` for why that
+// has to be the dev-mode behavior rather than a hard failure.
+if let requirement = PeerCodeSigningRequirement.requirement(forTeamIdentifier: OwnCodeSigningIdentity.currentTeamIdentifier()) {
+    listener.setConnectionCodeSigningRequirement(requirement)
+    logger.info("peer code-signing requirement enforced")
+} else {
+    logger.notice("running unsigned/ad-hoc — accepting any peer (dev-only)")
+}
+
 listener.delegate = delegate
 listener.resume()
 
