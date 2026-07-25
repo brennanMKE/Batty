@@ -445,10 +445,13 @@ the CLI is built or embedded; that only varies by **build configuration**
 
 The `Batty` target's build phases, in order (from `project.pbxproj`):
 `Sources` → `Frameworks` → `Resources` → `Bundle Ghostty Resources` (Run
-Script) → **`Embed CLI`** (Run Script, last).
+Script) → **`Embed CLI`** (Run Script) → `Embed Broker` (Run Script, last;
+added by `#0270`, embeds the `BattyBroker` launch agent into the same
+shared `bin/` directory — see that issue and `docs/xpc/` for the broker
+side of this).
 
 The `Embed CLI` phase (`project.pbxproj`, phase id
-`26B100020000000000000002`), verbatim:
+`26B100020000000000000002`), verbatim as of `#0276`:
 
 ```bash
 set -euo pipefail
@@ -459,23 +462,78 @@ cd "${SRCROOT}/BattyKit"
 xcrun swift build --product batty -c "${config}" "${archflags[@]}"
 built="$(xcrun swift build --product batty -c "${config}" "${archflags[@]}" --show-bin-path)/batty"
 dest="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin"
-rm -rf "${dest}"
 mkdir -p "${dest}"
+rm -f "${dest}/batty"
 /bin/cp -f "${built}" "${dest}/batty"
 ```
 
-Its declared output path is
+The phase sets `alwaysOutOfDate = 1`, so Xcode runs it on every build
+regardless of `inputPaths`/`outputPaths` — it declares no `inputPaths` at
+all. Its declared output path,
 `$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/bin/batty`, i.e.
-`Batty.app/Contents/Resources/bin/batty` — this is a plain `cp`, run as an
-inline shell script build phase on the app target; the CLI is **not**
-wired in as an Xcode package-product dependency (see the Gotcha below for
-why not). `CONFIGURATION` is `debug` or `release` (lowercased for `swift
-build -c`); `ARCHS` becomes one or more `--arch` flags, which SwiftPM
-resolves to a single universal binary at one `--show-bin-path` when
-multiple arches are requested. Confirmed by inspecting a real Debug build
-product (`~/Library/Developer/Xcode/DerivedData/Batty-*/Build/Products/Debug/Batty.app/Contents/Resources/bin/batty`):
+`Batty.app/Contents/Resources/bin/batty`, exists only for Xcode's build
+graph (e.g. ordering relative to other phases that touch the same
+directory) — this is a plain `cp`, run as an inline shell script build
+phase on the app target; the CLI is **not** wired in as an Xcode
+package-product dependency (see the Gotcha below for why not).
+`CONFIGURATION` is `debug` or `release` (lowercased for `swift build -c`);
+`ARCHS` becomes one or more `--arch` flags, which SwiftPM resolves to a
+single universal binary at one `--show-bin-path` when multiple arches are
+requested. Confirmed by inspecting a real Debug build product
+(`~/Library/Developer/Xcode/DerivedData/Batty-*/Build/Products/Debug/Batty.app/Contents/Resources/bin/batty`):
 present, `2,553,104` bytes, `file` reports `Mach-O 64-bit executable
 arm64`.
+
+**`#0276`: from empty `inputPaths` to `alwaysOutOfDate`, and the narrowed
+`rm -f`.** Before `#0276`, this phase declared an `outputPaths` entry but
+an *empty* `inputPaths` — worse than declaring neither, because a script
+phase with a declared output and no declared inputs is skipped by Xcode's
+incremental build once that output file exists. The embedded `bin/batty`
+went silently stale after the first build no matter how much CLI source
+changed; reproduced directly during `#0276` (change a `batty`-target
+source file, rebuild without cleaning, observe the embedded binary keeps
+the old `--help` text).
+
+The first attempt at a fix declared real `inputPaths`
+(`BattyKit/Sources/batty`, `BattyCLICore`, `BattyXPCCore`) — mirroring
+`Embed Broker`'s existing `inputPaths`, which looked like established
+precedent. **That attempt didn't work and was reverted in round 2 of
+review.** A directory listed in `inputPaths` is stat'd as a directory:
+llbuild compares the directory's own mtime against the phase's declared
+outputs and does not walk the tree. On APFS a directory's mtime changes
+only when its entry list changes (a file created, deleted, or renamed
+inside it) — not when an existing file is edited in place. An in-place
+rewrite of a source file (same inode, parent directory mtime unchanged)
+left the phase skipped and the embedded binary stale even with the
+`inputPaths` in place; only an atomic-save editor (which replaces the file
+and does change the directory's entry list) had made the first attempt's
+test pass. The same mechanism meant a `Package.swift`/`Package.resolved`
+change, a bumped dependency pin, or a toolchain change would also have
+gone undetected, regardless of how complete the `inputPaths` list was.
+
+The actual fix is `alwaysOutOfDate = 1` (matching the pre-existing
+`Bundle Ghostty Resources` phase in the same target, which already uses
+it): the phase's real work, `xcrun swift build`, is itself a complete
+incremental build system that owns the true dependency graph (sources,
+`Package.resolved`, toolchain); mirroring that graph into Xcode
+`inputPaths` is duplicated work that two independent scenarios (in-place
+edits, package-manifest/toolchain changes) proved incomplete. A no-op
+`swift build --product batty -c debug --arch arm64` measures roughly
+0.6s, so running the phase unconditionally is cheap. **`Embed Broker` has
+the identical `inputPaths`-based construction and the identical latent
+gap** — it also now sets `alwaysOutOfDate = 1`; its pre-existing
+`inputPaths` are left declared but no longer matter for correctness.
+Don't treat either phase's `inputPaths` list as a freshness guarantee.
+
+Separately, the phase used to `rm -rf` the entire shared `dest` directory,
+which also deleted `bin/BattyBroker` on every run; it only worked because
+`Embed Broker` ran afterward in the target's build-phase list and
+re-created its own output every time. `#0276` narrowed this to
+`rm -f "${dest}/batty"` — the single file this phase owns — so the two
+Embed phases no longer depend on their relative order (verified by
+temporarily reversing the phase order and rebuilding: `BattyBroker`
+survived). This half of the fix was correct on the first attempt and
+unaffected by the `inputPaths` revert.
 
 **Gotcha — do not wire `batty` as an Xcode package-product dependency.**
 The original plan (both the old `docs/cli-tool-install.md` and #0249's
@@ -852,7 +910,7 @@ Grounded directly in the code above, not aspirational:
 | `Configuration/Info.plist` | Registers the `batty` URL scheme via `CFBundleURLTypes`/`CFBundleURLSchemes` (literal plist, not a build setting). |
 | `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to `/usr/local/bin/batty`, privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`). |
 | `BattyKit/Sources/BattyKit/Views/SettingsView.swift` | Settings → Advanced tab; `CLIInstallModel` (`@Observable`) + `CLIInstallRow` UI driving `CLIInstaller`. |
-| `Batty.xcodeproj/project.pbxproj` | The `Batty` native target's `Embed CLI` Run Script build phase (last phase) that builds `batty` from the package via `xcrun swift build --product batty` and copies it to `Contents/Resources/bin/batty`. |
+| `Batty.xcodeproj/project.pbxproj` | The `Batty` native target's `Embed CLI` Run Script build phase (`alwaysOutOfDate = 1`, runs before the `Embed Broker` phase) that builds `batty` from the package via `xcrun swift build --product batty` and copies it to `Contents/Resources/bin/batty`. |
 | `Configuration/Build.xcconfig` | `ENABLE_APP_SANDBOX = NO` (relevant: no automation-events entitlement needed for `NSAppleScript`); `CODE_SIGN_STYLE = Automatic`. |
 | `Batty/Batty.entitlements` | Confirms no sandbox key and no `com.apple.security.automation.apple-events` entry. |
 | `scripts/release.sh` | Archive/export/notarize pipeline; no CLI-specific signing step found — relies on `xcodebuild archive`/`-exportArchive`'s automatic signing plus a generic `codesign --verify --deep --strict` gate. |
