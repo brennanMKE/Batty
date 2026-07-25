@@ -31,6 +31,27 @@ nonisolated final class BrokerListenerDelegate: NSObject, NSXPCListenerDelegate 
         // instead of silently shipping a main-actor-isolated object that
         // XPC invokes off the main queue.
         newConnection.exportedObject = exportedObject as any BrokerProtocol
+
+        // Distinct interruption/invalidation handling (#0272 item 1). The
+        // broker itself holds no per-connection state worth reaping on
+        // interruption — nothing to retry from the broker's side, since it
+        // never initiates calls — so interruption is logged only, for
+        // `log stream` visibility. Invalidation is the one that matters:
+        // if the invalidating connection is the one that most recently
+        // called `registerAppEndpoint`, the stored endpoint is now a Mach
+        // right nothing is listening on, and `connectionDidInvalidate`
+        // clears it rather than leaving the broker to hand out a stale
+        // endpoint to the next CLI that asks (#0272 item 2's spirit).
+        let identifier = ObjectIdentifier(newConnection)
+        let broker = exportedObject
+        newConnection.interruptionHandler = { @Sendable in
+            logger.notice("connection interrupted")
+        }
+        newConnection.invalidationHandler = { @Sendable in
+            broker.connectionDidInvalidate(identifier)
+            logger.info("connection invalidated")
+        }
+
         newConnection.resume()
         logger.info("accepted new connection")
         return true

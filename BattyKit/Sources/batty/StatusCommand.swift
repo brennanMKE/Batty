@@ -33,6 +33,9 @@ struct StatusCommand: ParsableCommand {
             case .requestFailed(let message):
                 fputs("batty: request failed — \(message)\n", stderr)
                 throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
             }
         }
     }

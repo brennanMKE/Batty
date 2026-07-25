@@ -196,4 +196,23 @@ struct XPCContractTests {
         // string.
         #expect(XPCVerb.status == "status")
     }
+
+    // MARK: - XPCTerminationSignal (#0272 item 4)
+
+    @Test func terminationSentinelRoundTripsInsideXPCResponseError() throws {
+        let response = XPCResponse(ok: false, error: XPCTerminationSignal.appTerminating)
+        let data = try JSONEncoder().encode(response)
+        let decoded = try JSONDecoder().decode(XPCResponse.self, from: data)
+        #expect(!decoded.ok)
+        #expect(decoded.error == XPCTerminationSignal.appTerminating)
+    }
+
+    @Test func terminationSentinelIsDistinctFromAnOrdinaryFailureMessage() {
+        // The whole point of the sentinel is that a CLI can tell it apart
+        // from any other `ok: false` reason string — this pins the literal
+        // so a future edit can't accidentally make it collide with a
+        // generic failure message like "app reported failure".
+        #expect(XPCTerminationSignal.appTerminating != "app reported failure")
+        #expect(XPCTerminationSignal.appTerminating != "")
+    }
 }

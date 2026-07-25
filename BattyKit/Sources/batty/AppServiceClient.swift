@@ -19,6 +19,12 @@ nonisolated enum AppServiceClient {
         /// The app replied, but either declined the request or the reply
         /// couldn't be decoded.
         case requestFailed(String)
+        /// The app replied with `XPCTerminationSignal.appTerminating`
+        /// before quitting (#0272 item 4) — distinguished from `unreachable`
+        /// (a raw connection drop) and `requestFailed` (an ordinary
+        /// declined request) so the CLI can report `XPCExitCode
+        /// .sessionTerminated` (5) rather than either of those.
+        case appTerminated
     }
 
     static func status(endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome {
@@ -59,8 +65,13 @@ nonisolated enum AppServiceClient {
             guard response.ok, let payloadData = response.payload,
                   let payload = try? JSONDecoder().decode(StatusPayload.self, from: payloadData)
             else {
-                logger.error("status: app reported failure — \(response.error ?? "<none>", privacy: .public)")
-                once.finish(.requestFailed(response.error ?? "app reported failure"))
+                if response.error == XPCTerminationSignal.appTerminating {
+                    logger.notice("status: app terminating mid-request")
+                    once.finish(.appTerminated)
+                } else {
+                    logger.error("status: app reported failure — \(response.error ?? "<none>", privacy: .public)")
+                    once.finish(.requestFailed(response.error ?? "app reported failure"))
+                }
                 return
             }
             once.finish(.success(payload))

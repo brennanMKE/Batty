@@ -102,6 +102,14 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         logger.info("applicationShouldTerminate -> terminateCancel (prompt shown)")
         return .terminateCancel
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Runs only on the path that actually quits (after
+        // applicationShouldTerminate returns .terminateNow, or a system
+        // -initiated quit) — tells any attached CLI before the connection
+        // just drops out from under it (#0272 item 4).
+        xpcCoordinator.prepareForTermination()
+    }
 }
 
 /// Wires the SwiftUI `openWindow` action into `AppStateStore` so the
