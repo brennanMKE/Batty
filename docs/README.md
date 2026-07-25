@@ -93,3 +93,18 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   URL scheme per `#0250`/`#0257`). Read `batty-cli-install.md` for current
   behavior; read `cli-tool-install.md` only for supacode-comparison
   history.
+- [`xpc/`](xpc/README.md) — vendored reference docs from the RemoteControl
+  XPC prototype (`xpc-cli-architecture.md`, `cli-embedding-and-install.md`,
+  `swift-concurrency-and-xpc.md`, `build-and-release.md`, `README.md`,
+  `FINDINGS.md`), copied 2026-07-24 for the **#0265** umbrella (hybrid
+  `batty://` + XPC transport). The four architecture/install/concurrency/
+  release docs and their `README.md` are written for "a different app" —
+  they mark what to rename and what to copy verbatim. `FINDINGS.md` is the
+  exception: it's the experiment's own decision record, written *for*
+  Batty, and its "Batty" references are genuine (`#0249`, the 372-test
+  build-graph gate, `BattyKit`). Each file carries its own provenance
+  header with the specifics; bare `#NNNN` references are RemoteControl's
+  own issue numbers unless the header says otherwise. Read before starting
+  any of #0265's XPC-track children (#0269–#0273) — the experiment's own
+  hardest-won lesson was reading a sibling project's docs before
+  implementing, not after.
