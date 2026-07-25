@@ -36,6 +36,7 @@
 		26D543282FAEC4AD00BA9AF8 /* BattyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BattyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		26D543322FAEC4AD00BA9AF8 /* BattyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BattyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		26D543522FAEC88B00BA9AF8 /* Build.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Build.xcconfig; sourceTree = "<group>"; };
+		26B100030000000000000003 /* co.sstools.Batty.broker.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "co.sstools.Batty.broker.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -111,6 +112,7 @@
 				26A324062FB5943B0088AE9A /* Info.plist */,
 				26D543522FAEC88B00BA9AF8 /* Build.xcconfig */,
 				26A324032FB591FA0088AE9A /* App.xcconfig */,
+				26B100030000000000000003 /* co.sstools.Batty.broker.plist */,
 			);
 			path = Configuration;
 			sourceTree = "<group>";
@@ -127,6 +129,7 @@
 				26D543192FAEC4AC00BA9AF8 /* Resources */,
 				26B100010000000000000001 /* Bundle Ghostty Resources */,
 				26B100020000000000000002 /* Embed CLI */,
+				26B100040000000000000004 /* Embed Broker */,
 			);
 			buildRules = (
 			);
@@ -300,7 +303,30 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-			shellScript = "set -euo pipefail\nconfig=\"$(echo \"${CONFIGURATION}\" | tr '[:upper:]' '[:lower:]')\"\narchflags=()\nfor a in ${ARCHS}; do archflags+=(--arch \"$a\"); done\ncd \"${SRCROOT}/BattyKit\"\nxcrun swift build --product batty -c \"${config}\" \"${archflags[@]}\"\nbuilt=\"$(xcrun swift build --product batty -c \"${config}\" \"${archflags[@]}\" --show-bin-path)/batty\"\ndest=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin\"\nrm -rf \"${dest}\"\nmkdir -p \"${dest}\"\n/bin/cp -f \"${built}\" \"${dest}/batty\"\n";
+			shellScript = "set -euo pipefail\nconfig=\"$(echo \"${CONFIGURATION}\" | tr '[:upper:]' '[:lower:]')\"\narchflags=()\nfor a in ${ARCHS}; do archflags+=(--arch \"$a\"); done\ncd \"${SRCROOT}/BattyKit\"\nxcrun swift build --product batty -c \"${config}\" \"${archflags[@]}\"\nbuilt=\"$(xcrun swift build --product batty -c \"${config}\" \"${archflags[@]}\" --show-bin-path)/batty\"\ndest=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin\"\n# #0270: this rm -rf wipes the whole bin/ dir, including BattyBroker, which\n# the \"Embed Broker\" phase drops in the same directory. Safe only because\n# that phase runs *after* this one in the target's build phase list and\n# re-creates its own output every time -- reordering the phases (or adding\n# a phase between them that also touches bin/) would silently drop the\n# broker with no build error.\nrm -rf \"${dest}\"\nmkdir -p \"${dest}\"\n/bin/cp -f \"${built}\" \"${dest}/batty\"\n";
+		};
+		26B100040000000000000004 /* Embed Broker */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Configuration/co.sstools.Batty.broker.plist",
+				"$(SRCROOT)/BattyKit/Sources/BattyBroker",
+				"$(SRCROOT)/BattyKit/Sources/BattyXPCCore",
+			);
+			name = "Embed Broker";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/bin/BattyBroker",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/co.sstools.Batty.broker.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "set -euo pipefail\n\n# #0270: the broker agent is Prod-only. Beta (co.sstools.Batty.beta) never\n# gets a LaunchAgent, so two copies of the app on disk can never register\n# the same launchd Label -- see the comment in the plist itself.\n#\n# Ordering note: this phase must run *after* \"Embed CLI\", which does an\n# rm -rf on the whole bin/ dir it shares with BattyBroker -- see the\n# comment there.\nbin_dest_dir=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin\"\nagents_dest_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\n\nif [ \"${PRODUCT_BUNDLE_IDENTIFIER}\" != \"co.sstools.Batty\" ]; then\n    echo \"note: skipping broker embed for PRODUCT_BUNDLE_IDENTIFIER=${PRODUCT_BUNDLE_IDENTIFIER} (broker is Prod-only, see #0270)\"\n    rm -f \"${bin_dest_dir}/BattyBroker\"\n    rm -rf \"${agents_dest_dir}\"\n    exit 0\nfi\n\nconfig=\"$(echo \"${CONFIGURATION}\" | tr '[:upper:]' '[:lower:]')\"\narchflags=()\nfor a in ${ARCHS}; do archflags+=(--arch \"$a\"); done\ncd \"${SRCROOT}/BattyKit\"\nxcrun swift build --product BattyBroker -c \"${config}\" \"${archflags[@]}\"\nbuilt=\"$(xcrun swift build --product BattyBroker -c \"${config}\" \"${archflags[@]}\" --show-bin-path)/BattyBroker\"\n\nmkdir -p \"${bin_dest_dir}\"\n/bin/cp -f \"${built}\" \"${bin_dest_dir}/BattyBroker\"\n\n# Xcode does not sign a Mach-O a script phase drops into the bundle, and\n# launchd refuses to start an improperly signed agent -- sign it explicitly.\n# CODE_SIGNING_ALLOWED=NO keeps unsigned iteration builds working (see\n# CLAUDE.md on repeated signed local builds and certificate revocation).\nif [ \"${CODE_SIGNING_ALLOWED}\" = \"YES\" ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime --timestamp=none \"${bin_dest_dir}/BattyBroker\"\nelse\n    echo \"note: code signing disabled or no identity; embedded broker left unsigned\"\nfi\n\nmkdir -p \"${agents_dest_dir}\"\n/bin/cp -f \"${SRCROOT}/Configuration/co.sstools.Batty.broker.plist\" \"${agents_dest_dir}/co.sstools.Batty.broker.plist\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

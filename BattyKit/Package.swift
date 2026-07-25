@@ -21,6 +21,10 @@ let package = Package(
             name: "batty",
             targets: ["batty"]
         ),
+        .executable(
+            name: "BattyBroker",
+            targets: ["BattyBroker"]
+        ),
     ],
     dependencies: [
         .package(
@@ -77,7 +81,18 @@ let package = Package(
             name: "batty",
             dependencies: [
                 "BattyCLICore",
+                "BattyXPCCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            swiftSettings: swiftSettings
+        ),
+        // The broker launch agent (#0270). Same dependency-free discipline
+        // as `batty`, and for the same reason: it sits outside
+        // Contents/Frameworks/ reach, so it links only BattyXPCCore.
+        .executableTarget(
+            name: "BattyBroker",
+            dependencies: [
+                "BattyXPCCore",
             ],
             swiftSettings: swiftSettings
         ),

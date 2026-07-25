@@ -26,4 +26,11 @@ public nonisolated enum ServiceNames {
     /// The launch agent plist's filename, inside
     /// `Contents/Library/LaunchAgents/`.
     public static let agentPlistName = "\(agentLabel).plist"
+
+    /// The broker binary's path relative to the bundle root — what the
+    /// plist's `BundleProgram` key must contain (hand-typed there, same
+    /// caveat as `agentLabel`; kept as one named constant here so #0270's
+    /// embedding script and any Swift call site share one source of truth
+    /// instead of repeating the literal).
+    public static let agentBundleProgram = "Contents/Resources/bin/BattyBroker"
 }

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Prod-only (#0270): this plist ships only in the Prod build — see the
+	"Embed Broker" Run Script build phase, which skips embedding entirely
+	when PRODUCT_BUNDLE_IDENTIFIER is not co.sstools.Batty. That sidesteps
+	shipping a Beta build (co.sstools.Batty.beta) with a LaunchAgent whose
+	Label collides with Prod's, which #0265's own trap list warns can
+	confuse launchd across multiple copies of the app on disk.
+
+	Four strings must stay byte-identical (the "four-string rule" in
+	docs/xpc/xpc-cli-architecture.md): this filename (minus .plist), the
+	Label below, the MachServices key below, and
+	BattyXPCCore/ServiceNames.broker. None of them can be derived from the
+	others here — a plist copied into the bundle by a build phase does not
+	get $(VAR) build-setting substitution the way Info.plist does. Mismatch
+	any one and launchd silently declines to reserve the name.
+	-->
+	<key>Label</key>
+	<string>co.sstools.Batty.broker</string>
+
+	<key>BundleProgram</key>
+	<string>Contents/Resources/bin/BattyBroker</string>
+
+	<key>MachServices</key>
+	<dict>
+		<key>co.sstools.Batty.broker</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

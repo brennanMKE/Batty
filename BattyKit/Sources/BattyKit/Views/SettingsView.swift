@@ -278,17 +278,73 @@ private final class CLIInstallModel {
 
 private struct AdvancedSettingsView: View {
     @State private var cliModel = CLIInstallModel()
+    @State private var brokerModel = BrokerAgentController()
 
     var body: some View {
         Form {
             Section("Command-Line Tool") {
                 CLIInstallRow(model: cliModel)
             }
+            Section("Broker Agent") {
+                if brokerModel.isEmbedded {
+                    BrokerAgentRow(model: brokerModel)
+                } else {
+                    Text("Not available in this build.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding(20)
         .onAppear {
             cliModel.checkInstalled()
+            brokerModel.refresh()
+        }
+    }
+}
+
+private struct BrokerAgentRow: View {
+    @Bindable var model: BrokerAgentController
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("XPC broker")
+                Text("Lets `batty` reach Batty without launching it first. Registration state only — run `batty ping` to confirm it actually answers.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let lastErrorDescription = model.lastErrorDescription {
+                    Text(lastErrorDescription)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            Spacer()
+            switch model.state {
+            case .unknown, .notRegistered:
+                Button("Register") {
+                    model.register()
+                }
+            case .requiresApproval:
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Needs approval")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Text("System Settings → General → Login Items & Extensions")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Button("Unregister", role: .destructive) {
+                    model.unregister()
+                }
+            case .enabled:
+                Button("Unregister", role: .destructive) {
+                    model.unregister()
+                }
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
         }
     }
 }

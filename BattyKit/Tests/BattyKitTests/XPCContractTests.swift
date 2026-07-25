@@ -29,6 +29,14 @@ private nonisolated func roundTripOffActor(_ response: XPCResponse) throws -> XP
 
 private nonisolated func callOffActor(_ broker: any BrokerProtocol) {
     broker.brokerPing { _ in }
+    // registerAppEndpoint/appEndpoint (#0270's real call sites) were the
+    // two BrokerProtocol requirements #0269 flagged as still compiling with
+    // `nonisolated` stripped — closing that gap here, not just in the
+    // broker's own conformance, since a nonisolated *implementation*
+    // legally satisfies an isolated *requirement* and so isn't itself a
+    // guard against the requirement regressing.
+    broker.registerAppEndpoint(NSXPCListener.anonymous().endpoint)
+    broker.appEndpoint { _ in }
 }
 
 private nonisolated func callOffActor(_ appService: any AppServiceProtocol) {
@@ -103,6 +111,12 @@ struct XPCContractTests {
         // three constants.
         #expect(ServiceNames.agentPlistName == "\(ServiceNames.agentLabel).plist")
         #expect(ServiceNames.agentPlistName == "\(ServiceNames.broker).plist")
+    }
+
+    @Test func serviceNamesAgentBundleProgramIsResourcesBinPath() {
+        // The embedding script (#0270) and any Swift call site must agree on
+        // this path without repeating the literal.
+        #expect(ServiceNames.agentBundleProgram == "Contents/Resources/bin/BattyBroker")
     }
 
     @Test func serviceNamesAllFourDerivedStringsAreIdentical() {
