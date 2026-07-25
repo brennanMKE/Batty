@@ -3,33 +3,88 @@
 import Foundation
 
 nonisolated struct CLIInstaller {
-    private static let installPath = "/usr/local/bin/batty"
+    enum State: Equatable, Sendable {
+        case notInstalled
+        case installedHere
+        case installedElsewhere(String)
+        case blockedByFile
+    }
 
-    static var bundledCLIPath: String? {
-        Bundle.main.resourceURL?
-            .appending(path: "bin/batty", directoryHint: .notDirectory)
+    private let installPath: String
+    private let bundleURL: URL
+    private let fileManager: FileManager
+
+    init(
+        installPath: String = "/usr/local/bin/batty",
+        bundleURL: URL = Bundle.main.bundleURL,
+        fileManager: FileManager = .default
+    ) {
+        self.installPath = installPath
+        self.bundleURL = bundleURL
+        self.fileManager = fileManager
+    }
+
+    var bundledCLIPath: String? {
+        bundleURL
+            .appending(path: "Contents/Resources/bin/batty", directoryHint: .notDirectory)
             .path(percentEncoded: false)
     }
 
-    func isInstalled() -> Bool {
-        guard let bundledPath = Self.bundledCLIPath,
-              let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: Self.installPath)
-        else { return false }
-        return dest == bundledPath
+    /// Gates the *source* bundle (the app the symlink would point into), not the
+    /// destination. A build launched straight from Xcode lives under `/DerivedData/`
+    /// or `/Build/Products/`; installing a symlink into it breaks on the next clean
+    /// build and surfaces much later as `command not found`.
+    var isBundleDurable: Bool {
+        let path = bundleURL.path(percentEncoded: false)
+        return !path.contains("/DerivedData/") && !path.contains("/Build/Products/")
+    }
+
+    func inspectInstallState() -> State {
+        Self.inspect(installPath: installPath, expecting: bundledCLIPath, fileManager: fileManager)
+    }
+
+    /// `attributesOfItem(atPath:)` does NOT follow symlinks, which is what makes it
+    /// usable for telling a link apart from a real file. `fileExists(atPath:)` DOES
+    /// follow, so it reports false for a dangling link -- exactly the state left
+    /// behind when the target app is deleted -- and that would read as "nothing
+    /// installed" while a broken command still sat on PATH.
+    static func inspect(installPath: String, expecting target: String?, fileManager: FileManager) -> State {
+        guard let attributes = try? fileManager.attributesOfItem(atPath: installPath) else {
+            return .notInstalled
+        }
+        guard attributes[.type] as? FileAttributeType == .typeSymbolicLink else {
+            return .blockedByFile
+        }
+        guard let resolved = try? fileManager.destinationOfSymbolicLink(atPath: installPath) else {
+            return .notInstalled
+        }
+        guard let target, resolved == target else {
+            return .installedElsewhere(resolved)
+        }
+        return .installedHere
     }
 
     func install() throws {
-        guard let bundledPath = Self.bundledCLIPath,
-              FileManager.default.fileExists(atPath: bundledPath)
-        else { throw CLIInstallerError.bundledBinaryNotFound }
+        guard let bundledPath = bundledCLIPath, fileManager.fileExists(atPath: bundledPath) else {
+            throw CLIInstallerError.bundledBinaryNotFound
+        }
+        guard isBundleDurable else {
+            throw CLIInstallerError.bundleNotDurable(bundleURL.path(percentEncoded: false))
+        }
+        // Detected before the privileged command runs: a plain file at the
+        // destination must never be clobbered by `rm -f`, auth dialog or not.
+        guard inspectInstallState() != .blockedByFile else {
+            throw CLIInstallerError.blockedByFile(installPath)
+        }
 
         let dir = shellEscape(
-            URL(filePath: Self.installPath)
-                .deletingLastPathComponent()
-                .path(percentEncoded: false)
+            URL(filePath: installPath).deletingLastPathComponent().path(percentEncoded: false)
         )
-        let dst = shellEscape(Self.installPath)
+        let dst = shellEscape(installPath)
         let src = shellEscape(bundledPath)
+        // Self-heal for a stale symlink (installedElsewhere) is intentional here:
+        // rm -f only ever removes what inspectInstallState() already confirmed is a
+        // symlink, never the plain-file case guarded above.
         try runPrivileged(
             "mkdir -p \(dir) && rm -f \(dst) && ln -s \(src) \(dst)",
             prompt: "Batty needs administrator access to install the CLI to /usr/local/bin."
@@ -37,9 +92,13 @@ nonisolated struct CLIInstaller {
     }
 
     func uninstall() throws {
-        guard isInstalled() else { return }
+        let state = inspectInstallState()
+        guard state != .notInstalled else { return }
+        guard state != .blockedByFile else {
+            throw CLIInstallerError.blockedByFile(installPath)
+        }
         try runPrivileged(
-            "rm -f \(shellEscape(Self.installPath))",
+            "rm -f \(shellEscape(installPath))",
             prompt: "Batty needs administrator access to uninstall the CLI from /usr/local/bin."
         )
     }
@@ -70,6 +129,8 @@ private nonisolated func shellEscape(_ value: String) -> String {
 
 public enum CLIInstallerError: Error, LocalizedError, Equatable, Sendable {
     case bundledBinaryNotFound
+    case bundleNotDurable(String)
+    case blockedByFile(String)
     case cancelled
     case installFailed(String)
 
@@ -77,6 +138,10 @@ public enum CLIInstallerError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .bundledBinaryNotFound:
             "The CLI binary was not found in the app bundle."
+        case .bundleNotDurable(let path):
+            "Batty is running from a build folder (\(path)). Move Batty.app to /Applications, then try installing again."
+        case .blockedByFile(let path):
+            "\(path) already exists and isn't a symlink Batty created. Remove it manually, then try installing again."
         case .cancelled:
             nil
         case .installFailed(let reason):

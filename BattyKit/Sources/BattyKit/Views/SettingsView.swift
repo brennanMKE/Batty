@@ -222,7 +222,9 @@ private final class CLIInstallModel {
     enum State {
         case checking
         case installed
+        case installedElsewhere(String)
         case notInstalled
+        case blockedByFile
         case installing
         case uninstalling
         case failed(String)
@@ -233,7 +235,7 @@ private final class CLIInstallModel {
     private let installer = CLIInstaller()
 
     func checkInstalled() {
-        state = installer.isInstalled() ? .installed : .notInstalled
+        state = Self.uiState(for: installer.inspectInstallState())
     }
 
     func install() {
@@ -242,7 +244,9 @@ private final class CLIInstallModel {
             try installer.install()
             state = .installed
         } catch CLIInstallerError.cancelled {
-            state = .notInstalled
+            checkInstalled()
+        } catch CLIInstallerError.blockedByFile {
+            state = .blockedByFile
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -254,9 +258,20 @@ private final class CLIInstallModel {
             try installer.uninstall()
             state = .notInstalled
         } catch CLIInstallerError.cancelled {
-            state = .installed
+            checkInstalled()
+        } catch CLIInstallerError.blockedByFile {
+            state = .blockedByFile
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    private static func uiState(for installState: CLIInstaller.State) -> State {
+        switch installState {
+        case .installedHere: .installed
+        case .installedElsewhere(let target): .installedElsewhere(target)
+        case .notInstalled: .notInstalled
+        case .blockedByFile: .blockedByFile
         }
     }
 }
@@ -288,17 +303,28 @@ private struct CLIInstallRow: View {
                 Text("Symlinks `batty` to /usr/local/bin. Not required to run Batty.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if case .failed(let reason) = model.state {
+                switch model.state {
+                case .failed(let reason):
                     Text(reason)
                         .font(.caption)
                         .foregroundStyle(.red)
+                case .blockedByFile:
+                    Text("/usr/local/bin/batty already exists and isn't a symlink Batty created. Remove it manually, then try installing again.")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                case .installedElsewhere(let target):
+                    Text("A stale link points to \(target). Installing will replace it.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                default:
+                    EmptyView()
                 }
             }
             Spacer()
             switch model.state {
             case .checking:
                 ProgressView().controlSize(.small)
-            case .notInstalled, .failed:
+            case .notInstalled, .installedElsewhere, .blockedByFile, .failed:
                 Button("Install") {
                     model.install()
                 }

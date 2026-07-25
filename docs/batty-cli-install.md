@@ -495,37 +495,81 @@ graph at all.
 
 ### 5. Installation to PATH
 
-Implementation: `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift`,
-full listing:
+Implementation: `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift`.
+Reworked by issue `#0268` (porting back two `CLIInstaller` improvements
+from the RemoteControl XPC experiment, see `docs/xpc/cli-embedding-and-install.md`)
+to replace a bare `isInstalled() -> Bool` with a four-state inspection and
+add a durability gate on the source bundle. Full listing:
 
 ```swift
 nonisolated struct CLIInstaller {
-    private static let installPath = "/usr/local/bin/batty"
+    enum State: Equatable, Sendable {
+        case notInstalled
+        case installedHere
+        case installedElsewhere(String)
+        case blockedByFile
+    }
 
-    static var bundledCLIPath: String? {
-        Bundle.main.resourceURL?
-            .appending(path: "bin/batty", directoryHint: .notDirectory)
+    private let installPath: String
+    private let bundleURL: URL
+    private let fileManager: FileManager
+
+    init(
+        installPath: String = "/usr/local/bin/batty",
+        bundleURL: URL = Bundle.main.bundleURL,
+        fileManager: FileManager = .default
+    ) {
+        self.installPath = installPath
+        self.bundleURL = bundleURL
+        self.fileManager = fileManager
+    }
+
+    var bundledCLIPath: String? {
+        bundleURL
+            .appending(path: "Contents/Resources/bin/batty", directoryHint: .notDirectory)
             .path(percentEncoded: false)
     }
 
-    func isInstalled() -> Bool {
-        guard let bundledPath = Self.bundledCLIPath,
-              let dest = try? FileManager.default.destinationOfSymbolicLink(atPath: Self.installPath)
-        else { return false }
-        return dest == bundledPath
+    var isBundleDurable: Bool {
+        let path = bundleURL.path(percentEncoded: false)
+        return !path.contains("/DerivedData/") && !path.contains("/Build/Products/")
+    }
+
+    func inspectInstallState() -> State {
+        Self.inspect(installPath: installPath, expecting: bundledCLIPath, fileManager: fileManager)
+    }
+
+    static func inspect(installPath: String, expecting target: String?, fileManager: FileManager) -> State {
+        guard let attributes = try? fileManager.attributesOfItem(atPath: installPath) else {
+            return .notInstalled
+        }
+        guard attributes[.type] as? FileAttributeType == .typeSymbolicLink else {
+            return .blockedByFile
+        }
+        guard let resolved = try? fileManager.destinationOfSymbolicLink(atPath: installPath) else {
+            return .notInstalled
+        }
+        guard let target, resolved == target else {
+            return .installedElsewhere(resolved)
+        }
+        return .installedHere
     }
 
     func install() throws {
-        guard let bundledPath = Self.bundledCLIPath,
-              FileManager.default.fileExists(atPath: bundledPath)
-        else { throw CLIInstallerError.bundledBinaryNotFound }
+        guard let bundledPath = bundledCLIPath, fileManager.fileExists(atPath: bundledPath) else {
+            throw CLIInstallerError.bundledBinaryNotFound
+        }
+        guard isBundleDurable else {
+            throw CLIInstallerError.bundleNotDurable(bundleURL.path(percentEncoded: false))
+        }
+        guard inspectInstallState() != .blockedByFile else {
+            throw CLIInstallerError.blockedByFile(installPath)
+        }
 
         let dir = shellEscape(
-            URL(filePath: Self.installPath)
-                .deletingLastPathComponent()
-                .path(percentEncoded: false)
+            URL(filePath: installPath).deletingLastPathComponent().path(percentEncoded: false)
         )
-        let dst = shellEscape(Self.installPath)
+        let dst = shellEscape(installPath)
         let src = shellEscape(bundledPath)
         try runPrivileged(
             "mkdir -p \(dir) && rm -f \(dst) && ln -s \(src) \(dst)",
@@ -534,9 +578,13 @@ nonisolated struct CLIInstaller {
     }
 
     func uninstall() throws {
-        guard isInstalled() else { return }
+        let state = inspectInstallState()
+        guard state != .notInstalled else { return }
+        guard state != .blockedByFile else {
+            throw CLIInstallerError.blockedByFile(installPath)
+        }
         try runPrivileged(
-            "rm -f \(shellEscape(Self.installPath))",
+            "rm -f \(shellEscape(installPath))",
             prompt: "Batty needs administrator access to uninstall the CLI from /usr/local/bin."
         )
     }
@@ -564,35 +612,65 @@ nonisolated struct CLIInstaller {
 
 Mechanism, exactly:
 
-- **Destination:** `/usr/local/bin/batty`, hardcoded.
+- **Destination:** `/usr/local/bin/batty` by default, injectable via `init`
+  (the injection seam exists for tests, not for a user-facing setting —
+  the shipped app always uses the default).
 - **Symlink, not copy.** `install()` runs
   `mkdir -p /usr/local/bin && rm -f /usr/local/bin/batty && ln -s
   <bundle>/Contents/Resources/bin/batty /usr/local/bin/batty` as one
-  privileged shell command. `isInstalled()` is true only when the symlink
-  target **exactly equals** the current bundle's embedded-binary path
-  (`FileManager.destinationOfSymbolicLink(atPath:)` compared against
-  `bundledCLIPath`). Consequence: moving or renaming `Batty.app` makes
-  `isInstalled()` report `false` even though a symlink still exists at
-  `/usr/local/bin/batty` (it now points at a stale path) — the UI would
-  then offer "Install" again, and re-running it self-heals by overwriting
-  the stale symlink (`rm -f` before `ln -s`).
+  privileged shell command — but only after `inspectInstallState()` has
+  confirmed the destination is either absent or already a symlink.
+- **Four-state inspection, not a boolean.** `inspectInstallState()` (backed
+  by the static `inspect(installPath:expecting:fileManager:)` so it's
+  testable without touching `/usr/local/bin`) returns one of `.notInstalled`,
+  `.installedHere`, `.installedElsewhere(String)` (carries the stale
+  target path), or `.blockedByFile`. It uses
+  `FileManager.attributesOfItem(atPath:)` — which does **not** follow
+  symlinks — to tell a symlink apart from a real file; `fileExists(atPath:)`
+  would follow the link and misreport a dangling symlink (app deleted or
+  moved) as "nothing installed" while a broken command still sat on `PATH`.
+  Moving or renaming `Batty.app` now surfaces as `.installedElsewhere` (not
+  silently `.notInstalled`), and the UI offers "Install" with a note about
+  the stale target; re-running it self-heals by overwriting the stale
+  symlink (`rm -f` before `ln -s` — unchanged from before, and still only
+  reachable once the state check has ruled out `.blockedByFile`).
+- **`.blockedByFile` refuses, and is checked before the privileged call.**
+  A plain file at `/usr/local/bin/batty` (something the user put there
+  directly, not a symlink Batty created) makes `install()` throw
+  `CLIInstallerError.blockedByFile` *before* `runPrivileged` runs — the
+  destructive `rm -f` never executes, no auth dialog fires for a doomed
+  operation. `uninstall()` applies the identical guard so it never removes
+  a file it didn't create.
+- **`isBundleDurable` gates the source bundle, not the destination.**
+  `install()` refuses (`CLIInstallerError.bundleNotDurable`) when the
+  running `Batty.app`'s own bundle path contains `/DerivedData/` or
+  `/Build/Products/` — the case where the app was launched straight from
+  Xcode. Installing from there would create a symlink into a build product
+  that a clean build deletes, surfacing days later as `batty: command not
+  found` with nothing pointing back at the cause. A properly installed
+  `/Applications/Batty.app` is unaffected; the check only looks at
+  `bundleURL`, never at the `/usr/local/bin/batty` destination.
 - **Privilege escalation:** in-process `NSAppleScript` running `do shell
   script "..." with prompt "..." with administrator privileges` — this is
   what produces the standard macOS authorization dialog branded with the
   app's own name/icon (as opposed to shelling out to `/usr/bin/osascript`,
   which would brand the dialog as "osascript"/Script Editor). Must run on
   the main thread (the code comment says so explicitly, and callers are
-  `@MainActor`). Every interpolated path is wrapped in single quotes via a
-  private `shellEscape` helper (`'` → `'\''`) to survive spaces/quotes in
-  bundle paths.
+  `@MainActor`); this was deliberately preserved by `#0268`, not moved to a
+  background task, even though it means the cosmetic
+  `.installing`/`.uninstalling` spinner gap below stays as-is. Every
+  interpolated path is wrapped in single quotes via a private `shellEscape`
+  helper (`'` → `'\''`) to survive spaces/quotes in bundle paths.
 - **Cancellation:** `NSAppleScript`'s `AppleScript` error number `-128`
   (user declined/cancelled the auth prompt) is mapped to
   `CLIInstallerError.cancelled`; any other script error becomes
   `CLIInstallerError.installFailed(message)`. A missing bundled binary
   (shouldn't happen in a normal build) throws
   `CLIInstallerError.bundledBinaryNotFound`.
-- **Uninstall** is a no-op if `isInstalled()` is already `false`;
-  otherwise a privileged `rm -f /usr/local/bin/batty`.
+- **Uninstall** is a no-op if `inspectInstallState()` is already
+  `.notInstalled`; refuses (`CLIInstallerError.blockedByFile`) for a plain
+  file; otherwise a privileged `rm -f /usr/local/bin/batty` for
+  `.installedHere` or `.installedElsewhere`.
 - **Batty is unsandboxed** (`ENABLE_APP_SANDBOX = NO` in
   `Configuration/Build.xcconfig`), so unlike a sandboxed app this does
   *not* need the `com.apple.security.automation.apple-events` entitlement
@@ -607,14 +685,19 @@ Mechanism, exactly:
 ("Advanced", systemImage: "terminal") }`. `AdvancedSettingsView` hosts a
 single `Section("Command-Line Tool")` containing `CLIInstallRow`, driven
 by an `@Observable` `CLIInstallModel` (states: `.checking`, `.installed`,
-`.notInstalled`, `.installing`, `.uninstalling`, `.failed(String)`).
+`.installedElsewhere(String)`, `.notInstalled`, `.blockedByFile`,
+`.installing`, `.uninstalling`, `.failed(String)`) that maps
+`CLIInstaller.State` onto its own state via `checkInstalled()`.
 `onAppear` calls `cliModel.checkInstalled()`. The row shows an
 "Install"/"Uninstall" button depending on state, a green checkmark when
-installed, and an inline error message when `.failed`. One documented
-cosmetic gap: because `NSAppleScript` blocks the main thread synchronously
-through the auth dialog, the `.installing`/`.uninstalling` `ProgressView`
-states are set but never actually get a chance to render before the
-call returns.
+installed, an orange caption naming the stale target for
+`.installedElsewhere`, a red "already exists and isn't a symlink Batty
+created" caption for `.blockedByFile`, and the underlying error message
+(including the `bundleNotDurable` "move Batty.app to /Applications"
+message) for `.failed`. One documented cosmetic gap: because
+`NSAppleScript` blocks the main thread synchronously through the auth
+dialog, the `.installing`/`.uninstalling` `ProgressView` states are set
+but never actually get a chance to render before the call returns.
 
 ### 6. Signing, entitlements, notarization
 
@@ -767,7 +850,7 @@ Grounded directly in the code above, not aspirational:
 | `BattyKit/Sources/BattyKit/Runtime/BattyURLHandler.swift` | App-side handler: parses the `batty://` URL, calls `AppStateStore.addSession(workingDirectory:)` on the main actor; logs and ignores unrecognized URLs. |
 | `Batty/BattyApp.swift` | `BattyAppDelegate.application(_:open:)` routes `batty://` URLs to the handler; `.handlesExternalEvents(matching: Set())` on the content `WindowGroup` and Help `Window` suppresses SwiftUI's own stray-window behavior for the same event; `WindowGroup`'s `defaultValue` reuses `AppStateStore.shared.initialWindowID` so the URL-added session lands in the real on-screen window. |
 | `Configuration/Info.plist` | Registers the `batty` URL scheme via `CFBundleURLTypes`/`CFBundleURLSchemes` (literal plist, not a build setting). |
-| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to `/usr/local/bin/batty`, privileged via in-process `NSAppleScript`. |
+| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to `/usr/local/bin/batty`, privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`). |
 | `BattyKit/Sources/BattyKit/Views/SettingsView.swift` | Settings → Advanced tab; `CLIInstallModel` (`@Observable`) + `CLIInstallRow` UI driving `CLIInstaller`. |
 | `Batty.xcodeproj/project.pbxproj` | The `Batty` native target's `Embed CLI` Run Script build phase (last phase) that builds `batty` from the package via `xcrun swift build --product batty` and copies it to `Contents/Resources/bin/batty`. |
 | `Configuration/Build.xcconfig` | `ENABLE_APP_SANDBOX = NO` (relevant: no automation-events entitlement needed for `NSAppleScript`); `CODE_SIGN_STYLE = Automatic`. |
