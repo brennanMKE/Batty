@@ -56,6 +56,35 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 logger.info("perform status -> pid=\(payload.pid, privacy: .public) windows=\(payload.windowCount, privacy: .public) sessions=\(payload.sessionCount, privacy: .public) tabs=\(payload.tabCount, privacy: .public)")
                 pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: payloadData)))
             }
+        case XPCVerb.list:
+            Task { @MainActor [pendingRequests] in
+                let payload = AppStateStore.shared.topologyPayload()
+                guard let payloadData = try? JSONEncoder().encode(payload) else {
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode topology payload")))
+                    return
+                }
+                logger.info("perform list -> windows=\(payload.windows.count, privacy: .public)")
+                pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: payloadData)))
+            }
+        case XPCVerb.sessionInfo:
+            Task { @MainActor [pendingRequests] in
+                // A missing or undecodable request payload is treated the
+                // same as an explicit `sessionID: nil` — both mean "no
+                // target given, fall back to the focused session."
+                let sessionID = decoded.payload
+                    .flatMap { try? JSONDecoder().decode(SessionInfoRequest.self, from: $0) }?
+                    .sessionID
+                guard let payload = AppStateStore.shared.sessionInfoPayload(sessionID: sessionID) else {
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "session not found")))
+                    return
+                }
+                guard let payloadData = try? JSONEncoder().encode(payload) else {
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode session payload")))
+                    return
+                }
+                logger.info("perform sessionInfo -> session=\(payload.id, privacy: .public)")
+                pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: payloadData)))
+            }
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
             pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown verb: \(decoded.verb)")))

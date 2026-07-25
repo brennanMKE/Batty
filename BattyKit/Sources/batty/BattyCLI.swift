@@ -11,7 +11,7 @@ struct BattyCLI: ParsableCommand {
         abstract: "Control Batty from the command line.",
         discussion: "Bare `batty` and `batty <path>` are shorthand for `batty new <path>`.",
         version: resolveAppVersion(),
-        subcommands: [NewSessionCommand.self, PingCommand.self, StatusCommand.self],
+        subcommands: [NewSessionCommand.self, PingCommand.self, StatusCommand.self, ListCommand.self, SessionNounCommand.self],
         defaultSubcommand: NewSessionCommand.self
     )
 }
@@ -24,9 +24,10 @@ struct BattyCLI: ParsableCommand {
 /// CLI has never shipped in a tagged release, so renaming here costs
 /// nothing). ArgumentParser's `defaultSubcommand` still makes the bare form
 /// work unchanged. One edge case this introduces: a directory literally
-/// named the same as another subcommand (`new` or `ping`) now needs `batty
-/// new new` / `batty new ping` to disambiguate; `batty ping` used to just
-/// try (and fail to resolve) a relative path called "ping".
+/// named the same as another subcommand (`new`, `ping`, `status`, `list`,
+/// or `session`) now needs `batty new new` / `batty new ping` / etc. to
+/// disambiguate; `batty ping` used to just try (and fail to resolve) a
+/// relative path called "ping".
 struct NewSessionCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "new",

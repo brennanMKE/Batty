@@ -174,6 +174,57 @@ public final class AppStateStore {
         )
     }
 
+    // MARK: - XPC topology (#0274)
+
+    /// Full topology for the `list` XPC verb: every window, its sessions,
+    /// and each session's pane/tab tree. Purely a read over `windows` —
+    /// see `TopologyPayloadBuilder.swift` for the walk. Never touches
+    /// `selectedSessionID`, `focusedPaneID`, or `activeTabID`, so listing a
+    /// background session's topology cannot steal focus or switch the
+    /// active session.
+    public func topologyPayload() -> TopologyPayload {
+        TopologyPayload(
+            pid: ProcessInfo.processInfo.processIdentifier,
+            windows: windows.map { $0.topologyPayload() }
+        )
+    }
+
+    /// The slice for a single session, for the `sessionInfo` XPC verb.
+    ///
+    /// `sessionID` resolves an explicit target across *all* windows (not
+    /// just the key window) so a caller in a background session can ask
+    /// about itself. `sessionID == nil` falls back to the focused session
+    /// — today that means the key window's selected session, or the first
+    /// window's selected/first session when no window is key (headless CLI
+    /// callers, unit tests). This is the seam #0257's `BATTY_SESSION_ID`
+    /// env-var fallback slots into later: the eventual order is `--session`
+    /// flag → `BATTY_SESSION_ID` → focused session, of which only the first
+    /// and last exist today — the middle branch is #0257's to add, and it
+    /// inserts here without changing this method's signature or the reply
+    /// schema.
+    ///
+    /// Returns `nil` when an explicit `sessionID` doesn't resolve to any
+    /// session in any window, or when there is no session to fall back to
+    /// (no windows, or a window with an empty session list — both
+    /// unreachable in practice since every window seeds one session, but
+    /// handled rather than force-unwrapped).
+    public func sessionInfoPayload(sessionID: UUID? = nil) -> TopologySessionPayload? {
+        if let sessionID {
+            for window in windows {
+                if let session = window.sessions.first(where: { $0.id == sessionID }) {
+                    return session.topologyPayload(isActive: window.selectedSessionID == session.id)
+                }
+            }
+            return nil
+        }
+        guard let window = keyWindowRuntime() ?? windows.first,
+              let session = window.selectedSession ?? window.sessions.first
+        else {
+            return nil
+        }
+        return session.topologyPayload(isActive: window.selectedSessionID == session.id)
+    }
+
     /// Registers the association between an `NSWindow` and its `WindowID`.
     /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
     /// the hosting NSWindow is known (from `updateNSView`, deferred off the
