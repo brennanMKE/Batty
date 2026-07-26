@@ -23,6 +23,13 @@ public final class AppXPCCoordinator {
     private var listener: NSXPCListener?
     private var listenerDelegate: AppXPCListenerDelegate?
     private var brokerConnection: NSXPCConnection?
+    /// This app's variant (Prod or Beta), derived once in `start()` from
+    /// `Bundle.main.bundleIdentifier` and reused for every broker name
+    /// this coordinator resolves (#0277). `nil` only before `start()` has
+    /// run, or if the bundle identifier matched neither known variant —
+    /// in which case `start()` never resumed the listener and nothing
+    /// else in this type runs.
+    private var variant: ServiceNames.Variant?
     /// Monotonic counter, incremented once per `connectToBroker` call and
     /// captured by value into that connection's handler closures — this is
     /// what `currentBrokerGeneration` is compared against via
@@ -51,19 +58,19 @@ public final class AppXPCCoordinator {
     }
 
     public func start() {
-        // ServiceNames.broker is invariant across Prod/Beta (#0270's
-        // Gotchas), so without this guard a Beta launch would connect to
-        // and successfully registerAppEndpoint on *Prod's* broker whenever
-        // Prod's agent happens to be registered — silently overwriting
-        // Prod's stored endpoint, after which `batty status` drives Beta
-        // and Prod's registration stays dead until Prod is relaunched.
-        // Failing closed here converts that silent cross-process
-        // corruption into an explicit, logged no-op; it forecloses nothing
-        // about the eventual variant-suffixing decision #0270 left open.
-        guard Bundle.main.bundleIdentifier == ServiceNames.appBundleIdentifier else {
-            logger.notice("start: bundle identifier \(Bundle.main.bundleIdentifier ?? "<nil>", privacy: .public) != \(ServiceNames.appBundleIdentifier, privacy: .public) (Prod-only) — not starting the XPC listener")
+        // #0277: each variant derives its own broker/agent names from
+        // Bundle.main.bundleIdentifier, so Prod talking to Prod's broker
+        // and Beta talking to Beta's broker can no longer collide by
+        // construction — that replaces #0271's fail-closed guard, which
+        // existed only because the broker identity used to be invariant
+        // across variants. An identifier that matches neither known
+        // variant (a rename, a fork, a bundle id typo) still fails closed
+        // here rather than guessing.
+        guard let variant = ServiceNames.Variant(bundleIdentifier: Bundle.main.bundleIdentifier) else {
+            logger.error("start: bundle identifier \(Bundle.main.bundleIdentifier ?? "<nil>", privacy: .public) does not match any known Batty variant — not starting the XPC listener")
             return
         }
+        self.variant = variant
 
         let listener = NSXPCListener.anonymous()
         // #0273: same peer requirement as the broker (`main.swift` in
@@ -111,7 +118,11 @@ public final class AppXPCCoordinator {
     // MARK: - Broker connection lifecycle
 
     private func connectToBroker(endpoint: NSXPCListenerEndpoint) {
-        let connection = NSXPCConnection(machServiceName: ServiceNames.broker)
+        guard let variant else {
+            logger.error("connectToBroker: called before a variant was resolved — not connecting")
+            return
+        }
+        let connection = NSXPCConnection(machServiceName: ServiceNames.broker(for: variant))
         connection.remoteObjectInterface = XPCInterfaces.broker
         // #0278: the outgoing counterpart to #0273's listener-side check —
         // without this, a process that owns the broker's Mach service name

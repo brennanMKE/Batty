@@ -50,21 +50,34 @@ public final class BrokerAgentController {
     /// Whether this bundle actually shipped the agent plist. `SMAppService
     /// .agent(plistName:)` always succeeds at construction regardless — it
     /// only fails (as `.notRegistered`, indistinguishable from "never
-    /// registered") once `register()` is called. Without this check a Beta
-    /// build (which never embeds the broker — see #0270's Prod-only
-    /// decision) would offer a "Register" button that can only fail.
+    /// registered") once `register()` is called. Both variants embed their
+    /// own broker as of #0277, so this now only guards against a bundle
+    /// built before that landed, or a hand-stripped one.
     public let isEmbedded: Bool
 
     private let service: SMAppService
 
     public init(
-        plistName: String = ServiceNames.agentPlistName,
+        plistName: String = BrokerAgentController.resolvedPlistName(),
         bundleURL: URL = Bundle.main.bundleURL,
         fileManager: FileManager = .default
     ) {
         self.service = SMAppService.agent(plistName: plistName)
         self.isEmbedded = Self.agentIsEmbedded(bundleURL: bundleURL, plistName: plistName, fileManager: fileManager)
         refresh()
+    }
+
+    /// This app's own plist name, derived from `Bundle.main.bundleIdentifier`
+    /// — the app always has a real bundle to ask, unlike the broker/CLI
+    /// bare Mach-Os (#0277's "bare-Mach-O asymmetry"). Falls back to Prod's
+    /// name (logged) for a bundle identifier that matches neither known
+    /// variant, rather than crashing a settings screen over it.
+    public static func resolvedPlistName(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> String {
+        guard let variant = ServiceNames.Variant(bundleIdentifier: bundleIdentifier) else {
+            logger.error("resolvedPlistName: bundle identifier \(bundleIdentifier ?? "<nil>", privacy: .public) does not match any known Batty variant — defaulting to Prod's broker plist name")
+            return ServiceNames.agentPlistName(for: .prod)
+        }
+        return ServiceNames.agentPlistName(for: variant)
     }
 
     static func agentIsEmbedded(bundleURL: URL, plistName: String, fileManager: FileManager) -> Bool {

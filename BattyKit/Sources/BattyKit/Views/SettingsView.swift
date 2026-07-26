@@ -234,6 +234,12 @@ private final class CLIInstallModel {
 
     private let installer = CLIInstaller()
 
+    /// `batty` for Prod, `batty-beta` for Beta (#0277) — drives every
+    /// piece of UI copy that names the command, so it never hardcodes
+    /// `batty` for a build that actually installs as something else.
+    var commandName: String { installer.commandName }
+    var installPath: String { installer.installPath }
+
     func checkInstalled() {
         state = Self.uiState(for: installer.inspectInstallState())
     }
@@ -287,7 +293,7 @@ private struct AdvancedSettingsView: View {
             }
             Section("Broker Agent") {
                 if brokerModel.isEmbedded {
-                    BrokerAgentRow(model: brokerModel)
+                    BrokerAgentRow(model: brokerModel, cliCommandName: cliModel.commandName)
                 } else {
                     Text("Not available in this build.")
                         .font(.caption)
@@ -306,12 +312,13 @@ private struct AdvancedSettingsView: View {
 
 private struct BrokerAgentRow: View {
     @Bindable var model: BrokerAgentController
+    let cliCommandName: String
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("XPC broker")
-                Text("Lets `batty` reach Batty without launching it first. Registration state only — run `batty ping` to confirm it actually answers.")
+                Text("Lets `\(cliCommandName)` reach Batty without launching it first. Registration state only — run `\(cliCommandName) ping` to confirm it actually answers.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let lastErrorDescription = model.lastErrorDescription {
@@ -355,8 +362,8 @@ private struct CLIInstallRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("batty")
-                Text("Symlinks `batty` to /usr/local/bin. Not required to run Batty.")
+                Text(verbatim: model.commandName)
+                Text("Symlinks `\(model.commandName)` to \(model.installPath). Not required to run Batty.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 switch model.state {
@@ -365,7 +372,7 @@ private struct CLIInstallRow: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 case .blockedByFile:
-                    Text("/usr/local/bin/batty already exists and isn't a symlink Batty created. Remove it manually, then try installing again.")
+                    Text("\(model.installPath) already exists and isn't a symlink Batty created. Remove it manually, then try installing again.")
                         .font(.caption)
                         .foregroundStyle(.red)
                 case .installedElsewhere(let target):

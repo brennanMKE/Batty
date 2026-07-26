@@ -141,6 +141,69 @@ struct XPCContractTests {
         #expect(ServiceNames.agentLabel == ServiceNames.broker)
     }
 
+    // MARK: - ServiceNames per-variant derivation (#0277)
+
+    @Test func prodDerivedNamesAreByteIdenticalToThePreVariantLiterals() {
+        // The no-migration guarantee: existing Prod installs must see
+        // exactly these strings, unchanged by variant-awareness landing.
+        #expect(ServiceNames.broker(for: .prod) == "co.sstools.Batty.broker")
+        #expect(ServiceNames.agentLabel(for: .prod) == "co.sstools.Batty.broker")
+        #expect(ServiceNames.agentPlistName(for: .prod) == "co.sstools.Batty.broker.plist")
+        #expect(ServiceNames.appBundleIdentifier(for: .prod) == "co.sstools.Batty")
+    }
+
+    @Test func betaDerivedNamesAreSuffixedFromBetasBundleIdentifier() {
+        #expect(ServiceNames.broker(for: .beta) == "co.sstools.Batty.beta.broker")
+        #expect(ServiceNames.agentLabel(for: .beta) == "co.sstools.Batty.beta.broker")
+        #expect(ServiceNames.agentPlistName(for: .beta) == "co.sstools.Batty.beta.broker.plist")
+        #expect(ServiceNames.appBundleIdentifier(for: .beta) == "co.sstools.Batty.beta")
+    }
+
+    @Test(arguments: ServiceNames.Variant.allCases)
+    func everyDerivedNameDiffersAcrossVariants(variant: ServiceNames.Variant) {
+        let other: ServiceNames.Variant = variant == .prod ? .beta : .prod
+        #expect(ServiceNames.broker(for: variant) != ServiceNames.broker(for: other))
+        #expect(ServiceNames.agentLabel(for: variant) != ServiceNames.agentLabel(for: other))
+        #expect(ServiceNames.agentPlistName(for: variant) != ServiceNames.agentPlistName(for: other))
+        #expect(ServiceNames.appBundleIdentifier(for: variant) != ServiceNames.appBundleIdentifier(for: other))
+    }
+
+    @Test(arguments: ServiceNames.Variant.allCases)
+    func allFourDerivedStringsAreMutuallyConsistentWithinAVariant(variant: ServiceNames.Variant) {
+        // Same "four strings" invariant as the un-parameterized test above,
+        // now checked per variant: plist filename, Label, MachServices key,
+        // and connect-time name must all trace to the same variant.
+        let plistFilenameStem = ServiceNames.agentPlistName(for: variant).replacingOccurrences(of: ".plist", with: "")
+        #expect(plistFilenameStem == ServiceNames.agentLabel(for: variant))
+        #expect(ServiceNames.agentLabel(for: variant) == ServiceNames.broker(for: variant))
+        #expect(ServiceNames.broker(for: variant) == "\(ServiceNames.appBundleIdentifier(for: variant)).broker")
+    }
+
+    @Test func variantInitFromBundleIdentifierRoundTripsBothVariants() {
+        #expect(ServiceNames.Variant(bundleIdentifier: "co.sstools.Batty") == .prod)
+        #expect(ServiceNames.Variant(bundleIdentifier: "co.sstools.Batty.beta") == .beta)
+    }
+
+    @Test func variantInitFromBundleIdentifierFailsClosedForUnknownOrNilIdentifiers() {
+        #expect(ServiceNames.Variant(bundleIdentifier: nil) == nil)
+        #expect(ServiceNames.Variant(bundleIdentifier: "") == nil)
+        #expect(ServiceNames.Variant(bundleIdentifier: "com.example.SomeOtherApp") == nil)
+        // A prefix match must not be treated as a suffix match — a naive
+        // `hasPrefix` check would wrongly accept this as Prod.
+        #expect(ServiceNames.Variant(bundleIdentifier: "co.sstools.Batty.betaExtra") == nil)
+    }
+
+    @Test func cliInstallPathsDifferPerVariantAndAvoidThePathCollision() {
+        // #0277 "The single-batty-on-PATH problem": both variants used to
+        // default to the same /usr/local/bin/batty destination, so
+        // installing from Beta silently repointed Prod's PATH command.
+        #expect(ServiceNames.Variant.prod.cliCommandName == "batty")
+        #expect(ServiceNames.Variant.prod.cliInstallPath == "/usr/local/bin/batty")
+        #expect(ServiceNames.Variant.beta.cliCommandName == "batty-beta")
+        #expect(ServiceNames.Variant.beta.cliInstallPath == "/usr/local/bin/batty-beta")
+        #expect(ServiceNames.Variant.prod.cliInstallPath != ServiceNames.Variant.beta.cliInstallPath)
+    }
+
     // MARK: - XPCExitCode
 
     @Test func xpcExitCodeVocabulary() {

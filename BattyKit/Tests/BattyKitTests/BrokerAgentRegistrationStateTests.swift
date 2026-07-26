@@ -28,10 +28,29 @@ struct BrokerAgentRegistrationStateTests {
     }
 }
 
+/// `BrokerAgentController.resolvedPlistName` (#0277): the app always has a
+/// real `Bundle.main`, unlike the broker/CLI bare Mach-Os, so it derives
+/// its own variant's plist name at runtime instead of baking one in.
+struct BrokerAgentControllerResolvedPlistNameTests {
+    @Test func resolvesProdsPlistNameForAProdBundleIdentifier() {
+        #expect(BrokerAgentController.resolvedPlistName(bundleIdentifier: "co.sstools.Batty") == "co.sstools.Batty.broker.plist")
+    }
+
+    @Test func resolvesBetasDistinctPlistNameForABetaBundleIdentifier() {
+        #expect(BrokerAgentController.resolvedPlistName(bundleIdentifier: "co.sstools.Batty.beta") == "co.sstools.Batty.beta.broker.plist")
+    }
+
+    @Test func fallsBackToProdsPlistNameForAnUnrecognizedBundleIdentifier() {
+        #expect(BrokerAgentController.resolvedPlistName(bundleIdentifier: "com.example.SomeOtherApp") == "co.sstools.Batty.broker.plist")
+        #expect(BrokerAgentController.resolvedPlistName(bundleIdentifier: nil) == "co.sstools.Batty.broker.plist")
+    }
+}
+
 /// `BrokerAgentController.agentIsEmbedded` gates the Settings row (#0270
-/// round-2 review): a Beta bundle never embeds the broker plist (Prod-only
-/// decision), so the UI must detect that and show "Not available in this
-/// build" instead of a "Register" button that can only fail.
+/// round-2 review). Both variants embed their own broker as of #0277, so
+/// this now only guards a bundle built before that landed, or a
+/// hand-stripped one — the UI must detect that and show "Not available in
+/// this build" instead of a "Register" button that can only fail.
 struct BrokerAgentIsEmbeddedTests {
     private func makeTempBundleRoot() -> URL {
         let dir = FileManager.default.temporaryDirectory

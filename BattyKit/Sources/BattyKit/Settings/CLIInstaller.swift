@@ -1,6 +1,10 @@
 // CLIInstaller.swift
 
+import BattyXPCCore
 import Foundation
+import os
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "CLIInstaller")
 
 nonisolated struct CLIInstaller {
     enum State: Equatable, Sendable {
@@ -10,18 +14,38 @@ nonisolated struct CLIInstaller {
         case blockedByFile
     }
 
-    private let installPath: String
+    let installPath: String
     private let bundleURL: URL
     private let fileManager: FileManager
 
     init(
-        installPath: String = "/usr/local/bin/batty",
+        installPath: String = Self.resolvedInstallPath(),
         bundleURL: URL = Bundle.main.bundleURL,
         fileManager: FileManager = .default
     ) {
         self.installPath = installPath
         self.bundleURL = bundleURL
         self.fileManager = fileManager
+    }
+
+    /// The command name this installer symlinks to (the last path
+    /// component of `installPath`) — `batty` for Prod, `batty-beta` for
+    /// Beta. Exposed so UI copy (`SettingsView`) can name the actual
+    /// command instead of hardcoding `batty` for both variants (#0277).
+    var commandName: String {
+        (installPath as NSString).lastPathComponent
+    }
+
+    /// This app's own install path, derived from
+    /// `Bundle.main.bundleIdentifier` — see #0277 "The single-batty-on-PATH
+    /// problem". Falls back to Prod's path (logged) for a bundle
+    /// identifier that matches neither known variant.
+    static func resolvedInstallPath(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> String {
+        guard let variant = ServiceNames.Variant(bundleIdentifier: bundleIdentifier) else {
+            logger.error("resolvedInstallPath: bundle identifier \(bundleIdentifier ?? "<nil>", privacy: .public) does not match any known Batty variant — defaulting to Prod's install path")
+            return ServiceNames.Variant.prod.cliInstallPath
+        }
+        return variant.cliInstallPath
     }
 
     var bundledCLIPath: String? {

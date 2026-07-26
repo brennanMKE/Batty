@@ -202,4 +202,27 @@ struct CLIInstallerTests {
 
         #expect(FileManager.default.fileExists(atPath: installPath) == false)
     }
+
+    // MARK: - commandName / resolvedInstallPath (#0277)
+
+    @Test func commandNameIsTheLastPathComponentOfInstallPath() {
+        let installer = CLIInstaller(installPath: "/usr/local/bin/batty-beta")
+        #expect(installer.commandName == "batty-beta")
+    }
+
+    @Test func resolvedInstallPathIsProdsForAProdBundleIdentifier() {
+        #expect(CLIInstaller.resolvedInstallPath(bundleIdentifier: "co.sstools.Batty") == "/usr/local/bin/batty")
+    }
+
+    @Test func resolvedInstallPathIsBetasDistinctPathForABetaBundleIdentifier() {
+        #expect(CLIInstaller.resolvedInstallPath(bundleIdentifier: "co.sstools.Batty.beta") == "/usr/local/bin/batty-beta")
+    }
+
+    @Test func resolvedInstallPathFallsBackToProdForAnUnrecognizedBundleIdentifier() {
+        // Fail-safe, not fail-closed: an unrecognized bundle identifier
+        // (dev/test host, a fork) still needs a usable default rather than
+        // an empty path that blocks every install-path test above.
+        #expect(CLIInstaller.resolvedInstallPath(bundleIdentifier: "com.example.SomeOtherApp") == "/usr/local/bin/batty")
+        #expect(CLIInstaller.resolvedInstallPath(bundleIdentifier: nil) == "/usr/local/bin/batty")
+    }
 }

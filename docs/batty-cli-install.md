@@ -20,9 +20,13 @@ truth for current behavior — use this one.
 
 `batty` is a small, standalone command-line executable, built from the
 `BattyKit` Swift package and copied into `Batty.app/Contents/Resources/bin/batty`
-at app-build time. The Batty macOS app can install a symlink to it at
-`/usr/local/bin/batty` from Settings → Advanced, after which `batty` is on
-the user's normal shell `PATH`. Today the CLI does exactly one thing:
+at app-build time (identically named `batty` inside *either* variant's
+bundle). The Batty macOS app can install a symlink to it from Settings →
+Advanced, after which the command is on the user's normal shell `PATH` —
+`/usr/local/bin/batty` for the Prod build, `/usr/local/bin/batty-beta` for
+Beta (`#0277`; see "Variant-aware install path" below), so installing one
+variant's CLI can never silently repoint the other's. Today the CLI does
+exactly one thing:
 `batty <path>` (or bare `batty`, which defaults to `.`) resolves the given
 directory to an absolute path, builds a `batty://session?path=<path>` URL,
 and hands it to `/usr/bin/open`, which launches or activates Batty and
@@ -559,7 +563,10 @@ from the RemoteControl XPC experiment, see `docs/xpc/cli-embedding-and-install.m
 to replace a bare `isInstalled() -> Bool` with a four-state inspection and
 add a durability gate on the source bundle; `#0275` extended that durability
 gate to also refuse a Gatekeeper-translocated bundle, with its own refusal
-message (see the `isBundleDurable` bullet below). Full listing:
+message (see the `isBundleDurable` bullet below); `#0277` made `installPath`
+variant-aware — see "Variant-aware install path (#0277)" below before the
+mechanism bullets. Full listing (Prod's default shown; the actual default
+expression is `CLIInstaller.resolvedInstallPath()`, described below):
 
 ```swift
 nonisolated struct CLIInstaller {
@@ -570,18 +577,29 @@ nonisolated struct CLIInstaller {
         case blockedByFile
     }
 
-    private let installPath: String
+    let installPath: String
     private let bundleURL: URL
     private let fileManager: FileManager
 
     init(
-        installPath: String = "/usr/local/bin/batty",
+        installPath: String = Self.resolvedInstallPath(),
         bundleURL: URL = Bundle.main.bundleURL,
         fileManager: FileManager = .default
     ) {
         self.installPath = installPath
         self.bundleURL = bundleURL
         self.fileManager = fileManager
+    }
+
+    var commandName: String {
+        (installPath as NSString).lastPathComponent
+    }
+
+    static func resolvedInstallPath(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> String {
+        guard let variant = ServiceNames.Variant(bundleIdentifier: bundleIdentifier) else {
+            return ServiceNames.Variant.prod.cliInstallPath
+        }
+        return variant.cliInstallPath
     }
 
     var bundledCLIPath: String? {
@@ -679,11 +697,47 @@ nonisolated struct CLIInstaller {
 }
 ```
 
+### Variant-aware install path (#0277)
+
+Both variants used to default `installPath` to the same
+`/usr/local/bin/batty`, so installing from Beta silently repointed Prod's
+symlink (whichever variant installed last owned the PATH command) — the
+XPC broker was Prod-only at the time (#0270), so a Beta-driven `batty`
+command could only fail closed anyway, but once Beta got its own working
+broker (#0277) that collision became a real footgun.
+
+Fix: `installPath`'s default is now `CLIInstaller.resolvedInstallPath()`,
+which reads `Bundle.main.bundleIdentifier` and maps it to
+`ServiceNames.Variant.cliInstallPath`:
+
+- Prod → `/usr/local/bin/batty` (unchanged; no migration for existing installs).
+- Beta → `/usr/local/bin/batty-beta`.
+- An unrecognized bundle identifier (dev/test host, a fork) falls back to
+  Prod's path rather than producing an unusable empty one.
+
+`CLIInstaller.commandName` (the last path component of `installPath`)
+drives the Settings → Advanced UI copy (`SettingsView.swift`) so it names
+the actual installed command — `batty` or `batty-beta` — instead of
+hardcoding `batty` for both variants. The two variants therefore coexist
+on `PATH` without either being able to silently repoint the other's
+symlink; #0268's four-state `inspectInstallState()` inspects each
+variant's own path and never reports the other variant's symlink as its
+own.
+
+**User-visible consequence of #0277 as a whole** (not just the install
+path): both variants now ship a working XPC broker and each gets its own
+LaunchAgent, so a user running both Prod and Beta will see **two entries**
+under System Settings → General → Login Items & Extensions, and launchd
+carries two independent services (`co.sstools.Batty.broker`,
+`co.sstools.Batty.beta.broker`). That is correct — each variant is fully
+independent — not a bug to fix.
+
 Mechanism, exactly:
 
-- **Destination:** `/usr/local/bin/batty` by default, injectable via `init`
-  (the injection seam exists for tests, not for a user-facing setting —
-  the shipped app always uses the default).
+- **Destination:** `/usr/local/bin/batty` for Prod, `/usr/local/bin/batty-beta`
+  for Beta (see above), injectable via `init` (the injection seam exists
+  for tests, not for a user-facing setting — the shipped app always uses
+  the variant-derived default).
 - **Symlink, not copy.** `install()` runs
   `mkdir -p /usr/local/bin && rm -f /usr/local/bin/batty && ln -s
   <bundle>/Contents/Resources/bin/batty /usr/local/bin/batty` as one
@@ -968,7 +1022,7 @@ Grounded directly in the code above, not aspirational:
 | `BattyKit/Sources/BattyKit/Runtime/BattyURLHandler.swift` | App-side handler: parses the `batty://` URL, calls `AppStateStore.addSession(workingDirectory:)` on the main actor; logs and ignores unrecognized URLs. |
 | `Batty/BattyApp.swift` | `BattyAppDelegate.application(_:open:)` routes `batty://` URLs to the handler; `.handlesExternalEvents(matching: Set())` on the content `WindowGroup` and Help `Window` suppresses SwiftUI's own stray-window behavior for the same event; `WindowGroup`'s `defaultValue` reuses `AppStateStore.shared.initialWindowID` so the URL-added session lands in the real on-screen window. |
 | `Configuration/Info.plist` | Registers the `batty` URL scheme via `CFBundleURLTypes`/`CFBundleURLSchemes` (literal plist, not a build setting). |
-| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to `/usr/local/bin/batty`, privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`), extended to refuse a Gatekeeper-translocated bundle with its own error/message (`#0275`). |
+| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to a variant-derived path (`/usr/local/bin/batty` Prod, `/usr/local/bin/batty-beta` Beta — `#0277`), privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`), extended to refuse a Gatekeeper-translocated bundle with its own error/message (`#0275`). |
 | `BattyKit/Sources/BattyKit/Views/SettingsView.swift` | Settings → Advanced tab; `CLIInstallModel` (`@Observable`) + `CLIInstallRow` UI driving `CLIInstaller`. |
 | `Batty.xcodeproj/project.pbxproj` | The `Batty` native target's `Embed CLI` Run Script build phase (`alwaysOutOfDate = 1`, runs before the `Embed Broker` phase) that builds `batty` from the package via `xcrun swift build --product batty` and copies it to `Contents/Resources/bin/batty`. |
 | `Configuration/Build.xcconfig` | `ENABLE_APP_SANDBOX = NO` (relevant: no automation-events entitlement needed for `NSAppleScript`); `CODE_SIGN_STYLE = Automatic`. |

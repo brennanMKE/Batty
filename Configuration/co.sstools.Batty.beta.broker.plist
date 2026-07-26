@@ -3,33 +3,32 @@
 <plist version="1.0">
 <dict>
 	<!--
-	This is Prod's broker LaunchAgent (PRODUCT_BUNDLE_IDENTIFIER =
-	co.sstools.Batty). Beta ships its own, distinct one —
-	Configuration/co.sstools.Batty.beta.broker.plist — so the two variants
-	never share a launchd Label (#0277; supersedes #0270's Prod-only
-	decision). The "Embed Broker" Run Script build phase picks whichever
-	file matches PRODUCT_BUNDLE_IDENTIFIER and copies it in under its own
-	variant's filename.
+	This is Beta's broker LaunchAgent (PRODUCT_BUNDLE_IDENTIFIER =
+	co.sstools.Batty.beta). Prod ships its own, distinct one —
+	Configuration/co.sstools.Batty.broker.plist — so the two variants never
+	share a launchd Label (#0277; supersedes #0270's Prod-only decision).
+	The "Embed Broker" Run Script build phase picks whichever file matches
+	PRODUCT_BUNDLE_IDENTIFIER and copies it in under its own variant's
+	filename.
 
 	Four strings must stay byte-identical per variant (the "four-string
 	rule" in docs/xpc/xpc-cli-architecture.md): this filename (minus
 	.plist), the Label below, the MachServices key below, and
-	BattyXPCCore/ServiceNames.broker(for: .prod). None of them can be
+	BattyXPCCore/ServiceNames.broker(for: .beta). None of them can be
 	derived from the others here — a plist copied into the bundle by a
 	build phase does not get $(VAR) build-setting substitution the way
 	Info.plist does. Mismatch any one and launchd silently declines to
-	reserve the name. Prod's values are unchanged from before #0277 —
-	existing Prod installs need no migration.
+	reserve the name.
 	-->
 	<key>Label</key>
-	<string>co.sstools.Batty.broker</string>
+	<string>co.sstools.Batty.beta.broker</string>
 
 	<key>BundleProgram</key>
 	<string>Contents/Resources/bin/BattyBroker</string>
 
 	<key>MachServices</key>
 	<dict>
-		<key>co.sstools.Batty.broker</key>
+		<key>co.sstools.Batty.beta.broker</key>
 		<true/>
 	</dict>
 </dict>
