@@ -103,6 +103,13 @@ struct CLIInstallerTests {
         #expect(installer.isBundleDurable == true)
     }
 
+    @Test func isBundleDurableRefusesATranslocatedBundle() {
+        let path = "/private/var/folders/ab/xyz0123/T/AppTranslocation/8F63B2A1-1234-4A5B-9C1D-000000000000/d/Batty.app"
+        let installer = CLIInstaller(bundleURL: URL(filePath: path))
+
+        #expect(installer.isBundleDurable == false)
+    }
+
     // MARK: - install() safety: never clobber, never install from a build directory
 
     @Test func installThrowsBlockedByFileAndLeavesTheRealFileUntouched() throws {
@@ -138,6 +145,29 @@ struct CLIInstallerTests {
             try installer.install()
         }
         #expect(FileManager.default.fileExists(atPath: installPath) == false)
+    }
+
+    @Test func installThrowsBundleTranslocatedWithARelaunchInstructionAndCreatesNothingAtTheDestination() {
+        let root = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let translocationRoot = root.appending(
+            path: "AppTranslocation/8F63B2A1-1234-4A5B-9C1D-000000000000/d",
+            directoryHint: .isDirectory
+        )
+        let (bundleURL, _) = makeBundle(in: translocationRoot)
+        let installPath = root.appending(path: "batty", directoryHint: .notDirectory).path(percentEncoded: false)
+
+        let installer = CLIInstaller(installPath: installPath, bundleURL: bundleURL, fileManager: .default)
+
+        #expect(throws: CLIInstallerError.bundleTranslocated(bundleURL.path(percentEncoded: false))) {
+            try installer.install()
+        }
+        #expect(FileManager.default.fileExists(atPath: installPath) == false)
+
+        let message = CLIInstallerError.bundleTranslocated(bundleURL.path(percentEncoded: false)).errorDescription ?? ""
+        #expect(message.contains("/Applications"))
+        #expect(message.contains("relaunch"))
     }
 
     // MARK: - uninstall() safety

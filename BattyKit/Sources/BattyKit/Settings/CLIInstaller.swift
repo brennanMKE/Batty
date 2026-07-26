@@ -33,10 +33,20 @@ nonisolated struct CLIInstaller {
     /// Gates the *source* bundle (the app the symlink would point into), not the
     /// destination. A build launched straight from Xcode lives under `/DerivedData/`
     /// or `/Build/Products/`; installing a symlink into it breaks on the next clean
-    /// build and surfaces much later as `command not found`.
+    /// build and surfaces much later as `command not found`. A quarantined app run
+    /// straight from `~/Downloads` without first being dragged to `/Applications`
+    /// is equally ephemeral: Gatekeeper app translocation runs it from a read-only,
+    /// randomized `.../AppTranslocation/<uuid>/d/Batty.app` mount that disappears on
+    /// the next relaunch or reboot.
     var isBundleDurable: Bool {
         let path = bundleURL.path(percentEncoded: false)
-        return !path.contains("/DerivedData/") && !path.contains("/Build/Products/")
+        return !path.contains("/DerivedData/")
+            && !path.contains("/Build/Products/")
+            && !path.contains("/AppTranslocation/")
+    }
+
+    private var isBundleTranslocated: Bool {
+        bundleURL.path(percentEncoded: false).contains("/AppTranslocation/")
     }
 
     func inspectInstallState() -> State {
@@ -69,7 +79,10 @@ nonisolated struct CLIInstaller {
             throw CLIInstallerError.bundledBinaryNotFound
         }
         guard isBundleDurable else {
-            throw CLIInstallerError.bundleNotDurable(bundleURL.path(percentEncoded: false))
+            let path = bundleURL.path(percentEncoded: false)
+            throw isBundleTranslocated
+                ? CLIInstallerError.bundleTranslocated(path)
+                : CLIInstallerError.bundleNotDurable(path)
         }
         // Detected before the privileged command runs: a plain file at the
         // destination must never be clobbered by `rm -f`, auth dialog or not.
@@ -130,6 +143,7 @@ private nonisolated func shellEscape(_ value: String) -> String {
 public enum CLIInstallerError: Error, LocalizedError, Equatable, Sendable {
     case bundledBinaryNotFound
     case bundleNotDurable(String)
+    case bundleTranslocated(String)
     case blockedByFile(String)
     case cancelled
     case installFailed(String)
@@ -140,6 +154,8 @@ public enum CLIInstallerError: Error, LocalizedError, Equatable, Sendable {
             "The CLI binary was not found in the app bundle."
         case .bundleNotDurable(let path):
             "Batty is running from a build folder (\(path)). Move Batty.app to /Applications, then try installing again."
+        case .bundleTranslocated(let path):
+            "Batty is running from a temporary location (\(path)) because it was launched without first being moved to /Applications. Drag Batty.app to /Applications, then relaunch Batty before trying to install the CLI — a translocated copy stays temporary until relaunched from its new location."
         case .blockedByFile(let path):
             "\(path) already exists and isn't a symlink Batty created. Remove it manually, then try installing again."
         case .cancelled:

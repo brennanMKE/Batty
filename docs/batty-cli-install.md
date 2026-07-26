@@ -557,7 +557,9 @@ Implementation: `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift`.
 Reworked by issue `#0268` (porting back two `CLIInstaller` improvements
 from the RemoteControl XPC experiment, see `docs/xpc/cli-embedding-and-install.md`)
 to replace a bare `isInstalled() -> Bool` with a four-state inspection and
-add a durability gate on the source bundle. Full listing:
+add a durability gate on the source bundle; `#0275` extended that durability
+gate to also refuse a Gatekeeper-translocated bundle, with its own refusal
+message (see the `isBundleDurable` bullet below). Full listing:
 
 ```swift
 nonisolated struct CLIInstaller {
@@ -590,7 +592,13 @@ nonisolated struct CLIInstaller {
 
     var isBundleDurable: Bool {
         let path = bundleURL.path(percentEncoded: false)
-        return !path.contains("/DerivedData/") && !path.contains("/Build/Products/")
+        return !path.contains("/DerivedData/")
+            && !path.contains("/Build/Products/")
+            && !path.contains("/AppTranslocation/")
+    }
+
+    private var isBundleTranslocated: Bool {
+        bundleURL.path(percentEncoded: false).contains("/AppTranslocation/")
     }
 
     func inspectInstallState() -> State {
@@ -618,7 +626,10 @@ nonisolated struct CLIInstaller {
             throw CLIInstallerError.bundledBinaryNotFound
         }
         guard isBundleDurable else {
-            throw CLIInstallerError.bundleNotDurable(bundleURL.path(percentEncoded: false))
+            let path = bundleURL.path(percentEncoded: false)
+            throw isBundleTranslocated
+                ? CLIInstallerError.bundleTranslocated(path)
+                : CLIInstallerError.bundleNotDurable(path)
         }
         guard inspectInstallState() != .blockedByFile else {
             throw CLIInstallerError.blockedByFile(installPath)
@@ -708,6 +719,32 @@ Mechanism, exactly:
   found` with nothing pointing back at the cause. A properly installed
   `/Applications/Batty.app` is unaffected; the check only looks at
   `bundleURL`, never at the `/usr/local/bin/batty` destination.
+- **`isBundleDurable` also refuses a Gatekeeper-translocated bundle
+  (`#0275`).** A user who downloads the release DMG and runs `Batty.app`
+  straight from `~/Downloads` — without first dragging it to
+  `/Applications` — gets Gatekeeper app translocation: macOS runs the app
+  from a read-only, randomized `/private/var/folders/…/AppTranslocation/
+  <uuid>/d/Batty.app` mount that reclaims itself the same way a
+  `/DerivedData/` build does. That path contains neither `/DerivedData/`
+  nor `/Build/Products/`, so before `#0275` it passed the check and
+  installed a symlink into a mount macOS was going to reclaim — the exact
+  failure the guard exists to prevent, reached by the *more common* route
+  (a normal user, not a developer running from Xcode). The fix adds
+  `/AppTranslocation/` to the same substring check (the documented, stable
+  path-component form since macOS 10.12); `SecTranslocateIsTranslocatedURL`
+  was considered and rejected — it is not in the public Security.framework
+  SDK headers, so calling it would mean `dlopen`/`dlsym` plumbing for a
+  predicate the substring already answers correctly. This case throws a
+  distinct `CLIInstallerError.bundleTranslocated` (private
+  `isBundleTranslocated` picks the branch) rather than reusing
+  `.bundleNotDurable`, because the right advice for a translocated bundle
+  differs from a build-folder bundle in one critical way: **a translocated
+  instance stays translocated until relaunched**, even after the user
+  drags the app to `/Applications`. `bundleTranslocated`'s message says so
+  explicitly (drag to `/Applications`, *relaunch*, then try installing
+  again) — telling a translocated user only to move the app, the
+  `bundleNotDurable` wording, would have them click Install again in the
+  still-translocated instance and hit the same refusal.
 - **Privilege escalation:** in-process `NSAppleScript` running `do shell
   script "..." with prompt "..." with administrator privileges` — this is
   what produces the standard macOS authorization dialog branded with the
@@ -931,7 +968,7 @@ Grounded directly in the code above, not aspirational:
 | `BattyKit/Sources/BattyKit/Runtime/BattyURLHandler.swift` | App-side handler: parses the `batty://` URL, calls `AppStateStore.addSession(workingDirectory:)` on the main actor; logs and ignores unrecognized URLs. |
 | `Batty/BattyApp.swift` | `BattyAppDelegate.application(_:open:)` routes `batty://` URLs to the handler; `.handlesExternalEvents(matching: Set())` on the content `WindowGroup` and Help `Window` suppresses SwiftUI's own stray-window behavior for the same event; `WindowGroup`'s `defaultValue` reuses `AppStateStore.shared.initialWindowID` so the URL-added session lands in the real on-screen window. |
 | `Configuration/Info.plist` | Registers the `batty` URL scheme via `CFBundleURLTypes`/`CFBundleURLSchemes` (literal plist, not a build setting). |
-| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to `/usr/local/bin/batty`, privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`). |
+| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to `/usr/local/bin/batty`, privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`), extended to refuse a Gatekeeper-translocated bundle with its own error/message (`#0275`). |
 | `BattyKit/Sources/BattyKit/Views/SettingsView.swift` | Settings → Advanced tab; `CLIInstallModel` (`@Observable`) + `CLIInstallRow` UI driving `CLIInstaller`. |
 | `Batty.xcodeproj/project.pbxproj` | The `Batty` native target's `Embed CLI` Run Script build phase (`alwaysOutOfDate = 1`, runs before the `Embed Broker` phase) that builds `batty` from the package via `xcrun swift build --product batty` and copies it to `Contents/Resources/bin/batty`. |
 | `Configuration/Build.xcconfig` | `ENABLE_APP_SANDBOX = NO` (relevant: no automation-events entitlement needed for `NSAppleScript`); `CODE_SIGN_STYLE = Automatic`. |
