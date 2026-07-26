@@ -7,7 +7,14 @@
 /// foreign team identity. Kept separate from the Security-framework lookup
 /// in `OwnCodeSigningIdentity` so the string-building/selection logic is
 /// unit-testable without touching a real process's code signature.
-public enum PeerCodeSigningRequirement {
+///
+/// `nonisolated` at the type level (#0278): the outgoing-connection call
+/// sites in `batty` (`BrokerPingClient`, `BrokerAppEndpointClient`,
+/// `AppServiceClient`) are themselves `nonisolated enum`s, and this
+/// package's default actor isolation is `MainActor` — without this, calling
+/// a pure, synchronous string builder from those contexts would require an
+/// unnecessary `await`.
+public nonisolated enum PeerCodeSigningRequirement {
     /// `anchor apple generic` requires the peer's certificate to chain to an
     /// Apple root at all (ad-hoc signatures have no certificate and fail
     /// this outright); `certificate leaf[subject.OU]` is where Apple stores

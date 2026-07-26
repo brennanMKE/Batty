@@ -76,6 +76,10 @@ nonisolated enum AppServiceClient {
         let once = XPCOnce<Outcome<Payload>>(defaultValue: .unreachable)
         let connection = NSXPCConnection(listenerEndpoint: endpoint)
         connection.remoteObjectInterface = XPCInterfaces.appService
+        // #0278: `endpoint` is data the broker handed back, not something
+        // launchd vouches for — validate the peer here even though the
+        // broker connection that fetched it was already validated.
+        OutgoingCodeSigningEnforcement.apply(to: connection, context: "CLI→app")
         connection.interruptionHandler = { @Sendable in
             logger.notice("\(logLabel, privacy: .public): app connection interrupted")
             once.finish(.unreachable)

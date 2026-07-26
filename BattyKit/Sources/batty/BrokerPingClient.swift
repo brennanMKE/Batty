@@ -22,6 +22,9 @@ nonisolated enum BrokerPingClient {
         let once = XPCOnce(defaultValue: Outcome(reachable: false, message: nil))
         let connection = NSXPCConnection(machServiceName: ServiceNames.broker)
         connection.remoteObjectInterface = XPCInterfaces.broker
+        // #0278: reject an impostor occupying the broker's Mach service
+        // name, same peer requirement the broker's own listener enforces.
+        OutgoingCodeSigningEnforcement.apply(to: connection, context: "CLI→broker (ping)")
         connection.interruptionHandler = { @Sendable in once.finish(Outcome(reachable: false, message: nil)) }
         connection.invalidationHandler = { @Sendable in once.finish(Outcome(reachable: false, message: nil)) }
         connection.resume()

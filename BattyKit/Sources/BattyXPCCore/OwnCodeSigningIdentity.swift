@@ -14,7 +14,11 @@ import Security
 /// not `@rpath` — importing it here does not reintroduce the #0252 hazard
 /// that keeps this target (and `BattyBroker`, `batty`) free of Sparkle/
 /// libghostty/other SwiftPM product dependencies.
-public enum OwnCodeSigningIdentity {
+///
+/// `nonisolated` at the type level (#0278, same reasoning as
+/// `PeerCodeSigningRequirement`): needed so `batty`'s `nonisolated enum`
+/// outgoing-connection call sites can call this synchronously.
+public nonisolated enum OwnCodeSigningIdentity {
     /// `nil` covers every failure mode uniformly: `SecCodeCopySelf` failing,
     /// `SecCodeCopySigningInformation` failing, or the code being signed
     /// but carrying no Team Identifier (ad-hoc signatures have no

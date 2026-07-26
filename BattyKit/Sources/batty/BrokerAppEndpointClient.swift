@@ -23,6 +23,10 @@ nonisolated enum BrokerAppEndpointClient {
         let once = XPCOnce<Result>(defaultValue: .unreachable)
         let connection = NSXPCConnection(machServiceName: ServiceNames.broker)
         connection.remoteObjectInterface = XPCInterfaces.broker
+        // #0278: reject an impostor occupying the broker's Mach service
+        // name — this call is the one that would hand an attacker-supplied
+        // app endpoint back to the CLI if the broker were spoofed.
+        OutgoingCodeSigningEnforcement.apply(to: connection, context: "CLI→broker (appEndpoint)")
         connection.interruptionHandler = { @Sendable in
             logger.notice("appEndpoint: broker connection interrupted")
             once.finish(.unreachable)

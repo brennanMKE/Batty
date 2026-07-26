@@ -113,6 +113,11 @@ public final class AppXPCCoordinator {
     private func connectToBroker(endpoint: NSXPCListenerEndpoint) {
         let connection = NSXPCConnection(machServiceName: ServiceNames.broker)
         connection.remoteObjectInterface = XPCInterfaces.broker
+        // #0278: the outgoing counterpart to #0273's listener-side check —
+        // without this, a process that owns the broker's Mach service name
+        // could impersonate it to the app. See
+        // `OutgoingCodeSigningEnforcement` for the nil-team dev escape hatch.
+        OutgoingCodeSigningEnforcement.apply(to: connection, context: "app→broker")
         // Captured by value into every handler below, alongside `[weak
         // self]` — a monotonic `UInt64`, not `ObjectIdentifier(connection)`
         // (round 2 review: address-derived identity can collide once the
