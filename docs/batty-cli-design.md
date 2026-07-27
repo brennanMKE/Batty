@@ -34,7 +34,8 @@ preserving:
 | window | **window** | multi-window exists |
 
 So the noun set is **`session`, `pane`, `tab`, `window`** (+ app-level verbs).
-No `surface`, no `workspace`, no `worktree`.
+No `workspace`, no `worktree`; `surface` is not a fifth noun, but it is an
+accepted **alias** for `tab` (see §1.2).
 
 ### 1.2 Context: how a command knows where it's running
 The load-bearing foundation. Every app injects IDs into each surface's env and
