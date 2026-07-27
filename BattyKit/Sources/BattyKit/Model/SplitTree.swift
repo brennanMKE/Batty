@@ -205,13 +205,69 @@ public final class SplitTree {
         return newPane
     }
 
-    private static func makePane(inheritingFrom source: PaneRuntime?) -> PaneRuntime {
+    private static func makePane(inheritingFrom source: PaneRuntime?, command: String? = nil) -> PaneRuntime {
         guard let sourceTab = source?.activeTab else {
-            return PaneRuntime()
+            return command == nil ? PaneRuntime() : PaneRuntime(tabs: [TabRuntime(command: command)])
         }
         let cwd = sourceTab.terminal.workingDirectory
             ?? sourceTab.terminal.configuration.workingDirectory
-        return PaneRuntime(tabs: [TabRuntime(workingDirectory: cwd)])
+        return PaneRuntime(tabs: [TabRuntime(workingDirectory: cwd, command: command)])
+    }
+
+    /// Splits the pane with `targetPaneID`, wherever it lives in the tree —
+    /// not necessarily `focusedPaneID` (#0282's XPC `pane split` verb, whose
+    /// target is resolved upstream via `BattyTargetResolver`'s explicit-flag
+    /// → env → focused-element chain and handed here as a plain id). Mirrors
+    /// `splitFocusedPane`'s even 1/n chain-rebalance (#0255) via the same
+    /// `inserting`/`rebalancingChain` machinery.
+    ///
+    /// Returns `nil` when `targetPaneID` is not present in this tree — the
+    /// stale/unknown-id case the caller (`AppStateStore.splitPane`) must
+    /// turn into a visible XPC failure (exit `4`), not a silent no-op.
+    ///
+    /// **Focus decision:** `focusedPaneID` moves to the new pane only when
+    /// `targetPaneID` was already this tree's focused pane — matching
+    /// `splitFocusedPane`'s existing behavior for that case. Splitting an
+    /// explicitly-named pane that is *not* currently focused (an agent
+    /// targeting a sibling pane, or any pane in a background session) never
+    /// moves this tree's focus: the caller named a pane, not "make this the
+    /// new focus," and a background session's own focus must stay exactly
+    /// where the user left it (#0257) rather than jump to a pane they never
+    /// asked to look at. This is symmetric for foreground and background
+    /// targets — same rule either way, no special-casing on which session
+    /// is selected.
+    @discardableResult
+    public func splitPane(
+        id targetPaneID: UUID,
+        direction: SplitDirection,
+        ratio: Double = 0.5,
+        command: String? = nil
+    ) -> PaneRuntime? {
+        guard let targetPane = root.findPane(id: targetPaneID) else { return nil }
+        let newPane = Self.makePane(inheritingFrom: targetPane, command: command)
+        if let sessionID {
+            newPane.attachToSession(sessionID)
+        }
+        guard let newRoot = SplitTreeNode.inserting(
+            newPane: newPane,
+            adjacentTo: targetPaneID,
+            direction: direction,
+            ratio: ratio,
+            into: root
+        ) else {
+            return nil
+        }
+        let result = SplitTreeNode.rebalancingChain(
+            containing: newPane.id,
+            direction: direction,
+            in: newRoot,
+            parentIsDSplit: false
+        )
+        root = result.updatedNode ?? newRoot
+        if focusedPaneID == targetPaneID {
+            focusedPaneID = newPane.id
+        }
+        return newPane
     }
 
     public func removeFocusedPane() {

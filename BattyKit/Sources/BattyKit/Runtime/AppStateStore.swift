@@ -225,6 +225,48 @@ public final class AppStateStore {
         return session.topologyPayload(isActive: window.selectedSessionID == session.id)
     }
 
+    // MARK: - XPC pane split (#0282)
+
+    /// The pane to target when an XPC mutation verb (`pane split` #0282,
+    /// later `pane close` #0283) receives no explicit pane id — the same
+    /// "focused element" fallback `sessionInfoPayload(sessionID: nil)` uses
+    /// one level up, resolved to the target *session*'s `focusedPaneID`
+    /// rather than the session itself. `nil` only when there is no
+    /// window/session to fall back to (unreachable in practice — every
+    /// window seeds one session — but handled rather than force-unwrapped).
+    public func focusedPaneIDFallback() -> UUID? {
+        guard let window = keyWindowRuntime() ?? windows.first,
+              let session = window.selectedSession ?? window.sessions.first
+        else { return nil }
+        return session.tree.focusedPaneID
+    }
+
+    /// Splits `paneID`'s owning session, adjacent to that pane — #0282's
+    /// XPC `pane split` verb. Searches every window's every session (not
+    /// just the key window) so a background-session target resolves
+    /// identically to a foreground one, per #0257's "placement is relative
+    /// to the target pane's own split tree" rule.
+    ///
+    /// Returns the new pane's id, or `nil` when `paneID` is not found in any
+    /// window/session — the stale/unknown-id case `AppXPCService` turns into
+    /// a failure reply (CLI exit `4`); the entire reason this verb moved to
+    /// XPC instead of staying on the fire-and-forget `batty://` scheme.
+    ///
+    /// Never touches `selectedSessionID` — mutating a background target must
+    /// not steal focus or switch the active session (#0257). See
+    /// `SplitTree.splitPane(id:direction:ratio:command:)` for the
+    /// tree-focus decision (moves only when `paneID` was already that
+    /// tree's focused pane).
+    @discardableResult
+    public func splitPane(id paneID: UUID, direction: SplitDirection, command: String? = nil) -> UUID? {
+        for window in windows {
+            for session in window.sessions where session.tree.root.contains(paneID: paneID) {
+                return session.tree.splitPane(id: paneID, direction: direction, command: command)?.id
+            }
+        }
+        return nil
+    }
+
     /// Registers the association between an `NSWindow` and its `WindowID`.
     /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
     /// the hosting NSWindow is known (from `updateNSView`, deferred off the

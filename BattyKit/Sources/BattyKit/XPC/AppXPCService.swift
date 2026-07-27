@@ -85,6 +85,37 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 logger.info("perform sessionInfo -> session=\(payload.id, privacy: .public)")
                 pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: payloadData)))
             }
+        case XPCVerb.paneSplit:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(PaneSplitRequest.self, from: payloadData)
+                else {
+                    logger.error("perform paneSplit: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed pane split request")))
+                    return
+                }
+                // A missing/nil paneID means "no explicit target" — same
+                // fallback tier as sessionInfo's nil sessionID, one level
+                // down (the target session's focused pane rather than the
+                // focused session itself).
+                guard let targetPaneID = request.paneID ?? AppStateStore.shared.focusedPaneIDFallback() else {
+                    logger.error("perform paneSplit: no pane to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no pane to split")))
+                    return
+                }
+                let direction = SplitDirection(rawValue: request.direction.rawValue) ?? .horizontal
+                guard let newPaneID = AppStateStore.shared.splitPane(id: targetPaneID, direction: direction, command: request.command) else {
+                    logger.error("perform paneSplit: unknown pane id \(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
+                    return
+                }
+                guard let replyData = try? JSONEncoder().encode(PaneSplitReply(paneID: newPaneID)) else {
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane split reply")))
+                    return
+                }
+                logger.info("perform paneSplit -> pane=\(newPaneID, privacy: .public)")
+                pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+            }
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
             pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown verb: \(decoded.verb)")))

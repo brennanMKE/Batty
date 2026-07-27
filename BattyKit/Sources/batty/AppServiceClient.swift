@@ -66,6 +66,25 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0282. The first *mutating* call this dance drives — the app either
+    /// splits the target pane and replies with its new id, or reports a
+    /// failure (unknown/stale `paneID`, no pane to target) via
+    /// `.requestFailed`, which the CLI turns into exit `4`.
+    static func paneSplit(
+        endpoint: NSXPCListenerEndpoint,
+        paneID: UUID?,
+        direction: TopologySplitDirection,
+        command: String?,
+        timeout: TimeInterval
+    ) -> Outcome<PaneSplitReply> {
+        let requestPayload = try? JSONEncoder().encode(PaneSplitRequest(paneID: paneID, direction: direction, command: command))
+        let outcome: Outcome<PaneSplitReply> = perform(verb: XPCVerb.paneSplit, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "paneSplit")
+        if case .success(let payload) = outcome {
+            logger.info("paneSplit -> pane=\(payload.paneID, privacy: .public)")
+        }
+        return outcome
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

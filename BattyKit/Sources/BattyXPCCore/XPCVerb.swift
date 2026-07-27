@@ -17,4 +17,12 @@ public nonisolated enum XPCVerb {
     /// (optional — a missing/undecodable request is treated the same as an
     /// explicit `sessionID: nil`).
     public static let sessionInfo = "sessionInfo"
+
+    /// #0282: the first *mutating* XPC verb. Splits a pane, replying with
+    /// `PaneSplitReply` (the new pane's id) as `XPCResponse.payload`.
+    /// Request payload is `PaneSplitRequest`. An unknown/stale
+    /// `PaneSplitRequest.paneID` is a failure reply (`ok: false`), which the
+    /// CLI surfaces as exit `4` — the reason this verb is on XPC rather than
+    /// the fire-and-forget `batty://` scheme.
+    public static let paneSplit = "paneSplit"
 }

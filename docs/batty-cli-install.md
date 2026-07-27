@@ -1043,11 +1043,38 @@ Grounded directly in the code above, not aspirational:
   config directive), and `batty id [--json]` (alias `whoami`) reads them
   with **no app round-trip** — it works even when the app/broker is
   unreachable, which is what distinguishes it from `list`/`session info`.
-- **The command surface is a single positional argument.** No
-  `session`/`pane`/`tab`/`window` noun/verb grammar, no `--json`, no
-  client-generated ids for chaining commands, no `notify`/`open` bare
-  verbs — all of that is `issues/0257.md`'s (open, unimplemented) Tier 0 +
-  Tier 1 proposal.
+- **First mutating XPC verb, #0282.** `batty pane split [-h|--horizontal |
+  -v|--vertical] [-c|--command <cmd>] [--pane <id>]` splits the
+  calling/target pane and prints the new pane's id to stdout on success.
+  Unlike every verb above, this one *mutates* app state, which is exactly
+  why it went over the XPC request/reply channel rather than the one-way
+  `batty://` scheme (see `issues/0257.md`'s 2026-07-26 transport
+  amendment): a stale/unknown `--pane` id is a visible failure (exit `4`),
+  not a silent no-op. Defaults to horizontal when no direction flag is
+  given. `--pane` falls back through the same chain as `session info`'s
+  `--session` (explicit flag → `BATTY_PANE_ID` env → the app's focused
+  pane) via `BattyTargetResolver`. `-c`/`--command` **replaces** the shell
+  preference entirely for that one pane rather than appending to it — the
+  new pane's `command =` line is either the override or the configured
+  shell, never both, so with a custom shell configured the override
+  bypasses that shell (and any shell-integration behavior it provides,
+  notably OSC 7 cwd reporting) entirely. `-c` panes also set libghostty's
+  `wait-after-command = true` for that one pane, so the pane survives its
+  command exiting instead of closing immediately — output stays readable
+  until the pane is closed deliberately. This is scoped to `-c` panes
+  only: a pane with no command override keeps today's behavior (closes
+  when its shell exits), so Cmd-D and every existing tab are unaffected.
+  `wait-after-command` was verified against the pinned libghostty
+  (`c69c34354e511af7a3e6d7e5e2a4fa2fed4b90ff`) directly — `false` by
+  default, `true` accepted with zero config diagnostics — rather than
+  assumed from the directive's name.
+- **The rest of the command surface is still growing.** `session`/`pane`
+  now each have a real subcommand (`session info`, `pane split`), but the
+  full `session`/`pane`/`tab`/`window` noun/verb grammar, `--json` on
+  every verb, client-generated ids for chaining, and the `notify`/`open`
+  bare verbs remain `issues/0257.md`'s (open) Tier 0 + Tier 1 proposal —
+  see that issue's "Children and gating order" table for what has and
+  hasn't shipped.
 - **Cold-launch double-session.** As noted in the trace above, `batty
   <path>` against a not-yet-running Batty produces both the default
   cold-launch session and the requested-path session — acceptable per

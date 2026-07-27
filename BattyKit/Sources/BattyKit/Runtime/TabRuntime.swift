@@ -25,6 +25,13 @@ public final class TabRuntime: Identifiable {
     public internal(set) var paneID: UUID?
     public internal(set) var sessionID: UUID?
 
+    /// Per-tab command override (#0282's `pane split -c`) — replaces the
+    /// global shell preference for this tab only, so an agent can open a
+    /// pane running an explicit command rather than the default shell.
+    /// Immutable: set once at construction and re-applied unchanged by
+    /// ``attachContext(paneID:sessionID:)``'s config re-apply.
+    private let commandOverride: String?
+
     /// Observation-tracked mirror of `terminal.workingDirectory`. That
     /// property is Combine `@Published` on an `ObservableObject`
     /// (`TerminalViewState`, from the GhosttyTerminal package), which the
@@ -79,6 +86,7 @@ public final class TabRuntime: Identifiable {
         id: UUID = UUID(),
         titleOverride: String? = nil,
         workingDirectory: String? = nil,
+        command: String? = nil,
         bellCount: Int = 0,
         unseenBellCount: Int = 0,
         lastBellAt: Date? = nil,
@@ -87,13 +95,14 @@ public final class TabRuntime: Identifiable {
         self.id = id
         self.titleOverride = titleOverride
         self.workingDirectory = workingDirectory
+        self.commandOverride = command
         let state = TerminalViewState(theme: Self.activeTheme())
         self.terminal = state
         self.terminalDelegate = TerminalDelegateProxy(state: state)
         if let workingDirectory {
             self.terminal.configuration.workingDirectory = workingDirectory
         }
-        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil)
+        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil, command: command)
         self.bellCount = bellCount
         self.unseenBellCount = unseenBellCount
         self.lastBellAt = lastBellAt
@@ -128,14 +137,15 @@ public final class TabRuntime: Identifiable {
         guard self.paneID != paneID || self.sessionID != sessionID else { return }
         self.paneID = paneID
         self.sessionID = sessionID
-        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID)
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride)
     }
 
     private static func applyShellAndAppearancePreferences(
         to terminal: TerminalViewState,
         tabID: UUID,
         paneID: UUID?,
-        sessionID: UUID?
+        sessionID: UUID?,
+        command: String? = nil
     ) {
         let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle()) ?? .block
         let blink = SettingsPreference.resolvedCursorBlink()
@@ -145,7 +155,33 @@ public final class TabRuntime: Identifiable {
             builder.withFontSize(fontSize)
             builder.withCursorStyle(cursor)
             builder.withCursorStyleBlink(blink)
-            if !shell.isEmpty {
+            // A per-tab command override (#0282's `pane split -c`) replaces
+            // the shell preference entirely for this one tab, rather than
+            // appending a second `command` line — `command`'s repeat-key
+            // behavior in libghostty is unverified (unlike `env`, which
+            // #0281 confirmed accumulates), so only one `command` line is
+            // ever emitted.
+            if let command, !command.isEmpty {
+                builder.withCustom("command", command)
+                // `-c` panes must survive their command exiting so the
+                // output stays readable until the pane is closed
+                // deliberately (#0282 round 3, user decision). Scoped to
+                // `-c` panes only, by living in this same branch — an
+                // ordinary shell tab must keep closing when the shell
+                // exits, since Cmd-D and every existing tab rely on that.
+                // `wait-after-command` verified against the pinned
+                // libghostty (`c69c34354e511af7a3e6d7e5e2a4fa2fed4b90ff`)
+                // rather than assumed: `ghostty +show-config --default
+                // --docs` documents `false` as the default and "the
+                // terminal window will stay open until any keypress is
+                // received" as the semantic; `true` round-trips with zero
+                // config diagnostics through the real
+                // `ghostty_config_new`/`load_file`/`finalize` pipeline
+                // (`SplitTreeTargetedSplitTests`), and a deliberately
+                // misspelled key produces `diagnostics=1 "unknown field"`
+                // as the control proving that check is real.
+                builder.withCustom("wait-after-command", "true")
+            } else if !shell.isEmpty {
                 builder.withCustom("command", shell)
             }
             // Agent context (#0257/#0281): libghostty's `env` config
