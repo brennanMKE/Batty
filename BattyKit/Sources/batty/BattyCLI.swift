@@ -11,7 +11,7 @@ struct BattyCLI: ParsableCommand {
         abstract: "Control Batty from the command line.",
         discussion: "Bare `batty` and `batty <path>` are shorthand for `batty new <path>`.",
         version: resolveAppVersion(),
-        subcommands: [NewSessionCommand.self, PingCommand.self, StatusCommand.self, ListCommand.self, SessionNounCommand.self, PaneNounCommand.self, IDCommand.self],
+        subcommands: [NewSessionCommand.self, PingCommand.self, StatusCommand.self, ListCommand.self, SessionNounCommand.self, PaneNounCommand.self, IDCommand.self, NotifyCommand.self],
         defaultSubcommand: NewSessionCommand.self
     )
 }

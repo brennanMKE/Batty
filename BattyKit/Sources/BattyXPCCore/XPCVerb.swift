@@ -35,4 +35,16 @@ public nonisolated enum XPCVerb {
     /// XPC has no UI to give, and a refusal to close the app's last
     /// remaining pane — the CLI surfaces all three as exit `4`.
     public static let paneClose = "paneClose"
+
+    /// #0284: the third mutating XPC verb — the agent loop's terminal step.
+    /// Posts a `BellFeedEntry` attributed to a real tab, replying with an
+    /// empty `NotifyReply` on success as `XPCResponse.payload`. Request
+    /// payload is `NotifyRequest`. A failure reply (`ok: false`) covers an
+    /// unknown/stale `NotifyRequest.tabID` and "no tab to target" (neither
+    /// an explicit id nor a resolvable focused tab) — the CLI surfaces both
+    /// as exit `4`. Went to XPC rather than the fire-and-forget `batty://`
+    /// scheme for the same reason as `paneSplit`/`paneClose`: "the agent
+    /// believes the user was told, but nothing happened" is the least
+    /// recoverable silent failure in the whole agent loop.
+    public static let notify = "notify"
 }

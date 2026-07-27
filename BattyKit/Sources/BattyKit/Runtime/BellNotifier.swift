@@ -6,11 +6,19 @@ import UserNotifications
 
 @MainActor
 public protocol BellNotifying: AnyObject {
+    /// `playSound` gates the request-level side of sound on top of the
+    /// app-wide "Play sound" setting (`SettingsPreference.resolvedBellSound()`),
+    /// which `post` still consults — `playSound: true` (bells, OSC 9/777)
+    /// preserves the pre-#0284 behavior of "sound iff the toggle is on";
+    /// `false` (CLI `notify` without `--sound`) suppresses sound for this
+    /// call regardless of the toggle. Never the other way around: a caller
+    /// cannot force sound past a disabled toggle.
     func post(
         for entry: BellFeedEntry,
         sessionTitle: String,
         paneIndex: Int,
-        tabLabel: String
+        tabLabel: String,
+        playSound: Bool
     )
 }
 
@@ -46,14 +54,15 @@ public final class BellNotifier: BellNotifying {
         for entry: BellFeedEntry,
         sessionTitle: String,
         paneIndex: Int,
-        tabLabel: String
+        tabLabel: String,
+        playSound: Bool = true
     ) {
         guard SettingsPreference.resolvedSystemNotifications() else { return }
         guard shouldPost(for: entry) else { return }
         let content = UNMutableNotificationContent()
         content.title = String(localized: "Batty — \(sessionTitle) › Pane \(paneIndex) › \(tabLabel)")
         content.body = entry.message?.isEmpty == false ? entry.message! : String(localized: "Bell")
-        if SettingsPreference.resolvedBellSound() {
+        if playSound && SettingsPreference.resolvedBellSound() {
             content.sound = .default
         }
         content.userInfo = [Self.entryIdUserInfoKey: entry.id.uuidString]

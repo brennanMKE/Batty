@@ -149,6 +149,33 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "refusing to close the app's last pane")))
                 }
             }
+        case XPCVerb.notify:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(NotifyRequest.self, from: payloadData)
+                else {
+                    logger.error("perform notify: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed notify request")))
+                    return
+                }
+                guard let targetTabID = request.tabID ?? AppStateStore.shared.focusedTabIDFallback() else {
+                    logger.error("perform notify: no tab to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no tab to target")))
+                    return
+                }
+                switch AppStateStore.shared.recordCLINotification(tabID: targetTabID, title: request.title, body: request.body, playSound: request.sound) {
+                case .posted:
+                    guard let replyData = try? JSONEncoder().encode(NotifyReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode notify reply")))
+                        return
+                    }
+                    logger.info("perform notify -> tab=\(targetTabID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownTab:
+                    logger.error("perform notify: unknown tab id \(targetTabID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown tab id")))
+                }
+            }
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
             pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown verb: \(decoded.verb)")))

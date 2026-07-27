@@ -241,6 +241,24 @@ public final class AppStateStore {
         return session.tree.focusedPaneID
     }
 
+    /// The tab to target when the XPC `notify` verb (#0284) receives no
+    /// explicit `--tab` id and no `BATTY_TAB_ID` env — one tier below
+    /// `focusedPaneIDFallback()`, since a `BellFeedEntry` needs a real tab,
+    /// not merely a real pane: the focused pane's active tab. `nil` only
+    /// when there is no window/session/pane to fall back to (unreachable in
+    /// practice, mirroring `focusedPaneIDFallback()`'s own note).
+    public func focusedTabIDFallback() -> UUID? {
+        guard let paneID = focusedPaneIDFallback(),
+              let window = keyWindowRuntime() ?? windows.first
+        else { return nil }
+        for session in window.sessions {
+            if let pane = session.tree.allPanes.first(where: { $0.id == paneID }) {
+                return pane.activeTabID
+            }
+        }
+        return nil
+    }
+
     /// Splits `paneID`'s owning session, adjacent to that pane — #0282's
     /// XPC `pane split` verb. Searches every window's every session (not
     /// just the key window) so a background-session target resolves
@@ -653,6 +671,74 @@ public final class AppStateStore {
         }
     }
 
+    /// Outcome of `recordCLINotification` — #0284's XPC `notify` verb.
+    public enum NotifyOutcome: Equatable, Sendable {
+        case posted
+        /// No tab with that id exists in any window — the stale/unknown-id
+        /// case `AppXPCService` turns into a failure reply (CLI exit `4`).
+        case unknownTab
+    }
+
+    /// Posts a CLI-originated notification into the Bell Feed, attributed
+    /// to a real tab — #0284's `notify` verb, the terminal step of the
+    /// agent loop (#0257). Deliberately rides the same `BellFeedEntry`
+    /// shape every other entry uses rather than growing a kind/placeholder-
+    /// id path: `BellFeedView.pathLabel(for:)`'s `(closed)` fallback and
+    /// `jumpToBellEntry`'s dead-window no-op both assume a live tab, so
+    /// resolving to one for real makes click-to-jump, cleanup-on-close
+    /// (`cleanUpBellState(forTabIDs:)`), and the AI summarizer all work
+    /// unmodified instead of needing new UI-facing plumbing for a
+    /// placeholder shape.
+    ///
+    /// Shares its post-resolution plumbing (`BellFeedEntry` construction,
+    /// unseen propagation, `postNotification`, `scheduleSummarization`)
+    /// with `recordBellTick`/`recordDesktopNotification` — it diverges only
+    /// in how the tab id and message are obtained. There is no `TabRuntime`
+    /// change-detection to run through here (unlike
+    /// `recordBellTickIfNeeded`/`recordDesktopNotificationIfNeeded`, which
+    /// dedupe against libghostty's own delta): a CLI `notify` invocation is
+    /// deliberately exactly one entry per call, not a coalesced delta.
+    ///
+    /// `surfaceID` is set to the resolved tab id, not a fresh random UUID
+    /// like the other two record methods' `surfaceID: UUID = UUID()`
+    /// default — #0281's Gotchas flagged that default as vestigial (nothing
+    /// reads it) and worth cleaning up "whenever the feed model is next
+    /// touched." This is that touch, scoped to this new call site only; the
+    /// existing two are left alone.
+    @discardableResult
+    public func recordCLINotification(tabID: UUID, title: String, body: String?, playSound: Bool) -> NotifyOutcome {
+        let keyWindowID = keyWindowRuntime()?.id
+        let multiWindow = keyWindowID != nil
+        for window in windows {
+            guard let location = window.locate(tabID: tabID) else { continue }
+            let isOwnerKey = !multiWindow || window.id == keyWindowID
+            let effectivelySeen = location.isFocused && isOwnerKey
+            let entry = BellFeedEntry(
+                timestamp: Date(),
+                windowID: window.id.value,
+                sessionID: location.session.id,
+                paneID: location.pane.id,
+                tabID: location.tab.id,
+                surfaceID: location.tab.id,
+                message: Self.formatNotifyMessage(title: title, body: body),
+                seen: effectivelySeen
+            )
+            bellFeed.record(entry)
+            if !effectivelySeen {
+                window.propagateUnseenForced(at: location)
+            }
+            postNotification(for: entry, at: location, playSound: playSound)
+            scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
+            return .posted
+        }
+        return .unknownTab
+    }
+
+    private static func formatNotifyMessage(title: String, body: String?) -> String {
+        guard let body, !body.isEmpty else { return title }
+        return "\(title)\n\(body)"
+    }
+
     public func markBellSeen(id: UUID) {
         guard let entry = bellFeed.markSeen(id: id) else { return }
         for window in windows {
@@ -953,7 +1039,7 @@ public final class AppStateStore {
         windows.first { $0.sessions.contains(where: { $0.id == sessionID }) }
     }
 
-    private func postNotification(for entry: BellFeedEntry, at location: WindowRuntime.BellLocation) {
+    private func postNotification(for entry: BellFeedEntry, at location: WindowRuntime.BellLocation, playSound: Bool = true) {
         guard let notifier else { return }
         guard !location.session.notificationsMuted else { return }
         let paneIndex = (location.session.tree.allPanes.firstIndex { $0.id == location.pane.id } ?? 0) + 1
@@ -970,7 +1056,8 @@ public final class AppStateStore {
             for: entry,
             sessionTitle: location.session.title,
             paneIndex: paneIndex,
-            tabLabel: tabLabel
+            tabLabel: tabLabel,
+            playSound: playSound
         )
     }
 

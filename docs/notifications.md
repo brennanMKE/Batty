@@ -79,6 +79,19 @@ Two distinct event kinds enter the pipeline:
 Both event kinds are observed by `.onChange` modifiers in `PaneView` and
 flow through `TabRuntime` into `AppStateStore`'s bell-routing methods.
 
+A third source enters the pipeline downstream of libghostty entirely:
+**`batty notify --title <t> [--body <b>] [--sound]`** (#0284), the CLI
+verb an out-of-band agent uses to post into the feed without a pane of
+its own emitting anything. It goes over XPC (not the fire-and-forget
+`batty://` scheme) so a caller can tell success from silent failure —
+see `AppStateStore.recordCLINotification(tabID:title:body:playSound:)`
+in section 10. It always resolves to a real tab (an explicit `--tab`,
+`BATTY_TAB_ID` env, or the app's focused tab) and rides the same
+`BellFeedEntry` shape as a BEL/OSC-9 entry, unmodified — no new "kind"
+field distinguishes it, so a CLI-originated row looks like any other
+except for its message text (`title`, or `title\nbody` when `--body` is
+given).
+
 ---
 
 ## 3. The bell-feed pipeline
@@ -280,6 +293,15 @@ Behavior contract:
   Settings → Notifications controls whether the `UNNotificationContent`
   request carries `.default` sound; it does not stop libghostty from
   ringing in-surface.
+- **`batty notify` (#0284) follows the same mute contract as a real
+  bell** — a muted session's feed entry and unseen counters still
+  update; only the banner is suppressed. `BellNotifying.post`'s
+  `playSound` parameter (added in #0284) is a separate, per-call gate
+  layered on top of the existing app-wide "Play sound" toggle: `notify
+  --sound` requests sound *subject to* that toggle, never overriding
+  it, and omitting `--sound` posts silently regardless of the toggle. A
+  real bell/OSC-9 entry always passes `playSound: true`, so this is
+  purely additive — existing behavior for BEL/OSC-9 is unchanged.
 
 Mute state does not survive a relaunch — each session starts unmuted on launch.
 
@@ -349,7 +371,8 @@ the tab doesn't need a delayed banner for the same bell.
 |---|---|
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/BellNotifier.swift`](../BattyKit/Sources/BattyKit/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, and the tap-to-jump delegate (`onTapEntry`). |
-| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `recordBellTick`, `recordDesktopNotification`, `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `recordBellTick`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
 | [`../BattyKit/Sources/BattyKit/BellFeedView.swift`](../BattyKit/Sources/BattyKit/BellFeedView.swift) | The popover and `BellFeedRow`. Path-label formatting lives here. |
 | [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) | `recordBellTickIfNeeded()` (returns `Int` delta), `recordDesktopNotificationIfNeeded()` (returns `Bool`), `bellCount` / `unseenBellCount` / `lastBellAt` / `lastBellMessage`. |
 | [`../BattyKit/Sources/BattyKit/PaneView.swift`](../BattyKit/Sources/BattyKit/PaneView.swift) | `.onChange(of: tab.terminal.bellCount)` and `.onChange(of: tab.terminal.lastDesktopNotificationAt)` observers; also `.onChange(of: pane.activeTabID)` that calls `markActiveTabSeen()`. |

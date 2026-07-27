@@ -104,6 +104,28 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0284. Reuses #0282/#0283's mutating-verb dance. The app either
+    /// posts a `BellFeedEntry` attributed to the target tab, or reports a
+    /// failure (unknown/stale `tabID`, no tab to target) via
+    /// `.requestFailed`, which the CLI turns into exit `4` — the reason
+    /// `notify` moved to XPC rather than staying on the fire-and-forget
+    /// `batty://` scheme.
+    static func notify(
+        endpoint: NSXPCListenerEndpoint,
+        tabID: UUID?,
+        title: String,
+        body: String?,
+        sound: Bool,
+        timeout: TimeInterval
+    ) -> Outcome<NotifyReply> {
+        let requestPayload = try? JSONEncoder().encode(NotifyRequest(tabID: tabID, title: title, body: body, sound: sound))
+        let outcome: Outcome<NotifyReply> = perform(verb: XPCVerb.notify, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "notify")
+        if case .success = outcome {
+            logger.info("notify -> tab=\(tabID?.uuidString ?? "<focused>", privacy: .public)")
+        }
+        return outcome
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

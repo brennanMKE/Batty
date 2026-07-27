@@ -7,14 +7,17 @@ import Testing
 @MainActor
 final class SpyBellNotifier: BellNotifying {
     private(set) var postedEntries: [BellFeedEntry] = []
+    private(set) var postedPlaySoundFlags: [Bool] = []
 
     func post(
         for entry: BellFeedEntry,
         sessionTitle: String,
         paneIndex: Int,
-        tabLabel: String
+        tabLabel: String,
+        playSound: Bool
     ) {
         postedEntries.append(entry)
+        postedPlaySoundFlags.append(playSound)
     }
 }
 

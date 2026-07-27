@@ -1090,13 +1090,39 @@ Grounded directly in the code above, not aspirational:
   so `focusedPaneID` never dangles on a removed pane. On success there is
   nothing to chain on (unlike `pane split`'s new-pane id), so the CLI prints
   nothing and exits `0`.
+- **Third mutating XPC verb, #0284 — the agent loop's terminal step.**
+  `batty notify --title <t> [--body <b>] [--sound] [--tab <id>]` posts an
+  entry into the Bell Feed — a long-running agent's way to say "done" or
+  "I need input" without the user watching that pane. Went to XPC for the
+  same reason `pane split`/`pane close` did: `notify` is the *last* step of
+  the agent loop, so a silent failure here ("the agent believes the user
+  was told, but nothing happened") is the least recoverable in the whole
+  chain, and `batty://`'s only edge over XPC — launching a not-yet-running
+  app — is worthless when posting into that app's feed is the entire
+  point. `--tab` resolves through the same `BattyTargetResolver` chain as
+  `pane split`/`pane close`'s `--pane`, one tier further down (a
+  `BellFeedEntry` needs a real tab, not merely a real pane): explicit flag
+  → `BATTY_TAB_ID` env → the app's focused tab. There is deliberately no
+  placeholder-id path — an unresolvable target (unknown/stale `--tab`, or
+  no tab resolvable at all) is a visible failure (exit `4`), not a feed row
+  stuffed with dead ids. `notify` reuses the existing `BellFeedEntry`
+  shape unmodified (no new kind field): a resolved real tab means
+  click-to-jump, cleanup-on-tab-close, per-session mute, and AI
+  summarization all apply exactly as they do to a BEL/OSC-9 entry. `--body`
+  is optional; the feed row's message is the title alone, or
+  `"<title>\n<body>"` when a body is given. `--sound` requests sound on
+  this one notification, gated by (never overriding) Settings →
+  Notifications → "Play sound" — omitting it posts silently regardless of
+  that toggle. On success there is nothing to chain on, so the CLI prints
+  nothing and exits `0`, matching `pane close`. See `docs/notifications.md`
+  for the full pipeline this rides.
 - **The rest of the command surface is still growing.** `session`/`pane`
   now each have real subcommands (`session info`, `pane split`, `pane
-  close`), but the full `session`/`pane`/`tab`/`window` noun/verb grammar,
-  `--json` on every verb, client-generated ids for chaining, and the
-  `notify`/`open` bare verbs remain `issues/0257.md`'s (open) Tier 0 + Tier
-  1 proposal — see that issue's "Children and gating order" table for what
-  has and hasn't shipped.
+  close`), and the bare `notify` verb has shipped, but the full
+  `session`/`pane`/`tab`/`window` noun/verb grammar, `--json` on every
+  verb, client-generated ids for chaining, and the `open` bare verb remain
+  `issues/0257.md`'s (open) Tier 0 + Tier 1 proposal — see that issue's
+  "Children and gating order" table for what has and hasn't shipped.
 - **Cold-launch double-session.** As noted in the trace above, `batty
   <path>` against a not-yet-running Batty produces both the default
   cold-launch session and the requested-path session — acceptable per
