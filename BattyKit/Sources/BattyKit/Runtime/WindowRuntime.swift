@@ -6,6 +6,30 @@ import OSLog
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "WindowRuntime")
 
+/// Result of `WindowRuntime.closePane(id:refuseIfAppsLastPane:)` /
+/// `AppStateStore.closePane(id:)` (#0283).
+public enum PaneCloseOutcome: Equatable, Sendable {
+    /// The pane was closed: every Tab's Terminal Session in it ended, and
+    /// its region left the split tree with the sibling subtree taking over
+    /// the space.
+    case closed
+    /// No pane with that id exists in any window.
+    case unknownPane
+    /// At least one Tab in the pane has a process libghostty reports as
+    /// still needing confirmation to close (`TerminalViewState
+    /// .needsConfirmClose`). There is no UI to confirm in over XPC, so the
+    /// close is refused outright rather than silently bypassing the guard
+    /// the user configured or force-killing the process unasked.
+    case needsConfirmation
+    /// Closing would leave the app with zero sessions across every
+    /// window — the exact condition that walks into #0217's silent-quit
+    /// cascade (`onAllSessionsClosed` → window close → app termination,
+    /// with no confirmation dialog since `applicationShouldTerminate` finds
+    /// no tabs left by the time it runs). Refused so an unattended XPC
+    /// caller cannot chain a single command into quitting Batty.
+    case refusedLastPane
+}
+
 /// Per-window state and behavior. One instance per content window;
 /// with a single window, `AppStateStore.shared.windows[0]` is the
 /// unique instance. Follows the `SessionRuntime`/`PaneRuntime`/`TabRuntime`
@@ -267,6 +291,72 @@ public final class WindowRuntime {
 
     public func cancelPendingClose() {
         pendingCloseRequest = nil
+    }
+
+    // MARK: - Pane close (#0283)
+
+    /// Ends every Tab's Terminal Session in `paneID` and removes the pane's
+    /// region from its owning session's split tree, the sibling subtree
+    /// taking over the space — deliberately distinct from `closeTab`, which
+    /// ends one tab and removes the pane only when it was that pane's last
+    /// tab. Reuses `closeTab`'s teardown primitives (`cleanUpBellState`,
+    /// `TerminalHostStore.releaseTerminalView`, `SplitTree.removePane`,
+    /// `removeSession`) so surface teardown and bell-state cleanup go
+    /// through the same path regardless of entry point.
+    ///
+    /// `refuseIfAppsLastPane`: the caller (`AppStateStore`) has already
+    /// counted every pane across every window and passes `true` only when
+    /// `paneID` is the app's last one — see `PaneCloseOutcome.refusedLastPane`.
+    /// Trusted as given rather than re-derived here: this window's own
+    /// `sessions`/pane counts can't distinguish "the app's last pane" from
+    /// "this window's last pane, but a sibling window still has sessions."
+    @discardableResult
+    public func closePane(id paneID: UUID, refuseIfAppsLastPane: Bool) -> PaneCloseOutcome {
+        for session in sessions {
+            guard let pane = session.tree.allPanes.first(where: { $0.id == paneID }) else { continue }
+            if pane.tabs.contains(where: { $0.terminal.needsConfirmClose }) {
+                logger.notice("closePane: refused pane=\(paneID, privacy: .public) reason=needs-confirmation")
+                return .needsConfirmation
+            }
+            if refuseIfAppsLastPane {
+                logger.notice("closePane: refused pane=\(paneID, privacy: .public) reason=last-pane-in-app")
+                return .refusedLastPane
+            }
+            let tabIDs = Set(pane.tabs.map(\.id))
+            logger.info("closePane pane=\(paneID, privacy: .public) session=\(session.id, privacy: .public) tabs=\(tabIDs.count, privacy: .public)")
+            cleanUpBellState(forTabIDs: tabIDs)
+            for tabID in tabIDs {
+                TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
+            }
+            let treeEmptied = session.tree.removePane(id: pane.id)
+            if treeEmptied {
+                logger.info("closePane tree empty for session=\(session.id, privacy: .public); removing session")
+                removeSession(id: session.id)
+            } else if let focused = session.tree.allPanes.first(where: { $0.id == session.tree.focusedPaneID }),
+                      focused.isHidden {
+                // #0256 binds "never leave focus on a hidden pane" — full
+                // stop, not conditioned on whether some other pane is still
+                // visible. `SplitTree.removePane` reassigns `focusedPaneID`
+                // to `firstLeafPaneID` (the tree's leftmost leaf) whenever
+                // the closed pane was focused, with no regard for `isHidden`
+                // — that leaf can be hidden even while a different, visible
+                // pane exists elsewhere in the tree. Prefer moving focus to
+                // that visible pane (mirrors `hidePane`'s own focus move);
+                // only when none exists (every remaining pane hidden, so
+                // `visiblePanes` is empty) is there nothing to move to, and
+                // the hidden focused pane itself un-hides so the session
+                // isn't rendered blank (#0256's "≥1 visible pane" rule).
+                if let nextVisible = session.tree.visiblePanes.first {
+                    logger.notice("closePane: session=\(session.id, privacy: .public) focus dangled on hidden pane=\(focused.id, privacy: .public); moving to visible=\(nextVisible.id, privacy: .public)")
+                    session.tree.focusedPaneID = nextVisible.id
+                } else {
+                    logger.notice("closePane: session=\(session.id, privacy: .public) left with no visible panes; un-hiding focusedPaneID=\(focused.id, privacy: .public)")
+                    showPane(id: focused.id)
+                }
+            }
+            return .closed
+        }
+        return .unknownPane
     }
 
     // MARK: - Pane focus

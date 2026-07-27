@@ -6,14 +6,27 @@ import BattyXPCCore
 import Foundation
 
 /// `batty pane` — the noun #0257's eventual grammar (`pane hide`, `show`,
-/// `focus`, `zoom`, `close`) will grow siblings under. Only `split` (#0282)
-/// exists today.
+/// `focus`, `zoom`) will grow siblings under. `split` (#0282) and `close`
+/// (#0283) exist today.
 struct PaneNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "pane",
-        abstract: "Split or otherwise control a Batty pane.",
-        subcommands: [PaneSplitCommand.self]
+        abstract: "Split, close, or otherwise control a Batty pane.",
+        subcommands: [PaneSplitCommand.self, PaneCloseCommand.self]
     )
+}
+
+/// Shared `--pane` resolution for every `pane` subcommand: explicit flag →
+/// `BATTY_PANE_ID` env → `nil` (let the app resolve the focused pane).
+/// `nonisolated` — called from each subcommand's `nonisolated func run()`.
+private nonisolated func resolveTargetPaneID(flag: String?) throws -> UUID? {
+    switch BattyTargetResolver.resolve(flag: flag, environmentKey: .paneID) {
+    case let .success(id):
+        return id
+    case let .failure(.malformedFlag(raw)):
+        fputs("batty: invalid --pane id: \(raw)\n", stderr)
+        throw ExitCode.failure
+    }
 }
 
 /// `batty pane split` — the first mutating verb carried over XPC
@@ -49,7 +62,7 @@ struct PaneSplitCommand: ParsableCommand {
     var pane: String?
 
     nonisolated func run() throws {
-        let targetPaneID = try resolvePaneID()
+        let targetPaneID = try resolveTargetPaneID(flag: pane)
         let wireDirection: TopologySplitDirection = direction == .vertical ? .vertical : .horizontal
         let commandOverride = command.flatMap { $0.isEmpty ? nil : $0 }
 
@@ -76,16 +89,60 @@ struct PaneSplitCommand: ParsableCommand {
             }
         }
     }
+}
 
-    /// `--pane` flag → `BATTY_PANE_ID` env → `nil`, meaning "let the app
-    /// resolve the focused pane."
-    private func resolvePaneID() throws -> UUID? {
-        switch BattyTargetResolver.resolve(flag: pane, environmentKey: .paneID) {
-        case let .success(id):
-            return id
-        case let .failure(.malformedFlag(raw)):
-            fputs("batty: invalid --pane id: \(raw)\n", stderr)
-            throw ExitCode.failure
+/// `batty pane close` — the second mutating verb carried over XPC
+/// request/reply (#0283, following #0282's pattern), so a stale/unknown
+/// `--pane` id, a pane XPC has no UI to confirm closing, or a refusal to
+/// close the app's last pane are all visible to the caller (exit `4`)
+/// instead of silently swallowed.
+///
+/// **Not `tab close`:** this ends every Tab's Terminal Session in the pane —
+/// not just the active one — and collapses the pane's region into its
+/// sibling. Closing exactly one tab, removing the pane only when it was
+/// that tab's last, is a different (smaller, unfiled) operation; reach for
+/// that one instead of this one if that's what's wanted.
+struct PaneCloseCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "close",
+        abstract: "Close every tab in the calling/target pane and remove it from the split.",
+        discussion: """
+        Ends every Tab's Terminal Session in the pane, not just the active \
+        one, and collapses the pane's region into its sibling subtree. This \
+        is pane-level close, not tab-level: closing a single tab (removing \
+        the pane only if that tab was its last) is a different, smaller \
+        operation.
+        """,
+        helpNames: .long
+    )
+
+    @Option(name: .long, help: "Pane id to close. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.")
+    var pane: String?
+
+    nonisolated func run() throws {
+        let targetPaneID = try resolveTargetPaneID(flag: pane)
+
+        switch AppConnectDance.resolveEndpoint() {
+        case .failure(.brokerUnreachable):
+            fputs("batty: broker unreachable\n", stderr)
+            throw ExitCode(XPCExitCode.brokerUnreachable)
+        case .failure(.appUnavailable):
+            fputs("batty: app unavailable\n", stderr)
+            throw ExitCode(XPCExitCode.appUnavailable)
+        case .success(let endpoint):
+            switch AppServiceClient.paneClose(endpoint: endpoint, paneID: targetPaneID, timeout: 3.0) {
+            case .success:
+                break
+            case .unreachable:
+                fputs("batty: app unavailable\n", stderr)
+                throw ExitCode(XPCExitCode.appUnavailable)
+            case .requestFailed(let message):
+                fputs("batty: request failed — \(message)\n", stderr)
+                throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
+            }
         }
     }
 }

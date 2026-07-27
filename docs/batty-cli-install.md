@@ -1068,13 +1068,35 @@ Grounded directly in the code above, not aspirational:
   (`c69c34354e511af7a3e6d7e5e2a4fa2fed4b90ff`) directly — `false` by
   default, `true` accepted with zero config diagnostics — rather than
   assumed from the directive's name.
+- **Second mutating XPC verb, #0283.** `batty pane close [--pane <id>]` ends
+  **every** Tab's Terminal Session in the calling/target pane — not just the
+  active one — and removes the pane's region from the split tree, the
+  sibling subtree taking over the space. This is **pane-level** close, and
+  is deliberately distinct from `tab close` (closing one tab, removing the
+  pane only when that was its last): an agent that wants the smaller
+  operation must reach for `tab close`, not this verb. `--pane` resolves
+  through the same `BattyTargetResolver` chain as `pane split`. Three
+  distinct conditions all report the same visible failure (exit `4`, not a
+  silent no-op): an unknown/stale `--pane` id; a pane holding a Tab that
+  libghostty reports as still needing close confirmation, which is refused
+  outright rather than silently bypassed (there is no UI for an XPC caller
+  to confirm in) or force-killed unasked; and closing what would be the
+  app's very last pane across every window, refused so an unattended agent
+  cannot chain a single command into quitting Batty with no confirmation
+  dialog — the same silent-quit shape tracked (for the shell-exit path) by
+  `issues/0217.md`. Closing a non-last pane that was its session's last
+  closes that session, mirroring the existing `closeTab` cascade; closing
+  the tree's focused pane moves focus to the pane that absorbs its space,
+  so `focusedPaneID` never dangles on a removed pane. On success there is
+  nothing to chain on (unlike `pane split`'s new-pane id), so the CLI prints
+  nothing and exits `0`.
 - **The rest of the command surface is still growing.** `session`/`pane`
-  now each have a real subcommand (`session info`, `pane split`), but the
-  full `session`/`pane`/`tab`/`window` noun/verb grammar, `--json` on
-  every verb, client-generated ids for chaining, and the `notify`/`open`
-  bare verbs remain `issues/0257.md`'s (open) Tier 0 + Tier 1 proposal —
-  see that issue's "Children and gating order" table for what has and
-  hasn't shipped.
+  now each have real subcommands (`session info`, `pane split`, `pane
+  close`), but the full `session`/`pane`/`tab`/`window` noun/verb grammar,
+  `--json` on every verb, client-generated ids for chaining, and the
+  `notify`/`open` bare verbs remain `issues/0257.md`'s (open) Tier 0 + Tier
+  1 proposal — see that issue's "Children and gating order" table for what
+  has and hasn't shipped.
 - **Cold-launch double-session.** As noted in the trace above, `batty
   <path>` against a not-yet-running Batty produces both the default
   cold-launch session and the requested-path session — acceptable per

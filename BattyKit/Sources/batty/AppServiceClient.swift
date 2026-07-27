@@ -85,6 +85,25 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0283. Reuses #0282's mutating-verb dance. The app either ends every
+    /// Tab's Terminal Session in the target pane and removes it from the
+    /// split tree, or reports a failure (unknown/stale `paneID`, a Tab
+    /// needing confirmation XPC has no UI to give, or a refusal to close
+    /// the app's last remaining pane) via `.requestFailed`, which the CLI
+    /// turns into exit `4`.
+    static func paneClose(
+        endpoint: NSXPCListenerEndpoint,
+        paneID: UUID?,
+        timeout: TimeInterval
+    ) -> Outcome<PaneCloseReply> {
+        let requestPayload = try? JSONEncoder().encode(PaneCloseRequest(paneID: paneID))
+        let outcome: Outcome<PaneCloseReply> = perform(verb: XPCVerb.paneClose, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "paneClose")
+        if case .success = outcome {
+            logger.info("paneClose -> pane=\(paneID?.uuidString ?? "<focused>", privacy: .public)")
+        }
+        return outcome
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

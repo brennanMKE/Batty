@@ -25,4 +25,14 @@ public nonisolated enum XPCVerb {
     /// CLI surfaces as exit `4` — the reason this verb is on XPC rather than
     /// the fire-and-forget `batty://` scheme.
     public static let paneSplit = "paneSplit"
+
+    /// #0283: the second mutating XPC verb. Ends every Tab's Terminal
+    /// Session in the target pane and removes its region from the split
+    /// tree, replying with an empty `PaneCloseReply` on success as
+    /// `XPCResponse.payload`. Request payload is `PaneCloseRequest`. A
+    /// failure reply (`ok: false`) covers an unknown/stale
+    /// `PaneCloseRequest.paneID`, a pane with a Tab that needs confirmation
+    /// XPC has no UI to give, and a refusal to close the app's last
+    /// remaining pane — the CLI surfaces all three as exit `4`.
+    public static let paneClose = "paneClose"
 }

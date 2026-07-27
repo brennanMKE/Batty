@@ -267,6 +267,42 @@ public final class AppStateStore {
         return nil
     }
 
+    // MARK: - XPC pane close (#0283)
+
+    /// Ends every Tab's Terminal Session in `paneID` and removes its region
+    /// from its owning session's split tree — #0283's XPC `pane close`
+    /// verb. Searches every window's every session, same as `splitPane`, so
+    /// a background-session target resolves identically to a foreground
+    /// one; the actual mutation happens in `WindowRuntime.closePane`, which
+    /// never touches `selectedSessionID` unless the closed pane emptied its
+    /// own session (in which case `removeSession`'s existing, already-safe
+    /// "only reassign if the removed session was selected" behavior
+    /// applies).
+    ///
+    /// Refuses (`.refusedLastPane`) rather than closing the app's very last
+    /// pane across every window: see `PaneCloseOutcome.refusedLastPane` — an
+    /// unattended XPC caller must not have a one-command path into #0217's
+    /// silent-quit cascade. Nothing in the UI calls this method today (no
+    /// pane-level close exists outside this verb), so the guard only ever
+    /// applies to XPC-driven closes.
+    ///
+    /// The refusal condition counts panes directly (`totalPanes == 1`)
+    /// rather than proxying through `windows.count == 1` — a `WindowRuntime`
+    /// can linger in `windows` with an empty `sessions` array (its own doc
+    /// comment on `closeWindowCallback` notes a session can close before the
+    /// view tree wires up the real NSWindow), which would make the
+    /// window-count proxy read `false` while the app genuinely has one pane
+    /// left. Counting panes is immune to that: an empty `WindowRuntime`
+    /// contributes zero to the sum either way.
+    @discardableResult
+    public func closePane(id paneID: UUID) -> PaneCloseOutcome {
+        let totalPanes = windows.reduce(0) { $0 + $1.sessions.reduce(0) { $0 + $1.tree.allPanes.count } }
+        for window in windows where window.sessions.contains(where: { $0.tree.root.contains(paneID: paneID) }) {
+            return window.closePane(id: paneID, refuseIfAppsLastPane: totalPanes == 1)
+        }
+        return .unknownPane
+    }
+
     /// Registers the association between an `NSWindow` and its `WindowID`.
     /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
     /// the hosting NSWindow is known (from `updateNSView`, deferred off the

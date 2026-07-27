@@ -116,6 +116,39 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 logger.info("perform paneSplit -> pane=\(newPaneID, privacy: .public)")
                 pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
             }
+        case XPCVerb.paneClose:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(PaneCloseRequest.self, from: payloadData)
+                else {
+                    logger.error("perform paneClose: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed pane close request")))
+                    return
+                }
+                guard let targetPaneID = request.paneID ?? AppStateStore.shared.focusedPaneIDFallback() else {
+                    logger.error("perform paneClose: no pane to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no pane to close")))
+                    return
+                }
+                switch AppStateStore.shared.closePane(id: targetPaneID) {
+                case .closed:
+                    guard let replyData = try? JSONEncoder().encode(PaneCloseReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane close reply")))
+                        return
+                    }
+                    logger.info("perform paneClose -> pane=\(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownPane:
+                    logger.error("perform paneClose: unknown pane id \(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
+                case .needsConfirmation:
+                    logger.notice("perform paneClose: refused pane=\(targetPaneID, privacy: .public) reason=needs-confirmation")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "pane has a running process; close refused without confirmation")))
+                case .refusedLastPane:
+                    logger.notice("perform paneClose: refused pane=\(targetPaneID, privacy: .public) reason=last-pane-in-app")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "refusing to close the app's last pane")))
+                }
+            }
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
             pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown verb: \(decoded.verb)")))
