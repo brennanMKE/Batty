@@ -1029,19 +1029,20 @@ Grounded directly in the code above, not aspirational:
   registered for the scheme" (in that case `open` typically still exits 0
   having handed the URL to Launch Services, or fails with its own
   Launch-Services-level error, not a Batty-specific one).
-- **No way for the CLI to observe app state.** There is no query surface
-  at all today — no "list sessions," no "am I even running," nothing.
-  `issues/0257.md` proposes (as an *unimplemented* plan) a debounced,
-  atomically-written JSON topology snapshot on disk
-  (`~/Library/Application Support/Batty/state.json`) as a lightweight
-  read path that avoids standing up a socket, plus a `batty whoami`
-  verb that would read `BATTY_*` environment variables injected into
-  spawned shells — **none of this env-var injection or snapshot writing
-  exists in the current codebase**; `BattyURLHandler.swift` and
-  `AppStateStore.addSession` contain no code that sets `BATTY_SESSION_ID`/
-  `BATTY_PANE_ID`/`BATTY_TAB_ID` or writes any state file. Treat
-  `docs/batty-cli-design.md` and `issues/0257.md` as forward-looking
-  design material, not current behavior.
+- **Query surface, updated as of #0281.** `issues/0257.md` originally
+  proposed (as an *unimplemented* plan) a debounced, atomically-written
+  JSON topology snapshot on disk (`~/Library/Application Support/Batty/
+  state.json`) as a lightweight read path that avoids standing up a
+  socket, plus a `batty whoami` verb reading `BATTY_*` env vars injected
+  into spawned shells. The snapshot plan was dropped by #0274 in favor of
+  live `batty list`/`batty session info` over XPC (see that issue's
+  Resolution notes) — those still require the app/broker to be reachable.
+  The env-var half shipped separately in #0281: `BATTY_SESSION_ID`/
+  `BATTY_PANE_ID`/`BATTY_TAB_ID` are injected into every surface at spawn
+  (`TabRuntime.applyShellAndAppearancePreferences`, via libghostty's `env =`
+  config directive), and `batty id [--json]` (alias `whoami`) reads them
+  with **no app round-trip** — it works even when the app/broker is
+  unreachable, which is what distinguishes it from `list`/`session info`.
 - **The command surface is a single positional argument.** No
   `session`/`pane`/`tab`/`window` noun/verb grammar, no `--json`, no
   client-generated ids for chaining commands, no `notify`/`open` bare

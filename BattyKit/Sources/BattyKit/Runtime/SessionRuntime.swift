@@ -40,6 +40,11 @@ public final class SessionRuntime: Identifiable {
         self.notificationsMuted = notificationsMuted
         self.titleOverride = titleOverride
         self.paneFrames = PaneFrameTracker()
+        // #0281: attach every pane/tab already in the tree (whether the
+        // caller-supplied tree or the default single-pane one above) to
+        // this session's id, so BATTY_SESSION_ID/BATTY_PANE_ID are set
+        // before any surface in it can spawn.
+        self.tree.attachToSession(self.id)
     }
 
     public var focusedPane: PaneRuntime {

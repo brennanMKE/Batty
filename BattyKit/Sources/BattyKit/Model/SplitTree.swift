@@ -98,6 +98,15 @@ public final class SplitTree {
     public var root: SplitTreeNode
     public var focusedPaneID: UUID
 
+    /// The owning session, set once by `SessionRuntime.init` via
+    /// ``attachToSession(_:)``. Every pane created afterward through
+    /// ``splitFocusedPane(direction:ratio:inheritingFrom:)`` or
+    /// ``splitFullDimension(direction:ratio:inheritingFrom:)`` is attached
+    /// to it immediately (#0281's `BATTY_PANE_ID`/`BATTY_SESSION_ID`
+    /// plumbing). `nil` for a standalone tree not owned by any session
+    /// (e.g. a bare unit-test fixture).
+    public internal(set) var sessionID: UUID?
+
     public init(root: SplitTreeNode) {
         self.root = root
         self.focusedPaneID = root.firstLeafPaneID
@@ -105,6 +114,15 @@ public final class SplitTree {
 
     public convenience init() {
         self.init(root: .leaf(PaneRuntime()))
+    }
+
+    /// Attaches this tree and every pane it currently contains to
+    /// `sessionID`. Called once by `SessionRuntime.init`.
+    public func attachToSession(_ sessionID: UUID) {
+        self.sessionID = sessionID
+        for pane in allPanes {
+            pane.attachToSession(sessionID)
+        }
     }
 
     public var focusedPane: PaneRuntime {
@@ -134,6 +152,9 @@ public final class SplitTree {
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
         let newPane = Self.makePane(inheritingFrom: source)
+        if let sessionID {
+            newPane.attachToSession(sessionID)
+        }
         if let newRoot = SplitTreeNode.inserting(
             newPane: newPane,
             adjacentTo: focusedPaneID,
@@ -176,6 +197,9 @@ public final class SplitTree {
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
         let newPane = Self.makePane(inheritingFrom: source)
+        if let sessionID {
+            newPane.attachToSession(sessionID)
+        }
         root = .split(id: UUID(), direction: direction, ratio: ratio, left: root, right: .leaf(newPane))
         focusedPaneID = newPane.id
         return newPane

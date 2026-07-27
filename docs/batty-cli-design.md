@@ -41,13 +41,28 @@ The load-bearing foundation. Every app injects IDs into each surface's env and
 defaults CLI flags to them (supacode `SUPACODE_SURFACE_ID`, cmux
 `CMUX_SURFACE_ID`, herdr similar). Batty must do the same:
 
-- Inject at surface spawn: **`BATTY_SESSION_ID`, `BATTY_PANE_ID`, `BATTY_TAB_ID`**
-  (and `BATTY_SURFACE_ID` == tab id). (Mechanism + caveats already scoped in the
-  CLI-context discussion; supacode prepends `export …;` to the launch command.)
+- Inject at surface spawn: **`BATTY_SESSION_ID`, `BATTY_PANE_ID`, `BATTY_TAB_ID`**.
+  Batty's Surface registry (`Concepts.md`: `[UUID: ghostty_surface_t]`) is
+  keyed by tab id, so `BATTY_TAB_ID` **is** the surface id — no separate
+  `BATTY_SURFACE_ID` is injected. `pane` and `tab` are the CLI nouns
+  (`Concepts.md`); `surface` is an accepted alias for `tab`, not a
+  separate addressable thing — kept as an alias rather than rejected
+  outright because a Tab owns a Terminal Session *today* but may host a
+  web view or another view type later, and "Terminal Session" is
+  terminal-specific where `tab`/`surface` stay generic across view types.
+  **Landed in #0281**, via libghostty's own `env = KEY=VALUE` config
+  directive (`TabRuntime.applyShellAndAppearancePreferences`) rather than
+  supacode's `export …;` command-line prepend this section originally
+  anticipated — the config directive sets the spawned process's
+  environment directly, works whether or not a custom shell is
+  configured, and has no shell-quoting hazard.
 - Every context-sensitive verb resolves target as: explicit `--session/--pane/--tab`
-  flag → else the `BATTY_*` env → else the app's focused element.
-- `batty whoami` prints the current context **from env alone** — no app round-trip,
-  no socket. (cmux calls this `identify`.)
+  flag → else the `BATTY_*` env → else the app's focused element. **Landed in
+  #0281** as `BattyTargetResolver` (`BattyCLICore`), retrofitted onto
+  `batty session info`.
+- `batty id` (alias `whoami`) prints the current context **from env alone** —
+  no app round-trip, no socket. **Landed in #0281**; `id` is the primary
+  name, `whoami` a supported alias. (cmux calls this `identify`.)
 
 ### 1.3 IPC: one-way vs two-way — the pivotal fork
 - **Mutations** (split, new, close, rename, focus, notify) are fire-and-forget →
@@ -127,7 +142,7 @@ renders them in the session sidebar / pane chrome / bell feed it already has.
 > are the heavier version — see §D-adv.
 
 ### E. Introspection / query  [2-way unless noted]
-- `batty whoami` — current session/pane/tab **[1-way / local env]** (no socket). *(cmux `identify`)*
+- `batty id` (alias `whoami`) — current session/pane/tab **[1-way / local env]** (no socket). **Landed (#0281).** *(cmux `identify`)*
 - `batty ping` — is Batty running **[could be 1-way probe]**. *(all three)*
 - `batty list [sessions|panes|tabs] [--json]` — enumerate live state **[2-way]**. *(all three: `*.list`)*
 - `batty capabilities [--json]` — list supported verbs **[2-way or static]**. *(cmux)*
@@ -164,7 +179,7 @@ worth a look:
 1. **Activity pills / progress / log** (cmux `set-status`/`set-progress`/`log`) —
    the pragmatic "show what the agent is doing" without OSC hacks. **Recommended.**
 2. **`notify`** into the existing bell feed (herdr/cmux) — trivially on-brand. **Recommended.**
-3. **`whoami`/`identify`** from env — free, no socket. **Recommended early.**
+3. **`id` (alias `whoami`)/`identify`** from env — free, no socket. **Landed (#0281).**
 4. **`send-text`/`send-key`** — programmatically drive a terminal (adv).
 5. **`read`** screen/scrollback — let a script/agent read output (adv, socket).
 6. **`wait`** for idle/done — block a script until an agent finishes (adv, socket + events).
@@ -179,7 +194,7 @@ worth a look:
 
 - **Tier 0 — foundation (do first):** the `batty <noun> <verb>` grammar; inject
   `BATTY_*` context env; `--session/--pane/--tab` resolution; `--json` convention;
-  `batty whoami`; keep `batty <path>` working as `batty session new`. Decide IPC:
+  `batty id` (alias `whoami`, landed #0281); keep `batty <path>` working as `batty session new`. Decide IPC:
   **URL scheme for mutations now, reserve a read socket for later.**
 - **Tier 1 — core mutations (all 1-way, no socket):** `pane split`, `tab new`,
   `pane/tab/session close`, `pane/tab/session focus`, `session/tab rename`,

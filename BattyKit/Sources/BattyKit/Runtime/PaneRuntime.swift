@@ -14,6 +14,12 @@ public final class PaneRuntime: Identifiable {
     /// is zeroed. Tree structure is unchanged — hidden is a leaf property.
     public var isHidden: Bool = false
 
+    /// The owning session, set by ``attachToSession(_:)`` once this pane
+    /// joins a `SessionRuntime`'s `SplitTree`. `nil` for a pane not yet
+    /// attached (see `TabRuntime.attachContext(paneID:sessionID:)` for why
+    /// this is deferred rather than known at `init`).
+    public internal(set) var sessionID: UUID?
+
     public init(
         id: UUID = UUID(),
         tabs: [TabRuntime]? = nil,
@@ -44,7 +50,22 @@ public final class PaneRuntime: Identifiable {
         let tab = TabRuntime(workingDirectory: cwd)
         tabs.append(tab)
         activeTabID = tab.id
+        if let sessionID {
+            tab.attachContext(paneID: id, sessionID: sessionID)
+        }
         return tab
+    }
+
+    /// Attaches this pane (and every tab it currently holds) to `sessionID`.
+    /// Called by `SplitTree.attachToSession(_:)` for the tree's existing
+    /// panes and by `SplitTree.splitFocusedPane`/`splitFullDimension` for a
+    /// freshly-created pane — both always run before this pane's tabs can
+    /// have a live libghostty surface (see `TabRuntime.attachContext`).
+    public func attachToSession(_ sessionID: UUID) {
+        self.sessionID = sessionID
+        for tab in tabs {
+            tab.attachContext(paneID: id, sessionID: sessionID)
+        }
     }
 
     /// Removes a tab by id. Allows the pane to become empty — callers

@@ -18,6 +18,13 @@ public final class TabRuntime: Identifiable {
 
     public internal(set) var runningCommandDisplayName: String?
 
+    /// The owning pane/session, filled in by ``attachContext(paneID:sessionID:)``
+    /// once this tab is placed into a `PaneRuntime` that has joined a
+    /// `SessionRuntime`. `nil` at construction — see that method's doc for
+    /// why the ids aren't knowable in `init`.
+    public internal(set) var paneID: UUID?
+    public internal(set) var sessionID: UUID?
+
     /// Observation-tracked mirror of `terminal.workingDirectory`. That
     /// property is Combine `@Published` on an `ObservableObject`
     /// (`TerminalViewState`, from the GhosttyTerminal package), which the
@@ -86,7 +93,7 @@ public final class TabRuntime: Identifiable {
         if let workingDirectory {
             self.terminal.configuration.workingDirectory = workingDirectory
         }
-        Self.applyShellAndAppearancePreferences(to: self.terminal)
+        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil)
         self.bellCount = bellCount
         self.unseenBellCount = unseenBellCount
         self.lastBellAt = lastBellAt
@@ -98,7 +105,38 @@ public final class TabRuntime: Identifiable {
         return definition.toTerminalTheme()
     }
 
-    private static func applyShellAndAppearancePreferences(to terminal: TerminalViewState) {
+    /// Attaches this tab to its owning pane/session and (re-)applies the
+    /// terminal configuration so the `BATTY_*` env vars carry the real ids.
+    ///
+    /// Ids aren't knowable at ``init(id:titleOverride:workingDirectory:bellCount:unseenBellCount:lastBellAt:lastBellMessage:)``
+    /// time: a `TabRuntime` is constructed before the `PaneRuntime` that
+    /// holds it exists (`PaneRuntime.init(tabs:)` takes already-built tabs),
+    /// and that pane in turn is constructed before it joins a
+    /// `SessionRuntime`'s `SplitTree` (#0281). Callers — `SessionRuntime.init`
+    /// (initial tree), `PaneRuntime.addTab`, and `SplitTree.splitFocusedPane`/
+    /// `splitFullDimension` (new panes) — call this as soon as the ids are
+    /// known, which is always before the tab's libghostty surface can spawn:
+    /// surface creation happens later, on first SwiftUI render
+    /// (`TerminalHostStore.terminalView(for:windowID:)`, driven by
+    /// `TerminalPlaceholderView.body`), never synchronously inside these
+    /// model-construction call sites.
+    ///
+    /// Idempotent — a no-op if both ids already match, so re-attaching an
+    /// already-attached tab (e.g. `SplitTree.attachToSession` walking every
+    /// pane) doesn't re-render the ghostty config.
+    public func attachContext(paneID: UUID, sessionID: UUID) {
+        guard self.paneID != paneID || self.sessionID != sessionID else { return }
+        self.paneID = paneID
+        self.sessionID = sessionID
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID)
+    }
+
+    private static func applyShellAndAppearancePreferences(
+        to terminal: TerminalViewState,
+        tabID: UUID,
+        paneID: UUID?,
+        sessionID: UUID?
+    ) {
         let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle()) ?? .block
         let blink = SettingsPreference.resolvedCursorBlink()
         let fontSize = SettingsPreference.resolvedFontSize()
@@ -109,6 +147,21 @@ public final class TabRuntime: Identifiable {
             builder.withCursorStyleBlink(blink)
             if !shell.isEmpty {
                 builder.withCustom("command", shell)
+            }
+            // Agent context (#0257/#0281): libghostty's `env` config
+            // directive sets the spawned process's environment directly —
+            // unlike prepending `export …;` to a shell command line, it
+            // works whether or not a custom shell is configured (the
+            // `command` block above is conditional; `env` isn't) and has no
+            // shell-quoting hazard. paneID/sessionID are nil here at
+            // `TabRuntime.init` time and filled in by `attachContext`
+            // before the surface can spawn — see that method's doc.
+            builder.withCustom("env", "BATTY_TAB_ID=\(tabID.uuidString)")
+            if let paneID {
+                builder.withCustom("env", "BATTY_PANE_ID=\(paneID.uuidString)")
+            }
+            if let sessionID {
+                builder.withCustom("env", "BATTY_SESSION_ID=\(sessionID.uuidString)")
             }
             // Drop libghostty's default Cmd-* bindings (new_window, close_surface,
             // new_tab, new_split, goto_split, etc.) so they fall through to our

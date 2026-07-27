@@ -1,6 +1,7 @@
 // SessionInfoCommand.swift
 
 import ArgumentParser
+import BattyCLICore
 import BattyXPCCore
 import Foundation
 
@@ -18,16 +19,13 @@ struct SessionNounCommand: ParsableCommand {
 /// `batty session info` — the calling/target session's topology slice
 /// (#0274), the single-session shape `batty list` nests.
 ///
-/// **Target resolution seam for #0257:** the eventual resolution order is
-/// `--session` flag → `BATTY_SESSION_ID` env var → focused session. None of
-/// #0257's context groundwork (the env var, `whoami`, client-generated ids)
-/// exists yet, so only the first and last steps are implemented here — an
-/// explicit `--session <id>` flag, falling straight through to the app's
-/// focused-session resolution when omitted. When #0257 lands, its env-var
-/// read slots in as a middle branch in `resolveSessionID()` below, between
-/// the flag check and the `nil` fallthrough; nothing else in this file (or
-/// in `AppStateStore.sessionInfoPayload(sessionID:)`, which already accepts
-/// `nil` as "no explicit target") needs to change.
+/// **Target resolution retrofit (#0281):** `resolveSessionID()` below now
+/// runs the shared `BattyTargetResolver` chain — `--session` flag →
+/// `BATTY_SESSION_ID` env var → `nil` (the app's focused-session
+/// resolution) — completing the seam #0274 deliberately left here (see that
+/// issue's Resolution notes). `AppStateStore.sessionInfoPayload(sessionID:)`
+/// already accepts `nil` as "no explicit target," so nothing app-side
+/// changed.
 struct SessionInfoCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "info",
@@ -71,15 +69,16 @@ struct SessionInfoCommand: ParsableCommand {
         }
     }
 
-    /// `--session` flag → (seam: #0257's `BATTY_SESSION_ID` lands here) →
-    /// `nil`, meaning "let the app resolve the focused session."
+    /// `--session` flag → `BATTY_SESSION_ID` env → `nil`, meaning "let the
+    /// app resolve the focused session."
     private func resolveSessionID() throws -> UUID? {
-        guard let session else { return nil }
-        guard let parsed = UUID(uuidString: session) else {
-            fputs("batty: invalid --session id: \(session)\n", stderr)
+        switch BattyTargetResolver.resolve(flag: session, environmentKey: .sessionID) {
+        case let .success(id):
+            return id
+        case let .failure(.malformedFlag(raw)):
+            fputs("batty: invalid --session id: \(raw)\n", stderr)
             throw ExitCode.failure
         }
-        return parsed
     }
 
     private static func printJSON(_ payload: TopologySessionPayload) throws {
