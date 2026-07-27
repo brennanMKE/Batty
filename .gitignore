@@ -6,6 +6,7 @@ xcuserdata/
 # Xcode-generated Swift package metadata (schemes carry transient run state)
 .swiftpm/
 dist/
+beta-build/
 *.dmg
 screenshots/
 Demo.jpg

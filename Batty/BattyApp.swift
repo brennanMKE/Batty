@@ -5,7 +5,7 @@ import BattyKit
 import OSLog
 import SwiftUI
 
-private let logger = Logger(subsystem: "co.sstools.Batty", category: "BattyApp")
+private let logger = Logger(subsystem: Logging.subsystem, category: "BattyApp")
 
 @main
 struct BattyApp: App {

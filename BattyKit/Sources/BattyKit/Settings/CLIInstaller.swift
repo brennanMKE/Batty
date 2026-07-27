@@ -177,11 +177,17 @@ public enum CLIInstallerError: Error, LocalizedError, Equatable, Sendable {
         case .bundledBinaryNotFound:
             "The CLI binary was not found in the app bundle."
         case .bundleNotDurable(let path):
-            "Batty is running from a build folder (\(path)). Move Batty.app to /Applications, then try installing again."
+            "\((path as NSString).lastPathComponent) is running from a build folder (\(path)). Move \((path as NSString).lastPathComponent) to /Applications, then try installing again."
         case .bundleTranslocated(let path):
-            "Batty is running from a temporary location (\(path)) because it was launched without first being moved to /Applications. Drag Batty.app to /Applications, then relaunch Batty before trying to install the CLI — a translocated copy stays temporary until relaunched from its new location."
+            "\((path as NSString).lastPathComponent) is running from a temporary location (\(path)) because it was launched without first being moved to /Applications. Drag \((path as NSString).lastPathComponent) to /Applications, then relaunch \((path as NSString).lastPathComponent) before trying to install the CLI — a translocated copy stays temporary until relaunched from its new location."
         case .blockedByFile(let path):
-            "\(path) already exists and isn't a symlink Batty created. Remove it manually, then try installing again."
+            // review round 1: this case's `path` is the /usr/local/bin
+            // install path, not a bundle path, so there is no bundle name
+            // to derive here the way the two cases above do — reworded to
+            // not name an app at all rather than half-derive from the
+            // wrong string (or reach for ambient Bundle.main, which would
+            // resolve to the test host, not the real app, under `swift test`).
+            "\(path) already exists and isn't a symlink this installer created. Remove it manually, then try installing again."
         case .cancelled:
             nil
         case .installFailed(let reason):

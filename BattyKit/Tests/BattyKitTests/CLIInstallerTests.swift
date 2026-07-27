@@ -170,6 +170,43 @@ struct CLIInstallerTests {
         #expect(message.contains("relaunch"))
     }
 
+    // #0279: refusal copy must name the app that's actually running, not a
+    // hardcoded "Batty.app" — a Beta build's user-facing message should say
+    // "Batty Beta.app", not the Prod name.
+    @Test func bundleNotDurableAndTranslocatedMessagesNameTheRunningVariantsBundle() {
+        let root = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let derivedDataRoot = root.appending(path: "DerivedData/Batty-abc/Build/Products/Debug", directoryHint: .isDirectory)
+        let (durableTestBundleURL, _) = makeBundle(in: derivedDataRoot, appName: "Batty Beta.app")
+        let notDurableMessage = CLIInstallerError.bundleNotDurable(durableTestBundleURL.path(percentEncoded: false)).errorDescription ?? ""
+        #expect(notDurableMessage.contains("Batty Beta.app"))
+        #expect(!notDurableMessage.contains("Move Batty.app"))
+        // review round 1: the opening clause ("<app> is running from a
+        // build folder…") used to hardcode "Batty" too — now fully derived.
+        #expect(notDurableMessage.hasPrefix("Batty Beta.app is running"))
+
+        let translocationRoot = root.appending(
+            path: "AppTranslocation/8F63B2A1-1234-4A5B-9C1D-000000000000/d",
+            directoryHint: .isDirectory
+        )
+        let (translocatedBundleURL, _) = makeBundle(in: translocationRoot, appName: "Batty Beta.app")
+        let translocatedMessage = CLIInstallerError.bundleTranslocated(translocatedBundleURL.path(percentEncoded: false)).errorDescription ?? ""
+        #expect(translocatedMessage.hasPrefix("Batty Beta.app is running"))
+        #expect(translocatedMessage.contains("Drag Batty Beta.app"))
+        #expect(translocatedMessage.contains("relaunch Batty Beta.app"))
+    }
+
+    // review round 1: .blockedByFile's associated value is an install path
+    // (/usr/local/bin/batty-beta), not a bundle path, so there's no app
+    // name to derive from it the way the two cases above do — the message
+    // was reworded to not name an app at all rather than half-derive.
+    @Test func blockedByFileMessageDoesNotHardcodeAnAppName() {
+        let message = CLIInstallerError.blockedByFile("/usr/local/bin/batty-beta").errorDescription ?? ""
+        #expect(!message.contains("Batty created"))
+        #expect(message.contains("this installer created"))
+    }
+
     // MARK: - uninstall() safety
 
     @Test func uninstallThrowsBlockedByFileAndLeavesTheRealFileUntouched() throws {

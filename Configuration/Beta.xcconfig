@@ -3,6 +3,15 @@
 
 PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty.beta
 
+// #0279: distinct product name so a Beta build can sit in /Applications
+// next to Batty.app without a name collision. Both Embed phases derive
+// their destination paths from $(CONTENTS_FOLDER_PATH) /
+// $(UNLOCALIZED_RESOURCES_FOLDER_PATH), which follow WRAPPER_NAME =
+// $(PRODUCT_NAME).app automatically — verified on a built bundle.
+// Overrides APP_PRODUCT_NAME (App.xcconfig), not PRODUCT_NAME directly —
+// BattyTests' TEST_HOST reads the same variable (review round 1).
+APP_PRODUCT_NAME = Batty Beta
+
 // Sparkle disabled for dev builds — no update prompts during development.
 SU_FEED_URL =
 SU_PUBLIC_ED_KEY =

@@ -1,5 +1,6 @@
 // SessionNameCache.swift
 
+import BattyXPCCore
 import Foundation
 import Observation
 import os
@@ -79,11 +80,35 @@ public final class SessionNameCache {
         self.entriesByPath = Self.loadFromDisk(fileURL: resolvedURL, fileManager: fileManager)
     }
 
-    public static func canonicalFileURL(fileManager: FileManager = .default) throws -> URL {
+    /// This app's own Application Support directory name, derived from
+    /// `Bundle.main.bundleIdentifier` (#0279's per-variant cache-directory
+    /// leak: both variants used to resolve `defaultDirectoryName`
+    /// unconditionally and clobber each other's `session-name-cache.json`
+    /// via last-writer-wins whole-file saves). Prod resolves to
+    /// `defaultDirectoryName` byte-identical to every prior release — no
+    /// migration for the running Prod app. Falls back to Prod's name
+    /// (logged) for a bundle identifier that matches neither known
+    /// variant, mirroring `CLIInstaller.resolvedInstallPath` and
+    /// `BrokerAgentController.resolvedPlistName`.
+    public static func resolvedDirectoryName(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> String {
+        guard let variant = ServiceNames.Variant(bundleIdentifier: bundleIdentifier) else {
+            logger.error("resolvedDirectoryName: bundle identifier \(bundleIdentifier ?? "<nil>", privacy: .public) does not match any known Batty variant — defaulting to Prod's cache directory")
+            return defaultDirectoryName
+        }
+        switch variant {
+        case .prod: return defaultDirectoryName
+        case .beta: return "Batty Beta"
+        }
+    }
+
+    public static func canonicalFileURL(
+        fileManager: FileManager = .default,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) throws -> URL {
         guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw SessionNameCacheError.applicationSupportUnavailable
         }
-        let dir = appSupport.appendingPathComponent(defaultDirectoryName, isDirectory: true)
+        let dir = appSupport.appendingPathComponent(resolvedDirectoryName(bundleIdentifier: bundleIdentifier), isDirectory: true)
         return dir.appendingPathComponent(defaultFileName)
     }
 

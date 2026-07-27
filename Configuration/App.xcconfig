@@ -1,6 +1,27 @@
 
 PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty
-PRODUCT_NAME = Batty
+
+// #0279 review round 1: pulled out of a plain PRODUCT_NAME so BattyTests'
+// TEST_HOST / BUNDLE_LOADER (project.pbxproj) can reference the same
+// variant-derived app product name — those used to hardcode the literal
+// "Batty.app", which broke `build-for-testing` once Beta got a distinct
+// PRODUCT_NAME. BattyTests now carries baseConfigurationReference =
+// App.xcconfig (same file the "Batty" app target itself uses) so this
+// variable — and Beta.xcconfig's override of it — are visible there too.
+//
+// #0279 review round 2: that inheritance has a real side effect —
+// GENERATE_INFOPLIST_FILE = YES does NOT override an inherited
+// INFOPLIST_FILE, it MERGES with it: this file's INFOPLIST_FILE
+// (Configuration/Info.plist, the real app's plist — CFBundleURLTypes,
+// NSPrincipalClass, every usage-description string) was ending up baked
+// into BattyTests.xctest's generated Info.plist, verified by inspecting
+// the built plist directly. That's a nested bundle registering as a third
+// batty:// scheme handler — exactly the ambiguity leak 3 of this issue is
+// about, just one layer down. BattyTests' own target-level
+// INFOPLIST_FILE = "" (project.pbxproj) empties the inherited value so
+// GENERATE_INFOPLIST_FILE produces a clean plist instead of merging.
+APP_PRODUCT_NAME = Batty
+PRODUCT_NAME = $(APP_PRODUCT_NAME)
 MARKETING_VERSION = 1.0.5
 CURRENT_PROJECT_VERSION = 1
 

@@ -117,6 +117,21 @@ fi
 # Multiple DerivedData dirs can coexist (Batty-<hash>) after Xcode reshuffles;
 # pick the most recently modified Batty.app so a stale one doesn't fail the
 # check.
+#
+# This is deliberately pinned to the literal name "Batty.app" — this is a
+# Prod-release preflight (Sparkle feed, notarization, MARKETING_VERSION),
+# so it must only ever match a Prod build. Before #0279 gave Beta a
+# distinct PRODUCT_NAME ("Batty Beta"), both variants produced "Batty.app"
+# and this glob could silently pick up a Beta build instead of Prod's
+# (most-recently-modified wins) -- #0026's stray-copy hazard in
+# scripts/release.sh is the same class of bug. After #0279, the product
+# name follows the *resolved variant* (Configuration/Active.xcconfig at
+# settings-evaluation time), not the scheme name used to invoke
+# xcodebuild -- a stray "Batty (Prod)" build with Active.xcconfig left on
+# Beta (the exact bug review round 1 caught in scripts/build-beta.sh)
+# still produces "Batty Beta.app", never a literal "Batty.app" with Beta's
+# contents. So this glob only ever matches a Prod-configured product; no
+# logic change needed here, the rename alone fixes the original ambiguity.
 BUILT_APP=$(find ~/Library/Developer/Xcode/DerivedData/Batty-* \
     -type d -name "Batty.app" -path "*/Build/Products/Debug/*" \
     ! -path "*Index.noindex*" -print0 2>/dev/null \

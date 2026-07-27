@@ -241,4 +241,34 @@ struct SessionNameCacheTests {
         #expect(!AppStateStore.isDefaultSessionTitle("session 1"))
         #expect(!AppStateStore.isDefaultSessionTitle("Session 1 Copy"))
     }
+
+    // MARK: - Per-variant cache directory (#0279)
+
+    @Test func resolvedDirectoryNameIsProdsUnchangedLiteralForAProdBundleIdentifier() {
+        #expect(SessionNameCache.resolvedDirectoryName(bundleIdentifier: "co.sstools.Batty") == SessionNameCache.defaultDirectoryName)
+        #expect(SessionNameCache.defaultDirectoryName == "Batty")
+    }
+
+    @Test func resolvedDirectoryNameIsDistinctForABetaBundleIdentifier() {
+        let betaDirectory = SessionNameCache.resolvedDirectoryName(bundleIdentifier: "co.sstools.Batty.beta")
+        #expect(betaDirectory == "Batty Beta")
+        #expect(betaDirectory != SessionNameCache.defaultDirectoryName)
+    }
+
+    @Test func resolvedDirectoryNameFallsBackToProdForAnUnrecognizedBundleIdentifier() {
+        #expect(SessionNameCache.resolvedDirectoryName(bundleIdentifier: "com.example.SomeOtherApp") == SessionNameCache.defaultDirectoryName)
+        #expect(SessionNameCache.resolvedDirectoryName(bundleIdentifier: nil) == SessionNameCache.defaultDirectoryName)
+    }
+
+    @Test func canonicalFileURLKeepsProdsPathByteIdenticalToTheNoMigrationGuarantee() throws {
+        let prodURL = try SessionNameCache.canonicalFileURL(bundleIdentifier: "co.sstools.Batty")
+        #expect(prodURL.path(percentEncoded: false).hasSuffix("/Library/Application Support/Batty/session-name-cache.json"))
+    }
+
+    @Test func canonicalFileURLDivergesForBetaSoTheTwoVariantsNeverShareAFile() throws {
+        let prodURL = try SessionNameCache.canonicalFileURL(bundleIdentifier: "co.sstools.Batty")
+        let betaURL = try SessionNameCache.canonicalFileURL(bundleIdentifier: "co.sstools.Batty.beta")
+        #expect(betaURL.path(percentEncoded: false).hasSuffix("/Library/Application Support/Batty Beta/session-name-cache.json"))
+        #expect(prodURL != betaURL)
+    }
 }

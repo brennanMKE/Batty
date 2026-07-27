@@ -2,6 +2,7 @@
 
 import ArgumentParser
 import BattyCLICore
+import BattyXPCCore
 import Foundation
 
 // MARK: - Version
@@ -49,10 +50,17 @@ nonisolated func resolvePath(_ input: String) throws -> String {
 
 /// Opens the batty:// URL via `/usr/bin/open`, which activates and (if
 /// needed) launches the Batty app and delivers the URL to its handler.
-nonisolated func openURL(_ url: URL) throws {
+///
+/// Targeted with `-b <bundleIdentifier>` — same precedent as
+/// `AppLauncher.launch` — because both variants register the `batty`
+/// scheme (`Configuration/Info.plist` is shared, #0279) and an untargeted
+/// `open` lets LaunchServices pick either handler. Without `-b`, `batty
+/// <path>` — the CLI's primary mutation verb — could silently land a
+/// session in the wrong variant whenever both are installed.
+nonisolated func openURL(_ url: URL, bundleIdentifier: String = ServiceNames.appBundleIdentifier) throws {
     let process = Process()
     process.executableURL = URL(filePath: "/usr/bin/open")
-    process.arguments = [url.absoluteString]
+    process.arguments = ["-b", bundleIdentifier, url.absoluteString]
     do {
         try process.run()
         process.waitUntilExit()

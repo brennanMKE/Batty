@@ -93,6 +93,12 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   URL scheme per `#0250`/`#0257`). Read `batty-cli-install.md` for current
   behavior; read `cli-tool-install.md` only for supacode-comparison
   history.
+- [`beta-teardown.md`](beta-teardown.md) — how to cleanly remove a Beta
+  install (`#0279`): unregister the LaunchAgent *before* deleting the app
+  bundle (the ordering `#0270` says matters to avoid wedging launchd), then
+  remove `Batty Beta.app`, the `batty-beta` CLI symlink, and Beta's
+  Application Support directory. `scripts/build-beta.sh --teardown` prints
+  the same steps.
 - [`xpc/`](xpc/README.md) — vendored reference docs from the RemoteControl
   XPC prototype (`xpc-cli-architecture.md`, `cli-embedding-and-install.md`,
   `swift-concurrency-and-xpc.md`, `build-and-release.md`, `README.md`,

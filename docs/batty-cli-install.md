@@ -19,14 +19,17 @@ truth for current behavior — use this one.
 ## Orientation
 
 `batty` is a small, standalone command-line executable, built from the
-`BattyKit` Swift package and copied into `Batty.app/Contents/Resources/bin/batty`
+`BattyKit` Swift package and copied into `Contents/Resources/bin/batty`
 at app-build time (identically named `batty` inside *either* variant's
-bundle). The Batty macOS app can install a symlink to it from Settings →
-Advanced, after which the command is on the user's normal shell `PATH` —
-`/usr/local/bin/batty` for the Prod build, `/usr/local/bin/batty-beta` for
-Beta (`#0277`; see "Variant-aware install path" below), so installing one
-variant's CLI can never silently repoint the other's. Today the CLI does
-exactly one thing:
+bundle, even though the wrapping `.app` itself is not: `Batty.app` for
+Prod, `Batty Beta.app` for Beta since `#0279` gave Beta a distinct
+`PRODUCT_NAME` so it can sit in `/Applications` next to Prod without a
+name collision). The Batty macOS app can install a symlink to it from
+Settings → Advanced, after which the command is on the user's normal
+shell `PATH` — `/usr/local/bin/batty` for the Prod build,
+`/usr/local/bin/batty-beta` for Beta (`#0277`; see "Variant-aware install
+path" below), so installing one variant's CLI can never silently repoint
+the other's. Today the CLI does exactly one thing:
 `batty <path>` (or bare `batty`, which defaults to `.`) resolves the given
 directory to an absolute path, builds a `batty://session?path=<path>` URL,
 and hands it to `/usr/bin/open`, which launches or activates Batty and
@@ -70,15 +73,25 @@ you whether macOS accepted the URL, not whether Batty acted on it.
    somehow fails (not expected for a valid absolute path), the CLI prints
    `batty: failed to build IPC URL for path: <resolved>` and exits 1.
 
-5. `openURL(url)` (`SessionCommand.swift`) spawns `/usr/bin/open
-   <url-string>` via `Foundation.Process`, waits for it to exit
-   synchronously, and propagates failure: a non-zero `open` exit status or
-   a spawn error both produce a stderr message and `ExitCode.failure`.
-   `open` itself launches Batty if it isn't running, or activates it if it
-   is, and delivers the URL through the standard macOS
-   Launch-Services/URL-event mechanism — no code in Batty has to poll or
-   listen for this beyond registering the URL scheme (step 6). This is the
-   full extent of the CLI's own work: it never talks to the app directly.
+5. `openURL(url)` (`SessionCommand.swift`) spawns `/usr/bin/open -b
+   <bundleIdentifier> <url-string>` via `Foundation.Process`, waits for it
+   to exit synchronously, and propagates failure: a non-zero `open` exit
+   status or a spawn error both produce a stderr message and
+   `ExitCode.failure`. `-b <bundleIdentifier>` defaults to
+   `ServiceNames.appBundleIdentifier` — the CLI's own compile-time-baked
+   variant (`co.sstools.Batty` for Prod, `co.sstools.Batty.beta` for Beta;
+   see "Variant-aware install path" below). **`#0279`:** before this, the
+   CLI called plain `open <url-string>` with no `-b`, and since both
+   variants register the same `batty` scheme (`Configuration/Info.plist`
+   is shared), LaunchServices could route `batty <path>` to *either*
+   installed variant when both were present — the fix mirrors
+   `AppLauncher.launch`'s existing `-b` precedent, which the XPC path
+   already used correctly. `open` itself launches the targeted variant if
+   it isn't running, or activates it if it is, and delivers the URL through
+   the standard macOS Launch-Services/URL-event mechanism — no code in
+   Batty has to poll or listen for this beyond registering the URL scheme
+   (step 6). This is the full extent of the CLI's own work: it never talks
+   to the app directly.
 
 6. On the app side, the `batty` URL scheme is registered via
    `CFBundleURLTypes` in the **literal** `Configuration/Info.plist` (not a
@@ -325,10 +338,10 @@ nonisolated func resolvePath(_ input: String) throws -> String {
     return resolved
 }
 
-nonisolated func openURL(_ url: URL) throws {
+nonisolated func openURL(_ url: URL, bundleIdentifier: String = ServiceNames.appBundleIdentifier) throws {
     let process = Process()
     process.executableURL = URL(filePath: "/usr/bin/open")
-    process.arguments = [url.absoluteString]
+    process.arguments = ["-b", bundleIdentifier, url.absoluteString]
     do {
         try process.run()
         process.waitUntilExit()
@@ -342,6 +355,8 @@ nonisolated func openURL(_ url: URL) throws {
     }
 }
 ```
+
+(`#0279` added the `-b bundleIdentifier` targeting — see step 5 above.)
 
 `SessionURLBuilder` (`BattyKit/Sources/BattyCLICore/SessionURLBuilder.swift`),
 in full:
@@ -404,7 +419,19 @@ schema on either end.
   Info.plist entry, not synthesized from `INFOPLIST_KEY_*` build settings
   — confirmed by grepping the whole `Batty.xcodeproj/project.pbxproj` for
   `URLTypes`/`URLSchemes`/`INFOPLIST_KEY_CFBundleURL*` and finding no
-  matches there.
+  matches there. **Both variants register the same `batty` scheme** —
+  `Beta.xcconfig` does not override `INFOPLIST_FILE`, so a Beta build
+  installed in `/Applications` becomes a *second* LaunchServices handler
+  for it (`#0279` leak 3). `#0279` deliberately did not split this into a
+  per-variant scheme (e.g. `batty-beta://`): the CLI is the only in-repo
+  producer of `batty://` URLs, and targeting it with `-b
+  <bundleIdentifier>` (see step 5 above) closes the actual reported defect
+  — `batty <path>` landing in the wrong variant. A `batty://` link opened
+  from outside the CLI (a browser, a doc) with both variants installed
+  still resolves to whichever handler LaunchServices prefers; that residual
+  ambiguity was judged out of scope for a testing-only Beta build and
+  would require its own Info.plist-per-variant plumbing (none exists
+  today) to close properly.
 - **Routing:** `BattyAppDelegate.application(_:open:)`
   (`Batty/BattyApp.swift`) — filters incoming URLs to `scheme == "batty"`
   and forwards each to `BattyURLHandler.handle(url:store:)`.
@@ -799,6 +826,12 @@ Mechanism, exactly:
   again) — telling a translocated user only to move the app, the
   `bundleNotDurable` wording, would have them click Install again in the
   still-translocated instance and hit the same refusal.
+- **`#0279`:** both messages used to hardcode the literal `Batty.app` —
+  correct for Prod, wrong for a `Batty Beta.app` bundle once `#0279` gave
+  Beta its own `PRODUCT_NAME`. `errorDescription` now derives the app name
+  from `(path as NSString).lastPathComponent` (the same `path` associated
+  value already carries the full bundle path), so a Beta user reading the
+  refusal sees "Batty Beta.app", not a name that names the wrong app.
 - **Privilege escalation:** in-process `NSAppleScript` running `do shell
   script "..." with prompt "..." with administrator privileges` — this is
   what produces the standard macOS authorization dialog branded with the
@@ -924,6 +957,16 @@ Unit tests (Swift Testing, `BattyKit/Tests/BattyKitTests/`):
   `buildURL` scheme/host correctness and percent-safe encoding of paths
   containing spaces, and `sessionPath(from:)` round-tripping plus
   rejection of wrong scheme/host.
+- **`CLIInstallerTests.swift`** (`#0279` addition) — the `bundleNotDurable`/
+  `bundleTranslocated` refusal messages name the app that's actually
+  running (`Batty Beta.app`), not a hardcoded `Batty.app`.
+- **`LoggingSubsystemTests.swift`** (`#0279`) — `BattyXPCCore.Logging
+  .resolvedSubsystem` uses a given bundle identifier when present and
+  falls back to the compile-time-baked `ServiceNames.appBundleIdentifier`
+  (not a Prod literal) when `nil` — the bare-Mach-O broker/CLI path.
+- **`SessionNameCacheTests.swift`** (`#0279`) — `resolvedDirectoryName`/
+  `canonicalFileURL` keep Prod's path byte-identical and diverge to a
+  distinct `Batty Beta` directory for the Beta bundle identifier.
 - **`BattyURLHandlerRoutingTests.swift`** — the `#0251` regression suite:
   `initialWindowID` matches `windows[0]`'s id and is stable after
   additional `WindowRuntime`s are created; `anyContentWindowRuntime()` is
@@ -1016,13 +1059,13 @@ Grounded directly in the code above, not aspirational:
 |---|---|
 | `BattyKit/Package.swift` | Declares the `BattyCLICore` target (dependency-free), the `BattyKit` library target (depends on `BattyCLICore`, GhosttyKit/Terminal/Theme, SlidingTabs, Sparkle, Textual), and the `batty` executable target/product (depends on `BattyCLICore` + `ArgumentParser` only). |
 | `BattyKit/Sources/batty/BattyCLI.swift` | `@main` entry point; argument parsing (`swift-argument-parser`); orchestrates resolve → build URL → open. |
-| `BattyKit/Sources/batty/SessionCommand.swift` | `resolveAppVersion()` (reads the host app's `Info.plist`), `resolvePath(_:)`, `openURL(_:)` (spawns `/usr/bin/open`). |
+| `BattyKit/Sources/batty/SessionCommand.swift` | `resolveAppVersion()` (reads the host app's `Info.plist`), `resolvePath(_:)`, `openURL(_:bundleIdentifier:)` (spawns `/usr/bin/open -b <bundleIdentifier>`, defaulting to `ServiceNames.appBundleIdentifier` — `#0279`). |
 | `BattyKit/Sources/BattyCLICore/SessionURLBuilder.swift` | `resolve`/`buildURL`/`sessionPath` — the shared wire format between CLI, app, and tests. |
 | `BattyKit/Sources/BattyKit/BattyCLICoreReexport.swift` | `@_exported import BattyCLICore` so existing `import BattyKit` consumers keep seeing `SessionURLBuilder`. |
 | `BattyKit/Sources/BattyKit/Runtime/BattyURLHandler.swift` | App-side handler: parses the `batty://` URL, calls `AppStateStore.addSession(workingDirectory:)` on the main actor; logs and ignores unrecognized URLs. |
 | `Batty/BattyApp.swift` | `BattyAppDelegate.application(_:open:)` routes `batty://` URLs to the handler; `.handlesExternalEvents(matching: Set())` on the content `WindowGroup` and Help `Window` suppresses SwiftUI's own stray-window behavior for the same event; `WindowGroup`'s `defaultValue` reuses `AppStateStore.shared.initialWindowID` so the URL-added session lands in the real on-screen window. |
 | `Configuration/Info.plist` | Registers the `batty` URL scheme via `CFBundleURLTypes`/`CFBundleURLSchemes` (literal plist, not a build setting). |
-| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to a variant-derived path (`/usr/local/bin/batty` Prod, `/usr/local/bin/batty-beta` Beta — `#0277`), privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`), extended to refuse a Gatekeeper-translocated bundle with its own error/message (`#0275`). |
+| `BattyKit/Sources/BattyKit/Settings/CLIInstaller.swift` | Symlink install/uninstall to a variant-derived path (`/usr/local/bin/batty` Prod, `/usr/local/bin/batty-beta` Beta — `#0277`), privileged via in-process `NSAppleScript`; four-state `inspectInstallState()` and `isBundleDurable` (`#0268`), extended to refuse a Gatekeeper-translocated bundle with its own error/message (`#0275`); refusal copy derives the app name from the bundle path instead of a hardcoded `Batty.app` (`#0279`). |
 | `BattyKit/Sources/BattyKit/Views/SettingsView.swift` | Settings → Advanced tab; `CLIInstallModel` (`@Observable`) + `CLIInstallRow` UI driving `CLIInstaller`. |
 | `Batty.xcodeproj/project.pbxproj` | The `Batty` native target's `Embed CLI` Run Script build phase (`alwaysOutOfDate = 1`, runs before the `Embed Broker` phase) that builds `batty` from the package via `xcrun swift build --product batty` and copies it to `Contents/Resources/bin/batty`. |
 | `Configuration/Build.xcconfig` | `ENABLE_APP_SANDBOX = NO` (relevant: no automation-events entitlement needed for `NSAppleScript`); `CODE_SIGN_STYLE = Automatic`. |
@@ -1030,6 +1073,13 @@ Grounded directly in the code above, not aspirational:
 | `scripts/release.sh` | Archive/export/notarize pipeline; no CLI-specific signing step found — relies on `xcodebuild archive`/`-exportArchive`'s automatic signing plus a generic `codesign --verify --deep --strict` gate. |
 | `BattyKit/Tests/BattyKitTests/SessionURLBuilderTests.swift` | Unit tests for path resolution and URL build/parse. |
 | `BattyKit/Tests/BattyKitTests/BattyURLHandlerRoutingTests.swift` | Unit tests for the `#0251` window-targeting/working-directory-propagation fix. |
+| `BattyKit/Tests/BattyKitTests/CLIInstallerTests.swift` | Includes `#0279`'s per-variant refusal-copy test. |
+| `BattyKit/Tests/BattyKitTests/LoggingSubsystemTests.swift` | `#0279`: `BattyXPCCore.Logging.resolvedSubsystem` per-variant fallback. |
+| `BattyKit/Tests/BattyKitTests/SessionNameCacheTests.swift` | Includes `#0279`'s per-variant cache-directory tests. |
+| `BattyKit/Sources/BattyKit/Model/SessionNameCache.swift` | `resolvedDirectoryName`/`canonicalFileURL` derive the Application Support directory from the running variant's bundle identifier instead of a hardcoded `"Batty"` literal — Prod's path stays byte-identical (`#0279`). |
+| `BattyKit/Sources/BattyXPCCore/Logging.swift`, `BattyKit/Sources/batty/Logging.swift`, `BattyKit/Sources/BattyBroker/Logging.swift` | The bare-Mach-O broker/CLI logging-subsystem fallback now resolves to `ServiceNames.appBundleIdentifier` (the compile-time-baked variant) instead of the Prod literal (`#0279`). |
+| `Configuration/Beta.xcconfig` | `PRODUCT_NAME = Batty Beta` so the Beta build produces a distinctly-named bundle that can sit in `/Applications` next to `Batty.app` (`#0279`). |
+| `scripts/build-beta.sh` | Builds the Beta scheme (unsigned by default, `--sign` opt-in), leaves the product at `beta-build/Products/Batty Beta.app`, and never copies into `/Applications` or touches the running Prod app (`#0279`). |
 | `issues/0249.md` | Filed/resolved: CLI target + install plumbing. Source of the `BattyKit`-product-dependency trap warning. |
 | `issues/0250.md` | Filed/resolved: `batty <path>` verb, `batty://` scheme, `@main` entry point rename. |
 | `issues/0251.md` | Filed/resolved: fixed phantom-window and stray-SwiftUI-window bugs in the URL round-trip (two rounds). |
