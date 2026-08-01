@@ -144,8 +144,9 @@ struct SplitTreeTargetedSplitTests {
     // MARK: - `-c` panes survive their command exiting (#0282 round 3)
 
     /// Verified against the pinned libghostty
-    /// (`c69c34354e511af7a3e6d7e5e2a4fa2fed4b90ff`) via a standalone harness
-    /// calling `ghostty_config_new`/`load_file`/`finalize` directly:
+    /// (`b146b73a8ba3ed2678a22a9de5feecfcbf298d48`, tag 1.3.2) via a
+    /// standalone harness calling
+    /// `ghostty_config_new`/`load_file`/`finalize` directly:
     /// `wait-after-command = true` produces zero config diagnostics, and a
     /// deliberately misspelled `wait-after-comand` key produces
     /// `diagnostics=1 "unknown field"` — the control proving the harness
@@ -156,7 +157,9 @@ struct SplitTreeTargetedSplitTests {
     /// asserts the same acceptance through Batty's own config pipeline —
     /// `renderedConfig` only reflects a config libghostty's diagnostics
     /// accepted (`prepareConfig` fails closed otherwise), so this is proof
-    /// of acceptance, not just string formatting.
+    /// of acceptance, not just string formatting: it runs against the real
+    /// bundled binary, so a green result here is itself proof
+    /// `wait-after-command` round-trips clean under the pinned version.
     @Test func commandOverridePaneWaitsAfterTheCommandExits() {
         let tree = SplitTree()
         let target = tree.focusedPane

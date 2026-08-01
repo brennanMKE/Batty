@@ -1065,8 +1065,8 @@ Grounded directly in the code above, not aspirational:
   only: a pane with no command override keeps today's behavior (closes
   when its shell exits), so Cmd-D and every existing tab are unaffected.
   `wait-after-command` was verified against the pinned libghostty
-  (`c69c34354e511af7a3e6d7e5e2a4fa2fed4b90ff`) directly — `false` by
-  default, `true` accepted with zero config diagnostics — rather than
+  (`b146b73a8ba3ed2678a22a9de5feecfcbf298d48`, tag 1.3.2) directly — `false`
+  by default, `true` accepted with zero config diagnostics — rather than
   assumed from the directive's name.
 - **Second mutating XPC verb, #0283.** `batty pane close [--pane <id>]` ends
   **every** Tab's Terminal Session in the calling/target pane — not just the

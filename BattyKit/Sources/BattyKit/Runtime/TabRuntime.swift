@@ -155,6 +155,18 @@ public final class TabRuntime: Identifiable {
             builder.withFontSize(fontSize)
             builder.withCursorStyle(cursor)
             builder.withCursorStyleBlink(blink)
+            // libghostty 1.3.2 declares `supports_selection_clipboard` on
+            // macOS (it didn't at 1.2.2), and its clipboard-write callback
+            // ignores the clipboard kind, writing every selection straight
+            // to the system pasteboard (#0286). With ghostty's own default
+            // `copy-on-select = true`, that means an ordinary mouse
+            // selection would silently overwrite whatever the user last
+            // put on the system clipboard, with no Cmd-C. Disable it
+            // explicitly to keep selection and system-clipboard writes
+            // independent, matching the 1.2.2 behavior Batty was built
+            // against; Cmd-C and Edit > Copy still copy explicitly via
+            // the `cmd+c=copy_to_clipboard` keybind set below.
+            builder.withCustom("copy-on-select", "false")
             // A per-tab command override (#0282's `pane split -c`) replaces
             // the shell preference entirely for this one tab, rather than
             // appending a second `command` line — `command`'s repeat-key
@@ -170,10 +182,10 @@ public final class TabRuntime: Identifiable {
                 // ordinary shell tab must keep closing when the shell
                 // exits, since Cmd-D and every existing tab rely on that.
                 // `wait-after-command` verified against the pinned
-                // libghostty (`c69c34354e511af7a3e6d7e5e2a4fa2fed4b90ff`)
-                // rather than assumed: `ghostty +show-config --default
-                // --docs` documents `false` as the default and "the
-                // terminal window will stay open until any keypress is
+                // libghostty (`b146b73a8ba3ed2678a22a9de5feecfcbf298d48`,
+                // tag 1.3.2) rather than assumed: `ghostty +show-config
+                // --default --docs` documents `false` as the default and
+                // "the terminal window will stay open until any keypress is
                 // received" as the semantic; `true` round-trips with zero
                 // config diagnostics through the real
                 // `ghostty_config_new`/`load_file`/`finalize` pipeline
