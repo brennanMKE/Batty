@@ -65,10 +65,28 @@ public final class TabRuntime: Identifiable {
     /// Long-lived libghostty NSView whose lifetime is bound to this tab,
     /// not to any SwiftUI representable. The view is owned by
     /// ``TerminalHostStore`` (which adds it as a subview of the persistent
-    /// per-window ``TerminalHostView`` on first appearance and removes it
+    /// per-window ``TerminalHostView`` on first appearance and nils this
+    /// property out — as well as removing the subview and forcing the
+    /// surface free — in ``TerminalHostStore/releaseTerminalView(forTabID:)``
     /// on tab close); this property is the canonical back-reference for
     /// tests and any tab-scoped consumer that needs the view directly.
     /// Treat it as read-mostly — the host store is the authority.
+    ///
+    /// Nil'd at close time (#0289), but note what that nil-out does and
+    /// doesn't do: `releaseTerminalView` frees the terminal surface and
+    /// PTY *before* this property is cleared, by setting the view's own
+    /// `controller` to `nil` — a real, synchronous
+    /// `ghostty_surface_free`, not something contingent on this
+    /// back-reference or on anything about `TabRuntime`'s lifetime. So
+    /// nil-ing this property is reference hygiene (no stale reads of a
+    /// torn-down view through a `TabRuntime` a SwiftUI view is still
+    /// holding), not what keeps the surface from leaking. The ghostty
+    /// app (`ghostty_app_t`, owned by `terminal.controller`) is the
+    /// separate matter this property was never going to cover either
+    /// way: it's freed only when `TabRuntime` itself deallocates,
+    /// because `terminal.controller` is `TabRuntime`'s own independent
+    /// strong reference to the same `TerminalController` — untouched by
+    /// anything that happens to this property or to the view.
     @ObservationIgnored
     public internal(set) var terminalNSView: AppTerminalView?
 

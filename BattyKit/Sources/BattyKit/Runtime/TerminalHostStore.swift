@@ -186,16 +186,108 @@ public final class TerminalHostStore {
     }
 
     /// Remove and release the terminal view for `tabID`. Called only when
-    /// the tab is being closed for real (see `AppStateStore.closeTab(id:)`).
-    /// libghostty's `viewDidMoveToWindow(nil)` plus the coordinator's
-    /// `deinit` together free the surface and shut down the PTY.
+    /// the tab is being closed for real — directly by every close path
+    /// (`PaneRuntime.removeTab`, `PaneRuntime.closeOtherTabs`,
+    /// `WindowRuntime.closePane`, `WindowRuntime.removeSession`,
+    /// `RootWindowView`'s window-close cascade) so this is the single
+    /// choke point for surface teardown.
+    ///
+    /// **Forces `ghostty_surface_free` synchronously (#0289).**
+    /// `TerminalSurfaceCoordinator` — the type that actually owns
+    /// `ghostty_surface_free` — is `internal` to `GhosttyTerminal`, so
+    /// Batty can't call its `freeSurface()` directly. But
+    /// `AppTerminalView.controller` (the property this store already
+    /// uses to attach a view to its tab's `TerminalController`) is
+    /// `open`, and its setter forwards to the coordinator's `controller`,
+    /// whose `didSet` tears the surface down (`surface?.free()`, i.e.
+    /// `ghostty_surface_free`) *before* checking whether the new value is
+    /// non-nil. Setting it to `nil` here is therefore a real, synchronous
+    /// teardown call, not a hint — this is the deterministic free the
+    /// issue asks for, not a proxy for one. It's safe to call
+    /// unconditionally: `TerminalSurface.free()` guards on `hasBeenFreed`,
+    /// so a tab whose surface was never created (or already freed) is a
+    /// no-op. The PTY dies as part of this same call — it belongs to the
+    /// surface, not the ghostty app.
+    ///
+    /// **This does not free the ghostty app.** `TabRuntime.terminal` (a
+    /// `TerminalViewState`) holds its own strong reference to the same
+    /// `TerminalController` — independent of the view — and
+    /// `TerminalController.deinit` is what calls `ghostty_app_free`,
+    /// gated on `TabRuntime` itself deallocating. Batty creates one
+    /// `ghostty_app_t` per Tab, owning its own glyph-atlas cache
+    /// (`issues/0285/investigation-source.md`), so a SwiftUI reference
+    /// that outlives this call (`TerminalPlaceholderView.tab`, a stuck
+    /// rename sheet) still defers that free — same as before #0289, and
+    /// out of this method's reach; #0287 is where a shared-controller
+    /// design would close that gap. `terminalNSView` is still nil'd here
+    /// for reference hygiene (no stale reads of a torn-down view through
+    /// `TabRuntime`), not because it's what frees anything now.
+    /// `verifyReferenceHygiene` below reports on both objects' lifetimes
+    /// as a diagnostic, after the surface free above has already
+    /// happened.
+    ///
+    /// Idempotent: a tab whose view was never created, or one already
+    /// released, is a no-op (the guard returns before touching anything).
     public func releaseTerminalView(forTabID id: UUID) {
-        guard let view = terminalViews.removeValue(forKey: id) else { return }
+        guard let view = terminalViews.removeValue(forKey: id) else {
+            logger.debug("releaseTerminalView tab=\(id, privacy: .public): no view registered (already released, or never created)")
+            return
+        }
         placements.removeValue(forKey: id)
-        tabRuntimes.removeValue(forKey: id)
+        let tab = tabRuntimes.removeValue(forKey: id)?.runtime
         tabWindowMap.removeValue(forKey: id)
+        view.controller = nil
         view.removeFromSuperview()
-        logger.debug("released terminal view for tab \(id, privacy: .public); host has \(self.terminalViews.count, privacy: .public) view(s) remaining")
+        tab?.terminalNSView = nil
+        logger.debug("released terminal view for tab \(id, privacy: .public): surface and PTY freed synchronously; host has \(self.terminalViews.count, privacy: .public) view(s) remaining")
+        Self.verifyReferenceHygiene(view: view, tab: tab, tabID: id)
+    }
+
+    /// Diagnostic-only follow-up to ``releaseTerminalView(forTabID:)``.
+    /// Nothing here gates or affects teardown — the surface and PTY are
+    /// already gone by the time this runs, forced synchronously above.
+    ///
+    /// - The `AppTerminalView` probe is reference hygiene, not a teardown
+    ///   signal: since `view.controller = nil` already ran, nothing
+    ///   further depends on when (or whether) the view itself
+    ///   deallocates.
+    /// - The `TabRuntime` probe is the one that says something real: it's
+    ///   what still owns `TerminalController` (the per-Tab `ghostty_app_t`
+    ///   and its glyph atlas) after this call. A hit here shortly after
+    ///   close is *expected*, not a bug — SwiftUI is documented to keep a
+    ///   just-closed tab's `TabRuntime` alive for a render pass or two
+    ///   (`TerminalPlaceholderView`, `PaneView`, a rename sheet), so this
+    ///   checks after a half-second delay (several render passes, not
+    ///   one runloop turn) and logs at `.notice`, not `.warning`, even
+    ///   then — nothing here has enough information to distinguish
+    ///   "still draining" from "actually stuck" off a single sample.
+    ///   Repeated notices across *multiple, unrelated* tab closes is the
+    ///   real signal to chase, not one line on one close.
+    ///
+    /// `weak` probes are required rather than checking inside
+    /// `releaseTerminalView` itself: Swift's debug-build ARC keeps a
+    /// local `let`/parameter alive until its *lexical* scope ends, so a
+    /// same-function check would still see a live reference regardless
+    /// of what's actually true. The delay also clears AppKit's
+    /// autorelease pool, which briefly holds an extra reference to any
+    /// layer-backed `NSView` as a side effect of `wantsLayer = true`
+    /// (`AppTerminalView.commonInit`) — the same mechanism
+    /// `StableTerminalSurfaceTests`'s explicit `autoreleasepool` works
+    /// around in the synchronous unit-test harness, where nothing drains
+    /// a pool between statements the way a live run loop does.
+    private static func verifyReferenceHygiene(view: AppTerminalView, tab: TabRuntime?, tabID: UUID) {
+        weak var viewProbe = view
+        weak var tabProbe = tab
+        let hadTabRuntime = tab != nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if viewProbe != nil {
+                logger.debug("AppTerminalView for tab \(tabID, privacy: .public) still referenced 0.5s after release — surface and PTY were already freed synchronously; this only affects when the NSView itself deallocates")
+            }
+            guard hadTabRuntime else { return }
+            if tabProbe != nil {
+                logger.notice("TabRuntime for tab \(tabID, privacy: .public) still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive")
+            }
+        }
     }
 
     // MARK: - Placement updates (per-window scoped)

@@ -356,16 +356,46 @@ each step).
    |    viewDidMoveToWindow does NOT fire again
    |    PTY untouched, scrollback untouched, selection untouched
    |
-   |  WindowRuntime.closeTab(id:)  [or window-close cascade]
+   |  WindowRuntime.closeTab(id:)  [or PaneRuntime.closeOtherTabs /
+   |  closePane / removeSession / the window-close cascade — every
+   |  close path calls releaseTerminalView directly, making it the
+   |  single choke point for surface teardown regardless of entry
+   |  point, #0289]
    |    TerminalHostStore.releaseTerminalView(forTabID:)
    |      terminalViews.removeValue(forKey: id)
    |      placements.removeValue(forKey: id)
    |      tabWindowMap.removeValue(forKey: id)
+   |      view.controller = nil   (#0289 — see note below)
+   |        TerminalSurfaceCoordinator.controller's didSet fires
+   |        synchronously -> rebuildIfReady(removingBridgeFrom: old) ->
+   |        tearDownSurface -> surface?.free() -> ghostty_surface_free
+   |        PTY killed, Metal resources released, retainedBridges balanced
+   |        (guarded by TerminalSurface.hasBeenFreed — safe even if no
+   |        surface existed yet)
    |      view.removeFromSuperview()
-   |    viewDidMoveToWindow(nil) fires inside libghostty
-   |    surface coordinator deinit -> ghostty_surface_free
-   |    PTY killed, Metal resources released
-   |    log: "released terminal view for tab <UUID>"
+   |        viewDidMoveToWindow(nil) fires synchronously inside libghostty
+   |        (stops the display link, drops focus — surface is already
+   |        gone by this point)
+   |      tab.terminalNSView = nil   (reference hygiene, not a free —
+   |        see note below)
+   |    log: "released terminal view for tab <UUID>: surface and PTY
+   |    freed synchronously"   <- trustworthy: the free above already
+   |    happened, synchronously, before this line runs
+   |    [half a second later, purely diagnostic — nothing gates on this]
+   |      IF something still references the AppTerminalView:
+   |        log (debug): "AppTerminalView ... still referenced ..."
+   |        (reference hygiene only; the surface is already freed)
+   |      IF something still references the TabRuntime:
+   |        log (notice): "TabRuntime ... still referenced ..."
+   |        (expected transient — SwiftUI can hold a just-closed tab's
+   |        TabRuntime for a render pass or two; only sustained/repeated
+   |        notices across unrelated closes indicate a real problem)
+   |        this is the one that matters for the ghostty APP, not the
+   |        surface: TabRuntime.terminal.controller is a second,
+   |        independent strong reference to the same TerminalController,
+   |        and TerminalController.deinit -> ghostty_app_free only runs
+   |        once TabRuntime itself deallocates — unaffected by anything
+   |        above, same as before #0289
    |
    |  [Window close only] — after ALL tabs in the window released:
    |    TerminalHostStore.releaseHost(forWindowID:)
@@ -380,6 +410,41 @@ NSWindow for the entire lifetime of the `AppTerminalView`. This is a
 per-window invariant: no reparenting across hosts is permitted
 (Amendment 1 in §4).
 
+**#0289 correction.** Earlier versions of this document (and of
+`releaseTerminalView` itself) treated "released terminal view" as
+evidence the surface was freed. It wasn't: that log used to fire as
+soon as Batty's own references were dropped, before `AppTerminalView`
+necessarily deallocated — and `TerminalSurfaceCoordinator`, which owns
+`ghostty_surface_free`, is `internal` to `GhosttyTerminal`, so it looked
+like Batty had no way to force that call directly. It does, though:
+`AppTerminalView.controller` — the property this store already uses to
+attach a view to its tab's `TerminalController` — is `open`, and its
+setter forwards to the coordinator's `controller`, whose `didSet` tears
+the surface down *before* checking whether the new value is non-nil.
+`releaseTerminalView` now sets it to `nil` as part of the close path,
+which makes the free genuinely synchronous and deterministic — the
+issue's actual ask — rather than a proxy or a wait-and-see log one turn
+later. "released terminal view" is now trustworthy for the surface and
+PTY specifically, because the free it reports already happened by the
+time it's logged.
+
+**What this still doesn't cover: the ghostty app.** `TabRuntime.terminal`
+(a `TerminalViewState`) holds its own independent strong reference to
+the same `TerminalController` — a second retainer alongside the view's,
+not removed by anything above. `TerminalController.deinit` is what
+calls `ghostty_app_free`, gated on `TabRuntime` itself deallocating.
+Batty creates one `ghostty_app_t` per Tab, owning its own glyph-atlas
+cache (`issues/0285/investigation-source.md` — the leading explanation
+for the umbrella's IOAccelerator figure), so a SwiftUI reference that
+outlives a tab's close (`TerminalPlaceholderView.tab`, a stuck rename
+sheet) still defers that free exactly as it always has — #0289 doesn't
+change this, and doesn't claim to; #0287 is where a shared-controller
+design would close the gap. `tab.terminalNSView = nil` is reference
+hygiene (no stale reads of a torn-down view through `TabRuntime`), not
+what frees anything — the surface free above happens through the
+view's own `controller` property regardless of whether `TabRuntime` is
+still around.
+
 ---
 
 ## 6. Common debugging signals
@@ -391,7 +456,9 @@ is what *normal* looks like.
 | Signal | Category | What "good" looks like |
 |---|---|---|
 | `created terminal view for tab <UUID> in window <UUID>` | `TerminalHostStore` | Fires **exactly once per tab**, at first appearance. |
-| `released terminal view for tab <UUID>` | `TerminalHostStore` | Fires **exactly once per closed tab**, at `closeTab(id:)`. |
+| `released terminal view for tab <UUID>: surface and PTY freed synchronously` | `TerminalHostStore` | Fires **exactly once per closed tab**, from `releaseTerminalView(forTabID:)` — the single choke point every close path funnels through. **This is now trustworthy for the surface and PTY** (#0289): by the time this logs, `view.controller = nil` has already run `ghostty_surface_free` synchronously. It does **not** confirm the ghostty app was freed — that's a separate, independent chain; see the two diagnostic signals below. |
+| `AppTerminalView for tab <UUID> still referenced 0.5s after release` (debug) | `TerminalHostStore` | Diagnostic only, not a teardown problem — the surface and PTY are already gone by the time this could fire. Persistent occurrences across many tabs might be worth a look at reference hygiene, but nothing depends on this clearing. |
+| `TabRuntime for tab <UUID> still referenced 0.5s after release` (notice) | `TerminalHostStore` | **A transient, occasional hit is expected**, not a bug — SwiftUI can hold a just-closed tab's `TabRuntime` alive for a render pass or two. This is the signal for the ghostty app (`ghostty_app_t` + its glyph atlas, #0285), which frees only when `TabRuntime` deallocates — independent of the surface, which is already gone. **Repeated notices across multiple, unrelated tab closes** — not one — is the actual leak signal: something is holding a `TabRuntime` reference past its tab's close. |
 | `created host for window <UUID>` | `TerminalHostStore` | Fires **once per content window**, when that window's host is first requested. |
 | `released host for window <UUID>` | `TerminalHostStore` | Fires **once per content window close**, after all the window's tabs have been released. |
 | `attached host to window` | `TerminalHostView` | Fires **once per content window**, when that window's host first lands in the window. More than once **for the same window** means the host is being recreated — the persistence is broken. |
@@ -420,9 +487,20 @@ Quick diagnostic playbook:
   file); a `frame` mismatch between the placeholder and the host's
   subview makes the click miss. Log the `setPlacement` calls and the
   host subview's `frame` for the same tab id and compare.
-- **PTY survives after the tab chip is gone.** The `closeTab` path
-  didn't call `releaseTerminalView(forTabID:)`. Check the close path
-  in `WindowRuntime`.
+- **PTY survives after the tab chip is gone.** The PTY belongs to the
+  *surface*, not the ghostty app — `ghostty_surface_free` is what kills
+  it, and since #0289 that happens synchronously inside
+  `releaseTerminalView(forTabID:)` (via `view.controller = nil`), before
+  the "released terminal view" log even fires. So first check whether
+  `releaseTerminalView(forTabID:)` ran at all (the close path in
+  `WindowRuntime` should call it, directly or via `PaneRuntime
+  .removeTab` / `.closeOtherTabs`) — if that log is missing, the close
+  path didn't reach the store. If it *is* present, the PTY should
+  already be dead; a still-running process at that point points
+  somewhere other than this teardown path (a second surface for the
+  same shell, a process the PTY spawned that outlived it, etc.), not at
+  a lingering `TabRuntime` — that only defers the ghostty *app* and its
+  glyph atlas, not the PTY.
 - **`releaseHost` logs a warning and the host stays.** A tab's
   `releaseTerminalView` wasn't called before `releaseHost`. The window-
   close path must iterate all tabs in the window's sessions and close
@@ -451,5 +529,14 @@ Quick diagnostic playbook:
 
 ---
 
-*Document version: 2 — 2026-06-15. §§3–6 amended in #0236 for
-per-window host topology (one TerminalHostView per content window).*
+*Document version: 4 — 2026-08-01. §§3–6 amended in #0236 for
+per-window host topology (one TerminalHostView per content window).
+§§5–6 corrected in #0289: `releaseTerminalView(forTabID:)` now forces
+`ghostty_surface_free` synchronously via `view.controller = nil`
+(`AppTerminalView.controller` is `open`, even though the coordinator
+that owns the C call is not), so "released terminal view" is
+trustworthy evidence the surface and PTY are gone by the time it logs.
+The ghostty app is a separate, still-ARC-deferred chain — gated on
+`TabRuntime` deallocating, since `TabRuntime.terminal.controller` holds
+its own independent reference to the same `TerminalController` — with
+its own diagnostic-only, transient-expected notice.*

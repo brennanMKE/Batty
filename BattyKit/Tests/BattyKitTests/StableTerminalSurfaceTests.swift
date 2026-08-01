@@ -57,6 +57,130 @@ struct StableTerminalSurfaceTests {
         #expect(store.hasTerminalView(forTabID: tab.id) == false)
     }
 
+    /// #0289: `releaseTerminalView` must nil the tab's back-reference, not
+    /// just drop the host's own dictionary entries. `TabRuntime.terminalNSView`
+    /// is the reference the source investigation flagged as the reason
+    /// teardown was non-deterministic — a lingering SwiftUI hold on
+    /// `TabRuntime` (a rename sheet, a stale placeholder) must not also
+    /// keep the surface alive through this property.
+    @Test func releasingTerminalViewNilsTheTabBackReference() {
+        let store = TerminalHostStore()
+        let windowID = WindowID()
+        let tab = TabRuntime()
+        _ = store.terminalView(for: tab, windowID: windowID)
+        #expect(tab.terminalNSView != nil)
+
+        store.releaseTerminalView(forTabID: tab.id)
+
+        #expect(tab.terminalNSView == nil)
+    }
+
+    /// #0289 round 2's core fix, proven directly and synchronously — no
+    /// waiting on dealloc, no weak-probe timing. `AppTerminalView
+    /// .controller` is `open`, so this store (and this test) can read it
+    /// straight back after release. `releaseTerminalView` sets it to
+    /// `nil`, which runs `TerminalSurfaceCoordinator`'s `controller`
+    /// `didSet` — that tears the surface (and PTY) down via
+    /// `surface?.free()` *before* checking whether the new controller is
+    /// non-nil, so this is a real, synchronous teardown call, not a
+    /// proxy for one. This is the deterministic free the issue asks for.
+    @Test func releasingTerminalViewFreesTheSurfaceSynchronously() {
+        let store = TerminalHostStore()
+        let windowID = WindowID()
+        let tab = TabRuntime()
+        let view = store.terminalView(for: tab, windowID: windowID)
+        #expect(view.controller != nil, "sanity check: the view is attached to its tab's controller before release")
+
+        store.releaseTerminalView(forTabID: tab.id)
+
+        #expect(view.controller == nil, "the controller must be cleared synchronously at release — this is what forces ghostty_surface_free at close time rather than deferring to AppTerminalView dealloc")
+    }
+
+    /// #0289 round 2: a lingering `TabRuntime` reference (a stuck rename
+    /// sheet, a placeholder that hasn't unmounted) no longer matters for
+    /// the *surface* — the free happens through the view's own
+    /// `controller` property, not through `TabRuntime`'s lifetime. `tab`
+    /// is held strongly for the whole test, standing in for the stuck
+    /// reference; the surface must still free regardless. (The ghostty
+    /// *app* is a separate matter this test does not cover — see
+    /// `releaseTerminalView`'s doc comment — since `TabRuntime.terminal`
+    /// holds its own independent reference to the same `TerminalController`.)
+    @Test func releasingTerminalViewFreesTheSurfaceEvenWhenTabRuntimeOutlivesRelease() {
+        let store = TerminalHostStore()
+        let windowID = WindowID()
+        let tab = TabRuntime() // held strongly for the whole test, standing in for a stuck SwiftUI reference
+        let view = store.terminalView(for: tab, windowID: windowID)
+
+        store.releaseTerminalView(forTabID: tab.id)
+
+        #expect(view.controller == nil, "the surface still frees synchronously even though TabRuntime is kept alive past release")
+        #expect(tab.terminalNSView == nil, "the back-reference is still cleared regardless of TabRuntime's own lifetime")
+    }
+
+    /// Reference hygiene, not a surface-teardown proof — that's
+    /// `releasingTerminalViewFreesTheSurfaceSynchronously` above, checked
+    /// directly via the now-nil `controller` property. This test instead
+    /// covers that once `releaseTerminalView` has run, nothing this store
+    /// or `TabRuntime` owns should still hold the `AppTerminalView`
+    /// itself, so with no other strong reference in play it should
+    /// deallocate.
+    ///
+    /// Requires an explicit `autoreleasepool`: creating a layer-backed
+    /// `NSView` (`wantsLayer = true`, which `AppTerminalView.commonInit`
+    /// sets) hands AppKit an autoreleased reference as a side effect —
+    /// confirmed empirically, independent of anything Batty or
+    /// GhosttyTerminal does, by constructing a bare `NSView` subclass
+    /// with only `wantsLayer = true` and observing it fails to deallocate
+    /// outside a pool even with zero application-level references. Swift
+    /// Testing's `@Test` functions don't wrap each test body in its own
+    /// pool the way `XCTestCase` does, so without draining one explicitly
+    /// here this assertion would fail for a reason that has nothing to do
+    /// with `releaseTerminalView`'s correctness — a false negative from
+    /// the test harness, not a real retain.
+    @Test func releasingTerminalViewDeallocatesTheViewWhenNothingElseHoldsIt() {
+        let store = TerminalHostStore()
+        let windowID = WindowID()
+        let tab = TabRuntime()
+        weak var weakView: AppTerminalView?
+        autoreleasepool {
+            weakView = store.terminalView(for: tab, windowID: windowID)
+            #expect(weakView != nil, "sanity check: the store + tab back-reference keep it alive before release")
+            store.releaseTerminalView(forTabID: tab.id)
+        }
+
+        #expect(weakView == nil, "AppTerminalView must deallocate once every Batty-owned reference is dropped")
+    }
+
+    /// Freeing the same tab twice must be safe — the second call is a
+    /// no-op rather than crashing on a missing dictionary entry or
+    /// double-releasing the view.
+    @Test func releasingTerminalViewTwiceIsSafe() {
+        let store = TerminalHostStore()
+        let windowID = WindowID()
+        let tab = TabRuntime()
+        _ = store.terminalView(for: tab, windowID: windowID)
+
+        store.releaseTerminalView(forTabID: tab.id)
+        store.releaseTerminalView(forTabID: tab.id)
+
+        #expect(tab.terminalNSView == nil)
+        #expect(store.hasTerminalView(forTabID: tab.id) == false)
+    }
+
+    /// Releasing a tab whose `AppTerminalView` was never created (the
+    /// placeholder never mounted, e.g. a tab created and closed before
+    /// SwiftUI ever rendered it) must be a safe no-op.
+    @Test func releasingTerminalViewForATabThatNeverHadAViewIsSafe() {
+        let store = TerminalHostStore()
+        let tab = TabRuntime()
+        #expect(tab.terminalNSView == nil)
+
+        store.releaseTerminalView(forTabID: tab.id)
+
+        #expect(tab.terminalNSView == nil)
+        #expect(store.hasTerminalView(forTabID: tab.id) == false)
+    }
+
     /// Closing a non-active sibling tab must leave the active tab's
     /// `terminalNSView` reference untouched — the wrapper's invariants
     /// only attach views; `removeTab` operates on the model only.
