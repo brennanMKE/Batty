@@ -170,6 +170,14 @@ public final class TerminalHostStore {
         terminalViews[id] != nil
     }
 
+    /// Every live `(tab.id, AppTerminalView)` pair, visible or hidden.
+    /// Diagnostic-only accessor for ``TerminalMetalMetricsLogger`` (#0294)
+    /// — real lookups should go through ``tabID(for:)`` /
+    /// ``tabRuntime(forTabID:)`` instead.
+    func debugAllTerminalViews() -> [(UUID, AppTerminalView)] {
+        terminalViews.map { ($0.key, $0.value) }
+    }
+
     /// The number of live Terminal Sessions across every window — one per
     /// registered `AppTerminalView`, visible or hidden in a background Tab.
     /// Used by the footprint warning to state how many are open alongside
