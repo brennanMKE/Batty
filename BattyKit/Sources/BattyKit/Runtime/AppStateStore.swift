@@ -16,6 +16,11 @@ public final class AppStateStore {
     public let bellFeed: BellFeedStore
     public let nameCache: SessionNameCache
     public let themeChrome: ThemeChrome
+    /// Owns the footprint sampling timer (#0290). Constructed here but never
+    /// started by `init` — `start()` is production-only wiring
+    /// (`BattyAppDelegate`), so constructing an `AppStateStore` on its own
+    /// never spins up a background sampling loop.
+    @ObservationIgnored public let footprintMonitor = FootprintMonitor()
     /// Set once, at construction. `AppStateStore.shared` is created on the
     /// first access early in app startup (`BattyApp`'s `WindowGroup`
     /// `defaultValue`), so this closely approximates process launch time —
@@ -400,6 +405,9 @@ public final class AppStateStore {
             window.closeWindowCallback?()
         }
         self.windows = [window]
+        footprintMonitor.onWarn = { [weak self] footprintBytes, step in
+            self?.recordFootprintWarning(footprintBytes: footprintBytes, step: step)
+        }
     }
 
     // MARK: - Per-window forwarding shims
@@ -739,6 +747,57 @@ public final class AppStateStore {
         return "\(title)\n\(body)"
     }
 
+    // MARK: - Footprint warning (#0290)
+
+    /// Fired by `footprintMonitor.onWarn` when a sample crosses a new
+    /// soft-limit step. Records a Bell Feed entry stating the current
+    /// footprint and Terminal Session count — so the user has something
+    /// actionable to close — then asks `notifier` for the paired system
+    /// notification (`BellNotifier.postFootprintWarning` only fires it when
+    /// Batty isn't frontmost, since the Bell Feed's unseen dot already covers
+    /// the frontmost case).
+    ///
+    /// `sessionCount` is read from `TerminalHostStore.shared` at call time
+    /// so the number always reflects what's actually open when the warning
+    /// fires, not a stale count captured when the sampling timer started.
+    func recordFootprintWarning(footprintBytes: UInt64, step: Int) {
+        let sessionCount = TerminalHostStore.shared.terminalSessionCount
+        let footprintText = Self.formatGB(footprintBytes)
+        let sessionNoun = sessionCount == 1 ? "Terminal Session" : "Terminal Sessions"
+        let message = String(
+            localized: "Batty is using \(footprintText) across \(sessionCount) \(sessionNoun). Close some to free memory."
+        )
+        logger.notice("recordFootprintWarning: step=\(step, privacy: .public) footprint=\(footprintBytes, privacy: .public) sessionCount=\(sessionCount, privacy: .public)")
+        let entry = BellFeedEntry(
+            timestamp: Date(),
+            windowID: BellFeedEntry.systemID,
+            sessionID: BellFeedEntry.systemID,
+            paneID: BellFeedEntry.systemID,
+            tabID: BellFeedEntry.systemID,
+            surfaceID: BellFeedEntry.systemID,
+            message: message,
+            seen: false
+        )
+        bellFeed.record(entry)
+        notifier?.postFootprintWarning(
+            title: String(localized: "Batty — Memory Usage"),
+            body: message,
+            identifier: entry.id.uuidString
+        )
+    }
+
+    /// `ByteCountFormatter` rounds to as few significant digits as it can
+    /// (a footprint just over a 4 GB limit can render as "4 GB", making a
+    /// warning look like it fired for no reason), and its `.memory` count
+    /// style already uses 1024-based units under a decimal "GB" label — the
+    /// same convention `SettingsPreference.resolvedFootprintSoftLimitBytes()`
+    /// uses to turn the Settings GB stepper into bytes. Formatting by hand
+    /// with a fixed two decimal places keeps the warning text visibly above
+    /// whatever limit it just crossed.
+    private static func formatGB(_ bytes: UInt64) -> String {
+        String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
+    }
+
     public func markBellSeen(id: UUID) {
         guard let entry = bellFeed.markSeen(id: id) else { return }
         for window in windows {
@@ -760,12 +819,18 @@ public final class AppStateStore {
     /// click or notification tap, never from view-update code), then navigates
     /// to the session/pane/tab. If the entry's window is no longer registered
     /// (the window was closed), the entry is marked seen and the jump no-ops.
+    /// A system entry (`BellFeedEntry.systemID`, e.g. the footprint warning)
+    /// takes the same no-op path — it never had an owning window to begin
+    /// with, not a closed one.
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
         // Resolve owning window by matching windowID in the entry.
         let owningWindowID = WindowID(entry.windowID)
         guard let owningWindow = windows.first(where: { $0.id == owningWindowID }) else {
-            // Dead-window entry: mark seen and bail.
-            logger.info("jumpToBellEntry: owning windowID=\(entry.windowID, privacy: .public) no longer live; marking entry seen")
+            if entry.windowID == BellFeedEntry.systemID {
+                logger.info("jumpToBellEntry: entry \(entry.id, privacy: .public) is a system entry with no owning window; marking seen")
+            } else {
+                logger.info("jumpToBellEntry: owning windowID=\(entry.windowID, privacy: .public) no longer live; marking entry seen")
+            }
             markBellSeen(id: entry.id)
             return
         }

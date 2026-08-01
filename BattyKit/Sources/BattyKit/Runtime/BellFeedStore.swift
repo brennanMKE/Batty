@@ -22,6 +22,17 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
     public var summary: String?
     public var seen: Bool
 
+    /// Sentinel `windowID`/`sessionID`/`paneID`/`tabID`/`surfaceID` for
+    /// entries that don't originate from a real Terminal Session — currently
+    /// only the memory-footprint warning. Fixed and never produced by
+    /// `UUID()`, so `BellFeedView.pathLabel` can tell "system entry" apart
+    /// from "the tab this bell came from has since closed" (which shows
+    /// "(closed)"). Every routing path that resolves an entry back to a
+    /// session/pane/tab (`jumpToBellEntry`, `pathLabel`) already treats an
+    /// unresolvable id as a graceful no-op, so this sentinel needs no special
+    /// casing anywhere except the label.
+    public static let systemID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+
     public init(
         id: UUID = UUID(),
         timestamp: Date,

@@ -170,6 +170,14 @@ public final class TerminalHostStore {
         terminalViews[id] != nil
     }
 
+    /// The number of live Terminal Sessions across every window — one per
+    /// registered `AppTerminalView`, visible or hidden in a background Tab.
+    /// Used by the footprint warning to state how many are open alongside
+    /// the memory number, so the user has something actionable to close.
+    public var terminalSessionCount: Int {
+        terminalViews.count
+    }
+
     /// The most-recently-applied placement for `id`, or `nil` if no placement
     /// has been set for this tab. Used by unit tests to verify that hide/show
     /// paths drive the store correctly.

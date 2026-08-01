@@ -300,6 +300,9 @@ private struct AdvancedSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Section("Memory") {
+                FootprintSoftLimitRow()
+            }
         }
         .formStyle(.grouped)
         .padding(20)
@@ -307,6 +310,23 @@ private struct AdvancedSettingsView: View {
             cliModel.checkInstalled()
             brokerModel.refresh()
         }
+    }
+}
+
+private struct FootprintSoftLimitRow: View {
+    @AppStorage(SettingsPreference.footprintSoftLimitGBKey)
+    private var softLimitGB: Double = SettingsPreference.defaultFootprintSoftLimitGB
+
+    var body: some View {
+        Stepper(
+            "Warn above \(Int(softLimitGB)) GB",
+            value: $softLimitGB,
+            in: 1...32,
+            step: 1
+        )
+        Text("Batty checks its own memory footprint about once a minute. Crossing this limit posts a warning to the Bell Feed (and a system notification when Batty isn't frontmost) stating the footprint and how many Terminal Sessions are open.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }
 

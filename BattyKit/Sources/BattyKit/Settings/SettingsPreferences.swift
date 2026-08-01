@@ -16,6 +16,7 @@ public enum SettingsPreference {
     public static let autoNameFromFilesKey = "co.sstools.Batty.autoNameFromFiles"
     public static let autoNameWithAIKey = "co.sstools.Batty.autoNameWithAI"
     public static let summarizeNotificationsWithAIKey = "co.sstools.Batty.summarizeNotificationsWithAI"
+    public static let footprintSoftLimitGBKey = "co.sstools.Batty.footprintSoftLimitGB"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -28,6 +29,12 @@ public enum SettingsPreference {
     public static let defaultAutoNameFromFiles: Bool = true
     public static let defaultAutoNameWithAI: Bool = true
     public static let defaultSummarizeNotificationsWithAI: Bool = true
+    /// #0285's field measurements put graphics cost at ~42-56 MB per open
+    /// Terminal Session. 4 GB gives comfortable headroom for the sizes of
+    /// workspace people actually run (dozens of sessions) while still
+    /// warning well before the 8+ GB level that pushed the reporting
+    /// machine into kernel memory pressure.
+    public static let defaultFootprintSoftLimitGB: Double = 4.0
 
     public static func detectedShell() -> String {
         if let shell = ProcessInfo.processInfo.environment["SHELL"], !shell.isEmpty {
@@ -109,6 +116,15 @@ public enum SettingsPreference {
         }
         return UserDefaults.standard.bool(forKey: summarizeNotificationsWithAIKey)
     }
+
+    public static func resolvedFootprintSoftLimitGB() -> Double {
+        let stored = UserDefaults.standard.double(forKey: footprintSoftLimitGBKey)
+        return stored > 0 ? stored : defaultFootprintSoftLimitGB
+    }
+
+    public static func resolvedFootprintSoftLimitBytes() -> UInt64 {
+        UInt64((resolvedFootprintSoftLimitGB() * 1_073_741_824).rounded())
+    }
 }
 
 public enum PasteStrictness: String, CaseIterable, Sendable {
@@ -188,6 +204,7 @@ extension SettingsPreference {
             bellSoundKey: defaultBellSound,
             systemNotificationsKey: defaultSystemNotifications,
             cmdNumberTargetKey: defaultCmdNumberTarget,
+            footprintSoftLimitGBKey: defaultFootprintSoftLimitGB,
         ])
     }
 }

@@ -20,6 +20,18 @@ public protocol BellNotifying: AnyObject {
         tabLabel: String,
         playSound: Bool
     )
+
+    /// Posts a system notification not tied to a real Terminal Session —
+    /// currently only the memory-footprint warning (#0290). `identifier`
+    /// should be the paired Bell Feed entry's id so a tap routes through the
+    /// same `onTapEntry` path as every other notification.
+    func postFootprintWarning(title: String, body: String, identifier: String)
+}
+
+extension BellNotifying {
+    /// Default no-op so test doubles that only exercise `post(for:...)`
+    /// don't need updating for a path most of them don't touch.
+    public func postFootprintWarning(title: String, body: String, identifier: String) {}
 }
 
 @MainActor
@@ -78,6 +90,27 @@ public final class BellNotifier: BellNotifying {
     private func shouldPost(for entry: BellFeedEntry) -> Bool {
         if !NSApplication.shared.isActive { return true }
         return !entry.seen
+    }
+
+    /// Unlike `post(for:...)`, this fires only when Batty isn't frontmost —
+    /// the Bell Feed entry (a `record()` call the caller makes alongside
+    /// this) is the primary, always-visible warning surface (the unseen dot
+    /// on the Bell Feed toolbar item); the system notification is the extra
+    /// nudge for when the user isn't looking at the app at all. Firing it
+    /// while Batty is active would duplicate a warning the user can already
+    /// see.
+    public func postFootprintWarning(title: String, body: String, identifier: String) {
+        guard SettingsPreference.resolvedSystemNotifications() else { return }
+        guard !NSApplication.shared.isActive else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        if SettingsPreference.resolvedBellSound() {
+            content.sound = .default
+        }
+        content.userInfo = [Self.entryIdUserInfoKey: identifier]
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        center.add(request, withCompletionHandler: nil)
     }
 }
 

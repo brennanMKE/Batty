@@ -105,6 +105,9 @@ public struct BellFeedView: View {
     }
 
     private func pathLabel(for entry: BellFeedEntry) -> String {
+        if entry.sessionID == BellFeedEntry.systemID {
+            return String(localized: "Batty")
+        }
         // Search all windows' sessions to find the owning session (#0239:
         // entries can belong to any window's sessions, not just windows[0]).
         let allSessions = store.windows.flatMap { $0.sessions }

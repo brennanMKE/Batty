@@ -71,6 +71,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         appearanceObserver = AppearanceObserver(store: AppStateStore.shared)
         AppStateStore.shared.nameSuggester = FoundationModelsNameSuggester.makeIfAvailable()
         AppStateStore.shared.notificationSummarizer = FoundationModelsNotificationSummarizer.makeIfAvailable()
+        AppStateStore.shared.footprintMonitor.start()
         // onAllSessionsClosed is wired per-window in AppStateStore.init and
         // windowRuntime(for:) — each window's closure closes itself when its
         // last session goes. The app terminates when the last content window
