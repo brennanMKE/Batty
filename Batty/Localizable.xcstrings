@@ -481,6 +481,282 @@
         }
       }
     },
+    "Batty is using %@ across %lld Terminal Sessions. Close some to free memory." : {
+      "comment" : "Bell Feed / system-notification body for the memory footprint soft-limit warning (#0290). Pluralized on the Terminal Session count. Manually added like the other BattyKit strings above (BattyKit's String(localized:) calls aren't auto-extracted into this catalog) -- see #0295. All 15 locales carry the same English text for now (non-en marked needs_review) so every locale applies its own CLDR plural rule to get correct singular/plural grammar; actual translation of the sentence is separate future work.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "es-419" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Session. Close some to free memory."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Batty is using %@ across %lld Terminal Sessions. Close some to free memory."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Cancel" : {
       "comment" : "Generic cancel button.",
       "extractionState" : "manual",

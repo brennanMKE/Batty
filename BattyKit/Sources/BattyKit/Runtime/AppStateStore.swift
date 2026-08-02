@@ -763,10 +763,7 @@ public final class AppStateStore {
     func recordFootprintWarning(footprintBytes: UInt64, step: Int) {
         let sessionCount = TerminalHostStore.shared.terminalSessionCount
         let footprintText = Self.formatGB(footprintBytes)
-        let sessionNoun = sessionCount == 1 ? "Terminal Session" : "Terminal Sessions"
-        let message = String(
-            localized: "Batty is using \(footprintText) across \(sessionCount) \(sessionNoun). Close some to free memory."
-        )
+        let message = Self.footprintWarningMessage(footprintText: footprintText, sessionCount: sessionCount)
         logger.notice("recordFootprintWarning: step=\(step, privacy: .public) footprint=\(footprintBytes, privacy: .public) sessionCount=\(sessionCount, privacy: .public)")
         let entry = BellFeedEntry(
             timestamp: Date(),
@@ -786,6 +783,38 @@ public final class AppStateStore {
         )
     }
 
+    /// The plural rule lives in `Localizable.xcstrings` (a manually-added
+    /// "plural" variation, matching the other BattyKit strings extracted
+    /// there by hand — see #0295), not an English ternary baked into the
+    /// interpolation. All 15 locales currently carry the same English text
+    /// (non-en marked `needs_review`), so every locale applies its own CLDR
+    /// plural rule to the same words and gets correct singular/plural
+    /// grammar today; translating the sentence itself into the other 14
+    /// languages is separate future work, not blocked on this.
+    ///
+    /// `bundle`/`locale` default to the environment (`String(localized:)`'s
+    /// own defaults) so production call sites don't need to pass anything;
+    /// the parameters exist so a test can point `String(localized:)` at a
+    /// bundle it compiled itself from the real catalog on disk. That's
+    /// necessary, not just convenient: under `BattyKitTests`, `Bundle.main`
+    /// resolves to the xctest runner, not `Batty.app`, so with no bundle
+    /// override `String(localized:)` can't reach any compiled catalog and
+    /// silently falls back to this function's own English source text —
+    /// which would make a test look like it verified plural resolution
+    /// while actually verifying nothing.
+    static func footprintWarningMessage(
+        footprintText: String,
+        sessionCount: Int,
+        bundle: Bundle = .main,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        String(
+            localized: "Batty is using \(footprintText) across \(sessionCount) Terminal Sessions. Close some to free memory.",
+            bundle: bundle,
+            locale: locale
+        )
+    }
+
     /// `ByteCountFormatter` rounds to as few significant digits as it can
     /// (a footprint just over a 4 GB limit can render as "4 GB", making a
     /// warning look like it fired for no reason), and its `.memory` count
@@ -794,8 +823,27 @@ public final class AppStateStore {
     /// uses to turn the Settings GB stepper into bytes. Formatting by hand
     /// with a fixed two decimal places keeps the warning text visibly above
     /// whatever limit it just crossed.
-    private static func formatGB(_ bytes: UInt64) -> String {
-        String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
+    ///
+    /// The divisor is `1_073_741_824` (2³⁰), i.e. GiB, not decimal GB — this
+    /// is deliberate, not a bug to "correct" toward 1_000_000_000. Verified
+    /// empirically (#0295): a process whose exact `phys_footprint` was known
+    /// from `task_info` was independently reported by both `footprint -p`
+    /// and `top` as bytes ÷ 2²⁰, and `ByteCountFormatter.CountStyle.memory`
+    /// — Apple's own memory-display style — is likewise 1024-based under a
+    /// decimal-looking "GB" label. Activity Monitor follows the same
+    /// convention. So this divisor already matches both the number and the
+    /// label Activity Monitor shows; switching to 1_000_000_000 would create
+    /// the mismatch it might look like it's fixing.
+    ///
+    /// `locale` defaults to the environment so `formatted(_:)` renders the
+    /// decimal separator the user's locale expects (comma, not always ".")
+    /// — the app ships 15 locales via `Batty/Localizable.xcstrings`. The
+    /// parameter exists so tests can pin a specific locale deterministically
+    /// instead of depending on the test machine's locale.
+    static func formatGB(_ bytes: UInt64, locale: Locale = .autoupdatingCurrent) -> String {
+        let gb = Double(bytes) / 1_073_741_824
+        let number = gb.formatted(.number.precision(.fractionLength(2)).locale(locale))
+        return "\(number) GB"
     }
 
     public func markBellSeen(id: UUID) {
