@@ -134,6 +134,15 @@ private struct WindowLifecycleController: NSViewRepresentable {
                     window?.performClose(nil)
                 }
             }
+            // Sync the store's initial occlusion state — the delegate's
+            // windowDidChangeOcclusionState only fires on a subsequent
+            // transition, so a window created already occluded (or this
+            // being the first time occlusion is wired up for it) needs an
+            // explicit read here. Idempotent at the store (#0288).
+            TerminalHostStore.shared.setWindowOcclusionVisible(
+                window.occlusionState.contains(.visible),
+                forWindowID: id
+            )
         }
     }
 
@@ -204,6 +213,27 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
         }
         // 5. Remove the WindowRuntime from the windows list.
         store.removeWindow(id: windowID)
+    }
+
+    /// Pauses/resumes rendering for every surface in this window when the
+    /// window itself becomes fully occluded (covered by another window),
+    /// minimized, or hidden (Cmd-H) — none of which flip any Tab/Pane's own
+    /// `isHidden`/placement state, so the per-Tab occlusion signalling in
+    /// `TerminalHostStore.setPlacement`/`updatePlacements` alone can't see
+    /// it. `NSWindow.occlusionState` is the documented AppKit signal for
+    /// exactly this (#0288). This runs as a genuine `NSWindowDelegate`
+    /// callback outside SwiftUI's update pass — not a write from `body`,
+    /// `onChange`, or a representable update — and it writes no `@Observable`
+    /// state; it only forwards to `TerminalHostStore`, which re-derives each
+    /// tab's effective visibility from its own placement (see that method's
+    /// doc comment for why re-showing everything unconditionally would be
+    /// wrong).
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        TerminalHostStore.shared.setWindowOcclusionVisible(
+            window.occlusionState.contains(.visible),
+            forWindowID: windowID
+        )
     }
 }
 

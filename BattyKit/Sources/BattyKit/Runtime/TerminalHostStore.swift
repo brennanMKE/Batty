@@ -68,7 +68,47 @@ public final class TerminalHostStore {
     /// is a single dictionary read.
     private var placements: [UUID: Placement] = [:]
 
-    public init() {}
+    /// `WindowID` → whether that content window is currently occlusion-visible
+    /// (on screen, not minimized, not fully covered by another window, and
+    /// not hidden via Cmd-H — see `NSWindow.occlusionState`). Absent entries
+    /// are treated as visible, so a window whose occlusion hasn't been
+    /// observed yet (or in unit tests, which never install a real
+    /// `NSWindowDelegate`) never spuriously suppresses rendering. Driven by
+    /// ``setWindowOcclusionVisible(_:forWindowID:)``, called from
+    /// `WindowDelegate.windowDidChangeOcclusionState(_:)` in `RootWindowView`.
+    private var windowOcclusionVisible: [WindowID: Bool] = [:]
+
+    /// Drains queued libghostty actions (bell, title, desktop notification,
+    /// ...) for occluded Tabs that `setSurfaceVisible(false)` would
+    /// otherwise silence entirely — see ``OccludedSurfaceTicker`` for why
+    /// this exists and why it has to poll. Wired in ``init()``, kept in
+    /// sync by ``syncOccludedTicker()`` on every placement/occlusion
+    /// change, and started once at app launch via
+    /// ``startOccludedSurfaceTicking()``.
+    private let occludedSurfaceTicker = OccludedSurfaceTicker()
+
+    /// Creates the `AppTerminalView` backing a newly-registered tab.
+    /// Overridable for tests: production always wants the real
+    /// upstream-libghostty-spm view, but tests need to substitute a
+    /// subclass that records calls to `setSurfaceVisible(_:)` (`open` on
+    /// `AppTerminalView`) so the occlusion tests can assert the call
+    /// sequence rather than only the derived `TerminalHostStore` bookkeeping.
+    public var makeTerminalView: () -> AppTerminalView = { AppTerminalView(frame: .zero) }
+
+    public init() {
+        occludedSurfaceTicker.onTick = { [weak self] id in
+            self?.tabRuntime(forTabID: id)?.terminal.controller.tick()
+        }
+    }
+
+    /// Starts the background tick loop that keeps occluded-but-live Tabs'
+    /// queued libghostty actions flowing (#0288). Idempotent — a second
+    /// call is a no-op. Call once at app launch
+    /// (`BattyAppDelegate.applicationDidFinishLaunching`); never called
+    /// from tests, which drive the tick set directly instead.
+    public func startOccludedSurfaceTicking() {
+        occludedSurfaceTicker.start()
+    }
 
     // MARK: - Per-window host access
 
@@ -102,6 +142,7 @@ public final class TerminalHostStore {
         }
         guard hosts[windowID] != nil else { return }
         hosts.removeValue(forKey: windowID)
+        windowOcclusionVisible.removeValue(forKey: windowID)
         logger.debug("released host for window \(windowID.value, privacy: .public); total hosts=\(self.hosts.count, privacy: .public)")
     }
 
@@ -129,7 +170,7 @@ public final class TerminalHostStore {
             return existing
         }
         let host = hostView(forWindowID: windowID)
-        let view = AppTerminalView(frame: .zero)
+        let view = makeTerminalView()
         view.delegate = tab.terminalDelegate
         view.controller = tab.terminal.controller
         view.configuration = tab.terminal.configuration
@@ -247,6 +288,7 @@ public final class TerminalHostStore {
         view.controller = nil
         view.removeFromSuperview()
         tab?.terminalNSView = nil
+        syncOccludedTicker()
         logger.debug("released terminal view for tab \(id, privacy: .public): surface and PTY freed synchronously; host has \(self.terminalViews.count, privacy: .public) view(s) remaining")
         Self.verifyReferenceHygiene(view: view, tab: tab, tabID: id)
     }
@@ -300,6 +342,35 @@ public final class TerminalHostStore {
 
     // MARK: - Placement updates (per-window scoped)
 
+    /// The single source of truth for whether a Tab's surface should be
+    /// rendering: it takes Tab/Pane visibility and window occlusion, so
+    /// every call site (``updatePlacements(_:forWindowID:)``,
+    /// ``setPlacement(_:forTabID:)``, ``setWindowOcclusionVisible(_:forWindowID:)``,
+    /// and ``syncOccludedTicker()``) computes the exact same answer from the
+    /// exact same two inputs.
+    ///
+    /// `placementVisible` is deliberately a plain `Bool`, not a `Placement?`
+    /// read back out of the `placements` dictionary. An earlier version read
+    /// `placements[id]?.isVisible` here, which drifts: a tab dropped
+    /// entirely from a *subsequent* `updatePlacements` map (rather than
+    /// explicitly re-placed with `isVisible: false`) gets its view hidden,
+    /// but `placements[id]` is only overwritten for ids **present** in the
+    /// new map — the dictionary entry keeps its stale `isVisible == true`.
+    /// A later `setWindowOcclusionVisible(true, ...)` re-deriving from that
+    /// stale entry would then call `setSurfaceVisible(true)` on a genuinely
+    /// hidden view, resuming rendering for a Tab #0288 exists to keep
+    /// suppressed. `view.isHidden` never has this problem — both
+    /// `updatePlacements` and `setPlacement` write it unconditionally on
+    /// every call for every view they touch — so every occlusion call site
+    /// passes `!view.isHidden` here instead of consulting `placements`.
+    /// (`placements` itself stays around only as the frame/isVisible cache
+    /// `setPlacement`/`updatePlacements` apply to `view.frame` and the
+    /// `placement(forTabID:)` test accessor reads back — never as an input
+    /// to this function.)
+    static func effectiveSurfaceVisible(placementVisible: Bool, windowVisible: Bool) -> Bool {
+        placementVisible && windowVisible
+    }
+
     /// Reconcile every known terminal view in `windowID`'s host against the
     /// supplied placement map. Tabs with a placement become visible at the
     /// given frame; tabs without a placement (or with `isVisible == false`)
@@ -312,9 +383,11 @@ public final class TerminalHostStore {
         for (id, placement) in newPlacements {
             placements[id] = placement
         }
+        let windowVisible = windowOcclusionVisible[windowID] ?? true
         // Walk only the views belonging to this window.
         for (id, view) in terminalViews where tabWindowMap[id] == windowID {
-            if let placement = newPlacements[id], placement.isVisible {
+            let placement = newPlacements[id]
+            if let placement, placement.isVisible {
                 if view.frame != placement.frame {
                     view.frame = placement.frame
                 }
@@ -324,7 +397,15 @@ public final class TerminalHostStore {
             } else if !view.isHidden {
                 view.isHidden = true
             }
+            // Surface occlusion tracks Tab/Pane visibility AND window
+            // occlusion — the view can stay attached (`isHidden == false`)
+            // while its window is fully covered/minimized/hidden, in which
+            // case the surface itself must still stop rendering (#0288).
+            // `!view.isHidden` (not `placement`) is the visibility input —
+            // see `effectiveSurfaceVisible`'s doc comment for why.
+            view.setSurfaceVisible(Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible))
         }
+        syncOccludedTicker()
     }
 
     /// Single-tab placement update that merges into the existing map
@@ -348,6 +429,112 @@ public final class TerminalHostStore {
         } else if !view.isHidden {
             view.isHidden = true
         }
+        let windowVisible = tabWindowMap[id].flatMap { windowOcclusionVisible[$0] } ?? true
+        view.setSurfaceVisible(Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible))
+        syncOccludedTicker()
+    }
+
+    // MARK: - Window occlusion (#0288)
+
+    /// Updates `windowID`'s occlusion-visibility and re-applies the effective
+    /// surface visibility (`!view.isHidden && windowVisible`) to every tab
+    /// currently registered in that window's host. Called from
+    /// `WindowDelegate.windowDidChangeOcclusionState(_:)` in `RootWindowView`
+    /// on `NSWindow.didChangeOcclusionStateNotification` — covers full
+    /// occlusion by another window, minimization, and Cmd-H app hide, none
+    /// of which flip any Tab/Pane's own `isHidden`/placement state.
+    ///
+    /// Re-deriving from each view's own `isHidden` (rather than blindly
+    /// setting every surface visible again, or trusting the `placements`
+    /// cache — see `effectiveSurfaceVisible`'s doc comment for why not the
+    /// latter) is the guard against un-hiding background tabs when the
+    /// window returns: a tab that was already occluded by pane/tab
+    /// visibility stays occluded; only tabs whose view is actually shown
+    /// resume rendering.
+    ///
+    /// No-op when `visible` matches the currently tracked state, so repeated
+    /// or redundant notifications (SwiftUI churn re-driving the same window)
+    /// don't re-walk every terminal view in the window.
+    public func setWindowOcclusionVisible(_ visible: Bool, forWindowID windowID: WindowID) {
+        guard windowOcclusionVisible[windowID] != visible else { return }
+        windowOcclusionVisible[windowID] = visible
+        for (id, view) in terminalViews where tabWindowMap[id] == windowID {
+            view.setSurfaceVisible(Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: visible))
+        }
+        logger.debug("window occlusion changed window=\(windowID.value, privacy: .public) visible=\(visible, privacy: .public)")
+        syncOccludedTicker()
+    }
+
+    /// The tracked occlusion-visibility for `windowID`, defaulting to `true`
+    /// when unobserved. Used by tests; production code has no reason to read
+    /// this back — occlusion only flows one way, into `setSurfaceVisible`.
+    func isWindowOcclusionVisible(forWindowID windowID: WindowID) -> Bool {
+        windowOcclusionVisible[windowID] ?? true
+    }
+
+    // MARK: - Occluded-surface ticking (#0288)
+
+    /// Recomputes which tab ids belong in the background tick set and hands
+    /// the result to ``occludedSurfaceTicker``. A tab qualifies when its
+    /// effective surface visibility
+    /// (``effectiveSurfaceVisible(placementVisible:windowVisible:)``) is
+    /// `false` — a Tab that's on screen is already ticking itself through
+    /// the normal wakeup path.
+    ///
+    /// Deliberately does **not** filter on whether the tab's libghostty
+    /// surface has attached yet. An earlier version did (`hasLiveSurface`),
+    /// which went stale: none of the four call sites below re-run when a
+    /// surface attaches asynchronously after `terminalView(for:windowID:)`
+    /// creates the view (`viewDidMoveToWindow` → `layout()` →
+    /// `rebuildIfReady()`), so a Tab mounting into an already-occluded
+    /// window stayed occluded-with-a-live-surface but untracked — exactly
+    /// the bell suppression this ticker exists to prevent. Every Tab has a
+    /// real `ghostty_app_t` from construction
+    /// (`TerminalController.init` → `createApp()`), and
+    /// `TerminalController.tick()` opens with `guard let app else { return }`
+    /// — so ticking a Tab whose surface hasn't attached yet just drains an
+    /// empty mailbox, which is cheaper than the staleness bug was.
+    ///
+    /// Called at the end of every method that can change the two inputs
+    /// (view visibility, window occlusion) or the view set itself:
+    /// ``updatePlacements(_:forWindowID:)``, ``setPlacement(_:forTabID:)``,
+    /// ``setWindowOcclusionVisible(_:forWindowID:)``, and
+    /// ``releaseTerminalView(forTabID:)`` (so a closed tab's id drops out
+    /// immediately rather than lingering until the next unrelated update).
+    /// O(live terminal views) per call — cheap at the Tab counts this app
+    /// deals with, and simpler to keep correct than incrementally patching
+    /// a running set from every different call site's own delta.
+    private func syncOccludedTicker() {
+        var targets: Set<UUID> = []
+        for (id, view) in terminalViews {
+            let windowVisible = tabWindowMap[id].flatMap { windowOcclusionVisible[$0] } ?? true
+            guard !Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible) else { continue }
+            targets.insert(id)
+        }
+        occludedSurfaceTicker.setTargets(targets)
+    }
+
+    /// The tab ids currently scheduled for background ticking. Used by
+    /// tests; production code never reads this back.
+    func occludedTickTargets() -> Set<UUID> {
+        occludedSurfaceTicker.targets
+    }
+
+    /// Synchronously fires one tick cycle against the current occluded-tick
+    /// set, bypassing the real interval. Used by tests to verify tick
+    /// delivery without starting (or waiting on) the background loop.
+    func fireOccludedTickForTesting() {
+        occludedSurfaceTicker.tickOnce()
+    }
+
+    /// Replaces the per-tick handler wired in ``init()``. Production always
+    /// resolves the tab's real `TerminalController` and calls `tick()` on
+    /// it, which has no observable effect on a surfaceless controller in a
+    /// unit test — tests substitute a recording closure here instead, so
+    /// ``fireOccludedTickForTesting()`` can assert *which* ids were ticked
+    /// rather than only that calling it doesn't crash.
+    func setOccludedTickHandlerForTesting(_ handler: @escaping (UUID) -> Void) {
+        occludedSurfaceTicker.onTick = handler
     }
 
     // MARK: - Types
