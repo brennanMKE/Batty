@@ -1,5 +1,7 @@
 #!/usr/bin/env zsh
-# Walk the release-readiness gates. Read-only — never mutates anything.
+# Walk the release-readiness gates. Read-only against the app/release state it
+# checks — the only mutation is stamping its own gitignored
+# scripts/.release-integrity-state file with "last confirmed good" dates.
 #
 # Each gate prints one line:
 #   [✓] description           — passing
@@ -12,6 +14,12 @@
 #   --allow-no-sparkle   skip the SUFeedURL plist check
 #   --skip-ssh-check     don't actually SSH to the EC2 host
 #   --skip-build         don't re-run xcodebuild / tests (faster ad-hoc check)
+#   --credentials-only   answer ONLY "can this machine sign/notarize/publish a
+#                        release right now" (#0306) — Product variant gate +
+#                        Credential gates, nothing else. No build, no git
+#                        network calls, no website checks. This is the command
+#                        to run on a candidate release machine before starting;
+#                        see scripts/RELEASE-CREDENTIALS.md.
 #   -h | --help          this help
 
 set -uo pipefail
@@ -29,6 +37,7 @@ ALLOW_DIRTY=0
 ALLOW_NO_SPARKLE=0
 SKIP_SSH=0
 SKIP_BUILD=0
+CREDENTIALS_ONLY=0
 
 for arg in "$@"; do
     case "$arg" in
@@ -37,6 +46,7 @@ for arg in "$@"; do
         --allow-no-sparkle) ALLOW_NO_SPARKLE=1 ;;
         --skip-ssh-check) SKIP_SSH=1 ;;
         --skip-build) SKIP_BUILD=1 ;;
+        --credentials-only) CREDENTIALS_ONLY=1; SKIP_BUILD=1 ;;
         -h|--help)
             sed -n '2,/^set -uo/p' "$0" | sed '/^set -uo/d' | sed 's/^# *//'
             exit 0
@@ -47,6 +57,63 @@ done
 
 FAILS=0
 WARNS=0
+# Set when a Sparkle signing tool (generate_keys / sign_update) could not be
+# located, so the private key was never actually probed either way (#0306
+# round 2). Distinct from "confirmed present" (cred_pass) and "confirmed
+# absent" (cred_fail) — this is the third, previously-collapsed state:
+# unknown. Read by the --credentials-only summary so exit 0 never asserts
+# "Sparkle-verifiable" for a machine where that was never checked.
+SPARKLE_UNVERIFIED=0
+
+# --- Credential state (#0306) -------------------------------------------------
+#
+# "Last confirmed good on this machine" tracking for the small set of
+# irreplaceable/hard-to-replicate credential items, so a later silent
+# expiry or deleted keychain item is reported against its last known-good
+# date instead of surfacing as a bare failure. Machine-local, gitignored.
+
+STATE_FILE="$REPO_ROOT/scripts/.release-integrity-state"
+
+state_get() {
+    [[ -f "$STATE_FILE" ]] || return 1
+    grep "^$1=" "$STATE_FILE" 2>/dev/null | tail -1 | cut -d= -f2
+}
+
+state_stamp() {
+    local key="$1" today
+    today="$(date -u +%Y-%m-%d)"
+    touch "$STATE_FILE"
+    if grep -q "^$key=" "$STATE_FILE" 2>/dev/null; then
+        sed -i '' "s/^$key=.*/$key=$today/" "$STATE_FILE"
+    else
+        print -- "$key=$today" >> "$STATE_FILE"
+    fi
+}
+
+# pass/fail wrappers that additionally stamp (on pass) or look up (on fail)
+# the state file for a given item key. Use for items where "when did this
+# last work" is worth knowing — the credential/certificate gates, not every
+# gate in the script.
+cred_pass() {
+    pass "$1"
+    [[ -n "${2:-}" ]] && state_stamp "$2"
+}
+cred_fail() {
+    local msg="$1" key="${2:-}" prior
+    if [[ -n "$key" ]] && prior=$(state_get "$key") && [[ -n "$prior" ]]; then
+        fail "$msg (last confirmed good on this machine: $prior)"
+    else
+        fail "$msg"
+    fi
+}
+cred_warn() {
+    local msg="$1" key="${2:-}" prior
+    if [[ -n "$key" ]] && prior=$(state_get "$key") && [[ -n "$prior" ]]; then
+        warn "$msg (last confirmed good on this machine: $prior)"
+    else
+        warn "$msg"
+    fi
+}
 
 pass() { print "  [✓] $1"; }
 fail() { print "  [✗] $1"; FAILS=$((FAILS + 1)); }
@@ -84,6 +151,200 @@ appcast_newest_attr() {
     perl -0777 -pe 's/<!--.*?-->//gs' "$APPCAST" 2>/dev/null \
         | grep -oE "$1=\"[^\"]+\"" | head -1 | sed -E 's/.*="([^"]+)"/\1/'
 }
+
+# --- Product variant gate -----------------------------------------------------
+#
+# #0280: a release built while Active.xcconfig points at Beta silently
+# produces the wrong product (Batty Beta.app / co.sstools.Batty.beta from
+# the Prod scheme). Cheapest, highest-value check in the whole script —
+# runs first, and always (including --credentials-only).
+
+section "Product variant gate"
+
+ACTIVE_XCCONFIG="$REPO_ROOT/Configuration/Active.xcconfig"
+if [[ ! -f "$ACTIVE_XCCONFIG" ]]; then
+    cred_fail "Configuration/Active.xcconfig missing — run: scripts/set-environment.sh Prod" "active_xcconfig_prod"
+elif grep -qE '#include\s+"Prod\.xcconfig"' "$ACTIVE_XCCONFIG"; then
+    cred_pass "Configuration/Active.xcconfig points at Prod.xcconfig" "active_xcconfig_prod"
+else
+    VARIANT=$(grep -oE '"[A-Za-z]+\.xcconfig"' "$ACTIVE_XCCONFIG" | head -1)
+    cred_fail "Configuration/Active.xcconfig points at ${VARIANT:-an unknown variant}, not Prod.xcconfig — a release built now would silently produce the wrong product (#0280). Run: scripts/set-environment.sh Prod" "active_xcconfig_prod"
+fi
+
+# --- Credential gates ---------------------------------------------------------
+#
+# #0306: everything a release depends on that lives outside the repo —
+# machine-local keychain items and files. This is the section
+# --credentials-only isolates: "can this machine sign, notarize, and
+# publish a Sparkle-verifiable update right now."
+
+section "Credential gates"
+
+TEAM_ID=$(grep -E '^DEVELOPMENT_TEAM' "$XCCONFIG" 2>/dev/null | awk -F= '{print $2}' | tr -d ' ')
+SIGN_IDENTITY=""
+if [[ -n "$TEAM_ID" ]]; then
+    IDENTITY_LINE=$(security find-identity -p codesigning -v 2>/dev/null \
+        | grep "Developer ID Application.*$TEAM_ID" | head -1)
+    SIGN_IDENTITY=$(print -r -- "$IDENTITY_LINE" | sed -E 's/.*"(.*)"/\1/')
+fi
+if [[ -n "$SIGN_IDENTITY" ]]; then
+    # find-identity -v only lists identities with a matching private key in
+    # the keychain — a cert-only entry (no key) does not appear here, so
+    # this also proves the key, not just the cert (release.sh needs both).
+    cred_pass "Developer ID Application identity + private key present ($TEAM_ID)" "dev_id_identity"
+else
+    cred_fail "Developer ID Application identity for team $TEAM_ID not found (cert+key both required — release.sh will fail at codesign time). Add via Xcode > Settings > Accounts > Manage Certificates > + > Developer ID Application, or import the .p12 backup (see scripts/RELEASE-CREDENTIALS.md)" "dev_id_identity"
+fi
+
+# Certificate expiry (#0306): this project's Developer ID cert was revoked
+# once already (#0270/#0273/#0278/#0281) and re-issued 2026-07-26, so
+# validity is not something to assume stable here. Warn inside a 30-day
+# lead window rather than finding out mid-notarization.
+if [[ -n "$SIGN_IDENTITY" ]] && command -v openssl >/dev/null 2>&1; then
+    ENDDATE_RAW=$(security find-certificate -c "$SIGN_IDENTITY" -p login.keychain-db 2>/dev/null \
+        | openssl x509 -noout -enddate 2>/dev/null | sed 's/^notAfter=//')
+    ENDDATE_EPOCH=$(TZ=GMT date -j -f "%b %d %T %Y %Z" "$ENDDATE_RAW" +%s 2>/dev/null || echo "")
+    if [[ -n "$ENDDATE_EPOCH" ]]; then
+        DAYS_LEFT=$(( (ENDDATE_EPOCH - $(date +%s)) / 86400 ))
+        if (( DAYS_LEFT < 0 )); then
+            cred_fail "Developer ID Application cert EXPIRED on $ENDDATE_RAW — re-issue via Xcode > Settings > Accounts before any release" "cert_expiry"
+        elif (( DAYS_LEFT < 30 )); then
+            cred_warn "Developer ID Application cert expires in $DAYS_LEFT day(s) ($ENDDATE_RAW) — renew soon via Xcode > Settings > Accounts" "cert_expiry"
+        else
+            cred_pass "Developer ID Application cert valid for $DAYS_LEFT more day(s) (expires $ENDDATE_RAW)" "cert_expiry"
+        fi
+    else
+        warn "could not read Developer ID Application cert expiry (openssl parse failed)"
+    fi
+elif [[ -n "$SIGN_IDENTITY" ]]; then
+    warn "openssl not on PATH — skipping cert expiry check"
+fi
+
+NOTARY_PROFILE_OK=0
+if xcrun notarytool history --keychain-profile Batty-notary >/dev/null 2>&1; then
+    NOTARY_PROFILE_OK=1
+    cred_pass "notarytool keychain profile 'Batty-notary' configured" "notary_profile"
+else
+    cred_fail "notarytool 'Batty-notary' keychain profile missing or invalid — this machine cannot notarize right now. Run: scripts/setup-keys.sh (requires the .p8 below)" "notary_profile"
+fi
+
+# The ASC API key file is what makes the notary profile *re-creatable* on
+# this machine (setup-keys.sh reads it) — check it independently of the
+# profile so "profile missing" and "profile missing AND unfixable here"
+# are distinguishable (#0306).
+ASC_KEY="$HOME/.appstoreconnect/AuthKey_DWLP54ACTJ.p8"
+if [[ -f "$ASC_KEY" ]]; then
+    cred_pass "ASC API key present ($ASC_KEY)" "asc_p8"
+elif (( NOTARY_PROFILE_OK )); then
+    cred_warn "ASC API key ($ASC_KEY) not on this machine — notarization works today via the stored profile, but this machine can't recreate the profile from scratch (fresh keychain, new user) without it. Copy it here as a backup (see scripts/RELEASE-CREDENTIALS.md)" "asc_p8"
+else
+    cred_fail "ASC API key ($ASC_KEY) not on this machine, and the notary profile is also missing — this machine cannot notarize and cannot self-heal. Copy AuthKey_DWLP54ACTJ.p8 from the machine that has it, then run scripts/setup-keys.sh (see scripts/RELEASE-CREDENTIALS.md)" "asc_p8"
+fi
+
+if command -v create-dmg >/dev/null 2>&1; then
+    pass "create-dmg installed"
+else
+    fail "create-dmg not on PATH (brew install create-dmg) — release.sh exits immediately without it"
+fi
+
+if command -v fileicon >/dev/null 2>&1; then
+    pass "fileicon installed"
+else
+    fail "fileicon not on PATH (brew install fileicon) — release.sh exits immediately without it"
+fi
+
+# Tool tally verified against the full pipeline (release.sh, preflight.sh,
+# verify-dmg.sh, appcast-item.sh, setup-keys.sh) — #0306. Deliberately does
+# NOT include ditto: nothing in the pipeline uses it.
+for tool in codesign xcodebuild spctl hdiutil rsync xmllint; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        pass "$tool on PATH"
+    else
+        fail "$tool not on PATH — part of Xcode Command Line Tools; run: xcode-select --install"
+    fi
+done
+
+if [[ -x /usr/libexec/PlistBuddy ]]; then
+    pass "PlistBuddy present"
+else
+    fail "/usr/libexec/PlistBuddy missing — part of Xcode Command Line Tools"
+fi
+
+for xtool in notarytool stapler; do
+    if xcrun --find "$xtool" >/dev/null 2>&1; then
+        pass "xcrun $xtool available"
+    else
+        fail "xcrun $xtool not available — requires a full Xcode install, not just Command Line Tools"
+    fi
+done
+
+# sign_update ships as a Sparkle SPM artifact, produced by any BattyKit
+# build (swift build / swift test / xcodebuild) — not a credential per se,
+# but appcast-item.sh hard-requires it.
+find_sparkle_tool() {
+    local name="$1" candidates c
+    candidates=(
+        "$REPO_ROOT/BattyKit/.build/artifacts/sparkle/Sparkle/bin/$name"
+        $HOME/Library/Developer/Xcode/DerivedData/Batty-*/SourcePackages/artifacts/sparkle/Sparkle/bin/$name(N)
+    )
+    for c in $candidates; do
+        [[ -x "$c" ]] && { print -r -- "$c"; return 0 }
+    done
+    return 1
+}
+SIGN_UPDATE=$(find_sparkle_tool sign_update) || true
+if [[ -n "$SIGN_UPDATE" ]]; then
+    pass "sign_update present ($SIGN_UPDATE)"
+else
+    warn "sign_update not found — this machine cannot actually sign a Sparkle update yet. Run: scripts/build.sh (once) to produce the Sparkle SPM artifacts"
+    SPARKLE_UNVERIFIED=1
+fi
+
+# Sparkle EdDSA private key (#0306): release.sh completes without it
+# (appcast emission is best-effort), but a shipped build can never be
+# advertised to existing installs without it — practically release-critical.
+# Probed non-destructively: `generate_keys -p` prints the existing public
+# key without touching the private key; a missing key exits non-zero.
+GENERATE_KEYS=$(find_sparkle_tool generate_keys) || true
+SU_KEY=$(grep -E '^SU_PUBLIC_ED_KEY' "$APP_XCCONFIG" 2>/dev/null \
+    | head -1 | awk -F'=' '{sub(/^[ \t]+/, "", $2); print $2}')
+if [[ -z "$GENERATE_KEYS" ]]; then
+    warn "generate_keys not found — the Sparkle private key could NOT be checked (not confirmed present, not confirmed absent). Run: scripts/build.sh (once) to produce generate_keys, then re-run this check"
+    SPARKLE_UNVERIFIED=1
+else
+    SPARKLE_PUB=$("$GENERATE_KEYS" --account Batty -p 2>/dev/null) || SPARKLE_PUB=""
+    if [[ -z "$SPARKLE_PUB" ]]; then
+        cred_fail "Sparkle EdDSA private key not found in login keychain (account 'Batty') — this machine cannot sign updates, so existing installs won't see this release. Import the backup: generate_keys --account Batty -f <backup-key> (see scripts/RELEASE-CREDENTIALS.md)" "sparkle_key"
+    elif [[ -z "$SU_KEY" ]]; then
+        warn "Sparkle private key present but SU_PUBLIC_ED_KEY is empty in App.xcconfig — cannot cross-check a match"
+    elif [[ "$SPARKLE_PUB" == "$SU_KEY" ]]; then
+        cred_pass "Sparkle private key present and matches SU_PUBLIC_ED_KEY" "sparkle_key"
+    else
+        cred_fail "Sparkle private key's public half ($SPARKLE_PUB) does NOT match SU_PUBLIC_ED_KEY in App.xcconfig ($SU_KEY) — updates signed here would be unverifiable by installed clients" "sparkle_key"
+    fi
+fi
+
+if (( CREDENTIALS_ONLY )); then
+    section "Summary"
+    print "  $FAILS failure(s), $WARNS warning(s)"
+    if (( FAILS > 0 )); then
+        print ""
+        print "  NOT release-capable on this machine. Fix the [✗] items above."
+        exit 1
+    fi
+    print ""
+    if (( SPARKLE_UNVERIFIED )); then
+        print "  This machine can sign and notarize, but Sparkle update signing is"
+        print "  UNVERIFIED — generate_keys/sign_update were not found, so the EdDSA"
+        print "  private key was never actually probed (see [!] items above). Run:"
+        print "  scripts/build.sh (once) to materialise them from the Sparkle SPM"
+        print "  artifact, then re-run this check before relying on this machine for"
+        print "  a release."
+        exit 0
+    fi
+    print "  This machine can sign, notarize, and publish a Sparkle-verifiable release."
+    exit 0
+fi
 
 # --- Build gates -------------------------------------------------------------
 
@@ -250,43 +511,11 @@ else
         fail "SU_FEED_URL missing from App.xcconfig (#0097)"
     fi
 
-    SU_KEY=$(grep -E '^SU_PUBLIC_ED_KEY' "$APP_XCCONFIG" 2>/dev/null \
-        | head -1 | awk -F'=' '{sub(/^[ \t]+/, "", $2); print $2}')
     if [[ -n "$SU_KEY" && "$SU_KEY" != "PLACEHOLDER_BASE64_PUBKEY_REPLACE_BEFORE_RELEASE" ]]; then
         pass "SU_PUBLIC_ED_KEY set in App.xcconfig"
     else
         warn "SU_PUBLIC_ED_KEY missing/placeholder — run Sparkle's generate_keys before release"
     fi
-fi
-
-# --- Release-pipeline gates --------------------------------------------------
-
-section "Release-pipeline gates"
-
-TEAM_ID=$(grep -E '^DEVELOPMENT_TEAM' "$XCCONFIG" 2>/dev/null | awk -F= '{print $2}' | tr -d ' ')
-if [[ -n "$TEAM_ID" ]] && security find-identity -p codesigning -v 2>/dev/null \
-    | grep -q "Developer ID Application.*$TEAM_ID"; then
-    pass "Developer ID Application cert in keychain ($TEAM_ID)"
-else
-    warn "Developer ID Application cert not found for team $TEAM_ID (release.sh will fail)"
-fi
-
-if xcrun notarytool history --keychain-profile Batty-notary >/dev/null 2>&1; then
-    pass "notarytool keychain profile 'Batty-notary' configured"
-else
-    warn "notarytool 'Batty-notary' keychain profile missing (run scripts/setup-keys.sh)"
-fi
-
-if command -v create-dmg >/dev/null 2>&1; then
-    pass "create-dmg installed"
-else
-    warn "create-dmg not on PATH (brew install create-dmg)"
-fi
-
-if command -v fileicon >/dev/null 2>&1; then
-    pass "fileicon installed"
-else
-    warn "fileicon not on PATH (brew install fileicon)"
 fi
 
 # --- Website gates -----------------------------------------------------------

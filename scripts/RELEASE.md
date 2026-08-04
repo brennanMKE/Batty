@@ -3,6 +3,11 @@
 End-to-end checklist for producing a signed, notarized, stapled DMG that
 Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 
+See `scripts/RELEASE-CREDENTIALS.md` for the fast "can this machine release
+right now" check (`scripts/preflight.sh --credentials-only`), how to move
+signing/notarization/Sparkle credentials to a second Mac, and what to back up
+so losing one Mac doesn't mean losing the ability to ship updates.
+
 ## One-time setup
 
 - **Apple Developer account** with a Developer ID Application certificate
