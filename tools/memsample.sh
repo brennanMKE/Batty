@@ -88,6 +88,9 @@ Commands:
                                            the per-geometry owner/WindowServer diagnostic table.
   diff TAG_A TAG_B [--dir DIR]            Diff two prior samples: footprint deltas AND a geometry-class
                                            census diff (the part that catches what totals hide).
+  selftest                                Regression check for extract_surface_rows() against a fixture
+                                           of captured vmmap lines (including a truncated SurfaceID row,
+                                           #0299). No live process needed. Exits non-zero on mismatch.
 
 DIR defaults to tools/memsamples/ (created on first use, gitignored).
 
@@ -205,6 +208,72 @@ extract_category_bytes() {
   '
 }
 
+# Extracts "owner<TAB>ws<TAB>geometry" rows from vmmap IOSurface detail
+# lines, e.g.:
+#   IOSurface ... SurfaceID: 0x11a  820x962 (BGRA) 3136K  'Batty'
+#   IOSurface ... SurfaceID: 0x227  820x962 (BGRA) 3136K  'Batty', shared with WindowServer[607]
+# The quoted string is the *creating image name* (verified: Electron ->
+# 'Electron Framework', most AppKit apps -> 'RenderBox', Finder -> 'CA
+# Whippet Drawable'), not the process name — 'Batty' only because libghostty
+# is statically linked into Batty's own executable.
+#
+# Selects on the geometry + size + quoted-owner (+ optional WindowServer
+# suffix) tail rather than the `SurfaceID:` label (#0299): vmmap elides the
+# *front* of the detail column, "SurfaceID:" down to "...aceID:", to fit
+# the controlling terminal's width -- interactively, not when its own
+# stdout is a pipe or file (verified: `>file`, `| grep`, `$(...)` capture,
+# and a forced $COLUMNS all measured zero elisions; `-wide` disables it
+# outright at any width, which is why sample_pid below passes it). This
+# hits Beta specifically when hand-run in a narrow-enough terminal: its
+# owner label ('Batty Beta.debug.dylib', 22 chars vs release's 'Batty', 5)
+# combined with a ", shared with WindowServer[...]" suffix is what pushes a
+# row past vmmap's width first, so a `SurfaceID:`-anchored match silently
+# dropped exactly the Beta/WindowServer-shared rows the invariants care
+# about most, without ever surfacing in OWNER_HISTOGRAM (the drop happens
+# before that's built).
+#
+# The geometry tail survives *further* into narrower widths than
+# `SurfaceID:` does, but it is NOT immune at every width. Measured against
+# a live Beta process (38 real rows, pty width swept via TIOCSWINSZ,
+# #0299 review round 2): the tail still read 38 of 38 down to 183 columns,
+# where `SurfaceID:` was already down to 25 of 38; the tail first degrades
+# at ~182 and both collapse to 0-1 below ~150. These thresholds are also
+# owner-label-length dependent -- the same sweep against release
+# ('Batty', 5 chars vs Beta's 'Batty Beta.debug.dylib', 22) held the tail
+# at 109/109 well past where Beta's degraded, only giving way around
+# ~176. Correctness here comes from `sample_pid`'s `-wide` call and from
+# `$(...)` capture already being immune, not from any property of this
+# regex. Do not hand-run this predicate against a narrow interactive
+# terminal without `-wide` and expect it to be exact.
+#
+# `^IOSurface ` (the region-type column) replaces the specificity
+# `SurfaceID:` used to provide, and also excludes the trailing per-category
+# summary table row — it starts with `IOSurface` too but has no
+# geometry/owner tail to match. CENSUS below already trusts this same tail
+# pattern and, reading from the same `$(...)`-captured `vm_out`, was never
+# affected by this bug either.
+#
+# `|| true`: under `set -o pipefail`, a `grep` stage matching zero lines
+# (legitimately — a process with zero live IOSurfaces, or truncation simply
+# not occurring on a given sample) exits 1, which would otherwise abort the
+# whole script via `set -e` on this assignment.
+extract_surface_rows() {
+  printf '%s\n' "$1" \
+    | grep -E "^IOSurface " \
+    | grep -E "[0-9]+x[0-9]+ \([A-Z0-9]+\) [0-9.]+[KMG]  '[^']*'" \
+    | awk -v q="'" '
+        {
+          owner = ""; geo = ""
+          pat = q "[^" q "]*" q
+          if (match($0, pat)) owner = substr($0, RSTART + 1, RLENGTH - 2)
+          ws = ($0 ~ /WindowServer/) ? 1 : 0
+          if (match($0, /[0-9]+x[0-9]+ \([A-Z0-9]+\) [0-9.]+[KMG]/)) geo = substr($0, RSTART, RLENGTH)
+          printf "%s\t%s\t%s\n", owner, ws, geo
+        }
+      ' \
+    || true
+}
+
 # Populates SURFACE_ROWS ("owner<TAB>ws<TAB>geometry", one per IOSurface),
 # BATTY_IOSURFACES / BATTY_WINDOWSERVER (counted against the binary's own
 # owner-label candidates, not a hardcoded 'Batty'), OWNER_HISTOGRAM (every
@@ -216,23 +285,7 @@ compute_target_owner_stats() {
   TARGET_OWNER_PRIMARY="$base"
   TARGET_OWNER_DYLIB="${base}.debug.dylib"
 
-  # SurfaceID detail lines look like:
-  #   IOSurface ... SurfaceID: 0x11a  820x962 (BGRA) 3136K  'Batty'
-  #   IOSurface ... SurfaceID: 0x227  820x962 (BGRA) 3136K  'Batty', shared with WindowServer[607]
-  # The quoted string is the *creating image name* (verified: Electron ->
-  # 'Electron Framework', most AppKit apps -> 'RenderBox', Finder -> 'CA
-  # Whippet Drawable'), not the process name — 'Batty' only because
-  # libghostty is statically linked into Batty's own executable.
-  SURFACE_ROWS="$(printf '%s\n' "$vm" | awk -v q="'" '
-    /SurfaceID:/ {
-      owner = ""; geo = ""
-      pat = q "[^" q "]*" q
-      if (match($0, pat)) owner = substr($0, RSTART + 1, RLENGTH - 2)
-      ws = ($0 ~ /WindowServer/) ? 1 : 0
-      if (match($0, /[0-9]+x[0-9]+ \([A-Z0-9]+\) [0-9.]+[KMG]/)) geo = substr($0, RSTART, RLENGTH)
-      printf "%s\t%s\t%s\n", owner, ws, geo
-    }
-  ')"
+  SURFACE_ROWS="$(extract_surface_rows "$vm")"
 
   BATTY_IOSURFACES="$(printf '%s\n' "$SURFACE_ROWS" | awk -F'\t' -v c1="$TARGET_OWNER_PRIMARY" -v c2="$TARGET_OWNER_DYLIB" '
     $1==c1 || $1==c2 { n++ } END { print n+0 }
@@ -270,7 +323,20 @@ sample_pid() {
 $fp_out
 (footprint may need to run from an interactive Terminal session with the right privileges)"
 
-  vm_out="$(vmmap "$pid" 2>&1)" || die "vmmap $pid failed:
+  # -wide: without it, vmmap elides the front of the IOSurface detail
+  # column ("SurfaceID:" -> "...aceID:", and below ~182 columns the
+  # geometry/owner tail too) to fit the *controlling terminal's* width
+  # when that terminal is narrow enough. This process's `vm_out="$(...)"`
+  # capture happens to already be immune (vmmap does not elide at all when
+  # its own stdout, not just the invoking terminal, is a pipe or file), but
+  # -wide makes it immune by construction rather than by that accident, so
+  # it also protects any future caller who runs `vmmap -pid $pid` style
+  # code interactively, or pipes through `tee` to a real tty. Verified
+  # metric-neutral and format-neutral against both live targets (#0299
+  # review rounds 1-2): identical IOSurface/atlas/thread counts, byte-
+  # identical output apart from the `Date/Time:` line, and identical
+  # summary-table shape, with and without -wide.
+  vm_out="$(vmmap -wide "$pid" 2>&1)" || die "vmmap $pid failed:
 $vm_out
 (vmmap can require the target run as the same user, or sudo for other users' processes)"
 
@@ -627,6 +693,69 @@ cmd_diff() {
   fi
 }
 
+# --- selftest ------------------------------------------------------------
+
+# Regression fixture for #0299: captured (not synthesized) vmmap IOSurface
+# lines from a live Beta process, including one row hand-truncated to match
+# the exact live example recorded in issues/0299.md -- vmmap elides the
+# front of the detail column ("SurfaceID:" -> "...aceID:") on rows long
+# enough to carry both the 22-char 'Batty Beta.debug.dylib' owner label and
+# a ", shared with WindowServer[...]" suffix. Also includes: a non-target
+# owner row (RenderBox), a WindowServer-shared non-target owner row (CoreUI
+# image IOSurface), and the trailing per-category summary table's own
+# "IOSurface ..." line -- all three must be excluded by extract_surface_rows.
+selftest_fixture() {
+  cat <<'FIXTURE'
+IOSurface                   12cd40000-12cdd0000    [  576K   576K   576K     0K] rw-/rw- SM=SHM PURGE=N  SurfaceID: 0x114  449x311 (BGRA) 576K  'Batty Beta.debug.dylib'
+IOSurface                   12a414000-12a4a4000    [  576K   576K   576K     0K] rw-/rw- SM=SHM PURGE=N  SurfaceID: 0xf9  449x311 (BGRA) 576K  'Batty Beta.debug.dylib', shared with WindowServer[607]
+IOSurface                   130a28000-130b38000  [ 1088K  1088K  1088K     0K] rw-/rw- SM=SHM PURGE=N  ...aceID: 0x109  1265x216 (BGRA) 1088K  'Batty Beta.debug.dylib', shared with WindowServer[607]
+IOSurface                   1335a0000-133644000    [  656K   656K   656K     0K] rw-/rw- SM=SHM PURGE=N  SurfaceID: 0x13d  362x434 (RGBA) 656K  'RenderBox'
+IOSurface                   12a2e8000-12a308000    [  128K   128K   128K     0K] rw-/rw- SM=SHM PURGE=N  SurfaceID: 0x112  240x240 (LA08) 128K  'CoreUI image IOSurface', shared with WindowServer[607]
+IOSurface                            28.0M    27.9M    27.9M       0K       0K    27.9M       0K       45
+FIXTURE
+}
+
+selftest_check() {
+  local name="$1" got="$2" want="$3"
+  if [[ "$got" == "$want" ]]; then
+    echo "  [PASS] $name : $got"
+  else
+    echo "  [FAIL] $name : got '$got', want '$want'"
+    SELFTEST_FAILED=1
+  fi
+}
+
+cmd_selftest() {
+  SELFTEST_FAILED=0
+  local fixture; fixture="$(selftest_fixture)"
+
+  echo "Row-selection regression (#0299: vmmap truncates 'SurfaceID:' on long rows):"
+  local old_count new_count
+  old_count="$(printf '%s\n' "$fixture" | grep -c 'SurfaceID:' || true)"
+  new_count="$(printf '%s\n' "$fixture" | grep -E '^IOSurface ' | grep -cE "[0-9]+x[0-9]+ \([A-Z0-9]+\) [0-9.]+[KMG]  '[^']*'" || true)"
+  selftest_check "old SurfaceID:-anchored count (must miss the truncated row)" "$old_count" "4"
+  selftest_check "new geometry-tail count (must include the truncated row, exclude the summary row)" "$new_count" "5"
+
+  compute_target_owner_stats "$fixture" "/fake/path/Batty Beta"
+  selftest_check "batty_iosurfaces (2 intact + 1 truncated Beta rows)" "$BATTY_IOSURFACES" "3"
+  selftest_check "batty_windowserver_shared (both WS-shared Beta rows, including the truncated one)" "$BATTY_WINDOWSERVER" "2"
+
+  local renderbox_rows coreui_rows
+  renderbox_rows="$(printf '%s\n' "$SURFACE_ROWS" | awk -F'\t' '$1=="RenderBox"' | wc -l | tr -d ' ')"
+  coreui_rows="$(printf '%s\n' "$SURFACE_ROWS" | awk -F'\t' '$1=="CoreUI image IOSurface"' | wc -l | tr -d ' ')"
+  selftest_check "non-target owners still extracted (RenderBox)" "$renderbox_rows" "1"
+  selftest_check "non-target owners still extracted (CoreUI image IOSurface)" "$coreui_rows" "1"
+
+  echo ""
+  if [[ "$SELFTEST_FAILED" -eq 0 ]]; then
+    echo "selftest: all checks passed."
+    return 0
+  else
+    echo "selftest: FAILED -- see [FAIL] lines above."
+    return 1
+  fi
+}
+
 # --- dispatch ------------------------------------------------------------
 
 main() {
@@ -645,6 +774,7 @@ main() {
     sample) cmd_sample "$@" ;;
     invariants) cmd_invariants "$@" ;;
     diff) cmd_diff "$@" ;;
+    selftest) cmd_selftest "$@" ;;
     -h|--help|help) usage ;;
     *) err "unknown command '$cmd'"; usage; exit 1 ;;
   esac

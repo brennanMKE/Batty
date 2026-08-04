@@ -144,6 +144,43 @@ If you ever see this, the process being sampled is not what `--target`
 claims it is (or the Beta build's dylib name changed) — treat it as a
 harness-configuration problem, not a memory finding.
 
+**Row selection matches the geometry/owner tail, not the `SurfaceID:`
+label, and `sample_pid` always calls `vmmap -wide` (#0299).** Elision is
+**tty-width driven**: `vmmap` shortens an `IOSurface` row's detail column
+— `SurfaceID: 0x109` becomes `...aceID: 0x109` — to fit the *controlling
+terminal's* width once the owner label and an optional `, shared with
+WindowServer[...]` suffix push the line long enough, but it does **not**
+elide at all when its own stdout is a pipe or file (measured with `>file`,
+`| grep`, `$(...)` capture, and a forced `$COLUMNS` — all zero elisions),
+and `-wide` disables it outright at any width. This hits Beta specifically
+in an interactive, narrow-enough terminal: `'Batty Beta.debug.dylib'`
+(22 chars) is long enough to trigger it well before release's `'Batty'`
+(5 chars) does, so a `SurfaceID:`-anchored match silently dropped exactly
+the Beta, WindowServer-shared rows the invariants weigh most — before
+`OWNER_HISTOGRAM` is even built, so the owner-label self-diagnosis above
+never caught it. The harness's own `$(...)`-captured `vmmap` output was
+therefore never affected by this bug (see the Relation section of #0299)
+— but a person hand-running the hint one-liners elsewhere in this file
+interactively could be.
+
+The harness now matches on `^IOSurface ` plus the geometry + size +
+quoted-owner tail (`[0-9]+x[0-9]+ \([A-Z0-9]+\) [0-9.]+[KMG]  '[^']*'`),
+the same tail pattern the geometry-class census (below) already used —
+**this tail survives further into narrow widths than `SurfaceID:` does,
+but it is not immune either**: measured against a live Beta process (38
+real surfaces, pty width swept via TIOCSWINSZ), `SurfaceID:` was already
+down to 25/38 at 200-186 columns where the tail still read 38/38, but
+both predicates degrade together below ~182 columns and collapse to 0-1
+below ~150. These thresholds shift with owner-label length — the same
+sweep against release (`'Batty'`, 5 chars) held the tail at 109/109 well
+past where Beta's degraded, only giving way around ~176 — so treat them
+as measured-for-this-process, not universal constants. If you hand-run
+either one-liner interactively, pass `-wide` (or redirect to a file
+first) rather than trusting the tail pattern alone at an unknown
+terminal width. Run `tools/memsample.sh selftest` to check the
+row-extraction logic against a fixture of captured `vmmap` lines
+(including a truncated row) without needing a live process.
+
 ### Checking just the invariants
 
 ```bash
