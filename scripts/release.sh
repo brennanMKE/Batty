@@ -4,6 +4,11 @@
 # Produces dist/Batty-<sha>.dmg with a drag-to-Applications layout, signed
 # with Developer ID and notarized so Gatekeeper accepts it on first launch
 # without right-click bypass.
+#
+# Usage:
+#   scripts/release.sh                     # gated: aborts if this machine
+#                                           # can't sign/notarize/publish (#0306)
+#   scripts/release.sh --skip-credential-check   # deliberate override
 
 set -euo pipefail
 
@@ -21,6 +26,48 @@ EXPORT_PLIST="$BUILD_DIR/exportOptions.plist"
 NOTARY_PROFILE="Batty-notary"
 TEAM_ID="XV8BAAVZ6V"
 SIGN_IDENTITY="Developer ID Application: Brennan Stehling ($TEAM_ID)"
+
+SKIP_CREDENTIAL_CHECK=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-credential-check) SKIP_CREDENTIAL_CHECK=1 ;;
+        -h|--help)
+            sed -n '2,/^set -euo/p' "$0" | sed '/^set -euo/d' | sed 's/^# *//'
+            exit 0
+            ;;
+        *)
+            print -u2 "error: unknown flag $arg"
+            exit 1
+            ;;
+    esac
+done
+
+# --- Credential gate (#0306) ---------------------------------------------
+#
+# Nothing previously invoked the credential check programmatically, so a
+# release attempt on an unequipped machine started anyway and died mid-way
+# (the exact complaint #0306 was filed over). Run the fast, no-build
+# "can this machine sign/notarize/publish right now" gate first and abort
+# before doing anything else if it fails. --skip-credential-check is the
+# explicit, deliberate escape hatch for a known-good machine whose check
+# can't run for some other reason; it does not bypass any check inside
+# preflight.sh itself.
+
+if (( SKIP_CREDENTIAL_CHECK )); then
+    print "==> Skipping credential gate (--skip-credential-check)"
+else
+    print "==> Checking release credentials (scripts/preflight.sh --credentials-only)"
+    if ! "$SCRIPT_DIR/preflight.sh" --credentials-only; then
+        print -u2 ""
+        print -u2 "error: this machine is not release-capable — see the [✗] items above"
+        print -u2 "       for what's missing and how to fix it."
+        print -u2 "       Override (only if you know what you're doing):"
+        print -u2 "         scripts/release.sh --skip-credential-check"
+        print -u2 "       See scripts/RELEASE-CREDENTIALS.md."
+        exit 1
+    fi
+    print ""
+fi
 
 # --- Preflight ---------------------------------------------------------------
 

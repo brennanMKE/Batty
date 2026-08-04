@@ -5,8 +5,12 @@ Gatekeeper accepts on a clean Mac. Pairs with `scripts/release.sh`.
 
 See `scripts/RELEASE-CREDENTIALS.md` for the fast "can this machine release
 right now" check (`scripts/preflight.sh --credentials-only`), how to move
-signing/notarization/Sparkle credentials to a second Mac, and what to back up
-so losing one Mac doesn't mean losing the ability to ship updates.
+signing/notarization/Sparkle credentials to a second Mac
+(`scripts/export-release-credentials.sh` /
+`scripts/import-release-credentials.sh`), and what to back up so losing one
+Mac doesn't mean losing the ability to ship updates.
+`scripts/release.sh` itself runs the credentials-only check first and
+refuses to start on a machine that fails it — see "Gate" in that doc.
 
 ## One-time setup
 
@@ -26,6 +30,12 @@ so losing one Mac doesn't mean losing the ability to ship updates.
   - `export BATTY_EC2_PATH=/var/www/batty` — remote document root.
   - `export BATTY_EC2_PORT=22` — optional, defaults to 22.
 
+Setting up a **second** release-capable Mac? Don't repeat the above by hand —
+see "Replicate" in `scripts/RELEASE-CREDENTIALS.md` for
+`export-release-credentials.sh` / `import-release-credentials.sh`, which
+move all three credentials (ASC API key, Developer ID `.p12`, Sparkle
+private key) in one pair of commands, non-destructively.
+
 ## Release steps
 
 0. **Run the preflight**
@@ -39,7 +49,9 @@ so losing one Mac doesn't mean losing the ability to ship updates.
    fork pin, working tree). Fix every `[✗]` before continuing;
    warnings (`[!]`) are advisory but worth scanning. `--skip-build`
    for a faster ad-hoc check, `--strict` to promote warnings to
-   failures, `--allow-dirty` for a dry-run scope.
+   failures, `--allow-dirty` for a dry-run scope. `--credentials-only`
+   for just the fast "can this machine sign/notarize/publish" subset —
+   this is what `release.sh` itself runs first and gates on.
 
 1. **Choose the version**
 

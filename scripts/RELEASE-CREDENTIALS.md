@@ -47,11 +47,60 @@ overnight reads "EXPIRED... (last confirmed good on this machine:
 2026-07-30)" instead of a bare failure, so a silent keychain deletion or
 lapsed cert doesn't go unnoticed between releases.
 
+## Gate: release.sh won't start without it
+
+`scripts/release.sh` runs `scripts/preflight.sh --credentials-only` as its
+first action and aborts — before touching `build/`, `dist/`, or anything
+else — if this machine can't sign, notarize, and publish right now. This is
+the direct fix for how #0306 was filed: a release attempt used to start
+anyway and die mid-pipeline on a machine that was missing a credential from
+the start. The failure message points at the check's own `[✗]` output.
+
+```bash
+scripts/release.sh                      # gated by default
+scripts/release.sh --skip-credential-check   # deliberate override
+```
+
+Use the override only when you know the check itself can't run correctly
+here for some unrelated reason (e.g. testing the pipeline against a mocked
+identity) — it does not relax any check inside `preflight.sh`, it just skips
+calling it.
+
 ## Replicate: moving capability to a second Mac
 
 Three things move independently. None of them regenerate themselves — either
 copy the artifact, or (for the notary profile) recreate it from the artifact
-that backs it.
+that backs it. `scripts/export-release-credentials.sh` and
+`scripts/import-release-credentials.sh` automate all three in one pair of
+commands; the manual steps under each item below are the fallback if you'd
+rather do it by hand (or need to move just one item).
+
+```bash
+# On the source Mac (the one that already works)
+scripts/export-release-credentials.sh ~/Backups/batty-release-credentials
+
+# Move the resulting folder to the target Mac by a channel you trust
+# (see "Backup," below, for where NOT to leave it sitting around)
+
+# On the target Mac
+scripts/import-release-credentials.sh ~/Backups/batty-release-credentials
+```
+
+Both scripts are non-destructive by construction: export only reads (never
+modifies) the source keychain, and import skips-and-reports any item that's
+already present on the target rather than overwriting it — importing twice,
+or importing onto a Mac that already has some of the three credentials, is
+always safe. The export script refuses to write its bundle inside this repo;
+the `.p12` passphrase is never handled by either script at all — both
+`security export` and `security import` are invoked without `-P`, so
+`security` itself prompts through its own secure GUI dialog. (`-P` puts the
+passphrase in `security`'s own argv, which `ps` exposes to other local users
+on the machine for the life of the call — Apple's own `security export -h` /
+`security import -h` flag it: "Use of the -P option is insecure.")
+
+Read both scripts' `--help` for the full list of what each item's
+present/missing/skip states look like — the flow below is the manual
+equivalent of what they automate.
 
 ### 1. Notary access — copy the `.p8`, then re-run setup
 
@@ -74,8 +123,17 @@ scripts/setup-keys.sh
 ~/.appstoreconnect/AuthKey_DWLP54ACTJ.p8 --key-id DWLP54ACTJ --issuer
 <UUID>` — the same form `release.sh`'s own error message prescribes when the
 profile is missing. Confirm with `scripts/preflight.sh --credentials-only`.
+`import-release-credentials.sh` installs the `.p8` to this same path and
+either runs `setup-keys.sh` for you (`--run-setup-keys`) or prints the
+command to run yourself — it never calls Apple on its own initiative.
 
 ### 2. Developer ID Application cert + private key — export/import a `.p12`
+
+`export-release-credentials.sh` uses `security export -t identities`, which
+has no per-item filter — if the login keychain holds more than one signing
+identity, the `.p12` will contain all of them (harmless, just broader than
+strictly necessary; the script warns when this applies). For a `.p12`
+containing exactly one identity, use the manual GUI path instead:
 
 The cert must travel with its private key, which means a password-protected
 `.p12`, not a re-issue from Apple. **Do not use Xcode's "Manage
@@ -86,16 +144,25 @@ extra/duplicate certs (#0270, #0273, #0278, #0281). Move the existing one:
 1. On the source Mac: open Keychain Access → My Certificates → find
    "Developer ID Application: Brennan Stehling (XV8BAAVZ6V)" → expand it so
    the private key shows underneath → select both the cert and the key →
-   right-click → Export 2 items… → save as a password-protected `.p12`.
+   right-click → Export 2 items… → save as a password-protected `.p12`
+   named `DeveloperID.p12` (matches what `import-release-credentials.sh`
+   looks for).
 2. Move the `.p12` to the target Mac (same channel as the `.p8` — see
    Backup below for where that should live).
 3. On the target Mac: double-click the `.p12` (or File → Import Items… in
-   Keychain Access), enter the export password, choose the login keychain.
+   Keychain Access), enter the export password, choose the login keychain —
+   or run `scripts/import-release-credentials.sh` against the folder
+   containing it, which does the same via `security import` and, either
+   way, first checks whether a Developer ID Application identity for this
+   team already exists and skips rather than importing a duplicate.
 4. Confirm with `security find-identity -p codesigning -v` — the identity
    should list with a numbered entry, meaning cert *and* key are both
    present. `scripts/preflight.sh --credentials-only` checks the same thing.
 
 ### 3. Sparkle EdDSA private key — export/import via `generate_keys`
+
+`export-release-credentials.sh` / `import-release-credentials.sh` wrap
+exactly this (as `batty-sparkle.key` in the bundle); by hand it's:
 
 ```bash
 # On the source Mac (from wherever the Sparkle SPM artifacts landed —
@@ -113,6 +180,16 @@ account and `sign_update` fails with "Signing key not found for account
 ed25519" (see `scripts/SPARKLE.md`). After importing, confirm the public
 half still matches `SU_PUBLIC_ED_KEY` in `Configuration/App.xcconfig` — the
 credentials check does this automatically.
+
+**`-f` will never overwrite an existing key** — verified directly from
+Sparkle's source: it goes through `SecItemAdd`, which fails with
+`errSecDuplicateItem` and exits rather than replacing what's there.
+`import-release-credentials.sh` probes with `-p` first and skips before
+ever calling `-f`, so a key that's already present is reported as "nothing
+was changed" rather than surfacing as `-f`'s own error text. Never run
+`generate_keys -f` by hand against a machine you're not certain lacks the
+key already — if you're unsure, run `generate_keys --account Batty -p`
+first (read-only) to check.
 
 ## Backup: what's irreplaceable, and how bad is losing it
 
@@ -133,21 +210,42 @@ existing install is stuck on its current version forever, or has to be
 manually reinstalled from a fresh DMG with a new key — a break in your own
 users' trust chain, not just an inconvenience to you.
 
-**If the Sparkle key has never been exported, export it now**
-(`generate_keys --account Batty -x batty-sparkle.key`, see above) and put
-the file somewhere backed up before doing anything else in this doc.
+**If the Sparkle key has never been exported, export it now**:
+
+```bash
+scripts/export-release-credentials.sh ~/Backups/batty-release-credentials
+```
+
+(or by hand: `generate_keys --account Batty -x batty-sparkle.key`, see
+above) — and put the resulting bundle somewhere backed up before doing
+anything else in this doc.
 
 ### Restore, end to end, on a fresh Mac
 
 1. Install Xcode + Command Line Tools, `brew install create-dmg fileicon`.
-2. Import the Developer ID `.p12` into the login keychain (Keychain Access
-   or `security import`).
-3. Copy the ASC API key to `~/.appstoreconnect/AuthKey_DWLP54ACTJ.p8`, run
-   `scripts/setup-keys.sh`.
-4. Import the Sparkle key: `generate_keys --account Batty -f
-   batty-sparkle.key` (needs one `scripts/build.sh` run first so the
-   `generate_keys` binary exists as a Sparkle SPM artifact).
-5. Run `scripts/preflight.sh --credentials-only` — expect every item to
+2. One `scripts/build.sh` run, so the Sparkle SPM artifacts
+   (`generate_keys`) exist for the next step.
+3. Restore the three credentials from wherever the backup bundle lives:
+
+   ```bash
+   scripts/import-release-credentials.sh /path/to/batty-release-credentials
+   ```
+
+   This installs the `.p8`, imports the `.p12` (prompts for its
+   passphrase), imports the Sparkle key, and finishes by running
+   `scripts/preflight.sh --credentials-only` itself. Pass
+   `--run-setup-keys` to also create the notarytool profile in the same
+   step; otherwise run `scripts/setup-keys.sh` yourself as the script
+   prints.
+
+   Or by hand, item by item:
+   - Import the Developer ID `.p12` into the login keychain (Keychain
+     Access or `security import`).
+   - Copy the ASC API key to `~/.appstoreconnect/AuthKey_DWLP54ACTJ.p8`,
+     run `scripts/setup-keys.sh`.
+   - Import the Sparkle key: `generate_keys --account Batty -f
+     batty-sparkle.key`.
+4. Run `scripts/preflight.sh --credentials-only` — expect every item to
    pass. Fix whatever doesn't before attempting a release from this machine.
 
 ## Why extend `preflight.sh` instead of a new script
