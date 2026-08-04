@@ -127,6 +127,17 @@ warn() {
 
 section() { print ""; print "$1"; }
 
+# Value of the first "KEY = value" assignment for $1 in xcconfig file $2.
+# Splits on the FIRST '=' only and trims surrounding whitespace. Plain
+# `awk -F'='` splits on every '=' in the line, silently truncating any value
+# that itself contains '=' — e.g. a base64-encoded Ed25519 key's trailing pad
+# (#0307). Every xcconfig read in this script goes through here so there's
+# one place to get this right instead of a truncating variant re-appearing
+# at the next call site.
+xcconfig_value() {
+    grep -E "^$1" "$2" 2>/dev/null | head -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//'
+}
+
 # Compare two dotted versions (X.Y.Z, prerelease suffix ignored).
 # Echoes 1 if $1 > $2, -1 if $1 < $2, 0 if equal. BSD sort lacks -V, so
 # compare component-wise.
@@ -180,7 +191,7 @@ fi
 
 section "Credential gates"
 
-TEAM_ID=$(grep -E '^DEVELOPMENT_TEAM' "$XCCONFIG" 2>/dev/null | awk -F= '{print $2}' | tr -d ' ')
+TEAM_ID=$(xcconfig_value 'DEVELOPMENT_TEAM' "$XCCONFIG")
 SIGN_IDENTITY=""
 if [[ -n "$TEAM_ID" ]]; then
     IDENTITY_LINE=$(security find-identity -p codesigning -v 2>/dev/null \
@@ -306,8 +317,7 @@ fi
 # Probed non-destructively: `generate_keys -p` prints the existing public
 # key without touching the private key; a missing key exits non-zero.
 GENERATE_KEYS=$(find_sparkle_tool generate_keys) || true
-SU_KEY=$(grep -E '^SU_PUBLIC_ED_KEY' "$APP_XCCONFIG" 2>/dev/null \
-    | head -1 | awk -F'=' '{sub(/^[ \t]+/, "", $2); print $2}')
+SU_KEY=$(xcconfig_value 'SU_PUBLIC_ED_KEY' "$APP_XCCONFIG")
 if [[ -z "$GENERATE_KEYS" ]]; then
     warn "generate_keys not found — the Sparkle private key could NOT be checked (not confirmed present, not confirmed absent). Run: scripts/build.sh (once) to produce generate_keys, then re-run this check"
     SPARKLE_UNVERIFIED=1
@@ -410,7 +420,7 @@ fi
 
 section "Version gates"
 
-VERSION=$(grep -E '^MARKETING_VERSION' "$APP_XCCONFIG" 2>/dev/null | head -1 | awk -F= '{print $2}' | tr -d ' ')
+VERSION=$(xcconfig_value 'MARKETING_VERSION' "$APP_XCCONFIG")
 
 if [[ -z "$VERSION" ]]; then
     fail "MARKETING_VERSION missing from $APP_XCCONFIG"
@@ -503,8 +513,7 @@ else
     # $(SU_FEED_URL) / $(SU_PUBLIC_ED_KEY), so the build-time substitution
     # is deterministic — checking xcconfig is enough and doesn't require
     # a recent build.
-    SU_FEED=$(grep -E '^SU_FEED_URL' "$APP_XCCONFIG" 2>/dev/null \
-        | head -1 | awk -F'=' '{sub(/^[ \t]+/, "", $2); print $2}')
+    SU_FEED=$(xcconfig_value 'SU_FEED_URL' "$APP_XCCONFIG")
     if [[ -n "$SU_FEED" ]]; then
         pass "SU_FEED_URL set in App.xcconfig: $SU_FEED"
     else
