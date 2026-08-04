@@ -1,6 +1,11 @@
 // SettingsView.swift
 
+import AppKit
+import OSLog
 import SwiftUI
+import UniformTypeIdentifiers
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "SettingsView")
 
 public struct SettingsView: View {
     @Environment(\.appStateStore) private var store
@@ -21,7 +26,7 @@ public struct SettingsView: View {
             NotificationsSettingsView()
                 .tabItem { Label("Notifications", systemImage: "bell") }
 
-            AdvancedSettingsView()
+            AdvancedSettingsView(store: store)
                 .tabItem { Label("Advanced", systemImage: "terminal") }
         }
         .frame(minWidth: 460, minHeight: 320)
@@ -283,6 +288,8 @@ private final class CLIInstallModel {
 }
 
 private struct AdvancedSettingsView: View {
+    let store: AppStateStore?
+
     @State private var cliModel = CLIInstallModel()
     @State private var brokerModel = BrokerAgentController()
 
@@ -303,6 +310,9 @@ private struct AdvancedSettingsView: View {
             Section("Memory") {
                 FootprintSoftLimitRow()
             }
+            Section("Diagnostics") {
+                BellDecisionExportRow(store: store)
+            }
         }
         .formStyle(.grouped)
         .padding(20)
@@ -310,6 +320,88 @@ private struct AdvancedSettingsView: View {
             cliModel.checkInstalled()
             brokerModel.refresh()
         }
+    }
+}
+
+/// #0297: exports `AppStateStore.bellDecisionHistory` — the in-memory
+/// ring buffer of the most recent `BellDecisionHistory.capacity` bell/
+/// notification decisions — so the user can find out what's generating
+/// unwanted notifications. Nothing here is written anywhere until the user
+/// presses Copy or Save; see `BellDecisionHistory`'s type doc comment for
+/// why collection itself has no on/off toggle.
+private struct BellDecisionExportRow: View {
+    let store: AppStateStore?
+
+    var body: some View {
+        if let store {
+            content(for: store.bellDecisionHistory)
+        } else {
+            Text("Not available.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func content(for history: BellDecisionHistory) -> some View {
+        HStack {
+            Text("\(history.records.count) of \(BellDecisionHistory.capacity) decisions collected")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Copy") {
+                copyToPasteboard(history.records)
+            }
+            .disabled(history.records.isEmpty)
+            Button("Save to File…") {
+                saveToFile(history.records)
+            }
+            .disabled(history.records.isEmpty)
+            Button("Clear", role: .destructive) {
+                history.clear()
+            }
+            .disabled(history.records.isEmpty)
+        }
+        Text("Batty keeps the most recent \(BellDecisionHistory.capacity) bell and notification decisions in memory for this app session — which gate suppressed each one, or that it was submitted — so you can trace unwanted notifications back to their source. Session and tab titles and notification text are included as written. Nothing is written to disk until you choose Save; Copy places the same text on the system pasteboard, where every running app can read it and, with Handoff on, it can sync to your other devices. Clear (or quitting Batty) is the only way to drop what's collected so far.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private func copyToPasteboard(_ records: [BellDecisionRecord]) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(BellDecisionFormat.exportText(records), forType: .string)
+    }
+
+    /// Unlike `copyToPasteboard`, a write failure here is silent to the
+    /// user by default — the panel just closes — so round-1 review's
+    /// finding stands: this is the deliverable path (the whole feature is
+    /// "get the data out"), and it needs its own error surface rather than
+    /// `try?` swallowing whatever `Data.write` throws (permission denied,
+    /// disk full, a volume that went away between panel and write).
+    private func saveToFile(_ records: [BellDecisionRecord]) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "batty-bell-decisions-\(Self.filenameTimestamp()).txt"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try BellDecisionFormat.exportText(records).write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            logger.error("saveToFile failed: \(error.localizedDescription, privacy: .public)")
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Couldn't Save Bell Decisions")
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+
+    private static func filenameTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        return formatter.string(from: Date())
     }
 }
 

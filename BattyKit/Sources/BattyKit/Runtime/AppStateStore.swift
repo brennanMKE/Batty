@@ -14,6 +14,14 @@ public final class AppStateStore {
     // MARK: - Global services (cross-window)
 
     public let bellFeed: BellFeedStore
+    /// #0297: in-memory ring buffer of the most recent bell/notification
+    /// decisions, for the Settings > Advanced > Diagnostics export UI
+    /// (`BellDecisionExportRow`). See `BellDecisionHistory`'s type doc
+    /// comment for why this collects unconditionally rather than behind a
+    /// toggle. Internal, not `public`, like `BellDecisionHistory` itself —
+    /// every consumer (this file, `SettingsView.swift`) lives inside
+    /// `BattyKit`.
+    let bellDecisionHistory = BellDecisionHistory()
     public let nameCache: SessionNameCache
     public let themeChrome: ThemeChrome
     /// Owns the footprint sampling timer (#0290). Constructed here but never
@@ -640,7 +648,7 @@ public final class AppStateStore {
                 if !effectivelySeen {
                     window.propagateUnseenForced(at: location)
                 }
-                postNotification(for: entry, at: location)
+                postNotification(for: entry, at: location, trigger: .bel)
                 scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
             }
             return
@@ -673,7 +681,7 @@ public final class AppStateStore {
             if !effectivelySeen {
                 window.propagateUnseenForced(at: location)
             }
-            postNotification(for: entry, at: location)
+            postNotification(for: entry, at: location, trigger: .oscNotification)
             scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
             return
         }
@@ -735,7 +743,7 @@ public final class AppStateStore {
             if !effectivelySeen {
                 window.propagateUnseenForced(at: location)
             }
-            postNotification(for: entry, at: location, playSound: playSound)
+            postNotification(for: entry, at: location, trigger: .cliNotification, playSound: playSound)
             scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
             return .posted
         }
@@ -1152,25 +1160,108 @@ public final class AppStateStore {
         windows.first { $0.sessions.contains(where: { $0.id == sessionID }) }
     }
 
-    private func postNotification(for entry: BellFeedEntry, at location: WindowRuntime.BellLocation, playSound: Bool = true) {
+    /// #0297's single choke point: every real-tab bell path (BEL, OSC
+    /// 9/777, CLI `notify`) — `recordBellTick`, `recordDesktopNotification`,
+    /// `recordCLINotification` — calls this exactly once per entry, so
+    /// capturing the decision here before the early-return suppression
+    /// gates covers all three trigger kinds and every gate (nil notifier,
+    /// session mute, the notifications setting, `BellNotifier`'s
+    /// frontmost-and-seen check) with one `BellDecisionHistory` record.
+    /// `recordFootprintWarning` (#0290's system entry) never calls this
+    /// method — it posts via `BellNotifier.postFootprintWarning` directly —
+    /// so a system entry can never masquerade as a real-bell decision here.
+    ///
+    /// Capture is unconditional (no Settings toggle — see
+    /// `BellDecisionHistory`'s type doc comment for why) and unconditionally
+    /// cheap: two libghostty FFI calls (`foregroundPid`/`ttyName`), a
+    /// `UserDefaults` read, `NSApplication.shared.isActive`, and a couple of
+    /// linear scans over a Session's Panes/Tabs, all triggered by a bell —
+    /// a human-scale, discrete event, not a hot path — so paying this cost
+    /// every time, including on the nil-notifier/muted-session cases below
+    /// that return early, is negligible.
+    private func postNotification(
+        for entry: BellFeedEntry,
+        at location: WindowRuntime.BellLocation,
+        trigger: BellTriggerKind,
+        playSound: Bool = true
+    ) {
+        bellDecisionHistory.record(makeBellDecisionRecord(for: entry, at: location, trigger: trigger))
+
         guard let notifier else { return }
         guard !location.session.notificationsMuted else { return }
         let paneIndex = (location.session.tree.allPanes.firstIndex { $0.id == location.pane.id } ?? 0) + 1
         let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
-        let tabLabel: String
-        if let override = location.tab.titleOverride, !override.isEmpty {
-            tabLabel = override
-        } else if !location.tab.terminal.title.isEmpty {
-            tabLabel = location.tab.terminal.title
-        } else {
-            tabLabel = String(localized: "Tab \(tabIndex)")
-        }
         notifier.post(
             for: entry,
             sessionTitle: location.session.title,
             paneIndex: paneIndex,
-            tabLabel: tabLabel,
+            tabLabel: Self.tabLabel(for: location.tab, tabIndex: tabIndex),
             playSound: playSound
+        )
+    }
+
+    /// Override → terminal title → "Tab N" fallback, shared by the real
+    /// notification content (`postNotification`) and the #0297 decision
+    /// record (`makeBellDecisionRecord`) so the two can never disagree
+    /// about what a Tab is called.
+    private static func tabLabel(for tab: TabRuntime, tabIndex: Int) -> String {
+        if let override = tab.titleOverride, !override.isEmpty {
+            return override
+        }
+        if !tab.terminal.title.isEmpty {
+            return tab.terminal.title
+        }
+        return String(localized: "Tab \(tabIndex)")
+    }
+
+    /// Builds the #0297 decision record handed to `bellDecisionHistory
+    /// .record(_:)`. `sessionTitle`/`tabLabel`/`message` are truncated to
+    /// `BellDecisionFormat.maxFieldLength` here, not just at format time —
+    /// see `BellDecisionFormat.truncateForRetention`'s doc comment for why
+    /// storing more than that per field is dead weight the ring buffer
+    /// would otherwise carry ×`BellDecisionHistory.capacity`, for the
+    /// process lifetime, with nothing bounding an OSC 9/777 or CLI
+    /// `notify` body upstream.
+    private func makeBellDecisionRecord(
+        for entry: BellFeedEntry,
+        at location: WindowRuntime.BellLocation,
+        trigger: BellTriggerKind
+    ) -> BellDecisionRecord {
+        let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
+        let battyActive = NSApplication.shared.isActive
+        let systemNotificationsEnabled = SettingsPreference.resolvedSystemNotifications()
+        let notifierPresent = notifier != nil
+        let sessionMuted = location.session.notificationsMuted
+        // hasMessage reads the untruncated entry.message so an
+        // all-whitespace-past-maxLength message can't flip empty; a real
+        // message truncated to maxLength (>= 1) is never empty either way.
+        let hasMessage = entry.message?.isEmpty == false
+        return BellDecisionRecord(
+            trigger: trigger,
+            entryID: entry.id,
+            windowID: entry.windowID,
+            sessionID: entry.sessionID,
+            paneID: entry.paneID,
+            tabID: entry.tabID,
+            bellTimestamp: entry.timestamp,
+            sessionTitle: BellDecisionFormat.truncateForRetention(location.session.title),
+            tabLabel: BellDecisionFormat.truncateForRetention(Self.tabLabel(for: location.tab, tabIndex: tabIndex)),
+            hasMessage: hasMessage,
+            message: entry.message.map { BellDecisionFormat.truncateForRetention($0) },
+            battyActive: battyActive,
+            entrySeenAtCreation: entry.seen,
+            notifierPresent: notifierPresent,
+            sessionMuted: sessionMuted,
+            systemNotificationsEnabled: systemNotificationsEnabled,
+            foregroundPid: location.tab.terminalNSView?.foregroundPid,
+            ttyName: location.tab.terminalNSView?.ttyName,
+            outcome: BellDecisionRecord.outcome(
+                notifierPresent: notifierPresent,
+                sessionMuted: sessionMuted,
+                systemNotificationsEnabled: systemNotificationsEnabled,
+                battyActive: battyActive,
+                entrySeenAtCreation: entry.seen
+            )
         )
     }
 

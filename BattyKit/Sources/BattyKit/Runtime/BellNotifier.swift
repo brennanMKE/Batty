@@ -62,6 +62,14 @@ public final class BellNotifier: BellNotifying {
         }
     }
 
+    /// #0297: `BellDecisionRecord.outcome` mirrors these two gates (and the
+    /// nil-notifier / session-mute gates in `AppStateStore.postNotification`)
+    /// by construction, not by sharing this method's implementation — only
+    /// `evaluateShouldPost` below is actually shared. Adding a gate here
+    /// (an `authorizationGranted` check is the obvious future candidate)
+    /// without a matching case in `BellDecisionRecord.outcome` makes the
+    /// #0297 decision history silently claim `outcome=submitted` for a
+    /// bell this method actually suppressed. Update both in lockstep.
     public func post(
         for entry: BellFeedEntry,
         sessionTitle: String,
@@ -88,8 +96,18 @@ public final class BellNotifier: BellNotifying {
     }
 
     private func shouldPost(for entry: BellFeedEntry) -> Bool {
-        if !NSApplication.shared.isActive { return true }
-        return !entry.seen
+        Self.evaluateShouldPost(isBattyActive: NSApplication.shared.isActive, entrySeen: entry.seen)
+    }
+
+    /// Pure form of `shouldPost(for:)`'s gate, factored out for #0297: the
+    /// bell-decision log needs to report this exact gate's verdict without
+    /// duplicating the logic (and risking it drifting from the real
+    /// decision). `isActive`/`entry.seen` are the only two inputs the
+    /// instance method reads, so this is a straight extraction, not a
+    /// behavior change.
+    static func evaluateShouldPost(isBattyActive: Bool, entrySeen: Bool) -> Bool {
+        if !isBattyActive { return true }
+        return !entrySeen
     }
 
     /// Unlike `post(for:...)`, this fires only when Batty isn't frontmost —
