@@ -74,6 +74,23 @@ open Batty.xcworkspace
 
 Always confirm the headless `scripts/build.sh` invocation passes before committing — Xcode previews are not a build pass.
 
+**Build Beta only via `scripts/build-beta.sh`. Never `SCHEME="Batty (Beta)" scripts/build.sh`.**
+
+This project selects Prod vs Beta through `Configuration/Active.xcconfig`, a gitignored file that `#include`s either `Prod.xcconfig` or `Beta.xcconfig`. The `Batty (Beta)` scheme's pre-action points it at Beta via `scripts/set-environment.sh`; otherwise it stays on Prod. That is the design, and it works — but it is *persistent machine state*, and the scheme pre-action runs **after** `xcodebuild` has already resolved build settings, so it only takes effect on the *next* invocation.
+
+The consequence: anything that builds Beta and does not put the file back leaves the environment switched, and the **next `scripts/build.sh` silently builds the Beta product while reporting Prod** (`PRODUCT_NAME = Batty Beta`, `PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty.beta`). The pre-commit gate then verifies the wrong artifact and says nothing. `scripts/build-beta.sh` exists precisely to snapshot `Active.xcconfig` on entry and restore it on exit; reaching around it with the `SCHEME` override defeats that.
+
+If a build ever looks wrong, check the environment first:
+
+```bash
+cat Configuration/Active.xcconfig                        # expect: #include "Prod.xcconfig"
+./scripts/set-environment.sh Prod                        # restore it
+xcodebuild -project Batty.xcodeproj -scheme "Batty (Prod)" \
+    -showBuildSettings | grep PRODUCT_NAME               # expect: Batty
+```
+
+Related: Prod and Beta share one target, so whichever scheme resolved last caches its product name into the tracked `Batty.xcodeproj/project.pbxproj` (`Batty.app` ↔ `Batty Beta.app`). **A dirty `project.pbxproj` after a Beta build is expected residue — discard it (`git checkout --`), never commit it.** Committing it just makes the next Prod build flip it back.
+
 **Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test`.** Xcode builds `BattyUITests-Runner.app` by dropping our xctest bundle into Apple's signed XCTRunner template without re-signing the outer app. Ad-hoc local builds end up with a broken signature ("code has no resources but signature indicates they must be present"), which AppleSystemPolicy treats as a tampered Apple binary — macOS Gatekeeper translocates the runner to `~/.Trash` and kills it before `xcodebuild test` can bootstrap. The script re-signs the runner + host app ad-hoc after `build-for-testing` and then invokes `test-without-building`, sidestepping the trash-prompt loop.
 
 ## Release / distribution
