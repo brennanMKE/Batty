@@ -144,7 +144,7 @@ public enum UITestDriver {
             session.tree.swapPanes(id: panes[a].id, with: panes[b].id)
 
         case .applyTheme(let name):
-            guard let theme = GhosttyThemeCatalog.theme(named: name) else {
+            guard let theme = BattyThemeCatalog.theme(named: name) else {
                 logger.notice("ui-test: applyTheme not-found name=\(name, privacy: .public)")
                 return
             }
@@ -153,7 +153,7 @@ public enum UITestDriver {
             store.applyThemeToAllSurfaces(theme)
 
         case .applyThemeToActiveSession(let name):
-            guard let theme = GhosttyThemeCatalog.theme(named: name) else {
+            guard let theme = BattyThemeCatalog.theme(named: name) else {
                 logger.notice("ui-test: applyThemeToActiveSession not-found name=\(name, privacy: .public)")
                 return
             }

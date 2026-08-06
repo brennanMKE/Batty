@@ -20,7 +20,7 @@ struct ThemeSelectorView: View {
     @State private var pinnedIDs: [String] = []
 
     private var filteredPinned: [GhosttyThemeDefinition] {
-        let pinned = GhosttyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
+        let pinned = BattyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
         guard !query.isEmpty else { return pinned }
         return pinned
             .filter { FuzzyMatcher.score(query, in: $0.name) > 0 }
@@ -28,7 +28,7 @@ struct ThemeSelectorView: View {
     }
 
     private var filteredOthers: [GhosttyThemeDefinition] {
-        let others = GhosttyThemeCatalog.allThemes.filter { !PinnedThemes.contains($0.name, in: pinnedIDs) }
+        let others = BattyThemeCatalog.allThemes.filter { !PinnedThemes.contains($0.name, in: pinnedIDs) }
         guard !query.isEmpty else { return others }
         return others
             .filter { FuzzyMatcher.score(query, in: $0.name) > 0 }
@@ -185,7 +185,7 @@ struct SessionThemeSelectorView: View {
     @State private var pinnedIDs: [String] = []
 
     private var filteredPinned: [GhosttyThemeDefinition] {
-        let pinned = GhosttyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
+        let pinned = BattyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
         guard !query.isEmpty else { return pinned }
         return pinned
             .filter { FuzzyMatcher.score(query, in: $0.name) > 0 }
@@ -193,7 +193,7 @@ struct SessionThemeSelectorView: View {
     }
 
     private var filteredOthers: [GhosttyThemeDefinition] {
-        let others = GhosttyThemeCatalog.allThemes.filter { !PinnedThemes.contains($0.name, in: pinnedIDs) }
+        let others = BattyThemeCatalog.allThemes.filter { !PinnedThemes.contains($0.name, in: pinnedIDs) }
         guard !query.isEmpty else { return others }
         return others
             .filter { FuzzyMatcher.score(query, in: $0.name) > 0 }

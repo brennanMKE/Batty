@@ -55,7 +55,7 @@ public enum ThemePreference {
         let key = defaultsKey(isDark: isDark)
         guard let name = defaults.string(forKey: key),
               !name.isEmpty else { return nil }
-        return GhosttyThemeCatalog.theme(named: name)
+        return BattyThemeCatalog.theme(named: name)
     }
 
     /// Reads the currently-active appearance from `NSApp` and resolves the
@@ -187,7 +187,7 @@ extension AppStateStore {
         let themeName = session.localThemeName
             ?? UserDefaults.standard.string(forKey: globalKey)
         if let name = themeName, !name.isEmpty,
-           let theme = GhosttyThemeCatalog.theme(named: name) {
+           let theme = BattyThemeCatalog.theme(named: name) {
             let source = session.localThemeName != nil ? "local" : "global(\(isDark ? "dark" : "light"))"
             logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) theme=\(name, privacy: .public) source=\(source, privacy: .public)")
             applyTheme(theme, to: session)

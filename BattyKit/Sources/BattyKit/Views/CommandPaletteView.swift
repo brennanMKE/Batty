@@ -94,7 +94,7 @@ struct CommandPaletteView: View {
             action: { AboutPanel.show() }
         ))
 
-        for theme in GhosttyThemeCatalog.allThemes {
+        for theme in BattyThemeCatalog.allThemes {
             cmds.append(PaletteCommand(
                 id: "theme:\(theme.name)",
                 title: String(localized: "Theme: \(theme.name)"),

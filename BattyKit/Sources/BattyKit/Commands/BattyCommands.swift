@@ -127,7 +127,7 @@ public struct BattyCommands: Commands {
 
             Divider()
 
-            ForEach(GhosttyThemeCatalog.allThemes, id: \.id) { theme in
+            ForEach(BattyThemeCatalog.allThemes, id: \.id) { theme in
                 Button {
                     selectTheme(theme)
                 } label: {

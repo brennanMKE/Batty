@@ -165,14 +165,14 @@ private struct AppearanceSettingsView: View {
     private func themePicker(_ label: String, selection: Binding<String>, appliesNow: Bool) -> some View {
         Picker(label, selection: selection) {
             Text("Default").tag("")
-            ForEach(GhosttyThemeCatalog.allThemes, id: \.id) { theme in
+            ForEach(BattyThemeCatalog.allThemes, id: \.id) { theme in
                 Text(theme.name).tag(theme.name)
             }
         }
         .pickerStyle(.menu)
         .onChange(of: selection.wrappedValue) { _, newValue in
             guard appliesNow, let store, !newValue.isEmpty,
-                  let theme = GhosttyThemeCatalog.theme(named: newValue)
+                  let theme = BattyThemeCatalog.theme(named: newValue)
             else { return }
             store.applyThemeToAllSurfaces(theme)
         }

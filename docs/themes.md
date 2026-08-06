@@ -5,12 +5,19 @@ touching anything in the theme path. Companion to `Concepts.md`
 (vocabulary) and [`view-hierarchy.md`](view-hierarchy.md) (where the
 live surfaces actually live). Issue `#0078` is the history.
 
-Batty's theme system is mostly a thin shim over libghostty. Anyone
+Batty's theme system is mostly a thin shim over libghostty, plus a
+small Batty-owned catalog of original themes layered on top. Anyone
 touching theme behavior needs to keep three things in mind:
 
-1. **The catalog is upstream.** Theme definitions ship inside the
-   `brennanMKE/libghostty-spm` fork as `GhosttyThemeCatalog.allThemes`.
-   Batty does not own the data; it picks a name and asks the catalog.
+1. **The catalog is upstream PLUS Batty-original.** Most theme
+   definitions ship inside the upstream `Lakr233/libghostty-spm`
+   package as `GhosttyThemeCatalog.allThemes` (~485 entries). Batty
+   also owns a small original set (`#0310`) constructed directly in
+   `BattyKit` — `GhosttyThemeDefinition` has a public memberwise init,
+   so no fork and no package dependency is needed to add one. Batty
+   code reads `BattyThemeCatalog.allThemes` / `.theme(named:)`, which
+   merges both sources — never `GhosttyThemeCatalog` directly. See
+   section 2 below.
 2. **The selection is just a name in `UserDefaults`.** A single string
    key (`ThemePreference.defaultsKey`) is the entire persisted state.
    Both the Theme menu and the Settings → Appearance picker bind to it
@@ -51,24 +58,45 @@ Settings → Appearance also exposes font size and cursor settings (style
 
 ## 2. Theme catalog source
 
-Themes ship inside the libghostty SPM fork at
-[`brennanMKE/libghostty-spm`](https://github.com/brennanMKE/libghostty-spm)
-(branch `batty-delegates`), in the `GhosttyTheme` target. The catalog
-is a generated Swift file that pins each theme as a static let on
-`GhosttyThemeDefinition`:
+Two catalogs exist, and Batty code should only ever read the merged
+one:
 
-| File | Role |
-|---|---|
-| `Sources/GhosttyTheme/GhosttyThemeCatalog.swift` | Hand-maintained. `theme(named:)` lookup + `search(_:)` filter, plus `battyThemes` and the public `allThemes: [GhosttyThemeDefinition]` — `(generatedThemes + battyThemes).sorted(...)` by name, case-insensitively, so Batty-original themes take their alphabetical place instead of trailing the list. |
-| `Sources/GhosttyTheme/Themes/ThemeCatalog_Generated.swift` | `generatedThemes: [GhosttyThemeDefinition]` — upstream's list, ~485 entries as of `#0078`. **Auto-generated; do not hand-edit.** Note the name: this is *not* `allThemes` — see `GhosttyThemeCatalog.swift` above. |
-| `Sources/GhosttyTheme/Themes/Themes_<Letter>.swift` | Per-initial buckets (`Themes_A.swift`, `Themes_B.swift`, …) holding upstream's `GhosttyThemeDefinition` values. **Auto-generated; do not hand-edit.** |
-| `Sources/GhosttyTheme/Themes/Themes_Batty.swift` | Batty-original themes (`#0310`). Hand-maintained; `Script/generate-themes.sh` never writes to this file, which is what lets Batty-original themes survive a catalog regeneration. Adding one here also requires adding it to `battyThemes` in `GhosttyThemeCatalog.swift` — that second edit is silent if skipped. |
-| `Script/generate-themes.sh` | Regenerates `ThemeCatalog_Generated.swift` (`generatedThemes`) + per-letter buckets from upstream Ghostty's theme dump. Never touches `Themes_Batty.swift` or `GhosttyThemeCatalog.swift`. |
+| Catalog | Where | Role |
+|---|---|---|
+| `GhosttyThemeCatalog.allThemes` | upstream `Lakr233/libghostty-spm` package, `GhosttyTheme` target | ~485 entries, generated from `mbadolato/iTerm2-Color-Schemes`. Batty does not own this data and never hand-edits it. |
+| `BattyThemeCatalog.allThemes` | `BattyKit/Sources/BattyKit/Theme/BattyThemeCatalog.swift` | **The one Batty code reads.** `merge(batty: battyThemes, upstream: GhosttyThemeCatalog.allThemes)`, sorted case-insensitively by name, so Batty-original themes take their alphabetical place instead of trailing the list. Also exposes `theme(named:)`. |
 
-The catalog is read-only at runtime. There is no public API for
-appending or replacing entries — Batty cannot register a theme on the
-fly. Adding a theme means landing it in the libghostty-spm fork (see
-section 9).
+The Batty-original themes themselves (`#0310`) live in
+`BattyKit/Sources/BattyKit/Theme/BattyThemes.swift`, as a `public
+extension GhosttyThemeDefinition { static let ... }` — ordinary values
+constructed on Batty's side of the package boundary. This works
+because `GhosttyThemeDefinition` has a **public memberwise init**
+(`Sources/GhosttyTheme/GhosttyThemeDefinition.swift` in the upstream
+package) — Batty can construct catalog entries without needing to
+land anything in a fork or bump `BattyKit/Package.swift`. Adding a
+theme means adding a `static let` in `BattyThemes.swift` and listing
+it in `BattyThemeCatalog.battyThemes` — that second edit is silent if
+skipped. See section 10.
+
+**Collision policy:** if a Batty-original name ever collided with an
+upstream name, Batty wins — `BattyThemeCatalog.merge(_:_:)`
+deduplicates the Batty bucket into the merge first, so a same-named
+upstream entry is dropped. Pinned by
+`BattyKit/Tests/BattyKitTests/BattyThemeCatalogTests.swift`.
+
+**A previous round of `#0310` got this wrong**: it landed the eight
+Batty-original themes inside the `brennanMKE/libghostty-spm` fork
+(`Themes_Batty.swift` + a generator-survival mechanism) on the theory
+that "the catalog is read-only at runtime; there is no API to
+register a theme on the fly." That premise was false —
+`GhosttyThemeDefinition`'s public init means Batty can always
+construct entries on its own side — and the fork route also implied a
+dependency change Batty didn't want (`BattyKit/Package.swift` is
+pinned to the upstream `Lakr233` package, not the `brennanMKE` fork,
+so shipping fork-only themes would have required repointing the
+dependency and rolling back 96 unrelated upstream commits). That work
+was reverted; this section now describes the corrected, fork-free
+approach.
 
 `GhosttyThemeDefinition` itself is a value-type record of `String` hex
 colors:
@@ -149,18 +177,14 @@ self.terminal = TerminalViewState(theme: Self.activeTheme())
 
 `activeTheme()` is a private static method on `TabRuntime` that runs
 on every tab creation. There is no warm cache and no shared
-`@Observable` theme object — each tab independently reads the
-`UserDefaults` value at construction time:
+`@Observable` theme object — each tab independently resolves the
+active theme at construction time by delegating to
+`ThemePreference.activeTheme()`, which reads the per-appearance
+`UserDefaults` key and resolves it through `BattyThemeCatalog`:
 
 ```swift
 private static func activeTheme() -> TerminalTheme {
-    guard
-        let name = UserDefaults.standard.string(forKey: ThemePreference.defaultsKey),
-        !name.isEmpty,
-        let definition = GhosttyThemeCatalog.theme(named: name)
-    else {
-        return .default
-    }
+    guard let definition = ThemePreference.activeTheme() else { return .default }
     return definition.toTerminalTheme()
 }
 ```
@@ -250,7 +274,7 @@ internal renderer; the theme catalog does not enumerate them.
 / `ThemeStore` set of types that parse Ghostty's `key = value`
 `.ghostty` config format from disk. **This is dead code on the active
 path** — the runtime selection and propagation route through
-`GhosttyThemeCatalog`, not `ThemeStore`. The parser is still exercised
+`BattyThemeCatalog`, not `ThemeStore`. The parser is still exercised
 by `BattyKit/Tests/BattyKitTests/ThemeTests.swift` against a hand-rolled
 fixture; treat it as a placeholder for a future user-themes-on-disk
 feature.
@@ -297,15 +321,18 @@ goes through `setTerminalConfiguration(_:)`.
 | [`../BattyKit/Sources/BattyKit/BattyCommands.swift`](../BattyKit/Sources/BattyKit/BattyCommands.swift) | The Theme menu (`CommandMenu("Theme")`) and the `selectTheme(_:)` handler. |
 | [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | Owner of `sessions`. The walk in `applyThemeToAllSurfaces` is over its state. |
 | [`../BattyKit/Sources/BattyKit/SettingsView.swift`](../BattyKit/Sources/BattyKit/SettingsView.swift) | `AppearanceSettingsView` — the Settings picker for theme + the adjacent font/cursor controls. |
-| `Sources/GhosttyTheme/GhosttyThemeCatalog.swift` (libghostty-spm) | `allThemes`, `theme(named:)`, `search(_:)`. |
-| `Sources/GhosttyTheme/GhosttyThemeDefinition.swift` (libghostty-spm) | The record type. |
-| `Sources/GhosttyTheme/GhosttyThemeDefinition+TerminalConfiguration.swift` (libghostty-spm) | `toTerminalConfiguration()` / `toTerminalTheme()` / `isDark`. |
-| `Sources/GhosttyTerminal/Controller/TerminalController.swift` (libghostty-spm) | `setTheme(_:)` — the in-place repaint hook. |
+| [`../BattyKit/Sources/BattyKit/Theme/BattyThemeCatalog.swift`](../BattyKit/Sources/BattyKit/Theme/BattyThemeCatalog.swift) | The merged catalog Batty code actually reads: `allThemes`, `theme(named:)`, `merge(batty:upstream:)`, `battyThemes`. |
+| [`../BattyKit/Sources/BattyKit/Theme/BattyThemes.swift`](../BattyKit/Sources/BattyKit/Theme/BattyThemes.swift) | The Batty-original `GhosttyThemeDefinition` values themselves (`#0310`). |
+| `Sources/GhosttyTheme/GhosttyThemeCatalog.swift` (upstream `libghostty-spm`) | Upstream-only `allThemes`, `theme(named:)`, `search(_:)`. Not read directly by Batty code — go through `BattyThemeCatalog` instead. |
+| `Sources/GhosttyTheme/GhosttyThemeDefinition.swift` (upstream `libghostty-spm`) | The record type. Public memberwise init — this is what lets Batty construct original themes without a fork. |
+| `Sources/GhosttyTheme/GhosttyThemeDefinition+TerminalConfiguration.swift` (upstream `libghostty-spm`) | `toTerminalConfiguration()` / `toTerminalTheme()` / `isDark`. |
+| `Sources/GhosttyTerminal/Controller/TerminalController.swift` (upstream `libghostty-spm`) | `setTheme(_:)` — the in-place repaint hook. |
 
-The dependency pin lives in
-[`../BattyKit/Package.swift`](../BattyKit/Package.swift) as a `revision:`
-on the `brennanMKE/libghostty-spm` package. Updating it is how Batty
-picks up catalog changes.
+`BattyKit/Package.swift` pins `libghostty-spm` to the **upstream**
+`Lakr233/libghostty-spm` package (not a Batty fork) via a `revision:`
+on the dependency. Batty-original themes (`#0310`) do not require
+bumping this pin — see section 2. The pin still matters for picking up
+new upstream catalog entries or other libghostty changes.
 
 ---
 
@@ -404,26 +431,47 @@ current global theme.
 
 ## 10. Adding a new theme (developer workflow)
 
-In v1, themes are baked into the libghostty-spm fork. To add one:
+Two different paths, depending on where the theme comes from:
 
-1. In the `brennanMKE/libghostty-spm` checkout on the `batty-delegates`
-   branch:
-   - **To pick up upstream's theme set**, run `Script/generate-themes.sh`
-     against the updated upstream Ghostty theme dump. This regenerates
-     `Themes_<Letter>.swift` and `Themes/ThemeCatalog_Generated.swift`
-     wholesale — do not hand-edit either.
-   - **To add a Batty-original theme** (`#0310`), hand-add the
-     `GhosttyThemeDefinition` to `Themes/Themes_Batty.swift` instead —
-     never to a `Themes_<Letter>.swift` bucket, which the generator
-     destroys on its next run — and add it to `battyThemes` in
-     `GhosttyThemeCatalog.swift` so it reaches `allThemes`.
-2. Commit the changes upstream, push, and capture the new commit SHA.
-3. In Batty, bump the `revision:` field for `libghostty-spm` in
-   `BattyKit/Package.swift` to the new SHA.
-4. Resolve `BattyKit/Package.resolved` by running an Xcode build (or
+**To add a Batty-original theme (`#0310`) — no fork, no package bump:**
+
+1. Add a `static let` on `GhosttyThemeDefinition` in
+   [`../BattyKit/Sources/BattyKit/Theme/BattyThemes.swift`](../BattyKit/Sources/BattyKit/Theme/BattyThemes.swift),
+   using the public memberwise init directly.
+2. List it in `BattyThemeCatalog.battyThemes` in
+   [`../BattyKit/Sources/BattyKit/Theme/BattyThemeCatalog.swift`](../BattyKit/Sources/BattyKit/Theme/BattyThemeCatalog.swift)
+   — adding the `static let` alone is not enough; skipping this step
+   means the theme silently never reaches `allThemes`.
+3. If the theme is meant to be selectable in both appearances, ship a
+   light companion following the light-palette conversion convention
+   (see `issues/0310.md` for the worked example: slot 0 a
+   near-background tint, slot 15 byte-equal to the foreground, slots
+   9–14 repeating 1–6 rather than brightening). The companion is
+   usually named `<Name> Day`, but that suffix isn't mandatory —
+   `BattyThemes.swift` ships `Weird Science` / `Weird Science Night`,
+   where the *light* variant is the primary form and keeps the plain
+   name while the dark companion takes the modifier. Preserve whatever
+   naming was authored; don't force every pair into `<Name> Day`.
+4. Add or extend tests in
+   `BattyKit/Tests/BattyKitTests/BattyThemeCatalogTests.swift`.
+5. `scripts/build.sh unit` — the new theme name appears in the Theme
+   menu, Settings picker, Command Palette, and Theme Selector
+   immediately; no package change, no revision bump, no
+   `Package.resolved` update.
+
+**To pick up new themes from upstream Ghostty:**
+
+1. In the upstream `Lakr233/libghostty-spm` checkout, run
+   `Script/generate-themes.sh` against the updated Ghostty theme dump.
+   This regenerates `Themes_<Letter>.swift` and
+   `Themes/ThemeCatalog_Generated.swift` wholesale — do not hand-edit
+   either.
+2. Bump the `revision:` field for `libghostty-spm` in
+   `BattyKit/Package.swift` to the new upstream commit SHA.
+3. Resolve `BattyKit/Package.resolved` by running an Xcode build (or
    `swift package resolve` inside `BattyKit/`).
-5. The new theme name appears in the Theme menu and the Settings
-   picker on next launch. No further Batty code change is needed.
+4. New upstream theme names appear in the catalog on next launch. No
+   further Batty code change is needed.
 
 **Out of scope (file a separate issue if you want any of these):**
 
@@ -454,9 +502,19 @@ In v1, themes are baked into the libghostty-spm fork. To add one:
   Existing surfaces keep whatever they had last applied — Batty does
   not actively reconcile them when the catalog changes. Re-selecting
   any theme from the menu fixes both.
-- *How do I add a theme?* — Land it in `brennanMKE/libghostty-spm`,
-  bump the package revision in `BattyKit/Package.swift`. See section 9.
+- *How do I add a theme?* — If it's a Batty-original theme, add it
+  directly in `BattyKit/Sources/BattyKit/Theme/BattyThemes.swift` and
+  list it in `BattyThemeCatalog.battyThemes` — no fork, no package
+  revision bump. If it's from upstream Ghostty's set, regenerate the
+  upstream package and bump the `revision:` in `BattyKit/Package.swift`.
+  See section 10.
 
 ---
 
-*Document version: 2 — 2026-05-20. Added section 9 (global theme and session-local overrides).*
+*Document version: 3 — 2026-08-05. Corrected section 2/8/10 and this
+answer key: the "catalog is read-only at runtime" premise from the
+first `#0310` attempt was false — `GhosttyThemeDefinition`'s public
+memberwise init lets Batty construct original themes on its own side
+via `BattyThemeCatalog`, with no fork and no dependency change. Also
+added section 9 (global theme and session-local overrides) in the
+prior revision.*
