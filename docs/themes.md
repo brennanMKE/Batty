@@ -59,10 +59,11 @@ is a generated Swift file that pins each theme as a static let on
 
 | File | Role |
 |---|---|
-| `Sources/GhosttyTheme/GhosttyThemeCatalog.swift` | The public enum: `theme(named:)` lookup + `search(_:)` filter. |
-| `Sources/GhosttyTheme/Themes/ThemeCatalog_Generated.swift` | `allThemes: [GhosttyThemeDefinition]` — the authoritative ordered list. ~485 entries as of `#0078`. **Auto-generated; do not hand-edit.** |
-| `Sources/GhosttyTheme/Themes/Themes_<Letter>.swift` | Per-initial buckets (`Themes_A.swift`, `Themes_B.swift`, …) holding the actual `GhosttyThemeDefinition` values. |
-| `Script/generate-themes.sh` | Regenerates `ThemeCatalog_Generated.swift` + per-letter buckets from upstream Ghostty's theme dump. |
+| `Sources/GhosttyTheme/GhosttyThemeCatalog.swift` | Hand-maintained. `theme(named:)` lookup + `search(_:)` filter, plus `battyThemes` and the public `allThemes: [GhosttyThemeDefinition]` — `(generatedThemes + battyThemes).sorted(...)` by name, case-insensitively, so Batty-original themes take their alphabetical place instead of trailing the list. |
+| `Sources/GhosttyTheme/Themes/ThemeCatalog_Generated.swift` | `generatedThemes: [GhosttyThemeDefinition]` — upstream's list, ~485 entries as of `#0078`. **Auto-generated; do not hand-edit.** Note the name: this is *not* `allThemes` — see `GhosttyThemeCatalog.swift` above. |
+| `Sources/GhosttyTheme/Themes/Themes_<Letter>.swift` | Per-initial buckets (`Themes_A.swift`, `Themes_B.swift`, …) holding upstream's `GhosttyThemeDefinition` values. **Auto-generated; do not hand-edit.** |
+| `Sources/GhosttyTheme/Themes/Themes_Batty.swift` | Batty-original themes (`#0310`). Hand-maintained; `Script/generate-themes.sh` never writes to this file, which is what lets Batty-original themes survive a catalog regeneration. Adding one here also requires adding it to `battyThemes` in `GhosttyThemeCatalog.swift` — that second edit is silent if skipped. |
+| `Script/generate-themes.sh` | Regenerates `ThemeCatalog_Generated.swift` (`generatedThemes`) + per-letter buckets from upstream Ghostty's theme dump. Never touches `Themes_Batty.swift` or `GhosttyThemeCatalog.swift`. |
 
 The catalog is read-only at runtime. There is no public API for
 appending or replacing entries — Batty cannot register a theme on the
@@ -406,11 +407,16 @@ current global theme.
 In v1, themes are baked into the libghostty-spm fork. To add one:
 
 1. In the `brennanMKE/libghostty-spm` checkout on the `batty-delegates`
-   branch, run `Script/generate-themes.sh` against the updated upstream
-   Ghostty theme dump (or, for a one-off, hand-add a
-   `GhosttyThemeDefinition` to the appropriate `Themes_<Letter>.swift`
-   bucket and the matching reference in
-   `Themes/ThemeCatalog_Generated.swift`).
+   branch:
+   - **To pick up upstream's theme set**, run `Script/generate-themes.sh`
+     against the updated upstream Ghostty theme dump. This regenerates
+     `Themes_<Letter>.swift` and `Themes/ThemeCatalog_Generated.swift`
+     wholesale — do not hand-edit either.
+   - **To add a Batty-original theme** (`#0310`), hand-add the
+     `GhosttyThemeDefinition` to `Themes/Themes_Batty.swift` instead —
+     never to a `Themes_<Letter>.swift` bucket, which the generator
+     destroys on its next run — and add it to `battyThemes` in
+     `GhosttyThemeCatalog.swift` so it reaches `allThemes`.
 2. Commit the changes upstream, push, and capture the new commit SHA.
 3. In Batty, bump the `revision:` field for `libghostty-spm` in
    `BattyKit/Package.swift` to the new SHA.
