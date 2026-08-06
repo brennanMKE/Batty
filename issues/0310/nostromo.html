@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hackers — candidate Batty themes</title>
+<title>Nostromo / MU-TH-UR — candidate Batty theme</title>
 <style>
   :root {
     --page-bg: #0b0b10;
@@ -20,10 +20,18 @@
     font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   }
   .wrap { max-width: 1240px; margin: 0 auto; }
-  h1 { font-size: 1.7rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
-  .lede { color: var(--page-dim); margin: 0 0 1.25rem; max-width: 70ch; }
+  h1 { font-size: 1.7rem; margin: 0 0 .6rem; letter-spacing: -.01em; }
+  .crumb { margin: 0 0 1.2rem; font-size: .85rem; }
+  .crumb a { color: var(--page-dim); text-decoration: none; }
+  .crumb a:hover { color: var(--page-fg); }
+  .lede { color: var(--page-dim); margin: 0 0 1rem; max-width: 74ch; }
   .lede code, .lede b { color: var(--page-fg); font-weight: 600; }
-  .lede + .lede { margin-bottom: 2.5rem; }
+  .lede + .lede { margin-bottom: 2.2rem; }
+  .foot {
+    color: var(--page-dim); font-size: .82rem; max-width: 78ch;
+    margin: 2rem 0 0; padding-top: 1.2rem; border-top: 1px solid var(--rule);
+  }
+  .foot code { color: var(--page-fg); }
 
   .card {
     border: 1px solid var(--rule);
@@ -132,117 +140,84 @@
     .pair { grid-template-columns: 1fr; }
     .swatches { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }
-  .crumb { margin: 0 0 1.2rem; font-size: .85rem; }
-  .crumb a { color: var(--page-dim); text-decoration: none; }
-  .crumb a:hover { color: var(--page-fg); }
-  h1 { margin-top: 0; }
+
 </style>
 </head>
 <body>
 <div class="wrap">
   <p class="crumb"><a href="index.html">&larr; all candidates</a></p>
-  <h1>Hackers — four candidate themes, dark and light</h1>
-  <p class="lede">
-    Drawn from the quad poster (magenta/violet, acid-yellow wordmark), the teaser
-    poster (cold blue monochrome), and the Gibson mainframe visualization. Each card
-    shows a real terminal mock, the 16 ANSI slots, and a ready-to-paste
-    <code>GhosttyThemeDefinition</code>. Contrast is foreground-on-background, WCAG ratio.
-  </p>
-  <p class="lede">
-    Batty stores the global theme <b>per appearance</b> — <code>co.sstools.Batty.themeName.dark</code>
-    and <code>co.sstools.Batty.themeName.light</code> — and re-applies on system appearance
-    change, so each theme needs a companion or Light-mode users fall back to
-    <code>TokyoNight Day</code>. The companions follow that theme's slot convention: slot 0 is a
-    near-background tint, slot 15 is the ink, and slots 9–14 <i>repeat</i> 1–6 rather than
-    brightening, because "brighter" on paper means less legible.
-  </p>
+  <h1>Nostromo / MU-TH-UR</h1>
+  <p class="lede">True amber-phosphor monochrome — P3 <code>ffb000</code> on near-black, every slot a step on one amber ramp. The catalog has amber accents but no amber CRT.</p>
+  <p class="lede">The deliberate opposite of the neon candidates: one hue, sixteen values. Errors read as hotter orange rather than red, which is exactly how a 1979 terminal would have shown them. The companion is sepia on cream — the printout, not the screen.</p>
   <div id="cards"></div>
+  <p class="foot">
+    Batty stores the global theme per appearance (<code>co.sstools.Batty.themeName.dark</code> /
+    <code>.light</code>) and re-applies on system appearance change, so each theme ships a companion.
+    Light companions follow the <code>TokyoNight Day</code> slot convention: slot 0 is a near-background
+    tint, slot 15 is the ink, and slots 9–14 repeat 1–6 rather than brightening.
+  </p>
 </div>
-
 <script>
 const THEMES = [
   {
-    name: "Hackers",
-    note: "The quad poster. Violet ground, chrome-silver text, magenta cursor, the wordmark's acid yellow in slot 3 — which has to fall to ochre on paper to survive.",
-    dark: {
-      name: "Hackers",
-      background: "140a2e", foreground: "d6dcea",
-      cursorColor: "ff2fb9", cursorText: "140a2e",
-      selectionBackground: "3a1163", selectionForeground: "ffffff",
-      palette: ["1c1038","ff2b5e","a8f52c","f0e800","5b6bff","ff2fb9","35d6ff","d6dcea",
-                "6a5590","ff6b8a","c8ff5e","fff23d","8a95ff","ff7ad4","7ce8ff","ffffff"]
+    "name": "Nostromo / MU-TH-UR",
+    "note": "",
+    "dark": {
+      "name": "MU-TH-UR",
+      "background": "0d0800",
+      "foreground": "ffb000",
+      "cursorColor": "ffc233",
+      "cursorText": "0d0800",
+      "selectionBackground": "3d2600",
+      "selectionForeground": "fff0d0",
+      "palette": [
+        "1a1000",
+        "ff5f1f",
+        "d99000",
+        "ffc233",
+        "b87400",
+        "e8901f",
+        "ffd166",
+        "ffb000",
+        "5c3a00",
+        "ff7a3d",
+        "ffb833",
+        "ffd98a",
+        "d99a2b",
+        "ffab5c",
+        "ffe0a3",
+        "fff0d0"
+      ]
     },
-    light: {
-      name: "Hackers Day",
-      background: "f2edfb", foreground: "4a2b7a",
-      cursorColor: "c2008a", cursorText: "f2edfb",
-      selectionBackground: "d3bdf2", selectionForeground: "2a1746",
-      palette: ["e9e2f6","d10f4e","4f7a1c","8a6a00","2f46c9","c2008a","00718f","6b5a94",
-                "a99cc4","d10f4e","4f7a1c","8a6a00","2f46c9","c2008a","00718f","4a2b7a"]
-    }
-  },
-  {
-    name: "Hackers Blue",
-    note: "The teaser poster — steel faces behind falling code. Everything pulled cold; red and yellow are desaturated just enough to stay legible as warnings.",
-    dark: {
-      name: "Hackers Blue",
-      background: "07101f", foreground: "a8cbe6",
-      cursorColor: "4fd3ff", cursorText: "07101f",
-      selectionBackground: "143c5e", selectionForeground: "dff0ff",
-      palette: ["0d1728","f2637f","3fd6b0","d6bd6a","3d7fe0","9a8cf0","35b8e8","a8cbe6",
-                "3c5372","ff8ba3","6ff0cf","ecd88f","6fa6f2","bfaeff","72dcff","e4f3ff"]
-    },
-    light: {
-      name: "Hackers Blue Day",
-      background: "eaf1f8", foreground: "1d4a70",
-      cursorColor: "0f7fb5", cursorText: "eaf1f8",
-      selectionBackground: "bcd6ec", selectionForeground: "10334f",
-      palette: ["e0eaf4","c23a5c","1f7f68","8a6a1f","1f5fa8","6a4fc0","0f7395","4a6a88",
-                "9db6cd","c23a5c","1f7f68","8a6a1f","1f5fa8","6a4fc0","0f7395","1d4a70"]
-    }
-  },
-  {
-    name: "Acid Burn",
-    note: "Loud variant. Lime foreground, magenta accents. Lime ink on paper is unreadable, so the companion inverts the relationship: acid-tinted stock, plum ink, lime demoted to an accent.",
-    dark: {
-      name: "Acid Burn",
-      background: "130a1c", foreground: "c9f24a",
-      cursorColor: "ff2fb9", cursorText: "130a1c",
-      selectionBackground: "45114a", selectionForeground: "f4ffd9",
-      palette: ["1e1226","ff3b6b","8ef03c","ffe600","7a5cff","ff2fb9","2fe3d0","d8f5a8",
-                "705e7f","ff6f92","b6ff5c","fff45c","a08cff","ff7ad4","6cf2e4","f4ffd9"]
-    },
-    light: {
-      name: "Acid Burn Day",
-      background: "f7fbe8", foreground: "6b0a4f",
-      cursorColor: "c2008a", cursorText: "f7fbe8",
-      selectionBackground: "e6d3ee", selectionForeground: "3d0530",
-      palette: ["eef4d8","c41347","4c7a10","806a00","5a3fc0","b3007f","0d7d70","6d6a4a",
-                "b3b48f","c41347","4c7a10","806a00","5a3fc0","b3007f","0d7d70","6b0a4f"]
-    }
-  },
-  {
-    name: "The Gibson",
-    note: "The mainframe flyover. Near-black ground, cyan text, magenta reserved for alarms. The companion reads as a blueprint — the quietest pair, and the daily-driver candidate.",
-    dark: {
-      name: "The Gibson",
-      background: "000306", foreground: "7fdfff",
-      cursorColor: "00ffe0", cursorText: "000306",
-      selectionBackground: "07364a", selectionForeground: "e8feff",
-      palette: ["001014","ff3b6b","00e39b","d8e04a","2f7fff","d36bff","00d5ff","9fd8e8",
-                "2a4b5c","ff6b93","4dffc4","f0f27a","6fa8ff","e79bff","6fe8ff","e8feff"]
-    },
-    light: {
-      name: "The Gibson Day",
-      background: "f2f9fc", foreground: "07414f",
-      cursorColor: "008c9e", cursorText: "f2f9fc",
-      selectionBackground: "bfe0ea", selectionForeground: "042d38",
-      palette: ["e6f2f7","c02352","00755c","7a6a10","1f5fc0","8a3fb0","00707f","4a6f7a",
-                "9fbcc6","c02352","00755c","7a6a10","1f5fc0","8a3fb0","00707f","07414f"]
+    "light": {
+      "name": "MU-TH-UR Day",
+      "background": "fbf2df",
+      "foreground": "4a2c00",
+      "cursorColor": "8a5a00",
+      "cursorText": "fbf2df",
+      "selectionBackground": "e8d5a8",
+      "selectionForeground": "331e00",
+      "palette": [
+        "f2e8cf",
+        "b03000",
+        "6b5200",
+        "8a5a00",
+        "7a4a00",
+        "9a4400",
+        "6b4a00",
+        "7a6440",
+        "cbb98f",
+        "b03000",
+        "6b5200",
+        "8a5a00",
+        "7a4a00",
+        "9a4400",
+        "6b4a00",
+        "4a2c00"
+      ]
     }
   }
 ];
-
 const hex = h => "#" + h;
 
 function srgb(c) {
@@ -289,7 +264,7 @@ function terminal(t) {
     c("❯", 13) + " bat Theme.swift",
     "  " + c("//", 8) + c(" Theme.swift", 8),
     "  " + c("public", 5) + " " + c("struct", 5) + " " + c("Theme", 14) + ": " + c("Sendable", 6) + " {",
-    "      " + c("let", 5) + " name: " + c("String", 6) + " = " + c('"Hackers"', 2),
+    "      " + c("let", 5) + " name: " + c("String", 6) + " = " + c('"Batty"', 2),
     "      " + c("let", 5) + " palette: [" + c("Int", 6) + ": " + c("String", 6) + "]",
     "  }",
     "",
@@ -321,7 +296,7 @@ function keys(t) {
 
 function swiftSource(t) {
   const pal = t.palette.map((h, i) => `${i}: "${h}"`).join(", ");
-  const id = t.name.toLowerCase().replace(/ (.)/g, (_, c) => "_" + c.toUpperCase());
+  const id = t.name.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/ (.)/g, (_, c) => "_" + c.toUpperCase());
   return `static let ${id} = GhosttyThemeDefinition(
     name: "${t.name}",
     background: "${t.background}",
@@ -345,12 +320,13 @@ function variant(v, label) {
 }
 
 document.getElementById("cards").innerHTML = THEMES.map(t => `<section class="card">
-  <header><h2>${t.name}</h2><span class="note">${t.note}</span></header>
+  <header><h2>${t.dark.name} &nbsp;/&nbsp; ${t.light.name}</h2>${t.note ? `<span class="note">${t.note}</span>` : ""}</header>
   <div class="pair">${variant(t.dark, "dark")}${variant(t.light, "light")}</div>
   <details><summary>GhosttyThemeDefinition — paste into the libghostty-spm fork</summary>
     <pre>${(swiftSource(t.dark) + "\n\n" + swiftSource(t.light)).replace(/</g, "&lt;")}</pre>
   </details>
 </section>`).join("");
+
 </script>
 </body>
 </html>

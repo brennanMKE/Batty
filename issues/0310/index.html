@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>#0310 — candidate Batty themes</title>
+<style>
+  :root {
+    --page-bg: #0b0b10;
+    --page-fg: #e6e6ef;
+    --page-dim: #8b8b9e;
+    --rule: #26263a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem 1.5rem 6rem;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .6rem; letter-spacing: -.01em; }
+  .crumb { margin: 0 0 1.2rem; font-size: .85rem; }
+  .crumb a { color: var(--page-dim); text-decoration: none; }
+  .crumb a:hover { color: var(--page-fg); }
+  .lede { color: var(--page-dim); margin: 0 0 1rem; max-width: 74ch; }
+  .lede code, .lede b { color: var(--page-fg); font-weight: 600; }
+  .lede + .lede { margin-bottom: 2.2rem; }
+  .foot {
+    color: var(--page-dim); font-size: .82rem; max-width: 78ch;
+    margin: 2rem 0 0; padding-top: 1.2rem; border-top: 1px solid var(--rule);
+  }
+  .foot code { color: var(--page-fg); }
+
+  .card {
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2.75rem;
+    background: #101018;
+  }
+  .card > header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1rem;
+    align-items: baseline;
+  }
+  .card h2 { font-size: 1.15rem; margin: 0; }
+  .card .note { color: var(--page-dim); font-size: .875rem; flex: 1 1 26ch; }
+
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule); }
+  .variant { background: #101018; display: flex; flex-direction: column; }
+  .variant > .vhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: .55rem 1.1rem;
+    border-bottom: 1px solid var(--rule);
+    font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--page-dim);
+  }
+  .vhead .nm { color: var(--page-fg); letter-spacing: .02em; text-transform: none; font-size: 12.5px; }
+  .vhead .warn { color: #ffb347; }
+
+  .term {
+    font: 13px/1.6 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    padding: 1.1rem 1.15rem 1.15rem;
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 4;
+    flex: 1;
+  }
+  .term .blank { display: block; height: .6rem; }
+  .cursor {
+    display: inline-block;
+    width: .62em;
+    height: 1.15em;
+    vertical-align: text-bottom;
+    animation: blink 1.15s steps(1, end) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .ramp { display: flex; gap: 3px; margin-top: .9rem; }
+  .ramp span { flex: 1; height: 15px; border-radius: 2px; }
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+  }
+  .sw {
+    padding: .5rem .4rem .45rem;
+    font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+    line-height: 1.35;
+    min-height: 54px;
+  }
+  .sw .i { opacity: .65; }
+  .sw .h { display: block; text-transform: uppercase; letter-spacing: .02em; }
+
+  .keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+    padding: .7rem 1.15rem;
+    border-top: 1px solid var(--rule);
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--page-dim);
+  }
+  .keys .k { display: flex; align-items: center; gap: .35rem; }
+  .keys .chip {
+    width: 14px; height: 14px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.16);
+  }
+
+  details {
+    border-top: 1px solid var(--rule);
+    padding: .75rem 1.25rem 1rem;
+  }
+  summary { cursor: pointer; color: var(--page-dim); font-size: .85rem; }
+  details pre {
+    margin: .8rem 0 0;
+    padding: .9rem 1rem;
+    background: #0a0a10;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow-x: auto;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #b9b9cc;
+  }
+
+  @media (max-width: 940px) {
+    .pair { grid-template-columns: 1fr; }
+    .swatches { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+  a.tile {
+    display: block; text-decoration: none; color: inherit;
+    border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: #101018;
+  }
+  a.tile:hover { border-color: #4a4a6a; }
+  a.tile h3 { margin: 0; padding: .8rem 1rem .2rem; font-size: 1rem; }
+  a.tile p { margin: 0; padding: 0 1rem .8rem; color: var(--page-dim); font-size: .82rem; }
+  a.tile .strip { display: flex; height: 34px; }
+  a.tile .strip span { flex: 1; }
+  .status { color: var(--page-dim); font-size: .8rem; padding: 0 1rem .8rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Candidate themes for #0310</h1>
+  <p class="lede">
+    Batty ships no original themes — the 485 in the picker all come from the upstream Ghostty
+    catalog. These are the candidates, each as a dark theme and its light companion. Every name
+    here was checked against all 485 entries and is absent.
+  </p>
+  <div class="grid">
+    <a class="tile" href="hackers-themes.html">
+      <div class="strip"><span style="background:#140a2e"></span><span style="background:#ff2fb9"></span><span style="background:#f0e800"></span><span style="background:#35d6ff"></span><span style="background:#07101f"></span><span style="background:#a8cbe6"></span><span style="background:#c9f24a"></span><span style="background:#7fdfff"></span></div>
+      <h3>Hackers (four themes)</h3>
+      <p>Hackers, Hackers Blue, Acid Burn, The Gibson — with Day companions.</p>
+    </a>
+    <a class="tile" href="tron.html">
+      <div class="strip"><span style="background:#000c11"></span><span style="background:#9fe7f5"></span><span style="background:#ff5a3c"></span><span style="background:#ffae00"></span><span style="background:#6fc3df"></span><span style="background:#eef7fa"></span><span style="background:#0d3a48"></span><span style="background:#7a3fc0"></span></div>
+      <h3>Tron / Encom</h3>
+      <p>Encom &middot; Encom Day</p>
+    </a>
+    <a class="tile" href="max-headroom.html">
+      <div class="strip"><span style="background:#1226c4"></span><span style="background:#ffe95c"></span><span style="background:#ff4b6e"></span><span style="background:#ffe95c"></span><span style="background:#35e8ff"></span><span style="background:#f2f4ff"></span><span style="background:#1a1f8f"></span><span style="background:#bf00a0"></span></div>
+      <h3>Max Headroom</h3>
+      <p>Max Headroom &middot; Max Headroom Day</p>
+    </a>
+    <a class="tile" href="wopr.html">
+      <div class="strip"><span style="background:#000000"></span><span style="background:#bfe9f2"></span><span style="background:#ff2b2b"></span><span style="background:#d8f4fa"></span><span style="background:#9fdcea"></span><span style="background:#eef6f8"></span><span style="background:#0a3a44"></span><span style="background:#24606d"></span></div>
+      <h3>WOPR / WarGames</h3>
+      <p>WOPR &middot; WOPR Day</p>
+    </a>
+    <a class="tile" href="weird-science.html">
+      <div class="strip"><span style="background:#1d0f2b"></span><span style="background:#ffd6f2"></span><span style="background:#ff4d9e"></span><span style="background:#ffd166"></span><span style="background:#4fe0ff"></span><span style="background:#fdf2f8"></span><span style="background:#5a2a6b"></span><span style="background:#a11fa1"></span></div>
+      <h3>Weird Science</h3>
+      <p>Weird Science Night &middot; Weird Science</p>
+    </a>
+    <a class="tile" href="blade-runner.html">
+      <div class="strip"><span style="background:#0b1416"></span><span style="background:#d9c7a3"></span><span style="background:#e0533c"></span><span style="background:#ffa62b"></span><span style="background:#5fc4c8"></span><span style="background:#f5f0e6"></span><span style="background:#2e3b3d"></span><span style="background:#9a3f78"></span></div>
+      <h3>Blade Runner</h3>
+      <p>Blade Runner &middot; Blade Runner Day</p>
+    </a>
+    <a class="tile" href="nostromo.html">
+      <div class="strip"><span style="background:#0d0800"></span><span style="background:#ffb000"></span><span style="background:#ff5f1f"></span><span style="background:#ffc233"></span><span style="background:#ffd166"></span><span style="background:#fbf2df"></span><span style="background:#4a2c00"></span><span style="background:#9a4400"></span></div>
+      <h3>Nostromo / MU-TH-UR</h3>
+      <p>MU-TH-UR &middot; MU-TH-UR Day</p>
+    </a>
+    <a class="tile" href="swordfish.html">
+      <div class="strip"><span style="background:#10151c"></span><span style="background:#d8c08a"></span><span style="background:#e05a3c"></span><span style="background:#e8a33d"></span><span style="background:#5fb8c0"></span><span style="background:#f2f1ec"></span><span style="background:#2b3440"></span><span style="background:#8a4470"></span></div>
+      <h3>Swordfish</h3>
+      <p>Swordfish &middot; Swordfish Day</p>
+    </a>
+
+  </div>
+  <p class="foot">
+    Attachments for <code>issues/0310.md</code>. Palettes are proposals, not committed scope —
+    the Hackers set is the one with a decision behind it.
+  </p>
+</div>
+</body>
+</html>
