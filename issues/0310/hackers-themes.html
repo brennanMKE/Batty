@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hackers — candidate Batty themes</title>
+<style>
+  :root {
+    --page-bg: #0b0b10;
+    --page-fg: #e6e6ef;
+    --page-dim: #8b8b9e;
+    --rule: #26263a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem 1.5rem 6rem;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  .lede { color: var(--page-dim); margin: 0 0 2.5rem; max-width: 62ch; }
+  .lede code { color: var(--page-fg); }
+
+  .card {
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2.75rem;
+    background: #101018;
+  }
+  .card > header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1rem;
+    align-items: baseline;
+  }
+  .card h2 { font-size: 1.15rem; margin: 0; }
+  .card .note { color: var(--page-dim); font-size: .875rem; flex: 1 1 26ch; }
+  .contrast {
+    font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--page-dim);
+    white-space: nowrap;
+  }
+  .contrast b { color: var(--page-fg); font-weight: 600; }
+  .contrast .warn { color: #ffb347; }
+
+  .term {
+    font: 13.5px/1.6 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    padding: 1.1rem 1.25rem 1.25rem;
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 4;
+  }
+  .term .blank { display: block; height: .6rem; }
+  .cursor {
+    display: inline-block;
+    width: .62em;
+    height: 1.15em;
+    vertical-align: text-bottom;
+    animation: blink 1.15s steps(1, end) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .ramp { display: flex; gap: 3px; margin-top: .9rem; }
+  .ramp span { flex: 1; height: 16px; border-radius: 2px; }
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+  }
+  .sw {
+    padding: .55rem .5rem .5rem;
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    line-height: 1.35;
+    min-height: 62px;
+  }
+  .sw .i { opacity: .65; }
+  .sw .h { display: block; text-transform: uppercase; letter-spacing: .02em; }
+
+  .keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    padding: .85rem 1.25rem;
+    border-top: 1px solid var(--rule);
+    font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--page-dim);
+  }
+  .keys .k { display: flex; align-items: center; gap: .4rem; }
+  .keys .chip {
+    width: 15px; height: 15px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.16);
+  }
+
+  details {
+    border-top: 1px solid var(--rule);
+    padding: .75rem 1.25rem 1rem;
+  }
+  summary { cursor: pointer; color: var(--page-dim); font-size: .85rem; }
+  details pre {
+    margin: .8rem 0 0;
+    padding: .9rem 1rem;
+    background: #0a0a10;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow-x: auto;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #b9b9cc;
+  }
+
+  @media (max-width: 720px) {
+    .swatches { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Hackers — four candidate themes</h1>
+  <p class="lede">
+    Drawn from the quad poster (magenta/violet, acid-yellow wordmark), the teaser
+    poster (cold blue monochrome), and the Gibson mainframe visualization. Each card
+    shows a real terminal mock, the 16 ANSI slots, and the ready-to-paste
+    <code>GhosttyThemeDefinition</code>. Contrast is foreground-on-background, WCAG ratio.
+  </p>
+  <div id="cards"></div>
+</div>
+
+<script>
+const THEMES = [
+  {
+    name: "Hackers",
+    note: "The quad poster. Violet-black ground, chrome-silver text, magenta cursor, the wordmark's acid yellow as slot 3.",
+    background: "140a2e",
+    foreground: "d6dcea",
+    cursorColor: "ff2fb9",
+    cursorText: "140a2e",
+    selectionBackground: "3a1163",
+    selectionForeground: "ffffff",
+    palette: ["1c1038","ff2b5e","a8f52c","f0e800","5b6bff","ff2fb9","35d6ff","d6dcea",
+              "6a5590","ff6b8a","c8ff5e","fff23d","8a95ff","ff7ad4","7ce8ff","ffffff"]
+  },
+  {
+    name: "Hackers Blue",
+    note: "The teaser poster — steel faces behind falling code. Everything pulled cold; red and yellow are desaturated just enough to stay legible as warnings.",
+    background: "07101f",
+    foreground: "a8cbe6",
+    cursorColor: "4fd3ff",
+    cursorText: "07101f",
+    selectionBackground: "143c5e",
+    selectionForeground: "dff0ff",
+    palette: ["0d1728","f2637f","3fd6b0","d6bd6a","3d7fe0","9a8cf0","35b8e8","a8cbe6",
+              "3c5372","ff8ba3","6ff0cf","ecd88f","6fa6f2","bfaeff","72dcff","e4f3ff"]
+  },
+  {
+    name: "Acid Burn",
+    note: "Loud variant. Lime foreground off the wordmark, magenta everywhere else. High energy, lowest legibility of the four — judge this one on a long build log.",
+    background: "130a1c",
+    foreground: "c9f24a",
+    cursorColor: "ff2fb9",
+    cursorText: "130a1c",
+    selectionBackground: "45114a",
+    selectionForeground: "f4ffd9",
+    palette: ["1e1226","ff3b6b","8ef03c","ffe600","7a5cff","ff2fb9","2fe3d0","d8f5a8",
+              "705e7f","ff6f92","b6ff5c","fff45c","a08cff","ff7ad4","6cf2e4","f4ffd9"]
+  },
+  {
+    name: "The Gibson",
+    note: "The mainframe flyover. Near-black ground, cyan wireframe text, magenta reserved for alarms. The quiet one — closest to daily-driver usable.",
+    background: "000306",
+    foreground: "7fdfff",
+    cursorColor: "00ffe0",
+    cursorText: "000306",
+    selectionBackground: "07364a",
+    selectionForeground: "e8feff",
+    palette: ["001014","ff3b6b","00e39b","d8e04a","2f7fff","d36bff","00d5ff","9fd8e8",
+              "2a4b5c","ff6b93","4dffc4","f0f27a","6fa8ff","e79bff","6fe8ff","e8feff"]
+  }
+];
+
+const hex = h => "#" + h;
+
+function srgb(c) {
+  const v = c / 255;
+  return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+function luminance(h) {
+  const n = parseInt(h, 16);
+  return 0.2126 * srgb((n >> 16) & 255) + 0.7152 * srgb((n >> 8) & 255) + 0.0722 * srgb(n & 255);
+}
+function ratio(a, b) {
+  const l1 = luminance(a), l2 = luminance(b);
+  return ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05));
+}
+
+// s(text, paletteIndexOrHex, {bold, bg, fg})
+function s(text, color, opts = {}) {
+  const style = [];
+  if (color !== null && color !== undefined) style.push(`color:${color}`);
+  if (opts.bg) style.push(`background:${opts.bg}`);
+  if (opts.bold) style.push("font-weight:700");
+  return `<span style="${style.join(";")}">${text}</span>`;
+}
+
+function terminal(t) {
+  const p = t.palette.map(hex);
+  const fg = hex(t.foreground);
+  const c = (txt, i, o) => s(txt, p[i], o);
+
+  const lines = [
+    c("~/Developer/Batty", 12) + " on " + c("", 5) + c(" main", 10) + " " + c("[!?]", 11),
+    c("❯", 13) + " ls",
+    c("BattyKit/", 12, {bold:true}) + "   " + c("Batty.xcodeproj/", 12, {bold:true}) + "   " +
+      c("scripts/", 12, {bold:true}) + "   README.md   " + c("build.sh", 10, {bold:true}) + "   " +
+      c("Batty.dmg", 9),
+    "",
+    c("❯", 13) + " git status -sb",
+    c("## main...origin/main [ahead 1]", 6),
+    c(" M", 3) + " BattyKit/Sources/BattyKit/Theme/Theme.swift",
+    c("??", 1) + " docs/hackers-themes.md",
+    "",
+    c("❯", 13) + " swift build 2>&1 | tail -4",
+    c("[3/7]", 8) + " Compiling BattyKit Theme.swift",
+    c("warning:", 11, {bold:true}) + " variable 'palette' was never used",
+    c("error:", 9, {bold:true}) + " cannot find " + c("'GhosttyThemeDefinition'", 2) + " in scope",
+    "",
+    c("❯", 13) + " bat Theme.swift",
+    "  " + c("//", 8) + c(" Theme.swift", 8),
+    "  " + c("public", 5) + " " + c("struct", 5) + " " + c("Theme", 14) + ": " +
+      c("Sendable", 6) + ", " + c("Hashable", 6) + " {",
+    "      " + c("let", 5) + " name: " + c("String", 6) + " = " + c('"Hackers"', 2),
+    "      " + c("let", 5) + " palette: [" + c("Int", 6) + ": " + c("String", 6) + "]",
+    "  }",
+    "",
+    s("selected text renders like this", hex(t.selectionForeground), {bg: hex(t.selectionBackground)}),
+    c("❯", 13) + " " + `<span class="cursor" style="background:${hex(t.cursorColor)}"></span>`
+  ];
+
+  const ramp = `<div class="ramp">` +
+    p.map(x => `<span style="background:${x}"></span>`).join("") + `</div>`;
+
+  return `<div class="term" style="background:${hex(t.background)};color:${fg}">` +
+    lines.map(l => l === "" ? `<span class="blank"></span>` : l).join("\n") +
+    ramp + `</div>`;
+}
+
+function swatches(t) {
+  return `<div class="swatches">` + t.palette.map((h, i) => {
+    const on = luminance(h) > 0.35 ? "#000" : "#fff";
+    return `<div class="sw" style="background:${hex(h)};color:${on}">` +
+      `<span class="i">${i}</span><span class="h">${h}</span></div>`;
+  }).join("") + `</div>`;
+}
+
+function keys(t) {
+  const items = [
+    ["bg", t.background], ["fg", t.foreground],
+    ["cursor", t.cursorColor], ["sel", t.selectionBackground]
+  ];
+  return `<div class="keys">` + items.map(([k, v]) =>
+    `<span class="k"><span class="chip" style="background:${hex(v)}"></span>${k} ${v}</span>`
+  ).join("") + `</div>`;
+}
+
+function swiftSource(t) {
+  const pal = t.palette.map((h, i) => `${i}: "${h}"`).join(", ");
+  const id = t.name.toLowerCase().replace(/ (.)/g, (_, c) => "_" + c.toUpperCase());
+  return `static let ${id} = GhosttyThemeDefinition(
+    name: "${t.name}",
+    background: "${t.background}",
+    foreground: "${t.foreground}",
+    cursorColor: "${t.cursorColor}",
+    cursorText: "${t.cursorText}",
+    selectionBackground: "${t.selectionBackground}",
+    selectionForeground: "${t.selectionForeground}",
+    palette: [${pal}]
+)`;
+}
+
+document.getElementById("cards").innerHTML = THEMES.map(t => {
+  const r = ratio(t.foreground, t.background);
+  const cls = r < 4.5 ? ' class="warn"' : "";
+  return `<section class="card">
+    <header>
+      <h2>${t.name}</h2>
+      <span class="note">${t.note}</span>
+      <span class="contrast">fg/bg <b${cls}>${r.toFixed(1)}:1</b>${r < 4.5 ? " (below 4.5)" : ""}</span>
+    </header>
+    ${terminal(t)}
+    ${swatches(t)}
+    ${keys(t)}
+    <details><summary>GhosttyThemeDefinition — paste into the libghostty-spm fork</summary>
+      <pre>${swiftSource(t).replace(/</g, "&lt;")}</pre>
+    </details>
+  </section>`;
+}).join("");
+</script>
+</body>
+</html>
