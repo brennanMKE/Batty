@@ -19,10 +19,11 @@
     color: var(--page-fg);
     font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; }
+  .wrap { max-width: 1240px; margin: 0 auto; }
   h1 { font-size: 1.7rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
-  .lede { color: var(--page-dim); margin: 0 0 2.5rem; max-width: 62ch; }
-  .lede code { color: var(--page-fg); }
+  .lede { color: var(--page-dim); margin: 0 0 1.25rem; max-width: 70ch; }
+  .lede code, .lede b { color: var(--page-fg); font-weight: 600; }
+  .lede + .lede { margin-bottom: 2.5rem; }
 
   .card {
     border: 1px solid var(--rule);
@@ -41,20 +42,31 @@
   }
   .card h2 { font-size: 1.15rem; margin: 0; }
   .card .note { color: var(--page-dim); font-size: .875rem; flex: 1 1 26ch; }
-  .contrast {
-    font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule); }
+  .variant { background: #101018; display: flex; flex-direction: column; }
+  .variant > .vhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: .55rem 1.1rem;
+    border-bottom: 1px solid var(--rule);
+    font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .06em;
+    text-transform: uppercase;
     color: var(--page-dim);
-    white-space: nowrap;
   }
-  .contrast b { color: var(--page-fg); font-weight: 600; }
-  .contrast .warn { color: #ffb347; }
+  .vhead .nm { color: var(--page-fg); letter-spacing: .02em; text-transform: none; font-size: 12.5px; }
+  .vhead .warn { color: #ffb347; }
 
   .term {
-    font: 13.5px/1.6 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-    padding: 1.1rem 1.25rem 1.25rem;
+    font: 13px/1.6 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    padding: 1.1rem 1.15rem 1.15rem;
     overflow-x: auto;
     white-space: pre;
     tab-size: 4;
+    flex: 1;
   }
   .term .blank { display: block; height: .6rem; }
   .cursor {
@@ -67,7 +79,7 @@
   @keyframes blink { 50% { opacity: 0; } }
 
   .ramp { display: flex; gap: 3px; margin-top: .9rem; }
-  .ramp span { flex: 1; height: 16px; border-radius: 2px; }
+  .ramp span { flex: 1; height: 15px; border-radius: 2px; }
 
   .swatches {
     display: grid;
@@ -77,10 +89,10 @@
     border-top: 1px solid var(--rule);
   }
   .sw {
-    padding: .55rem .5rem .5rem;
-    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: .5rem .4rem .45rem;
+    font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
     line-height: 1.35;
-    min-height: 62px;
+    min-height: 54px;
   }
   .sw .i { opacity: .65; }
   .sw .h { display: block; text-transform: uppercase; letter-spacing: .02em; }
@@ -88,15 +100,15 @@
   .keys {
     display: flex;
     flex-wrap: wrap;
-    gap: .75rem;
-    padding: .85rem 1.25rem;
+    gap: .6rem;
+    padding: .7rem 1.15rem;
     border-top: 1px solid var(--rule);
-    font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
     color: var(--page-dim);
   }
-  .keys .k { display: flex; align-items: center; gap: .4rem; }
+  .keys .k { display: flex; align-items: center; gap: .35rem; }
   .keys .chip {
-    width: 15px; height: 15px; border-radius: 3px;
+    width: 14px; height: 14px; border-radius: 3px;
     border: 1px solid rgba(255,255,255,.16);
   }
 
@@ -116,19 +128,28 @@
     color: #b9b9cc;
   }
 
-  @media (max-width: 720px) {
+  @media (max-width: 940px) {
+    .pair { grid-template-columns: 1fr; }
     .swatches { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Hackers — four candidate themes</h1>
+  <h1>Hackers — four candidate themes, dark and light</h1>
   <p class="lede">
     Drawn from the quad poster (magenta/violet, acid-yellow wordmark), the teaser
     poster (cold blue monochrome), and the Gibson mainframe visualization. Each card
-    shows a real terminal mock, the 16 ANSI slots, and the ready-to-paste
+    shows a real terminal mock, the 16 ANSI slots, and a ready-to-paste
     <code>GhosttyThemeDefinition</code>. Contrast is foreground-on-background, WCAG ratio.
+  </p>
+  <p class="lede">
+    Batty stores the global theme <b>per appearance</b> — <code>co.sstools.Batty.themeName.dark</code>
+    and <code>co.sstools.Batty.themeName.light</code> — and re-applies on system appearance
+    change, so each theme needs a companion or Light-mode users fall back to
+    <code>TokyoNight Day</code>. The companions follow that theme's slot convention: slot 0 is a
+    near-background tint, slot 15 is the ink, and slots 9–14 <i>repeat</i> 1–6 rather than
+    brightening, because "brighter" on paper means less legible.
   </p>
   <div id="cards"></div>
 </div>
@@ -137,51 +158,83 @@
 const THEMES = [
   {
     name: "Hackers",
-    note: "The quad poster. Violet-black ground, chrome-silver text, magenta cursor, the wordmark's acid yellow as slot 3.",
-    background: "140a2e",
-    foreground: "d6dcea",
-    cursorColor: "ff2fb9",
-    cursorText: "140a2e",
-    selectionBackground: "3a1163",
-    selectionForeground: "ffffff",
-    palette: ["1c1038","ff2b5e","a8f52c","f0e800","5b6bff","ff2fb9","35d6ff","d6dcea",
-              "6a5590","ff6b8a","c8ff5e","fff23d","8a95ff","ff7ad4","7ce8ff","ffffff"]
+    note: "The quad poster. Violet ground, chrome-silver text, magenta cursor, the wordmark's acid yellow in slot 3 — which has to fall to ochre on paper to survive.",
+    dark: {
+      name: "Hackers",
+      background: "140a2e", foreground: "d6dcea",
+      cursorColor: "ff2fb9", cursorText: "140a2e",
+      selectionBackground: "3a1163", selectionForeground: "ffffff",
+      palette: ["1c1038","ff2b5e","a8f52c","f0e800","5b6bff","ff2fb9","35d6ff","d6dcea",
+                "6a5590","ff6b8a","c8ff5e","fff23d","8a95ff","ff7ad4","7ce8ff","ffffff"]
+    },
+    light: {
+      name: "Hackers Day",
+      background: "f2edfb", foreground: "4a2b7a",
+      cursorColor: "c2008a", cursorText: "f2edfb",
+      selectionBackground: "d3bdf2", selectionForeground: "2a1746",
+      palette: ["e9e2f6","d10f4e","4f7a1c","8a6a00","2f46c9","c2008a","00718f","6b5a94",
+                "a99cc4","d10f4e","4f7a1c","8a6a00","2f46c9","c2008a","00718f","4a2b7a"]
+    }
   },
   {
     name: "Hackers Blue",
     note: "The teaser poster — steel faces behind falling code. Everything pulled cold; red and yellow are desaturated just enough to stay legible as warnings.",
-    background: "07101f",
-    foreground: "a8cbe6",
-    cursorColor: "4fd3ff",
-    cursorText: "07101f",
-    selectionBackground: "143c5e",
-    selectionForeground: "dff0ff",
-    palette: ["0d1728","f2637f","3fd6b0","d6bd6a","3d7fe0","9a8cf0","35b8e8","a8cbe6",
-              "3c5372","ff8ba3","6ff0cf","ecd88f","6fa6f2","bfaeff","72dcff","e4f3ff"]
+    dark: {
+      name: "Hackers Blue",
+      background: "07101f", foreground: "a8cbe6",
+      cursorColor: "4fd3ff", cursorText: "07101f",
+      selectionBackground: "143c5e", selectionForeground: "dff0ff",
+      palette: ["0d1728","f2637f","3fd6b0","d6bd6a","3d7fe0","9a8cf0","35b8e8","a8cbe6",
+                "3c5372","ff8ba3","6ff0cf","ecd88f","6fa6f2","bfaeff","72dcff","e4f3ff"]
+    },
+    light: {
+      name: "Hackers Blue Day",
+      background: "eaf1f8", foreground: "1d4a70",
+      cursorColor: "0f7fb5", cursorText: "eaf1f8",
+      selectionBackground: "bcd6ec", selectionForeground: "10334f",
+      palette: ["e0eaf4","c23a5c","1f7f68","8a6a1f","1f5fa8","6a4fc0","0f7395","4a6a88",
+                "9db6cd","c23a5c","1f7f68","8a6a1f","1f5fa8","6a4fc0","0f7395","1d4a70"]
+    }
   },
   {
     name: "Acid Burn",
-    note: "Loud variant. Lime foreground off the wordmark, magenta everywhere else. High energy, lowest legibility of the four — judge this one on a long build log.",
-    background: "130a1c",
-    foreground: "c9f24a",
-    cursorColor: "ff2fb9",
-    cursorText: "130a1c",
-    selectionBackground: "45114a",
-    selectionForeground: "f4ffd9",
-    palette: ["1e1226","ff3b6b","8ef03c","ffe600","7a5cff","ff2fb9","2fe3d0","d8f5a8",
-              "705e7f","ff6f92","b6ff5c","fff45c","a08cff","ff7ad4","6cf2e4","f4ffd9"]
+    note: "Loud variant. Lime foreground, magenta accents. Lime ink on paper is unreadable, so the companion inverts the relationship: acid-tinted stock, plum ink, lime demoted to an accent.",
+    dark: {
+      name: "Acid Burn",
+      background: "130a1c", foreground: "c9f24a",
+      cursorColor: "ff2fb9", cursorText: "130a1c",
+      selectionBackground: "45114a", selectionForeground: "f4ffd9",
+      palette: ["1e1226","ff3b6b","8ef03c","ffe600","7a5cff","ff2fb9","2fe3d0","d8f5a8",
+                "705e7f","ff6f92","b6ff5c","fff45c","a08cff","ff7ad4","6cf2e4","f4ffd9"]
+    },
+    light: {
+      name: "Acid Burn Day",
+      background: "f7fbe8", foreground: "6b0a4f",
+      cursorColor: "c2008a", cursorText: "f7fbe8",
+      selectionBackground: "e6d3ee", selectionForeground: "3d0530",
+      palette: ["eef4d8","c41347","4c7a10","806a00","5a3fc0","b3007f","0d7d70","6d6a4a",
+                "b3b48f","c41347","4c7a10","806a00","5a3fc0","b3007f","0d7d70","6b0a4f"]
+    }
   },
   {
     name: "The Gibson",
-    note: "The mainframe flyover. Near-black ground, cyan wireframe text, magenta reserved for alarms. The quiet one — closest to daily-driver usable.",
-    background: "000306",
-    foreground: "7fdfff",
-    cursorColor: "00ffe0",
-    cursorText: "000306",
-    selectionBackground: "07364a",
-    selectionForeground: "e8feff",
-    palette: ["001014","ff3b6b","00e39b","d8e04a","2f7fff","d36bff","00d5ff","9fd8e8",
-              "2a4b5c","ff6b93","4dffc4","f0f27a","6fa8ff","e79bff","6fe8ff","e8feff"]
+    note: "The mainframe flyover. Near-black ground, cyan text, magenta reserved for alarms. The companion reads as a blueprint — the quietest pair, and the daily-driver candidate.",
+    dark: {
+      name: "The Gibson",
+      background: "000306", foreground: "7fdfff",
+      cursorColor: "00ffe0", cursorText: "000306",
+      selectionBackground: "07364a", selectionForeground: "e8feff",
+      palette: ["001014","ff3b6b","00e39b","d8e04a","2f7fff","d36bff","00d5ff","9fd8e8",
+                "2a4b5c","ff6b93","4dffc4","f0f27a","6fa8ff","e79bff","6fe8ff","e8feff"]
+    },
+    light: {
+      name: "The Gibson Day",
+      background: "f2f9fc", foreground: "07414f",
+      cursorColor: "008c9e", cursorText: "f2f9fc",
+      selectionBackground: "bfe0ea", selectionForeground: "042d38",
+      palette: ["e6f2f7","c02352","00755c","7a6a10","1f5fc0","8a3fb0","00707f","4a6f7a",
+                "9fbcc6","c02352","00755c","7a6a10","1f5fc0","8a3fb0","00707f","07414f"]
+    }
   }
 ];
 
@@ -200,10 +253,9 @@ function ratio(a, b) {
   return ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05));
 }
 
-// s(text, paletteIndexOrHex, {bold, bg, fg})
 function s(text, color, opts = {}) {
   const style = [];
-  if (color !== null && color !== undefined) style.push(`color:${color}`);
+  if (color) style.push(`color:${color}`);
   if (opts.bg) style.push(`background:${opts.bg}`);
   if (opts.bold) style.push("font-weight:700");
   return `<span style="${style.join(";")}">${text}</span>`;
@@ -211,15 +263,13 @@ function s(text, color, opts = {}) {
 
 function terminal(t) {
   const p = t.palette.map(hex);
-  const fg = hex(t.foreground);
   const c = (txt, i, o) => s(txt, p[i], o);
 
   const lines = [
     c("~/Developer/Batty", 12) + " on " + c("", 5) + c(" main", 10) + " " + c("[!?]", 11),
     c("❯", 13) + " ls",
-    c("BattyKit/", 12, {bold:true}) + "   " + c("Batty.xcodeproj/", 12, {bold:true}) + "   " +
-      c("scripts/", 12, {bold:true}) + "   README.md   " + c("build.sh", 10, {bold:true}) + "   " +
-      c("Batty.dmg", 9),
+    c("BattyKit/", 12, {bold:true}) + "  " + c("scripts/", 12, {bold:true}) + "  README.md  " +
+      c("build.sh", 10, {bold:true}) + "  " + c("Batty.dmg", 9),
     "",
     c("❯", 13) + " git status -sb",
     c("## main...origin/main [ahead 1]", 6),
@@ -229,12 +279,11 @@ function terminal(t) {
     c("❯", 13) + " swift build 2>&1 | tail -4",
     c("[3/7]", 8) + " Compiling BattyKit Theme.swift",
     c("warning:", 11, {bold:true}) + " variable 'palette' was never used",
-    c("error:", 9, {bold:true}) + " cannot find " + c("'GhosttyThemeDefinition'", 2) + " in scope",
+    c("error:", 9, {bold:true}) + " cannot find " + c("'GhosttyThemeDefinition'", 2),
     "",
     c("❯", 13) + " bat Theme.swift",
     "  " + c("//", 8) + c(" Theme.swift", 8),
-    "  " + c("public", 5) + " " + c("struct", 5) + " " + c("Theme", 14) + ": " +
-      c("Sendable", 6) + ", " + c("Hashable", 6) + " {",
+    "  " + c("public", 5) + " " + c("struct", 5) + " " + c("Theme", 14) + ": " + c("Sendable", 6) + " {",
     "      " + c("let", 5) + " name: " + c("String", 6) + " = " + c('"Hackers"', 2),
     "      " + c("let", 5) + " palette: [" + c("Int", 6) + ": " + c("String", 6) + "]",
     "  }",
@@ -243,12 +292,10 @@ function terminal(t) {
     c("❯", 13) + " " + `<span class="cursor" style="background:${hex(t.cursorColor)}"></span>`
   ];
 
-  const ramp = `<div class="ramp">` +
-    p.map(x => `<span style="background:${x}"></span>`).join("") + `</div>`;
+  const ramp = `<div class="ramp">` + p.map(x => `<span style="background:${x}"></span>`).join("") + `</div>`;
 
-  return `<div class="term" style="background:${hex(t.background)};color:${fg}">` +
-    lines.map(l => l === "" ? `<span class="blank"></span>` : l).join("\n") +
-    ramp + `</div>`;
+  return `<div class="term" style="background:${hex(t.background)};color:${hex(t.foreground)}">` +
+    lines.map(l => l === "" ? `<span class="blank"></span>` : l).join("\n") + ramp + `</div>`;
 }
 
 function swatches(t) {
@@ -260,10 +307,8 @@ function swatches(t) {
 }
 
 function keys(t) {
-  const items = [
-    ["bg", t.background], ["fg", t.foreground],
-    ["cursor", t.cursorColor], ["sel", t.selectionBackground]
-  ];
+  const items = [["bg", t.background], ["fg", t.foreground],
+                 ["cursor", t.cursorColor], ["sel", t.selectionBackground]];
   return `<div class="keys">` + items.map(([k, v]) =>
     `<span class="k"><span class="chip" style="background:${hex(v)}"></span>${k} ${v}</span>`
   ).join("") + `</div>`;
@@ -284,23 +329,23 @@ function swiftSource(t) {
 )`;
 }
 
-document.getElementById("cards").innerHTML = THEMES.map(t => {
-  const r = ratio(t.foreground, t.background);
+function variant(v, label) {
+  const r = ratio(v.foreground, v.background);
   const cls = r < 4.5 ? ' class="warn"' : "";
-  return `<section class="card">
-    <header>
-      <h2>${t.name}</h2>
-      <span class="note">${t.note}</span>
-      <span class="contrast">fg/bg <b${cls}>${r.toFixed(1)}:1</b>${r < 4.5 ? " (below 4.5)" : ""}</span>
-    </header>
-    ${terminal(t)}
-    ${swatches(t)}
-    ${keys(t)}
-    <details><summary>GhosttyThemeDefinition — paste into the libghostty-spm fork</summary>
-      <pre>${swiftSource(t).replace(/</g, "&lt;")}</pre>
-    </details>
-  </section>`;
-}).join("");
+  return `<div class="variant">
+    <div class="vhead"><span class="nm">${v.name}</span>
+      <span>${label} &middot; fg/bg <span${cls}>${r.toFixed(1)}:1</span></span></div>
+    ${terminal(v)}${swatches(v)}${keys(v)}
+  </div>`;
+}
+
+document.getElementById("cards").innerHTML = THEMES.map(t => `<section class="card">
+  <header><h2>${t.name}</h2><span class="note">${t.note}</span></header>
+  <div class="pair">${variant(t.dark, "dark")}${variant(t.light, "light")}</div>
+  <details><summary>GhosttyThemeDefinition — paste into the libghostty-spm fork</summary>
+    <pre>${(swiftSource(t.dark) + "\n\n" + swiftSource(t.light)).replace(/</g, "&lt;")}</pre>
+  </details>
+</section>`).join("");
 </script>
 </body>
 </html>
