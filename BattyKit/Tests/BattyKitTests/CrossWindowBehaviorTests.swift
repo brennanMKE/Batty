@@ -14,6 +14,9 @@ import Testing
 ///   - QuitConfirmation widens to all windows' sessions.
 ///   - App terminates when last content window is unregistered.
 ///   - onAllSessionsClosed wires to closeWindowCallback, not terminate.
+///   - #0311: keyWindow fallback resolves to nil (not a trap) when windows
+///     is empty; terminate is deferred off the window-close call stack and
+///     re-verifies its guards before firing.
 @MainActor
 struct CrossWindowBehaviorTests {
 
@@ -261,6 +264,100 @@ struct CrossWindowBehaviorTests {
         let initialCount = store.windows.count
         store.removeWindow(id: unknownID)
         #expect(store.windows.count == initialCount)
+    }
+
+    // MARK: - #0311: keyWindow fallback must not trap when windows is empty
+
+    /// Calls `AppStateStore.keyWindowOrFirstRegistered()` directly — the
+    /// actual production method `BattyCommands.keyWindow` delegates to, not
+    /// a re-typed copy of its expression (`Commands` bodies can't be
+    /// unit-tested directly, so this is the closest testable seam to the
+    /// real code path; see that method's doc comment). Before the fix this
+    /// resolved via `store.windows[0]`, which traps on an empty array; this
+    /// test proves the array can legitimately be empty at exactly this call
+    /// site (removing the only window) and that the production fallback
+    /// degrades to `nil` instead of trapping.
+    @Test func keyWindowFallbackResolvesToNilWhenNoWindowsRemain() {
+        let store = AppStateStore()
+        // Deliberately overridden even though this test is only about the
+        // keyWindow fallback, not termination timing: removing the only
+        // window satisfies terminateIfLastContentWindowGone()'s guards, and
+        // this test must stay safe to run regardless of whether the #0311
+        // termination deferral (tested separately below) is intact.
+        store.terminateHandler = {}
+        let onlyWindowID = store.windows[0].id
+
+        store.removeWindow(id: onlyWindowID)
+
+        #expect(store.windows.isEmpty,
+                "removeWindow on the only window must leave the registry empty")
+        // Calls the actual production method BattyCommands.keyWindow
+        // delegates to (review round 1: the prior version of this test
+        // re-typed the expression inline, so it couldn't catch a regression
+        // in the shipped code path — only in copy of it living in the test).
+        let resolved = store.keyWindowOrFirstRegistered()
+        #expect(resolved == nil,
+                "keyWindowOrFirstRegistered() must resolve to nil, not trap indexing an empty windows array")
+    }
+
+    // MARK: - #0311: terminate is deferred off the window-close call stack
+
+    /// Reproduces the exact #0311 crash setup: removing the last content
+    /// window from inside what stands in for `windowWillClose`. Before the
+    /// fix, `terminateIfLastContentWindowGone()` called `NSApp.terminate(nil)`
+    /// synchronously from here — i.e. still inside this call — which is what
+    /// let AppKit's runloop spin re-enter SwiftUI mid-teardown. `terminateHandler`
+    /// is swapped out so the assertion can observe *when* termination fires
+    /// without ever invoking AppKit's real termination path inside the test
+    /// process.
+    @Test func removeWindowOnLastWindowDoesNotTerminateSynchronously() {
+        let store = AppStateStore()
+        var terminated = false
+        store.terminateHandler = { terminated = true }
+        let onlyWindowID = store.windows[0].id
+
+        store.removeWindow(id: onlyWindowID)
+
+        #expect(terminated == false,
+                "terminate must not fire synchronously inside removeWindow — that is the #0311 re-entrancy hazard")
+    }
+
+    /// Complements the synchronous-safety test above: the deferred
+    /// termination must still actually happen on a later run-loop turn, not
+    /// be silently dropped.
+    @Test func removeWindowOnLastWindowEventuallyTerminates() async {
+        let store = AppStateStore()
+        var terminated = false
+        store.terminateHandler = { terminated = true }
+        let onlyWindowID = store.windows[0].id
+
+        store.removeWindow(id: onlyWindowID)
+        #expect(terminated == false)
+
+        // Let the DispatchQueue.main.async-deferred check run.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(terminated == true,
+                "the deferred terminate check must still terminate once the run loop turns over")
+    }
+
+    /// If a new window is registered before the deferred check runs, the
+    /// stale decision must abort rather than terminate against a state that
+    /// no longer holds — the staleness guard the deferred design depends on.
+    @Test func deferredTerminateAbortsIfANewWindowAppearsBeforeItRuns() async {
+        let store = AppStateStore()
+        var terminated = false
+        store.terminateHandler = { terminated = true }
+        let onlyWindowID = store.windows[0].id
+
+        store.removeWindow(id: onlyWindowID)
+        // A new window appears before the deferred block runs (e.g. New Window).
+        _ = store.windowRuntime(for: WindowID())
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(terminated == false,
+                "a window that appeared before the deferred check ran must abort termination")
     }
 
     // MARK: - onAllSessionsClosed wires to closeWindowCallback

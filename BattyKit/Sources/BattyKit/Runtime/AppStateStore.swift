@@ -67,6 +67,18 @@ public final class AppStateStore {
     /// `@ObservationIgnored` — populated from AppKit callbacks, not from
     /// SwiftUI-update code (the #0229 hazard class).
     @ObservationIgnored private var nsWindowMap: [ObjectIdentifier: WindowID] = [:]
+    /// Actuates app termination once `terminateIfLastContentWindowGone`
+    /// decides no content windows remain (#0311). Defaults to the real
+    /// `NSApp.terminate(nil)`. Tests override this so `removeWindow`/
+    /// `unregisterNSWindow` can be exercised on the last window without ever
+    /// invoking AppKit's real termination path — which is neither safe nor
+    /// meaningful inside `swift test`/`xcodebuild test`.
+    @ObservationIgnored public var terminateHandler: () -> Void = { NSApp.terminate(nil) }
+    /// Guards against scheduling more than one deferred termination check at
+    /// once (#0311) — `windowWillClose` calls both `unregisterNSWindow` and
+    /// `removeWindow` synchronously in the same teardown, and either can
+    /// satisfy `terminateIfLastContentWindowGone`'s guards first.
+    @ObservationIgnored private var terminationScheduled = false
     /// One in-flight AI naming request per session, keyed by session id and
     /// tagged with the cwd it was issued for so a repeat report of the same
     /// cwd doesn't cancel-and-restart the request.
@@ -148,6 +160,72 @@ public final class AppStateStore {
     /// Terminates the app when no content windows remain in the registry.
     /// A content window is one registered via `registerNSWindow(_:for:)`.
     /// Help and Settings are not registered and therefore not counted.
+    ///
+    /// **Why the actuation is deferred (#0311).** `unregisterNSWindow`/
+    /// `removeWindow` call this synchronously from `WindowDelegate
+    /// .windowWillClose(_:)` — a genuine `NSWindowDelegate` callback running
+    /// deep inside AppKit's own window-closing call stack (`_finishClosingWindow`
+    /// → `postNotificationName:` → this delegate). Calling `NSApp.terminate(nil)`
+    /// directly from there matches the field crash report's stack, and was
+    /// directly reproduced: a Debug-configuration Beta build with this exact
+    /// synchronous path (no deferral) crashed 2/2 trials closing its last
+    /// window ~1.5-2s after launch, with a fully symbolicated stack trapping
+    /// at `BattyCommands.keyWindow`'s `Array` subscript — see
+    /// `issues/0311/BattyBeta-2026-08-07-011614-prefix-repro.ips` and
+    /// `issues/0311.md`'s Notes for the method and full stack. The original
+    /// *field* crash (1.1.0, Release configuration, no dSYM) is not itself
+    /// symbolicated, so that specific binary's trap is a mechanism match
+    /// rather than a byte-for-byte confirmed replay — but the mechanism
+    /// itself, including which line traps, is no longer inferred.
+    ///
+    /// **This deferral is re-entrancy hygiene, not the crash fix.** `windows`
+    /// is `@ObservationIgnored` (see its declaration above), so emptying it
+    /// does not itself invalidate the `Commands` body — the re-evaluation
+    /// that trapped was driven by some *other* pending SwiftUI transaction
+    /// that AppKit's terminate-time run-loop spin happened to flush, not by
+    /// this method's own writes. `BattyCommands.keyWindow`'s prior `store
+    /// .windows[0]` (now `store.keyWindowOrFirstRegistered()`, fixed in the
+    /// same #0311 diff) is what actually closed the crash: it is necessary
+    /// and sufficient on its own — confirmed by the reproduction above,
+    /// where the fixed build did not crash under the identical synchronous
+    /// path. This deferral does not close the window in which `windows`
+    /// can be observed empty from a re-evaluated `Commands` body — if
+    /// anything it measurably *lengthens* that window, by keeping the app
+    /// alive with an empty `windows` for an extra run-loop turn instead of
+    /// terminating near-immediately. It is still worth doing on its own
+    /// re-entrancy-hygiene merits (not calling `NSApp.terminate` from inside
+    /// AppKit's own window-closing call stack), but every other trap-capable
+    /// read of `windows` that can run during that widened gap remains
+    /// reachable — see Gotchas in `issues/0311.md` for the known sites, left
+    /// unfixed here and tracked as a follow-up.
+    ///
+    /// The fix defers only the *actuation* — `terminateHandler()` — to the next
+    /// run-loop turn via `DispatchQueue.main.async`, so it executes outside any
+    /// nested AppKit call stack rather than inside one. The state mutations
+    /// that produced this decision (`windows.removeAll`, `nsWindowMap
+    /// .removeValue`) are unchanged: they still happen synchronously, in the
+    /// same place, before this method is even called. Nothing about the
+    /// store's observable state is deferred — only the imperative call to quit.
+    ///
+    /// This is deliberately not the `Task`-hop CLAUDE.md and the #0229
+    /// regression warn against. That bug deferred a *write* that a second
+    /// writer was racing over the same fact (model → AppKit focus vs. AppKit
+    /// → model echo). `windows`/`nsWindowMap` do have other writers besides
+    /// this method's own call sites — notably `windowRuntime(for:)`, which
+    /// can append a new window (e.g. a New Window action) in the gap before
+    /// the deferred block runs, exactly what
+    /// `deferredTerminateAbortsIfANewWindowAppearsBeforeItRuns` exercises —
+    /// so soundness here does **not** come from writer exclusivity. It comes
+    /// from the deferred block re-reading live `self.windows`/
+    /// `self.nsWindowMap` at execution time rather than trusting a captured
+    /// decision: if the world moved on before the next turn, the stale
+    /// decision aborts instead of terminating on outdated state. That is the
+    /// same staleness-guard shape `docs/swiftui-observation-rules.md`
+    /// prescribes for model-initiated AppKit follow-ups ("carries a
+    /// staleness guard ... so a superseded follow-up can never fire late").
+    /// A future writer of `windows`/`nsWindowMap` (#0234 will add some) must
+    /// preserve this: the deferred block reads live store state, never a
+    /// snapshot taken at decision time.
     private func terminateIfLastContentWindowGone() {
         // The nsWindowMap only contains live registered windows. When it's
         // empty, all content windows have closed.
@@ -156,9 +234,20 @@ public final class AppStateStore {
         // removed yet (e.g. due to concurrent teardown), also check windows.
         // A window with sessions still attached is not truly gone.
         guard windows.allSatisfy({ $0.sessions.isEmpty }) else { return }
-        logger.info("terminateIfLastContentWindowGone: no content windows remain; terminating")
-        nameCache.save()
-        NSApp.terminate(nil)
+        guard !terminationScheduled else { return }
+        terminationScheduled = true
+        logger.info("terminateIfLastContentWindowGone: no content windows remain; scheduling termination")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.terminationScheduled = false
+            guard self.nsWindowMap.isEmpty, self.windows.allSatisfy({ $0.sessions.isEmpty }) else {
+                logger.info("terminateIfLastContentWindowGone: state changed before the deferred check ran; aborting")
+                return
+            }
+            logger.info("terminateIfLastContentWindowGone: terminating (deferred)")
+            self.nameCache.save()
+            self.terminateHandler()
+        }
     }
 
     // MARK: - NSWindow ↔ WindowID registry
@@ -371,6 +460,24 @@ public final class AppStateStore {
         guard let key = NSApplication.shared.keyWindow,
               let windowID = nsWindowMap[ObjectIdentifier(key)] else { return nil }
         return windows.first { $0.id == windowID }
+    }
+
+    /// The `WindowRuntime` that `BattyCommands.keyWindow` targets: the key
+    /// content window if any, otherwise the first entry in `windows` — not
+    /// filtered through `nsWindowMap` the way `anyContentWindowRuntime()` is,
+    /// so it also resolves in preview/unit-test contexts where no `NSWindow`
+    /// is registered yet.
+    ///
+    /// Extracted out of `BattyCommands` (#0311 review round 1) so the
+    /// fallback logic has a real unit test exercising the exact production
+    /// expression, not a copy of it re-typed into a test — `Commands` bodies
+    /// themselves can't be unit-tested directly (`docs/swiftui-observation
+    /// -rules.md`'s Commands-body caution), so this is the closest testable
+    /// seam to it. Returns `nil`, never traps, when `windows` is empty —
+    /// see `terminateIfLastContentWindowGone`'s doc comment for why that can
+    /// happen and for how long.
+    public func keyWindowOrFirstRegistered() -> WindowRuntime? {
+        keyWindowRuntime() ?? windows.first
     }
 
     /// The `WindowRuntime` for any registered content window. Used as a
