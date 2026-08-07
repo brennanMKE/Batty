@@ -137,6 +137,26 @@ xcodebuild archive \
     -destination 'generic/platform=macOS' \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
+# #0312: fail fast, before the slow export/notarize round trip, if this
+# archive has no dSYM to preserve. A release that ships without one cannot
+# be symbolicated from a field crash report (see #0311) -- treat it as an
+# error, not a warning.
+DSYM_PATH="$ARCHIVE_PATH/dSYMs/$APP_NAME.app.dSYM"
+if [[ ! -d "$DSYM_PATH" ]]; then
+    print -u2 "error: no dSYM at $DSYM_PATH after archiving."
+    print -u2 "       A release with no dSYM cannot be symbolicated from a field crash"
+    print -u2 "       report (see #0311, #0312) -- refusing to continue."
+    exit 1
+fi
+
+DSYM_UUID_LINES="$(dwarfdump --uuid "$DSYM_PATH")"
+if [[ -z "$DSYM_UUID_LINES" ]]; then
+    print -u2 "error: dwarfdump --uuid produced no output for $DSYM_PATH"
+    exit 1
+fi
+print "==> dSYM present:"
+print "$DSYM_UUID_LINES"
+
 print "==> Exporting signed app"
 xcodebuild -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
@@ -289,6 +309,116 @@ if [[ "$ACTUAL_BUILD" != "$BUILD_NUMBER" ]]; then
 fi
 print "==> Version check: $ACTUAL_SHORT (build $ACTUAL_BUILD) matches App.xcconfig + build number"
 
+# --- dSYM preservation (#0312) ------------------------------------------
+#
+# #0311 was a field crash release.sh could not symbolicate: the dSYM lived
+# transiently under $BUILD_DIR/Batty.xcarchive/dSYMs/ and the cleanup at
+# the end of a successful run discarded it with nothing copied out first.
+# Preserve it as a zip in dist/ (the user's explicit choice -- zipping
+# keeps Spotlight from indexing it, at the cost of defeating `mdfind
+# com_apple_xcode_dsym_uuids == <uuid>`, the exact lookup that came up
+# empty while investigating #0311; see issues/0312.md for the full
+# tradeoff). Keyed like the DMG (git sha) plus the build number, since
+# #0311's crash report identified the build by CFBundleVersion
+# (20260805), not by sha.
+#
+# Preserves the *whole* dSYMs/ directory, not just Batty.app.dSYM: a real
+# archive also carries Sparkle.framework.dSYM, Installer.xpc.dSYM,
+# Downloader.xpc.dSYM, Autoupdate.dSYM, and Updater.app.dSYM. Sparkle runs
+# in-process, so a crash inside it surfaces as unsymbolicated frames in a
+# Batty crash report; the XPC services and Updater crash as their own
+# processes. Batty ships auto-update, so all of these are live surface --
+# the marginal cost is a fraction of the app dSYM's own size. The
+# fail-fast check right after archiving above stays scoped to
+# Batty.app.dSYM specifically: that one's absence is what must be fatal.
+#
+# A crash report names a binary by UUID, not by sha or build number, so
+# every dSYM's UUID is recorded in a sidecar text file next to the zip --
+# without it, a pile of dSYM zips in dist/ is only matchable to a crash
+# report by trial and error.
+#
+# Placed here, before the DMG/notarize/staple steps rather than after:
+# those take several minutes and can fail on their own, and this block's
+# own writes (~40 MB zip, ~125 MB archive copy) have their own failure
+# mode (ENOSPC). Doing this first means such a failure is caught before
+# spending the notarization round trip, not after it.
+#
+# Middle option (raised here rather than picked silently -- see
+# issues/0312.md Notes): also drop a copy of the full .xcarchive into
+# ~/Library/Developer/Xcode/Archives/<date>/, the same place Xcode's own
+# Organizer stores archives. Confirmed in review: macOS does not descend
+# into .xcarchive packages for LaunchServices registration or Spotlight
+# content indexing -- an identical .app copied outside an .xcarchive was
+# both registered and indexed within seconds, the one inside the
+# .xcarchive was neither -- so this does not reopen #0026, while `mdfind
+# "com_apple_xcode_dsym_uuids == <uuid>"` still finds the dSYMs inside it
+# within seconds. Best-effort: it must not fail the release if it can't be
+# written.
+
+GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || print unknown)"
+
+DSYM_ZIP="$DIST_DIR/Batty-$GIT_SHA-$BUILD_NUMBER-dSYM.zip"
+DSYM_UUID_FILE="$DIST_DIR/Batty-$GIT_SHA-$BUILD_NUMBER-dSYM.txt"
+
+print "==> Archiving dSYMs to $DSYM_ZIP"
+rm -f "$DSYM_ZIP" "$DSYM_UUID_FILE"
+# --sequesterRsrc: without it, ditto encodes every file's extended
+# attributes (xcodebuild-produced files all carry com.apple.provenance) as
+# an AppleDouble ._<name> sidecar sitting right next to the real file
+# inside the zip -- including inside Contents/Resources/DWARF/. On the
+# unzipped bundle this makes `dwarfdump --uuid` fail outright: with the
+# AppleDouble file present it prints only "not a valid object file" and no
+# UUID lines at all (verified directly -- it does not degrade gracefully
+# alongside a spurious warning, it produces zero usable output).
+# Sequestering routes the AppleDouble files into a sibling __MACOSX/
+# directory instead, so the unzipped dSYMs/ tree is exactly what
+# dsymutil/xcodebuild produced.
+ditto -c -k --sequesterRsrc --keepParent "$ARCHIVE_PATH/dSYMs" "$DSYM_ZIP"
+
+# Relative paths (cd into the archive first), not absolute: $ARCHIVE_PATH
+# lives under $BUILD_DIR, which the cleanup below deletes, so a sidecar
+# file recording paths that won't exist by the time anyone reads it would
+# be actively misleading. The relative form also matches the zip's own
+# internal layout (dSYMs/<name>.dSYM/...).
+ALL_DSYM_UUID_LINES="$(cd "$ARCHIVE_PATH" && dwarfdump --uuid dSYMs/*.dSYM)"
+
+{
+    print "Batty release dSYMs"
+    print "  Git SHA:      $GIT_SHA"
+    print "  Build number: $BUILD_NUMBER"
+    print "  Marketing:    $ACTUAL_SHORT"
+    print "  dSYM archive: $(basename "$DSYM_ZIP")"
+    print ""
+    print "UUID(s) -- match against a crash report's Binary Images section:"
+    print "$ALL_DSYM_UUID_LINES"
+    print ""
+    print "To symbolicate a Batty crash:"
+    print "  unzip \"$(basename "$DSYM_ZIP")\""
+    print "  atos -o dSYMs/Batty.app.dSYM/Contents/Resources/DWARF/$APP_NAME -arch <arch> -l <load addr> <addr>"
+    print ""
+    print "Sparkle crashes surface inside a Batty process (Sparkle runs"
+    print "in-process); the XPC services (Installer.xpc, Downloader.xpc)"
+    print "and Updater.app crash as their own processes. Symbolicate any"
+    print "of these the same way, against the matching *.dSYM under"
+    print "dSYMs/ and the binary named in the crash report's own image."
+} > "$DSYM_UUID_FILE"
+print "==> dSYM UUIDs recorded at $DSYM_UUID_FILE"
+
+LOCAL_ARCHIVE_DIR="$HOME/Library/Developer/Xcode/Archives/$(date -u +%Y-%m-%d)"
+LOCAL_ARCHIVE_DEST="$LOCAL_ARCHIVE_DIR/$APP_NAME $BUILD_NUMBER-$GIT_SHA.xcarchive"
+# Deterministic re-release: ditto merges into an existing destination
+# rather than replacing it, so a same-day re-release at the same sha would
+# otherwise leave stale files from the earlier attempt sitting alongside
+# the new ones.
+rm -rf "$LOCAL_ARCHIVE_DEST" 2>/dev/null || true
+if mkdir -p "$LOCAL_ARCHIVE_DIR" 2>/dev/null && ditto "$ARCHIVE_PATH" "$LOCAL_ARCHIVE_DEST" 2>/dev/null; then
+    print "==> Local archive copy (Spotlight-indexed) at: $LOCAL_ARCHIVE_DEST"
+else
+    print -u2 "warning: could not copy archive to $LOCAL_ARCHIVE_DIR -- local mdfind lookup won't work for this build (non-fatal)"
+    rm -rf "$LOCAL_ARCHIVE_DEST" 2>/dev/null || true
+fi
+print
+
 # AppIcon.icns is generated from Assets.xcassets/AppIcon.appiconset during the
 # build and lives inside the built bundle. The same file drives both the
 # mounted volume's Finder icon (--volicon below) and the DMG file's Finder
@@ -301,7 +431,8 @@ fi
 
 # --- DMG ---------------------------------------------------------------------
 
-GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || print unknown)"
+# GIT_SHA is computed earlier, alongside the dSYM preservation block
+# (#0312) -- that step needs it before the DMG does.
 
 # Build/sign/notarize/staple all happen against a fixed-name DMG that matches
 # the volume name. Reason: when the DMG filename and --volname differ, macOS
@@ -368,6 +499,8 @@ rm -rf "$BUILD_DIR"
 print
 print "Done. Distributable at:"
 print "  $DMG_PATH"
+print "  $DSYM_ZIP"
+print "  ($DSYM_UUID_FILE has the dSYM UUIDs for crash symbolication)"
 print "  Build number: $BUILD_NUMBER"
 print
 
