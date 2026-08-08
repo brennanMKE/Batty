@@ -37,6 +37,17 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   `workspace.json`/`WorkspaceManager.swift` documentation inconsistency
   resolved (with history). No code ships with this document — read it
   before implementing #0303/#0304/#0305/#0313/#0314/#0315.
+- [`pane-view-lifecycle.md`](pane-view-lifecycle.md) — design proposal
+  (#0303) for the setup / show-hide / teardown / observability contract
+  every non-terminal Pane content kind adopts: the `PaneContentLifecycle`
+  protocol and `PaneLifecycleStateMachine` in `BattyKit`, why show/hide
+  reuses the same visibility facts that drive terminal occlusion (#0288)
+  instead of inventing new ones, why teardown must be synchronous and
+  verifiable by an object/resource count rather than a log line (the
+  #0289 lesson generalised), and what the accompanying tests do and don't
+  prove ahead of any concrete non-terminal view existing. No `PaneRuntime`/
+  `Pane`/`PaneView` source ships with this document — read it before
+  implementing #0304/#0305/#0313/#0314.
 - [`terminal-pane-requirements.md`](terminal-pane-requirements.md) — the
   non-negotiable behaviors every pane must preserve: pointer input, keyboard
   input, file/text drop onto the terminal, overlay rules, and the AppKit
