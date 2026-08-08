@@ -134,8 +134,14 @@ section() { print ""; print "$1"; }
 # (#0307). Every xcconfig read in this script goes through here so there's
 # one place to get this right instead of a truncating variant re-appearing
 # at the next call site.
+#
+# The key is anchored to the assignment (`[[:space:]]*=`), not just the
+# start of the line, so a longer key sharing $1 as a prefix (e.g. a
+# hypothetical SU_PUBLIC_ED_KEY_OLD) can't win via head -1, and a bare key
+# name with no '=' doesn't match at all — grep yields nothing, so the
+# pipeline returns empty instead of the key name itself (#0308).
 xcconfig_value() {
-    grep -E "^$1" "$2" 2>/dev/null | head -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//'
+    grep -E "^$1[[:space:]]*=" "$2" 2>/dev/null | head -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//'
 }
 
 # Compare two dotted versions (X.Y.Z, prerelease suffix ignored).
