@@ -11,13 +11,14 @@ project's bundled resources. They live at `Resources/ghostty-runtime/` so the
 (Kitty-derived) and one is a separate MIT-licensed upstream project. See
 "Contents" below for exactly which files fall under which license.
 
-**For the verbatim/linked license text this vendoring obligates Batty to
-carry — Ghostty's own MIT notice, the three GPLv3 files, and
+**For the verbatim license text this vendoring obligates Batty to
+carry — Ghostty's own MIT notice, the three GPLv3 files (whose full
+license text now ships as `gpl-3.0.txt`, see "Contents" below), and
 `bash-preexec`'s own MIT notice — see the "Ghostty runtime resources",
 "GPLv3 files (Kitty-derived)", and "bash-preexec" sections of
 [`/THIRD-PARTY-LICENSES.md`](../../THIRD-PARTY-LICENSES.md) at the repo
-root (`#0318`). Keep that document's description of what ships here in
-sync with this file if the vendored contents ever change.**
+root (`#0318`, `#0323`). Keep that document's description of what ships
+here in sync with this file if the vendored contents ever change.**
 
 ## Contents
 
@@ -31,7 +32,15 @@ sync with this file if the vendored contents ever change.**
   Each carries its own header stating it's based on Kitty's shell
   integration and is therefore GPLv3 — Ghostty's blanket MIT notice does
   not cover these three files. See `THIRD-PARTY-LICENSES.md` for the
-  verbatim notice and a link to the full GPLv3 text.
+  verbatim notice.
+- `ghostty/shell-integration/gpl-3.0.txt` — a verbatim, unmodified copy
+  of the GNU GPLv3 license text (fetched from
+  <https://www.gnu.org/licenses/gpl-3.0.txt>, 674 lines), added by
+  `#0323` so the three files above ship a copy of their governing
+  license alongside them, not just a link to one. It ships into the
+  same bundle directory as those files via the existing
+  `rsync -a --delete .../shell-integration/` step in
+  `scripts/bundle-ghostty-resources.sh` — no script change needed.
 - **Separate MIT project, not Ghostty's own code:**
   `ghostty/shell-integration/bash/bash-preexec.sh` vendors
   [`rcaloras/bash-preexec`](https://github.com/rcaloras/bash-preexec)
@@ -55,6 +64,20 @@ cp -R /Applications/Ghostty.app/Contents/Resources/ghostty/shell-integration \
 from Ghostty's own MIT** (the GPLv3 files above are a known, standing
 divergence; a future Ghostty version could add or drop others) and update
 both this file and `THIRD-PARTY-LICENSES.md` together if anything changed.
+
+**`gpl-3.0.txt` is not part of upstream Ghostty** — it's Batty's own
+addition (`#0323`), not something the `cp -R` step above would ever
+produce on its own (that command, run as written against an
+already-existing destination directory, merges into it rather than
+replacing it — it does not delete `gpl-3.0.txt`). The risk is only with
+a refresh that genuinely **replaces rather than merges** the directory
+(an `rm -rf` first, or an `rsync --delete` sourced from upstream
+instead of from this repo) — that kind of refresh would drop
+`gpl-3.0.txt` along with everything else not present upstream. After
+any such refresh, re-fetch (or re-copy) `gpl-3.0.txt` from
+<https://www.gnu.org/licenses/gpl-3.0.txt> into
+`Resources/ghostty-runtime/ghostty/shell-integration/gpl-3.0.txt` and
+confirm it's still 674 lines before committing the version bump.
 
 ## License
 

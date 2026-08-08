@@ -322,11 +322,15 @@ separate MIT-licensed upstream project — see "bash-preexec" below.
 **Sweep performed for this round:** every file under
 `Resources/ghostty-runtime/` was checked for a license header
 (`grep`-scanned for `kitty`/`GPL`/`copyright`/`license`, then the header
-of each file read directly) — 8 shell-integration files (`bash/ghostty.bash`,
+of each file read directly) — 7 shell-integration files (`bash/ghostty.bash`,
 `bash/bash-preexec.sh`, `zsh/.zshenv`, `zsh/ghostty-integration`,
 `fish/vendor_conf.d/ghostty-shell-integration.fish`,
 `elvish/lib/ghostty-integration.elv`,
 `nushell/vendor/autoload/ghostty.nu`) plus the one `terminfo` entry.
+(This sweep predates `#0323`'s `gpl-3.0.txt`, now an 8th file in
+`shell-integration/` — it's Batty's own addition, the license text
+itself rather than a file that needs a license-header check, so it's
+not counted in this sweep's 7.)
 Result: **3 files carry a GPLv3 header** (below), **1 file carries a
 separate MIT header** (`bash-preexec.sh`, its own section below), and
 the remaining 4 (`fish`, `elvish`, `nushell`, `terminfo`) have no
@@ -384,27 +388,43 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ```
 
-**Full GPLv3 text:** not reproduced inline — at 674 lines it would
-roughly double the length of this document for a license that already
-tells the reader exactly where to find it. Linked precisely instead, at
-the canonical URL the notice above itself points to:
-<https://www.gnu.org/licenses/gpl-3.0.txt> (fetched and confirmed
-reachable while preparing this entry).
+**Full GPLv3 text:** not reproduced inline in this document — at 674
+lines it would roughly double the length of this document for a
+license that already tells the reader exactly where to find it — but
+**a verbatim copy now ships in the app bundle** alongside the files it
+governs (`#0323`), at
+`Contents/Resources/ghostty/shell-integration/gpl-3.0.txt` **in the
+built app**. Its repo-side source is
+`Resources/ghostty-runtime/ghostty/shell-integration/gpl-3.0.txt`,
+fetched unmodified from the canonical URL the notice above itself
+points to, <https://www.gnu.org/licenses/gpl-3.0.txt> (confirmed
+674 lines, byte-for-byte, both at fetch time and again while preparing
+this entry) — it ships with no build-script change because it sits
+inside the directory `scripts/bundle-ghostty-resources.sh` already
+rsyncs wholesale (`rsync -a --delete .../shell-integration/
+.../shell-integration/`).
 
-**Why this doesn't currently obligate more than the notice above:**
-these three files ship in Batty's bundle in their original, unmodified
-**source form** — plain shell scripts, not compiled or bundled into a
-binary the way `libghostty.a`, Prism.js, or the math fonts are. GPLv3
-§4 (verbatim copying) is the operative clause here, not §§5–6
-(modified versions / conveying in object form): it requires
-"conspicuously and appropriately publish[ing] on each copy an
-appropriate copyright notice" and keeping "intact all notices" — which
-these files already do themselves, unedited, and Batty's build doesn't
-touch them beyond copying the tree
-(`scripts/bundle-ghostty-resources.sh`, not modified by this issue).
-This document is exactly the "conspicuous" record for a user trying to
-find that notice from outside the shipped file itself — that's the gap
-that was actually missing, and that this entry now closes.
+**Why this satisfies GPLv3 §4 (verbatim copying):** these three files
+ship in Batty's bundle in their original, unmodified **source form** —
+plain shell scripts, not compiled or bundled into a binary the way
+`libghostty.a`, Prism.js, or the math fonts are — so §4 is the
+operative clause here, not §§5–6 (modified versions / conveying in
+object form). §4's text is four semicolon-separated clauses, grouped
+here into three requirements since the middle two are both a "keep
+intact" instruction: conspicuously and appropriately publishing "on
+each copy an appropriate copyright notice"; keeping "intact all
+notices" stating that the License (and any non-permissive added terms)
+applies, and, separately, keeping intact all notices of the absence of
+any warranty; and giving "all recipients a copy of this License along
+with the Program." The first two grouped requirements are satisfied by
+the files' own unedited headers — Batty's build doesn't touch them
+beyond copying the tree (`scripts/bundle-ghostty-resources.sh`, not
+modified by this issue). **The third was the actual gap** — an earlier
+version of this document linked the license text at the URL above but
+did not ship a copy of it, and a URL is arguably not "a copy along with
+the Program." `#0323` closed that gap by vendoring `gpl-3.0.txt`
+itself, above, so all of §4's requirements are now met by what ships,
+not just by this document's notice of them.
 
 There is an existing `Resources/ghostty-runtime/ATTRIBUTION.md` in the
 repository documenting this vendoring, updated alongside this issue to
