@@ -34,7 +34,7 @@ A standard macOS `NSWindow` rendered by SwiftUI.
 - **Multi-window:** planned, not yet implemented (#0234; design in `docs/multi-window-design.md`) — for users with multiple displays. Will open with Shift-Cmd-N (Cmd-N creates a new Session, per #0063). Each Window is independent — its own Sidebar list of Sessions, its own selected Session.
 - **Contains:** a collapsible left **Sidebar** plus a **Detail Area** that shows the currently selected Session.
 - **Lifecycle:** lives until the user closes it (Cmd-W on the window chrome) or quits the app. Closing the last window does not quit the app on macOS by default.
-- **Persisted:** ordered list of Windows, the selected Session in each, and frame/zoom state.
+- **Persisted:** no layout — no ordered Window list, no per-Window selected Session, no frame/zoom state is saved by Batty. Two things do survive relaunch, both riding the system's own scene-restoration machinery rather than anything Batty writes itself: the Sidebar's collapsed state, stored per Window via `@SceneStorage` (see Sidebar), and window frame, which macOS's own state restoration may restore. Both are subject to System Settings → Desktop & Dock → "Close windows when quitting an application"; Batty sets no frame autosave name or `isRestorable` of its own.
 
 ---
 
@@ -50,7 +50,7 @@ A named workspace, listed as one row in the Window's Sidebar.
 - **CWD inheritance:** a newly created Session's first Pane spawns its shell in the previously-focused Pane's active-Tab cwd when one is known, mirroring the way Cmd-T inherits cwd within a Pane; falls back to the shell's default (`$HOME`) when no previously-selected Session exists.
 - **Name cache:** a small JSON file at `~/Library/Application Support/Batty/session-name-cache.json` remembers the most recent user-chosen Session title per working directory. Renaming a Session writes `(firstPaneFirstTabCWD, newName)` (skipping default `Session N` titles); creating a new Session looks up the inherited CWD before falling back to `Session N`, so opening a fresh Session in a known project directory auto-applies the previously-chosen name. Exact-path match, capped at 100 entries with LRU eviction, atomic writes, debounced.
 - **Keybinding:** Cmd-Option-1..9 selects the Nth Session in the active Window. (Cmd-Shift-Number is reserved by macOS for screenshot hotkeys, so we use Cmd-Option-Number — same family iTerm2 uses for session/window selection.)
-- **Persisted:** ordered list per Window, plus everything inside.
+- **Persisted:** nothing — the ordered Session list, each Session's Split tree, and everything inside are in-memory only; none of it survives a relaunch. (The Name cache above is a separate mechanism: it remembers a chosen title per working directory, not layout.)
 
 > "Session" is overloaded in terminal-land — to be precise, a Batty **Session** is a *workspace grouping*. The actual *running shell process* is a **Terminal Session** (below). When the doc just says "session" unqualified, it means the workspace grouping.
 
@@ -72,7 +72,7 @@ A single visible region inside a Session — a leaf of the Split tree.
   - Keyboard: Cmd-Ctrl-arrows resize the Split containing focus by ±5%.
 - **Focus movement:** Cmd-Option-arrows move focus between Panes within the active Session.
 - **Closing:** when the last Tab in a Pane closes (Cmd-W), the Pane is removed and its parent Split collapses — the sibling subtree takes over the parent's space.
-- **Persisted:** position in the Split tree, ordered Tab list, active Tab.
+- **Persisted:** nothing; in-memory only. A Pane's position in the Split tree, its ordered Tab list, and its active Tab do not survive a relaunch.
 
 ---
 
@@ -91,7 +91,7 @@ One entry in a Pane's Tab bar. Each Tab owns exactly one Terminal Session.
   - Cmd-Shift-[ / ] — cycle Tabs within the focused Pane.
   - Drag chip to reorder.
 - **Background behavior:** non-active Tabs in a Pane keep their Terminal Session running (PTY/shell stay alive). Switching Tabs only swaps which surface is rendered.
-- **Persisted:** id, title override, ordering, the surface's cwd at last snapshot.
+- **Persisted:** nothing; in-memory only. A Tab's id, title override, and ordering do not survive a relaunch.
 
 ---
 
@@ -108,7 +108,7 @@ The actual running terminal — one libghostty surface with a PTY, a shell proce
   - Selection model, scrollback buffer, terminal state.
   - Bell counters and the OSC 9 message buffer.
 - **What it does not own:** layout, focus arbitration, Tab/Pane membership — those live in the SwiftUI tree above it.
-- **Persisted:** working directory and last-set title only. We do **not** restore running processes — relaunched shells start fresh in the saved cwd.
+- **Persisted:** nothing; in-memory only. We do **not** restore running processes, and no working directory or title is saved — a relaunched shell starts wherever the shell's own default takes it (typically `$HOME`), not in the Terminal Session's prior cwd.
 
 > Ghostty's own term for this is "surface." We use **Terminal Session** in user-facing copy because it's clearer to a person who hasn't read libghostty's docs. In code, `surface` and `surfaceID` are fine.
 
@@ -125,7 +125,7 @@ A non-leaf node in a Session's layout tree that arranges two child subtrees side
   - `ratio`: 0.0–1.0, the proportion taken by the *left* (or *top*) child.
   - `left`, `right`: each a `SplitNode` — either another Split or a leaf `Pane`.
 - **Created by:** splitting a Pane via the toolbar buttons or Cmd-D / Cmd-Shift-D.
-- **Resized by:** dragging the divider, or Cmd-Ctrl-arrows. Updates to `ratio` are persisted.
+- **Resized by:** dragging the divider, or Cmd-Ctrl-arrows. Updates to `ratio` are in-memory only; they do not survive a relaunch.
 - **Collapsed:** when one of a Split's children becomes empty (the last Tab in a Pane closed), the Split is replaced by its remaining child in the parent's slot.
 - **Note on terminology:** the SF Symbol `rectangle.split.2x1` shows a rectangle divided into two columns (left/right) — this is the visual for a horizontal Split. `rectangle.split.1x2` shows two rows stacked — the visual for a vertical Split. Verbally we say "split horizontally" to mean side-by-side and "split vertically" to mean stacked, matching the SF Symbol intuition.
 
@@ -208,7 +208,7 @@ The unified, app-wide list of recent **Bell events** across every Terminal Sessi
   - Toolbar button using the SF Symbol `bell.badge` when there are unseen events, `bell` when clean.
   - Keybinding: Cmd-Shift-B (customizable in Settings → Keyboard).
   - Renders as a popover (or sheet) attached to the bell button.
-- **Contents:** newest-first, scrollable, capped (e.g. 200 entries) and persisted across launches.
+- **Contents:** newest-first, scrollable, capped at 200 entries.
 - **Each entry shows:**
   - Timestamp (relative: "2m ago", absolute on hover).
   - Path: `<Session> › <Pane> › <Tab>`.
@@ -267,4 +267,4 @@ User-controlled preferences that are *not* layout. Stored in `UserDefaults`.
 
 ---
 
-*Document version: 0.3 — 2026-05-20. Removes Workspace persistence (never a planned feature). Update whenever a new term gets introduced in the PRD or in issues.*
+*Document version: 0.4 — 2026-08-08. Corrects five `**Persisted:**` bullets (Window, Session, Pane, Tab, Terminal Session) left over from #0172's Workspace-persistence removal; they described layout persistence that no longer exists. Update whenever a new term gets introduced in the PRD or in issues.*
