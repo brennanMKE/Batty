@@ -202,7 +202,6 @@ struct MultiWindowCWDNamingTests {
         let store = AppStateStore(nameCache: cache)
         defer { try? FileManager.default.removeItem(at: cacheURL.deletingLastPathComponent()) }
 
-        var suggestedPaths: [String] = []
         final class FixedSuggester: SessionNameSuggesting {
             let name: String
             var paths: [String] = []
@@ -229,6 +228,5 @@ struct MultiWindowCWDNamingTests {
 
         #expect(session.title == "SuggestedName",
                 "AI suggestion must apply to sessions in any window, not only windows[0]")
-        _ = suggestedPaths  // Suppress unused warning
     }
 }

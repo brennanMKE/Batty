@@ -159,6 +159,9 @@ struct CrossWindowBehaviorTests {
         w1.selectedSessionID = focusedSession.id
 
         let pane = targetSession.tree.allPanes[0]
+        targetSession.tree.splitFocusedPane(direction: .horizontal)
+        #expect(targetSession.tree.focusedPaneID != pane.id,
+                "precondition: bell pane is not focused before the jump")
         let tab = pane.tabs[0]
         tab.terminal.terminalDidRingBell()
         store.recordBellTick(forTabID: tab.id)
@@ -170,7 +173,8 @@ struct CrossWindowBehaviorTests {
 
         #expect(w1.selectedSessionID == targetSession.id,
                 "jumpToBellEntry should select the entry's session in its owning window")
-        #expect(w1.sessions[0].tree.focusedPaneID != nil)
+        #expect(targetSession.tree.focusedPaneID == pane.id,
+                "jumpToBellEntry should focus the entry's pane within the target session")
     }
 
     @Test func jumpToBellEntryInSecondWindowNavigatesSecondWindow() {

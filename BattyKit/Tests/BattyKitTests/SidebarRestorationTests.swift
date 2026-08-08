@@ -67,18 +67,18 @@ struct SidebarRestorationTests {
     // MARK: - toggleSidebar posts notification, not UserDefaults
 
     @Test func toggleSidebarViaNotificationIsReceivable() async throws {
-        var received = false
-        let observer = NotificationCenter.default.addObserver(
-            forName: .battyToggleSidebar,
-            object: nil,
-            queue: .main
-        ) { _ in
-            received = true
+        await confirmation("battyToggleSidebar notification should be deliverable") { received in
+            let observer = NotificationCenter.default.addObserver(
+                forName: .battyToggleSidebar,
+                object: nil,
+                queue: .main
+            ) { _ in
+                received()
+            }
+            defer { NotificationCenter.default.removeObserver(observer) }
+            NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
+            // Give the main queue a turn to deliver.
+            await Task.yield()
         }
-        defer { NotificationCenter.default.removeObserver(observer) }
-        NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
-        // Give the main queue a turn to deliver.
-        await Task.yield()
-        #expect(received, "battyToggleSidebar notification should be deliverable")
     }
 }

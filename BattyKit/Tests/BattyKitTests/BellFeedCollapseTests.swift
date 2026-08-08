@@ -107,7 +107,7 @@ struct BellFeedCollapseTests {
         let tabID = UUID()
         let first = makeEntry(tabID: tabID, message: "build failed", timestamp: Self.base)
         store.record(first)
-        store.markSeen(id: first.id)
+        _ = store.markSeen(id: first.id)
 
         let outcome = store.recordOrCollapse(makeEntry(tabID: tabID, message: "build failed", timestamp: Self.base.addingTimeInterval(60)))
 
