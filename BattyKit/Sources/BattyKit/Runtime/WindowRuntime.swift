@@ -535,13 +535,24 @@ public final class WindowRuntime {
         location.session.unseenBellCount += 1
     }
 
+    /// Decrements by `entry.repeatCount`, not by 1. #0298: a collapsed
+    /// entry represents `repeatCount` raw bell occurrences, each of which
+    /// called `propagateUnseenForced` once when it arrived — so clearing
+    /// the one feed row that absorbed all of them must release all of them,
+    /// or the tab/pane/session sidebar counters (`SessionSidebarView`'s
+    /// numeric badges) would stay permanently inflated by `repeatCount - 1`
+    /// after every mark-seen path that isn't `markActiveTabSeen` (which
+    /// already resets straight to 0 as a separate residual-drift guard).
+    /// Non-collapsed entries have `repeatCount == 1`, so this is a
+    /// straight extension of the pre-#0298 behavior, not a change to it.
     func decrementUnseen(for entry: BellFeedEntry) {
+        let amount = max(1, entry.repeatCount)
         for session in sessions where session.id == entry.sessionID {
-            if session.unseenBellCount > 0 { session.unseenBellCount -= 1 }
+            session.unseenBellCount = max(0, session.unseenBellCount - amount)
             for pane in session.tree.allPanes where pane.id == entry.paneID {
-                if pane.unseenBellCount > 0 { pane.unseenBellCount -= 1 }
+                pane.unseenBellCount = max(0, pane.unseenBellCount - amount)
                 for tab in pane.tabs where tab.id == entry.tabID {
-                    if tab.unseenBellCount > 0 { tab.unseenBellCount -= 1 }
+                    tab.unseenBellCount = max(0, tab.unseenBellCount - amount)
                 }
             }
         }

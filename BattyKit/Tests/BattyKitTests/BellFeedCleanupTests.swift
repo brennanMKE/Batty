@@ -101,7 +101,11 @@ struct BellFeedCleanupTests {
         tab.terminal.terminalDidRingBell()
         store.recordBellTick(forTabID: tab.id)
 
-        #expect(store.bellFeed.entries.count == 2)
+        // #0298: both bare BELs are still unseen and share this tab, so the
+        // second collapses into the first rather than appending a second
+        // entry -- see BellFeedCollapseTests for the rule itself.
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.repeatCount == 2)
 
         store.closeTab(id: tab.id)
 

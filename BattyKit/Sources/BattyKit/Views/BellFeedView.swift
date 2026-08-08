@@ -147,6 +147,12 @@ private struct BellFeedRow: View {
                         .font(.callout)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if entry.repeatCount > 1 {
+                        Text(verbatim: "×\(entry.repeatCount)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("Repeated \(entry.repeatCount) times since the last time this was seen")
+                    }
                     Spacer()
                     Text(entry.timestamp, style: .relative)
                         .font(.caption)

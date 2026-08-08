@@ -840,12 +840,23 @@ public final class AppStateStore {
                     message: nil,
                     seen: effectivelySeen
                 )
-                bellFeed.record(entry)
+                // #0298: a seen-at-creation bell (tab currently focused)
+                // always becomes its own entry — collapse only applies to
+                // still-unread repeats, so `recordOrCollapse` is skipped
+                // entirely rather than relying on it to find no candidate.
+                let outcome: BellFeedStore.RecordOutcome = effectivelySeen
+                    ? .recorded(bellFeed.record(entry))
+                    : bellFeed.recordOrCollapse(entry)
                 if !effectivelySeen {
                     window.propagateUnseenForced(at: location)
                 }
-                postNotification(for: entry, at: location, trigger: .bel)
-                scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
+                switch outcome {
+                case .recorded:
+                    postNotification(for: entry, at: location, trigger: .bel)
+                    scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
+                case .collapsed:
+                    recordCollapsedNotificationDecision(for: entry, at: location, trigger: .bel)
+                }
             }
             return
         }
@@ -873,12 +884,19 @@ public final class AppStateStore {
                 message: location.tab.lastBellMessage,
                 seen: effectivelySeen
             )
-            bellFeed.record(entry)
+            let outcome: BellFeedStore.RecordOutcome = effectivelySeen
+                ? .recorded(bellFeed.record(entry))
+                : bellFeed.recordOrCollapse(entry)
             if !effectivelySeen {
                 window.propagateUnseenForced(at: location)
             }
-            postNotification(for: entry, at: location, trigger: .oscNotification)
-            scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
+            switch outcome {
+            case .recorded:
+                postNotification(for: entry, at: location, trigger: .oscNotification)
+                scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
+            case .collapsed:
+                recordCollapsedNotificationDecision(for: entry, at: location, trigger: .oscNotification)
+            }
             return
         }
     }
@@ -935,12 +953,19 @@ public final class AppStateStore {
                 message: Self.formatNotifyMessage(title: title, body: body),
                 seen: effectivelySeen
             )
-            bellFeed.record(entry)
+            let outcome: BellFeedStore.RecordOutcome = effectivelySeen
+                ? .recorded(bellFeed.record(entry))
+                : bellFeed.recordOrCollapse(entry)
             if !effectivelySeen {
                 window.propagateUnseenForced(at: location)
             }
-            postNotification(for: entry, at: location, trigger: .cliNotification, playSound: playSound)
-            scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
+            switch outcome {
+            case .recorded:
+                postNotification(for: entry, at: location, trigger: .cliNotification, playSound: playSound)
+                scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
+            case .collapsed:
+                recordCollapsedNotificationDecision(for: entry, at: location, trigger: .cliNotification)
+            }
             return .posted
         }
         return .unknownTab
@@ -1418,10 +1443,19 @@ public final class AppStateStore {
     /// would otherwise carry ×`BellDecisionHistory.capacity`, for the
     /// process lifetime, with nothing bounding an OSC 9/777 or CLI
     /// `notify` body upstream.
+    /// `forcedOutcome`: #0298's collapsed-repeat path (`postNotification`'s
+    /// caller passes `.suppressed(.collapsedIntoUnread)` here rather than
+    /// letting this method compute the gate outcome as usual) — a collapsed
+    /// repeat never reaches `notifier.post`, so the notifier/mute/settings
+    /// gates below were never evaluated for it and reporting their verdict
+    /// as this record's outcome would misrepresent what happened. The gate
+    /// *facts* (`notifierPresent`, `sessionMuted`, etc.) are still captured
+    /// normally either way — only `outcome` is overridden.
     private func makeBellDecisionRecord(
         for entry: BellFeedEntry,
         at location: WindowRuntime.BellLocation,
-        trigger: BellTriggerKind
+        trigger: BellTriggerKind,
+        forcedOutcome: BellDecisionRecord.Outcome? = nil
     ) -> BellDecisionRecord {
         let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
         let battyActive = NSApplication.shared.isActive
@@ -1451,13 +1485,31 @@ public final class AppStateStore {
             systemNotificationsEnabled: systemNotificationsEnabled,
             foregroundPid: location.tab.terminalNSView?.foregroundPid,
             ttyName: location.tab.terminalNSView?.ttyName,
-            outcome: BellDecisionRecord.outcome(
+            outcome: forcedOutcome ?? BellDecisionRecord.outcome(
                 notifierPresent: notifierPresent,
                 sessionMuted: sessionMuted,
                 systemNotificationsEnabled: systemNotificationsEnabled,
                 battyActive: battyActive,
                 entrySeenAtCreation: entry.seen
             )
+        )
+    }
+
+    /// #0298: called instead of `postNotification` when `entry` collapsed
+    /// into an existing unread `BellFeedEntry` rather than becoming its own
+    /// row (`BellFeedStore.recordOrCollapse`'s `.collapsed` case). Still
+    /// records a #0297 decision — `outcome=suppressed:collapsedIntoUnread`
+    /// — so the export accounts for every bell, including ones that never
+    /// reached the notifier gates at all, but deliberately never calls
+    /// `notifier.post`: the entire point of collapsing is to not re-post a
+    /// system notification for a repeat the user hasn't acknowledged yet.
+    private func recordCollapsedNotificationDecision(
+        for entry: BellFeedEntry,
+        at location: WindowRuntime.BellLocation,
+        trigger: BellTriggerKind
+    ) {
+        bellDecisionHistory.record(
+            makeBellDecisionRecord(for: entry, at: location, trigger: trigger, forcedOutcome: .suppressed(.collapsedIntoUnread))
         )
     }
 

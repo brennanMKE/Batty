@@ -41,6 +41,19 @@ struct BellDecisionRecord: Sendable, Equatable {
         /// `BellNotifier.evaluateShouldPost` declined: Batty is frontmost
         /// and the entry was already seen at creation.
         case frontmostAndSeen
+        /// #0298: this bell was a redundant repeat of a still-unread Bell
+        /// Feed entry (same `tabID`, identical `message`, within
+        /// `BellFeedStore.collapseWindow`) and was folded into that entry
+        /// (`BellFeedStore.recordOrCollapse`'s `.collapsed` case) instead
+        /// of becoming its own row. Recorded so the #0297 export keeps
+        /// telling the truth about every bell rather than a collapsed
+        /// repeat silently vanishing from the log, and so a future round
+        /// can validate this rule against real traffic the same way this
+        /// one was chosen. Takes priority over the notifier-gate reasons
+        /// below in `AppStateStore.makeBellDecisionRecord` — a collapsed
+        /// repeat never reaches `notifier.post` at all, so those gates
+        /// were never evaluated for it.
+        case collapsedIntoUnread
     }
 
     enum Outcome: Sendable, Equatable {

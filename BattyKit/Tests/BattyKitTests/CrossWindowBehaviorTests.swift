@@ -215,7 +215,11 @@ struct CrossWindowBehaviorTests {
         tab.terminal.terminalDidRingBell()
         store.recordBellTick(forTabID: tab.id)
 
-        #expect(store.bellFeed.entries.count == 2)
+        // #0298: both bare BELs are unseen and share this tab, so they
+        // collapse into one entry with repeatCount 2; unseenBellCount still
+        // counts the two raw occurrences (it isn't a feed-entry count).
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.repeatCount == 2)
         #expect(tab.unseenBellCount == 2)
 
         // Simulate window-close cleanup (as WindowDelegate.windowWillClose does).
