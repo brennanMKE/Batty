@@ -13,8 +13,11 @@ public enum AboutPanel {
         let copyright = info["NSHumanReadableCopyright"] as? String
             ?? String(localized: "© Batty contributors")
 
+        // Plain text, not a clickable link — see THIRD-PARTY-LICENSES.md's
+        // "Why not a clickable link from the About panel" for why
+        // (NSWorkspace/.md-handler and batty:// scheme-routing pitfalls).
         let creditsBody = String(localized: "about.credits.body",
-            defaultValue: "\(appName) — a macOS terminal multiplexer\nBuilt on libghostty and SlidingTabs.\n\n\(copyright)",
+            defaultValue: "\(appName) — a macOS terminal multiplexer\nBuilt on libghostty and SlidingTabs.\nTerminal themes include entries from iTerm2-Color-Schemes, via libghostty.\n\nFull third-party license texts: Help menu → Batty Help → \"Third-Party Licenses\".\n\n\(copyright)",
             comment: "Multi-line credits string for the About panel.")
         let credits = NSAttributedString(
             string: creditsBody,
