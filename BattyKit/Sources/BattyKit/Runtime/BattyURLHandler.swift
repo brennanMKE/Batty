@@ -25,7 +25,10 @@ public struct BattyURLHandler {
         let windowsBefore = store.windows.count
         let registeredBefore = store.registeredContentWindowCount
         logger.debug("BattyURLHandler.handle: path=\(path, privacy: .public) windowRuntimes=\(windowsBefore, privacy: .public) registeredContentWindows=\(registeredBefore, privacy: .public)")
-        let session = store.addSession(workingDirectory: path)
+        guard let session = store.addSession(workingDirectory: path) else {
+            logger.error("BattyURLHandler.handle: addSession returned nil (no window available); dropping path=\(path, privacy: .public)")
+            return
+        }
         logger.debug("BattyURLHandler.handle: session created id=\(session.id, privacy: .public) windowRuntimes=\(store.windows.count, privacy: .public)")
     }
 }

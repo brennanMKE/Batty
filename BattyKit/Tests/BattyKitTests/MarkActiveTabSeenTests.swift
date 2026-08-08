@@ -10,7 +10,7 @@ struct MarkActiveTabSeenTests {
     @Test func markActiveTabSeenClearsCountsAndEntries() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
@@ -39,7 +39,7 @@ struct MarkActiveTabSeenTests {
     @Test func markActiveTabSeenZeroesTabEvenWhenEntryEvicted() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
@@ -53,7 +53,7 @@ struct MarkActiveTabSeenTests {
         // ...then we overflow the feed cap with synthetic entries from a
         // different tab so the original entry is evicted while the
         // aggregates still hold the count.
-        let evictedSession = store.addSession(title: "Filler")
+        let evictedSession = store.addSession(title: "Filler")!
         let evictedPane = evictedSession.tree.allPanes[0]
         let evictedTab = evictedPane.tabs[0]
         for _ in 0..<(BellFeedStore.cap + 5) {
@@ -96,7 +96,7 @@ struct MarkActiveTabSeenTests {
     @Test func markActiveTabSeenLeavesOtherTabsAlone() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]

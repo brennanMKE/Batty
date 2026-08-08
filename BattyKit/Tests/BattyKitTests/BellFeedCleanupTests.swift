@@ -10,7 +10,7 @@ struct BellFeedCleanupTests {
     @Test func closingTabRemovesItsFeedEntriesAndDecrementsAggregates() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
@@ -42,7 +42,7 @@ struct BellFeedCleanupTests {
     @Test func closingTabDoesNotTouchOtherTabsEntries() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession()
+        let background = store.addSession()!
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
@@ -67,7 +67,7 @@ struct BellFeedCleanupTests {
     @Test func closingLastTabInPaneClearsItsEntries() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession()
+        let background = store.addSession()!
         store.selectedSessionID = focused.id
 
         let originalPane = background.tree.allPanes[0]
@@ -91,7 +91,7 @@ struct BellFeedCleanupTests {
     @Test func closingLastTabCascadingToSessionClearsItsEntries() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
@@ -112,7 +112,7 @@ struct BellFeedCleanupTests {
     @Test func removeSessionDirectlyClearsAllEntriesUnderIt() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let background = store.addSession()
+        let background = store.addSession()!
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]

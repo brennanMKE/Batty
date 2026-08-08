@@ -37,7 +37,7 @@ struct CloseTabCascadeTests {
     @Test func closingLastTabInOnlyPaneClosesTheSession() {
         let store = AppStateStore()
         let firstSession = store.sessions[0]
-        let secondSession = store.addSession()
+        let secondSession = store.addSession()!
         store.selectedSessionID = firstSession.id
 
         let onlyTabID = secondSession.tree.allPanes[0].tabs[0].id

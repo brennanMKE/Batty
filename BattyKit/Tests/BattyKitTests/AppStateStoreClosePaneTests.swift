@@ -199,7 +199,7 @@ struct AppStateStoreClosePaneTests {
     @Test func closingAPaneInABackgroundSessionDoesNotChangeSelectionOrTheForegroundSessionsFocus() {
         let store = AppStateStore()
         let selected = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.windows[0].selectedSessionID = selected.id
         let backgroundPaneA = background.tree.allPanes[0]
         let backgroundPaneB = background.tree.splitFocusedPane(direction: .horizontal)
@@ -234,7 +234,7 @@ struct AppStateStoreClosePaneTests {
     @Test func closingTheLastPaneOfANonLastSessionClosesThatSessionOnly() {
         let store = AppStateStore()
         let firstSession = store.sessions[0]
-        let secondSession = store.addSession()
+        let secondSession = store.addSession()!
         store.selectedSessionID = firstSession.id
         let onlyPaneID = secondSession.tree.allPanes[0].id
 

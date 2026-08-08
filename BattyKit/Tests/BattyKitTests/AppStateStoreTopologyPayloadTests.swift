@@ -32,7 +32,7 @@ struct AppStateStoreTopologyPayloadTests {
 
     @Test func topologyPayloadSelectedSessionIDMatchesRuntime() {
         let store = AppStateStore()
-        let session = store.addSession(title: "Extra")
+        let session = store.addSession(title: "Extra")!
         store.windows[0].selectedSessionID = session.id
         let payload = store.topologyPayload()
         #expect(payload.windows[0].selectedSessionID == session.id)
@@ -48,7 +48,7 @@ struct AppStateStoreTopologyPayloadTests {
 
     @Test func topologyPayloadMarksOnlySelectedSessionActive() {
         let store = AppStateStore()
-        let second = store.addSession(title: "Second")
+        let second = store.addSession(title: "Second")!
         store.windows[0].selectedSessionID = second.id
         let payload = store.topologyPayload()
         let activeFlags = Dictionary(uniqueKeysWithValues: payload.windows[0].sessions.map { ($0.id, $0.isActive) })
@@ -165,7 +165,7 @@ struct AppStateStoreTopologyPayloadTests {
 
     @Test func sessionInfoPayloadResolvesExplicitSessionID() {
         let store = AppStateStore()
-        let target = store.addSession(title: "Target")
+        let target = store.addSession(title: "Target")!
         let payload = store.sessionInfoPayload(sessionID: target.id)
         #expect(payload?.id == target.id)
         #expect(payload?.name == "Target")
@@ -178,7 +178,7 @@ struct AppStateStoreTopologyPayloadTests {
 
     @Test func sessionInfoPayloadFallsBackToSelectedSessionWhenNilAndNoKeyWindow() {
         let store = AppStateStore()
-        let second = store.addSession(title: "Second")
+        let second = store.addSession(title: "Second")!
         store.windows[0].selectedSessionID = second.id
         // No NSWindow registered in this unit-test context, so
         // keyWindowRuntime() is nil and the fallback resolves to
@@ -192,7 +192,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func sessionInfoPayloadExplicitIDBeatsSelectedSession() {
         let store = AppStateStore()
         let selected = store.sessions[0]
-        let other = store.addSession(title: "Other")
+        let other = store.addSession(title: "Other")!
         store.windows[0].selectedSessionID = selected.id
         // Explicit --session always wins over the focused-session fallback,
         // even though `other` isn't selected.
@@ -220,7 +220,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func sessionInfoReadOfBackgroundSessionDoesNotChangeSelectionOrFocus() {
         let store = AppStateStore()
         let selected = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.windows[0].selectedSessionID = selected.id
 
         // Give the background session a split with a non-default focused pane

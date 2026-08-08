@@ -14,7 +14,7 @@ struct SidebarSelectionGuardTests {
     @Test func acceptsValidSessionID() {
         let store = AppStateStore()
         let s1 = store.sessions[0]
-        let s2 = store.addSession()
+        let s2 = store.addSession()!
         #expect(store.selectedSessionID == s2.id)
 
         store.windows[0].setSelectedSession(id: s1.id)

@@ -75,7 +75,7 @@ struct BattyURLHandlerRoutingTests {
     /// relies on this so the incoming session is visible without a manual click.
     @Test func addSessionWithCWDSelectsNewSession() {
         let store = AppStateStore()
-        let newSession = store.addSession(workingDirectory: "/usr")
+        let newSession = store.addSession(workingDirectory: "/usr")!
         #expect(store.windows[0].selectedSessionID == newSession.id)
     }
 
@@ -88,7 +88,7 @@ struct BattyURLHandlerRoutingTests {
     @Test func addSessionWithCWDPreservesWorkingDirectoryOnFirstTab() {
         let store = AppStateStore()
         let path = "/Users/test/Developer/MyProject"
-        let session = store.addSession(workingDirectory: path)
+        let session = store.addSession(workingDirectory: path)!
         let firstTab = session.tree.root.firstLeafPane.tabs[0]
         #expect(firstTab.terminal.configuration.workingDirectory == path)
     }
@@ -97,7 +97,7 @@ struct BattyURLHandlerRoutingTests {
     /// passing empty string to libghostty which could override the shell default).
     @Test func addSessionWithEmptyCWDDoesNotSetWorkingDirectory() {
         let store = AppStateStore()
-        let session = store.addSession(workingDirectory: "")
+        let session = store.addSession(workingDirectory: "")!
         let firstTab = session.tree.root.firstLeafPane.tabs[0]
         // Empty explicit CWD is guarded out, and a fresh store has no source
         // session to inherit from, so the tab must carry no working directory.

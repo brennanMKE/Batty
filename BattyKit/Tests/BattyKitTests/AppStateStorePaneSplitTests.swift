@@ -53,7 +53,7 @@ struct AppStateStorePaneSplitTests {
     @Test func splitOfABackgroundSessionDoesNotChangeSelectionOrTheForegroundSessionsFocus() {
         let store = AppStateStore()
         let selected = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.windows[0].selectedSessionID = selected.id
 
         let selectedFocusedPaneBefore = selected.tree.focusedPaneID
@@ -79,7 +79,7 @@ struct AppStateStorePaneSplitTests {
     @Test func splitOfABackgroundSessionsFocusedPaneMovesThatSessionsOwnFocus() {
         let store = AppStateStore()
         let selected = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.windows[0].selectedSessionID = selected.id
         let backgroundTarget = background.focusedPane
         #expect(background.tree.focusedPaneID == backgroundTarget.id)
@@ -121,7 +121,7 @@ struct AppStateStorePaneSplitTests {
 
     @Test func focusedPaneIDFallbackFollowsSelectedSessionNotJustTheFirstOne() {
         let store = AppStateStore()
-        let second = store.addSession(title: "Second")
+        let second = store.addSession(title: "Second")!
         store.windows[0].selectedSessionID = second.id
 
         #expect(store.focusedPaneIDFallback() == second.tree.focusedPaneID)

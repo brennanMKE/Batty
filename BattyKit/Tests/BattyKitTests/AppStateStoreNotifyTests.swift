@@ -170,7 +170,7 @@ struct AppStateStoreNotifyTests {
     @Test func notifyingATabInABackgroundSessionDoesNotChangeSelectionOrForegroundFocus() {
         let store = AppStateStore()
         let selected = store.sessions[0]
-        let background = store.addSession(title: "Background")
+        let background = store.addSession(title: "Background")!
         store.windows[0].selectedSessionID = selected.id
         let selectedFocusedPaneBefore = selected.tree.focusedPaneID
         let selectedSessionIDBefore = store.windows[0].selectedSessionID

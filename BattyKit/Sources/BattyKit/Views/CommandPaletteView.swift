@@ -45,7 +45,10 @@ struct CommandPaletteView: View {
     @State private var selectedIndex = 0
     @FocusState private var queryFocused: Bool
 
-    private var allCommands: [PaletteCommand] {
+    // Not `private` (#0316): CommandPaletteViewTests exercises the
+    // no-window guard in the "Duplicate Session" action directly against
+    // this list rather than re-typing the closure's body in a test.
+    var allCommands: [PaletteCommand] {
         let shortcuts = ShortcutsStore.shared
         var cmds: [PaletteCommand] = []
 
@@ -64,7 +67,9 @@ struct CommandPaletteView: View {
             title: String(localized: "Duplicate Session"),
             keyHint: nil,
             action: {
-                let w = store.keyWindowRuntime() ?? store.windows[0]
+                // No window (#0316): store.windows[0] traps; nothing to
+                // duplicate into anyway, so no-op.
+                guard let w = store.keyWindowOrFirstRegistered() else { return }
                 if let id = w.selectedSessionID {
                     w.duplicateSession(id: id)
                 }
@@ -185,12 +190,21 @@ struct CommandPaletteView: View {
         cmd.action()
     }
 
-    private func dispatch(_ action: ShortcutAction) {
+    // Not `private` (#0316): CommandPaletteViewTests calls this directly to
+    // exercise the no-window guard against production code, not a copy of it.
+    func dispatch(_ action: ShortcutAction) {
         logger.info("command palette dispatching \(action.rawValue, privacy: .public)")
         // Target the key window's runtime for per-window actions (#0239:
-        // carried over from #0237). Falls back to windows[0] without a
-        // key window (previews, tests).
-        let window = store.keyWindowRuntime() ?? store.windows[0]
+        // carried over from #0237). Falls back to windows.first without a
+        // key window (previews, tests). No-ops (#0316) rather than trapping
+        // when windows is empty — this palette can only be showing over a
+        // real content window in practice, so that state is not expected to
+        // be reachable here, but guarding is cheap and the alternative is a
+        // trap.
+        guard let window = store.keyWindowOrFirstRegistered() else {
+            logger.notice("command palette dispatch: no window available; ignoring \(action.rawValue, privacy: .public)")
+            return
+        }
         switch action {
         case .newSession:
             window.addSession()

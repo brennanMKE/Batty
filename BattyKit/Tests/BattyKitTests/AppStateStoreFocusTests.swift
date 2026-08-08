@@ -22,7 +22,7 @@ struct AppStateStoreFocusTests {
 
     @Test func focusPaneFindsCorrectSessionAmongMany() {
         let store = AppStateStore()
-        let other = store.addSession()
+        let other = store.addSession()!
         other.tree.splitFocusedPane(direction: .horizontal)
         let originalFocus = other.tree.focusedPaneID
         let targetPane = other.tree.allPanes.first { $0.id != originalFocus }!
@@ -35,7 +35,7 @@ struct AppStateStoreFocusTests {
     @Test func focusPaneDoesNotChangeSelectedSession() {
         let store = AppStateStore()
         let firstSession = store.sessions[0]
-        let secondSession = store.addSession()
+        let secondSession = store.addSession()!
         store.selectedSessionID = firstSession.id
         let targetPane = secondSession.tree.allPanes[0]
 

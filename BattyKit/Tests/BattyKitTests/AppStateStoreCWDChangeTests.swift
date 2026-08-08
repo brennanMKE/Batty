@@ -205,7 +205,7 @@ struct AppStateStoreCWDChangeTests {
         #expect(sessionA.title == "Batty")
 
         // Create a new session while in Batty — it inherits the cwd and name.
-        let sessionB = store.addSession()
+        let sessionB = store.addSession()!
         let anchorB = sessionB.tree.root.firstLeafPane.tabs[0]
         #expect(sessionB.title == "Batty")
 
@@ -225,7 +225,7 @@ struct AppStateStoreCWDChangeTests {
         defer { cleanup(url) }
         store.nameCache.record(path: "/Users/test/Developer/Batty", name: "Batty")
 
-        let session = store.addSession(title: "Beta")
+        let session = store.addSession(title: "Beta")!
         #expect(session.titleOverride == true)
 
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]

@@ -99,7 +99,7 @@ struct AppStateStoreBellRoutingTests {
     @Test func bellFromUnfocusedTabIncrementsAllLevels() {
         let store = AppStateStore()
         let focusedSession = store.sessions[0]
-        let backgroundSession = store.addSession(title: "Background")
+        let backgroundSession = store.addSession(title: "Background")!
         store.selectedSessionID = focusedSession.id
 
         let pane = backgroundSession.tree.allPanes[0]
@@ -119,7 +119,7 @@ struct AppStateStoreBellRoutingTests {
     @Test func markBellSeenDecrementsAllLevels() {
         let store = AppStateStore()
         let focusedSession = store.sessions[0]
-        let backgroundSession = store.addSession()
+        let backgroundSession = store.addSession()!
         store.selectedSessionID = focusedSession.id
 
         let pane = backgroundSession.tree.allPanes[0]
@@ -139,7 +139,7 @@ struct AppStateStoreBellRoutingTests {
     @Test func markAllBellsSeenZerosCounters() {
         let store = AppStateStore()
         let focusedSession = store.sessions[0]
-        let backgroundSession = store.addSession()
+        let backgroundSession = store.addSession()!
         store.selectedSessionID = focusedSession.id
 
         let pane = backgroundSession.tree.allPanes[0]
@@ -178,7 +178,7 @@ struct AppStateStoreBellRoutingTests {
     @Test func jumpToBellEntrySelectsSessionPaneAndTab() {
         let store = AppStateStore()
         let focused = store.sessions[0]
-        let target = store.addSession()
+        let target = store.addSession()!
         store.selectedSessionID = focused.id
 
         let pane = target.tree.allPanes[0]

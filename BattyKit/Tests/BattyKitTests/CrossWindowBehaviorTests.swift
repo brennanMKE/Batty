@@ -17,6 +17,9 @@ import Testing
 ///   - #0311: keyWindow fallback resolves to nil (not a trap) when windows
 ///     is empty; terminate is deferred off the window-close call stack and
 ///     re-verifies its guards before firing.
+///   - #0316: every other windows[0] trap site reachable during that
+///     deliberately-empty-windows turn (initialWindowID, addSession,
+///     markActiveTabSeen, and the caller-less action shims) is now total.
 @MainActor
 struct CrossWindowBehaviorTests {
 
@@ -358,6 +361,95 @@ struct CrossWindowBehaviorTests {
 
         #expect(terminated == false,
                 "a window that appeared before the deferred check ran must abort termination")
+    }
+
+    // MARK: - #0316: remaining windows[0] trap sites, empty-windows turn
+
+    /// `initialWindowID` read `windows[0].id` with no fallback at all before
+    /// this issue's fix — the worst site in the inventory, since it's read
+    /// from `BattyApp`'s `WindowGroup` scene-body content closure and
+    /// `defaultValue` closure; trapping there would take down the whole
+    /// scene. Verifies both totality (no trap) and that the value stays
+    /// stable across the empty-windows turn, matching the doc comment's
+    /// claim that it reuses the original seed id rather than inventing a
+    /// fresh one.
+    @Test func initialWindowIDResolvesToSeedWhenNoWindowsRemain() {
+        let store = AppStateStore()
+        store.terminateHandler = {}
+        let onlyWindowID = store.windows[0].id
+        let seededID = store.initialWindowID
+        #expect(seededID == onlyWindowID,
+                "test setup: initialWindowID must equal the only window's id before removal")
+
+        store.removeWindow(id: onlyWindowID)
+        #expect(store.windows.isEmpty, "test setup: windows must be empty")
+
+        #expect(store.initialWindowID == seededID,
+                "initialWindowID must remain stable and not trap when windows is empty")
+    }
+
+    /// `addSession(title:workingDirectory:)` read
+    /// `anyContentWindowRuntime() ?? windows[0]` before this issue's fix.
+    /// Production path: an OS-delivered `batty://` URL routes here via
+    /// `BattyURLHandler.handle(_:store:)`. Verifies it degrades to `nil`
+    /// rather than trapping, and creates no phantom window/session as a
+    /// side effect.
+    @Test func addSessionReturnsNilWhenNoWindowsRemain() {
+        let store = AppStateStore()
+        store.terminateHandler = {}
+        let onlyWindowID = store.windows[0].id
+        store.removeWindow(id: onlyWindowID)
+        #expect(store.windows.isEmpty, "test setup: windows must be empty")
+
+        let result = store.addSession(workingDirectory: "/tmp")
+
+        #expect(result == nil,
+                "addSession must return nil, not trap, when no window exists")
+        #expect(store.windows.isEmpty,
+                "addSession must not create a phantom window when none remain")
+    }
+
+    /// `markActiveTabSeen()` read `(keyWindowRuntime() ?? windows[0])` before
+    /// this issue's fix. Production caller: `PaneView`'s
+    /// `onChange(of: pane.activeTabID)`. There is no tab left to mark seen
+    /// once `windows` is empty, so no-oping is correct behavior, not a
+    /// degraded one.
+    @Test func markActiveTabSeenNoOpsWhenNoWindowsRemain() {
+        let store = AppStateStore()
+        store.terminateHandler = {}
+        let onlyWindowID = store.windows[0].id
+        store.removeWindow(id: onlyWindowID)
+        #expect(store.windows.isEmpty, "test setup: windows must be empty")
+
+        store.markActiveTabSeen()  // must not trap
+
+        #expect(store.windows.isEmpty)
+    }
+
+    /// The six `AppStateStore` action shims with no production caller found
+    /// as of #0316 (`BattyCommands`/`BattyShortcuts`/views now call the
+    /// per-window `WindowRuntime` methods directly) all read
+    /// `(keyWindowRuntime() ?? windows[0])` before this issue's fix. Made
+    /// total anyway since it's cheap and removes the trap for any future
+    /// caller of this public API. Exercised together since none has a
+    /// production caller individually; each is still independently
+    /// mutation-tested (see #0316's Verification section).
+    @Test func callerLessActionShimsNoOpWhenNoWindowsRemain() {
+        let store = AppStateStore()
+        store.terminateHandler = {}
+        let onlyWindowID = store.windows[0].id
+        store.removeWindow(id: onlyWindowID)
+        #expect(store.windows.isEmpty, "test setup: windows must be empty")
+
+        store.moveSessions(fromOffsets: IndexSet(integer: 0), toOffset: 0)
+        store.selectSession(at: 0)
+        store.closeFocusedTab()
+        store.requestCloseFocusedTab()
+        store.confirmPendingClose()
+        store.cancelPendingClose()
+
+        #expect(store.windows.isEmpty,
+                "none of these action shims may create a phantom window when none remain")
     }
 
     // MARK: - onAllSessionsClosed wires to closeWindowCallback

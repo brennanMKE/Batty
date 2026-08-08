@@ -201,7 +201,7 @@ struct SessionNameCacheTests {
         let source = store.sessions[0]
         source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
 
-        let created = store.addSession()
+        let created = store.addSession()!
 
         #expect(created.title == "Batty")
     }
@@ -214,7 +214,7 @@ struct SessionNameCacheTests {
         let source = store.sessions[0]
         source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Unknown"
 
-        let created = store.addSession()
+        let created = store.addSession()!
 
         #expect(created.title == "Session 2")
     }
@@ -228,7 +228,7 @@ struct SessionNameCacheTests {
         let source = store.sessions[0]
         source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
 
-        let created = store.addSession(title: "Custom")
+        let created = store.addSession(title: "Custom")!
 
         #expect(created.title == "Custom")
     }

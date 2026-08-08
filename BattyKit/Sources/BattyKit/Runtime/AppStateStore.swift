@@ -102,13 +102,44 @@ public final class AppStateStore {
     /// era; grows in `#0237` when `New Window` is added.
     @ObservationIgnored public private(set) var windows: [WindowRuntime]
 
+    /// The id `init` seeded `windows[0]` with, captured independently of
+    /// `windows` itself (#0316). `initialWindowID` falls back to this when
+    /// `windows` is legitimately empty — the deliberate post-last-window-close
+    /// state `terminateIfLastContentWindowGone()`'s doc comment describes —
+    /// so a `WindowGroup` scene-body re-evaluation during that window can
+    /// never index an empty array. A scene body must stay pure (no writes,
+    /// no `Task` hops — `docs/swiftui-observation-rules.md`), so the fix has
+    /// to be "always have a valid value on hand," not "compute one on demand."
+    @ObservationIgnored private let seedWindowID: WindowID
+
     /// The `WindowID` that `BattyApp`'s `WindowGroup` must use as its
     /// `defaultValue`. Exposing it here lets SwiftUI reuse `windows[0]`
     /// (seeded in `init`) for the first on-screen window rather than creating
     /// a phantom second runtime — the root cause of the #0251 wrong-window bug
     /// where `batty <path>` sessions landed in a runtime SwiftUI never showed.
+    ///
+    /// Falls back to `seedWindowID` when `windows` is empty (#0316) rather
+    /// than indexing `windows[0]` unconditionally. That state is reachable
+    /// from a scene body while the app deliberately lives with `windows == []`
+    /// for one extra run-loop turn after the last content window closes (see
+    /// `terminateIfLastContentWindowGone`). Reusing the original seed id — not
+    /// a fresh `WindowID()` — keeps behavior identical to today whenever a
+    /// window exists, and if this is ever read in the empty-window turn,
+    /// resolves to the same id `windowRuntime(for:)` would recreate a runtime
+    /// for on demand, matching that method's existing lazy-creation contract
+    /// rather than inventing a new one.
+    ///
+    /// Load-bearing invariant, named here because a multi-window change
+    /// (#0234) could break it silently: reading this in the empty-window turn
+    /// *does* revive a runtime, because `windowRuntime(for:)` lazily creates
+    /// one and appends it to `windows`. That is safe only because it is
+    /// created with `sessions: []` and because `terminateIfLastContentWindowGone`
+    /// re-checks `windows.allSatisfy { $0.sessions.isEmpty }` rather than
+    /// `windows.isEmpty` — so a revived empty runtime does not cancel
+    /// termination. Revive with a session attached and the app would instead
+    /// stay alive headless.
     public var initialWindowID: WindowID {
-        windows[0].id
+        windows.first?.id ?? seedWindowID
     }
 
     /// Returns the `WindowRuntime` for `windowID`, creating one lazily if
@@ -520,6 +551,7 @@ public final class AppStateStore {
             window.closeWindowCallback?()
         }
         self.windows = [window]
+        self.seedWindowID = window.id
         footprintMonitor.onWarn = { [weak self] footprintBytes, step in
             self?.recordFootprintWarning(footprintBytes: footprintBytes, step: step)
         }
@@ -562,15 +594,29 @@ public final class AppStateStore {
         set { windows[0].pendingCloseRequest = newValue }
     }
 
+    /// Returns `nil` (#0316) only in the deliberate post-last-window-close
+    /// state — `windows` empty and no registered content window —
+    /// `terminateIfLastContentWindowGone()`'s doc comment describes: the
+    /// process is already committed to quitting, so there is no window left
+    /// to receive a new session, and creating one would fight the pending
+    /// termination rather than serve a request the user can even see acted
+    /// on. Both current callers (`BattyURLHandler`, a `batty://` URL delivered
+    /// in exactly that race, and `UITestDriver`) already discard the return
+    /// value or handle a missing match, so dropping the request with a log
+    /// line — rather than reviving a phantom window to hold it — does not
+    /// change observable behavior outside that one-runloop-turn race.
     @discardableResult
-    public func addSession(title: String? = nil, workingDirectory: String? = nil) -> SessionRuntime {
+    public func addSession(title: String? = nil, workingDirectory: String? = nil) -> SessionRuntime? {
         // anyContentWindowRuntime() tries keyWindowRuntime() first (the normal
         // in-app path), then any registered content window (the URL-handler
         // path when the key window hasn't been registered yet, e.g. batty <path>
         // delivered before WindowIDRegistrar fires — #0251). Falls back to
-        // windows[0] only in unit-test contexts where no NSWindow is registered
-        // and windows[0] is the canonical single runtime.
-        let target = anyContentWindowRuntime() ?? windows[0]
+        // windows.first only in unit-test contexts where no NSWindow is
+        // registered and windows[0] is the canonical single runtime.
+        guard let target = anyContentWindowRuntime() ?? windows.first else {
+            logger.error("addSession: no window available (windows empty); dropping request workingDirectory=\(workingDirectory ?? "<nil>", privacy: .public)")
+            return nil
+        }
         logger.debug("addSession: targeting windowID=\(target.id.value, privacy: .public) totalWindows=\(self.windows.count, privacy: .public) registeredContentWindows=\(self.nsWindowMap.count, privacy: .public) workingDirectory=\(workingDirectory ?? "<nil>", privacy: .public)")
         return target.addSession(title: title, workingDirectory: workingDirectory)
     }
@@ -599,12 +645,27 @@ public final class AppStateStore {
         windowOwning(sessionID: id)?.duplicateSession(id: id)
     }
 
+    /// No production caller today (#0316: views and `BattyCommands`/
+    /// `BattyShortcuts` call the per-window `WindowRuntime` method directly);
+    /// kept total anyway so a future caller of this public shim can't
+    /// reintroduce the #0311 trap class. No-ops (with a log line) when
+    /// `windows` is empty rather than acting on a phantom window.
     public func moveSessions(fromOffsets source: IndexSet, toOffset destination: Int) {
-        (keyWindowRuntime() ?? windows[0]).moveSessions(fromOffsets: source, toOffset: destination)
+        guard let window = keyWindowOrFirstRegistered() else {
+            logger.notice("moveSessions: no window available (windows empty); ignoring")
+            return
+        }
+        window.moveSessions(fromOffsets: source, toOffset: destination)
     }
 
+    /// No production caller today (#0316: see `moveSessions`'s note above;
+    /// same reasoning applies here).
     public func selectSession(at index: Int) {
-        (keyWindowRuntime() ?? windows[0]).selectSession(at: index)
+        guard let window = keyWindowOrFirstRegistered() else {
+            logger.notice("selectSession: no window available (windows empty); ignoring")
+            return
+        }
+        window.selectSession(at: index)
     }
 
     public func closeTab(id tabID: UUID) {
@@ -619,8 +680,15 @@ public final class AppStateStore {
         }
     }
 
+    /// Called by `UITestDriver` (#0316: env-var-gated, compiled into the
+    /// product but not a production caller today). Kept total anyway — see
+    /// `moveSessions`'s note above.
     public func closeFocusedTab() {
-        (keyWindowRuntime() ?? windows[0]).closeFocusedTab()
+        guard let window = keyWindowOrFirstRegistered() else {
+            logger.notice("closeFocusedTab: no window available (windows empty); ignoring")
+            return
+        }
+        window.closeFocusedTab()
     }
 
     public func requestCloseTab(id tabID: UUID) {
@@ -634,8 +702,13 @@ public final class AppStateStore {
         }
     }
 
+    /// No production caller today (#0316: see `moveSessions`'s note above).
     public func requestCloseFocusedTab() {
-        (keyWindowRuntime() ?? windows[0]).requestCloseFocusedTab()
+        guard let window = keyWindowOrFirstRegistered() else {
+            logger.notice("requestCloseFocusedTab: no window available (windows empty); ignoring")
+            return
+        }
+        window.requestCloseFocusedTab()
     }
 
     public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {
@@ -649,12 +722,22 @@ public final class AppStateStore {
         }
     }
 
+    /// No production caller today (#0316: see `moveSessions`'s note above).
     public func confirmPendingClose() {
-        (keyWindowRuntime() ?? windows[0]).confirmPendingClose()
+        guard let window = keyWindowOrFirstRegistered() else {
+            logger.notice("confirmPendingClose: no window available (windows empty); ignoring")
+            return
+        }
+        window.confirmPendingClose()
     }
 
+    /// No production caller today (#0316: see `moveSessions`'s note above).
     public func cancelPendingClose() {
-        (keyWindowRuntime() ?? windows[0]).cancelPendingClose()
+        guard let window = keyWindowOrFirstRegistered() else {
+            logger.notice("cancelPendingClose: no window available (windows empty); ignoring")
+            return
+        }
+        window.cancelPendingClose()
     }
 
     public func focusPane(id: UUID) {
@@ -710,13 +793,19 @@ public final class AppStateStore {
     }
 
     /// Marks the active tab in the key content window as seen. Falls back to
-    /// `windows[0]` when no key window is identified (unit-test context, or
-    /// before the first window registers). In multi-window production, the
-    /// `PaneView.onChange(of: pane.activeTabID)` call site uses this to clear
-    /// bells for whichever tab just became active in the key window — a tab
-    /// in a non-key window gaining a new active tab doesn't clear its bells.
+    /// `windows.first` when no key window is identified (unit-test context,
+    /// or before the first window registers), and no-ops when `windows` is
+    /// empty (#0316) — reachable from `PaneView`'s
+    /// `onChange(of: pane.activeTabID)` (`markActiveTabSeen` is also this
+    /// method's production caller) during the deliberate post-last-window-
+    /// close turn `terminateIfLastContentWindowGone()` describes. There is no
+    /// tab left to mark seen at that point, so silently no-oping is the
+    /// correct behavior, not a degraded one. In multi-window production, this
+    /// clears bells for whichever tab just became active in the key window —
+    /// a tab in a non-key window gaining a new active tab doesn't clear its
+    /// bells.
     public func markActiveTabSeen() {
-        (keyWindowRuntime() ?? windows[0]).markActiveTabSeen()
+        keyWindowOrFirstRegistered()?.markActiveTabSeen()
     }
 
     // MARK: - Bell event routing (global — searches across all windows)
