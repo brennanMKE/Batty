@@ -1,0 +1,725 @@
+<title>Git Status View — Design Mockup (#0304)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg-page: #f2f2f5;
+    --bg-pane: #ffffff;
+    --bg-header: #f7f7f9;
+    --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5;
+    --bg-diff-add: #e6f9ec;
+    --bg-diff-del: #fdecec;
+    --fg-primary: #1c1c1e;
+    --fg-secondary: #6b6b70;
+    --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed;
+    --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e;
+    --status-orange: #c9750b;
+    --status-red: #d33a3a;
+    --status-gray: #8a8a8e;
+    --diff-add-fg: #1a8a3e;
+    --diff-del-fg: #d33a3a;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-page: #17181b;
+      --bg-pane: #1e1f23;
+      --bg-header: #232429;
+      --bg-inset: #202126;
+      --bg-banner: #3a2c12;
+      --bg-diff-add: #102a18;
+      --bg-diff-del: #331313;
+      --fg-primary: #eceef0;
+      --fg-secondary: #9a9ba1;
+      --fg-tertiary: #6f7076;
+      --border: rgba(255,255,255,0.09);
+      --border-strong: rgba(255,255,255,0.16);
+      --accent: #5b8dff;
+      --accent-soft: rgba(91,141,255,0.16);
+      --status-green: #43c46d;
+      --status-orange: #e0a03f;
+      --status-red: #f16060;
+      --status-gray: #85868c;
+      --diff-add-fg: #4fce7c;
+      --diff-del-fg: #f07373;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg-page: #17181b; --bg-pane: #1e1f23; --bg-header: #232429; --bg-inset: #202126;
+    --bg-banner: #3a2c12; --bg-diff-add: #102a18; --bg-diff-del: #331313;
+    --fg-primary: #eceef0; --fg-secondary: #9a9ba1; --fg-tertiary: #6f7076;
+    --border: rgba(255,255,255,0.09); --border-strong: rgba(255,255,255,0.16);
+    --accent: #5b8dff; --accent-soft: rgba(91,141,255,0.16);
+    --status-green: #43c46d; --status-orange: #e0a03f; --status-red: #f16060; --status-gray: #85868c;
+    --diff-add-fg: #4fce7c; --diff-del-fg: #f07373;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+  }
+  :root[data-theme="light"] {
+    --bg-page: #f2f2f5; --bg-pane: #ffffff; --bg-header: #f7f7f9; --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5; --bg-diff-add: #e6f9ec; --bg-diff-del: #fdecec;
+    --fg-primary: #1c1c1e; --fg-secondary: #6b6b70; --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10); --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed; --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e; --status-orange: #c9750b; --status-red: #d33a3a; --status-gray: #8a8a8e;
+    --diff-add-fg: #1a8a3e; --diff-del-fg: #d33a3a;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .page {
+    font-family: var(--sans);
+    color: var(--fg-primary);
+    background: var(--bg-page);
+    padding: 28px 20px 60px;
+    min-width: 0;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  .intro h1 { font-size: 20px; margin: 0 0 4px; }
+  .intro p { font-size: 13px; color: var(--fg-secondary); margin: 0 0 18px; line-height: 1.5; }
+  .intro code { font-family: var(--mono); background: var(--bg-inset); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- state tabs (CSS-only, radio-driven) ---- */
+  .tabs input[type="radio"] { display: none; }
+  .tabbar {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 4px;
+    background: var(--bg-inset);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tabbar label {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--fg-secondary);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .tabpanel { display: none; }
+  #s1:checked ~ .tabbar label[for="s1"],
+  #s2:checked ~ .tabbar label[for="s2"],
+  #s3:checked ~ .tabbar label[for="s3"],
+  #s4:checked ~ .tabbar label[for="s4"],
+  #s5:checked ~ .tabbar label[for="s5"] {
+    background: var(--bg-pane);
+    color: var(--fg-primary);
+    box-shadow: var(--shadow);
+  }
+  #s1:checked ~ .panels #p1,
+  #s2:checked ~ .panels #p2,
+  #s3:checked ~ .panels #p3,
+  #s4:checked ~ .panels #p4,
+  #s5:checked ~ .panels #p5 { display: block; }
+
+  /* ---- pane frame: mirrors PaneView's RoundedRectangle(cornerRadius:4) + focus overlay ---- */
+  .pane-frame {
+    background: var(--bg-pane);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+  }
+  .kind-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-primary);
+    padding: 3px 9px 3px 7px;
+    border-radius: 6px;
+    background: var(--accent-soft);
+  }
+  .kind-chip svg { width: 13px; height: 13px; fill: var(--accent); }
+  .pane-header .spacer { flex: 1; }
+  .icon-btn {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    color: var(--fg-secondary);
+    cursor: pointer;
+  }
+  .icon-btn:hover { background: var(--border); color: var(--fg-primary); }
+  .icon-btn svg { width: 13px; height: 13px; fill: currentColor; }
+  /* Separates the directory/refresh actions from the pane-level chrome
+     (drag handle, hide) borrowed from PaneView's existing tab-bar row —
+     same actions, relocated header, not a new interaction. */
+  .header-divider { width: 1px; height: 16px; background: var(--border-strong); margin: 0 2px; }
+
+  .repo-header {
+    padding: 10px 14px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .repo-title-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .repo-name { font-size: 14px; font-weight: 600; }
+  .repo-path { font-family: var(--mono); font-size: 11px; color: var(--fg-tertiary); }
+  .repo-meta-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  .branch-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500;
+    color: var(--fg-primary);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    padding: 3px 8px; border-radius: 6px;
+  }
+  .branch-pill svg { width: 11px; height: 11px; fill: var(--fg-secondary); }
+  .ab { font-size: 11px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+  .ab b { color: var(--fg-primary); font-weight: 600; }
+  .badge {
+    font-size: 10.5px; font-weight: 600;
+    padding: 2px 7px; border-radius: 5px;
+    color: var(--fg-secondary);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+  }
+  .badge.stash { color: var(--accent); border-color: transparent; background: var(--accent-soft); }
+
+  .state-banner {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin: 10px 14px 0;
+    padding: 9px 11px;
+    border-radius: 7px;
+    background: var(--bg-banner);
+    border: 1px solid color-mix(in srgb, var(--status-orange) 35%, transparent);
+  }
+  .state-banner svg { width: 15px; height: 15px; fill: var(--status-orange); flex-shrink: 0; margin-top: 1px; }
+  .state-banner .title { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); }
+  .state-banner .sub { font-size: 11.5px; color: var(--fg-secondary); margin-top: 1px; }
+
+  .groups { padding: 8px 6px 12px; }
+  details.group { margin: 4px 6px; }
+  details.group > summary {
+    list-style: none;
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    font-size: 12px; font-weight: 600;
+    color: var(--fg-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary:hover { background: var(--bg-inset); }
+  details.group > summary .chevron {
+    width: 9px; height: 9px; transition: transform .12s ease;
+    fill: var(--fg-tertiary);
+  }
+  details.group[open] > summary .chevron { transform: rotate(90deg); }
+  details.group > summary .count {
+    font-weight: 500; color: var(--fg-tertiary);
+  }
+
+  .file-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 5px 8px 5px 26px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .file-row:hover { background: var(--bg-inset); }
+  .file-row.open-peek { background: var(--accent-soft); }
+  .status-letter {
+    width: 17px; height: 17px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    color: #fff;
+  }
+  .status-letter.M { background: var(--status-orange); }
+  .status-letter.A { background: var(--status-green); }
+  .status-letter.D { background: var(--status-red); }
+  .status-letter.R { background: var(--accent); }
+  .status-letter.Q { background: var(--status-gray); font-size: 8px; }
+  /* Mockup limitation: CSS `text-overflow: ellipsis` only truncates at the
+     end of the string. The real SwiftUI view truncates in the *middle*
+     (see git-status-view.md §2, matching BellFeedRow's convention) so the
+     filename itself stays visible even when the containing path is long —
+     approximated here with end-truncation, not a design change. */
+  .file-path { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-path b { font-weight: 600; }
+  .file-path .dir { color: var(--fg-tertiary); font-weight: 400; }
+  .file-path .arrow { color: var(--fg-tertiary); margin: 0 3px; }
+
+  .diff-peek {
+    margin: 2px 8px 8px 26px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.55;
+  }
+  .diff-peek .hunk-head {
+    padding: 4px 10px;
+    background: var(--bg-inset);
+    color: var(--fg-tertiary);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+  /* Long diff lines scroll horizontally within the peek rather than
+     clipping — the peek's own rounded corners still clip via the parent
+     .diff-peek's overflow:hidden; this inner container is the one that
+     actually scrolls. */
+  .diff-body { overflow-x: auto; }
+  .diff-line { padding: 0 10px 0 34px; position: relative; white-space: pre; width: max-content; min-width: 100%; }
+  .diff-line::before { position: absolute; left: 10px; }
+  .diff-line.add { background: var(--bg-diff-add); color: var(--diff-add-fg); }
+  .diff-line.add::before { content: "+"; }
+  .diff-line.del { background: var(--bg-diff-del); color: var(--diff-del-fg); }
+  .diff-line.del::before { content: "–"; }
+  .diff-line.ctx { color: var(--fg-secondary); }
+  .diff-line.ctx::before { content: " "; }
+
+  .empty-state, .loading-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 46px 24px 40px;
+    gap: 8px;
+  }
+  .empty-state svg, .loading-state svg { width: 30px; height: 30px; fill: var(--fg-tertiary); margin-bottom: 6px; }
+  .empty-state .title, .loading-state .title { font-size: 13.5px; font-weight: 600; }
+  .empty-state .sub, .loading-state .sub { font-size: 12px; color: var(--fg-secondary); max-width: 320px; line-height: 1.5; }
+  .empty-state .pathline { font-family: var(--mono); font-size: 11px; color: var(--fg-tertiary); margin-top: 2px; }
+  .cta-btn {
+    margin-top: 10px;
+    font-size: 12px; font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .refreshing-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--fg-secondary);
+    margin-left: 4px;
+  }
+  .spinner {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-strong);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .stale-note {
+    margin: 8px 14px 0;
+    font-size: 11px; color: var(--fg-tertiary);
+    font-style: italic;
+  }
+
+  /* ---- annotations ---- */
+  .note {
+    display: flex; gap: 8px;
+    font-size: 12px; line-height: 1.5;
+    color: var(--fg-secondary);
+    margin: 10px 4px 0;
+    padding: 8px 10px;
+    background: var(--bg-inset);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+  }
+  .note b { color: var(--fg-primary); }
+  .note-mark {
+    flex-shrink: 0;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .notes-col { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  .context-hint {
+    font-size: 11px; color: var(--fg-tertiary); font-style: italic;
+    margin: 2px 14px 10px;
+  }
+
+  footer.legend {
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--fg-secondary);
+    display: flex; gap: 18px; flex-wrap: wrap;
+  }
+  footer.legend .item { display: flex; align-items: center; gap: 5px; }
+</style>
+
+<div class="page">
+  <div class="wrap">
+    <div class="intro">
+      <h1>Git Status view — visual design (#0304, phase 1)</h1>
+      <p>
+        Mockup of the first non-terminal Pane kind (<code>git-status</code>), read-only in this ship.
+        Switch between the five states below — this is what review should focus on: does the layout read
+        as a native Batty pane, does the information hierarchy make sense, and is the read-only interaction
+        model (disclosure + selection + inline diff peek, no staging/discard) the right first cut.
+        See <code>docs/design/git-status-view.md</code> for the reasoning and source citations behind each choice.
+      </p>
+    </div>
+
+    <div class="tabs">
+      <input type="radio" name="state" id="s1" checked>
+      <input type="radio" name="state" id="s2">
+      <input type="radio" name="state" id="s3">
+      <input type="radio" name="state" id="s4">
+      <input type="radio" name="state" id="s5">
+
+      <div class="tabbar">
+        <label for="s1">1 · Clean repo</label>
+        <label for="s2">2 · Mixed changes</label>
+        <label for="s3">3 · Mid-rebase / conflict</label>
+        <label for="s4">4 · Not a repository</label>
+        <label for="s5">5 · Large repo / refreshing</label>
+      </div>
+
+      <div class="panels">
+
+        <!-- ============ STATE 1: CLEAN ============ -->
+        <div class="tabpanel" id="p1">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5A1.5 1.5 0 1 1 6 6a1.5 1.5 0 0 1-1.5 1.5zm5 5A1.5 1.5 0 1 1 11 11a1.5 1.5 0 0 1-1.5 1.5zm0-8.5A1.5 1.5 0 1 1 11 2.5 1.5 1.5 0 0 1 9.5 4zM6 7.5h4v1H6z"/></svg>
+                Git Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 8 2c1.5 0 2.85.59 3.86 1.54L9 6.5H16V0z"/></svg>
+              </div>
+              <div class="icon-btn" title="Change Directory…">
+                <svg viewBox="0 0 16 16"><path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.17a1.5 1.5 0 0 1 1.06.44l1.06 1.06H13A1.5 1.5 0 0 1 14.5 4.5v8A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9.5z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="repo-header">
+              <div class="repo-title-row">
+                <span class="repo-name">Batty</span>
+                <span class="repo-path">~/Developer/brennanMKE/Batty</span>
+              </div>
+              <div class="repo-meta-row">
+                <span class="branch-pill">
+                  <svg viewBox="0 0 16 16"><path d="M5 3a2 2 0 1 0-2 2v4a4 4 0 0 0 4 4h1a2 2 0 1 0 0-2H7a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2z"/></svg>
+                  main
+                </span>
+                <span class="ab">up to date with <b>origin/main</b></span>
+              </div>
+            </div>
+            <div class="groups">
+              <div class="empty-state">
+                <svg viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14zm-1-4.7 4-4-1-1-3 3-1.5-1.5-1 1z"/></svg>
+                <div class="title">Working tree clean</div>
+                <div class="sub">Nothing to commit — the branch matches its upstream and the index has no staged changes.</div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Header mirrors <code>PaneView</code>'s existing icon language</b> — 22×22pt borderless SF-Symbol buttons at the trailing edge. No tab bar exists for a non-terminal pane, so this row is the "Git Status" kind label instead. After the divider, the drag-handle and hide (eye) icons are the <i>same two actions</i> every terminal pane already has — relocated here from the tab-bar row they currently live in, since that row only exists for `.terminal` panes. Without this, a Git Status pane would have no mouse-reachable way to hide itself or start a pane-swap drag.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Clean state uses the same empty-state shape as <code>BellFeedView</code>/<code>SessionDetailView</code></b> (icon + title + one-line description) rather than inventing a new pattern — consistent with the rest of the app when there's nothing to show.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 2: MIXED CHANGES ============ -->
+        <div class="tabpanel" id="p2">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5A1.5 1.5 0 1 1 6 6a1.5 1.5 0 0 1-1.5 1.5zm5 5A1.5 1.5 0 1 1 11 11a1.5 1.5 0 0 1-1.5 1.5zm0-8.5A1.5 1.5 0 1 1 11 2.5 1.5 1.5 0 0 1 9.5 4zM6 7.5h4v1H6z"/></svg>
+                Git Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 8 2c1.5 0 2.85.59 3.86 1.54L9 6.5H16V0z"/></svg>
+              </div>
+              <div class="icon-btn" title="Change Directory…">
+                <svg viewBox="0 0 16 16"><path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.17a1.5 1.5 0 0 1 1.06.44l1.06 1.06H13A1.5 1.5 0 0 1 14.5 4.5v8A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9.5z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="repo-header">
+              <div class="repo-title-row">
+                <span class="repo-name">Batty</span>
+                <span class="repo-path">~/Developer/brennanMKE/Batty</span>
+                <span class="badge">Worktree</span>
+              </div>
+              <div class="repo-meta-row">
+                <span class="branch-pill">
+                  <svg viewBox="0 0 16 16"><path d="M5 3a2 2 0 1 0-2 2v4a4 4 0 0 0 4 4h1a2 2 0 1 0 0-2H7a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2z"/></svg>
+                  issue/0304
+                </span>
+                <span class="ab"><b>↑2</b> ahead <b>↓1</b> behind <b>origin/issue/0304</b></span>
+                <span class="badge stash">2 stashed</span>
+              </div>
+            </div>
+
+            <div class="groups">
+              <details class="group" open>
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Staged Changes <span class="count">(2)</span></summary>
+                <div class="file-row">
+                  <div class="status-letter A">A</div>
+                  <div class="file-path"><span class="dir">docs/design/</span><b>git-status-view.md</b></div>
+                </div>
+                <div class="file-row open-peek">
+                  <div class="status-letter M">M</div>
+                  <div class="file-path"><span class="dir">BattyKit/Sources/BattyKit/Runtime/</span><b>WindowRuntime.swift</b></div>
+                </div>
+                <div class="diff-peek">
+                  <div class="hunk-head">@@ -401,6 +401,7 @@ public func hidePane(id: UUID) {</div>
+                  <div class="diff-body">
+                    <div class="diff-line ctx">            pane.isHidden = true</div>
+                    <div class="diff-line add">            content(for: pane.id)?.setVisible(false)</div>
+                    <div class="diff-line ctx">            session.isPaneListExpanded = true</div>
+                    <div class="diff-line del">            // TODO: non-terminal teardown hook, this one deliberately overlong so the peek's horizontal scroll (not clip) is visible in review — a long line should scroll within the peek, never get cut off mid-token.</div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="group" open>
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Changes <span class="count">(1)</span></summary>
+                <div class="file-row">
+                  <div class="status-letter M">M</div>
+                  <div class="file-path"><b>Concepts.md</b></div>
+                </div>
+              </details>
+
+              <details class="group">
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Untracked Files <span class="count">(3)</span></summary>
+                <div class="file-row">
+                  <div class="status-letter Q">??</div>
+                  <div class="file-path"><span class="dir">docs/design/</span><b>git-status-view.html</b></div>
+                </div>
+                <div class="file-row">
+                  <div class="status-letter Q">??</div>
+                  <div class="file-path"><b>.DS_Store</b></div>
+                </div>
+                <div class="file-row">
+                  <div class="status-letter Q">??</div>
+                  <div class="file-path"><span class="dir">scratch/</span><b>notes.txt</b></div>
+                </div>
+              </details>
+            </div>
+            <div class="context-hint">Right-click a row for Reveal in Finder / Copy Path / Open in Default Editor — no git-mutating actions in this cut.</div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Disclosure + selection are the "Mac app, not a nicer-font TUI" payoff</b> — three independently collapsible groups instead of one flat <code>git status</code> block, and clicking a row (here, <code>WindowRuntime.swift</code>) expands an inline diff peek in place rather than opening a new window.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Status-letter colors reuse the terminal's own semantic vocabulary</b> — green/orange/red/blue for added/modified/deleted/renamed — the same red-green-yellow meaning <code>ChromePalette</code> deliberately keeps <i>out</i> of chrome coloring elsewhere in the app, because here that meaning is exactly the point.</span></div>
+            <div class="note"><span class="note-mark">3</span><span><b>Worktree/stash/ahead-behind all come from one <code>git --no-optional-locks status --porcelain=v2 --branch --show-stash</code> call</b> — no extra subprocess per header fact, and <code>--no-optional-locks</code> means this refresh never takes <code>.git/index.lock</code>, so it can't collide with a <code>git</code> command the user runs in the terminal pane next to it.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 3: REBASE / CONFLICT ============ -->
+        <div class="tabpanel" id="p3">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5A1.5 1.5 0 1 1 6 6a1.5 1.5 0 0 1-1.5 1.5zm5 5A1.5 1.5 0 1 1 11 11a1.5 1.5 0 0 1-1.5 1.5zm0-8.5A1.5 1.5 0 1 1 11 2.5 1.5 1.5 0 0 1 9.5 4zM6 7.5h4v1H6z"/></svg>
+                Git Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 8 2c1.5 0 2.85.59 3.86 1.54L9 6.5H16V0z"/></svg>
+              </div>
+              <div class="icon-btn" title="Change Directory…">
+                <svg viewBox="0 0 16 16"><path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.17a1.5 1.5 0 0 1 1.06.44l1.06 1.06H13A1.5 1.5 0 0 1 14.5 4.5v8A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9.5z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="repo-header">
+              <div class="repo-title-row">
+                <span class="repo-name">Batty</span>
+                <span class="repo-path">~/Developer/brennanMKE/Batty</span>
+              </div>
+              <div class="repo-meta-row">
+                <span class="branch-pill">
+                  <svg viewBox="0 0 16 16"><path d="M8 1l1.5 4.6H14l-3.75 2.7L11.7 13 8 10.3 4.3 13l1.45-4.7L2 5.6h4.5z"/></svg>
+                  detached HEAD @ a91f3c2
+                </span>
+              </div>
+            </div>
+
+            <div class="state-banner">
+              <svg viewBox="0 0 16 16"><path d="M8.98 1.6a1.13 1.13 0 0 0-1.96 0L.9 13a1.13 1.13 0 0 0 .98 1.7h12.24a1.13 1.13 0 0 0 .98-1.7L8.98 1.6zM8 5.5a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 5.5zm0 6.75a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z"/></svg>
+              <div>
+                <div class="title">Rebase in progress — step 2 of 5</div>
+                <div class="sub">1 file has a merge conflict. Resolve it in your terminal, then continue the rebase.</div>
+              </div>
+            </div>
+
+            <div class="groups">
+              <details class="group" open>
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Conflicted <span class="count">(1)</span></summary>
+                <div class="file-row">
+                  <div class="status-letter D" style="background: var(--status-red);">U</div>
+                  <div class="file-path"><span class="dir">BattyKit/Sources/BattyKit/Runtime/</span><b>PaneRuntime.swift</b></div>
+                </div>
+              </details>
+              <details class="group" open>
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Staged Changes <span class="count">(1)</span></summary>
+                <div class="file-row">
+                  <div class="status-letter M">M</div>
+                  <div class="file-path"><span class="dir">BattyKit/Sources/BattyKit/Model/</span><b>SplitTree.swift</b></div>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>The state banner is deliberately louder than a file row</b> — an accent/warning-tinted block above the file lists, not just another line in a table — because this is the state most likely to need the user's attention (an unresolved conflict blocking further work). Read from <code>.git/rebase-merge</code>/<code>MERGE_HEAD</code> presence, not from <code>git status</code> porcelain output, which doesn't report it.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Still read-only</b> — the view surfaces the conflict; resolving it stays a terminal/editor action in this cut, consistent with §3's decision to defer any git-mutating affordance.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 4: NOT A REPO ============ -->
+        <div class="tabpanel" id="p4">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5A1.5 1.5 0 1 1 6 6a1.5 1.5 0 0 1-1.5 1.5zm5 5A1.5 1.5 0 1 1 11 11a1.5 1.5 0 0 1-1.5 1.5zm0-8.5A1.5 1.5 0 1 1 11 2.5 1.5 1.5 0 0 1 9.5 4zM6 7.5h4v1H6z"/></svg>
+                Git Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 8 2c1.5 0 2.85.59 3.86 1.54L9 6.5H16V0z"/></svg>
+              </div>
+              <div class="icon-btn" title="Change Directory…">
+                <svg viewBox="0 0 16 16"><path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.17a1.5 1.5 0 0 1 1.06.44l1.06 1.06H13A1.5 1.5 0 0 1 14.5 4.5v8A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9.5z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="groups">
+              <div class="empty-state">
+                <svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zm0 12.5A4.5 4.5 0 1 1 8 3.5a4.5 4.5 0 0 1 0 9zM8 6v3M8 10.5v.01"/></svg>
+                <div class="title">Not a Git repository</div>
+                <div class="sub">This directory (or none of its parents) is tracked by Git.</div>
+                <div class="pathline">~/Downloads/exported-project</div>
+                <div class="cta-btn">Change Directory…</div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Same empty-state shape as the clean-repo state</b>, so the two non-error, non-changed states read as a family — the resolved path stays visible so the user can see exactly what was checked, and "Change Directory…" is the one recovery action, matching §1's "frozen, not live" design (retargeting is always a deliberate, explicit step).</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 5: LARGE REPO / LOADING ============ -->
+        <div class="tabpanel" id="p5">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5A1.5 1.5 0 1 1 6 6a1.5 1.5 0 0 1-1.5 1.5zm5 5A1.5 1.5 0 1 1 11 11a1.5 1.5 0 0 1-1.5 1.5zm0-8.5A1.5 1.5 0 1 1 11 2.5 1.5 1.5 0 0 1 9.5 4zM6 7.5h4v1H6z"/></svg>
+                Git Status
+              </div>
+              <span class="refreshing-pill"><span class="spinner"></span>Refreshing…</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 8 2c1.5 0 2.85.59 3.86 1.54L9 6.5H16V0z"/></svg>
+              </div>
+              <div class="icon-btn" title="Change Directory…">
+                <svg viewBox="0 0 16 16"><path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.17a1.5 1.5 0 0 1 1.06.44l1.06 1.06H13A1.5 1.5 0 0 1 14.5 4.5v8A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9.5z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="repo-header">
+              <div class="repo-title-row">
+                <span class="repo-name">monorepo</span>
+                <span class="repo-path">~/Developer/acme/monorepo</span>
+              </div>
+              <div class="repo-meta-row">
+                <span class="branch-pill">
+                  <svg viewBox="0 0 16 16"><path d="M5 3a2 2 0 1 0-2 2v4a4 4 0 0 0 4 4h1a2 2 0 1 0 0-2H7a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2z"/></svg>
+                  main
+                </span>
+                <span class="ab">up to date with <b>origin/main</b></span>
+              </div>
+            </div>
+            <div class="stale-note">Showing results from 4s ago while a new scan completes — a build is writing under <code>build/</code>.</div>
+            <div class="groups">
+              <details class="group" open>
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Changes <span class="count">(1)</span></summary>
+                <div class="file-row">
+                  <div class="status-letter M">M</div>
+                  <div class="file-path"><span class="dir">packages/core/src/</span><b>index.ts</b></div>
+                </div>
+              </details>
+              <details class="group">
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Untracked Files <span class="count">(1)</span></summary>
+                <div class="file-row">
+                  <div class="status-letter Q">??</div>
+                  <div class="file-path"><span class="dir">packages/core/</span><b>build/</b></div>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Stale-but-valid data stays visible and interactive</b> during a slow rescan — a small "Refreshing…" pill in the header plus a one-line note, not a spinner replacing the whole pane. Debounced FSEvents collapse the build's thousands of file-write events into a single rescan; an in-flight <code>git status</code> is never overlapped by a second one.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Only one <code>build/</code> row, not thousands of files inside it</b> — <code>--porcelain=v2</code> without <code>--untracked-files=all</code> reports an untracked directory as one entry, the same way plain <code>git status</code> already does, so cost stays bounded to what the user's own terminal would already pay.</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <footer class="legend">
+      <span class="item"><span class="status-letter M" style="width:14px;height:14px;font-size:8px;">M</span> Modified</span>
+      <span class="item"><span class="status-letter A" style="width:14px;height:14px;font-size:8px;">A</span> Added / staged</span>
+      <span class="item"><span class="status-letter D" style="width:14px;height:14px;font-size:8px;">D</span> Deleted</span>
+      <span class="item"><span class="status-letter R" style="width:14px;height:14px;font-size:8px;">R</span> Renamed</span>
+      <span class="item"><span class="status-letter Q" style="width:14px;height:14px;font-size:7px;">??</span> Untracked</span>
+      <span class="item">Read-only in this ship — no staging, unstaging, or discard.</span>
+    </footer>
+  </div>
+</div>

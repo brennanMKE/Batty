@@ -48,6 +48,17 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   prove ahead of any concrete non-terminal view existing. No `PaneRuntime`/
   `Pane`/`PaneView` source ships with this document — read it before
   implementing #0304/#0305/#0313/#0314.
+- [`design/`](design/) — visual designs for concrete non-terminal Pane
+  kinds, drafted and approved before their implementation per the #0301
+  umbrella's design-first gate. [`design/git-status-view.md`](design/git-status-view.md)
+  (#0304 phase 1) settles which directory the Git Status view monitors,
+  what it shows, why it's read-only for the first ship, and how it stays
+  current (FSEvents + debounced `git status`, wired into the
+  `PaneContentLifecycle` contract from `pane-view-lifecycle.md`), with a
+  companion self-contained mockup at
+  [`design/git-status-view.html`](design/git-status-view.html) covering
+  five states (clean, mixed changes, mid-rebase/conflict, not-a-repo,
+  large-repo/loading). No code ships with either file.
 - [`terminal-pane-requirements.md`](terminal-pane-requirements.md) — the
   non-negotiable behaviors every pane must preserve: pointer input, keyboard
   input, file/text drop onto the terminal, overlay rules, and the AppKit
