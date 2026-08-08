@@ -171,6 +171,69 @@ trap restore_active_xcconfig EXIT
 
 "$REPO/scripts/set-environment.sh" Beta
 
+# #0317: xcodebuild does not clean build products it no longer manages, so
+# when a dependency relocates or renames an emitted header (as libghostty-spm
+# did going 1.2.2 -> 1.3.2, #0286), a stale copy lingers in this script's
+# long-lived $DERIVED_DATA tree and can shadow the current one, silently
+# compiling against a previous revision. Guard against that by comparing the
+# package-pin inputs against a stamp file in $BUILD_ROOT (gitignored) and
+# wiping $DERIVED_DATA whenever they've changed (or there's no stamp yet --
+# first run, or a hand-cleared stamp, must clean rather than silently skip
+# the guard).
+#
+# RESOLVED_INPUTS is the union of every file that can move a pin, not just
+# the resolved-pins file, because Batty.xcodeproj/.../Package.resolved is
+# NOT build-maintained -- issues/0286.md's own Gotchas record that
+# `xcodebuild -resolvePackageDependencies` resolves into DerivedData only and
+# does not write back to it, so it changes only when someone remembers to
+# hand-edit it. Git history has real bumps that touched BattyKit/Package.swift
+# + BattyKit/Package.resolved (the `swift package resolve` shape) WITHOUT
+# touching the xcodeproj file at all -- hashing only the xcodeproj file would
+# have missed those permanently, since nothing ever re-touches it afterward.
+# BattyKit/Package.swift is the leading indicator: it's human-authored and
+# always changes first for the `revision:`-pinned dependencies (incl.
+# libghostty-spm at BattyKit/Package.swift:31-33). Hashing all three catches
+# every bump shape seen in history. Residual gap, accepted as out of scope:
+# a range-pinned dependency (e.g. Sparkle) can re-resolve to a newer release
+# with none of these three files changing -- nothing short of re-resolving on
+# every build would close that, and that defeats the point of the guard.
+RESOLVED_INPUTS=(
+    "$REPO/BattyKit/Package.swift"
+    "$REPO/BattyKit/Package.resolved"
+    "$REPO/Batty.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+)
+STAMP_FILE="$BUILD_ROOT/.package-resolved-stamp"
+
+mkdir -p "$BUILD_ROOT"
+
+for f in "${RESOLVED_INPUTS[@]}"; do
+    if [[ ! -f "$f" ]]; then
+        print -u2 "build-beta.sh: missing package-pin input: $f"
+        print -u2 "(the #0317 stale-products guard cannot be evaluated; refusing to build)"
+        exit 1
+    fi
+done
+
+CURRENT_RESOLVED_HASH="$(cat "${RESOLVED_INPUTS[@]}" | shasum -a 256 | awk '{print $1}')"
+
+STORED_RESOLVED_HASH=""
+if [[ -f "$STAMP_FILE" ]]; then
+    STORED_RESOLVED_HASH="$(<"$STAMP_FILE")"
+fi
+
+if [[ "$CURRENT_RESOLVED_HASH" == "$STORED_RESOLVED_HASH" ]]; then
+    print "==> Resolved package pins unchanged since last Beta build — keeping $DERIVED_DATA."
+else
+    if [[ -d "$DERIVED_DATA" ]]; then
+        print "==> Resolved package pins changed (or no stamp found) — clearing $DERIVED_DATA"
+        print "    to avoid stale build products shadowing a relocated/renamed header (#0317)."
+        rm -rf "$DERIVED_DATA"
+    else
+        print "==> No stamp found and no existing $DERIVED_DATA — nothing to clean, recording stamp."
+    fi
+    print "$CURRENT_RESOLVED_HASH" > "$STAMP_FILE"
+fi
+
 SIGN_FLAGS=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
 if (( SIGN )); then
     print "==> --sign: building with Automatic (Developer ID) signing."
