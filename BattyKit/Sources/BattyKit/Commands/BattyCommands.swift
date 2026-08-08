@@ -305,6 +305,14 @@ public struct BattyCommands: Commands {
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
             .disabled(keyWindow?.selectedSession == nil)
 
+            Button {
+                ExitDispatcher.sendExit(store: store)
+            } label: {
+                Label("Exit Shell", systemImage: "power")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .exitShell))
+            .disabled(focusedPane?.activeTab == nil)
+
             Divider()
 
             Button {

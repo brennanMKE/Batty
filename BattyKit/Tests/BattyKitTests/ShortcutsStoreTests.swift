@@ -96,6 +96,31 @@ struct ShortcutsStoreTests {
         #expect(store.binding(for: .newSession) == ShortcutAction.newSession.defaultBinding)
     }
 
+    @Test func exitShellIsInCatalogWithADistinctDefaultBinding() {
+        #expect(ShortcutAction.allCases.contains(.exitShell))
+        #expect(!ShortcutAction.exitShell.displayName.isEmpty)
+
+        let expected = ShortcutBinding(key: "x", modifiers: EventModifiers([.command, .shift]).rawValue)
+        #expect(ShortcutAction.exitShell.defaultBinding == expected)
+        #expect(!ShortcutsStore.isReserved(ShortcutAction.exitShell.defaultBinding))
+
+        // Must not collide with the "Cut" chord (⌘X) the shortcut was
+        // deliberately chosen to avoid (#0309).
+        let cut = ShortcutBinding(key: "x", modifiers: EventModifiers([.command]).rawValue)
+        #expect(ShortcutAction.exitShell.defaultBinding != cut)
+    }
+
+    @Test func everyActionHasAUniqueDefaultBinding() {
+        var seen: [ShortcutBinding: ShortcutAction] = [:]
+        for action in ShortcutAction.allCases {
+            let binding = action.defaultBinding
+            if let existing = seen[binding] {
+                Issue.record("\(action) and \(existing) share default binding \(binding)")
+            }
+            seen[binding] = action
+        }
+    }
+
     @Test func unknownActionIdsInPersistedBlobAreIgnored() throws {
         let defaults = makeDefaults()
         let blob: [String: ShortcutBinding] = [

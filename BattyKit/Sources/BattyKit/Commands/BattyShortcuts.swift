@@ -160,6 +160,8 @@ public enum BattyShortcuts {
             NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
         case .themeSelector:
             NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
+        case .exitShell:
+            ExitDispatcher.sendExit(store: appStore)
         case .newWindow:
             // Already handled above; unreachable.
             break

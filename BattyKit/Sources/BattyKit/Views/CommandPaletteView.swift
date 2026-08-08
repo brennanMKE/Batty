@@ -256,6 +256,8 @@ struct CommandPaletteView: View {
             NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
         case .newWindow:
             AppStateStore.shared.openWindowAction?()
+        case .exitShell:
+            ExitDispatcher.sendExit(store: store)
         }
     }
 }

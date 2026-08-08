@@ -54,4 +54,26 @@ struct CommandPaletteViewActionTests {
         #expect(store.windows.isEmpty,
                 "dispatch(_:) must not create a phantom window when none remain")
     }
+
+    @Test func dispatchExitShellNoOpsWhenNoWindowsRemain() {
+        let store = makeStoreWithNoWindows()
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+
+        // .exitShell routes through ExitDispatcher, which resolves
+        // store.keyWindowOrFirstRegistered(); must not trap or create a
+        // phantom window when none remain (#0309).
+        view.dispatch(.exitShell)
+
+        #expect(store.windows.isEmpty,
+                "dispatch(.exitShell) must not create a phantom window when none remain")
+    }
+
+    @Test func dispatchExitShellDoesNotTrapWhenTerminalIsFocused() {
+        let store = AppStateStore()
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+
+        view.dispatch(.exitShell)
+
+        #expect(store.windows.count == 1, "dispatch(.exitShell) must not mutate window count")
+    }
 }
