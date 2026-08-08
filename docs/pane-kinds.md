@@ -115,9 +115,11 @@ public enum PaneContentKind: String, Codable, Sendable, Hashable {
   for a kind with no Tab bar. Every reader of `activeTabID` — `PaneView`'s
   `activeIDBinding`, `TabTitleFormatter`, the sidebar pane row, XPC
   topology serialization (`TopologyPanePayload.activeTabID`, currently
-  non-optional too, `TopologyPayload.swift:71`) — becomes an `if kind ==
-  .terminal` branch or an optional-unwrap. This is real, mechanical churn
-  across a double-digit number of call sites; it is exactly the refactor
+  non-optional too,
+  `BattyKit/Sources/BattyXPCCore/TopologyPayload.swift:71`) — becomes an
+  `if kind == .terminal` branch or an optional-unwrap. This is real,
+  mechanical churn across a double-digit number of call sites; it is
+  exactly the refactor
   `#0303`/`#0304` will have to do, and is out of scope for this document
   to perform, only to size and hand off precisely.
 - **`SplitTreeNode` is unchanged: still `case leaf(PaneRuntime)` /
@@ -418,8 +420,12 @@ disagreed is now clear from `git log`:
   `grep -rn "WorkspaceManager\|workspace\.json" BattyKit/Sources/
   Batty/` returns nothing. `LayoutModel.swift` today
   (`BattyKit/Sources/BattyKit/Model/LayoutModel.swift`) contains exactly
-  `SplitDirection` and `Pane { id, isHidden }` — the latter is a **dead
-  Codable type**: `grep -rn "JSONEncoder\|Codable"
+  `SplitDirection` and `Pane { id, isHidden }` — `Pane` was re-added after
+  `#0172`'s trim by `#0256` (commit `9cd5adc`, "Hide/show panes with
+  sidebar pane tree and eye toggle," 2026-07-03), alongside the `isHidden`
+  leaf property — the "trimmed... to `SplitDirection` only" quote above
+  describes the state immediately after `#0172`, not the state today.
+  `Pane` is a **dead Codable type**: `grep -rn "JSONEncoder\|Codable"
   BattyKit/Sources` shows `Pane` conforms to `Codable` but nothing
   constructs a `JSONEncoder`/`JSONDecoder` for it anywhere in the tree.
   `PaneRuntime.snapshot()` (`PaneRuntime.swift:39-41`) still produces a
@@ -548,21 +554,23 @@ things `#0315` says must be settled with the user directly.
 - **Kind-aware `list`: the wire shape needs two changes to
   `TopologyPanePayload`, and the `activeTabID` one is not "additive" —
   it needs an explicit encoding decision.** `TopologyPanePayload`
-  (`TopologyPayload.swift:66-81`, confirmed current, no kind field) needs
-  a `kind: PaneContentKind` field mirroring `Pane`'s (§4), plus `tabs:
+  (`BattyKit/Sources/BattyXPCCore/TopologyPayload.swift:66-81`, confirmed
+  current, no kind field) needs a `kind: PaneContentKind` field mirroring
+  `Pane`'s (§4), plus `tabs:
   [TopologyTabPayload]` becoming possibly-empty (no type change — arrays
   don't have the problem below) and `activeTabID` becoming optional to
   mirror §1's model change.
 
   **The `activeTabID` change is not additive, and an earlier draft of this
-  document said it was.** `TopologyPayload.swift:89-93` describes the
-  `list`/`sessionInfo` JSON shape as a contract `#0274` froze for
+  document said it was.**
+  `BattyKit/Sources/BattyXPCCore/TopologyPayload.swift:89-93` describes
+  the `list`/`sessionInfo` JSON shape as a contract `#0274` froze for
   `#0257`/`#0266`, and `TopologyPayloadTests
   .listJSONTopLevelKeysAreStableNotCompilerSynthesized`
-  (`BattyKitTests/TopologyPayloadTests.swift:183`) pins it by *exact* set
-  equality: `Set(paneBody.keys) == ["id", "isHidden", "isFocused",
-  "activeTabID", "tabs"]`. Swift's synthesized `Codable` conformance
-  encodes an `Optional` property via `encodeIfPresent` — a `nil`
+  (`BattyKit/Tests/BattyKitTests/TopologyPayloadTests.swift:183`) pins it
+  by *exact* set equality: `Set(paneBody.keys) == ["id", "isHidden",
+  "isFocused", "activeTabID", "tabs"]`. Swift's synthesized `Codable`
+  conformance encodes an `Optional` property via `encodeIfPresent` — a `nil`
   `activeTabID` would **omit the key from the JSON entirely**, silently
   shrinking that set for every non-terminal pane, which is exactly the
   regression the pinned test exists to catch (correctly — an agent parsing

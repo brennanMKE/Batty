@@ -9,7 +9,7 @@ This file is binding guidance for Claude sessions and subagents. **If something 
 When starting any non-trivial task, read in this order:
 
 1. `PRD.md` — product spec, milestones, success criteria.
-2. `Concepts.md` — canonical vocabulary (Window, Session, Pane, Tab, Terminal Session, Split, Theme, Bell Feed, Workspace, Surface registry). Use these terms exactly; don't invent synonyms.
+2. `Concepts.md` — canonical vocabulary (Window, Session, Pane, Tab, Terminal Session, Split, Theme, Bell Feed, Surface registry). Use these terms exactly; don't invent synonyms.
 3. `issues/Issues.md` — issue tracker workflow, status vocabulary, module conventions.
 4. `issues/NNNN.md` if working a specific issue.
 
