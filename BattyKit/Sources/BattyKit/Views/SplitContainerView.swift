@@ -143,7 +143,16 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                     .environment(\.paneAllottedSize, allottedSize(containerSize: proxy.size, main: rightLength))
             }
         }
-        .onGeometryChange(for: CGFloat.self, of: {
+        // `onGeometryChange(for:of:action:)`'s `of:` transform is
+        // `@escaping @Sendable` — SwiftUI documents it as a pure,
+        // possibly-off-main-actor computation of a value from the proxy.
+        // Referencing `direction` via an implicit `self.direction` here
+        // would capture `self` (this view's generic `Left`/`Right` type
+        // parameters aren't `Sendable`), which is what the warning flags.
+        // `direction` itself is a plain `Sendable` enum, so binding it to
+        // a local before the closure captures only that value, matching
+        // what the API actually needs and requires.
+        .onGeometryChange(for: CGFloat.self, of: { [direction] in
             direction == .horizontal ? $0.size.width : $0.size.height
         }) {
             containerLength = $0

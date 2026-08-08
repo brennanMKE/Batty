@@ -69,5 +69,15 @@ extension TerminalHostInstaller {
     /// the host installer's parent and ``TerminalPlaceholderView`` use
     /// this name — the placeholder reports its frame in this space and
     /// the host's terminal subviews are placed at that frame directly.
-    static let coordinateSpaceName: String = "terminal-host"
+    ///
+    /// `nonisolated` (#0320): this is an immutable `String` literal with
+    /// no dependency on main-actor state — the default main-actor
+    /// isolation applied to it only because nothing overrode it, not
+    /// because reading it needs main-actor protection. It is read from
+    /// `onGeometryChange(for:of:)`'s `of:` transform, which SwiftUI
+    /// declares `@Sendable` and may run off the main actor; `nonisolated`
+    /// here is the correct, safety-preserving annotation (the compiler
+    /// still verifies the declaration is actually safe to access from
+    /// any isolation domain) rather than a workaround.
+    nonisolated static let coordinateSpaceName: String = "terminal-host"
 }

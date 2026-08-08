@@ -13,7 +13,7 @@ struct BattyApp: App {
 
     var body: some Scene {
         WindowGroup(for: WindowID.self) { $windowID in
-            ContentView(windowID: windowID ?? AppStateStore.shared.initialWindowID)
+            ContentView(windowID: windowID)
                 .background(OpenWindowHookInstaller())
         } defaultValue: {
             // Return the WindowID already seeded in AppStateStore.shared.windows[0]

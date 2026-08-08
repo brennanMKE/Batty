@@ -326,8 +326,8 @@ public final class TerminalHostStore {
     /// around in the synchronous unit-test harness, where nothing drains
     /// a pool between statements the way a live run loop does.
     private static func verifyReferenceHygiene(view: AppTerminalView, tab: TabRuntime?, tabID: UUID) {
-        weak var viewProbe = view
-        weak var tabProbe = tab
+        weak let viewProbe = view
+        weak let tabProbe = tab
         let hadTabRuntime = tab != nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if viewProbe != nil {
