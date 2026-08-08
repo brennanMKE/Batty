@@ -10,8 +10,8 @@ and `#0075` are the architecture's history.
 The view hierarchy is non-trivial because Batty has two intertwined
 trees:
 
-1. A **model hierarchy** of value-and-runtime types: Workspace -> Window
-   -> Session -> Pane -> Tab -> Terminal Session.
+1. A **model hierarchy** of value-and-runtime types: Window -> Session ->
+   Pane -> Tab -> Terminal Session.
 2. An **AppKit/SwiftUI hybrid** that pulls the live terminal `NSView`s
    out of SwiftUI's rebuild churn into a single persistent host.
 
@@ -26,16 +26,23 @@ The canonical containment chain. Defined in `Concepts.md`; this is a
 recap with implementation pointers.
 
 ```
-Workspace                       (write-only persistence; one file)
-└── Window                      (singleton NSWindow per #0063)
-    └── Session                 (one sidebar entry)
-        └── SplitTree           (recursive layout)
-            ├── Split node      (direction + ratio; arranges children)
-            └── Pane (leaf)     (one visible region)
-                └── Tab (×N)    (one TabRuntime per tab chip)
-                    └── Terminal Session
-                                (one ghostty_surface_t + PTY)
+Window                           (singleton NSWindow per #0063)
+└── Session                      (one sidebar entry)
+    └── SplitTree                (recursive layout)
+        ├── Split node           (direction + ratio; arranges children)
+        └── Pane (leaf)          (one visible region)
+            └── Tab (×N)         (one TabRuntime per tab chip)
+                └── Terminal Session
+                                 (one ghostty_surface_t + PTY)
 ```
+
+There is no `Workspace` node and no `workspace.json` — layout persistence
+was built (`#0030`/`#0031`), then its launch-time read was disabled
+(`#0055`), then it was deleted outright (`#0172`, resolved 2026-05-20):
+`Workspace.swift`, `WorkspaceConversion.swift`, `WorkspaceManager.swift`,
+and `WorkspaceStore.swift` no longer exist in the tree. `#0302`'s pane-kind
+proposal (`docs/pane-kinds.md`) designs the Codable `Pane` field as if
+persistence lands again, but nothing serializes it today.
 
 Cardinality:
 
@@ -51,7 +58,6 @@ Implementation pointers:
 
 | Model concept | Runtime type | File |
 |---|---|---|
-| Workspace | `WorkspaceManager` | [`../BattyKit/Sources/BattyKit/WorkspaceManager.swift`](../BattyKit/Sources/BattyKit/WorkspaceManager.swift) |
 | Window | `BattyApp` `Window` scene | [`../Batty/BattyApp.swift`](../Batty/BattyApp.swift) |
 | Session | `SessionRuntime` | [`../BattyKit/Sources/BattyKit/SessionRuntime.swift`](../BattyKit/Sources/BattyKit/SessionRuntime.swift) |
 | Split tree | `SplitTree` / `SplitTreeNode` | [`../BattyKit/Sources/BattyKit/SplitTree.swift`](../BattyKit/Sources/BattyKit/SplitTree.swift) |
@@ -60,10 +66,12 @@ Implementation pointers:
 | Terminal Session | `TerminalViewState` + `AppTerminalView` | upstream `GhosttyTerminal`; held by `TabRuntime` |
 
 The model layer is `@Observable` reference types (so SwiftUI can react
-to mutations without losing identity), wrapping value types that are
-serialized to `workspace.json`. Per CLAUDE.md's architectural rule, the
-serialized layout model is pure value types — view types and libghostty
-handles never enter persistence.
+to mutations without losing identity), wrapping value types
+(`SplitDirection`, `Pane`) that stay `Codable` and persistence-ready even
+though nothing serializes them today (see the note above the model
+hierarchy diagram). Per CLAUDE.md's architectural rule, the layout model
+stays pure value types either way — view types and libghostty handles
+never enter it.
 
 ---
 
@@ -539,4 +547,10 @@ trustworthy evidence the surface and PTY are gone by the time it logs.
 The ghostty app is a separate, still-ARC-deferred chain — gated on
 `TabRuntime` deallocating, since `TabRuntime.terminal.controller` holds
 its own independent reference to the same `TerminalController` — with
-its own diagnostic-only, transient-expected notice.*
+its own diagnostic-only, transient-expected notice. §1 corrected in
+#0302: removed the stale `Workspace` root node and `WorkspaceManager.swift`
+table row — that source was deleted by #0172 (2026-05-20), before this
+document's version-4 revision date, and the reference should have been
+scrubbed then; see `docs/pane-kinds.md` §4 for the full history and for
+the pane-kind design that (re-)introduces a persistence-ready `Pane.kind`
+field without reviving `workspace.json`.*

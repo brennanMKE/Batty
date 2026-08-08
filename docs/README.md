@@ -24,9 +24,19 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   and the per-phase regression-risk register. Read this before working any
   of the #0235–#0240 children.
 - [`view-hierarchy.md`](view-hierarchy.md) — how the model hierarchy
-  (Workspace -> Window -> Session -> Pane -> Tab -> Terminal Session) maps
+  (Window -> Session -> Pane -> Tab -> Terminal Session) maps
   onto the SwiftUI tree and the persistent AppKit terminal host. Read this
   first before touching anything in the terminal / pane / window path.
+- [`pane-kinds.md`](pane-kinds.md) — design proposal (#0302) for letting a
+  Pane host non-terminal content: where the pane-kind field lives (on
+  `PaneRuntime`/`Pane`, not `TabRuntime`/`Tab`), how `PaneView` branches so
+  a non-terminal pane never mounts a `TerminalPlaceholderView`, which
+  `terminal-pane-requirements.md` guarantees do and don't extend to
+  non-terminal panes, the backward-compatible `Pane.kind` Codable field,
+  how it composes with the #0315 CLI verb deltas, and the
+  `workspace.json`/`WorkspaceManager.swift` documentation inconsistency
+  resolved (with history). No code ships with this document — read it
+  before implementing #0303/#0304/#0305/#0313/#0314/#0315.
 - [`terminal-pane-requirements.md`](terminal-pane-requirements.md) — the
   non-negotiable behaviors every pane must preserve: pointer input, keyboard
   input, file/text drop onto the terminal, overlay rules, and the AppKit

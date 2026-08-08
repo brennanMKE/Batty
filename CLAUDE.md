@@ -149,7 +149,7 @@ Do **not** use `print()` or `NSLog()` for diagnostics — they disappear in rele
 ## Architectural rules
 
 - **Surface registry is the single source of truth for live Terminal Sessions.** SwiftUI views only ever store `surfaceID: UUID`, never a `ghostty_surface_t` directly. View rebuilds must not destroy surfaces.
-- **Layout model is pure value types** (`Session`, `Pane`, `Tab`, `SplitNode`) — Codable, Sendable, no view or libghostty types embedded. This is what Workspace persistence serializes.
+- **Layout model is pure value types** (currently `SplitDirection` and `Pane` in `LayoutModel.swift` — the Codable `Session`/`Tab`/`SplitNode` snapshot types were deleted along with workspace persistence in #0172, not merely renamed) — Codable, Sendable, no view or libghostty types embedded. Workspace persistence (`workspace.json`) was built, then removed (#0172); `Pane` stays Codable and persistence-ready even though nothing serializes it today.
 - **App is unsandboxed.** Terminal apps run arbitrary user processes (shells, compilers, etc.) and can't fit App Store sandbox rules. `ENABLE_APP_SANDBOX = NO` in the `Batty` target. Hardened Runtime stays on for notarization.
 
 ## Restricted areas
