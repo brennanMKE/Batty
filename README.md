@@ -9,7 +9,7 @@ Batty is a native macOS terminal multiplexer built on [libghostty](https://githu
 Batty gives you multiple terminal sessions organized in a left-side sidebar, each with panes (splits) and per-pane tabs. It's the 20% of tmux most developers actually use, with a real native GUI on top.
 
 - **Sessions sidebar** — named workspaces for different projects or contexts
-- **Splits and tabs** — Cmd-D / Cmd-Shift-D to split; Cmd-T / Cmd-W / Cmd-1–9 for tabs
+- **Splits and tabs** — Cmd-D / Cmd-Shift-D to split; Cmd-T / Cmd-W / Cmd-Option-1–9 for tabs
 - **Bell feed** — catch background activity and jump straight to the source terminal
 - **Layout selector** — apply a preset pane layout with Cmd-Shift-L
 - **Theme selector** — switch Ghostty themes live with Cmd-Shift-T

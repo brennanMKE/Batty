@@ -49,7 +49,7 @@ A named workspace, listed as one row in the Window's Sidebar.
 - **Sidebar affordances:** drag to reorder; right-click to Rename / Duplicate / Close; "+" toolbar button creates a new Session.
 - **CWD inheritance:** a newly created Session's first Pane spawns its shell in the previously-focused Pane's active-Tab cwd when one is known, mirroring the way Cmd-T inherits cwd within a Pane; falls back to the shell's default (`$HOME`) when no previously-selected Session exists.
 - **Name cache:** a small JSON file at `~/Library/Application Support/Batty/session-name-cache.json` remembers the most recent user-chosen Session title per working directory. Renaming a Session writes `(firstPaneFirstTabCWD, newName)` (skipping default `Session N` titles); creating a new Session looks up the inherited CWD before falling back to `Session N`, so opening a fresh Session in a known project directory auto-applies the previously-chosen name. Exact-path match, capped at 100 entries with LRU eviction, atomic writes, debounced.
-- **Keybinding:** Cmd-Option-1..9 selects the Nth Session in the active Window. (Cmd-Shift-Number is reserved by macOS for screenshot hotkeys, so we use Cmd-Option-Number — same family iTerm2 uses for session/window selection.)
+- **Keybinding:** Cmd-1..9 selects the Nth Session in the active Window by default. Swappable with Cmd-Option-1..9 (which then selects Tabs instead, and is the chord iTerm2 uses for session/window selection) via the `co.sstools.Batty.cmdNumberTarget` preference.
 - **Persisted:** nothing — the ordered Session list, each Session's Split tree, and everything inside are in-memory only; none of it survives a relaunch. (The Name cache above is a separate mechanism: it remembers a chosen title per working directory, not layout.)
 
 > "Session" is overloaded in terminal-land — to be precise, a Batty **Session** is a *workspace grouping*. The actual *running shell process* is a **Terminal Session** (below). When the doc just says "session" unqualified, it means the workspace grouping.
@@ -87,7 +87,7 @@ One entry in a Pane's Tab bar. Each Tab owns exactly one Terminal Session.
 - **Operations:**
   - Cmd-T — add a new Tab to the focused Pane (with a fresh Terminal Session).
   - Cmd-W — close the focused Tab. If it was the last Tab in the Pane, the Pane is removed (see Pane).
-  - Cmd-1..9 — select the Nth Tab in the focused Pane.
+  - Cmd-Option-1..9 — select the Nth Tab in the focused Pane (default; swaps with Cmd-1..9 via the `cmdNumberTarget` preference).
   - Cmd-Shift-[ / ] — cycle Tabs within the focused Pane.
   - Drag chip to reorder.
 - **Background behavior:** non-active Tabs in a Pane keep their Terminal Session running (PTY/shell stay alive). Switching Tabs only swaps which surface is rendered.
@@ -140,7 +140,7 @@ The left-side region of a Window that lists the Window's Sessions.
   - Header / toolbar with a "+" button to create a Session.
   - A `List` of Session rows, each showing title, total live Tab count, and an unseen-bell badge if any descendant has unseen bells.
   - Drag-to-reorder.
-- **Collapsibility:** the user can hide and show the Sidebar (View → Hide Sidebar, Cmd-Ctrl-S, or the standard NavigationSplitView toggle button in the toolbar). Collapsed state is persisted per Window.
+- **Collapsibility:** the user can hide and show the Sidebar (View → Hide Sidebar, Cmd-B, or the standard NavigationSplitView toggle button in the toolbar). Collapsed state is persisted per Window.
 - **Selection:** exactly one Session is selected at a time per Window; clicking a row selects it.
 
 ---
@@ -174,8 +174,8 @@ The single keyboard-active leaf in the app at any time.
   - Cmd-D, Cmd-T, Cmd-W, split buttons, and similar all use the focused Pane / Tab as the implicit target.
   - Bell events from the focused Tab record to the **Bell Feed** but do not increment unseen counters.
 - **Movement:**
-  - Within a Session: Cmd-Option-arrows move focus between Panes; clicking a Pane focuses it; Cmd-1..9 selects a Tab in the focused Pane.
-  - Across Sessions: clicking a Session in the Sidebar or Cmd-Option-1..9 moves focus to that Session's `focusedPaneID`'s active Tab.
+  - Within a Session: Cmd-Option-arrows move focus between Panes; clicking a Pane focuses it; Cmd-Option-1..9 selects a Tab in the focused Pane.
+  - Across Sessions: clicking a Session in the Sidebar or Cmd-1..9 moves focus to that Session's `focusedPaneID`'s active Tab.
   - Across Windows: standard macOS Cmd-` / window picker.
 
 ---

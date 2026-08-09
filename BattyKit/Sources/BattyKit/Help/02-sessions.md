@@ -37,7 +37,7 @@ When the last session in the window closes, Batty quits. After a session closes,
 ## Selecting a session
 
 - Click a session row in the sidebar.
-- Or press `Cmd-Option-1` through `Cmd-Option-9` to jump to the Nth session by position.
+- Or press `Cmd-1` through `Cmd-9` to jump to the Nth session by position (default; swaps with `Cmd-Option-1`…`Cmd-Option-9` via Settings → General → Keyboard).
 
 Sessions you aren't looking at stay alive: shells keep running, output keeps streaming, and bells keep firing into the [bell feed](06-notifications.md). Switching is instant.
 

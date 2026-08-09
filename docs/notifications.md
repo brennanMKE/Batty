@@ -36,7 +36,7 @@ signals:
 2. **Sidebar session badge** — the session row in the sidebar shows a
    count of unseen bells across all of its panes and tabs.
 3. **Bell-feed entry** — the bell feed popover (toggled with
-   `Cmd-Shift-N`, or the toolbar bell button on `SessionDetailView`)
+   `Cmd-Shift-B`, or the toolbar bell button on `SessionDetailView`)
    gains a row with timestamp, the path `Session › Pane N › Tab`, and
    an optional message body (OSC 9 / OSC 777 payload).
 4. **macOS desktop notification** — a banner / Notification Center
@@ -328,7 +328,7 @@ Settings (accurate as of `#0068`).
 `BellFeedView` lives in `BellFeedView.swift` and is presented as a
 popover anchored on either the toolbar bell button on
 `SessionDetailView` or the `.battyToggleBellFeed` `NotificationCenter`
-event (default shortcut `Cmd-Shift-N`, customizable in
+event (default shortcut `Cmd-Shift-B`, customizable in
 Settings → Shortcuts; the menu item is in `BattyCommands`).
 
 Layout:
@@ -427,7 +427,7 @@ the tab doesn't need a delayed banner for the same bell.
   was already marked seen, so `BellNotifier.shouldPost(for:)`
   suppressed the duplicate. The sidebar badge fires independently of
   all three.
-- *What's the keyboard shortcut for the bell feed?* — `Cmd-Shift-N` by
+- *What's the keyboard shortcut for the bell feed?* — `Cmd-Shift-B` by
   default. Customizable at Settings → Shortcuts → "Toggle Bell Feed".
   See [`shortcuts.md`](shortcuts.md).
 - *Where is mute persisted?* — It isn't. Mute state lives in

@@ -12,7 +12,7 @@ New tabs inherit the **working directory** of the tab that was active when you o
 ## Switching tabs
 
 - Click a chip.
-- `Cmd-1` through `Cmd-9` jump to the Nth tab in the focused pane.
+- `Cmd-Option-1` through `Cmd-Option-9` jump to the Nth tab in the focused pane (default; swaps with `Cmd-1`…`Cmd-9` via Settings → General → Keyboard).
 - `Cmd-Shift-[` and `Cmd-Shift-]` step to the previous and next tab. Both wrap around the ends.
 
 ## Reordering tabs

@@ -87,7 +87,7 @@ Rationale:
 Trade-offs accepted: a session cannot appear in two windows, and moving a
 session between windows is **not** in v1 scope (see §10) — it would require
 reparenting an `AppTerminalView` across hosts, which violates the standing
-host rules and needs its own design if ever wanted. Cmd-Option-1..9 selects
+host rules and needs its own design if ever wanted. Cmd-1..9 selects
 among the *key window's* sessions only.
 
 Consequences for naming: `Session N` default numbering and the
@@ -316,8 +316,8 @@ captures for restoration plus `nameCache.save()` (already in
   see the header comment there), with
   `defaultBinding = ShortcutBinding(key: "n", modifiers: [.command, .shift])`.
   **Shift-Cmd-N is verified free:** the only `n` binding today is Cmd-N →
-  `.newSession` (`ShortcutAction.swift:59`), and `toggleBellFeed` is
-  Shift-Cmd-B (`ShortcutAction.swift:87`). The #0063 Gotchas note claiming
+  `.newSession`'s `defaultBinding`, and `toggleBellFeed`'s `defaultBinding`
+  is Shift-Cmd-B. The #0063 Gotchas note claiming
   Shift-Cmd-N was taken is stale. Adding the case makes the chord
   automatically rebindable in Settings → Keyboard via `ShortcutsStore`.
 - **Menu placement:** File menu, in the existing

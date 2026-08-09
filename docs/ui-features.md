@@ -258,9 +258,9 @@ be present regardless of gating state.
 
 The Bell Feed is the app-wide, ordered list of recent bell events across every
 Terminal Session. It is presented as a popover (fixed size `360 × 420`) anchored
-on the toolbar bell button or invoked via the `Cmd-Shift-N` shortcut. The bell
-button displays the `bell.badge` SF Symbol when there are unseen entries and
-`bell` when the feed is clean.
+on the toolbar bell button or invoked via the `Cmd-Shift-B` shortcut (per
+`[0134]`). The bell button displays the `bell.badge` SF Symbol when there are
+unseen entries and `bell` when the feed is clean.
 
 A bell event originates in one of two forms: an ASCII BEL byte (`\a`) or an
 OSC 9 / OSC 777 desktop notification escape. Either kind flows through
@@ -298,8 +298,8 @@ session mute behavior, and the app-wide notification settings.
   that Session.
 - The feed is capped at 200 entries (oldest evicted first). Aggregate counters
   are zeroed via residual sweep when evicted entries were still unseen.
-- The `Cmd-Shift-N` shortcut must open the Bell Feed popover. The shortcut is
-  customizable in Settings → Shortcuts.
+- The `toggleBellFeed` shortcut (default `Cmd-Shift-B`, per `[0134]`) must open
+  the Bell Feed popover. The shortcut is customizable in Settings → Shortcuts.
 
 **Regression patterns:**
 

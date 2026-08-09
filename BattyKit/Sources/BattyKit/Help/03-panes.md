@@ -29,7 +29,7 @@ Drag the divider between two panes. The cursor switches to a resize handle as yo
 
 ## Pane vs tab vs session
 
-- **Tab** when you want a parallel context in the same view — one shell and one `vim`, switched with `Cmd-1`, `Cmd-2`.
+- **Tab** when you want a parallel context in the same view — one shell and one `vim`, switched with `Cmd-Option-1`, `Cmd-Option-2` by default.
 - **Pane** when you want both contexts visible at once — tests streaming on the left, editor on the right.
 - **Session** when you want a fully separate workspace — a different project, a different toolchain. See [Sessions](02-sessions.md).
 

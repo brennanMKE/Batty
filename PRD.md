@@ -42,7 +42,7 @@ The "Bat / Ghost / tty" naming theme is a wink at Ghostty — Batty is Ghostty's
 
 1. **Hello-world fast.** Open the app, get a working shell prompt in under a second.
 2. **Sessions in a sidebar.** Each session is a named workspace containing one or more panes. The sidebar is collapsible.
-3. **Splits and tabs that just work.** Toolbar buttons (`rectangle.split.2x1`, `rectangle.split.1x2`) and Cmd-D / Cmd-Shift-D split the focused pane. Each pane has its own SlidingTabs bar; Cmd-T / Cmd-W / Cmd-1..9 navigate within the focused pane.
+3. **Splits and tabs that just work.** Toolbar buttons (`rectangle.split.2x1`, `rectangle.split.1x2`) and Cmd-D / Cmd-Shift-D split the focused pane. Each pane has its own SlidingTabs bar; Cmd-T / Cmd-W / Cmd-Option-1..9 navigate within the focused pane.
 4. **Notification feed.** Capture terminal-bell events from every surface, surface them in a unified feed, click an entry to bring the source forward (right session → right pane → right tab).
 5. **Native rendering.** Use libghostty for the actual terminal — fonts, ligatures, GPU rendering, escape sequences all come for free.
 7. **Keyboard-first.** Every action that matters has a keybinding. Mouse is supported but not required.
@@ -85,7 +85,7 @@ Me, primarily. Generalizing: a senior developer on macOS who:
 | 8 | Drag a split divider to resize panes | I can give one pane more screen real estate with the mouse |
 | 9 | Have a tab bar inside each pane (SlidingTabs) | I can keep multiple terminals within one pane and switch between them |
 | 10 | Press Cmd-T to add a tab in the focused pane | I can spin up another terminal without breaking my split layout |
-| 11 | Press Cmd-1..9 to select the Nth tab in the focused pane | I can navigate tabs without the mouse |
+| 11 | Press Cmd-Option-1..9 to select the Nth tab in the focused pane | I can navigate tabs without the mouse |
 | 12 | Move focus between split panes with Cmd-Option-arrows | I can drive everything from the keyboard |
 | 13 | Resize splits with Cmd-Ctrl-arrows | I can give one pane more screen real estate without the mouse |
 | 14 | Close a tab with Cmd-W (and the pane collapses if it was the last tab) | Closing doesn't leave dead UI behind |
@@ -147,8 +147,8 @@ Tab:
   - Context menu on each session: Rename, Duplicate, Close.
 - Selecting a session swaps the detail area to that session's split tree.
 - Surfaces in non-active sessions stay alive in the background so switching is instant and processes keep running.
-- Cmd-Option-1..9 selects the Nth session.
-- The sidebar is collapsible: View → Hide Sidebar (Cmd-Ctrl-S), or the standard NavigationSplitView toggle button in the toolbar.
+- Cmd-1..9 selects the Nth session.
+- The sidebar is collapsible: View → Hide Sidebar (Cmd-B), or the standard NavigationSplitView toggle button in the toolbar.
 
 ### 6.4 Panes & splits (within a session)
 
@@ -173,7 +173,7 @@ Tab:
 - Tab title resolution: focused-surface process name → cwd basename → user-set title (first non-empty wins).
 - **Cmd-T** adds a tab to the focused pane.
 - **Cmd-W** closes the focused tab. If it was the last tab in the pane, the pane is removed and its parent split collapses (see §6.4).
-- **Cmd-1..9** selects the Nth tab in the focused pane. Cmd-Shift-[ / ] cycles tabs within the focused pane.
+- **Cmd-Option-1..9** selects the Nth tab in the focused pane. Cmd-Shift-[ / ] cycles tabs within the focused pane.
 - `onReorderCommit` from SlidingTabs persists the new order.
 
 ### 6.6 Windows
@@ -240,7 +240,7 @@ A "feed" of bell events across every surface, plus per-tab, per-pane, and per-se
 
 #### The feed
 
-- Accessed via a toolbar button (bell SF Symbol: `bell.badge` when unseen, `bell` when clean) and Cmd-Shift-N.
+- Accessed via a toolbar button (bell SF Symbol: `bell.badge` when unseen, `bell` when clean) and Cmd-Shift-B.
 - Renders as a popover or sheet listing recent events newest-first, scrollable, capped at 200 entries (in-memory only; does not survive relaunch).
 - Each entry shows:
   - Timestamp (relative: "2m ago").
@@ -336,8 +336,8 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 |---|---|
 | **M0 — Project skeleton** | Xcode project created, `GhosttyKit` linked, `SlidingTabs` linked, terminfo + shell-integration resources copied into the bundle. App launches to an empty window with a (stub) sidebar and detail area. |
 | **M1 — Hello, surface** | A single libghostty surface renders inside a single pane in a single session. Working shell prompt. Typing works. Fonts look right. |
-| **M2 — Sessions sidebar** | Left sidebar lists sessions; "+" creates a new session; selecting a session swaps the detail area. Sidebar collapses/expands. Cmd-Option-1..9 selects sessions. |
-| **M3 — Tabs in a pane (SlidingTabs)** | Each pane shows a SlidingTabs bar. Cmd-T / Cmd-W / Cmd-1..9 work. Drag-to-reorder works. Tab title auto-updates from focused surface. |
+| **M2 — Sessions sidebar** | Left sidebar lists sessions; "+" creates a new session; selecting a session swaps the detail area. Sidebar collapses/expands. Cmd-1..9 selects sessions. |
+| **M3 — Tabs in a pane (SlidingTabs)** | Each pane shows a SlidingTabs bar. Cmd-T / Cmd-W / Cmd-Option-1..9 work. Drag-to-reorder works. Tab title auto-updates from focused surface. |
 | **M4 — Splits** | `SplitNode` tree replaces the single-pane layout. SF Symbol split buttons + Cmd-D / Cmd-Shift-D split the focused pane. Drag-to-resize dividers, focus movement, and resize keybindings all work. Closing the last tab in a pane collapses the split. |
 | **M5 — Drag & drop files** | Dropping files from Finder onto a pane inserts shell-quoted paths via `ghostty_surface_text`. Drag-over highlight on the target pane. |
 | **M6 — Notifications & bell feed** | Bell hook captures BEL + OSC 9 events. Feed popover lists events. Clicking an entry brings the source forward (window → session → pane → tab). Per-tab unseen dot via SlidingTabs. System notifications when not frontmost. |

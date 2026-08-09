@@ -28,7 +28,7 @@ For a fresh slate, choose **Window > Mark All Bells Seen**. Every unseen count z
 
 ## The bell feed
 
-Press `Cmd-Shift-N` (or click the toolbar bell button) to open the bell feed popover. It lists every recorded bell, newest first.
+Press `Cmd-Shift-B` (or click the toolbar bell button) to open the bell feed popover. It lists every recorded bell, newest first.
 
 - Click a row to jump to the tab — selection and focus follow automatically.
 - Entries for closed tabs, panes, or sessions disappear on their own. You won't see a stale row pointing at something that's gone.

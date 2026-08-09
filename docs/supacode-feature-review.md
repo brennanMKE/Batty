@@ -115,7 +115,7 @@ Batty has independently arrived at most of supacode's *light* wins:
 
 | supacode feature | Batty equivalent |
 |---|---|
-| Command palette (G) | `CommandPaletteView` + `commandPalette` action (Cmd-P) ✓ |
+| Command palette (G) | `CommandPaletteView` + `commandPalette` action (Cmd-Shift-P) ✓ |
 | Keyboard-shortcut rebinding + conflict detection (J6) | `Shortcuts/` — `ShortcutsStore`, `KeyboardShortcutRecorder`, `ShortcutsSettingsView`, collision detection ✓ |
 | Session/layout presets | Layout presets + `layoutPicker` action ✓ |
 | Theme picker + Light/Dark/System appearance (I4) | Theme selector + `ThemePreference`/`AppearanceObserver` (#0245) ✓ |

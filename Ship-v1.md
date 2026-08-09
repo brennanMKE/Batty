@@ -33,12 +33,12 @@ reflect the v1 feature set:
 
 | Area | Check | Verified |
 |---|---|---|
-| Sessions | Create / rename / duplicate / close from sidebar; Cmd-Option-N for new; Cmd-Option-1..9 selection. |  |
+| Sessions | Create / rename / duplicate / close from sidebar; Cmd-N for new; Cmd-1..9 selection. |  |
 | Splits | Cmd-D and Cmd-Shift-D split; Cmd-Ctrl-arrows resize; divider drag works; ratios persist. |  |
-| Tabs | Cmd-T new; Cmd-W close; Cmd-1..9 select; Cmd-Shift-[ / ] navigate; titles auto-update. |  |
+| Tabs | Cmd-T new; Cmd-W close; Cmd-Option-1..9 select; Cmd-Shift-[ / ] navigate; titles auto-update. |  |
 | IME | CJK Romaji input, Option-E + E for `é`, Ctrl-Cmd-Space emoji picker. |  |
 | Drag-drop | Dragging a file from Finder onto a pane inserts a shell-quoted path; drag-over highlight appears. |  |
-| Bell feed | `printf '\a'` rings; `printf '\033]9;hello\a'` pops a system notification; bell feed popover opens via Cmd-Shift-N; click-to-jump moves focus. |  |
+| Bell feed | `printf '\a'` rings; `printf '\033]9;hello\a'` pops a system notification; bell feed popover opens via Cmd-Shift-B; click-to-jump moves focus. |  |
 | Themes | View → Theme switches live; Settings → Appearance Theme picker works; choice persists. |  |
 | Settings | Cmd-, opens; font size, cursor style, paste-strictness, confirm-quit, bell sound, system notifications all persist and apply. |  |
 | Paste | Single-line Cmd-V pastes; multi-line Cmd-V prompts (default strictness). |  |

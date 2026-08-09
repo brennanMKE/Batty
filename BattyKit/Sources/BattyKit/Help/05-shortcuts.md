@@ -9,7 +9,7 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 | Action | Default |
 |---|---|
 | New Session | `Cmd-N` |
-| Select Session 1–9 | `Cmd-Option-1` … `Cmd-Option-9` |
+| Select Session 1–9 | `Cmd-1` … `Cmd-9` |
 
 ### Panes
 
@@ -30,14 +30,14 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 | Close Tab | `Cmd-W` |
 | Show Previous Tab | `Cmd-Shift-[` |
 | Show Next Tab | `Cmd-Shift-]` |
-| Select Tab 1–9 | `Cmd-1` … `Cmd-9` |
+| Select Tab 1–9 | `Cmd-Option-1` … `Cmd-Option-9` |
 
 ### Other
 
 | Action | Default |
 |---|---|
-| Toggle Sidebar | `Cmd-Control-S` |
-| Toggle Bell Feed | `Cmd-Shift-N` |
+| Toggle Sidebar | `Cmd-B` |
+| Toggle Bell Feed | `Cmd-Shift-B` |
 | Settings | `Cmd-,` |
 | Help | `Cmd-?` |
 | Copy | `Cmd-C` |
@@ -61,8 +61,8 @@ Customizations persist across launches.
 
 A few combos aren't customizable because they're positional or follow system conventions, and don't appear in the Shortcuts pane:
 
-- `Cmd-1` … `Cmd-9` — select tab 1–9 in the focused pane.
-- `Cmd-Option-1` … `Cmd-Option-9` — select session 1–9 in the sidebar.
+- `Cmd-1` … `Cmd-9` — select session 1–9 in the sidebar by default; swap with `Cmd-Option-1` … `Cmd-Option-9` via **Settings → General → Keyboard → "Cmd-1…9 switches"**.
+- `Cmd-Option-1` … `Cmd-Option-9` — select tab 1–9 in the focused pane by default; swapped by the same preference.
 - `Cmd-C` / `Cmd-V` — copy and paste, same as everywhere else on macOS.
 
 ## Why shortcuts work everywhere

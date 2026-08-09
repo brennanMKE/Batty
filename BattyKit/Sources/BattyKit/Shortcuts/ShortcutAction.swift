@@ -2,9 +2,12 @@
 
 import SwiftUI
 
-/// The catalog of user-configurable keyboard shortcuts in Batty. Cmd-1..9
-/// (tab activation), Cmd-Option-1..9 (session selection), Cmd-C, and Cmd-V
-/// stay fixed — positional and pasteboard standards (see issue #0070).
+/// The catalog of user-configurable keyboard shortcuts in Batty. Cmd-C and
+/// Cmd-V stay fixed — pasteboard standards (see issue #0070). The positional
+/// Cmd-1..9 / Cmd-Option-1..9 pair also stays outside this catalog, but which
+/// chord selects Sessions vs. Tabs is swappable via the
+/// `co.sstools.Batty.cmdNumberTarget` preference (`SettingsPreference`); by
+/// default Cmd-1..9 selects Sessions and Cmd-Option-1..9 selects Tabs.
 ///
 /// Each case is identified by a stable `rawValue` string used as the
 /// persistence key in `UserDefaults`. Renaming a case mid-flight would
