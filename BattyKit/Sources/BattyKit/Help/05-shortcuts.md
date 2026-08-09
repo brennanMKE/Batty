@@ -17,10 +17,16 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 |---|---|
 | Split Horizontally | `Cmd-D` |
 | Split Vertically | `Cmd-Shift-D` |
+| Split Full-Height Column | `Cmd-Option-D` |
+| Split Full-Width Row | `Cmd-Shift-Option-D` |
 | Focus Pane Left | `Cmd-Option-←` |
 | Focus Pane Right | `Cmd-Option-→` |
 | Focus Pane Above | `Cmd-Option-↑` |
 | Focus Pane Below | `Cmd-Option-↓` |
+| Move Split Divider Left | `Cmd-Ctrl-←` |
+| Move Split Divider Right | `Cmd-Ctrl-→` |
+| Move Split Divider Up | `Cmd-Ctrl-↑` |
+| Move Split Divider Down | `Cmd-Ctrl-↓` |
 
 ### Tabs
 
@@ -30,6 +36,7 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 | Close Tab | `Cmd-W` |
 | Show Previous Tab | `Cmd-Shift-[` |
 | Show Next Tab | `Cmd-Shift-]` |
+| Exit Shell | `Cmd-Shift-X` |
 | Select Tab 1–9 | `Cmd-Option-1` … `Cmd-Option-9` |
 
 ### Other
@@ -38,13 +45,18 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 |---|---|
 | Toggle Sidebar | `Cmd-B` |
 | Toggle Bell Feed | `Cmd-Shift-B` |
+| Open Command Palette | `Cmd-Shift-P` |
+| Open Quickly | `Cmd-Shift-O` |
+| Open Layout Picker | `Cmd-Shift-L` |
+| Open Theme Selector | `Cmd-Shift-T` |
+| New Window | `Cmd-Shift-N` |
 | Settings | `Cmd-,` |
 | Help | `Cmd-?` |
 | Copy | `Cmd-C` |
 | Paste | `Cmd-V` |
 | Quit | `Cmd-Q` |
 
-See [Sessions](02-sessions.md), [Panes and Splits](03-panes.md), [Tabs](04-tabs.md), and [Notifications](06-notifications.md) for what each action does in context.
+See [Sessions](02-sessions.md), [Panes and Splits](03-panes.md), [Tabs](04-tabs.md), and [Notifications](06-notifications.md) for more on the actions covered there. The Command Palette, Open Quickly, and Layout Picker chords above don't yet have their own Help pages.
 
 ## Customizing shortcuts
 
