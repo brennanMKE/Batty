@@ -24,9 +24,11 @@ Batty gives you multiple terminal sessions organized in a left-side sidebar, eac
 ## Building
 
 ```bash
-xcodebuild -scheme Batty -destination 'platform=macOS' build
-open Batty.xcodeproj
+scripts/build.sh
+open Batty.xcworkspace
 ```
+
+`scripts/build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`) and workspace, so it can't get either wrong. Open `Batty.xcworkspace`, not `Batty.xcodeproj` — the workspace owns the BattyKit package, so its tests show up in Xcode's Test Navigator.
 
 ## License
 
