@@ -47,6 +47,28 @@ struct AppStateStorePaneSplitTests {
         #expect(newPane?.tabs[0].terminal.renderedConfig.contains("command = top") == true)
     }
 
+    // MARK: - Pane kind (#0315)
+
+    @Test func splitPaneDefaultsToTerminalKindWhenOmitted() {
+        let store = AppStateStore()
+        let target = store.sessions[0].focusedPane
+
+        let newPaneID = store.splitPane(id: target.id, direction: .horizontal)
+
+        let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
+        #expect(newPane?.kind == .terminal)
+    }
+
+    @Test func splitPaneThreadsAnExplicitKindIntoTheNewPane() {
+        let store = AppStateStore()
+        let target = store.sessions[0].focusedPane
+
+        let newPaneID = store.splitPane(id: target.id, direction: .horizontal, kind: .lmStudioDashboard)
+
+        let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
+        #expect(newPane?.kind == .lmStudioDashboard)
+    }
+
     // MARK: - Background-session mutation must not steal focus or switch
     // the active session (#0257, binding doubly for the first mutation)
 

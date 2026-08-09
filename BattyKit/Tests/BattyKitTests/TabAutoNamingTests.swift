@@ -333,4 +333,25 @@ struct TabAutoNamingTests {
         #expect(label == "2/1 — \(TabTitleFormatter.chipTitle(for: firstTab))")
         #expect(label == "2/1 — Claude Code")
     }
+
+    // MARK: - Non-terminal pane label (#0315 review round 1, finding 3)
+
+    /// A non-terminal pane's `firstTab` is a structural placeholder
+    /// `PaneView` never renders — the row must label from the kind's
+    /// display name, not the phantom tab's chip title, or a Git Status
+    /// pane's sidebar row would read "2/1 — Tab".
+    @Test func paneRowLabelUsesKindDisplayNameForANonTerminalPane() {
+        let pane = PaneRuntime(kind: .gitStatus)
+
+        let label = PaneRow.label(position: "2/1", firstTab: pane.tabs.first, kind: pane.kind)
+
+        #expect(label == "2/1 — Git Status")
+    }
+
+    @Test func paneRowLabelDefaultsToTerminalKindWhenOmitted() {
+        // The default `kind` parameter keeps every pre-#0315 call site
+        // (including the tests above) compiling and behaving unchanged.
+        let label = PaneRow.label(position: "1/1", firstTab: nil)
+        #expect(label == "1/1")
+    }
 }

@@ -158,7 +158,12 @@ extension AppStateStore {
     public func applyTheme(_ theme: GhosttyThemeDefinition, to session: SessionRuntime) {
         logger.info("applyTheme: theme=\(theme.name, privacy: .public) session=\(session.title, privacy: .public)")
         let terminalTheme = theme.toTerminalTheme()
-        for pane in session.tree.allPanes {
+        // A non-terminal pane's `tabs` holds one structural placeholder
+        // `TabRuntime` (`PaneRuntime.kind`'s doc comment) — its
+        // `TerminalController` was never attached to a rendered surface, so
+        // reconfiguring it is wasted work, not a visible bug, but there is
+        // no reason to do it (#0315 review round 1, finding 3).
+        for pane in session.tree.allPanes where pane.kind == .terminal {
             for tab in pane.tabs {
                 tab.terminal.controller.setTheme(terminalTheme)
             }

@@ -1044,8 +1044,9 @@ Grounded directly in the code above, not aspirational:
   with **no app round-trip** — it works even when the app/broker is
   unreachable, which is what distinguishes it from `list`/`session info`.
 - **First mutating XPC verb, #0282.** `batty pane split [-h|--horizontal |
-  -v|--vertical] [-c|--command <cmd>] [--pane <id>]` splits the
-  calling/target pane and prints the new pane's id to stdout on success.
+  -v|--vertical] [-c|--command <cmd>] [--pane <id>] [--view <kind>]` splits
+  the calling/target pane and prints the new pane's id to stdout on
+  success. (`--view` is #0315, documented in its own entry below.)
   Unlike every verb above, this one *mutates* app state, which is exactly
   why it went over the XPC request/reply channel rather than the one-way
   `batty://` scheme (see `issues/0257.md`'s 2026-07-26 transport
@@ -1068,6 +1069,24 @@ Grounded directly in the code above, not aspirational:
   (`b146b73a8ba3ed2678a22a9de5feecfcbf298d48`, tag 1.3.2) directly — `false`
   by default, `true` accepted with zero config diagnostics — rather than
   assumed from the directive's name.
+- **`--view <kind>` on `pane split`, #0315.** Selects the new pane's content
+  kind — `terminal` (the default when the flag is omitted; every existing
+  `pane split` invocation keeps producing a terminal pane unchanged),
+  `git-status`, `process-status`, `lm-studio-dashboard`, or
+  `system-metrics`. An unknown kind is rejected client-side with exit `1`
+  before any XPC round trip, listing the valid set. Non-terminal kinds
+  render as a deliberately provisional placeholder today — #0301's
+  design-first gate means none of their real views has an approved design
+  yet (see `docs/design/*.md`); the plumbing (model field, wire field, CLI
+  flag) is what this issue ships, not the views themselves. `-c/--command`
+  presumes a shell, so it is rejected client-side (exit `1`) when combined
+  with a non-terminal `--view`. `pane close` needs no changes to close a
+  non-terminal pane — see `docs/pane-kinds.md` §5. Review round 1 found and
+  fixed several places that treated a non-terminal pane's one structural
+  `TabRuntime` as a real Tab (Cmd-T, `batty status`/`batty list --tabs`,
+  the quit-confirmation count, the sidebar pane label, and a
+  `TerminalHostStore.placements` leak on hide) — see `docs/pane-kinds.md`'s
+  `#0315` implementation note for the full list.
 - **Second mutating XPC verb, #0283.** `batty pane close [--pane <id>]` ends
   **every** Tab's Terminal Session in the calling/target pane — not just the
   active one — and removes the pane's region from the split tree, the

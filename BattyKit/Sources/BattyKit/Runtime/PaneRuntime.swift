@@ -20,11 +20,41 @@ public final class PaneRuntime: Identifiable {
     /// this is deferred rather than known at `init`).
     public internal(set) var sessionID: UUID?
 
+    /// The kind of content this pane hosts (`docs/pane-kinds.md`). Set once
+    /// at `init` and never mutated — there is no user-facing "convert this
+    /// pane" operation. `.terminal` is the default so every existing call
+    /// site (there are many, across `SplitTree`, `SessionRuntime.init`,
+    /// tests) keeps constructing an ordinary terminal pane unchanged.
+    ///
+    /// Scope note (#0315): a non-terminal-kind `PaneRuntime` still holds one
+    /// ordinary `TabRuntime`, exactly like a terminal pane — `tabs` does not
+    /// become `[]` and `activeTabID` does not become optional, which is a
+    /// deliberate narrowing of `docs/pane-kinds.md` §1's fuller design (that
+    /// document itself calls the `tabs: []`/`activeTabID: UUID?` migration
+    /// "real, mechanical churn across a double-digit number of call sites"
+    /// and explicitly punts performing it to whichever issue wires the
+    /// model in). `PaneView`'s non-terminal arm never reads or renders that
+    /// tab — it never reaches `TerminalPlaceholderView`, so no PTY is ever
+    /// spawned — so the only cost is one otherwise-inert `TerminalViewState`
+    /// per non-terminal pane. This keeps the change surgical: every
+    /// existing reader of `pane.tabs`/`pane.activeTabID` (there are
+    /// double digits of them too — `WindowRuntime`, `AppStateStore`,
+    /// `TopologyPayloadBuilder`, the sidebar pane row) keeps compiling and
+    /// behaving unchanged, and the close cascade
+    /// (`WindowRuntime.closePane`) tears the inert tab down through its
+    /// existing, unmodified path with no kind-gated branch needed. Flagging
+    /// for whoever implements the first real non-terminal view (most likely
+    /// #0304): if that view needs the full `tabs: []` migration for its own
+    /// reasons, it still has to happen then; it was not required to land
+    /// the CLI plumbing this issue ships.
+    public let kind: PaneContentKind
+
     public init(
         id: UUID = UUID(),
         tabs: [TabRuntime]? = nil,
         unseenBellCount: Int = 0,
-        isHidden: Bool = false
+        isHidden: Bool = false,
+        kind: PaneContentKind = .terminal
     ) {
         self.id = id
         let initial = tabs ?? [TabRuntime()]
@@ -33,11 +63,12 @@ public final class PaneRuntime: Identifiable {
         self.activeTabID = initial[0].id
         self.unseenBellCount = unseenBellCount
         self.isHidden = isHidden
+        self.kind = kind
     }
 
     /// A `Pane` value-type snapshot suitable for workspace persistence.
     public func snapshot() -> Pane {
-        Pane(id: id, isHidden: isHidden)
+        Pane(id: id, isHidden: isHidden, kind: kind)
     }
 
     public var activeTab: TabRuntime? {

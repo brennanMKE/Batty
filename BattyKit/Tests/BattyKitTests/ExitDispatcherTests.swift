@@ -46,6 +46,23 @@ struct ExitDispatcherTests {
         #expect(ExitDispatcher.focusedTerminalTab(in: store) == nil)
     }
 
+    /// #0315 review round 2, finding 2: `focusedTerminalTab` resolved
+    /// through `focusedPane` directly, with no kind check — routing
+    /// through `SessionRuntime.focusedTerminalPane` makes "nothing to
+    /// target" explicit for a non-terminal focused pane rather than
+    /// coincidentally harmless (the phantom tab's `TerminalViewState.send`
+    /// already no-ops on a nil surface, but resolution should say so, not
+    /// rely on that downstream safety net).
+    @Test func focusedTerminalTabIsNilWhenANonTerminalPaneIsFocused() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)
+        #expect(session.focusedPane.kind == .gitStatus, "test setup: the split must move focus to the non-terminal pane")
+
+        #expect(ExitDispatcher.focusedTerminalTab(in: store) == nil)
+    }
+
     @Test func sendExitDoesNotTrapWhenNoWindowsRemain() {
         let store = makeStoreWithNoWindows()
 

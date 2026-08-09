@@ -17,9 +17,10 @@ import Foundation
 @MainActor
 public enum ExitDispatcher {
     /// No-ops when no Terminal pane is focused (no registered window, no
-    /// selected session, or a pane transiently without an active tab) —
-    /// mirrors `PasteDispatcher`'s target resolution exactly so both writes
-    /// agree on what "focused Terminal Session" means.
+    /// selected session, a non-`.terminal`-kind focused pane, or a pane
+    /// transiently without an active tab) — mirrors `PasteDispatcher`'s
+    /// target resolution exactly so both writes agree on what "focused
+    /// Terminal Session" means.
     public static func sendExit(store: AppStateStore?) {
         guard let store, let tab = focusedTerminalTab(in: store) else { return }
         tab.terminal.send("exit\n")
@@ -27,7 +28,16 @@ public enum ExitDispatcher {
 
     // Not `private` — ExitDispatcherTests exercises resolution directly
     // against this production code rather than re-typing the expression.
+    //
+    // Routes through `SessionRuntime.focusedTerminalPane` (#0315 review
+    // round 2, finding 2) rather than `focusedPane` directly: a
+    // non-terminal pane's `activeTab` is a structural placeholder with no
+    // live Terminal Session (`PaneRuntime.kind`'s doc comment) — sending
+    // "exit\n" into it is already a harmless no-op today (`TerminalViewState
+    // .send` guards on a nil `surface`), but resolving through the kind-
+    // aware accessor makes that "nothing to target" outcome explicit
+    // instead of coincidental.
     static func focusedTerminalTab(in store: AppStateStore) -> TabRuntime? {
-        store.keyWindowOrFirstRegistered()?.selectedSession?.focusedPane.activeTab
+        store.keyWindowOrFirstRegistered()?.selectedSession?.focusedTerminalPane?.activeTab
     }
 }

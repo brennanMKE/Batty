@@ -51,6 +51,23 @@ public final class SessionRuntime: Identifiable {
         tree.focusedPane
     }
 
+    /// `focusedPane`, but `nil` when it isn't a `.terminal`-kind pane.
+    ///
+    /// Every Tab-scoped command (Cmd-T, Cmd-W, tab-switching, Exit Shell —
+    /// whether dispatched from the menu bar, the global keyboard-shortcut
+    /// monitor, or the Command Palette) must resolve its target pane
+    /// through this, not `focusedPane` directly: a non-terminal pane's one
+    /// `TabRuntime` is a structural placeholder `PaneView` never renders
+    /// (`PaneRuntime.kind`'s doc comment), and mutating it (adding a
+    /// second invisible tab, closing the only one) is a real bug, not a
+    /// cosmetic one — see `docs/pane-kinds.md`'s `#0315` implementation
+    /// note for the three independent dispatch paths this was found
+    /// reachable from in review (#0315 review rounds 1 and 2, finding 2).
+    public var focusedTerminalPane: PaneRuntime? {
+        let pane = focusedPane
+        return pane.kind == .terminal ? pane : nil
+    }
+
     public func closeFocusedTab() {
         let pane = focusedPane
         if pane.tabs.count > 1 {

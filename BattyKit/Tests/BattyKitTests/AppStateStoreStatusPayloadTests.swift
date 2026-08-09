@@ -46,4 +46,18 @@ struct AppStateStoreStatusPayloadTests {
         #expect(store.statusPayload().tabCount == expected)
         #expect(expected > 0)
     }
+
+    /// #0315 review round 1, finding 3: a non-terminal pane's one
+    /// `TabRuntime` is a structural placeholder `PaneView` never renders —
+    /// `batty status`'s `tabCount` must not count it.
+    @Test func statusPayloadTabCountExcludesNonTerminalPanes() {
+        let store = AppStateStore()
+        let session = store.sessions.first!
+        let terminalPane = session.focusedPane
+        let before = store.statusPayload().tabCount
+
+        _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus)
+
+        #expect(store.statusPayload().tabCount == before)
+    }
 }

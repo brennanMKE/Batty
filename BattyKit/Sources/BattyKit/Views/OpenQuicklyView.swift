@@ -36,6 +36,30 @@ enum OpenQuicklyFilter {
             .sorted { $0.1 > $1.1 }
             .map { $0.0 }
     }
+
+    /// Every jumpable (session, tab) pair in `windowRuntime`, unfiltered by
+    /// query — `OpenQuicklyView.allResults`'s source, extracted so it is
+    /// unit-testable without instantiating the view.
+    ///
+    /// A non-terminal pane's `tabs` holds one structural placeholder
+    /// `TabRuntime` `PaneView` never renders (`PaneRuntime.kind`'s doc
+    /// comment) — surfacing it here would offer a bogus jump target (#0315
+    /// review round 1, finding 3), so only `.terminal`-kind panes
+    /// contribute.
+    static func allResults(for windowRuntime: WindowRuntime) -> [QuickOpenResult] {
+        windowRuntime.sessions.flatMap { session in
+            session.tree.allPanes.filter { $0.kind == .terminal }.flatMap { pane in
+                pane.tabs.map { tab in
+                    QuickOpenResult(
+                        sessionID: session.id,
+                        sessionTitle: session.title,
+                        tabID: tab.id,
+                        tabTitle: TabTitleFormatter.chipTitle(for: tab)
+                    )
+                }
+            }
+        }
+    }
 }
 
 struct OpenQuicklyView: View {
@@ -47,18 +71,7 @@ struct OpenQuicklyView: View {
     @FocusState private var queryFocused: Bool
 
     private var allResults: [QuickOpenResult] {
-        windowRuntime.sessions.flatMap { session in
-            session.tree.allPanes.flatMap { pane in
-                pane.tabs.map { tab in
-                    QuickOpenResult(
-                        sessionID: session.id,
-                        sessionTitle: session.title,
-                        tabID: tab.id,
-                        tabTitle: TabTitleFormatter.chipTitle(for: tab)
-                    )
-                }
-            }
-        }
+        OpenQuicklyFilter.allResults(for: windowRuntime)
     }
 
     private var filteredResults: [QuickOpenResult] {

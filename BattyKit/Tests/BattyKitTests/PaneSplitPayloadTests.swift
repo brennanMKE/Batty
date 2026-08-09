@@ -46,6 +46,39 @@ struct PaneSplitPayloadTests {
         #expect(decoded == request)
         #expect(decoded.paneID == nil)
         #expect(decoded.command == nil)
+        #expect(decoded.kind == nil)
+    }
+
+    // MARK: - #0315's `kind` field
+
+    @Test func requestRoundTripsWithExplicitKind() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .gitStatus)
+        let data = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: data)
+        #expect(decoded == request)
+        #expect(decoded.kind == .gitStatus)
+    }
+
+    /// Omitting `--view` client-side must produce a request that decodes
+    /// with `kind == nil` — the wire/model default-to-terminal rule
+    /// (`docs/pane-kinds.md` §4, #0315's user directive) starts here.
+    @Test func requestDefaultKindIsNil() {
+        let request = PaneSplitRequest(paneID: nil, direction: .horizontal)
+        #expect(request.kind == nil)
+    }
+
+    /// A `nil` kind omits the JSON key entirely (Optional's synthesized
+    /// `encodeIfPresent` behavior) rather than encoding an explicit `null`.
+    /// Unlike `TopologyPanePayload.activeTabID` (a *read* contract
+    /// `docs/pane-kinds.md` §5 says must keep every key always-present),
+    /// `PaneSplitRequest` is a request payload only the CLI constructs and
+    /// only the app decodes — no external consumer depends on its key set
+    /// being stable, so plain `Optional` encoding is fine here.
+    @Test func requestJSONOmitsKindKeyWhenNil() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal)
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(!raw.keys.contains("kind"))
     }
 
     @Test func requestRoundTripsOffActor() throws {
@@ -100,6 +133,16 @@ struct PaneSplitPayloadTests {
         let data = try JSONEncoder().encode(request)
         let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(Set(raw.keys) == ["paneID", "direction", "command"])
+    }
+
+    /// The `kind` addition (#0315) is deliberate, visible wire-shape growth
+    /// — distinct from `command`/`paneID` silently vanishing when nil,
+    /// which the test above already covers by omission.
+    @Test func requestJSONTopLevelKeysIncludeKindWhenPresent() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, command: "top", kind: .processStatus)
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(raw.keys) == ["paneID", "direction", "command", "kind"])
     }
 
     @Test func replyJSONTopLevelKeysAreStable() throws {

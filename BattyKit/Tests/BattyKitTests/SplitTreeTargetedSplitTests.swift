@@ -191,6 +191,40 @@ struct SplitTreeTargetedSplitTests {
         #expect(newPane.tabs[0].terminal.configuration.workingDirectory == "/tmp/example")
     }
 
+    // MARK: - Pane kind (#0315)
+
+    @Test func defaultTargetedSplitProducesATerminalKindPane() {
+        let tree = SplitTree()
+        let target = tree.focusedPane
+
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal)!
+
+        #expect(newPane.kind == .terminal)
+    }
+
+    @Test func explicitKindProducesAPaneOfThatKind() {
+        let tree = SplitTree()
+        let target = tree.focusedPane
+
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .gitStatus)!
+
+        #expect(newPane.kind == .gitStatus)
+    }
+
+    /// A non-terminal kind has no cwd to inherit "in the same sense" a
+    /// terminal split does (`docs/pane-kinds.md` §1) — `makePane` skips cwd
+    /// inheritance entirely for `kind != .terminal`, unlike the terminal
+    /// path `newPaneFromTargetedSplitInheritsSourceCWD` pins above.
+    @Test func nonTerminalKindDoesNotInheritSourceCWD() {
+        let tree = SplitTree()
+        let target = tree.focusedPane
+        target.activeTab!.terminal.configuration.workingDirectory = "/tmp/example"
+
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .processStatus)!
+
+        #expect(newPane.tabs[0].terminal.configuration.workingDirectory != "/tmp/example")
+    }
+
     // MARK: - Session attachment carries through the targeted variant too
 
     @Test func targetedSplitAttachesTheNewPaneToTheOwningSession() {

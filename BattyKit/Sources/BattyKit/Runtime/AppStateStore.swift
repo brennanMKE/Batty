@@ -295,8 +295,17 @@ public final class AppStateStore {
     /// computation — both walk every window's sessions' `tree.allPanes`.
     public func statusPayload() -> StatusPayload {
         let totalSessions = windows.reduce(0) { $0 + $1.sessions.count }
+        // Only `.terminal`-kind panes contribute — a non-terminal pane's one
+        // `TabRuntime` is a structural placeholder with no live Terminal
+        // Session behind it (`PaneRuntime.kind`'s doc comment), and
+        // `batty status`'s `tabCount` should report real tabs (#0315 review
+        // round 1, finding 3).
         let totalTabs = windows.reduce(0) { acc, window in
-            acc + window.sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
+            acc + window.sessions
+                .flatMap { $0.tree.allPanes }
+                .filter { $0.kind == .terminal }
+                .flatMap { $0.tabs }
+                .count
         }
         return StatusPayload(
             pid: ProcessInfo.processInfo.processIdentifier,
@@ -409,10 +418,10 @@ public final class AppStateStore {
     /// tree-focus decision (moves only when `paneID` was already that
     /// tree's focused pane).
     @discardableResult
-    public func splitPane(id paneID: UUID, direction: SplitDirection, command: String? = nil) -> UUID? {
+    public func splitPane(id paneID: UUID, direction: SplitDirection, command: String? = nil, kind: PaneContentKind = .terminal) -> UUID? {
         for window in windows {
             for session in window.sessions where session.tree.root.contains(paneID: paneID) {
-                return session.tree.splitPane(id: paneID, direction: direction, command: command)?.id
+                return session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind)?.id
             }
         }
         return nil

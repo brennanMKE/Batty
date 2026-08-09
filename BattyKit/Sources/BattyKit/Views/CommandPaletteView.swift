@@ -209,10 +209,15 @@ struct CommandPaletteView: View {
         case .newSession:
             window.addSession()
         case .closeTab:
+            // `requestCloseFocusedTab()` itself kind-gates through
+            // `SessionRuntime.focusedTerminalPane` (#0315 review round 2,
+            // finding 2) — this dispatch was found completely ungated,
+            // the same defect round 1 fixed in the menu bar and the
+            // `BattyShortcuts` NSEvent monitor but missed here.
             window.requestCloseFocusedTab()
         case .newTab:
-            window.selectedSession?.focusedPane.addTab(
-                inheritingCWDFrom: window.selectedSession?.focusedPane.activeTab
+            window.selectedSession?.focusedTerminalPane?.addTab(
+                inheritingCWDFrom: window.selectedSession?.focusedTerminalPane?.activeTab
             )
         case .splitHorizontal:
             if let tree = window.selectedSession?.tree {
@@ -239,9 +244,9 @@ struct CommandPaletteView: View {
         case .focusPaneDown:
             window.selectedSession?.focusPane(adjacent: .down)
         case .previousTab:
-            window.selectedSession?.focusedPane.selectPreviousTab()
+            window.selectedSession?.focusedTerminalPane?.selectPreviousTab()
         case .nextTab:
-            window.selectedSession?.focusedPane.selectNextTab()
+            window.selectedSession?.focusedTerminalPane?.selectNextTab()
         case .toggleSidebar:
             NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
         case .toggleBellFeed:

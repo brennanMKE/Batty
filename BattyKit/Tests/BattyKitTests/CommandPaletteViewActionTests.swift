@@ -76,4 +76,58 @@ struct CommandPaletteViewActionTests {
 
         #expect(store.windows.count == 1, "dispatch(.exitShell) must not mutate window count")
     }
+
+    // MARK: - #0315 review round 2, finding 2: dispatch(_:) was a third,
+    // completely ungated copy of the Tab-scoped-command switch — Cmd-T from
+    // the Command Palette silently added a second invisible tab to a
+    // focused non-terminal pane, verbatim the defect round 1 fixed in the
+    // menu bar and the `BattyShortcuts` NSEvent monitor but missed here.
+    // `SplitTree.splitPane` moves focus to a freshly-split pane when the
+    // split target was already focused, so splitting the (already-focused)
+    // default pane with a non-terminal kind reproduces exactly the state
+    // `batty pane split --view git-status` leaves behind.
+
+    @Test func dispatchNewTabDoesNotMutateANonTerminalFocusedPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)!
+        #expect(session.tree.focusedPaneID == nonTerminalPane.id,
+                "test setup: splitting the focused pane must move focus to the new pane")
+
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+        view.dispatch(.newTab)
+
+        #expect(nonTerminalPane.tabs.count == 1,
+                "dispatch(.newTab) must not add a second invisible tab to a non-terminal focused pane")
+    }
+
+    @Test func dispatchCloseTabDoesNotRemoveANonTerminalFocusedPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)!
+        #expect(session.tree.focusedPaneID == nonTerminalPane.id)
+        let paneCountBefore = session.tree.allPanes.count
+
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+        view.dispatch(.closeTab)
+
+        #expect(session.tree.allPanes.count == paneCountBefore,
+                "dispatch(.closeTab) must not close a non-terminal pane's structural placeholder tab")
+    }
+
+    @Test func dispatchPreviousAndNextTabDoNotMutateANonTerminalFocusedPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus)!
+        let activeTabIDBefore = nonTerminalPane.activeTabID
+
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+        view.dispatch(.previousTab)
+        view.dispatch(.nextTab)
+
+        #expect(nonTerminalPane.activeTabID == activeTabIDBefore)
+    }
 }

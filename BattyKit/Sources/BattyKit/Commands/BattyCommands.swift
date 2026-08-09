@@ -322,13 +322,26 @@ public struct BattyCommands: Commands {
         }
 
         CommandMenu("Tab") {
+            // Every item in this menu resolves its target through
+            // `focusedTerminalPane`, not `focusedPane` (#0315 review rounds
+            // 1 and 2, finding 2): a non-terminal pane's one `TabRuntime`
+            // is a structural placeholder (docs/pane-kinds.md §1's design
+            // deferred, see PaneRuntime.kind's doc comment) that
+            // `PaneView`'s non-terminal arm never renders — Cmd-T on a
+            // focused non-terminal pane must not silently add an invisible
+            // second one, and the rest of this menu must not act on the
+            // first. `SessionRuntime.focusedTerminalPane` is the single
+            // accessor every dispatch path (this menu, the
+            // `BattyShortcuts` NSEvent monitor, the Command Palette) routes
+            // through, so the gate lives in one place, not one copy per
+            // path.
             Button {
-                keyWindow?.selectedSession?.focusedPane.addTab()
+                keyWindow?.selectedSession?.focusedTerminalPane?.addTab()
             } label: {
                 Label("New Tab", systemImage: "plus")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .newTab))
-            .disabled(focusedPane == nil)
+            .disabled(focusedTerminalPane == nil)
 
             Button {
                 logger.info("Cmd-W action fired (Tab → Close Tab)")
@@ -337,7 +350,7 @@ public struct BattyCommands: Commands {
                 Label("Close Tab", systemImage: "xmark")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
-            .disabled(keyWindow?.selectedSession == nil)
+            .disabled(focusedTerminalPane == nil)
 
             Button {
                 ExitDispatcher.sendExit(store: store)
@@ -345,31 +358,31 @@ public struct BattyCommands: Commands {
                 Label("Exit Shell", systemImage: "power")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .exitShell))
-            .disabled(focusedPane?.activeTab == nil)
+            .disabled(focusedTerminalPane?.activeTab == nil)
 
             Divider()
 
             Button {
-                keyWindow?.selectedSession?.focusedPane.selectPreviousTab()
+                keyWindow?.selectedSession?.focusedTerminalPane?.selectPreviousTab()
             } label: {
                 Label("Show Previous Tab", systemImage: "chevron.left")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .previousTab))
-            .disabled((focusedPane?.tabs.count ?? 0) < 2)
+            .disabled((focusedTerminalPane?.tabs.count ?? 0) < 2)
 
             Button {
-                keyWindow?.selectedSession?.focusedPane.selectNextTab()
+                keyWindow?.selectedSession?.focusedTerminalPane?.selectNextTab()
             } label: {
                 Label("Show Next Tab", systemImage: "chevron.right")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .nextTab))
-            .disabled((focusedPane?.tabs.count ?? 0) < 2)
+            .disabled((focusedTerminalPane?.tabs.count ?? 0) < 2)
 
             Divider()
 
             ForEach(0..<9) { index in
                 Button {
-                    keyWindow?.selectedSession?.focusedPane.selectTab(at: index)
+                    keyWindow?.selectedSession?.focusedTerminalPane?.selectTab(at: index)
                 } label: {
                     Text(tabMenuTitle(at: index))
                 }
@@ -386,8 +399,8 @@ public struct BattyCommands: Commands {
         (CmdNumberTarget(rawValue: cmdNumberTarget) ?? .sessions) == .sessions
     }
 
-    private var focusedPane: PaneRuntime? {
-        keyWindow?.selectedSession?.focusedPane
+    private var focusedTerminalPane: PaneRuntime? {
+        keyWindow?.selectedSession?.focusedTerminalPane
     }
 
     private var canFocusAdjacentPane: Bool {
@@ -408,14 +421,14 @@ public struct BattyCommands: Commands {
 
     private func tabMenuTitle(at index: Int) -> String {
         let fallback = String(localized: "Tab \(index + 1)")
-        guard let pane = focusedPane, pane.tabs.indices.contains(index) else {
+        guard let pane = focusedTerminalPane, pane.tabs.indices.contains(index) else {
             return fallback
         }
         return TabTitleFormatter.chipTitle(for: pane.tabs[index], fallback: fallback)
     }
 
     private func tabExists(at index: Int) -> Bool {
-        focusedPane?.tabs.indices.contains(index) ?? false
+        focusedTerminalPane?.tabs.indices.contains(index) ?? false
     }
 
     private var isPinnedCurrentTheme: Bool {

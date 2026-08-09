@@ -71,13 +71,32 @@ extension SplitTreeNode {
 }
 
 extension PaneRuntime {
+    /// A non-terminal pane's `tabs` holds one structural placeholder
+    /// `TabRuntime` that `PaneView` never renders (`PaneRuntime.kind`'s doc
+    /// comment) — reporting it here would show `batty list`/`batty list
+    /// --tabs` a targetable-looking terminal tab on (e.g.) a `git-status`
+    /// pane, which is wrong for exactly the agent workflow this verb
+    /// surface exists to serve (#0315 review round 1, finding 3). Reported
+    /// as `tabs: []` for any non-terminal kind instead.
+    ///
+    /// `activeTabID` is not adjusted to match (`TopologyPanePayload
+    /// .activeTabID` stays non-optional — see `docs/pane-kinds.md` §5,
+    /// deliberately not built by #0315): a non-terminal pane's
+    /// `activeTabID` still names the placeholder tab's real id, which will
+    /// not appear in `tabs`. `TopologyPanePayload` also carries no `kind`
+    /// field yet, so an agent parsing `list` output cannot distinguish
+    /// "empty tabs, no active tab really" from any other empty-tabs pane by
+    /// this field alone — a known residual gap, not a regression this fix
+    /// introduces, left for whichever issue adds `kind` to the topology
+    /// payload.
     func topologyPayload(isFocused: Bool) -> TopologyPanePayload {
-        TopologyPanePayload(
+        let visibleTabs = kind == .terminal ? tabs : []
+        return TopologyPanePayload(
             id: id,
             isHidden: isHidden,
             isFocused: isFocused,
             activeTabID: activeTabID,
-            tabs: tabs.map { $0.topologyPayload(isActive: $0.id == activeTabID) }
+            tabs: visibleTabs.map { $0.topologyPayload(isActive: $0.id == activeTabID) }
         )
     }
 }

@@ -29,6 +29,22 @@ private nonisolated func resolveTargetPaneID(flag: String?) throws -> UUID? {
     }
 }
 
+/// Resolves `pane split --view <kind>` client-side. `nil` (flag omitted)
+/// means "no explicit kind" — the wire/model layer's own default is
+/// `.terminal` (#0315's directive: omitting `--view` must keep every
+/// existing invocation producing a terminal pane unchanged). An unknown
+/// kind string fails fast here with exit `1`, listing the valid set,
+/// rather than round-tripping to the app only to fail there.
+private nonisolated func resolveViewKind(flag: String?) throws -> PaneContentKind? {
+    guard let flag else { return nil }
+    guard let kind = PaneContentKind(rawValue: flag) else {
+        let valid = PaneContentKind.allCases.map(\.rawValue).joined(separator: ", ")
+        fputs("batty: invalid --view kind: \(flag) (expected one of: \(valid))\n", stderr)
+        throw ExitCode.failure
+    }
+    return kind
+}
+
 /// `batty pane split` — the first mutating verb carried over XPC
 /// request/reply rather than the one-way `batty://` scheme (#0257's
 /// 2026-07-26 transport amendment), so a stale/unknown `--pane` id is
@@ -61,10 +77,27 @@ struct PaneSplitCommand: ParsableCommand {
     @Option(name: .long, help: "Pane id to split. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.")
     var pane: String?
 
+    /// #0315. Omitted means Terminal — every existing `pane split`
+    /// invocation keeps producing exactly the terminal pane it always did.
+    /// Validated client-side against `PaneContentKind`'s known raw values
+    /// (the same string used as the Codable/topology spelling,
+    /// `docs/pane-kinds.md` §5) so an unknown kind fails fast with exit `1`
+    /// rather than reaching the app.
+    @Option(name: .long, help: "Pane content kind for the new pane. Defaults to terminal. One of: \(PaneContentKind.allCases.map(\.rawValue).joined(separator: ", ")).")
+    var view: String?
+
     nonisolated func run() throws {
         let targetPaneID = try resolveTargetPaneID(flag: pane)
         let wireDirection: TopologySplitDirection = direction == .vertical ? .vertical : .horizontal
         let commandOverride = command.flatMap { $0.isEmpty ? nil : $0 }
+        let resolvedKind = try resolveViewKind(flag: view)
+        // `-c/--command` presumes a shell; a non-terminal pane has none —
+        // reject the combination client-side rather than silently dropping
+        // `-c` (#0315 review round 1, non-blocking item).
+        if let resolvedKind, resolvedKind != .terminal, commandOverride != nil {
+            fputs("batty: --command is not valid with --view \(resolvedKind.rawValue) (non-terminal panes have no shell)\n", stderr)
+            throw ExitCode.failure
+        }
 
         switch AppConnectDance.resolveEndpoint() {
         case .failure(.brokerUnreachable):
@@ -74,7 +107,7 @@ struct PaneSplitCommand: ParsableCommand {
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
         case .success(let endpoint):
-            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, timeout: 3.0) {
+            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, timeout: 3.0) {
             case .success(let reply):
                 print(reply.paneID)
             case .unreachable:

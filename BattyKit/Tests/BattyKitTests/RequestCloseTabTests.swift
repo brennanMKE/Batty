@@ -42,6 +42,25 @@ struct RequestCloseTabTests {
         #expect(!pane.tabs.contains { $0.id == activeID })
     }
 
+    /// #0315 review round 2, finding 2: `WindowRuntime.requestCloseFocusedTab()`
+    /// / `.closeFocusedTab()` are the single choke point every dispatch
+    /// path (menu bar, `BattyShortcuts`, Command Palette) routes "close the
+    /// focused tab" through — kind-gating here, once, protects all of them.
+    @Test func closeFocusedTabDoesNotRemoveANonTerminalPanesStructuralTab() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)!
+        #expect(session.tree.focusedPaneID == nonTerminalPane.id)
+        let paneCountBefore = session.tree.allPanes.count
+
+        store.windows[0].closeFocusedTab()
+        store.windows[0].requestCloseFocusedTab()
+
+        #expect(session.tree.allPanes.count == paneCountBefore)
+        #expect(nonTerminalPane.tabs.count == 1)
+    }
+
     @Test func requestCloseOtherTabsAllIdleClosesImmediately() {
         let pane = PaneRuntime()
         pane.addTab()

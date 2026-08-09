@@ -248,13 +248,25 @@ struct CrossWindowBehaviorTests {
         let w1TabCount = store.windows[0].sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
         let w2TabCount = w2.sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
 
-        // Total across all windows via the widened logic.
-        let total = store.windows.reduce(0) { acc, w in
-            acc + w.sessions.reduce(0) { $0 + $1.tree.allPanes.reduce(0) { $0 + $1.tabs.count } }
-        }
+        let total = QuitConfirmation.openTerminalTabCount(store: store)
         #expect(total == w1TabCount + w2TabCount,
                 "Quit confirmation should count tabs across all windows")
         #expect(total >= 2)
+    }
+
+    /// #0315 review round 1, finding 3: a non-terminal pane's one
+    /// `TabRuntime` is a structural placeholder with no live Terminal
+    /// Session behind it — it must not inflate the user-facing "There are N
+    /// open terminal(s)" Cmd-Q prompt.
+    @Test func quitConfirmationCountExcludesNonTerminalPanes() {
+        let store = AppStateStore()
+        let session = store.sessions.first!
+        let terminalPane = session.focusedPane
+        let before = QuitConfirmation.openTerminalTabCount(store: store)
+
+        _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)
+
+        #expect(QuitConfirmation.openTerminalTabCount(store: store) == before)
     }
 
     // MARK: - App termination on last content window

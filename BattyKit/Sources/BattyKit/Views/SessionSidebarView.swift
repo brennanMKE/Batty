@@ -265,11 +265,20 @@ struct PaneRow: View {
     private var paneLabel: String {
         Self.label(
             position: session.tree.panePositions[pane.id]?.label ?? "?/?",
-            firstTab: pane.tabs.first
+            firstTab: pane.tabs.first,
+            kind: pane.kind
         )
     }
 
-    static func label(position: String, firstTab: TabRuntime?) -> String {
+    /// `kind` defaults to `.terminal` so every existing call site (and
+    /// `TabAutoNamingTests`' direct calls) keeps compiling and behaving
+    /// unchanged. For a non-terminal pane, `firstTab` is a structural
+    /// placeholder `PaneView` never renders (`PaneRuntime.kind`'s doc
+    /// comment) — labeling the sidebar row from it would render
+    /// `"2/1 — Tab"` on a Git Status pane, which looks broken (#0315 review
+    /// round 1, finding 3). Label from the kind's display name instead.
+    static func label(position: String, firstTab: TabRuntime?, kind: PaneContentKind = .terminal) -> String {
+        guard kind == .terminal else { return "\(position) — \(kind.displayName)" }
         guard let firstTab else { return position }
         return "\(position) — \(TabTitleFormatter.chipTitle(for: firstTab))"
     }

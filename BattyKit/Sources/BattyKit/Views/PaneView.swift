@@ -76,6 +76,114 @@ public struct PaneView: View {
     }
 
     public var body: some View {
+        // Single kind-switch at the top of body, per docs/pane-kinds.md §2.
+        // Everything below it — the Tab bar, the ZStack of
+        // TerminalPlaceholderViews, the terminal-specific onChange/onAppear
+        // wiring — exists only in the `.terminal` arm. A non-terminal pane
+        // must never reach TerminalPlaceholderView: its body unconditionally
+        // calls TerminalHostStore.terminalView(for:windowID:), which lazily
+        // spawns a PTY as a rendering side effect (docs/pane-kinds.md §2).
+        Group {
+            switch pane.kind {
+            case .terminal:
+                terminalBody
+            case .gitStatus, .processStatus, .lmStudioDashboard, .systemMetrics:
+                nonTerminalBody
+            }
+        }
+        // Hard-clamp to the size SplitLayout actually allotted this pane
+        // *before* .clipped()/.overlay() run. Without this, a tab bar that
+        // can't fit its chips at their minimum width (SlidingTabBar's inner
+        // fixedSize HStack) makes this VStack report an ideal size wider
+        // than the proposal, and everything anchored to that size — the
+        // focus-highlight overlay below in particular — draws past the
+        // real divider position (#0261). `allottedSize` is nil outside a
+        // split (a single unsplit pane), so this is a no-op there.
+        //
+        // `.topLeading` (not the default `.center`) so any tab-strip
+        // overflow clips off the trailing/bottom edges only, preserving
+        // the leading (first / active) tabs — this matches the pre-fix
+        // leading-anchored `SplitLayout.place(at: minX/minY)` behavior.
+        .frame(width: allottedSize?.width, height: allottedSize?.height, alignment: .topLeading)
+        // .clipped() constrains the tab bar row to the pane's allocated width.
+        // Without it, SlidingTabBar's inner fixedSize HStack can overflow into
+        // the adjacent pane when multiple tabs fill the bar, producing the
+        // merged-tab-bar appearance from #0253.
+        //
+        // Note: previously dimmed unfocused panes to 0.7 opacity here.
+        // Removed in #0135 round 6 — explicit opacity puts each pane
+        // body in an off-screen buffer, and the buffer edges between
+        // adjacent .7-alpha siblings composite as thin vertical lines
+        // at the pane boundaries. No opacity change here; .clipped() uses
+        // a CALayer clip and does not introduce an off-screen buffer.
+        .clipped()
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(accentColor, lineWidth: 2)
+                .opacity((pane.activeTab?.isDragHovering ?? false) ? 1 : 0)
+                .animation(.easeOut(duration: 0.12), value: pane.activeTab?.isDragHovering ?? false)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(accentColor, lineWidth: 2)
+                .opacity(bellFlashOpacity)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(accentColor, lineWidth: 2)
+                .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
+                .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            let state = PaneSwapDragState.shared
+            if state.isDragging,
+               let sourceID = state.sourcePaneID,
+               sourceID != pane.id,
+               tree.root.findPane(id: sourceID) != nil {
+                PaneSwapDropZone(pane: pane, tree: tree, accentColor: accentColor)
+            }
+        }
+        .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
+        .background {
+            Color.clear
+                .preference(key: PaneFramePreferenceKey.self, value: [pane.id: frameInSession])
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("session")) }) {
+                    frameInSession = $0
+                }
+                .onGeometryChange(for: CGSize.self, of: { $0.size }) {
+                    paneWidth = $0.width
+                    paneHeight = $0.height
+                }
+        }
+        .sheet(item: $renamingTab) { tab in
+            RenameTabSheet(
+                title: $renameDraft,
+                placeholder: tab.terminal.title,
+                onCommit: {
+                    let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let prior = tab.titleOverride
+                    tab.titleOverride = trimmed.isEmpty ? nil : trimmed
+                    logger.info("tab-rename: commit tab=\(tab.id, privacy: .public) prior=\(prior ?? "nil", privacy: .public) new=\(tab.titleOverride ?? "nil", privacy: .public)")
+                    // An empty commit clears the override the same way Reset
+                    // Title does — resume auto-naming immediately rather than
+                    // waiting for the next cwd change to notice.
+                    appStore?.updateTabAutoName(for: tab)
+                    renamingTab = nil
+                },
+                onCancel: { renamingTab = nil }
+            )
+        }
+    }
+
+    /// Byte-for-byte the pre-#0315 `body` — the Tab bar plus the `ZStack` of
+    /// `TerminalPlaceholderView`s and their terminal-specific event wiring —
+    /// moved unchanged into the `.terminal` arm of the kind-switch above,
+    /// per `docs/pane-kinds.md` §2.
+    @ViewBuilder
+    private var terminalBody: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 SlidingTabBar(
@@ -205,90 +313,29 @@ public struct PaneView: View {
                 appStore?.markActiveTabSeen()
             }
         }
-        // Hard-clamp to the size SplitLayout actually allotted this pane
-        // *before* .clipped()/.overlay() run. Without this, a tab bar that
-        // can't fit its chips at their minimum width (SlidingTabBar's inner
-        // fixedSize HStack) makes this VStack report an ideal size wider
-        // than the proposal, and everything anchored to that size — the
-        // focus-highlight overlay below in particular — draws past the
-        // real divider position (#0261). `allottedSize` is nil outside a
-        // split (a single unsplit pane), so this is a no-op there.
-        //
-        // `.topLeading` (not the default `.center`) so any tab-strip
-        // overflow clips off the trailing/bottom edges only, preserving
-        // the leading (first / active) tabs — this matches the pre-fix
-        // leading-anchored `SplitLayout.place(at: minX/minY)` behavior.
-        .frame(width: allottedSize?.width, height: allottedSize?.height, alignment: .topLeading)
-        // .clipped() constrains the tab bar row to the pane's allocated width.
-        // Without it, SlidingTabBar's inner fixedSize HStack can overflow into
-        // the adjacent pane when multiple tabs fill the bar, producing the
-        // merged-tab-bar appearance from #0253.
-        //
-        // Note: previously dimmed unfocused panes to 0.7 opacity here.
-        // Removed in #0135 round 6 — explicit opacity puts each pane
-        // body in an off-screen buffer, and the buffer edges between
-        // adjacent .7-alpha siblings composite as thin vertical lines
-        // at the pane boundaries. No opacity change here; .clipped() uses
-        // a CALayer clip and does not introduce an off-screen buffer.
-        .clipped()
-        .overlay {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(accentColor, lineWidth: 2)
-                .opacity((pane.activeTab?.isDragHovering ?? false) ? 1 : 0)
-                .animation(.easeOut(duration: 0.12), value: pane.activeTab?.isDragHovering ?? false)
-                .allowsHitTesting(false)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(accentColor, lineWidth: 2)
-                .opacity(bellFlashOpacity)
-                .allowsHitTesting(false)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(accentColor, lineWidth: 2)
-                .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
-                .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
-                .allowsHitTesting(false)
-        }
-        .overlay {
-            let state = PaneSwapDragState.shared
-            if state.isDragging,
-               let sourceID = state.sourcePaneID,
-               sourceID != pane.id,
-               tree.root.findPane(id: sourceID) != nil {
-                PaneSwapDropZone(pane: pane, tree: tree, accentColor: accentColor)
+    }
+
+    /// Non-terminal pane body (#0315): no Tab bar, no `TerminalPlaceholderView`
+    /// — a provisional placeholder stands in for the (not yet approved)
+    /// concrete view design. `docs/pane-kinds.md` §2 moves the Tab bar into
+    /// the `.terminal` arm, which took `paneDragHandle`/`paneEyeButton` with
+    /// it; both are re-hosted in this header so a non-terminal pane keeps a
+    /// mouse-reachable swap handle and hide button, matching every design
+    /// doc under `docs/design/` that assumes this relocation.
+    @ViewBuilder
+    private var nonTerminalBody: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                if hasSiblingPanes {
+                    paneDragHandle
+                        .padding(.trailing, 8)
+                }
+                paneEyeButton
             }
-        }
-        .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
-        .background {
-            Color.clear
-                .preference(key: PaneFramePreferenceKey.self, value: [pane.id: frameInSession])
-                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("session")) }) {
-                    frameInSession = $0
-                }
-                .onGeometryChange(for: CGSize.self, of: { $0.size }) {
-                    paneWidth = $0.width
-                    paneHeight = $0.height
-                }
-        }
-        .sheet(item: $renamingTab) { tab in
-            RenameTabSheet(
-                title: $renameDraft,
-                placeholder: tab.terminal.title,
-                onCommit: {
-                    let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let prior = tab.titleOverride
-                    tab.titleOverride = trimmed.isEmpty ? nil : trimmed
-                    logger.info("tab-rename: commit tab=\(tab.id, privacy: .public) prior=\(prior ?? "nil", privacy: .public) new=\(tab.titleOverride ?? "nil", privacy: .public)")
-                    // An empty commit clears the override the same way Reset
-                    // Title does — resume auto-naming immediately rather than
-                    // waiting for the next cwd change to notice.
-                    appStore?.updateTabAutoName(for: tab)
-                    renamingTab = nil
-                },
-                onCancel: { renamingTab = nil }
-            )
+            .background(themeChrome?.chromeBackground ?? Color.clear)
+
+            PaneContentPlaceholderView(kind: pane.kind)
         }
     }
 
@@ -351,7 +398,13 @@ public struct PaneView: View {
     private var paneDragPreview: some View {
         let previewWidth = max(160, min(paneWidth * 0.5, 360))
         let previewHeight = max(96, min(paneHeight * 0.5, 240))
-        let title = pane.activeTab.map { chipTitle(for: $0) } ?? "Pane"
+        // A non-terminal pane's activeTab is a structural placeholder
+        // PaneView never renders (PaneRuntime.kind's doc comment) — its
+        // chip title (e.g. "Tab") is not a meaningful drag-preview label,
+        // so label from the kind instead (#0315 review round 1, finding 3).
+        let title = pane.kind == .terminal
+            ? (pane.activeTab.map { chipTitle(for: $0) } ?? "Pane")
+            : pane.kind.displayName
         let fill = themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor)
         let textColor = themeChrome?.chromeForeground ?? Color.primary
         RoundedRectangle(cornerRadius: 6)
@@ -529,5 +582,39 @@ private struct TabRunningCommandObserver: ViewModifier {
             .onChange(of: tab.terminal.lastCommandDurationNanos) {
                 tab.recordCommandFinishedIfNeeded()
             }
+    }
+}
+
+/// Deliberately provisional stand-in for a non-terminal pane's real
+/// content (#0315). No concrete view kind ships in this issue — #0304's
+/// Git Status view and its siblings each have their own design doc under
+/// `docs/design/`, none of which is approved yet (#0301's design-first
+/// gate). This view exists solely so `batty pane split --view <kind>`
+/// has something visibly non-terminal to show; it must not be mistaken
+/// for a designed view, so it says plainly that it isn't one.
+///
+/// **Known gap, recorded for #0304 (review round 1, non-blocking):** this
+/// placeholder has no click-to-focus — nothing here calls
+/// `appStore.focusPane(id:)` the way a terminal pane's click does. Fine for
+/// a placeholder with nothing to interact with, but whichever issue lands
+/// the first real non-terminal view needs its own click-to-focus affordance
+/// (or must give the placeholder one first, if a demo needs it sooner).
+private struct PaneContentPlaceholderView: View {
+    let kind: PaneContentKind
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Spacer(minLength: 0)
+            Text(kind.displayName)
+                .font(.title3.weight(.semibold))
+            Text("This view is not implemented yet. Its design is drafted but not approved — see docs/design/.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("pane-placeholder.\(kind.rawValue)")
     }
 }

@@ -161,6 +161,26 @@ struct AppStateStoreTopologyPayloadTests {
         #expect(panePayload.tabs.allSatisfy { !$0.title.isEmpty })
     }
 
+    /// #0315 review round 1, finding 3: a non-terminal pane's one
+    /// `TabRuntime` is a structural placeholder `PaneView` never renders —
+    /// `batty list`/`batty list --tabs` must not show agents a
+    /// targetable-looking terminal tab on it.
+    @Test func topologyPayloadReportsEmptyTabsForANonTerminalPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)!
+
+        let payload = store.topologyPayload()
+        let panePayload = payload.windows[0].sessions[0].allPanes.first { $0.id == nonTerminalPane.id }
+
+        #expect(panePayload != nil)
+        #expect(panePayload?.tabs.isEmpty == true)
+        // The terminal sibling is unaffected.
+        let terminalPanePayload = payload.windows[0].sessions[0].allPanes.first { $0.id == terminalPane.id }
+        #expect(terminalPanePayload?.tabs.isEmpty == false)
+    }
+
     // MARK: - sessionInfoPayload(sessionID:)
 
     @Test func sessionInfoPayloadResolvesExplicitSessionID() {

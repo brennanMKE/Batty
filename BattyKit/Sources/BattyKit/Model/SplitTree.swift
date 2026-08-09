@@ -205,7 +205,21 @@ public final class SplitTree {
         return newPane
     }
 
-    private static func makePane(inheritingFrom source: PaneRuntime?, command: String? = nil) -> PaneRuntime {
+    /// `kind != .terminal` skips cwd inheritance and `command` entirely — a
+    /// non-terminal pane has no cwd to inherit "in the same sense" a
+    /// terminal split does (`docs/pane-kinds.md` §1) and `command` presumes
+    /// a shell. This entry point stays terminal-only for its cwd-inheriting
+    /// callers (`splitFocusedPane`/`splitFullDimension`); `splitPane(id:...)`
+    /// is the only caller that can pass a non-terminal `kind` today (#0315's
+    /// XPC `pane split --view <kind>`).
+    private static func makePane(
+        inheritingFrom source: PaneRuntime?,
+        command: String? = nil,
+        kind: PaneContentKind = .terminal
+    ) -> PaneRuntime {
+        guard kind == .terminal else {
+            return PaneRuntime(kind: kind)
+        }
         guard let sourceTab = source?.activeTab else {
             return command == nil ? PaneRuntime() : PaneRuntime(tabs: [TabRuntime(command: command)])
         }
@@ -241,10 +255,11 @@ public final class SplitTree {
         id targetPaneID: UUID,
         direction: SplitDirection,
         ratio: Double = 0.5,
-        command: String? = nil
+        command: String? = nil,
+        kind: PaneContentKind = .terminal
     ) -> PaneRuntime? {
         guard let targetPane = root.findPane(id: targetPaneID) else { return nil }
-        let newPane = Self.makePane(inheritingFrom: targetPane, command: command)
+        let newPane = Self.makePane(inheritingFrom: targetPane, command: command, kind: kind)
         if let sessionID {
             newPane.attachToSession(sessionID)
         }

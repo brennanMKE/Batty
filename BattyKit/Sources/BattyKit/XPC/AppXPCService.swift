@@ -104,7 +104,8 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     return
                 }
                 let direction = SplitDirection(rawValue: request.direction.rawValue) ?? .horizontal
-                guard let newPaneID = AppStateStore.shared.splitPane(id: targetPaneID, direction: direction, command: request.command) else {
+                let kind = request.kind ?? .terminal
+                guard let newPaneID = AppStateStore.shared.splitPane(id: targetPaneID, direction: direction, command: request.command, kind: kind) else {
                     logger.error("perform paneSplit: unknown pane id \(targetPaneID, privacy: .public)")
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
                     return

@@ -407,4 +407,31 @@ struct PaneHideTests {
         // The isVisible=false placement is NOT a blocker — onGeometryChange overwrites it.
         #expect(hostStore.placement(forTabID: tabAID)?.isVisible == false)
     }
+
+    // MARK: 10. Non-terminal pane hide must not leak a placement (#0315 review round 1, finding 1)
+
+    /// A non-terminal pane's `tabs` holds one structural placeholder
+    /// `TabRuntime` that never mounts a `TerminalPlaceholderView`, so it
+    /// never registers a `TerminalHostStore.terminalViews` entry.
+    /// `hidePane`'s per-tab `setPlacement` loop must skip it — writing a
+    /// `placements` entry anyway would be a dead entry `releaseTerminalView`
+    /// can never clean up (its no-registered-view guard returns before
+    /// reaching `placements.removeValue`), leaking one entry per
+    /// open→hide→close cycle for the app's lifetime — the #0285
+    /// unbounded-growth class.
+    @Test func hidingANonTerminalPaneDoesNotLeakATerminalHostStorePlacement() {
+        let store = AppStateStore()
+        let session = store.sessions.first!
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)!
+
+        let hostStore = TerminalHostStore.shared
+        let phantomTabID = nonTerminalPane.activeTabID
+        #expect(hostStore.placement(forTabID: phantomTabID) == nil)
+
+        store.hidePane(id: nonTerminalPane.id)
+
+        #expect(nonTerminalPane.isHidden == true)
+        #expect(hostStore.placement(forTabID: phantomTabID) == nil)
+    }
 }

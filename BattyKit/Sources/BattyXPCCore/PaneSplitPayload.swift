@@ -21,15 +21,26 @@ import Foundation
 /// pane next to me running X" (#0257 Notes) — plumbed into the new pane's
 /// `TabRuntime` as a per-tab command override rather than the global shell
 /// preference.
+///
+/// `kind`, added by #0315 (`docs/pane-kinds.md` §5's "extend, don't fork"
+/// guidance), selects the new pane's `PaneContentKind`. `nil` — the CLI's
+/// `--view` flag omitted — means Terminal, matching the model's own
+/// absent-key-decodes-to-`.terminal` default (`Pane.init(from:)`,
+/// `LayoutModel.swift`) so the CLI default, the wire default, and the model
+/// default are the same rule stated once. This keeps every existing `pane
+/// split` invocation (no `--view`) producing exactly the terminal pane it
+/// always did.
 public nonisolated struct PaneSplitRequest: Codable, Sendable, Equatable {
     public let paneID: UUID?
     public let direction: TopologySplitDirection
     public let command: String?
+    public let kind: PaneContentKind?
 
-    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil) {
+    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil) {
         self.paneID = paneID
         self.direction = direction
         self.command = command
+        self.kind = kind
     }
 }
 

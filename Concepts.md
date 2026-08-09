@@ -60,8 +60,8 @@ A named workspace, listed as one row in the Window's Sidebar.
 
 A single visible region inside a Session — a leaf of the Split tree.
 
-- **Purpose:** hosts the Tab bar and renders the active Tab's Terminal Session.
-- **Contains:** an ordered list of **Tabs** plus an `activeTabID`. A Pane always has at least one Tab (closing the last Tab removes the Pane).
+- **Purpose:** hosts either a Tab bar rendering the active Tab's Terminal Session (a `.terminal`-kind Pane, still the default and the only kind that renders real content today) or a single non-terminal view (any other `PaneContentKind`, #0315 — `git-status`, `process-status`, `lm-studio-dashboard`, `system-metrics`; each currently renders as a provisional placeholder pending its own design approval, see `docs/pane-kinds.md`/`docs/design/`).
+- **Contains:** an ordered list of **Tabs** plus an `activeTabID`. A Pane always has at least one Tab (closing the last Tab removes the Pane) — including a non-terminal-kind Pane, whose one Tab is never rendered or given a live Terminal Session (`docs/pane-kinds.md` §1 names the fuller `tabs: []` design; #0315 deliberately keeps this simpler shape for its scope).
 - **Layout:** Panes are arranged within a Session by the **Split tree**.
 - **Splitting:**
   - `rectangle.split.2x1` toolbar button or Cmd-D — split the focused Pane horizontally; new Pane appears to the right.
@@ -78,8 +78,9 @@ A single visible region inside a Session — a leaf of the Split tree.
 
 ## Tab
 
-One entry in a Pane's Tab bar. Each Tab owns exactly one Terminal Session.
+One entry in a Pane's Tab bar. Each Tab owns exactly one Terminal Session — true for a `.terminal`-kind Pane, which is every Pane a user can create today and the only kind that renders a Tab bar at all.
 
+- **Exception (#0315):** a non-terminal-kind Pane (`git-status`, `process-status`, `lm-studio-dashboard`, `system-metrics` — see Pane, above) holds exactly one Tab structurally (`PaneRuntime.init`'s precondition is unchanged for every kind), but that Tab has **no live Terminal Session** and is never rendered in a Tab bar or anywhere else. It is deliberately excluded from every Tab-counting/listing surface found to read it (`batty status`'s `tabCount`, `batty list`'s `tabs` array, Open Quickly, the sidebar pane row, the quit-confirmation count) and from every Tab-scoped command dispatch path found to act on it (Cmd-T/Cmd-W/Tab-switching/Exit Shell from the menu bar, the global keyboard-shortcut monitor, *and* the Command Palette — the last of these missed in the first review round precisely because it was a third, independently hand-copied dispatch switch). It exists only because #0315 deliberately deferred the fuller `tabs: []` pane-kind migration `docs/pane-kinds.md` §1 designs, to keep that issue's diff surgical — see `PaneRuntime.kind`'s and `SessionRuntime.focusedTerminalPane`'s doc comments for the full rationale and `docs/pane-kinds.md`'s "Implementation note (2026-08-09, `#0315`)" addendum for the enumerated list of places this exception had to be kind-gated. That list, and this bullet, describe every consumer found across three review rounds — not a provable exhaustive set; a future consumer that walks "every Pane" without checking `kind` would reproduce the same class of bug.
 - **Purpose:** lets a single Pane host multiple shells without changing the Split layout.
 - **Rendered by:** the **SlidingTabs** Swift package — Safari-style horizontal chips with drag-to-reorder and an "unseen" dot that we map to bell state.
 - **Identity:** stable `id: UUID`. Each Tab references its Terminal Session by surface UUID.
@@ -99,7 +100,7 @@ One entry in a Pane's Tab bar. Each Tab owns exactly one Terminal Session.
 
 The actual running terminal — one libghostty surface with a PTY, a shell process, and a render target.
 
-- **One-to-one with a Tab.** A Terminal Session is born when its Tab is created and torn down when its Tab closes (PTY killed, Metal resources released).
+- **One-to-one with a Tab in a `.terminal`-kind Pane.** A Terminal Session is born when its Tab is created and torn down when its Tab closes (PTY killed, Metal resources released). A non-terminal-kind Pane's one Tab (#0315, see Tab, above) is the exception: it never gets a Terminal Session at all — no PTY is ever spawned for it.
 - **Implementation:** a `ghostty_surface_t` from libghostty, wrapped in an `NSView` that owns a `CAMetalLayer` and implements `NSTextInputClient` (IME) and `NSDraggingDestination` (file drops).
 - **Identity:** stable `surfaceID: UUID`. Looked up via the **Surface registry**: `[UUID: ghostty_surface_t]`. The registry decouples surface lifetime from SwiftUI view identity — SwiftUI rebuilding a `TerminalSurfaceView` does **not** kill the underlying terminal.
 - **What it owns:**

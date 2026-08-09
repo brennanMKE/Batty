@@ -228,9 +228,15 @@ public final class WindowRuntime {
         logger.warning("closeTab tab=\(tabID, privacy: .public) not found in any session")
     }
 
+    /// No-ops when the focused pane isn't `.terminal`-kind (#0315 review
+    /// round 2, finding 2) — closing a non-terminal pane's structural
+    /// placeholder tab would remove the pane's only tab through the wrong
+    /// path (`removePane`'s tree-collapse cascade, not `pane close`'s).
+    /// Centralizing the guard here protects every caller (menu bar,
+    /// `BattyShortcuts`' NSEvent monitor, Command Palette) in one place.
     public func closeFocusedTab() {
-        guard let session = selectedSession else { return }
-        closeTab(id: session.focusedPane.activeTabID)
+        guard let session = selectedSession, let pane = session.focusedTerminalPane else { return }
+        closeTab(id: pane.activeTabID)
     }
 
     public func requestCloseTab(id tabID: UUID) {
@@ -246,9 +252,13 @@ public final class WindowRuntime {
         }
     }
 
+    /// Same kind-gate as `closeFocusedTab()`, for the confirmation-routed
+    /// close path (#0315 review round 2, finding 2) — this is the method
+    /// the menu bar's "Close Tab" and the Command Palette's `.closeTab`
+    /// both call.
     public func requestCloseFocusedTab() {
-        guard let session = selectedSession else { return }
-        requestCloseTab(id: session.focusedPane.activeTabID)
+        guard let session = selectedSession, let pane = session.focusedTerminalPane else { return }
+        requestCloseTab(id: pane.activeTabID)
     }
 
     public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {
@@ -424,11 +434,23 @@ public final class WindowRuntime {
             // TerminalPlaceholderView is unmounted while the pane is hidden
             // so its onGeometryChange never fires. Drive TerminalHostStore
             // directly so the AppTerminalView isn't left floating (#0256).
-            for tab in pane.tabs {
-                TerminalHostStore.shared.setPlacement(
-                    TerminalHostStore.Placement(frame: .zero, isVisible: false),
-                    forTabID: tab.id
-                )
+            //
+            // Kind-gated (#0315 review round 1, finding 1): a non-terminal
+            // pane's tab never mounts a TerminalPlaceholderView and so never
+            // registers a `terminalViews` entry — writing a `placements`
+            // entry for it here would be a dead entry `releaseTerminalView`
+            // can never clean up (its `guard let view = terminalViews
+            // .removeValue(...) else { return }` returns before reaching
+            // `placements.removeValue`), leaking one `placements[id]` per
+            // open→hide→close cycle for the app's lifetime — the #0285
+            // unbounded-growth class.
+            if pane.kind == .terminal {
+                for tab in pane.tabs {
+                    TerminalHostStore.shared.setPlacement(
+                        TerminalHostStore.Placement(frame: .zero, isVisible: false),
+                        forTabID: tab.id
+                    )
+                }
             }
             return
         }

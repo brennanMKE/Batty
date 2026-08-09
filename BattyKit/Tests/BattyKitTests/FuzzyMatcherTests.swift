@@ -110,6 +110,24 @@ struct OpenQuicklyFilterTests {
         #expect(filtered.first?.sessionTitle == "Bird")
     }
 
+    // MARK: allResults(for:) excludes non-terminal panes (#0315 review round 1, finding 3)
+
+    /// A non-terminal pane's one `TabRuntime` is a structural placeholder
+    /// `PaneView` never renders — offering it as an Open Quickly jump
+    /// target would be a bogus result.
+    @Test func allResultsExcludesNonTerminalPanes() {
+        let bellFeed = BellFeedStore()
+        let nameCache = SessionNameCache()
+        let window = WindowRuntime(bellFeed: bellFeed, nameCache: nameCache)
+        let session = window.sessions[0]
+        let terminalPane = session.focusedPane
+        let before = OpenQuicklyFilter.allResults(for: window).count
+
+        _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)
+
+        #expect(OpenQuicklyFilter.allResults(for: window).count == before)
+    }
+
     // MARK: empty query returns everything in input order
 
     @Test func emptyQueryPassesThroughInOrder() {

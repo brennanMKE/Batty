@@ -787,3 +787,130 @@ answered the model-level half of the singleton-per-scope question
 `#0315`/`issues/0315.md:47` asks of this issue; named `Concepts.md:63` as
 the specific line a later child must update; corrected `CLAUDE.md`'s
 remaining stale `Session`/`Tab`/`SplitNode` type list.*
+
+**Implementation note (2026-08-09, `#0315`, updated after review round
+1):** `#0315` landed `PaneContentKind`, `PaneRuntime.kind`/`Pane.kind`, and
+`PaneView`'s kind-switch — the first code against this design — with one
+deliberate, documented narrowing of §1's "Model changes this implies": a
+non-terminal `PaneRuntime` still holds one ordinary `TabRuntime` (`tabs`
+stays non-empty, `activeTabID` stays non-optional) rather than `tabs: []` /
+`activeTabID: UUID?`. `PaneView`'s non-terminal arm never reads or renders
+that tab, so no PTY is ever spawned. This avoided the "double-digit number
+of call sites" migration this document sized but didn't perform, keeping
+`#0315`'s model/view diff surgical, and — confirmed correct by review round
+1 — meant the close cascade (`WindowRuntime.closePane`) needed **zero**
+kind-gated additions (the inert-tab shape makes the existing per-tab
+teardown loop a no-op on an unmounted tab for free).
+
+**Round 1's finding, corrected here rather than left implicit for #0304 to
+re-derive: "the one real cost is an otherwise-inert `TerminalViewState`"
+understated it.** The phantom Tab is a real `TabRuntime` with a real
+`activeTabID`, and every general-purpose "walk every Pane's Tabs" consumer
+in the app reached it before round 1's fixes. The full list found, each now
+kind-gated to `pane.kind == .terminal` (or, for the two behavioral bugs,
+fixed at the root):
+
+- `WindowRuntime.hidePane` — wrote a `TerminalHostStore.placements` entry
+  for the phantom tab that `releaseTerminalView` could never clean up
+  (its no-view guard returns before reaching `placements.removeValue`) —
+  a genuine **unbounded per-cycle leak** (open → hide → close), the
+  #0285 growth class. Fixed by gating the `setPlacement` loop on
+  `pane.kind == .terminal`, not by documentation.
+- **Three independent dispatch paths** for Tab-scoped commands
+  (`BattyCommands.swift`'s **Tab** `CommandMenu`, `BattyShortcuts.swift`'s
+  NSEvent-monitor dispatch — the actual keyboard-shortcut path, which
+  bypasses the SwiftUI Commands' `.disabled` state entirely per that
+  file's own doc comment — and `CommandPaletteView.dispatch(_:)`, a third,
+  independent copy of the same switch found only in round 2) — Cmd-T, or
+  the Command Palette's "New Tab" row, on a focused non-terminal pane
+  **silently added a second invisible tab**; Cmd-W/"Close Tab",
+  Cmd-Shift-[/], Cmd-1..9/Cmd-Option-1..9, and Exit Shell were all
+  reachable the same way through at least one of the three paths. Round 1
+  found and gated the first two; round 2 found `CommandPaletteView
+  .dispatch(_:)` completely ungated — reachable via the two keystrokes
+  Cmd-Shift-P → "New Tab" right beside a correctly-gated (and therefore
+  visibly different) Cmd-T, and specifically reachable because
+  `SplitTree.splitPane` moves focus to a freshly split pane when the
+  split target was already focused — exactly what `batty pane split
+  --view git-status` does to the pane it targets, making this issue's own
+  headline demo the setup for the bug. **Fixed once, not a fourth copy**:
+  `SessionRuntime.focusedTerminalPane` is a new accessor (`focusedPane`,
+  or `nil` when it isn't `.terminal`-kind) that all three dispatch paths
+  now route through for `.newTab`/`.previousTab`/`.nextTab`; `WindowRuntime
+  .closeFocusedTab()`/`.requestCloseFocusedTab()` and `ExitDispatcher
+  .focusedTerminalTab` gained the same guard internally, which fixes
+  `.closeTab`/`.exitShell` for every caller (present and future) in one
+  place rather than three.
+- `QuitConfirmation.shouldQuitOrPrompt` / `.windowNeedsConfirmClose` —
+  inflated the user-facing "There are N open terminal(s)" Cmd-Q prompt
+  and the needs-confirmation check.
+- `AppStateStore.statusPayload` — `batty status`'s `tabCount`.
+- `TopologyPayloadBuilder`'s `PaneRuntime.topologyPayload(isFocused:)` —
+  `batty list`/`batty list --tabs` showed agents a targetable-looking
+  terminal tab on a non-terminal pane, wrong for the exact agent workflow
+  `#0315` exists to serve. Now reports `tabs: []` for a non-terminal pane.
+  **Residual gap, not fixed**: `activeTabID` still names the (now
+  unlisted) phantom tab's real id, and `TopologyPanePayload` still has no
+  `kind` field (unchanged from the paragraph below) — an agent cannot
+  distinguish "empty tabs, no active tab really" from any other
+  empty-tabs pane by this field alone. Left for whoever adds `kind` to
+  the topology payload.
+- `OpenQuicklyView.allResults` — offered the phantom tab as a jump target.
+- `SessionSidebarView.PaneRow.paneLabel` — rendered `"2/1 — Tab"` for a
+  non-terminal pane; now renders `"2/1 — Git Status"` (the kind's
+  `displayName`) instead.
+- `PaneView.paneDragPreview` — labeled the drag preview from the phantom
+  tab's chip title; now uses the kind's `displayName`.
+- `ThemePreference.applyThemeToAllSurfaces`/`.applyTheme(_:to:)` and
+  `SettingsPreferences.applyAppearanceToAllSurfaces` — reconfigured the
+  phantom tab's `TerminalController` (never attached to a rendered
+  surface — wasted work, not a visible bug, but no reason to do it). Now
+  skipped.
+
+None of this required `TopologyPanePayload` to change shape — the fixes
+above filter `TopologyPanePayload`'s existing `tabs` array contents, not
+the payload's key set, so §5's `activeTabID` always-present-key encoding
+question is still untouched and still open for whoever adds `kind` to that
+payload.
+
+**What #0304 should take from this**: the phantom-tab shape is not free —
+it required roughly a dozen call sites to be individually kind-gated
+(round 1's ~10 plus round 2's third dispatch path), two of them real bugs
+(the leak, and the silent-mutation defect that took *two* review rounds to
+fully close because it lived in three hand-copied switches over one
+`ShortcutAction` enum), all found only by reviewers tracing actual call
+graphs rather than by this document's own "the only cost is an inert
+object" claim. **The general lesson, not just the specific one**: any
+future consumer that walks "every Pane" and assumes every Pane has
+Tab-like content, or any future dispatch path that hand-copies a
+switch-over-`PaneRuntime` instead of routing through a shared accessor,
+reproduces this defect class. `SessionRuntime.focusedTerminalPane` (added
+in round 2) is now the canonical accessor for "the focused pane, if it's
+safe to treat as a Tab container" — new dispatch paths should use it from
+the start rather than hand-rolling a kind check, and reviewers of future
+kind-touching issues should specifically check for hand-copied switches
+the way round 2's review did. If #0304 (or a later kind) needs to add even
+one more general-purpose "walk every Pane's Tabs" consumer, or if the
+kind-gating burden grows further, the calculus this document originally
+used to justify deferring `tabs: []` should be re-run — "cheaper than the
+full migration" was true for #0315 (a dozen small, local diffs vs. the
+double-digit call-site rewrite this document sized) but is not guaranteed
+to stay true.
+
+**Manual checklist obligation, recorded (not run):**
+`docs/terminal-pane-requirements.md` §6's full manual checklist is owed by
+this issue per §6 above (`PaneView.body` now wraps the terminal path in a
+`_ConditionalContent` via the kind-switch) — run once on a **terminal**
+pane, and again on a **terminal pane in a mixed-kind session** (a terminal
+pane alongside a `--view git-status` pane). Neither run is possible from
+this implementer's environment; both are owed and were not performed by
+any of the three review rounds.
+
+`#0315` also left `TopologyPanePayload` untouched entirely (§5's
+`activeTabID` always-present-key encoding, and a `kind` field, were not
+built) since the demo it shipped for does not read topology beyond the
+`tabs`-array filtering above. Whichever issue lands the first real
+non-terminal view (most likely `#0304`) should re-read this note in full:
+if that view's own requirements need the fuller `tabs: []` shape, or
+`TopologyPanePayload.kind`, that migration still has to happen then — it
+was sized here, not required by `#0315`, and not performed by it either.

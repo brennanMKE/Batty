@@ -185,8 +185,13 @@ extension AppStateStore {
         // Appearance settings are app-wide, so apply to every window's surfaces.
         // The `sessions` shim resolves to windows[0] only; iterating `windows`
         // directly avoids leaving other windows (often the key window) stale (#0248).
+        // A non-terminal pane's `tabs` holds one structural placeholder
+        // `TabRuntime` (`PaneRuntime.kind`'s doc comment) — its
+        // `TerminalController` was never attached to a rendered surface, so
+        // reconfiguring it is wasted work with no visible effect (#0315
+        // review round 1, finding 3).
         for session in windows.flatMap({ $0.sessions }) {
-            for pane in session.tree.allPanes {
+            for pane in session.tree.allPanes where pane.kind == .terminal {
                 for tab in pane.tabs {
                     tab.terminal.controller.setTerminalConfiguration(configuration)
                 }

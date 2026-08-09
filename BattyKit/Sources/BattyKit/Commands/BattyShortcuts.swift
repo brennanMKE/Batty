@@ -58,7 +58,7 @@ public enum BattyShortcuts {
                 if cmdSwitchesSessions {
                     windowRuntime.selectSession(at: index - 1)
                 } else {
-                    windowRuntime.selectedSession?.focusedPane.selectTab(at: index - 1)
+                    windowRuntime.selectedSession?.focusedTerminalPane?.selectTab(at: index - 1)
                 }
                 return true
             }
@@ -67,7 +67,7 @@ public enum BattyShortcuts {
         case ([.command, .option], let digit) where digit.count == 1 && digit.first?.isWholeNumber == true:
             if let index = Int(digit), (1...9).contains(index) {
                 if cmdSwitchesSessions {
-                    windowRuntime.selectedSession?.focusedPane.selectTab(at: index - 1)
+                    windowRuntime.selectedSession?.focusedTerminalPane?.selectTab(at: index - 1)
                 } else {
                     windowRuntime.selectSession(at: index - 1)
                 }
@@ -115,10 +115,18 @@ public enum BattyShortcuts {
         case .newSession:
             window.addSession()
         case .closeTab:
+            // `WindowRuntime.closeFocusedTab()` itself kind-gates through
+            // `SessionRuntime.focusedTerminalPane` (#0315 review round 2,
+            // finding 2) — no separate check needed here.
             window.closeFocusedTab()
         case .newTab:
-            window.selectedSession?.focusedPane.addTab(
-                inheritingCWDFrom: window.selectedSession?.focusedPane.activeTab
+            // Kind-gated via `focusedTerminalPane`, not `focusedPane`: a
+            // non-terminal pane's one TabRuntime is a structural
+            // placeholder PaneView never renders — Cmd-T on a focused
+            // non-terminal pane must not silently add a second invisible
+            // tab nobody can see or reach.
+            window.selectedSession?.focusedTerminalPane?.addTab(
+                inheritingCWDFrom: window.selectedSession?.focusedTerminalPane?.activeTab
             )
         case .splitHorizontal:
             if let tree = window.selectedSession?.tree {
@@ -145,9 +153,9 @@ public enum BattyShortcuts {
         case .focusPaneDown:
             window.selectedSession?.focusPane(adjacent: .down)
         case .previousTab:
-            window.selectedSession?.focusedPane.selectPreviousTab()
+            window.selectedSession?.focusedTerminalPane?.selectPreviousTab()
         case .nextTab:
-            window.selectedSession?.focusedPane.selectNextTab()
+            window.selectedSession?.focusedTerminalPane?.selectNextTab()
         case .toggleSidebar:
             NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
         case .toggleBellFeed:
