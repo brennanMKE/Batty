@@ -29,9 +29,10 @@ struct SplitTreeResizeTests {
     // MARK: - Step direction
 
     @Test func leftArrowGrowsTheFocusedPaneWhenItIsTheRightChild() {
-        // [A | B], focus B (the right half) — matches PRD.md:162 / the #0325
-        // worked example: Cmd-Ctrl-Left on a pane in the right half grows it,
-        // because the divider moves left, away from B, toward A.
+        // [A | B], focus B (the right half) — matches PRD.md §6.4 "Panes &
+        // splits" / the #0325 worked example: Cmd-Ctrl-Left on a pane in the
+        // right half grows it, because the divider moves left, away from B,
+        // toward A.
         let tree = SplitTree()
         let paneA = tree.focusedPane
         tree.splitFocusedPane(direction: .horizontal)
