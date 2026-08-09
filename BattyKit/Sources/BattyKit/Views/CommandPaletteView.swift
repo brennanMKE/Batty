@@ -258,6 +258,14 @@ struct CommandPaletteView: View {
             AppStateStore.shared.openWindowAction?()
         case .exitShell:
             ExitDispatcher.sendExit(store: store)
+        case .resizeSplitLeft:
+            window.selectedSession?.tree.resizeFocusedSplit(.left)
+        case .resizeSplitRight:
+            window.selectedSession?.tree.resizeFocusedSplit(.right)
+        case .resizeSplitUp:
+            window.selectedSession?.tree.resizeFocusedSplit(.up)
+        case .resizeSplitDown:
+            window.selectedSession?.tree.resizeFocusedSplit(.down)
         }
     }
 }

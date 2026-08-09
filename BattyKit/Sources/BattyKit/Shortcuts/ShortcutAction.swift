@@ -31,6 +31,10 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
     case themeSelector
     case newWindow
     case exitShell
+    case resizeSplitLeft
+    case resizeSplitRight
+    case resizeSplitUp
+    case resizeSplitDown
 
     public var id: String { rawValue }
 
@@ -57,6 +61,10 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .themeSelector:   return String(localized: "Open Theme Selector")
         case .newWindow:       return String(localized: "New Window")
         case .exitShell:       return String(localized: "Exit Shell")
+        case .resizeSplitLeft:  return String(localized: "Move Split Divider Left")
+        case .resizeSplitRight: return String(localized: "Move Split Divider Right")
+        case .resizeSplitUp:    return String(localized: "Move Split Divider Up")
+        case .resizeSplitDown:  return String(localized: "Move Split Divider Down")
         }
     }
 
@@ -109,6 +117,18 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
             return ShortcutBinding(key: "n", modifiers: EventModifiers([.command, .shift]).rawValue)
         case .exitShell:
             return ShortcutBinding(key: "x", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .resizeSplitLeft:
+            return ShortcutBinding(key: ShortcutBinding.SpecialKey.leftArrow.rawValue,
+                                   modifiers: EventModifiers([.command, .control]).rawValue)
+        case .resizeSplitRight:
+            return ShortcutBinding(key: ShortcutBinding.SpecialKey.rightArrow.rawValue,
+                                   modifiers: EventModifiers([.command, .control]).rawValue)
+        case .resizeSplitUp:
+            return ShortcutBinding(key: ShortcutBinding.SpecialKey.upArrow.rawValue,
+                                   modifiers: EventModifiers([.command, .control]).rawValue)
+        case .resizeSplitDown:
+            return ShortcutBinding(key: ShortcutBinding.SpecialKey.downArrow.rawValue,
+                                   modifiers: EventModifiers([.command, .control]).rawValue)
         }
     }
 }

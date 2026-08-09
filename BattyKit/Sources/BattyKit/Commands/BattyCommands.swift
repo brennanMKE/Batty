@@ -285,6 +285,40 @@ public struct BattyCommands: Commands {
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .focusPaneDown))
             .disabled(!canFocusAdjacentPane)
+
+            Divider()
+
+            Button {
+                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.left)
+            } label: {
+                Label("Move Split Divider Left", systemImage: "chevron.left")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .resizeSplitLeft))
+            .disabled(!canFocusAdjacentPane)
+
+            Button {
+                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.right)
+            } label: {
+                Label("Move Split Divider Right", systemImage: "chevron.right")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .resizeSplitRight))
+            .disabled(!canFocusAdjacentPane)
+
+            Button {
+                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.up)
+            } label: {
+                Label("Move Split Divider Up", systemImage: "chevron.up")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .resizeSplitUp))
+            .disabled(!canFocusAdjacentPane)
+
+            Button {
+                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.down)
+            } label: {
+                Label("Move Split Divider Down", systemImage: "chevron.down")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .resizeSplitDown))
+            .disabled(!canFocusAdjacentPane)
         }
 
         CommandMenu("Tab") {

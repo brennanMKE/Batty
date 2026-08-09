@@ -162,6 +162,14 @@ public enum BattyShortcuts {
             NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
         case .exitShell:
             ExitDispatcher.sendExit(store: appStore)
+        case .resizeSplitLeft:
+            window.selectedSession?.tree.resizeFocusedSplit(.left)
+        case .resizeSplitRight:
+            window.selectedSession?.tree.resizeFocusedSplit(.right)
+        case .resizeSplitUp:
+            window.selectedSession?.tree.resizeFocusedSplit(.up)
+        case .resizeSplitDown:
+            window.selectedSession?.tree.resizeFocusedSplit(.down)
         case .newWindow:
             // Already handled above; unreachable.
             break

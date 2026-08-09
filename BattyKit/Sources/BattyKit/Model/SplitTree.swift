@@ -298,6 +298,57 @@ public final class SplitTree {
         root = SplitTreeNode.updatingRatio(in: root, forID: id, to: clamped)
     }
 
+    /// Which arrow of a Cmd-Ctrl-arrow resize was pressed. Deliberately a
+    /// distinct type from `PaneFocusDirection` (Commands layer,
+    /// `PaneFocus.swift`) even though the four cases mirror it exactly —
+    /// that type belongs to the Commands layer, which already depends on
+    /// `SplitTree`, and this Model-layer file should not depend back on it.
+    public enum ResizeDirection: Sendable {
+        case left, right, up, down
+    }
+
+    /// Step applied per Cmd-Ctrl-arrow press, per PRD.md §6.4 "Panes &
+    /// splits" ("Keyboard resize: Cmd-Ctrl-arrows resize the split
+    /// containing focus by ±5%").
+    public static let resizeStep: Double = 0.05
+
+    /// Resizes the Split containing focus by `resizeStep`, per Cmd-Ctrl-arrow
+    /// (#0325). "The Split containing focus" resolves to the *deepest*
+    /// ancestor of `focusedPaneID` whose `direction` matches the arrow's
+    /// axis (`.left`/`.right` need a `.horizontal` ancestor, `.up`/`.down` a
+    /// `.vertical` one) — not necessarily the immediate parent, since a
+    /// perpendicular parent split has no meaningful effect along that axis
+    /// and the search walks past it to the next ancestor out. No matching
+    /// ancestor anywhere on the path (a single unsplit pane, or every
+    /// ancestor is perpendicular) is a silent no-op — nothing visibly
+    /// resizes, and nothing should.
+    ///
+    /// `.left`/`.up` decrease the ratio (shrink the left/top child, grow the
+    /// right/bottom child); `.right`/`.down` increase it — each arrow moves
+    /// the divider in its own geographic direction, the same way dragging it
+    /// that way with the mouse would. Whether that grows or shrinks the
+    /// *focused* pane specifically depends on which side of the divider it
+    /// sits on; e.g. a pane in the right half growing on `.left` (the
+    /// divider moves toward its neighbor) is this rule in action.
+    /// `updateRatio` supplies the existing 0.05–0.95 clamp used by the
+    /// divider-drag path, so a pane can never be resized to zero width.
+    public func resizeFocusedSplit(_ direction: ResizeDirection) {
+        let axis: SplitDirection
+        let sign: Double
+        switch direction {
+        case .left:  axis = .horizontal; sign = -1
+        case .right: axis = .horizontal; sign = 1
+        case .up:    axis = .vertical;   sign = -1
+        case .down:  axis = .vertical;   sign = 1
+        }
+        guard let splitID = root.nearestAncestorSplitID(containing: focusedPaneID, matchingAxis: axis),
+              let currentRatio = root.ratio(forSplitID: splitID) else {
+            logger.debug("split-tree: resize no-op reason=no-matching-ancestor direction=\(String(describing: direction), privacy: .public)")
+            return
+        }
+        updateRatio(forSplitID: splitID, to: currentRatio + sign * Self.resizeStep)
+    }
+
     /// Swaps the positions of two leaf panes in the tree. The split structure
     /// and ratios are unchanged; only the leaf contents trade places.
     /// No-op if either id is not found.
@@ -351,6 +402,45 @@ extension SplitTreeNode {
                 left: updatingRatio(in: left, forID: id, to: newRatio),
                 right: updatingRatio(in: right, forID: id, to: newRatio)
             )
+        }
+    }
+
+    /// Deepest ancestor split containing `paneID` whose `direction` matches
+    /// `axis` — see `SplitTree.resizeFocusedSplit` for why this walks past a
+    /// nearer, perpendicular ancestor instead of stopping there. `nil` when
+    /// `paneID` isn't in this subtree, or no ancestor on its path matches.
+    func nearestAncestorSplitID(containing paneID: UUID, matchingAxis axis: SplitDirection) -> UUID? {
+        ancestorSearch(containing: paneID, matchingAxis: axis).matchID
+    }
+
+    private func ancestorSearch(
+        containing paneID: UUID,
+        matchingAxis axis: SplitDirection
+    ) -> (containsTarget: Bool, matchID: UUID?) {
+        switch self {
+        case .leaf(let pane):
+            return (pane.id == paneID, nil)
+        case .split(let id, let dir, _, let left, let right):
+            let leftResult = left.ancestorSearch(containing: paneID, matchingAxis: axis)
+            if leftResult.containsTarget {
+                return (true, leftResult.matchID ?? (dir == axis ? id : nil))
+            }
+            let rightResult = right.ancestorSearch(containing: paneID, matchingAxis: axis)
+            if rightResult.containsTarget {
+                return (true, rightResult.matchID ?? (dir == axis ? id : nil))
+            }
+            return (false, nil)
+        }
+    }
+
+    /// Current ratio of the split with `id`, or `nil` if not found.
+    func ratio(forSplitID id: UUID) -> Double? {
+        switch self {
+        case .leaf:
+            return nil
+        case .split(let nodeID, _, let ratio, let left, let right):
+            if nodeID == id { return ratio }
+            return left.ratio(forSplitID: id) ?? right.ratio(forSplitID: id)
         }
     }
 

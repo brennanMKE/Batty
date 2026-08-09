@@ -110,6 +110,34 @@ struct ShortcutsStoreTests {
         #expect(ShortcutAction.exitShell.defaultBinding != cut)
     }
 
+    @Test func resizeSplitActionsAreInCatalogWithDistinctCmdCtrlArrowBindings() {
+        let actions: [(ShortcutAction, ShortcutBinding.SpecialKey)] = [
+            (.resizeSplitLeft, .leftArrow),
+            (.resizeSplitRight, .rightArrow),
+            (.resizeSplitUp, .upArrow),
+            (.resizeSplitDown, .downArrow),
+        ]
+        for (action, specialKey) in actions {
+            #expect(ShortcutAction.allCases.contains(action))
+            #expect(!action.displayName.isEmpty)
+
+            let expected = ShortcutBinding(
+                key: specialKey.rawValue,
+                modifiers: EventModifiers([.command, .control]).rawValue
+            )
+            #expect(action.defaultBinding == expected)
+            #expect(!ShortcutsStore.isReserved(action.defaultBinding))
+
+            // Must not collide with the Cmd-Option-arrow focus-pane bindings
+            // (#0325's chord-collision check): same key, different modifier.
+            let focusPaneEquivalent = ShortcutBinding(
+                key: specialKey.rawValue,
+                modifiers: EventModifiers([.command, .option]).rawValue
+            )
+            #expect(action.defaultBinding != focusPaneEquivalent)
+        }
+    }
+
     @Test func everyActionHasAUniqueDefaultBinding() {
         var seen: [ShortcutBinding: ShortcutAction] = [:]
         for action in ShortcutAction.allCases {
