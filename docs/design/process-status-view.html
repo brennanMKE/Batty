@@ -1,0 +1,799 @@
+<title>Process Status View — Design Mockup (#0305)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg-page: #f2f2f5;
+    --bg-pane: #ffffff;
+    --bg-header: #f7f7f9;
+    --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5;
+    --bg-banner-error: #fdecec;
+    --bg-tile: #f7f7f9;
+    --fg-primary: #1c1c1e;
+    --fg-secondary: #6b6b70;
+    --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed;
+    --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e;
+    --status-orange: #c9750b;
+    --status-red: #d33a3a;
+    --status-gray: #8a8a8e;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-page: #17181b;
+      --bg-pane: #1e1f23;
+      --bg-header: #232429;
+      --bg-inset: #202126;
+      --bg-banner: #3a2c12;
+      --bg-banner-error: #331313;
+      --bg-tile: #232429;
+      --fg-primary: #eceef0;
+      --fg-secondary: #9a9ba1;
+      --fg-tertiary: #6f7076;
+      --border: rgba(255,255,255,0.09);
+      --border-strong: rgba(255,255,255,0.16);
+      --accent: #5b8dff;
+      --accent-soft: rgba(91,141,255,0.16);
+      --status-green: #43c46d;
+      --status-orange: #e0a03f;
+      --status-red: #f16060;
+      --status-gray: #85868c;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg-page: #17181b; --bg-pane: #1e1f23; --bg-header: #232429; --bg-inset: #202126;
+    --bg-banner: #3a2c12; --bg-banner-error: #331313; --bg-tile: #232429;
+    --fg-primary: #eceef0; --fg-secondary: #9a9ba1; --fg-tertiary: #6f7076;
+    --border: rgba(255,255,255,0.09); --border-strong: rgba(255,255,255,0.16);
+    --accent: #5b8dff; --accent-soft: rgba(91,141,255,0.16);
+    --status-green: #43c46d; --status-orange: #e0a03f; --status-red: #f16060; --status-gray: #85868c;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+  }
+  :root[data-theme="light"] {
+    --bg-page: #f2f2f5; --bg-pane: #ffffff; --bg-header: #f7f7f9; --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5; --bg-banner-error: #fdecec; --bg-tile: #f7f7f9;
+    --fg-primary: #1c1c1e; --fg-secondary: #6b6b70; --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10); --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed; --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e; --status-orange: #c9750b; --status-red: #d33a3a; --status-gray: #8a8a8e;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .page {
+    font-family: var(--sans);
+    color: var(--fg-primary);
+    background: var(--bg-page);
+    padding: 28px 20px 60px;
+    min-width: 0;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  .intro h1 { font-size: 20px; margin: 0 0 4px; }
+  .intro p { font-size: 13px; color: var(--fg-secondary); margin: 0 0 18px; line-height: 1.5; }
+  .intro code { font-family: var(--mono); background: var(--bg-inset); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- state tabs (CSS-only, radio-driven) ---- */
+  .tabs input[type="radio"] { display: none; }
+  .tabbar {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 4px;
+    background: var(--bg-inset);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tabbar label {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--fg-secondary);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .tabpanel { display: none; }
+  #s1:checked ~ .tabbar label[for="s1"],
+  #s2:checked ~ .tabbar label[for="s2"],
+  #s3:checked ~ .tabbar label[for="s3"],
+  #s4:checked ~ .tabbar label[for="s4"],
+  #s5:checked ~ .tabbar label[for="s5"],
+  #s6:checked ~ .tabbar label[for="s6"] {
+    background: var(--bg-pane);
+    color: var(--fg-primary);
+    box-shadow: var(--shadow);
+  }
+  #s1:checked ~ .panels #p1,
+  #s2:checked ~ .panels #p2,
+  #s3:checked ~ .panels #p3,
+  #s4:checked ~ .panels #p4,
+  #s5:checked ~ .panels #p5,
+  #s6:checked ~ .panels #p6 { display: block; }
+
+  /* ---- pane frame: mirrors PaneView's RoundedRectangle(cornerRadius:4) + focus overlay ---- */
+  .pane-frame {
+    background: var(--bg-pane);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+  }
+  .kind-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-primary);
+    padding: 3px 9px 3px 7px;
+    border-radius: 6px;
+    background: var(--accent-soft);
+  }
+  .kind-chip svg { width: 13px; height: 13px; fill: var(--accent); }
+  .pane-header .spacer { flex: 1; }
+  .icon-btn {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    color: var(--fg-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--border); color: var(--fg-primary); }
+  .icon-btn svg { width: 13px; height: 13px; fill: currentColor; }
+  /* Same relocation docs/design/git-status-view.md §2 already justified:
+     the drag handle and hide (eye) button live inside PaneView's tab-bar
+     HStack, which only exists in the .terminal arm, so any non-terminal
+     pane needs its own header-level substitute. Second view to need it. */
+  .header-divider { width: 1px; height: 16px; background: var(--border-strong); margin: 0 2px; }
+
+  .proc-header {
+    padding: 10px 14px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .proc-title-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .proc-name { font-size: 14px; font-weight: 600; }
+  .proc-pid { font-family: var(--mono); font-size: 11px; color: var(--fg-tertiary); }
+  .proc-meta-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .mode-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500;
+    color: var(--fg-primary);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    padding: 3px 8px; border-radius: 6px;
+  }
+  .mode-pill svg { width: 11px; height: 11px; fill: var(--fg-secondary); }
+  .state-chip {
+    font-size: 10.5px; font-weight: 600;
+    padding: 2px 8px; border-radius: 5px;
+    color: #fff;
+  }
+  .state-chip.running { background: var(--status-green); }
+  .state-chip.exited { background: var(--status-gray); }
+  .state-chip.denied { background: var(--status-orange); }
+  .proc-path { font-family: var(--mono); font-size: 11px; color: var(--fg-tertiary); margin-top: 3px; word-break: break-all; }
+
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 12px 14px 4px;
+  }
+  .metric-tile {
+    background: var(--bg-tile);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 10px;
+  }
+  .metric-tile .label { font-size: 10.5px; color: var(--fg-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+  .metric-tile .value { font-size: 17px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .metric-tile .sub { font-size: 10.5px; color: var(--fg-tertiary); margin-top: 1px; }
+  .metric-tile.dim .value, .metric-tile.dim .sub { color: var(--fg-tertiary); }
+
+  .cmdline-row {
+    margin: 10px 14px 0;
+    padding: 7px 10px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fg-secondary);
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+  .cmdline-row .cl-label { color: var(--fg-tertiary); margin-right: 8px; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.03em; font-family: var(--sans); font-weight: 600; }
+
+  .state-banner {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin: 12px 14px 0;
+    padding: 9px 11px;
+    border-radius: 7px;
+    background: var(--bg-banner);
+    border: 1px solid color-mix(in srgb, var(--status-orange) 35%, transparent);
+  }
+  .state-banner.error {
+    background: var(--bg-banner-error);
+    border: 1px solid color-mix(in srgb, var(--status-red) 35%, transparent);
+  }
+  .state-banner.tombstone {
+    background: var(--bg-inset);
+    border: 1px solid var(--border-strong);
+  }
+  .state-banner svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+  .state-banner.error svg, .state-banner:not(.error):not(.tombstone) svg { fill: var(--status-orange); }
+  .state-banner.error svg { fill: var(--status-red); }
+  .state-banner.tombstone svg { fill: var(--fg-tertiary); }
+  .state-banner .title { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); }
+  .state-banner .sub { font-size: 11.5px; color: var(--fg-secondary); margin-top: 1px; }
+
+  .groups { padding: 8px 6px 12px; }
+  details.group { margin: 4px 6px; }
+  details.group > summary {
+    list-style: none;
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    font-size: 12px; font-weight: 600;
+    color: var(--fg-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary:hover { background: var(--bg-inset); }
+  details.group > summary .chevron {
+    width: 9px; height: 9px; transition: transform .12s ease;
+    fill: var(--fg-tertiary);
+  }
+  details.group[open] > summary .chevron { transform: rotate(90deg); }
+  details.group > summary .count { font-weight: 500; color: var(--fg-tertiary); }
+
+  .proc-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 5px 8px 5px 26px;
+    border-radius: 6px;
+    font-size: 12.5px;
+  }
+  .proc-row:hover { background: var(--bg-inset); }
+  .fd-type {
+    width: 34px; flex-shrink: 0;
+    font-family: var(--mono); font-size: 9.5px; font-weight: 700;
+    color: var(--fg-tertiary);
+    text-transform: uppercase;
+  }
+  .row-path { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 11.5px; }
+  .row-path .dim { color: var(--fg-tertiary); }
+  .child-pid { font-family: var(--mono); font-size: 11px; color: var(--fg-tertiary); flex-shrink: 0; }
+  .watch-link {
+    font-size: 10.5px; font-weight: 500;
+    color: var(--accent);
+    flex-shrink: 0;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: var(--accent-soft);
+  }
+
+  .empty-state, .loading-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 46px 24px 40px;
+    gap: 8px;
+  }
+  .empty-state svg { width: 30px; height: 30px; fill: var(--fg-tertiary); margin-bottom: 6px; }
+  .empty-state .title { font-size: 13.5px; font-weight: 600; }
+  .empty-state .sub { font-size: 12px; color: var(--fg-secondary); max-width: 340px; line-height: 1.5; }
+  .cta-btn {
+    margin-top: 10px;
+    font-size: 12px; font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .refreshing-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--fg-secondary);
+    margin-left: 4px;
+  }
+  .spinner {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-strong);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- annotations ---- */
+  .note {
+    display: flex; gap: 8px;
+    font-size: 12px; line-height: 1.5;
+    color: var(--fg-secondary);
+    margin: 10px 4px 0;
+    padding: 8px 10px;
+    background: var(--bg-inset);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+  }
+  .note b { color: var(--fg-primary); }
+  .note-mark {
+    flex-shrink: 0;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .notes-col { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  .context-hint {
+    font-size: 11px; color: var(--fg-tertiary); font-style: italic;
+    margin: 2px 14px 10px;
+  }
+
+  footer.legend {
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--fg-secondary);
+    display: flex; gap: 18px; flex-wrap: wrap;
+  }
+  footer.legend .item { display: flex; align-items: center; gap: 5px; }
+</style>
+
+<div class="page">
+  <div class="wrap">
+    <div class="intro">
+      <h1>Process Status view — visual design (#0305, phase 1)</h1>
+      <p>
+        Mockup of the second non-terminal Pane kind (<code>process-status</code>), read-only, focused on one
+        selected app or process rather than the whole system. Switch between the six states below — the four
+        on the right are the hard states this review should scrutinize most: an exited process, a metric made
+        unavailable by permissions, no sibling terminal to inherit a target from, and a high-churn process
+        mid-sample with the disclosure groups open. Every metric shown here was proved obtainable, at the cost
+        noted, by a real feasibility spike — see <code>docs/design/process-status-view.md</code> §1 for the
+        exact commands and numbers, and the rest of that document for the reasoning behind every other choice.
+      </p>
+    </div>
+
+    <div class="tabs">
+      <input type="radio" name="state" id="s1" checked>
+      <input type="radio" name="state" id="s2">
+      <input type="radio" name="state" id="s3">
+      <input type="radio" name="state" id="s4">
+      <input type="radio" name="state" id="s5">
+      <input type="radio" name="state" id="s6">
+
+      <div class="tabbar">
+        <label for="s1">1 · Pinned, healthy</label>
+        <label for="s2">2 · Following a terminal</label>
+        <label for="s3">3 · Process exited</label>
+        <label for="s4">4 · Permission unavailable</label>
+        <label for="s5">5 · No process selected</label>
+        <label for="s6">6 · High-churn / mid-sample</label>
+      </div>
+
+      <div class="panels">
+
+        <!-- ============ STATE 1: PINNED, HEALTHY ============ -->
+        <div class="tabpanel" id="p1">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                Process Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Choose Process…">
+                <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.75 3v3.25H12v1.5H8.75V12h-1.5V8.75H4v-1.5h3.25V4z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="proc-header">
+              <div class="proc-title-row">
+                <span class="proc-name">node</span>
+                <span class="proc-pid">pid 62481</span>
+                <span class="state-chip running">Running</span>
+              </div>
+              <div class="proc-meta-row">
+                <span class="mode-pill">
+                  <svg viewBox="0 0 16 16"><path d="M8 1a1.5 1.5 0 0 1 1.5 1.5v3.7l2.1 2.1a1 1 0 0 1-1.4 1.4L8 7.5V2.5A1.5 1.5 0 0 1 8 1zM4 13a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1z"/></svg>
+                  Pinned
+                </span>
+              </div>
+              <div class="proc-path">/Users/brennan/.nvm/versions/node/v22.4.0/bin/node</div>
+            </div>
+            <div class="metrics-row">
+              <div class="metric-tile">
+                <div class="label">CPU</div>
+                <div class="value">4.8%</div>
+                <div class="sub">over last 1s</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Memory</div>
+                <div class="value">312 MB</div>
+                <div class="sub">248 MB resident</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Threads</div>
+                <div class="value">11</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Open Files</div>
+                <div class="value">47</div>
+              </div>
+            </div>
+            <div class="cmdline-row"><span class="cl-label">cmd</span>node server.js --port 4000 --watch</div>
+            <div class="groups">
+              <details class="group">
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Open Files <span class="count">(47)</span></summary>
+                <div class="proc-row">
+                  <span class="fd-type">file</span>
+                  <span class="row-path"><span class="dim">~/Developer/acme/api/</span>server.js</span>
+                </div>
+                <div class="proc-row">
+                  <span class="fd-type">socket</span>
+                  <span class="row-path">TCP *:4000 (LISTEN)</span>
+                </div>
+                <div class="proc-row">
+                  <span class="fd-type">file</span>
+                  <span class="row-path"><span class="dim">~/Developer/acme/api/node_modules/express/</span>index.js</span>
+                </div>
+              </details>
+              <details class="group">
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Child Processes <span class="count">(0)</span></summary>
+                <div class="context-hint" style="margin: 4px 8px 8px 26px;">No child processes.</div>
+              </details>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Every figure in the metrics row was proved obtainable by the feasibility spike</b> — <code>PROC_PIDTASKINFO</code>, <code>proc_pid_rusage</code>, and <code>PROC_PIDLISTFDS</code> all succeed for a same-uid process in well under a millisecond, cross-checked against <code>footprint</code>/<code>ps</code>. Memory leads with <code>phys_footprint</code>, never resident/RSS as the primary number — the same convention #0290's <code>FootprintReader</code> established for Batty's own process.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>The command line is a bonus</b> the issue didn't ask for — <code>sysctl(KERN_PROCARGS2)</code> resolves full argv for a same-uid process in ~0.02ms, so it's shown for free.</span></div>
+            <div class="note"><span class="note-mark">3</span><span><b>Open Files and Child Processes are disclosures, not always-on</b> — their cost is O(fd count) / O(system process count) rather than the O(1)-per-tick cost of the metrics row above, so they compute once on expand, not every refresh.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 2: FOLLOWING A TERMINAL ============ -->
+        <div class="tabpanel" id="p2">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                Process Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Choose Process…">
+                <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.75 3v3.25H12v1.5H8.75V12h-1.5V8.75H4v-1.5h3.25V4z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="proc-header">
+              <div class="proc-title-row">
+                <span class="proc-name">swift</span>
+                <span class="proc-pid">pid 71920</span>
+                <span class="state-chip running">Running</span>
+              </div>
+              <div class="proc-meta-row">
+                <span class="mode-pill">
+                  <svg viewBox="0 0 16 16"><path d="M5 3a2 2 0 1 0-2 2v4a4 4 0 0 0 4 4h1a2 2 0 1 0 0-2H7a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2z"/></svg>
+                  Following "Batty" · Tab 2
+                </span>
+              </div>
+              <div class="proc-path">/usr/bin/swift</div>
+            </div>
+            <div class="metrics-row">
+              <div class="metric-tile">
+                <div class="label">CPU</div>
+                <div class="value">187%</div>
+                <div class="sub">over last 1s</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Memory</div>
+                <div class="value">1.4 GB</div>
+                <div class="sub">1.1 GB resident</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Threads</div>
+                <div class="value">14</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Open Files</div>
+                <div class="value">203</div>
+              </div>
+            </div>
+            <div class="cmdline-row"><span class="cl-label">cmd</span>swift build --configuration debug</div>
+            <div class="context-hint">Re-reads the foreground process of "Batty" · Tab 2 every tick — when this build finishes and the shell resumes, this pane follows it there automatically.</div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Following mode re-resolves <code>foregroundPid</code> every refresh tick</b>, not once at creation — a deliberate departure from the Git Status view's "frozen, not live" precedent, because a pty's foreground process is inherently a moving target. CPU can legitimately read above 100% here (a multi-threaded build using multiple cores), unlike the single-core-relative reading a simpler percentage might imply.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>No "successor" bookkeeping needed</b> — when this <code>swift build</code> exits, the next tick's <code>tcgetpgrp</code> read just reports whatever the shell resumes to. The tombstone case (state 3) is reserved for the followed <i>terminal itself</i> closing, not for any one command within it finishing.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 3: PROCESS EXITED ============ -->
+        <div class="tabpanel" id="p3">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                Process Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Choose Process…">
+                <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.75 3v3.25H12v1.5H8.75V12h-1.5V8.75H4v-1.5h3.25V4z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="proc-header">
+              <div class="proc-title-row">
+                <span class="proc-name">node</span>
+                <span class="proc-pid">pid 62481</span>
+                <span class="state-chip exited">Exited</span>
+              </div>
+              <div class="proc-meta-row">
+                <span class="mode-pill">
+                  <svg viewBox="0 0 16 16"><path d="M8 1a1.5 1.5 0 0 1 1.5 1.5v3.7l2.1 2.1a1 1 0 0 1-1.4 1.4L8 7.5V2.5A1.5 1.5 0 0 1 8 1zM4 13a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1z"/></svg>
+                  Pinned
+                </span>
+              </div>
+              <div class="proc-path">/Users/brennan/.nvm/versions/node/v22.4.0/bin/node</div>
+            </div>
+            <div class="state-banner tombstone">
+              <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 3a1 1 0 0 1 1 1v3.5a1 1 0 0 1-2 0V5a1 1 0 0 1 1-1zm0 7.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+              <div>
+                <div class="title">Process exited at 3:41:07 PM</div>
+                <div class="sub">Pinned to pid 62481 — this pane does not follow a successor. Choose a new process to resume watching.</div>
+              </div>
+            </div>
+            <div class="metrics-row">
+              <div class="metric-tile dim">
+                <div class="label">CPU</div>
+                <div class="value">0.3%</div>
+                <div class="sub">last known</div>
+              </div>
+              <div class="metric-tile dim">
+                <div class="label">Memory</div>
+                <div class="value">318 MB</div>
+                <div class="sub">last known</div>
+              </div>
+              <div class="metric-tile dim">
+                <div class="label">Threads</div>
+                <div class="value">11</div>
+                <div class="sub">last known</div>
+              </div>
+              <div class="metric-tile dim">
+                <div class="label">Open Files</div>
+                <div class="value">47</div>
+                <div class="sub">last known</div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>A tombstone, not a blank pane</b> — the last successful sample stays visible, dimmed, labeled "last known," rather than disappearing. The spike found a clean, distinct <code>ESRCH</code> ("No such process") signal from both <code>proc_pidinfo</code> and <code>proc_pid_rusage</code> the instant a pid is gone, so this state is driven by a real kernel signal, not a guess.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Pinned mode never guesses a successor</b> — the user asked to watch this specific pid. Fabricating a different one because it happens to share a parent or a tty would misrepresent what's being shown. (Following mode, state 2, has no equivalent tombstone-on-command-exit — see that state's note.)</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 4: PERMISSION UNAVAILABLE ============ -->
+        <div class="tabpanel" id="p4">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                Process Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Choose Process…">
+                <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.75 3v3.25H12v1.5H8.75V12h-1.5V8.75H4v-1.5h3.25V4z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="proc-header">
+              <div class="proc-title-row">
+                <span class="proc-name">sudo</span>
+                <span class="proc-pid">pid 84213</span>
+                <span class="state-chip denied">Permission Unavailable</span>
+              </div>
+              <div class="proc-meta-row">
+                <span class="mode-pill">
+                  <svg viewBox="0 0 16 16"><path d="M5 3a2 2 0 1 0-2 2v4a4 4 0 0 0 4 4h1a2 2 0 1 0 0-2H7a2 2 0 0 1-2-2V5a2 2 0 0 0 2-2z"/></svg>
+                  Following "Batty" · Tab 1
+                </span>
+              </div>
+              <div class="proc-path">/usr/bin/sudo</div>
+            </div>
+            <div class="state-banner error">
+              <svg viewBox="0 0 16 16"><path d="M8.98 1.6a1.13 1.13 0 0 0-1.96 0L.9 13a1.13 1.13 0 0 0 .98 1.7h12.24a1.13 1.13 0 0 0 .98-1.7L8.98 1.6zM8 5.5a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 5.5zm0 6.75a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z"/></svg>
+              <div>
+                <div class="title">Permission unavailable — not owned by you</div>
+                <div class="sub">This process is running as root. CPU, memory, threads, open files, and command line can't be read for a process you don't own — this will clear automatically once the foreground process changes.</div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>A concrete, reachable edge case, not a hypothetical</b> — the spike found this exact permission boundary inside Batty's own architecture: its pty session leader (<code>/usr/bin/login</code>) is root-owned even though it's a child of Batty's own process. Interactive <code>sudo periodic daily</code> (or any other <code>sudo</code> invocation) in a followed terminal hits the identical wall for as long as it runs.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Only the executable path resolves</b> (<code>/usr/bin/sudo</code> above) — <code>proc_pidpath</code> sits behind a looser permission tier than <code>PROC_PIDTASKINFO</code>/<code>proc_pid_rusage</code>, confirmed by the spike against root's own <code>launchd</code>, but it returns a path, never a command line. There is no dedicated command-line row in this state because <code>KERN_PROCARGS2</code> fails <code>EINVAL</code> for a different-uid target — the same permission boundary as the metrics, not the looser one. The process name "sudo" shown in the header is derived as the path's basename, not a successful <code>proc_name</code> call — that call is denied here too. The view shows exactly what it can, nothing more.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 5: NO PROCESS SELECTED ============ -->
+        <div class="tabpanel" id="p5">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                Process Status
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Choose Process…">
+                <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.75 3v3.25H12v1.5H8.75V12h-1.5V8.75H4v-1.5h3.25V4z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="groups">
+              <div class="empty-state">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                <div class="title">No process selected</div>
+                <div class="sub">This window has no terminal Pane to follow yet, and no process was pinned at creation. Pick a terminal to follow, or choose a running process directly.</div>
+                <div class="cta-btn">Choose Process…</div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Not an error — a defined starting state</b>, mirroring the Git Status view's "not a repository" empty state. Reached when there's no <code>--pid</code>, no focused terminal Pane in the Session, or the focused Pane's active Tab hasn't reported a foreground process yet (<code>foregroundPid</code> is nil until the surface has one).</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>"Choose Process…" opens the same two-action menu</b> as the header button in every other state — "Follow a Terminal Pane…" or "Pick a Running Process…" — so recovery from this state and voluntary retargeting from any other state are the same one action, not two different flows.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 6: HIGH-CHURN / MID-SAMPLE ============ -->
+        <div class="tabpanel" id="p6">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                Process Status
+              </div>
+              <span class="refreshing-pill"><span class="spinner"></span>Sampling…</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Choose Process…">
+                <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm.75 3v3.25H12v1.5H8.75V12h-1.5V8.75H4v-1.5h3.25V4z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="proc-header">
+              <div class="proc-title-row">
+                <span class="proc-name">make</span>
+                <span class="proc-pid">pid 55012</span>
+                <span class="state-chip running">Running</span>
+              </div>
+              <div class="proc-meta-row">
+                <span class="mode-pill">
+                  <svg viewBox="0 0 16 16"><path d="M8 1a1.5 1.5 0 0 1 1.5 1.5v3.7l2.1 2.1a1 1 0 0 1-1.4 1.4L8 7.5V2.5A1.5 1.5 0 0 1 8 1zM4 13a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1z"/></svg>
+                  Pinned
+                </span>
+              </div>
+              <div class="proc-path">/usr/bin/make</div>
+            </div>
+            <div class="metrics-row">
+              <div class="metric-tile">
+                <div class="label">CPU</div>
+                <div class="value">640%</div>
+                <div class="sub">over last 1s</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Memory</div>
+                <div class="value">2.9 GB</div>
+                <div class="sub">2.1 GB resident</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Threads</div>
+                <div class="value">33</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Open Files</div>
+                <div class="value">612</div>
+              </div>
+            </div>
+            <div class="cmdline-row"><span class="cl-label">cmd</span>make -j16 all</div>
+            <div class="groups">
+              <details class="group" open>
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Child Processes <span class="count">(16)</span></summary>
+                <div class="proc-row">
+                  <span class="child-pid">55031</span>
+                  <span class="row-path">cc1plus -O2 -c Renderer.cpp</span>
+                  <span class="watch-link">Watch this</span>
+                </div>
+                <div class="proc-row">
+                  <span class="child-pid">55032</span>
+                  <span class="row-path">cc1plus -O2 -c PacketQueue.cpp</span>
+                  <span class="watch-link">Watch this</span>
+                </div>
+                <div class="proc-row">
+                  <span class="child-pid">55033</span>
+                  <span class="row-path">ld -o build/libcore.a</span>
+                  <span class="watch-link">Watch this</span>
+                </div>
+                <div class="context-hint" style="margin: 2px 8px 2px 26px;">…13 more, refreshed on next expand, not live — see note 2.</div>
+              </details>
+              <details class="group">
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Open Files <span class="count">(612)</span></summary>
+              </details>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>CPU legitimately reads above 100%</b> for a multi-threaded process using several cores at once — <code>make -j16</code> here is a realistic case, not a display bug. The percentage is delta-computed over the 1s interval, not a cumulative total-since-launch figure.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Child Processes is a snapshot from when it was expanded</b>, not a live-refreshed list — full-system enumeration (there's no direct "list children of pid" libproc call; it means walking every pid on the system and filtering) costs roughly 1ms on the spike's machine, cheap once, but re-running it every 1s tick for a view whose whole point is to stay cheap while hidden isn't worth it for a group the user isn't necessarily watching. Re-expanding refreshes it.</span></div>
+            <div class="note"><span class="note-mark">3</span><span><b>"Watch this" pivots the whole pane to pin that child</b> — mode A (§2), addressing the issue's own "child processes" interest without building a recursive tree view nothing in the issue's framing asked for.</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <footer class="legend">
+      <span class="item"><span class="state-chip running" style="padding:2px 6px;">Running</span> sampling normally</span>
+      <span class="item"><span class="state-chip exited" style="padding:2px 6px;">Exited</span> tombstoned — last known values shown dimmed</span>
+      <span class="item"><span class="state-chip denied" style="padding:2px 6px;">Permission Unavailable</span> not owned by the current user</span>
+      <span class="item">Read-only — no kill, no renice, no process control of any kind.</span>
+    </footer>
+  </div>
+</div>

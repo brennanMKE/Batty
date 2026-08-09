@@ -59,6 +59,20 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   [`design/git-status-view.html`](design/git-status-view.html) covering
   five states (clean, mixed changes, mid-rebase/conflict, not-a-repo,
   large-repo/loading). No code ships with either file.
+  [`design/process-status-view.md`](design/process-status-view.md) (#0305
+  phase 1) opens with a feasibility spike — `task_for_pid` fails for any
+  other process even same-uid, but libproc (`proc_pidinfo`,
+  `proc_pid_rusage`, `sysctl(KERN_PROCARGS2)`) succeeds instantly for
+  same-uid processes and needs no subprocess fallback — then settles
+  process selection (a pinned pid that tombstones on exit, or following a
+  terminal's foreground process that re-resolves every tick), which
+  metrics the spike proved obtainable, and the same
+  `PaneContentLifecycle` wiring pattern, simplified because this view
+  spawns nothing external. Companion mockup at
+  [`design/process-status-view.html`](design/process-status-view.html)
+  covering six states including an exited process, a permission-denied
+  metric, and no sibling terminal to follow. No code ships with either
+  file.
 - [`terminal-pane-requirements.md`](terminal-pane-requirements.md) — the
   non-negotiable behaviors every pane must preserve: pointer input, keyboard
   input, file/text drop onto the terminal, overlay rules, and the AppKit
