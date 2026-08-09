@@ -1,0 +1,763 @@
+<title>LM Studio Dashboard View — Design Mockup (#0313)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg-page: #f2f2f5;
+    --bg-pane: #ffffff;
+    --bg-header: #f7f7f9;
+    --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5;
+    --bg-banner-error: #fdecec;
+    --bg-banner-inspector: #fdf0da;
+    --bg-tile: #f7f7f9;
+    --fg-primary: #1c1c1e;
+    --fg-secondary: #6b6b70;
+    --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed;
+    --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e;
+    --status-orange: #c9750b;
+    --status-red: #d33a3a;
+    --status-gray: #8a8a8e;
+    --status-purple: #7a4fd1;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-page: #17181b;
+      --bg-pane: #1e1f23;
+      --bg-header: #232429;
+      --bg-inset: #202126;
+      --bg-banner: #3a2c12;
+      --bg-banner-error: #331313;
+      --bg-banner-inspector: #3a2c12;
+      --bg-tile: #232429;
+      --fg-primary: #eceef0;
+      --fg-secondary: #9a9ba1;
+      --fg-tertiary: #6f7076;
+      --border: rgba(255,255,255,0.09);
+      --border-strong: rgba(255,255,255,0.16);
+      --accent: #5b8dff;
+      --accent-soft: rgba(91,141,255,0.16);
+      --status-green: #43c46d;
+      --status-orange: #e0a03f;
+      --status-red: #f16060;
+      --status-gray: #85868c;
+      --status-purple: #a688ea;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg-page: #17181b; --bg-pane: #1e1f23; --bg-header: #232429; --bg-inset: #202126;
+    --bg-banner: #3a2c12; --bg-banner-error: #331313; --bg-banner-inspector: #3a2c12; --bg-tile: #232429;
+    --fg-primary: #eceef0; --fg-secondary: #9a9ba1; --fg-tertiary: #6f7076;
+    --border: rgba(255,255,255,0.09); --border-strong: rgba(255,255,255,0.16);
+    --accent: #5b8dff; --accent-soft: rgba(91,141,255,0.16);
+    --status-green: #43c46d; --status-orange: #e0a03f; --status-red: #f16060; --status-gray: #85868c; --status-purple: #a688ea;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+  }
+  :root[data-theme="light"] {
+    --bg-page: #f2f2f5; --bg-pane: #ffffff; --bg-header: #f7f7f9; --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5; --bg-banner-error: #fdecec; --bg-banner-inspector: #fdf0da; --bg-tile: #f7f7f9;
+    --fg-primary: #1c1c1e; --fg-secondary: #6b6b70; --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10); --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed; --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e; --status-orange: #c9750b; --status-red: #d33a3a; --status-gray: #8a8a8e; --status-purple: #7a4fd1;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .page {
+    font-family: var(--sans);
+    color: var(--fg-primary);
+    background: var(--bg-page);
+    padding: 28px 20px 60px;
+    min-width: 0;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; }
+
+  .intro h1 { font-size: 20px; margin: 0 0 4px; }
+  .intro p { font-size: 13px; color: var(--fg-secondary); margin: 0 0 18px; line-height: 1.5; }
+  .intro code { font-family: var(--mono); background: var(--bg-inset); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- state tabs (CSS-only, radio-driven) ---- */
+  .tabs input[type="radio"] { display: none; }
+  .tabbar {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 4px;
+    background: var(--bg-inset);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tabbar label {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--fg-secondary);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .tabpanel { display: none; }
+  #s1:checked ~ .tabbar label[for="s1"],
+  #s2:checked ~ .tabbar label[for="s2"],
+  #s3:checked ~ .tabbar label[for="s3"],
+  #s4:checked ~ .tabbar label[for="s4"],
+  #s5:checked ~ .tabbar label[for="s5"] {
+    background: var(--bg-pane);
+    color: var(--fg-primary);
+    box-shadow: var(--shadow);
+  }
+  #s1:checked ~ .panels #p1,
+  #s2:checked ~ .panels #p2,
+  #s3:checked ~ .panels #p3,
+  #s4:checked ~ .panels #p4,
+  #s5:checked ~ .panels #p5 { display: block; }
+
+  /* ---- pane frame: mirrors PaneView's RoundedRectangle(cornerRadius:4) + focus overlay ---- */
+  .pane-frame {
+    background: var(--bg-pane);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .kind-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-primary);
+    padding: 3px 9px 3px 7px;
+    border-radius: 6px;
+    background: var(--accent-soft);
+  }
+  .kind-chip svg { width: 13px; height: 13px; fill: var(--accent); }
+  .conn-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600;
+    padding: 3px 8px; border-radius: 6px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--fg-secondary);
+  }
+  .conn-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .conn-pill.connected .conn-dot { background: var(--status-green); }
+  .conn-pill.reconnecting .conn-dot { background: var(--status-orange); }
+  .conn-pill.none .conn-dot { background: var(--status-red); }
+  .pane-header .spacer { flex: 1; }
+  .icon-btn {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    color: var(--fg-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--border); color: var(--fg-primary); }
+  .icon-btn svg { width: 13px; height: 13px; fill: currentColor; }
+  /* Same relocation docs/design/git-status-view.md §2 first justified: the
+     drag handle and hide (eye) button live inside PaneView's tab-bar
+     HStack, which only exists in the .terminal arm, so any non-terminal
+     pane needs its own header-level substitute. Fourth view to need it. */
+  .header-divider { width: 1px; height: 16px; background: var(--border-strong); margin: 0 2px; }
+
+  .section-label {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+    color: var(--fg-tertiary);
+    padding: 10px 14px 4px;
+  }
+
+  .model-card {
+    display: flex; align-items: center; gap: 10px;
+    margin: 4px 10px;
+    padding: 9px 11px;
+    background: var(--bg-tile);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+  }
+  .model-card .m-icon {
+    width: 26px; height: 26px; border-radius: 6px; flex-shrink: 0;
+    background: var(--accent-soft);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .model-card .m-icon svg { width: 14px; height: 14px; fill: var(--accent); }
+  .model-card .m-main { flex: 1; min-width: 0; }
+  .model-card .m-name { font-size: 12.5px; font-weight: 600; }
+  .model-card .m-meta { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; }
+  .model-card .m-stats { text-align: right; flex-shrink: 0; }
+  .model-card .m-stats .row { font-size: 10.5px; color: var(--fg-secondary); white-space: nowrap; }
+  .model-card .m-stats .row b { color: var(--fg-primary); font-variant-numeric: tabular-nums; }
+
+  .status-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 6px 10px 2px;
+    padding: 8px 11px;
+    background: var(--bg-tile);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 700;
+    padding: 3px 9px; border-radius: 6px;
+    color: #fff;
+  }
+  .status-pill.idle { background: var(--status-gray); }
+  .status-pill.generating { background: var(--status-green); }
+  .status-pill .pulse {
+    width: 6px; height: 6px; border-radius: 50%; background: #fff;
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .status-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--fg-secondary); }
+  .status-meta b { color: var(--fg-primary); font-weight: 600; }
+
+  .groups { padding: 4px 6px 8px; }
+  details.group { margin: 4px 6px; }
+  details.group > summary {
+    list-style: none;
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    font-size: 12px; font-weight: 600;
+    color: var(--fg-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary:hover { background: var(--bg-inset); }
+  details.group > summary .chevron {
+    width: 9px; height: 9px; transition: transform .12s ease;
+    fill: var(--fg-tertiary);
+  }
+  details.group[open] > summary .chevron { transform: rotate(90deg); }
+  details.group > summary .count { font-weight: 500; color: var(--fg-tertiary); }
+
+  .req-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    margin: 2px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid transparent;
+  }
+  .req-row:hover { background: var(--bg-inset); }
+  .req-row.inflight { background: color-mix(in srgb, var(--status-green) 8%, transparent); border-color: color-mix(in srgb, var(--status-green) 25%, transparent); }
+  .req-time { font-family: var(--mono); font-size: 10.5px; color: var(--fg-tertiary); width: 52px; flex-shrink: 0; }
+  .req-model { font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .req-badge {
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+    padding: 1.5px 6px; border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .req-badge.eos { background: color-mix(in srgb, var(--status-green) 18%, transparent); color: var(--status-green); }
+  .req-badge.maxlen { background: color-mix(in srgb, var(--status-orange) 18%, transparent); color: var(--status-orange); }
+  .req-badge.pending {
+    background: color-mix(in srgb, var(--status-green) 18%, transparent); color: var(--status-green);
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .req-badge.pending .dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
+  .req-figs { display: flex; gap: 10px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .req-fig { text-align: right; font-size: 11px; color: var(--fg-secondary); min-width: 46px; }
+  .req-fig b { color: var(--fg-primary); font-weight: 600; }
+  .req-ctx { font-size: 10px; color: var(--fg-tertiary); flex-shrink: 0; width: 40px; text-align: right; }
+  .req-ctx.high { color: var(--status-orange); font-weight: 700; }
+  .guess-flag {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0;
+    background: var(--bg-inset); border: 1px solid var(--border-strong);
+    font-size: 9px; font-weight: 700; color: var(--fg-secondary);
+    cursor: help;
+  }
+
+  .caveat-line {
+    display: flex; gap: 7px; align-items: flex-start;
+    margin: 2px 10px 8px;
+    padding: 7px 9px;
+    background: var(--bg-inset);
+    border-left: 2px solid var(--status-orange);
+    border-radius: 0 6px 6px 0;
+    font-size: 11px; color: var(--fg-secondary); line-height: 1.5;
+  }
+  .caveat-line svg { width: 12px; height: 12px; fill: var(--status-orange); flex-shrink: 0; margin-top: 2px; }
+  .caveat-line b { color: var(--fg-primary); }
+
+  .sparkline-row {
+    display: flex; align-items: center; gap: 12px;
+    margin: 4px 10px; padding: 9px 11px;
+    background: var(--bg-tile); border: 1px solid var(--border); border-radius: 7px;
+  }
+  .spark { display: flex; align-items: flex-end; gap: 2px; height: 28px; flex: 1; }
+  .spark i { display: block; width: 5px; border-radius: 1.5px 1.5px 0 0; background: var(--accent); opacity: .8; }
+  .spark-label { font-size: 10.5px; color: var(--fg-tertiary); flex-shrink: 0; }
+  .stopreason-tally { display: flex; gap: 8px; flex-shrink: 0; font-size: 10.5px; color: var(--fg-secondary); }
+  .stopreason-tally .sw { display: inline-flex; align-items: center; gap: 3px; }
+  .stopreason-tally .dot { width: 7px; height: 7px; border-radius: 2px; }
+
+  .state-banner {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin: 12px 10px 0;
+    padding: 9px 11px;
+    border-radius: 7px;
+    background: var(--bg-banner);
+    border: 1px solid color-mix(in srgb, var(--status-orange) 35%, transparent);
+  }
+  .state-banner.error {
+    background: var(--bg-banner-error);
+    border: 1px solid color-mix(in srgb, var(--status-red) 35%, transparent);
+  }
+  .state-banner.inspector {
+    background: var(--bg-banner-inspector);
+    border: 1px solid color-mix(in srgb, var(--status-purple) 40%, transparent);
+    margin: 0; border-radius: 0; border-left: none; border-right: none; border-top: none;
+  }
+  .state-banner svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+  .state-banner:not(.error):not(.inspector) svg { fill: var(--status-orange); }
+  .state-banner.error svg { fill: var(--status-red); }
+  .state-banner.inspector svg { fill: var(--status-purple); }
+  .state-banner .title { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); }
+  .state-banner .sub { font-size: 11.5px; color: var(--fg-secondary); margin-top: 1px; line-height: 1.5; }
+
+  .raw-block {
+    margin: 10px 10px 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .raw-block .rb-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-inset);
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--fg-tertiary);
+  }
+  .raw-block pre {
+    margin: 0; padding: 9px 11px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.5;
+    color: var(--fg-secondary);
+    white-space: pre-wrap; word-break: break-word;
+    background: var(--bg-pane);
+    max-height: 140px; overflow-y: auto;
+  }
+  .raw-block pre .out { color: var(--fg-primary); }
+
+  .empty-state, .loading-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 46px 24px 40px;
+    gap: 8px;
+  }
+  .empty-state svg { width: 30px; height: 30px; fill: var(--fg-tertiary); margin-bottom: 6px; }
+  .empty-state .title { font-size: 13.5px; font-weight: 600; }
+  .empty-state .sub { font-size: 12px; color: var(--fg-secondary); max-width: 400px; line-height: 1.5; }
+  .cta-btn {
+    margin-top: 10px;
+    font-size: 12px; font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* ---- annotations ---- */
+  .note {
+    display: flex; gap: 8px;
+    font-size: 12px; line-height: 1.5;
+    color: var(--fg-secondary);
+    margin: 10px 4px 0;
+    padding: 8px 10px;
+    background: var(--bg-inset);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+  }
+  .note b { color: var(--fg-primary); }
+  .note code { font-family: var(--mono); font-size: 11px; background: var(--bg-pane); padding: 0 4px; border-radius: 3px; }
+  .note-mark {
+    flex-shrink: 0;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .notes-col { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  footer.legend {
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--fg-secondary);
+    display: flex; gap: 18px; flex-wrap: wrap;
+  }
+  footer.legend .item { display: flex; align-items: center; gap: 5px; }
+</style>
+
+<div class="page">
+  <div class="wrap">
+    <div class="intro">
+      <h1>LM Studio Dashboard view — visual design (#0313, phase 1)</h1>
+      <p>
+        Mockup of the fourth non-terminal Pane kind (<code>lm-studio-dashboard</code>), live observability into a
+        local LM Studio server. Every field shown here was confirmed obtainable by a real spike against a live
+        server on 2026-08-08/09 — see <code>docs/design/lmstudio-dashboard-view.md</code> §1 for the exact commands
+        and captured events, §2 for the two open questions this mockup deliberately does not resolve on the user's
+        behalf, and §4/§6 for why the feed never shows a live token ticker, always flags in-flight pairing as a
+        guess, and defaults to showing no prompt or completion text at all.
+      </p>
+    </div>
+
+    <div class="tabs">
+      <input type="radio" name="state" id="s1" checked>
+      <input type="radio" name="state" id="s2">
+      <input type="radio" name="state" id="s3">
+      <input type="radio" name="state" id="s4">
+      <input type="radio" name="state" id="s5">
+
+      <div class="tabbar">
+        <label for="s1">1 · Idle, models loaded</label>
+        <label for="s2">2 · Prediction in flight</label>
+        <label for="s3">3 · Completed, with stats</label>
+        <label for="s4">4 · No server reachable</label>
+        <label for="s5">5 · Prompt Inspector (opt-in)</label>
+      </div>
+
+      <div class="panels">
+
+        <!-- ============ STATE 1: IDLE, MODELS LOADED ============ -->
+        <div class="tabpanel" id="p1">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M1 9h3v5H1V9zm5-5h3v10H6V4zm5 3h3v7h-3V7z"/></svg>
+                LM Studio Dashboard
+              </div>
+              <span class="conn-pill connected"><span class="conn-dot"></span>Connected</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.6 3.5A6.5 6.5 0 1 0 14.9 9h-1.55a5 5 0 1 1-1.1-4.4L10 7h5V2z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+
+            <div class="section-label">Loaded Models</div>
+            <div class="model-card">
+              <div class="m-icon"><svg viewBox="0 0 16 16"><path d="M1 9h3v5H1V9zm5-5h3v10H6V4zm5 3h3v7h-3V7z"/></svg></div>
+              <div class="m-main">
+                <div class="m-name">Ornith 1.0 35B OQ8 <span style="color:var(--fg-tertiary); font-weight:500;">· jedisct1</span></div>
+                <div class="m-meta">8bit · 35B params · mlx · 37.73 GB on disk</div>
+              </div>
+              <div class="m-stats">
+                <div class="row">context <b>65,536</b> / 262,144</div>
+                <div class="row">parallel <b>2</b></div>
+              </div>
+            </div>
+            <div class="groups">
+              <details class="group">
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Available, not loaded <span class="count">(8)</span></summary>
+                <div class="req-row"><span class="req-model" style="font-weight:500;">qwen/qwen3.6-27b</span><span style="font-size:10.5px;color:var(--fg-tertiary);">4bit · mlx</span></div>
+                <div class="req-row"><span class="req-model" style="font-weight:500;">unsloth/qwen3.6-27b-mlx</span><span style="font-size:10.5px;color:var(--fg-tertiary);">8bit · mlx</span></div>
+                <div class="req-row"><span class="req-model" style="font-weight:500;">gemma-4-31b-it-mlx</span><span style="font-size:10.5px;color:var(--fg-tertiary);">8bit · mlx</span></div>
+              </details>
+            </div>
+
+            <div class="section-label">Server status</div>
+            <div class="status-row">
+              <span class="status-pill idle">Idle</span>
+              <div class="status-meta">
+                <span>TTL <b>—</b> (none set)</span>
+                <span>Device <b>Local</b></span>
+                <span>Queued <b>0</b></span>
+              </div>
+            </div>
+
+            <div class="section-label">Recent Completions</div>
+            <div class="req-row">
+              <span class="req-time">2m ago</span>
+              <span class="req-model">ornith-1.0-35b-mlx-oq8</span>
+              <span class="req-badge eos">eosFound</span>
+              <span class="req-figs"><span class="req-fig">0.61s</span><span class="req-fig"><b>44.0</b> tok/s</span></span>
+              <span class="req-ctx">12% ctx</span>
+            </div>
+            <div class="req-row">
+              <span class="req-time">6m ago</span>
+              <span class="req-model">ornith-1.0-35b-mlx-oq8</span>
+              <span class="req-badge maxlen">maxLen</span>
+              <span class="req-figs"><span class="req-fig">2.9s</span><span class="req-fig"><b>38.4</b> tok/s</span></span>
+              <span class="req-ctx high">64% ctx</span>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Every field above traces to a real captured response</b> — the model card's shape matches <code>GET /api/v1/models</code>'s <code>loaded_instances[].config</code> exactly (§1.6); TTL/Device come only from <code>lms ps --json</code> (§1.2), polled every 3s, not 1s — that CLI call measured ~157ms/invocation in the spike, an order of magnitude more expensive than the ~11ms HTTP poll, so it isn't the primary source for anything time-sensitive (§5).</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>"Available, not loaded" is a disclosure, not always visible</b> — it's the same single <code>/api/v1/models</code> response already fetched for the loaded card, just the rest of the catalog, so showing it costs nothing extra to compute.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 2: PREDICTION IN FLIGHT ============ -->
+        <div class="tabpanel" id="p2">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M1 9h3v5H1V9zm5-5h3v10H6V4zm5 3h3v7h-3V7z"/></svg>
+                LM Studio Dashboard
+              </div>
+              <span class="conn-pill connected"><span class="conn-dot"></span>Connected</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.6 3.5A6.5 6.5 0 1 0 14.9 9h-1.55a5 5 0 1 1-1.1-4.4L10 7h5V2z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+
+            <div class="section-label">Server status</div>
+            <div class="status-row">
+              <span class="status-pill generating"><span class="pulse"></span>Generating</span>
+              <div class="status-meta">
+                <span>TTL <b>—</b> (none set)</span>
+                <span>Device <b>Local</b></span>
+                <span>Queued <b>0</b></span>
+              </div>
+            </div>
+
+            <div class="section-label">In-flight <span style="font-weight:500; color:var(--fg-tertiary); text-transform:none; letter-spacing:0;">(1)</span></div>
+            <div class="req-row inflight">
+              <span class="req-time">now</span>
+              <span class="req-model">ornith-1.0-35b-mlx-oq8</span>
+              <span class="req-badge pending"><span class="dot"></span>pending</span>
+              <span class="req-figs"><span class="req-fig">1.8s so far</span></span>
+              <span class="guess-flag" title="Paired by model and arrival order — no request ID exists, and this pairing has been observed to come back in the wrong order, not just be unconfirmable.">?</span>
+            </div>
+            <div class="caveat-line">
+              <svg viewBox="0 0 16 16"><path d="M8.98 1.6a1.13 1.13 0 0 0-1.96 0L.9 13a1.13 1.13 0 0 0 .98 1.7h12.24a1.13 1.13 0 0 0 .98-1.7L8.98 1.6zM8 5.5a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 5.5zm0 6.75a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z"/></svg>
+              <span><b>Paired by model and arrival order — no request ID exists.</b> With more than one prediction running on the same model, this pane can't always tell which reply belongs to which request — and it isn't just unable to confirm the order, it has been observed to get it wrong. Two concurrent requests to this exact server produced two <code>input</code> events with the identical millisecond timestamp during this design's own verification; an independent re-run of the same test found the two matching <code>output</code> events return in the <b>opposite order</b> from their inputs.</span>
+            </div>
+
+            <div class="section-label">Recent Completions</div>
+            <div class="req-row">
+              <span class="req-time">4m ago</span>
+              <span class="req-model">ornith-1.0-35b-mlx-oq8</span>
+              <span class="req-badge eos">eosFound</span>
+              <span class="req-figs"><span class="req-fig">0.61s</span><span class="req-fig"><b>44.0</b> tok/s</span></span>
+              <span class="req-ctx">12% ctx</span>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>No token count, no live ticker</b> — only elapsed wall-clock time is shown while pending. <code>llm.prediction.output</code> carries the whole completion in one event, confirmed directly (a captured "pong" reply arrived as a single 334-byte event carrying the entire reply and its stats block at once, not a stream of tokens — matching the design doc's own §1.3 transcript) — a per-token progress bar here would imply data this feed structurally cannot provide for traffic another client originated.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>The busy/idle pill flips the instant this <code>input</code> event arrives</b>, not on the next 3-second <code>lms ps</code> poll — the log stream is the primary signal for "is it generating," with <code>lms ps</code> running slower in the background purely as a cross-check and TTL/Device source (§5).</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 3: COMPLETED, WITH STATS ============ -->
+        <div class="tabpanel" id="p3">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M1 9h3v5H1V9zm5-5h3v10H6V4zm5 3h3v7h-3V7z"/></svg>
+                LM Studio Dashboard
+              </div>
+              <span class="conn-pill connected"><span class="conn-dot"></span>Connected</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.6 3.5A6.5 6.5 0 1 0 14.9 9h-1.55a5 5 0 1 1-1.1-4.4L10 7h5V2z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+
+            <div class="section-label">Throughput <span style="font-weight:500; color:var(--fg-tertiary); text-transform:none; letter-spacing:0;">(last 200 completions)</span></div>
+            <div class="sparkline-row">
+              <span class="spark-label">tok/s</span>
+              <div class="spark">
+                <i style="height:40%"></i><i style="height:65%"></i><i style="height:50%"></i><i style="height:80%"></i>
+                <i style="height:45%"></i><i style="height:70%"></i><i style="height:90%"></i><i style="height:55%"></i>
+                <i style="height:60%"></i><i style="height:75%"></i><i style="height:48%"></i><i style="height:85%"></i>
+                <i style="height:62%"></i><i style="height:100%"></i><i style="height:58%"></i>
+              </div>
+              <div class="stopreason-tally">
+                <span class="sw"><span class="dot" style="background:var(--status-green)"></span>eosFound 187</span>
+                <span class="sw"><span class="dot" style="background:var(--status-orange)"></span>maxLen 13</span>
+              </div>
+            </div>
+
+            <div class="section-label">Recent Completions</div>
+            <div class="req-row">
+              <span class="req-time">just now</span>
+              <span class="req-model">ornith-1.0-35b-mlx-oq8</span>
+              <span class="req-badge eos">eosFound</span>
+              <span class="req-figs">
+                <span class="req-fig">TTFT <b>0.50s</b></span>
+                <span class="req-fig">total <b>1.66s</b></span>
+                <span class="req-fig"><b>44.0</b> tok/s</span>
+              </span>
+              <span class="req-ctx high">43% ctx</span>
+            </div>
+            <div class="groups" style="padding-top:0;">
+              <details class="group" open>
+                <summary><svg class="chevron" viewBox="0 0 8 8"><path d="M1 0l6 4-6 4z"/></svg>Stats for this completion</summary>
+                <div style="margin: 2px 10px 10px 26px; display:grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; font-size: 11.5px;">
+                  <div><span style="color:var(--fg-tertiary);">Prompt tokens</span><br><b>28,411</b></div>
+                  <div><span style="color:var(--fg-tertiary);">Predicted tokens</span><br><b>73</b></div>
+                  <div><span style="color:var(--fg-tertiary);">Total tokens</span><br><b>28,484</b></div>
+                  <div><span style="color:var(--fg-tertiary);">Time to first token</span><br><b>0.504s</b></div>
+                  <div><span style="color:var(--fg-tertiary);">Total time</span><br><b>1.658s</b></div>
+                  <div><span style="color:var(--fg-tertiary);">Stop reason</span><br><b>eosFound</b></div>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Every field name and shape here is a real captured <code>stats</code> block</b> (§1.3 of the design doc) — <code>stopReason</code>, <code>tokensPerSecond</code>, <code>timeToFirstTokenSec</code>, <code>totalTimeSec</code>, <code>promptTokensCount</code>, <code>predictedTokensCount</code>, <code>totalTokensCount</code>. The specific token counts illustrated here (28,411 prompt tokens) are the reference document's own captured OpenCode-turn figure, carried forward as an illustrative example — this design's own spike measured a proportionally similar but not identical scaling (§1.5).</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>The context-pressure percentage and the sparkline/tally are both computed from data already retained</b> for the Recent Completions list — no separate poll, no second data source. Nothing here is a persisted long-term history; it's exactly the same 200-entry ring buffer (§6), discarded on hide (§6/§7).</span></div>
+            <div class="note"><span class="note-mark">3</span><span><b>No prompt or completion text anywhere in this default view</b> — see state 5 for the explicit opt-in variant that shows it.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 4: NO SERVER REACHABLE ============ -->
+        <div class="tabpanel" id="p4">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M1 9h3v5H1V9zm5-5h3v10H6V4zm5 3h3v7h-3V7z"/></svg>
+                LM Studio Dashboard
+              </div>
+              <span class="conn-pill none"><span class="conn-dot"></span>No server</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.6 3.5A6.5 6.5 0 1 0 14.9 9h-1.55a5 5 0 1 1-1.1-4.4L10 7h5V2z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="empty-state">
+              <svg viewBox="0 0 16 16"><path d="M1 9h3v5H1V9zm5-5h3v10H6V4zm5 3h3v7h-3V7z" opacity=".4"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              <div class="title">No LM Studio server reachable</div>
+              <div class="sub">
+                Batty checked <code style="font-family:var(--mono); background:var(--bg-inset); padding:1px 5px; border-radius:4px;">http://localhost:1234</code> and got no response. Make sure LM Studio's local server is running on this Mac.
+                <br><br>
+                If your models run on another Mac — like a Mac mini — Batty needs to run there too. Watching a remote LM Studio server isn't supported yet.
+              </div>
+              <div class="cta-btn">Retry</div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Local-only is this design's recommendation, not yet the user's confirmed decision</b> (§2.2 of the design doc) — this copy states that ceiling plainly rather than silently failing or implying a remote connection was attempted and failed. LM Studio not installed, not running, and version-drifted all land on this same defined state, not a crash or an indefinite spinner, per the issue's own Gotchas.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>This pane isn't stuck waiting for "Retry" to do anything</b> — after two consecutive failed polls it already backs off to a lightweight reachability check every 5s in the background (not the normal 1s cadence, and the two <code>lms log stream</code> subprocesses and the <code>lms ps</code> poll are both stopped while unreachable, per §5 of the design doc) and recovers on its own the moment the server answers again. "Retry" is a manual, immediate reachability probe — the same call the 5s loop would make anyway, just not waiting for the next tick. It is <b>not</b> a re-run of <code>setUp</code>, which only ever executes once per pane's lifetime.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 5: PROMPT INSPECTOR (OPT-IN) ============ -->
+        <div class="tabpanel" id="p5">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M1 9h3v5H1V9zm5-5h3v10H6V4zm5 3h3v7h-3V7z"/></svg>
+                LM Studio Dashboard
+              </div>
+              <span class="conn-pill connected"><span class="conn-dot"></span>Connected</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.6 3.5A6.5 6.5 0 1 0 14.9 9h-1.55a5 5 0 1 1-1.1-4.4L10 7h5V2z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="state-banner inspector">
+              <svg viewBox="0 0 16 16"><path d="M8 1C4 1 1 8 1 8s3 7 7 7 7-7 7-7-3-7-7-7zm0 10.5A3.5 3.5 0 1 1 8 4.5a3.5 3.5 0 0 1 0 7z"/><circle cx="8" cy="8" r="1.6"/></svg>
+              <div>
+                <div class="title">Prompt Inspector is ON</div>
+                <div class="sub">Showing raw prompt and completion text for the last 5 predictions only. This is never on by default — turned on explicitly, per pane, and cleared immediately when turned off.</div>
+              </div>
+            </div>
+
+            <div class="section-label">Recent Completions</div>
+            <div class="req-row">
+              <span class="req-time">just now</span>
+              <span class="req-model">ornith-1.0-35b-mlx-oq8</span>
+              <span class="req-badge eos">eosFound</span>
+              <span class="req-figs">
+                <span class="req-fig">TTFT <b>0.60s</b></span>
+                <span class="req-fig"><b>131.1</b> tok/s</span>
+              </span>
+              <span class="req-ctx">3% ctx</span>
+            </div>
+            <div class="raw-block">
+              <div class="rb-head">Raw prompt (input)</div>
+              <pre>&lt;|im_start|&gt;user
+Reply with exactly the word: pong&lt;|im_end|&gt;
+&lt;|im_start|&gt;assistant
+&lt;think&gt;
+
+&lt;/think&gt;
+</pre>
+            </div>
+            <div class="raw-block">
+              <div class="rb-head">Raw completion (output)</div>
+              <pre class="out">pong</pre>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>The text above is a real captured event, verbatim</b> — the exact fully-rendered prompt (including the Jinja chat-template markers) and completion this design's own verification spike sent and received against the live server. This is precisely the content class §2.1 argues should never be on by default.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Sourced only from the <code>model</code> log stream, never <code>server</code></b> — the verification spike found the <code>server</code>-source log stream also embeds full request and completion bodies inside free-text log lines, at the default visible log level, not just at debug verbosity (§1.8 of the design doc). Enabling the inspector does not enable that source; the Engine Errors panel (not shown in this state) stays scoped to <code>runtime</code>-only regardless of this toggle.</span></div>
+            <div class="note"><span class="note-mark">3</span><span><b>Retention here is a separate, much smaller cap</b> — 5 entries, not the 200-entry metadata cap the rest of this pane uses — cleared entirely the instant the toggle is turned back off, not just stopped-from-growing (§6).</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <footer class="legend">
+      <span class="item"><span class="status-pill idle" style="padding:2px 7px;">Idle</span> no prediction running</span>
+      <span class="item"><span class="status-pill generating" style="padding:2px 7px;"><span class="pulse"></span>Generating</span> at least one prediction in flight</span>
+      <span class="item">Read-only — no model load/unload, no request cancellation, no server control of any kind.</span>
+      <span class="item">No prompt or completion text without explicitly turning on the Prompt Inspector.</span>
+    </footer>
+  </div>
+</div>

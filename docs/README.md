@@ -108,6 +108,41 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   with real numeric temperature/fan tiles) and the two open SMC
   verification caveats shown directly in the UI. No code ships with
   either file.
+  [`design/lmstudio-dashboard-view.md`](design/lmstudio-dashboard-view.md)
+  (#0313 phase 1) is the fourth view in the family: live observability
+  into a local LM Studio server. Its own verification spike ran directly
+  against a live server and corrected the issue's reference doc in three
+  places — `/api/v0/events` and `/` return HTTP 200 with an error body,
+  not a literal 404; `stats` appeared in log-stream output events even
+  without `--stats` on the installed CLI build; `lms ps --json` costs
+  ~157ms/call, not free, so it's a slow secondary poll rather than the
+  primary busy/idle signal (the log stream's own in-flight count is,
+  since it updates in near-real-time for free). It also found two things
+  the reference doesn't report: `lms log stream`'s `-s` flag accepts only
+  one source per invocation, so prediction events and engine
+  errors/warnings need separate concurrent subprocesses; and the
+  `server`-source log stream embeds full request/completion bodies in
+  free-text log lines at the default visible log level, so the Engine
+  Errors panel is scoped to the `runtime` source only, not `server`. Two
+  questions are left for the user rather than decided here: whether to
+  show prompt/completion text at all (recommended: off by default, a
+  separate opt-in "Prompt Inspector" with its own much smaller 5-entry
+  retention cap, never sourced from `server`), and local-only vs.
+  remote-capable server access (recommended: local-only for phase 1 — no
+  authenticated remote path exists today, and this design's own spike ran
+  on the same Mac mini the reference used, so it adds no new evidence on
+  whether a MacBook Air would see mini-originated predictions). Retention
+  reuses `BellFeedStore`'s existing 200-entry cap for prediction metadata
+  and discards everything, including that ring buffer, on hide — a real,
+  named departure from `#0305`/`#0314`'s "discard is free to resample"
+  reasoning, since this view's history can't be cheaply resampled the way
+  a live metric can. Companion mockup at
+  [`design/lmstudio-dashboard-view.html`](design/lmstudio-dashboard-view.html)
+  covering five states: idle with models loaded, a prediction in flight
+  (with the in-flight pairing explicitly flagged as a heuristic in the UI
+  itself), a completed prediction with full stats, no server reachable,
+  and the Prompt Inspector opt-in variant clearly marked as non-default.
+  No code ships with either file.
 - [`terminal-pane-requirements.md`](terminal-pane-requirements.md) — the
   non-negotiable behaviors every pane must preserve: pointer input, keyboard
   input, file/text drop onto the terminal, overlay rules, and the AppKit
