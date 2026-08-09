@@ -73,6 +73,41 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   covering six states including an exited process, a permission-denied
   metric, and no sibling terminal to follow. No code ships with either
   file.
+  [`design/system-metrics-view.md`](design/system-metrics-view.md) (#0314
+  phase 1) is the whole-system counterpart to #0305, gated on its own
+  feasibility spike: `ProcessInfo.thermalState` works (coarse four-state,
+  negligible cost), and — reversed on review round 1 after the document's
+  own first draft wrongly ruled this out — CPU temperature and fan RPM/count
+  are also readable, unprivileged, via the classic SMC struct-method
+  technique (`IOServiceOpen` + `IOConnectCallStructMethod`); round 1's
+  negative result was a struct-size bug (76 bytes sent, 80 expected) in
+  the throwaway spike script, not a fact about the machine, with two open
+  caveats carried forward rather than resolved: not yet re-verified inside
+  the signed/notarized app bundle, and SMC key names are model-specific.
+  `powermetrics` is confirmed root-only. System-wide CPU/memory/load
+  average are all free, and a full-process-list libproc sweep (~802-805
+  processes on the spike machine, across two separate runs) costs 2-3ms
+  — cheap enough that the design shows the full list, not top-N, sortable,
+  at a fixed 1s interval,
+  discarding all state on hide (re-sampling is too cheap to bother keeping
+  history). The SMC connection is opened, read, and closed fresh every
+  tick rather than held open across ticks — review round 2 found the
+  original persistent-connection design rested on an unmeasured, backwards
+  cost claim; measured directly, the connection costs less than a single
+  key read (~0.05ms to open+close vs. ~0.1-0.14ms per key read), so
+  per-tick open/close is both simpler and cheaper, and the view holds no
+  kernel handle at any time, including while active. Also corrected: a
+  whole-system re-run of the process-name/path permission-tier finding
+  found `proc_name` failing for 280 processes across 213 distinct
+  root-owned daemons (not just `/usr/bin/login`, an earlier
+  over-generalization), and `proc_pidpath` itself failing for exactly one
+  pid (0, `kernel_task`), needing a third, hardcoded name fallback. Names
+  the sampler it shares with #0305's per-pid reader. Companion mockup at
+  [`design/system-metrics-view.html`](design/system-metrics-view.html)
+  covering five states including Serious/Critical thermal pressure (now
+  with real numeric temperature/fan tiles) and the two open SMC
+  verification caveats shown directly in the UI. No code ships with
+  either file.
 - [`terminal-pane-requirements.md`](terminal-pane-requirements.md) — the
   non-negotiable behaviors every pane must preserve: pointer input, keyboard
   input, file/text drop onto the terminal, overlay rules, and the AppKit

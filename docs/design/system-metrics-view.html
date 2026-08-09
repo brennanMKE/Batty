@@ -1,0 +1,871 @@
+<title>System Metrics View — Design Mockup (#0314)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg-page: #f2f2f5;
+    --bg-pane: #ffffff;
+    --bg-header: #f7f7f9;
+    --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5;
+    --bg-banner-error: #fdecec;
+    --bg-tile: #f7f7f9;
+    --fg-primary: #1c1c1e;
+    --fg-secondary: #6b6b70;
+    --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed;
+    --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e;
+    --status-orange: #c9750b;
+    --status-red: #d33a3a;
+    --status-gray: #8a8a8e;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-page: #17181b;
+      --bg-pane: #1e1f23;
+      --bg-header: #232429;
+      --bg-inset: #202126;
+      --bg-banner: #3a2c12;
+      --bg-banner-error: #331313;
+      --bg-tile: #232429;
+      --fg-primary: #eceef0;
+      --fg-secondary: #9a9ba1;
+      --fg-tertiary: #6f7076;
+      --border: rgba(255,255,255,0.09);
+      --border-strong: rgba(255,255,255,0.16);
+      --accent: #5b8dff;
+      --accent-soft: rgba(91,141,255,0.16);
+      --status-green: #43c46d;
+      --status-orange: #e0a03f;
+      --status-red: #f16060;
+      --status-gray: #85868c;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg-page: #17181b; --bg-pane: #1e1f23; --bg-header: #232429; --bg-inset: #202126;
+    --bg-banner: #3a2c12; --bg-banner-error: #331313; --bg-tile: #232429;
+    --fg-primary: #eceef0; --fg-secondary: #9a9ba1; --fg-tertiary: #6f7076;
+    --border: rgba(255,255,255,0.09); --border-strong: rgba(255,255,255,0.16);
+    --accent: #5b8dff; --accent-soft: rgba(91,141,255,0.16);
+    --status-green: #43c46d; --status-orange: #e0a03f; --status-red: #f16060; --status-gray: #85868c;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 1px rgba(0,0,0,0.3);
+  }
+  :root[data-theme="light"] {
+    --bg-page: #f2f2f5; --bg-pane: #ffffff; --bg-header: #f7f7f9; --bg-inset: #f4f4f6;
+    --bg-banner: #fff4e5; --bg-banner-error: #fdecec; --bg-tile: #f7f7f9;
+    --fg-primary: #1c1c1e; --fg-secondary: #6b6b70; --fg-tertiary: #9a9a9e;
+    --border: rgba(0,0,0,0.10); --border-strong: rgba(0,0,0,0.16);
+    --accent: #2f6fed; --accent-soft: rgba(47,111,237,0.12);
+    --status-green: #1a8a3e; --status-orange: #c9750b; --status-red: #d33a3a; --status-gray: #8a8a8e;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .page {
+    font-family: var(--sans);
+    color: var(--fg-primary);
+    background: var(--bg-page);
+    padding: 28px 20px 60px;
+    min-width: 0;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  .intro h1 { font-size: 20px; margin: 0 0 4px; }
+  .intro p { font-size: 13px; color: var(--fg-secondary); margin: 0 0 18px; line-height: 1.5; }
+  .intro code { font-family: var(--mono); background: var(--bg-inset); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- state tabs (CSS-only, radio-driven) ---- */
+  .tabs input[type="radio"] { display: none; }
+  .tabbar {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 4px;
+    background: var(--bg-inset);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tabbar label {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--fg-secondary);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .tabpanel { display: none; }
+  #s1:checked ~ .tabbar label[for="s1"],
+  #s2:checked ~ .tabbar label[for="s2"],
+  #s3:checked ~ .tabbar label[for="s3"],
+  #s4:checked ~ .tabbar label[for="s4"],
+  #s5:checked ~ .tabbar label[for="s5"] {
+    background: var(--bg-pane);
+    color: var(--fg-primary);
+    box-shadow: var(--shadow);
+  }
+  #s1:checked ~ .panels #p1,
+  #s2:checked ~ .panels #p2,
+  #s3:checked ~ .panels #p3,
+  #s4:checked ~ .panels #p4,
+  #s5:checked ~ .panels #p5 { display: block; }
+
+  /* ---- pane frame: mirrors PaneView's RoundedRectangle(cornerRadius:4) + focus overlay ---- */
+  .pane-frame {
+    background: var(--bg-pane);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+  }
+  .kind-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-primary);
+    padding: 3px 9px 3px 7px;
+    border-radius: 6px;
+    background: var(--accent-soft);
+  }
+  .kind-chip svg { width: 13px; height: 13px; fill: var(--accent); }
+  .pane-header .spacer { flex: 1; }
+  .icon-btn {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+    color: var(--fg-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--border); color: var(--fg-primary); }
+  .icon-btn svg { width: 13px; height: 13px; fill: currentColor; }
+  /* Same relocation docs/design/git-status-view.md §2 and docs/design/
+     process-status-view.html already justify: the drag handle and hide
+     (eye) button live inside PaneView's tab-bar HStack, which only exists
+     in the .terminal arm, so any non-terminal pane needs its own
+     header-level substitute. Third view to need it. */
+  .header-divider { width: 1px; height: 16px; background: var(--border-strong); margin: 0 2px; }
+  .refreshing-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--fg-secondary);
+    margin-left: 4px;
+  }
+  .spinner {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-strong);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .body-scroll { max-height: 640px; overflow-y: auto; }
+
+  .status-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px 8px;
+  }
+  .thermal-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 600;
+    padding: 4px 10px; border-radius: 7px;
+    color: #fff;
+  }
+  .thermal-chip svg { width: 12px; height: 12px; fill: #fff; }
+  .thermal-chip.nominal { background: var(--status-green); }
+  .thermal-chip.fair { background: #4a90d9; }
+  .thermal-chip.serious { background: var(--status-orange); }
+  .thermal-chip.critical { background: var(--status-red); }
+  .pressure-chip {
+    font-size: 10.5px; font-weight: 600;
+    padding: 3px 8px; border-radius: 6px;
+    color: var(--fg-primary);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+  }
+  .pressure-chip.warn { color: var(--status-orange); border-color: color-mix(in srgb, var(--status-orange) 40%, transparent); }
+  .pressure-chip.critical { color: var(--status-red); border-color: color-mix(in srgb, var(--status-red) 40%, transparent); }
+  .status-row .interval-note { font-size: 11px; color: var(--fg-tertiary); margin-left: auto; }
+
+  .state-banner {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin: 4px 14px 0;
+    padding: 9px 11px;
+    border-radius: 7px;
+    background: var(--bg-banner);
+    border: 1px solid color-mix(in srgb, var(--status-orange) 35%, transparent);
+  }
+  .state-banner.critical {
+    background: var(--bg-banner-error);
+    border: 1px solid color-mix(in srgb, var(--status-red) 35%, transparent);
+  }
+  .state-banner svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; fill: var(--status-orange); }
+  .state-banner.critical svg { fill: var(--status-red); }
+  .state-banner .title { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); }
+  .state-banner .sub { font-size: 11.5px; color: var(--fg-secondary); margin-top: 1px; }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    padding: 10px 14px 4px;
+  }
+  .metric-tile {
+    background: var(--bg-tile);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 9px 10px;
+  }
+  .metric-tile .label { font-size: 10.5px; color: var(--fg-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+  .metric-tile .value { font-size: 17px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .metric-tile .sub { font-size: 10.5px; color: var(--fg-tertiary); margin-top: 1px; }
+  .metric-tile.caveat { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .metric-tile.caveat .value { font-size: 17px; }
+  .caveat-mark { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; line-height: 13px; text-align: center; margin-left: 4px; vertical-align: 2px; }
+
+  .core-bars-wrap { padding: 6px 14px 4px; }
+  .core-bars-label { font-size: 10.5px; color: var(--fg-tertiary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 6px; }
+  .core-bars { display: flex; gap: 3px; align-items: flex-end; height: 34px; }
+  .core-bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; background: var(--bg-inset); border-radius: 2px; overflow: hidden; }
+  .core-bar-fill { background: var(--accent); border-radius: 2px 2px 0 0; }
+  .core-bar-fill.hot { background: var(--status-orange); }
+
+  .mem-bar-wrap { padding: 10px 14px 4px; }
+  .mem-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--bg-inset); border: 1px solid var(--border); }
+  .mem-seg.active { background: var(--accent); }
+  .mem-seg.wired { background: #9a6fe0; }
+  .mem-seg.compressed { background: var(--status-orange); }
+  .mem-legend { display: flex; gap: 14px; margin-top: 6px; flex-wrap: wrap; }
+  .mem-legend .item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg-secondary); }
+  .mem-legend .swatch { width: 8px; height: 8px; border-radius: 2px; }
+  .mem-legend .swatch.active { background: var(--accent); }
+  .mem-legend .swatch.wired { background: #9a6fe0; }
+  .mem-legend .swatch.compressed { background: var(--status-orange); }
+  .mem-legend .swatch.free { background: var(--bg-inset); border: 1px solid var(--border-strong); }
+
+  .load-row { display: flex; gap: 18px; padding: 10px 14px 4px; font-size: 12px; }
+  .load-row .item { display: flex; flex-direction: column; gap: 1px; }
+  .load-row .item .l-label { font-size: 10px; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: 0.02em; }
+  .load-row .item .l-val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .proc-section { padding: 12px 14px 12px; }
+  .proc-section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .proc-section-head .title { font-size: 12px; font-weight: 600; color: var(--fg-secondary); }
+  .proc-section-head .count { font-size: 11px; color: var(--fg-tertiary); }
+  .proc-list-table { border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .proc-list-head, .proc-list-row {
+    display: grid;
+    grid-template-columns: 1fr 70px 64px 84px;
+    gap: 8px;
+    padding: 5px 10px;
+    align-items: center;
+  }
+  .proc-list-head {
+    font-size: 10px; font-weight: 600; color: var(--fg-tertiary);
+    text-transform: uppercase; letter-spacing: 0.02em;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+  }
+  .proc-list-body { max-height: 300px; overflow-y: auto; }
+  .proc-list-body.tall { max-height: 460px; }
+  .proc-list-row { font-size: 12px; border-top: 1px solid var(--border); cursor: pointer; }
+  .proc-list-row:first-child { border-top: none; }
+  .proc-list-row:hover { background: var(--bg-inset); }
+  .proc-list-row.denied { color: var(--fg-tertiary); }
+  .pl-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 11.5px; }
+  .pl-pid { font-family: var(--mono); font-size: 11px; color: var(--fg-tertiary); }
+  .pl-cpu, .pl-mem { font-variant-numeric: tabular-nums; text-align: right; }
+  .dash { color: var(--fg-tertiary); }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 40px 24px 34px;
+    gap: 8px;
+  }
+  .empty-state svg { width: 26px; height: 26px; fill: var(--fg-tertiary); margin-bottom: 4px; }
+
+  /* ---- annotations ---- */
+  .note {
+    display: flex; gap: 8px;
+    font-size: 12px; line-height: 1.5;
+    color: var(--fg-secondary);
+    margin: 10px 4px 0;
+    padding: 8px 10px;
+    background: var(--bg-inset);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+  }
+  .note b { color: var(--fg-primary); }
+  .note-mark {
+    flex-shrink: 0;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .notes-col { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  footer.legend {
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--fg-secondary);
+    display: flex; gap: 18px; flex-wrap: wrap;
+  }
+  footer.legend .item { display: flex; align-items: center; gap: 5px; }
+</style>
+
+<div class="page">
+  <div class="wrap">
+    <div class="intro">
+      <h1>System Metrics view — visual design (#0314, phase 1)</h1>
+      <p>
+        Mockup of the fourth non-terminal Pane kind (<code>system-metrics</code>), the whole-machine counterpart
+        to <code>process-status</code> (#0305) — thermal state, CPU, memory, load average, numeric temperature
+        and fan speed, and the full process list, the way a native Mac app can present them rather than a TUI.
+        Switch between the five states below. Every number here traces to
+        <code>docs/design/system-metrics-view.md</code> §1's feasibility spike, including its round-1 mistake
+        and round-2 correction: temperature and fan RPM are read via the classic SMC struct-method technique,
+        unprivileged — a design premised on them being unreadable (this mockup's own earlier draft) was itself
+        wrong, caught on review. State 4 carries the two open verification questions that finding still has.
+        See that document for the exact commands, numbers, and the reasoning behind every other choice.
+      </p>
+    </div>
+
+    <div class="tabs">
+      <input type="radio" name="state" id="s1" checked>
+      <input type="radio" name="state" id="s2">
+      <input type="radio" name="state" id="s3">
+      <input type="radio" name="state" id="s4">
+      <input type="radio" name="state" id="s5">
+
+      <div class="tabbar">
+        <label for="s1">1 · Nominal, healthy</label>
+        <label for="s2">2 · Thermal — Serious</label>
+        <label for="s3">3 · Thermal — Critical</label>
+        <label for="s4">4 · SMC verification caveats</label>
+        <label for="s5">5 · Process list at cost ceiling</label>
+      </div>
+
+      <div class="panels">
+
+        <!-- ============ STATE 1: NOMINAL, HEALTHY ============ -->
+        <div class="tabpanel" id="p1">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                System Metrics
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A6.5 6.5 0 1 0 15 8h-1.5a5 5 0 1 1-1.06-3.06L10 7h5V2l-1.35 1.35z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="body-scroll">
+              <div class="status-row">
+                <span class="thermal-chip nominal">
+                  <svg viewBox="0 0 16 16"><path d="M8 1a2 2 0 0 1 2 2v6.1a3.5 3.5 0 1 1-4 0V3a2 2 0 0 1 2-2z"/></svg>
+                  Thermal: Nominal
+                </span>
+                <span class="pressure-chip">Memory pressure: Normal</span>
+                <span class="interval-note">Refreshing every 1s</span>
+              </div>
+              <div class="metrics-grid">
+                <div class="metric-tile">
+                  <div class="label">CPU (aggregate)</div>
+                  <div class="value">19.7%</div>
+                  <div class="sub">12 cores</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="label">Memory used</div>
+                  <div class="value">32.99 GB</div>
+                  <div class="sub">of 64.00 GB</div>
+                </div>
+                <div class="metric-tile">
+                  <div class="label">Compressed</div>
+                  <div class="value">2.50 GB</div>
+                  <div class="sub">never counted as "free"</div>
+                </div>
+                <div class="metric-tile caveat">
+                  <div class="label">CPU Temperature</div>
+                  <div class="value">40.0&deg;C<span class="caveat-mark" title="Two open caveats — see state 4">i</span></div>
+                  <div class="sub">SMC key Tp09</div>
+                </div>
+                <div class="metric-tile caveat">
+                  <div class="label">Fan</div>
+                  <div class="value">1000 RPM<span class="caveat-mark" title="Two open caveats — see state 4">i</span></div>
+                  <div class="sub">1 fan (FNum)</div>
+                </div>
+              </div>
+              <div class="core-bars-wrap">
+                <div class="core-bars-label">Per-core utilization</div>
+                <div class="core-bars">
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:25%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:12%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:6%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:2%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:12%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:24%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:16%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:12%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:34%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:39%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:16%"></div></div>
+                  <div class="core-bar-col"><div class="core-bar-fill" style="height:30%"></div></div>
+                </div>
+              </div>
+              <div class="mem-bar-wrap">
+                <div class="mem-bar">
+                  <div class="mem-seg active" style="width:42%"></div>
+                  <div class="mem-seg wired" style="width:5.7%"></div>
+                  <div class="mem-seg compressed" style="width:3.9%"></div>
+                </div>
+                <div class="mem-legend">
+                  <span class="item"><span class="swatch active"></span>Active 26.87 GB</span>
+                  <span class="item"><span class="swatch wired"></span>Wired 3.62 GB</span>
+                  <span class="item"><span class="swatch compressed"></span>Compressed 2.50 GB</span>
+                  <span class="item"><span class="swatch free"></span>Free 4.32 GB</span>
+                </div>
+              </div>
+              <div class="load-row">
+                <div class="item"><span class="l-label">Load 1m</span><span class="l-val">3.37</span></div>
+                <div class="item"><span class="l-label">Load 5m</span><span class="l-val">3.54</span></div>
+                <div class="item"><span class="l-label">Load 15m</span><span class="l-val">4.15</span></div>
+              </div>
+              <div class="proc-section">
+                <div class="proc-section-head">
+                  <span class="title">Processes — sorted by memory</span>
+                  <span class="count">805 total, all shown &middot; excerpt below, see state 5 for the full-size list</span>
+                </div>
+                <div class="proc-list-table">
+                  <div class="proc-list-head"><span>Name</span><span>PID</span><span style="text-align:right">CPU</span><span style="text-align:right">Memory</span></div>
+                  <div class="proc-list-body">
+<div class="proc-list-row "><span class="pl-name">node</span><span class="pl-pid">89956</span><span class="pl-cpu">0.0%</span><span class="pl-mem">36.89 GB</span></div>
+<div class="proc-list-row "><span class="pl-name">Xcode</span><span class="pl-pid">89903</span><span class="pl-cpu">12.5%</span><span class="pl-mem">3.57 GB</span></div>
+<div class="proc-list-row "><span class="pl-name">Batty</span><span class="pl-pid">89894</span><span class="pl-cpu">0.0%</span><span class="pl-mem">2.30 GB</span></div>
+<div class="proc-list-row "><span class="pl-name">Finder</span><span class="pl-pid">89823</span><span class="pl-cpu">0.0%</span><span class="pl-mem">791.5 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">WindowServer</span><span class="pl-pid">89774</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">mds_stores</span><span class="pl-pid">89764</span><span class="pl-cpu">2.4%</span><span class="pl-mem">603.9 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Safari</span><span class="pl-pid">89734</span><span class="pl-cpu">0.0%</span><span class="pl-mem">591.8 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Mail</span><span class="pl-pid">89720</span><span class="pl-cpu">0.5%</span><span class="pl-mem">514.6 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Music</span><span class="pl-pid">89664</span><span class="pl-cpu">0.0%</span><span class="pl-mem">312.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Photos</span><span class="pl-pid">89631</span><span class="pl-cpu">0.0%</span><span class="pl-mem">287.5 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Slack</span><span class="pl-pid">89558</span><span class="pl-cpu">0.5%</span><span class="pl-mem">285.4 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">UserEventAgent</span><span class="pl-pid">88903</span><span class="pl-cpu">4.8%</span><span class="pl-mem">215.7 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">com.apple.WebKit.Networking</span><span class="pl-pid">88783</span><span class="pl-cpu">0.0%</span><span class="pl-mem">211.8 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">com.apple.WebKit.WebContent</span><span class="pl-pid">88839</span><span class="pl-cpu">0.0%</span><span class="pl-mem">205.6 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">wifip2pd</span><span class="pl-pid">88185</span><span class="pl-cpu">0.5%</span><span class="pl-mem">202.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">imagent</span><span class="pl-pid">87663</span><span class="pl-cpu">1.1%</span><span class="pl-mem">198.3 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">powerd</span><span class="pl-pid">87959</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">remindd</span><span class="pl-pid">88045</span><span class="pl-cpu">0.5%</span><span class="pl-mem">190.6 MB</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Every number here traces to the spike, §1 of the design doc</b> — <code>getloadavg</code>, <code>host_processor_info</code>, and <code>host_statistics64</code> all cost well under a hundredth of a millisecond per call; the process list's full sweep costs 2-3ms for ~805 processes on this machine, cross-checked against <code>footprint</code>/<code>ps</code>.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>Memory used = active + wired + compressed</b>, never resident-only — the system-wide application of #0290's binding "never RSS" rule. Compressed is shown explicitly, not folded silently into "used," because it's exactly the figure that rule exists to surface.</span></div>
+            <div class="note"><span class="note-mark">3</span><span><b>Rows for processes this session doesn't own show "—", never 0%/0MB</b> (see the grayed <code>WindowServer</code>/<code>powerd</code>/<code>remindd</code>-adjacent rows above) — a dash means "denied," a number means "measured." This is an ownership boundary, not a narrow pty-specific one: the spike's fuller re-run found 280 <code>proc_name</code> failures spanning 213 distinct root-owned daemons, <code>/usr/bin/login</code> being the largest single bucket (26) but far from the only one. Every row still gets a name — <code>proc_name</code>, falling back to the executable path's basename, falling back a third time to a hardcoded label for pid 0 specifically (see state 5's full list) — the one pid where even the path lookup fails.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 2: THERMAL — SERIOUS ============ -->
+        <div class="tabpanel" id="p2">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                System Metrics
+              </div>
+              <span class="refreshing-pill"><span class="spinner"></span>Sampling…</span>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A6.5 6.5 0 1 0 15 8h-1.5a5 5 0 1 1-1.06-3.06L10 7h5V2l-1.35 1.35z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="status-row">
+              <span class="thermal-chip serious">
+                <svg viewBox="0 0 16 16"><path d="M8 1a2 2 0 0 1 2 2v6.1a3.5 3.5 0 1 1-4 0V3a2 2 0 0 1 2-2z"/></svg>
+                Thermal: Serious
+              </span>
+              <span class="pressure-chip warn">Memory pressure: Warn</span>
+              <span class="interval-note">Refreshing every 1s</span>
+            </div>
+            <div class="state-banner">
+              <svg viewBox="0 0 16 16"><path d="M8.98 1.6a1.13 1.13 0 0 0-1.96 0L.9 13a1.13 1.13 0 0 0 .98 1.7h12.24a1.13 1.13 0 0 0 .98-1.7L8.98 1.6zM8 5.5a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 5.5zm0 6.75a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z"/></svg>
+              <div>
+                <div class="title">Thermal pressure is elevated</div>
+                <div class="sub">macOS reports <code>ProcessInfo.thermalState = .serious</code> — the coarse, public, four-state signal, shown alongside the numeric CPU Temperature/Fan tiles below (SMC-sourced, see state 4 for two open caveats on those). The system may throttle performance to manage heat.</div>
+              </div>
+            </div>
+            <div class="metrics-grid">
+              <div class="metric-tile">
+                <div class="label">CPU (aggregate)</div>
+                <div class="value">78.4%</div>
+                <div class="sub">12 cores</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Memory used</div>
+                <div class="value">51.20 GB</div>
+                <div class="sub">of 64.00 GB</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Compressed</div>
+                <div class="value">8.90 GB</div>
+                <div class="sub">never counted as "free"</div>
+              </div>
+              <div class="metric-tile caveat">
+                <div class="label">CPU Temperature</div>
+                <div class="value">88.4&deg;C<span class="caveat-mark" title="Two open caveats — see state 4">i</span></div>
+                <div class="sub">SMC key Tp09</div>
+              </div>
+              <div class="metric-tile caveat">
+                <div class="label">Fan</div>
+                <div class="value">3210 RPM<span class="caveat-mark" title="Two open caveats — see state 4">i</span></div>
+                <div class="sub">1 fan (FNum)</div>
+              </div>
+            </div>
+            <div class="core-bars-wrap">
+              <div class="core-bars-label">Per-core utilization</div>
+              <div class="core-bars">
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:92%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:88%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:95%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:80%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:91%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:84%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill" style="height:52%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill" style="height:48%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill" style="height:61%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill" style="height:55%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill" style="height:44%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill" style="height:59%"></div></div>
+              </div>
+            </div>
+            <div class="load-row">
+              <div class="item"><span class="l-label">Load 1m</span><span class="l-val">11.82</span></div>
+              <div class="item"><span class="l-label">Load 5m</span><span class="l-val">7.44</span></div>
+              <div class="item"><span class="l-label">Load 15m</span><span class="l-val">4.90</span></div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Registration for <code>thermalStateDidChangeNotification</code> works</b> (confirmed directly); a real transition firing it was not observed in the spike's short idle window, so this design also re-checks <code>thermalState</code> on every 1s tick regardless — a bounded-staleness fallback, not a dependency on the notification alone.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>No numeric temperature is implied by "Serious"</b> — the chip is the entire signal. An earlier round of a sibling design (#0305) shipped a mockup showing data its own spike had disproved; this design's own accuracy bar is not to repeat that, so nothing here suggests a degrees-Celsius number exists behind this chip.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 3: THERMAL — CRITICAL ============ -->
+        <div class="tabpanel" id="p3">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                System Metrics
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A6.5 6.5 0 1 0 15 8h-1.5a5 5 0 1 1-1.06-3.06L10 7h5V2l-1.35 1.35z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="status-row">
+              <span class="thermal-chip critical">
+                <svg viewBox="0 0 16 16"><path d="M8 1a2 2 0 0 1 2 2v6.1a3.5 3.5 0 1 1-4 0V3a2 2 0 0 1 2-2z"/></svg>
+                Thermal: Critical
+              </span>
+              <span class="pressure-chip critical">Memory pressure: Critical</span>
+              <span class="interval-note">Refreshing every 1s</span>
+            </div>
+            <div class="state-banner critical">
+              <svg viewBox="0 0 16 16"><path d="M8.98 1.6a1.13 1.13 0 0 0-1.96 0L.9 13a1.13 1.13 0 0 0 .98 1.7h12.24a1.13 1.13 0 0 0 .98-1.7L8.98 1.6zM8 5.5a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 5.5zm0 6.75a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z"/></svg>
+              <div>
+                <div class="title">Thermal state is Critical</div>
+                <div class="sub">macOS is aggressively throttling to manage heat. This coincides here with Memory pressure: Critical — both readings come from independent system calls (<code>ProcessInfo.thermalState</code>, <code>kern.memorystatus_vm_pressure_level</code>), shown together because both are genuinely "the system is under strain" signals, not derived from one another.</div>
+              </div>
+            </div>
+            <div class="metrics-grid">
+              <div class="metric-tile">
+                <div class="label">CPU (aggregate)</div>
+                <div class="value">97.1%</div>
+                <div class="sub">12 cores</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Memory used</div>
+                <div class="value">62.80 GB</div>
+                <div class="sub">of 64.00 GB</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Compressed</div>
+                <div class="value">19.40 GB</div>
+                <div class="sub">never counted as "free"</div>
+              </div>
+              <div class="metric-tile caveat">
+                <div class="label">CPU Temperature</div>
+                <div class="value">97.8&deg;C<span class="caveat-mark" title="Two open caveats — see state 4">i</span></div>
+                <div class="sub">SMC key Tp09</div>
+              </div>
+              <div class="metric-tile caveat">
+                <div class="label">Fan</div>
+                <div class="value">4870 RPM<span class="caveat-mark" title="Two open caveats — see state 4">i</span></div>
+                <div class="sub">1 fan, near max (F0Mx 4900)</div>
+              </div>
+            </div>
+            <div class="core-bars-wrap">
+              <div class="core-bars-label">Per-core utilization</div>
+              <div class="core-bars">
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:99%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:98%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:97%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:100%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:96%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:95%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:99%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:94%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:98%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:97%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:93%"></div></div>
+                <div class="core-bar-col"><div class="core-bar-fill hot" style="height:96%"></div></div>
+              </div>
+            </div>
+            <div class="load-row">
+              <div class="item"><span class="l-label">Load 1m</span><span class="l-val">23.60</span></div>
+              <div class="item"><span class="l-label">Load 5m</span><span class="l-val">14.02</span></div>
+              <div class="item"><span class="l-label">Load 15m</span><span class="l-val">8.11</span></div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Critical is a defined, expected state, not an error</b> — <code>ProcessInfo.ThermalState</code> is a public four-case enum and Critical is one of the four. The view renders it with the same "state, not exception" treatment as every other reading, including the process list continuing to refresh underneath (not shown collapsed here, scroll state 1 for that layout).</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>No action is offered from this banner</b> — read-only, matching #0305's own decision. This view doesn't kill processes or throttle anything itself; it reports what macOS itself is already doing.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 4: TEMPERATURE UNAVAILABLE ============ -->
+        <div class="tabpanel" id="p4">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                System Metrics
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A6.5 6.5 0 1 0 15 8h-1.5a5 5 0 1 1-1.06-3.06L10 7h5V2l-1.35 1.35z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="status-row">
+              <span class="thermal-chip nominal">
+                <svg viewBox="0 0 16 16"><path d="M8 1a2 2 0 0 1 2 2v6.1a3.5 3.5 0 1 1-4 0V3a2 2 0 0 1 2-2z"/></svg>
+                Thermal: Nominal
+              </span>
+              <span class="pressure-chip">Memory pressure: Normal</span>
+            </div>
+            <div class="metrics-grid">
+              <div class="metric-tile">
+                <div class="label">CPU (aggregate)</div>
+                <div class="value">14.2%</div>
+                <div class="sub">12 cores</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Memory used</div>
+                <div class="value">31.40 GB</div>
+                <div class="sub">of 64.00 GB</div>
+              </div>
+              <div class="metric-tile">
+                <div class="label">Compressed</div>
+                <div class="value">2.10 GB</div>
+                <div class="sub">never counted as "free"</div>
+              </div>
+              <div class="metric-tile caveat">
+                <div class="label">CPU Temperature</div>
+                <div class="value">40.0&deg;C</div>
+                <div class="sub">SMC key Tp09 — see caveats below</div>
+              </div>
+              <div class="metric-tile caveat">
+                <div class="label">Fan</div>
+                <div class="value">1000 RPM</div>
+                <div class="sub">1 fan — see caveats below</div>
+              </div>
+            </div>
+            <div class="state-banner" style="background: var(--bg-inset); border-color: var(--border-strong);">
+              <svg viewBox="0 0 16 16" style="fill: var(--fg-tertiary);"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 3a1 1 0 0 1 1 1v3.5a1 1 0 0 1-2 0V5a1 1 0 0 1 1-1zm0 7.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+              <div>
+                <div class="title">Temperature and fan readings are real, but ship with two open verification questions</div>
+                <div class="sub">The classic SMC struct-method technique (<code>IOServiceOpen</code> + <code>IOConnectCallStructMethod</code>) reads real values here, unprivileged — confirmed twice, independently, after an earlier spike script's struct-layout bug produced a false "unreadable" result in round 1 of this design. Two things are <b>not yet</b> confirmed: (1) every read so far ran as an ad-hoc <code>swift</code> script, not inside the signed, notarized, hardened-runtime <code>Batty.app</code> — phase 2 must re-verify there before shipping; (2) the SMC key names shown here (<code>Tp09</code>, <code>Te05</code>, <code>F0Ac</code>, <code>FNum</code>, …) are confirmed on this one Mac mini M4 only — Apple has changed SMC key naming across chip generations historically, so a fixed key list will not necessarily resolve on every Mac. Neither caveat is a reason to hide the reading; both are named so phase 2 doesn't have to rediscover them.</div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>This state replaces an earlier, incorrect one.</b> An earlier round of this same mockup showed a "Temperature — Unavailable" panel here, built on this design document's own round-1 SMC finding — which was itself wrong (a struct-size bug in the spike script, not a fact about this machine). Review caught it, the finding was reversed, and this state now shows what's actually true: the reading works, with two named open questions, not a ruled-out metric.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>"Shown honestly" now means showing the caveats, not showing an absence.</b> The design doc's own accuracy bar (every mockup number must trace to something the spike measured) applies the same way to a positive result as it did to the negative one this replaces — the two open questions above are exactly what the spike did <i>not</i> establish, named directly rather than resolved by assertion.</span></div>
+          </div>
+        </div>
+
+        <!-- ============ STATE 5: PROCESS LIST AT COST CEILING ============ -->
+        <div class="tabpanel" id="p5">
+          <div class="pane-frame">
+            <div class="pane-header">
+              <div class="kind-chip">
+                <svg viewBox="0 0 16 16"><path d="M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z"/></svg>
+                System Metrics
+              </div>
+              <div class="spacer"></div>
+              <div class="icon-btn" title="Refresh now">
+                <svg viewBox="0 0 16 16"><path d="M13.65 2.35A6.5 6.5 0 1 0 15 8h-1.5a5 5 0 1 1-1.06-3.06L10 7h5V2l-1.35 1.35z"/></svg>
+              </div>
+              <div class="header-divider"></div>
+              <div class="icon-btn" title="Drag to swap with another pane">
+                <svg viewBox="0 0 16 16"><circle cx="5" cy="5" r="1.3"/><circle cx="11" cy="5" r="1.3"/><circle cx="5" cy="11" r="1.3"/><circle cx="11" cy="11" r="1.3"/></svg>
+              </div>
+              <div class="icon-btn" title="Hide pane">
+                <svg viewBox="0 0 16 16"><path d="M1 8s2.7-5 7-5 7 5 7 5-2.7 5-7 5-7-5-7-5zm7 2.6A2.6 2.6 0 1 0 8 5.4a2.6 2.6 0 0 0 0 5.2z" opacity=".55"/><path d="M2.2 1.5l12.3 12.3-.9.9L1.3 2.4z"/></svg>
+              </div>
+            </div>
+            <div class="proc-section" style="padding-top: 10px;">
+              <div class="proc-section-head">
+                <span class="title">Processes — sorted by memory, full list</span>
+                <span class="count">805 total (this machine, spike-measured) &middot; sweep cost 2.06-2.16ms &middot; excerpt below represents the full, virtualized list</span>
+              </div>
+              <div class="proc-list-table">
+                <div class="proc-list-head"><span>Name</span><span>PID</span><span style="text-align:right">CPU</span><span style="text-align:right">Memory</span></div>
+                <div class="proc-list-body tall">
+<div class="proc-list-row "><span class="pl-name">node</span><span class="pl-pid">89956</span><span class="pl-cpu">0.0%</span><span class="pl-mem">36.89 GB</span></div>
+<div class="proc-list-row "><span class="pl-name">Xcode</span><span class="pl-pid">89903</span><span class="pl-cpu">12.5%</span><span class="pl-mem">3.57 GB</span></div>
+<div class="proc-list-row "><span class="pl-name">Batty</span><span class="pl-pid">89894</span><span class="pl-cpu">0.0%</span><span class="pl-mem">2.30 GB</span></div>
+<div class="proc-list-row "><span class="pl-name">Finder</span><span class="pl-pid">89823</span><span class="pl-cpu">0.0%</span><span class="pl-mem">791.5 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">WindowServer</span><span class="pl-pid">89774</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">mds_stores</span><span class="pl-pid">89764</span><span class="pl-cpu">2.4%</span><span class="pl-mem">603.9 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Safari</span><span class="pl-pid">89734</span><span class="pl-cpu">0.0%</span><span class="pl-mem">591.8 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Mail</span><span class="pl-pid">89720</span><span class="pl-cpu">0.5%</span><span class="pl-mem">514.6 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Music</span><span class="pl-pid">89664</span><span class="pl-cpu">0.0%</span><span class="pl-mem">312.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Photos</span><span class="pl-pid">89631</span><span class="pl-cpu">0.0%</span><span class="pl-mem">287.5 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Slack</span><span class="pl-pid">89558</span><span class="pl-cpu">0.5%</span><span class="pl-mem">285.4 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">UserEventAgent</span><span class="pl-pid">88903</span><span class="pl-cpu">4.8%</span><span class="pl-mem">215.7 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">com.apple.WebKit.Networking</span><span class="pl-pid">88783</span><span class="pl-cpu">0.0%</span><span class="pl-mem">211.8 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">com.apple.WebKit.WebContent</span><span class="pl-pid">88839</span><span class="pl-cpu">0.0%</span><span class="pl-mem">205.6 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">wifip2pd</span><span class="pl-pid">88185</span><span class="pl-cpu">0.5%</span><span class="pl-mem">202.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">imagent</span><span class="pl-pid">87663</span><span class="pl-cpu">1.1%</span><span class="pl-mem">198.3 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">powerd</span><span class="pl-pid">87959</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">remindd</span><span class="pl-pid">88045</span><span class="pl-cpu">0.5%</span><span class="pl-mem">190.6 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">backupd-helper</span><span class="pl-pid">87754</span><span class="pl-cpu">187.0%</span><span class="pl-mem">189.6 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">opendirectoryd</span><span class="pl-pid">88588</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">cloudd</span><span class="pl-pid">87901</span><span class="pl-cpu">1.1%</span><span class="pl-mem">183.5 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">QuickLookUIService</span><span class="pl-pid">89021</span><span class="pl-cpu">187.0%</span><span class="pl-mem">172.4 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">bluetoothd</span><span class="pl-pid">88238</span><span class="pl-cpu">0.0%</span><span class="pl-mem">163.5 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">trustd</span><span class="pl-pid">88540</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">distnoted</span><span class="pl-pid">88942</span><span class="pl-cpu">0.3%</span><span class="pl-mem">161.6 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">syspolicyd</span><span class="pl-pid">88551</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">nsurlsessiond</span><span class="pl-pid">88728</span><span class="pl-cpu">0.3%</span><span class="pl-mem">154.2 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">sourcekit-lsp</span><span class="pl-pid">89165</span><span class="pl-cpu">1.1%</span><span class="pl-mem">151.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">com.apple.geod</span><span class="pl-pid">87672</span><span class="pl-cpu">12.5%</span><span class="pl-mem">150.1 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">mDNSResponder</span><span class="pl-pid">87905</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">git</span><span class="pl-pid">89255</span><span class="pl-cpu">4.8%</span><span class="pl-mem">142.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">corespotlightd</span><span class="pl-pid">89517</span><span class="pl-cpu">12.5%</span><span class="pl-mem">139.5 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">diagnosticd</span><span class="pl-pid">87407</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row denied"><span class="pl-name">logd</span><span class="pl-pid">89507</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">fseventsd</span><span class="pl-pid">88649</span><span class="pl-cpu">1.1%</span><span class="pl-mem">129.3 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">secd</span><span class="pl-pid">88498</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">biomesyncd</span><span class="pl-pid">88771</span><span class="pl-cpu">2.4%</span><span class="pl-mem">127.8 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">zsh</span><span class="pl-pid">89406</span><span class="pl-cpu">0.0%</span><span class="pl-mem">127.3 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">swift-frontend</span><span class="pl-pid">89205</span><span class="pl-cpu">0.0%</span><span class="pl-mem">122.3 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">accountsd</span><span class="pl-pid">87854</span><span class="pl-cpu">0.5%</span><span class="pl-mem">119.5 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Terminal</span><span class="pl-pid">89108</span><span class="pl-cpu">0.3%</span><span class="pl-mem">104.6 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">tailspind</span><span class="pl-pid">87424</span><span class="pl-cpu">0.1%</span><span class="pl-mem">99.2 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">bash</span><span class="pl-pid">89478</span><span class="pl-cpu">0.2%</span><span class="pl-mem">94.5 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">AMPLibraryAgent</span><span class="pl-pid">88885</span><span class="pl-cpu">2.4%</span><span class="pl-mem">94.3 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">notifyd</span><span class="pl-pid">88007</span><span class="pl-cpu">187.0%</span><span class="pl-mem">93.7 MB</span></div>
+<div class="proc-list-row denied" title="pid 0: proc_name and proc_pidpath both fail; label is a hardcoded fallback, not a resolved name"><span class="pl-name">kernel_task</span><span class="pl-pid">0</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+<div class="proc-list-row "><span class="pl-name">apsd</span><span class="pl-pid">88356</span><span class="pl-cpu">12.5%</span><span class="pl-mem">79.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">assistantd</span><span class="pl-pid">87773</span><span class="pl-cpu">4.8%</span><span class="pl-mem">72.8 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">cfprefsd</span><span class="pl-pid">89008</span><span class="pl-cpu">4.8%</span><span class="pl-mem">68.9 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">Preview</span><span class="pl-pid">89047</span><span class="pl-cpu">0.3%</span><span class="pl-mem">68.7 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">identityservicesd</span><span class="pl-pid">88408</span><span class="pl-cpu">1.1%</span><span class="pl-mem">65.5 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">akd</span><span class="pl-pid">87875</span><span class="pl-cpu">0.2%</span><span class="pl-mem">64.9 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">CalendarAgent</span><span class="pl-pid">88065</span><span class="pl-cpu">2.4%</span><span class="pl-mem">64.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">tmux</span><span class="pl-pid">89332</span><span class="pl-cpu">12.5%</span><span class="pl-mem">43.0 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">sharingd</span><span class="pl-pid">88294</span><span class="pl-cpu">0.3%</span><span class="pl-mem">40.3 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">rapportd</span><span class="pl-pid">88119</span><span class="pl-cpu">0.0%</span><span class="pl-mem">39.9 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">com.docker.backend</span><span class="pl-pid">89548</span><span class="pl-cpu">4.8%</span><span class="pl-mem">30.7 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">ReportCrash</span><span class="pl-pid">87519</span><span class="pl-cpu">0.5%</span><span class="pl-mem">26.4 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">coreaudiod</span><span class="pl-pid">87927</span><span class="pl-cpu">0.0%</span><span class="pl-mem">21.9 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">spindump</span><span class="pl-pid">87435</span><span class="pl-cpu">0.5%</span><span class="pl-mem">17.4 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">lldb-rpc-server</span><span class="pl-pid">89194</span><span class="pl-cpu">4.8%</span><span class="pl-mem">16.9 MB</span></div>
+<div class="proc-list-row "><span class="pl-name">AirPlayXPCHelper</span><span class="pl-pid">88277</span><span class="pl-cpu">1.1%</span><span class="pl-mem">16.7 MB</span></div>
+<div class="proc-list-row denied"><span class="pl-name">launchd</span><span class="pl-pid">89498</span><span class="pl-cpu"><span class="dash">—</span></span><span class="pl-mem"><span class="dash">—</span></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="notes-col">
+            <div class="note"><span class="note-mark">1</span><span><b>Full list, not top-N</b> — the design doc's §2 decision, justified directly by §1.7's measurement: enumerating and sampling every process on this machine costs 2-3ms total, roughly three orders of magnitude under the 1s refresh budget. There is no cost argument for truncating, and SwiftUI's <code>List</code>/<code>Table</code> already virtualizes rendering the way this scrollable excerpt does here.</span></div>
+            <div class="note"><span class="note-mark">2</span><span><b>A defensive cap is named but not built</b> — nothing measured on this machine justifies one; a future machine with a much larger process count (a loaded CI box, hundreds of containers) is the scenario a cap like "top 2,000 of M" would guard against, stated in the design doc as a fallback, not designed further here.</span></div>
+            <div class="note"><span class="note-mark">3</span><span><b>Every memory figure is <code>phys_footprint</code></b>, cross-checked against Apple's own <code>footprint</code> CLI and <code>ps</code> in the spike (exact match on both, for the top entry) — never <code>resident_size</code>/RSS, which the same spike run measured at a 4.0&times; undercount for that entry, reproducing #0290's binding trap live, per-row, at whole-system scale.</span></div>
+            <div class="note"><span class="note-mark">4</span><span><b><code>kernel_task</code> at pid 0 (bottom of the list above) needed a third name fallback</b> — <code>proc_listallpids</code> does return pid 0, and it's the one pid where <code>proc_pidpath</code> fails alongside <code>proc_name</code>, so the path-basename fallback every other denied row uses (note 3, state 1) has nothing to fall back to either. Pid 0 is always the kernel on Darwin, a fixed constant, so a hardcoded label closes this one specific gap rather than inventing a general last-resort rule.</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <footer class="legend">
+      <span class="item"><span class="thermal-chip nominal" style="padding:2px 6px;">Nominal</span> baseline, no throttling</span>
+      <span class="item"><span class="thermal-chip serious" style="padding:2px 6px;">Serious</span> elevated, possible throttling</span>
+      <span class="item"><span class="thermal-chip critical" style="padding:2px 6px;">Critical</span> aggressive throttling</span>
+      <span class="item">Read-only — no kill, no renice, no process control of any kind.</span>
+      <span class="item">Singleton per Session — two System Metrics panes would show identical state.</span>
+      <span class="item"><span class="caveat-mark">i</span> Temperature/Fan tiles carry two open verification caveats — see state 4.</span>
+    </footer>
+  </div>
+</div>
