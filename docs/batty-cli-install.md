@@ -1,11 +1,11 @@
 # `batty` CLI: build, embed, install, invoke (as-built)
 
 This is a from-the-source record of how the `batty` command-line tool
-actually works in this repo today: how it's declared, how it gets into
+actually works in this repo today (updated 2026-08-10): how it's declared, how it gets into
 `Batty.app`, how it lands on the user's `PATH`, and what happens when you
 run it. It is written to be self-contained for a reader with no access to
 this repo — every path, target name, and code excerpt below was read
-directly from the source at the time of writing (2026-07-24) rather than
+directly from the source rather than
 inferred or assumed.
 
 There is an older document, `docs/cli-tool-install.md`, that is a
@@ -29,32 +29,52 @@ Settings → Advanced, after which the command is on the user's normal
 shell `PATH` — `/usr/local/bin/batty` for the Prod build,
 `/usr/local/bin/batty-beta` for Beta (`#0277`; see "Variant-aware install
 path" below), so installing one variant's CLI can never silently repoint
-the other's. Today the CLI does exactly one thing:
-`batty <path>` (or bare `batty`, which defaults to `.`) resolves the given
-directory to an absolute path, builds a `batty://session?path=<path>` URL,
-and hands it to `/usr/bin/open`, which launches or activates Batty and
-delivers the URL to `NSApplicationDelegate.application(_:open:)`. The app
-routes it to a handler that creates a new Session rooted at that directory
-in the currently active window. There is no response channel: the CLI
-never learns whether the app succeeded, and `open`'s exit code only tells
-you whether macOS accepted the URL, not whether Batty acted on it.
+the other's.
+
+The CLI now has three execution paths:
+
+- `batty new [<path>]`, bare `batty`, and `batty <path>` use the original
+  one-way `batty://session?path=<path>` URL.
+- Live queries and acknowledged mutations use the broker-mediated XPC
+  channel: `ping`, `status`, `list`, `session info`, `pane split`, `pane
+  close`, and `notify`.
+- `id` (alias `whoami`) reads `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
+  `BATTY_TAB_ID` from the environment without contacting the broker or app.
+
+## Current command surface
+
+| Command | Purpose | Transport |
+|---|---|---|
+| `batty [<path>]` / `batty new [<path>]` | Create and select a Session rooted at a directory; defaults to `.` | `batty://` |
+| `batty ping` | Check whether this variant's broker is reachable | XPC broker |
+| `batty status` | Print live pid, uptime, Window, Session, and Tab counts | XPC |
+| `batty list [sessions\|panes\|tabs] [--json]` | Print live topology; JSON always contains the full topology | XPC |
+| `batty session info [--session <id>] [--json]` | Print one Session; target is flag → `BATTY_SESSION_ID` → focused Session | XPC |
+| `batty pane split [-h\|-v] [-c <command>] [--pane <id>] [--view <kind>]` | Split a Pane and print the new Pane id | XPC |
+| `batty pane close [--pane <id>]` | Close every Tab in a Pane and remove the Pane | XPC |
+| `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
+| `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
+
+Run `batty <subcommand> --help` for exact options. The full noun/verb grammar
+in `docs/batty-cli-design.md` is a forward-looking catalog; only the commands
+above are registered today.
 
 ## End-to-end trace: `batty ~/some/path`
+
+This trace covers the URL-backed `new`/path shorthand. XPC commands use the
+broker → app-endpoint handoff described in `docs/xpc/`.
 
 1. User runs `batty ~/some/path` in a terminal. The shell resolves `batty`
    via `PATH` to `/usr/local/bin/batty`, which is a **symlink** (not a
    copy) to `<Batty.app>/Contents/Resources/bin/batty` — installed by
    `CLIInstaller.install()` (see "Installation to PATH" below).
 
-2. `swift-argument-parser` parses the invocation into `BattyCLI`
-   (`BattyKit/Sources/batty/BattyCLI.swift`), a `@main struct BattyCLI:
-   ParsableCommand` with a single positional `@Argument var path: String =
-   "."`. There are no subcommands today — `batty` is a single-command tool.
-   `--version` and `--help` are handled entirely by `swift-argument-parser`
-   (no app round-trip); `--version` reports `resolveAppVersion()`'s result
-   (see step 3).
+2. `swift-argument-parser` selects the default `NewSessionCommand` registered
+   by `BattyCLI`. Its positional `path` defaults to `.`. `--version` and
+   `--help` are handled entirely by ArgumentParser; `--version` reports
+   `resolveAppVersion()`'s result (see step 3).
 
-3. `BattyCLI.run()` calls `resolvePath(path)`
+3. `NewSessionCommand.run()` calls `resolvePath(path)`
    (`BattyKit/Sources/batty/SessionCommand.swift`), which forwards to
    `SessionURLBuilder.resolve(path:currentDirectory:)`
    (`BattyKit/Sources/BattyCLICore/SessionURLBuilder.swift`):
@@ -90,8 +110,8 @@ you whether macOS accepted the URL, not whether Batty acted on it.
    it isn't running, or activates it if it is, and delivers the URL through
    the standard macOS Launch-Services/URL-event mechanism — no code in
    Batty has to poll or listen for this beyond registering the URL scheme
-   (step 6). This is the full extent of the CLI's own work: it never talks
-   to the app directly.
+   (step 6). This is the full extent of the `new` command's work; the
+   XPC-backed commands do talk to the broker and app directly.
 
 6. On the app side, the `batty` URL scheme is registered via
    `CFBundleURLTypes` in the **literal** `Configuration/Info.plist` (not a
@@ -144,7 +164,7 @@ path's session — documented as acceptable, not a bug, in #0251.
 
 ### 1. The executable target
 
-`BattyKit/Package.swift` declares three targets relevant to the CLI:
+`BattyKit/Package.swift` declares four targets relevant to the CLI:
 
 ```swift
 .target(
@@ -152,9 +172,14 @@ path's session — documented as acceptable, not a bug, in #0251.
     swiftSettings: swiftSettings
 ),
 .target(
+    name: "BattyXPCCore",
+    swiftSettings: swiftSettings
+),
+.target(
     name: "BattyKit",
     dependencies: [
         "BattyCLICore",
+        "BattyXPCCore",
         .product(name: "GhosttyKit", package: "libghostty-spm"),
         .product(name: "GhosttyTerminal", package: "libghostty-spm"),
         .product(name: "GhosttyTheme", package: "libghostty-spm"),
@@ -168,6 +193,7 @@ path's session — documented as acceptable, not a bug, in #0251.
     name: "batty",
     dependencies: [
         "BattyCLICore",
+        "BattyXPCCore",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
     ],
     swiftSettings: swiftSettings
@@ -183,7 +209,7 @@ and the corresponding product:
 ),
 ```
 
-**Why the `batty` executable target depends on `BattyCLICore` and not
+**Why the `batty` executable target depends on dependency-free cores and not
 `BattyKit`:** this is the single most important architectural fact about
 the CLI, and it was *not* the original design — see #0252. The first
 implementation (#0249) had `batty` depend on the full `BattyKit` library,
@@ -200,7 +226,9 @@ happens to resolve Sparkle — so the bug shipped past verification in
 `SessionURLBuilder` into it, made `BattyKit` depend on `BattyCLICore` and
 re-export it (`BattyKit/Sources/BattyKit/BattyCLICoreReexport.swift`:
 `@_exported import BattyCLICore`, so existing `import BattyKit` call sites
-were unaffected), and pointed `batty` at `BattyCLICore` only. Effect:
+were unaffected), and pointed `batty` at `BattyCLICore` only. The later XPC
+work added the equally dependency-free `BattyXPCCore`; the executable now
+links both cores but still never links the full GUI library. The original effect:
 binary size dropped from 26 MB to 2.4 MB and `otool -L` shows zero
 `@rpath` dependencies. The project's own comment in `Package.swift` states
 this plainly:
@@ -225,15 +253,21 @@ only — deliberately **not** wired as an Xcode
 previously broke the unit-test gate (see "Gotcha: the executable-product
 Xcode-dependency trap" below).
 
-Source layout:
+Source layout (grouped by responsibility):
 
 ```
 BattyKit/Sources/batty/
-├── BattyCLI.swift          # @main entry point, argument parsing
-└── SessionCommand.swift    # path resolution, version resolution, URL dispatch
+├── BattyCLI.swift          # @main entry point and command registration
+├── *Command.swift          # new/query/mutation/identity/notification commands
+├── AppConnectDance.swift   # broker lookup, app launch, endpoint polling
+└── *Client.swift           # broker and direct app XPC clients
 
 BattyKit/Sources/BattyCLICore/
-└── SessionURLBuilder.swift # batty:// URL build/parse/path-resolve, shared by CLI + app + tests
+├── SessionURLBuilder.swift # batty:// URL build/parse/path-resolve
+└── Batty*.swift            # identity context, target resolution, environment keys
+
+BattyKit/Sources/BattyXPCCore/
+└── *.swift                 # protocols, payloads, service names, exit codes, security
 ```
 
 There is no `main.swift` in the `batty` target. An earlier version used
@@ -244,7 +278,7 @@ parsing was introduced (#0250).
 
 ### 2. The CLI's actual current behavior
 
-Full listing of `BattyKit/Sources/batty/BattyCLI.swift`:
+The current registration in `BattyKit/Sources/batty/BattyCLI.swift` is:
 
 ```swift
 import ArgumentParser
@@ -256,43 +290,42 @@ struct BattyCLI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "batty",
         abstract: "Control Batty from the command line.",
-        version: resolveAppVersion()
+        discussion: "Bare `batty` and `batty <path>` are shorthand for `batty new <path>`.",
+        version: resolveAppVersion(),
+        subcommands: [
+            NewSessionCommand.self,
+            PingCommand.self,
+            StatusCommand.self,
+            ListCommand.self,
+            SessionNounCommand.self,
+            PaneNounCommand.self,
+            IDCommand.self,
+            NotifyCommand.self,
+        ],
+        defaultSubcommand: NewSessionCommand.self
     )
-
-    @Argument(help: "Directory for the new session. Defaults to the current directory.")
-    var path: String = "."
-
-    nonisolated func run() throws {
-        let resolved = try resolvePath(path)
-        guard let url = SessionURLBuilder.buildURL(absolutePath: resolved) else {
-            fputs("batty: failed to build IPC URL for path: \(resolved)\n", stderr)
-            throw ExitCode.failure
-        }
-        try openURL(url)
-    }
 }
 ```
 
 Key points, verified against this source:
 
-- **No subcommands.** `batty` is a flat, single-argument command. There is
-  no `batty session ...` / `batty pane ...` verb grammar today — that is a
-  *design proposal* in `docs/batty-cli-design.md` and a *pinned plan, not
-  yet built* in issue `issues/0257.md` (status `open` at time of writing).
-  Do not assume any verb beyond the bare positional path exists.
+- **Eight registered top-level commands.** `new`, `ping`, `status`, `list`,
+  `session`, `pane`, `id`/`whoami`, and `notify`. `session` currently contains
+  only `info`; `pane` currently contains `split` and `close`.
 - **Bare `batty` (no arguments) defaults to `batty .`** — creates a
   session at the current working directory rather than printing usage.
-  This was a deliberate, reviewer-flagged-for-user-sign-off choice (#0250).
+  `batty <path>` remains shorthand for the default `new` subcommand. A path
+  whose first component is a command name must be disambiguated explicitly,
+  for example `batty new status`.
 - **`--version`** is handled by `swift-argument-parser`'s built-in
   version flag, sourced from `resolveAppVersion()`. **`--help`** is
   `swift-argument-parser`'s automatic help generation from the
   `CommandConfiguration`/`@Argument` metadata — nothing custom.
-- **Exit codes:** `0` on success; `1` (`ExitCode.failure`) when the path
-  doesn't resolve to an existing directory, when URL assembly fails
-  (not expected in practice), when `/usr/bin/open` itself fails to spawn,
-  or when `open` exits non-zero. There is no exit code that reflects
-  whether the *app* actually created the session — see "Known
-  limitations."
+- **Exit codes:** `0` on success; `1` for client-side validation or general
+  failures; `2` when the broker is unreachable; `3` when the app is
+  unavailable; `4` when the app rejects a request; `5` when the app
+  terminates during a request; and ArgumentParser's `64` for invalid command
+  syntax. Only the URL-backed `new` command lacks an app acknowledgement.
 
 `resolveAppVersion()` and the path/URL helpers, from
 `BattyKit/Sources/batty/SessionCommand.swift`:
@@ -990,7 +1023,8 @@ cd BattyKit
 swift build --product batty
 swift run batty --help
 swift run batty --version   # prints "unknown" — no host app Info.plist to read
-swift run batty /some/existing/dir
+swift run batty new /some/existing/dir
+swift run batty id          # succeeds only when BATTY_* ids are present
 ```
 
 This is also the fastest way to iterate on `BattyCLI.swift`/
@@ -1000,35 +1034,29 @@ runtime environment (rpath resolution, `--version`'s Info.plist lookup,
 the installed-symlink path), which is exactly the gap that let `#0252`'s
 crash ship unnoticed.
 
-There is no dedicated UI-test coverage of the CLI itself (installing via
-the Settings row, the live authorization dialog, or an actual end-to-end
-`batty <path>` against a running app) — every issue that touched this area
-(`#0249`, `#0250`, `#0251`) explicitly calls out that the live round-trip
-needs a human's runtime sign-off and cannot be verified headlessly.
+There is no dedicated UI-test coverage of installing the CLI from Settings,
+the authorization dialog, or the full installed-binary round trip. The shared
+URL, topology payload, target-resolution, XPC contract, broker lifecycle,
+Pane mutation, identity-environment, and notification paths do have unit-test
+coverage in `BattyKitTests`; live launchd/XPC behavior still needs runtime
+verification with an installed, signed app.
 
 ### 8. Known limitations
 
 Grounded directly in the code above, not aspirational:
 
-- **One-way, fire-and-forget.** `openURL` in `SessionCommand.swift` only
+- **Session creation remains one-way and fire-and-forget.** `openURL` in `SessionCommand.swift` only
   observes whether `/usr/bin/open` itself launched and exited zero — it
   has no visibility into whether `BattyURLHandler.handle` ran, whether
   `SessionURLBuilder.sessionPath(from:)` parsed the URL successfully, or
   whether a session was actually created. A `batty /valid/dir` that
   reaches a running-but-broken Batty will still exit `0`.
-  `issues/0257.md` §"IPC decision (pinned, amended)" pins this
-  explicitly: "mutations go over the `batty://` URL scheme (fire-and-
-  forget, no daemon)" as the deliberate near-term architecture; a
-  request/response Unix socket is explicitly deferred ("Tier 3") for
-  anything needing a live reply (`read` a screen, `wait`, `send` input,
-  `events`).
-- **No meaningful exit code for app-side failure.** Exit code `1` from
-  `batty` today only ever means "the CLI itself" rejected the input
-  (bad path) or `open` failed to run — never "the app rejected the
-  request" (there is no such response path) or "the app isn't installed/
-  registered for the scheme" (in that case `open` typically still exits 0
-  having handed the URL to Launch Services, or fails with its own
-  Launch-Services-level error, not a Batty-specific one).
+  Other shipped mutations use XPC specifically so the caller receives an
+  acknowledgement and meaningful failure code.
+- **Only `new` lacks an app-side failure code.** Its exit `1` means the CLI
+  rejected the path or `/usr/bin/open` failed; it cannot mean that Batty
+  rejected the request. XPC-backed commands use exit codes `2` through `5`
+  for transport and app-side failures.
 - **Query surface, updated as of #0281.** `issues/0257.md` originally
   proposed (as an *unimplemented* plan) a debounced, atomically-written
   JSON topology snapshot on disk (`~/Library/Application Support/Batty/
@@ -1152,10 +1180,14 @@ Grounded directly in the code above, not aspirational:
 
 | File | Role |
 |---|---|
-| `BattyKit/Package.swift` | Declares the `BattyCLICore` target (dependency-free), the `BattyKit` library target (depends on `BattyCLICore`, GhosttyKit/Terminal/Theme, SlidingTabs, Sparkle, Textual), and the `batty` executable target/product (depends on `BattyCLICore` + `ArgumentParser` only). |
-| `BattyKit/Sources/batty/BattyCLI.swift` | `@main` entry point; argument parsing (`swift-argument-parser`); orchestrates resolve → build URL → open. |
+| `BattyKit/Package.swift` | Declares dependency-free `BattyCLICore` and `BattyXPCCore` targets, the `BattyKit` library, and the `batty` executable target/product (depends on both cores plus ArgumentParser). |
+| `BattyKit/Sources/batty/BattyCLI.swift` | `@main` entry point and top-level/default-subcommand registration. |
+| `BattyKit/Sources/batty/{Ping,Status,List,SessionInfo,Pane,ID,Notify}Command.swift` | Current command implementations, validation, output, and exit-code mapping. |
+| `BattyKit/Sources/batty/{AppConnectDance,BrokerPingClient,BrokerAppEndpointClient,AppServiceClient}.swift` | Broker discovery, app launch/poll, endpoint handoff, and request/reply XPC clients. |
 | `BattyKit/Sources/batty/SessionCommand.swift` | `resolveAppVersion()` (reads the host app's `Info.plist`), `resolvePath(_:)`, `openURL(_:bundleIdentifier:)` (spawns `/usr/bin/open -b <bundleIdentifier>`, defaulting to `ServiceNames.appBundleIdentifier` — `#0279`). |
 | `BattyKit/Sources/BattyCLICore/SessionURLBuilder.swift` | `resolve`/`buildURL`/`sessionPath` — the shared wire format between CLI, app, and tests. |
+| `BattyKit/Sources/BattyCLICore/{BattyIdentityContext,BattyTargetResolver,BattyContextEnvironment}.swift` | Local identity parsing and flag → environment → focused-target resolution. |
+| `BattyKit/Sources/BattyXPCCore/` | Shared XPC protocols, payloads, service names, exit codes, polling/once primitives, and code-signing requirements. |
 | `BattyKit/Sources/BattyKit/BattyCLICoreReexport.swift` | `@_exported import BattyCLICore` so existing `import BattyKit` consumers keep seeing `SessionURLBuilder`. |
 | `BattyKit/Sources/BattyKit/Runtime/BattyURLHandler.swift` | App-side handler: parses the `batty://` URL, calls `AppStateStore.addSession(workingDirectory:)` on the main actor; logs and ignores unrecognized URLs. |
 | `Batty/BattyApp.swift` | `BattyAppDelegate.application(_:open:)` routes `batty://` URLs to the handler; `.handlesExternalEvents(matching: Set())` on the content `WindowGroup` and Help `Window` suppresses SwiftUI's own stray-window behavior for the same event; `WindowGroup`'s `defaultValue` reuses `AppStateStore.shared.initialWindowID` so the URL-added session lands in the real on-screen window. |
@@ -1165,7 +1197,7 @@ Grounded directly in the code above, not aspirational:
 | `Batty.xcodeproj/project.pbxproj` | The `Batty` native target's `Embed CLI` Run Script build phase (`alwaysOutOfDate = 1`, runs before the `Embed Broker` phase) that builds `batty` from the package via `xcrun swift build --product batty` and copies it to `Contents/Resources/bin/batty`. |
 | `Configuration/Build.xcconfig` | `ENABLE_APP_SANDBOX = NO` (relevant: no automation-events entitlement needed for `NSAppleScript`); `CODE_SIGN_STYLE = Automatic`. |
 | `Batty/Batty.entitlements` | Confirms no sandbox key and no `com.apple.security.automation.apple-events` entry. |
-| `scripts/release.sh` | Archive/export/notarize pipeline; no CLI-specific signing step found — relies on `xcodebuild archive`/`-exportArchive`'s automatic signing plus a generic `codesign --verify --deep --strict` gate. |
+| `scripts/release.sh` | Archive/export/notarize pipeline; explicitly re-signs `batty` and `BattyBroker` with the Developer ID identity after export, then re-signs the app so its resource seal covers those binaries. |
 | `BattyKit/Tests/BattyKitTests/SessionURLBuilderTests.swift` | Unit tests for path resolution and URL build/parse. |
 | `BattyKit/Tests/BattyKitTests/BattyURLHandlerRoutingTests.swift` | Unit tests for the `#0251` window-targeting/working-directory-propagation fix. |
 | `BattyKit/Tests/BattyKitTests/CLIInstallerTests.swift` | Includes `#0279`'s per-variant refusal-copy test. |
@@ -1179,8 +1211,8 @@ Grounded directly in the code above, not aspirational:
 | `issues/0250.md` | Filed/resolved: `batty <path>` verb, `batty://` scheme, `@main` entry point rename. |
 | `issues/0251.md` | Filed/resolved: fixed phantom-window and stray-SwiftUI-window bugs in the URL round-trip (two rounds). |
 | `issues/0252.md` | Filed/resolved: `BattyCLICore` split to fix the Sparkle `@rpath` crash. |
-| `issues/0257.md` | Open: pinned IPC decision (`batty://`, fire-and-forget, socket deferred) and an unimplemented `batty <noun> <verb>` design. |
-| `docs/batty-cli-design.md` | Forward-looking design catalog for the CLI's verb surface — not as-built. |
+| `issues/0257.md` | Open umbrella/design record. Several foundations and verbs have shipped through child issues; the remaining grammar is still proposed. |
+| `docs/batty-cli-design.md` | Forward-looking command catalog annotated with the current shipped XPC/env foundation. |
 
 ## Where this diverges from `docs/cli-tool-install.md`
 
@@ -1192,8 +1224,8 @@ compared to what's actually shipped:
 - **The CLI executable target's dependency is different from the plan.**
   `docs/cli-tool-install.md` §4.1 shows `.executableTarget(name: "batty",
   dependencies: ["BattyKit", ...])` — "the payoff: share the model
-  layer." The shipped target depends on **`BattyCLICore`**, a
-  dependency-free target carved *out of* `BattyKit` specifically because
+  layer." The shipped target depends on dependency-free **`BattyCLICore`**
+  and **`BattyXPCCore`** targets carved *out of* `BattyKit` specifically because
   the `BattyKit`-dependency approach crashed the embedded binary at
   launch (`#0252`, the `@rpath`/Sparkle issue described in full above).
   `docs/cli-tool-install.md` predates this fix and was never updated to
@@ -1209,13 +1241,13 @@ compared to what's actually shipped:
   doc flags as an open question.** `docs/cli-tool-install.md` §5 lists
   "CLI ↔ app communication" as something to "design ... separately," citing
   supacode's local-socket (`SocketCommand`/`bin/zmx`) approach as the
-  reference precedent. The shipped mechanism is the `batty://` custom URL
-  scheme described throughout this document — no socket, no daemon,
-  fire-and-forget. `issues/0257.md` later pinned this as the deliberate
-  architecture for all *mutations*, with a two-way Unix socket explicitly
-  deferred to a future tier for anything needing a live reply.
+  reference precedent. The shipped mechanism is hybrid: `new` uses the
+  `batty://` custom URL scheme, local identity uses `BATTY_*` environment
+  variables, and live queries plus acknowledged mutations use the XPC broker
+  and direct app endpoint described in `docs/xpc/`. No Unix socket or topology
+  snapshot was built.
 - **The old doc has no knowledge of the actual command surface at all** —
   it's scoped purely to install plumbing (`version`/`help` CLI, install/
   uninstall to `/usr/local/bin`) and predates `batty <path>` session
   creation, the `batty://` scheme, `BattyURLHandler`, and the window-
-  targeting fixes in `#0251` entirely.
+  targeting fixes in `#0251`, and every later XPC/env command entirely.

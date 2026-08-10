@@ -5,11 +5,13 @@ into a coherent, extensible control surface — informed by the CLI/socket APIs 
 **herdr**, **supacode**, and **cmux** (surveyed 2026-07-03 for #0254), filtered
 through Batty's "simple, Mac-first" bar.
 
-Current state: `batty <path>` opens a session at that path via the `batty://`
-URL scheme (#0249–#0251); `version`/`help` exist. It's **one-way** (fire-and-
-forget) and has no context awareness. This doc proposes the grammar, the
-context model, the IPC decision, and a tiered catalog so v1 starts on a good
-footing and grows without rework.
+Current state (2026-08-10): `batty [<path>]` / `batty new [<path>]` creates a
+Session via the `batty://` URL scheme. The shipped XPC broker supports `ping`,
+`status`, `list`, `session info`, `pane split`, `pane close`, and `notify`;
+`batty id` / `whoami` reads the injected `BATTY_*` context locally. The full
+noun/verb catalog below is still a proposal, not a claim that every listed
+command exists. For the exact as-built surface, use `docs/batty-cli-install.md`
+or `batty --help`.
 
 ---
 
@@ -65,26 +67,22 @@ defaults CLI flags to them (supacode `SUPACODE_SURFACE_ID`, cmux
   no app round-trip, no socket. **Landed in #0281**; `id` is the primary
   name, `whoami` a supported alias. (cmux calls this `identify`.)
 
-### 1.3 IPC: one-way vs two-way — the pivotal fork
-- **Mutations** (split, new, close, rename, focus, notify) are fire-and-forget →
-  keep using the **`batty://` URL scheme** Batty already has. Simple, no daemon.
-- **Queries/reads** (list, read-screen, wait, subscribe) need a response →
-  require a **request/response Unix socket** (what all three use: newline-
-  delimited JSON with an `id`, `result`/`error`).
-- **Recommendation:** build the whole mutation surface on the URL scheme first
-  (no socket). Add a **minimal read-only Unix socket** later, and only if the
-  query/agent-wait features earn it. Design the grammar so socket-backed verbs
-  slot in without changing the one-way ones.
-- **Amendment (#0257, 2026-07-06):** *topology* queries (`list`, `session info`)
-  don't actually need the socket — the app can maintain an atomic, debounced
-  JSON state snapshot (`~/Library/Application Support/Batty/state.json`) that
-  the CLI reads directly. A third IPC path between one-way URL and two-way
-  socket; see #0257 § "Agent context & session topology". The socket remains
-  required only for live reads (`read`, `wait`, `send`, `events`). Two related
-  one-way tricks from the same revision: mutation URLs carry **explicit target
-  ids** (resolved flag → env → focused) so a background-session pane can be
-  split without stealing focus, and creation verbs use **client-generated
-  UUIDs** so the CLI can print the new object's id despite fire-and-forget IPC.
+### 1.3 IPC: shipped hybrid transport
+
+The earlier URL/snapshot/socket recommendation was superseded by #0265–#0274:
+
+- **Session creation** remains on `batty://` because Launch Services can start
+  the app and deliver the path with very little machinery. It is one-way, so
+  success only confirms that `/usr/bin/open` accepted the URL.
+- **Queries and acknowledged mutations** use a launchd-managed broker plus a
+  direct anonymous XPC endpoint exported by the app. The broker is only the
+  rendezvous; after endpoint handoff the CLI talks directly to the app.
+- **Local context** uses injected `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
+  `BATTY_TAB_ID` environment variables. `batty id` needs no IPC; targetable XPC
+  verbs resolve explicit flag → environment id → focused app element.
+- The proposed JSON snapshot and Unix socket were not built. Future live reads
+  such as `read`, `wait`, `send`, or event streaming should first evaluate the
+  existing XPC channel rather than assuming a fourth transport is necessary.
 
 ### 1.4 Machine-readable output & scripting hygiene
 - `--json` on every query verb (cmux does this pervasively) — agents/scripts are
@@ -97,17 +95,19 @@ defaults CLI flags to them (supacode `SUPACODE_SURFACE_ID`, cmux
 
 ## 2. Action catalog
 
-Legend: **[1-way]** works over the URL scheme · **[2-way]** needs the read
-socket · fit tags: **[core]** on-brand now · **[activity]** agent-activity
-display · **[adv]** advanced/automation, adopt only if needed · **[skip]**
-off-mission for Batty.
+Transport tags in this historical catalog describe the original proposal.
+The shipped implementation instead uses **[URL]** for Session creation,
+**[XPC]** for live queries and acknowledged mutations, and **[local]** for
+environment identity. Fit tags remain: **[core]** on-brand now ·
+**[activity]** agent-activity display · **[adv]** advanced/automation, adopt
+only if needed · **[skip]** off-mission for Batty.
 
 ### A. Structure — sessions / panes / tabs  [core, 1-way]
 - `batty session new [path]` — open a session (today's `batty <path>`; keep as an alias). *(supacode `repo worktree-new`, herdr `workspace.create`, cmux `new-workspace`)*
-- `batty pane split [-h|-v]` — split the focused/target pane. *(all three: `pane.split` / `surface.split`)* — panes now distribute evenly (1/n, **#0255 shipped**).
+- `batty pane split [-h|-v]` — split the focused/target pane. **Shipped over XPC**; also supports `-c/--command`, `--pane`, and `--view`. *(all three: `pane.split` / `surface.split`)* — panes distribute evenly (1/n, #0255).
 - `batty pane hide` / `batty pane show <id>` — hide/restore a pane (**#0256 shipped**: surface kept alive, slot retained). `hide` targets the calling/focused pane; `show` needs an id (a hidden pane has no calling context). *(no direct competitor equivalent — Batty-specific)*
 - `batty tab new [-c <cmd>]` — new tab in the focused pane, optionally running a command. *(supacode `tab new -i`, herdr `tab.create`)*
-- `batty pane close` / `batty tab close` / `batty session close`. *(all three)*
+- `batty pane close` **shipped over XPC**; `batty tab close` and `batty session close` remain proposed. *(all three)*
 - `batty window new` — new window. *(Batty-specific; #0234)*
 
 ### B. Focus / navigation  [core, 1-way]
@@ -125,12 +125,16 @@ off-mission for Batty.
 This is the clean, **simple** way to surface agent activity **without** supacode/
 herdr's OSC-3008 Ghostty patch. An agent or script just calls these; Batty
 renders them in the session sidebar / pane chrome / bell feed it already has.
-- `batty notify --title <t> [--body <b>] [--sound]` — post a notification into
-  Batty's **bell feed** (and optional system notification). *(herdr `notification.show`, cmux `notify`)* — **highest-value, most on-brand**: Batty already has the feed + AI summaries; this routes agent events into it.
-- `batty status <key> <text> [--icon <sf-symbol>] [--color <hex>]` /
-  `batty status clear <key>` — a live status pill on the session's sidebar row
+- `batty notify --title <t> [--body <b>] [--sound] [--tab <id>]` — post a
+  notification into Batty's **Bell Feed** (and optional system notification).
+  **Shipped over XPC.** *(herdr `notification.show`, cmux `notify`)*
+- A future activity-status command (originally sketched as
+  `batty status <key> <text>` / `batty status clear <key>`) — a live status
+  pill on the Session's Sidebar row
   (e.g. `batty status build "compiling"`). *(cmux `set-status`/`clear-status`)* —
   lets an agent show **busy / waiting / done** without a presence subsystem.
+  The bare name now conflicts with the shipped `batty status` live-state query,
+  so this proposal needs a different grammar before implementation.
 - `batty progress <0..1> [--label]` / `batty progress clear` — a progress bar on
   the row. *(cmux `set-progress`)* — optional.
 - `batty log <msg> [--level info|warn|error]` — append to a per-session activity
@@ -144,8 +148,10 @@ renders them in the session sidebar / pane chrome / bell feed it already has.
 
 ### E. Introspection / query  [2-way unless noted]
 - `batty id` (alias `whoami`) — current session/pane/tab **[1-way / local env]** (no socket). **Landed (#0281).** *(cmux `identify`)*
-- `batty ping` — is Batty running **[could be 1-way probe]**. *(all three)*
-- `batty list [sessions|panes|tabs] [--json]` — enumerate live state **[2-way]**. *(all three: `*.list`)*
+- `batty ping` — check whether the broker is reachable **[XPC, shipped]**. *(all three)*
+- `batty status` — live process and topology counts **[XPC, shipped]**.
+- `batty list [sessions|panes|tabs] [--json]` — enumerate live state **[XPC, shipped]**. *(all three: `*.list`)*
+- `batty session info [--session <id>] [--json]` — one Session's topology slice **[XPC, shipped]**.
 - `batty capabilities [--json]` — list supported verbs **[2-way or static]**. *(cmux)*
 
 ### F. App / window / theme  [core, 1-way]
@@ -159,9 +165,9 @@ renders them in the session sidebar / pane chrome / bell feed it already has.
 
 ### Advanced / automation (adopt only if the workflow demands)  [adv, 2-way]
 - `batty send <text>` / `batty send-key <enter|esc|…>` — inject text/keys into a
-  surface. *(herdr `pane.send_text`, cmux `surface.send_text`/`send_key`, supacode `surface focus -i`)* — powerful for driving agents/scripts, but it's real automation surface; keep out of the simple core.
-- `batty read [--lines N] [--source visible|recent]` — read screen/scrollback. *(herdr `pane.read`)* — needs the socket; useful for agents reading output.
-- `batty wait <idle|done|blocked> [--pane]` — block until an agent/command reaches a state. *(herdr `wait agent-status`)* — needs agent-state + events.
+  surface. *(herdr `pane.send_text`, cmux `surface.send_text`/`send_key`, supacode `surface focus -i`)* — powerful for driving agents/scripts, but it's real automation surface; keep out of the simple core. Evaluate the existing XPC channel first.
+- `batty read [--lines N] [--source visible|recent]` — read screen/scrollback. *(herdr `pane.read`)* — needs an acknowledged reply; the existing XPC channel is the starting point.
+- `batty wait <idle|done|blocked> [--pane]` — block until an agent/command reaches a state. *(herdr `wait agent-status`)* — needs agent-state + events and may need a streaming extension to XPC.
 - `batty status/agent report <working|idle|blocked|done>` + `batty events subscribe` — full agent-state objects + a newline-JSON event stream. *(herdr `pane.report_agent`, `events.subscribe`)* — the heavy "agent presence" tier; a big step, likely off-mission.
 - `batty layout export|apply` — declarative save/restore of a pane tree. *(herdr `layout.export/apply`)* — overlaps Batty's existing **layout presets**; could unify.
 
@@ -193,23 +199,24 @@ worth a look:
 
 ## 4. Recommended phased foundation
 
-- **Tier 0 — foundation (do first):** the `batty <noun> <verb>` grammar; inject
-  `BATTY_*` context env; `--session/--pane/--tab` resolution; `--json` convention;
-  `batty id` (alias `whoami`, landed #0281); keep `batty <path>` working as `batty session new`. Decide IPC:
-  **URL scheme for mutations now, reserve a read socket for later.**
-- **Tier 1 — core mutations (all 1-way, no socket):** `pane split`, `tab new`,
-  `pane/tab/session close`, `pane/tab/session focus`, `session/tab rename`,
-  `notify`, `open`, `settings`. A genuinely useful CLI with zero daemon.
+- **Tier 0 — foundation (partly shipped):** command/subcommand grammar,
+  `BATTY_*` context env, target resolution, `--json` on query commands, and
+  `batty id`/`whoami` are in place. Bare `batty <path>` remains the default
+  `new` shorthand. The shipped transport is URL + XPC + local environment.
+- **Tier 1 — core mutations (partly shipped):** `pane split`, `pane close`,
+  and `notify` use acknowledged XPC. `tab new`, other close/focus/rename
+  verbs, `open`, and `settings` remain proposed.
 - **Tier 2 — agent activity display:** `status` (+ `progress`/`log`) sidebar pills
   routed into Batty's session UI + bell feed. The "present agent activity" ask,
   kept simple.
-- **Tier 3 — two-way (only if earned):** stand up the minimal read socket; add
-  `list`, `read`, `send`/`send-key`, `wait`, `events subscribe`. This is the real
-  complexity step — gate it on a concrete need.
+- **Tier 3 — richer two-way behavior (partly shipped):** `status`, `list`, and
+  `session info` use XPC today. `read`, `send`/`send-key`, `wait`, and event
+  subscription remain proposed; extend or validate XPC before adding another
+  transport.
 
 Guardrails throughout: keep the noun set to session/pane/tab/window; every verb
 must feel like a native Mac action with a keyboard/menu equivalent where it makes
-sense; no feature should require the socket to *exist* for the app to run.
+sense; no CLI feature should be required for the app itself to run.
 
 ---
 
