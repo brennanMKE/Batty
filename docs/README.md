@@ -209,6 +209,10 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   Read `batty-cli-install.md` for current
   behavior; read `cli-tool-install.md` only for supacode-comparison
   history.
+- [`batty-cli-agent-workflows.md`](batty-cli-agent-workflows.md) — practical,
+  deterministic recipes for agents: target-resolution precedence, topology
+  discovery, exit-code handling, and creating a project Session followed by
+  right-hand command Panes without racing the one-way `batty new` URL event.
 - [`beta-teardown.md`](beta-teardown.md) — how to cleanly remove a Beta
   install (`#0279`): unregister the LaunchAgent *before* deleting the app
   bundle (the ordering `#0270` says matters to avoid wedging launchd), then

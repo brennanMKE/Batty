@@ -57,7 +57,9 @@ The CLI now has three execution paths:
 
 Run `batty <subcommand> --help` for exact options. The full noun/verb grammar
 in `docs/batty-cli-design.md` is a forward-looking catalog; only the commands
-above are registered today.
+above are registered today. For reliable multi-command automation, including
+creating a project Session and adding command Panes to its right, see
+[`batty-cli-agent-workflows.md`](batty-cli-agent-workflows.md).
 
 ## End-to-end trace: `batty ~/some/path`
 
