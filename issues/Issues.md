@@ -147,7 +147,7 @@ Any additional context, guesses at root cause, related code locations.
 
 ## Filing a new issue
 
-New issues are filed by a **filer subagent pinned to the top available model** (currently **Fable**, `claude-fable-5` — the newest, most capable tier). The orchestrator (main session) dispatches a fresh Fable subagent with the report details and instructions to follow the steps below; the subagent reads `issues/Issues.md` first to absorb these conventions, then creates and commits the `NNNN.md` file on `main`. Filing is not issue work — no branch, no review gate — just recording the report. As newer top-tier models ship, update "currently Fable" here to name the new top model; the rule is "top available model", not "Fable" specifically.
+New issues are filed by a **filer subagent pinned to Opus 5** (`claude-opus-5`) — user directive, 2026-08-09. Do not use Fable. The orchestrator (main session) dispatches a fresh Opus 5 subagent with the report details and instructions to follow the steps below; the subagent reads `issues/Issues.md` first to absorb these conventions, then creates and commits the `NNNN.md` file on `main`. Filing is not issue work — no branch, no review gate — just recording the report. This is a standing user instruction, not a "use whatever is newest" rule — do not switch models here without the user saying so.
 
 1. Confirm `issues/project.json` exists. If missing, create it (see schema above) before filing the first issue — `name` should match this guide's heading; `url` is the project's canonical web URL (HTTPS, not SSH).
 2. Find the highest existing `NNNN.md` and increment. Start at `0001` if the folder is empty. Skip past reserved high numbers (e.g. `8888`, `9999` for test issues).
@@ -321,7 +321,7 @@ Anthropic publishes prices on the docs site (no API endpoint). Fetch once per da
 }
 ```
 
-Include at least the filer model (Fable — the top available model), the implementer model (Sonnet), and the reviewer model (Opus), since all three bill against issue work. The ids above reflect the current tiers (`claude-fable-5`, `claude-sonnet-5`, `claude-opus-4-8`); the rates are illustrative placeholders until a fresh fetch confirms them. If `fetched` is today, use as-is. If the fetch fails, use the stale cache and note the staleness next to the cost; with no cache at all, record tokens and model with `—` for cost. Never trust example numbers over a fresh fetch.
+Include at least the filer model (Opus 5), the implementer model (Sonnet), and the reviewer model (Opus), since all three bill against issue work. The ids above reflect the current tiers (`claude-opus-5`, `claude-sonnet-5`); the rates are illustrative placeholders until a fresh fetch confirms them. If `fetched` is today, use as-is. If the fetch fails, use the stale cache and note the staleness next to the cost; with no cache at all, record tokens and model with `—` for cost. Never trust example numbers over a fresh fetch.
 
 ### Getting exact token counts
 
