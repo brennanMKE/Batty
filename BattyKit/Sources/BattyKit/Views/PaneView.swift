@@ -39,6 +39,11 @@ public struct PaneView: View {
     private static let chipMaxWidthCap: CGFloat = 220
     private static let charBudgetMin: Int = 3
     private static let charBudgetMax: Int = 40
+    /// `nonTerminalBody`'s header row height, pinned to match
+    /// `SlidingTabBar`'s default `barHeight` (`SlidingTabs.SlidingTabBar
+    /// .init(barHeight:)`) so a non-terminal pane's content starts at the
+    /// same y as a terminal pane's tab-bar-bounded content (#0334 review).
+    private static let nonTerminalHeaderHeight: CGFloat = 36
 
     public init(pane: PaneRuntime, tree: SplitTree) {
         self.pane = pane
@@ -322,6 +327,43 @@ public struct PaneView: View {
     /// it; both are re-hosted in this header so a non-terminal pane keeps a
     /// mouse-reachable swap handle and hide button, matching every design
     /// doc under `docs/design/` that assumes this relocation.
+    ///
+    /// Fixes landing here for #0334, closing the gaps `PaneContentPlaceholderView`'s
+    /// own doc comment recorded as known at #0315 review time:
+    /// - **Click-to-focus.** A terminal pane gets focus for free from the
+    ///   terminal surface's own AppKit click handling
+    ///   (`TerminalClickFocusMonitor` → `appStore.focusPane(containingTabID:)`);
+    ///   nothing analogous exists for plain SwiftUI content, so this arm
+    ///   needs its own tap target — `docs/pane-kinds.md` §3's Item-by-item
+    ///   table names this exact affordance ("a plain SwiftUI
+    ///   `.onTapGesture`/button action"). Event-origin write, safe per
+    ///   `docs/swiftui-observation-rules.md`.
+    /// - **Opaque fill, not just a correctly-sized frame (#0334 review
+    ///   round 1).** `PaneContentPlaceholderView` already carries
+    ///   `.frame(maxWidth: .infinity, maxHeight: .infinity)`, and this
+    ///   VStack's header row is horizontally greedy via its leading
+    ///   `Spacer(minLength: 0)` — both children were already fully
+    ///   flexible, so the geometry was never the defect. A terminal pane's
+    ///   visible fill isn't SwiftUI at all: `TerminalPlaceholderView` is a
+    ///   `Color.clear` geometry probe, and the opaque themed fill comes
+    ///   from the AppKit `AppTerminalView` placed at its reported frame
+    ///   (`docs/view-hierarchy.md`). A non-terminal pane has no such AppKit
+    ///   layer, so without its own opaque background it sits transparent
+    ///   next to an opaque sibling and reads as not occupying its region —
+    ///   the actual "does not fill its allotted split area" symptom. Fixed
+    ///   by painting an opaque background across the whole VStack, not just
+    ///   behind the header row. `themeChrome?.chromeBackground` is `Color?`
+    ///   and is `nil` whenever no Ghostty theme has resolved
+    ///   (`ChromePalette.default.chromeBackground` is `nil`), so the
+    ///   fallback is `Color(nsColor: .windowBackgroundColor)` — the same
+    ///   fallback `paneDragPreview` already uses below — not `Color.clear`,
+    ///   which would silently reproduce the original transparent-pane
+    ///   symptom on an unthemed session (#0334 review round 3).
+    /// - **Header height parity.** `SlidingTabBar`'s default `barHeight` is
+    ///   36pt (`SlidingTabs.SlidingTabBar.init(barHeight:)`); this header
+    ///   was previously sized only by its 22pt icon buttons, so a
+    ///   non-terminal pane's content started ~14pt higher than a terminal
+    ///   sibling's. `Self.nonTerminalHeaderHeight` pins it to the same 36pt.
     @ViewBuilder
     private var nonTerminalBody: some View {
         VStack(spacing: 0) {
@@ -333,9 +375,14 @@ public struct PaneView: View {
                 }
                 paneEyeButton
             }
-            .background(themeChrome?.chromeBackground ?? Color.clear)
+            .frame(height: Self.nonTerminalHeaderHeight)
 
             PaneContentPlaceholderView(kind: pane.kind)
+        }
+        .background(themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appStore?.focusPane(id: pane.id)
         }
     }
 
@@ -593,12 +640,13 @@ private struct TabRunningCommandObserver: ViewModifier {
 /// has something visibly non-terminal to show; it must not be mistaken
 /// for a designed view, so it says plainly that it isn't one.
 ///
-/// **Known gap, recorded for #0304 (review round 1, non-blocking):** this
-/// placeholder has no click-to-focus — nothing here calls
-/// `appStore.focusPane(id:)` the way a terminal pane's click does. Fine for
-/// a placeholder with nothing to interact with, but whichever issue lands
-/// the first real non-terminal view needs its own click-to-focus affordance
-/// (or must give the placeholder one first, if a demo needs it sooner).
+/// This leaf already sizes itself to whatever it's given
+/// (`.frame(maxWidth: .infinity, maxHeight: .infinity)` below); it was
+/// never the reason a non-terminal pane looked like it wasn't filling its
+/// split allotment (#0334 review round 1). Click-to-focus, the focus-border
+/// overlay, the opaque themed background, and header-height parity with a
+/// terminal pane's tab bar are all handled one level up, by `PaneView
+/// .nonTerminalBody` (#0334) — see that property's doc comment.
 private struct PaneContentPlaceholderView: View {
     let kind: PaneContentKind
 

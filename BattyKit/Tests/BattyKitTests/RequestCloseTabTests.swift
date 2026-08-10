@@ -45,8 +45,16 @@ struct RequestCloseTabTests {
     /// #0315 review round 2, finding 2: `WindowRuntime.requestCloseFocusedTab()`
     /// / `.closeFocusedTab()` are the single choke point every dispatch
     /// path (menu bar, `BattyShortcuts`, Command Palette) routes "close the
-    /// focused tab" through — kind-gating here, once, protects all of them.
-    @Test func closeFocusedTabDoesNotRemoveANonTerminalPanesStructuralTab() {
+    /// focused tab" through — a non-terminal pane's structural placeholder
+    /// tab must never be mutated by the Tab-close path.
+    ///
+    /// #0334 changed what these methods do instead: since #0315 gated the
+    /// Tab commands (including this one) to `.terminal` panes, closing the
+    /// *tab* correctly never touched the placeholder — but that also left
+    /// non-terminal panes with no ⌘W/menu route to being closed at all.
+    /// Both methods now close the **Pane** itself when the focused pane
+    /// isn't `.terminal`-kind, verified below.
+    @Test func closeFocusedTabClosesTheFocusedNonTerminalPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPane
@@ -55,10 +63,61 @@ struct RequestCloseTabTests {
         let paneCountBefore = session.tree.allPanes.count
 
         store.windows[0].closeFocusedTab()
+
+        #expect(session.tree.allPanes.count == paneCountBefore - 1,
+                "closeFocusedTab() must close a non-terminal focused pane, not no-op")
+        #expect(!session.tree.allPanes.contains { $0.id == nonTerminalPane.id })
+    }
+
+    @Test func requestCloseFocusedTabClosesTheFocusedNonTerminalPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)!
+        #expect(session.tree.focusedPaneID == nonTerminalPane.id)
+        let paneCountBefore = session.tree.allPanes.count
+
         store.windows[0].requestCloseFocusedTab()
 
-        #expect(session.tree.allPanes.count == paneCountBefore)
-        #expect(nonTerminalPane.tabs.count == 1)
+        #expect(session.tree.allPanes.count == paneCountBefore - 1,
+                "requestCloseFocusedTab() must close a non-terminal focused pane, not no-op")
+        #expect(!session.tree.allPanes.contains { $0.id == nonTerminalPane.id })
+    }
+
+    /// The `.terminal`-kind sibling must be unaffected: closing a
+    /// non-terminal pane closes only that pane, leaving the terminal
+    /// pane's own tabs alone.
+    @Test func closingANonTerminalFocusedPaneDoesNotTouchTheTerminalSiblingsTabs() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let tabCountBefore = terminalPane.tabs.count
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus)!
+        #expect(session.tree.focusedPaneID == nonTerminalPane.id)
+
+        store.windows[0].closeFocusedTab()
+
+        #expect(terminalPane.tabs.count == tabCountBefore)
+        #expect(session.tree.allPanes.contains { $0.id == terminalPane.id })
+    }
+
+    // MARK: - `WindowRuntime.closeFocusedItemTitle` (#0334)
+
+    @Test func closeFocusedItemTitleIsCloseTabForATerminalFocusedPane() {
+        let store = AppStateStore()
+        #expect(store.sessions[0].focusedPane.kind == .terminal, "test setup: default pane is terminal-kind")
+
+        #expect(store.windows[0].closeFocusedItemTitle == "Close Tab")
+    }
+
+    @Test func closeFocusedItemTitleIsClosePaneForANonTerminalFocusedPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .lmStudioDashboard)!
+        #expect(session.tree.focusedPaneID == nonTerminalPane.id)
+
+        #expect(store.windows[0].closeFocusedItemTitle == "Close Pane")
     }
 
     @Test func requestCloseOtherTabsAllIdleClosesImmediately() {

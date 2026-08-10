@@ -228,15 +228,40 @@ public final class WindowRuntime {
         logger.warning("closeTab tab=\(tabID, privacy: .public) not found in any session")
     }
 
-    /// No-ops when the focused pane isn't `.terminal`-kind (#0315 review
-    /// round 2, finding 2) — closing a non-terminal pane's structural
-    /// placeholder tab would remove the pane's only tab through the wrong
-    /// path (`removePane`'s tree-collapse cascade, not `pane close`'s).
-    /// Centralizing the guard here protects every caller (menu bar,
-    /// `BattyShortcuts`' NSEvent monitor, Command Palette) in one place.
+    /// For a `.terminal` focused pane, closes its active Tab (kind-gated
+    /// through `SessionRuntime.focusedTerminalPane`, #0315 review round 2,
+    /// finding 2 — never the structural placeholder tab of a non-terminal
+    /// pane). For a non-terminal focused pane there is no Tab bar and
+    /// nothing for ⌘W to act on at the Tab level, so this closes the
+    /// **Pane** itself instead (#0334) — otherwise the #0315 Tab-command
+    /// gating left non-terminal panes with no keyboard/menu route to being
+    /// closed at all. `refuseIfAppsLastPane: false` matches this path's
+    /// existing lack of a cross-window last-pane guard (that guard exists
+    /// only for the unattended XPC verb — see `AppStateStore
+    /// .closePane(id:)`'s doc comment). Centralizing both branches here
+    /// protects every caller (menu bar, `BattyShortcuts`' NSEvent monitor,
+    /// Command Palette) in one place.
     public func closeFocusedTab() {
-        guard let session = selectedSession, let pane = session.focusedTerminalPane else { return }
-        closeTab(id: pane.activeTabID)
+        guard let session = selectedSession else { return }
+        if let pane = session.focusedTerminalPane {
+            closeTab(id: pane.activeTabID)
+        } else {
+            closeFocusedNonTerminalPane(session.focusedPane.id)
+        }
+    }
+
+    /// Title for the "Close Tab" menu item (`BattyCommands`' Tab menu),
+    /// reflecting what `closeFocusedTab()`/`requestCloseFocusedTab()`
+    /// actually do for the current focus (#0334) — "Close Tab" for a
+    /// `.terminal` pane (unchanged), "Close Pane" otherwise, so the menu
+    /// item never claims to close a Tab when it's about to close the
+    /// Pane. Falls back to "Close Tab" when there's no selected session,
+    /// matching the item's disabled state in that case.
+    public var closeFocusedItemTitle: String {
+        guard let session = selectedSession, session.focusedPane.kind != .terminal else {
+            return String(localized: "Close Tab")
+        }
+        return String(localized: "Close Pane")
     }
 
     public func requestCloseTab(id tabID: UUID) {
@@ -254,11 +279,37 @@ public final class WindowRuntime {
 
     /// Same kind-gate as `closeFocusedTab()`, for the confirmation-routed
     /// close path (#0315 review round 2, finding 2) — this is the method
-    /// the menu bar's "Close Tab" and the Command Palette's `.closeTab`
-    /// both call.
+    /// the menu bar's "Close Tab"/"Close Pane" and the Command Palette's
+    /// `.closeTab` both call. A non-terminal focused pane has no live
+    /// process to confirm against (`TerminalViewState+Polyfill.swift`
+    /// hard-codes `needsConfirmClose` to `false` today, and no non-terminal
+    /// pane spawns a PTY regardless), so it routes straight to the same
+    /// immediate pane-close `closeFocusedTab()` uses rather than going
+    /// through a confirmation dialog with nothing to confirm (#0334).
     public func requestCloseFocusedTab() {
-        guard let session = selectedSession, let pane = session.focusedTerminalPane else { return }
-        requestCloseTab(id: pane.activeTabID)
+        guard let session = selectedSession else { return }
+        if let pane = session.focusedTerminalPane {
+            requestCloseTab(id: pane.activeTabID)
+        } else {
+            closeFocusedNonTerminalPane(session.focusedPane.id)
+        }
+    }
+
+    /// Shared tail of `closeFocusedTab()`/`requestCloseFocusedTab()`'s
+    /// non-terminal branch. `closePane(id:refuseIfAppsLastPane:)` is
+    /// `@discardableResult` and can in principle return anything but
+    /// `.closed` (`.needsConfirmation` already logs its own refusal
+    /// there; `.refusedLastPane` can't happen with `refuseIfAppsLastPane:
+    /// false`; `.unknownPane` doesn't log anywhere). Logging any
+    /// non-`.closed` outcome here means ⌘W on a non-terminal pane can
+    /// never become a silent no-op, today or if `needsConfirmClose`'s
+    /// polyfill (`TerminalViewState+Polyfill.swift`) is ever replaced by
+    /// the real thing (#0334 review).
+    private func closeFocusedNonTerminalPane(_ paneID: UUID) {
+        let outcome = closePane(id: paneID, refuseIfAppsLastPane: false)
+        if outcome != .closed {
+            logger.notice("closeFocusedNonTerminalPane: pane=\(paneID, privacy: .public) outcome=\(String(describing: outcome), privacy: .public), expected .closed")
+        }
     }
 
     public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {

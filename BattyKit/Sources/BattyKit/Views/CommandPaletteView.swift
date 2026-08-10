@@ -209,11 +209,13 @@ struct CommandPaletteView: View {
         case .newSession:
             window.addSession()
         case .closeTab:
-            // `requestCloseFocusedTab()` itself kind-gates through
+            // `requestCloseFocusedTab()` itself branches on
             // `SessionRuntime.focusedTerminalPane` (#0315 review round 2,
-            // finding 2) — this dispatch was found completely ungated,
-            // the same defect round 1 fixed in the menu bar and the
-            // `BattyShortcuts` NSEvent monitor but missed here.
+            // finding 2 — this dispatch was found completely ungated, the
+            // same defect round 1 fixed in the menu bar and the
+            // `BattyShortcuts` NSEvent monitor but missed here): closes the
+            // active Tab for a `.terminal` focused pane, or the Pane
+            // itself otherwise (#0334).
             window.requestCloseFocusedTab()
         case .newTab:
             window.selectedSession?.focusedTerminalPane?.addTab(

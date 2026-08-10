@@ -115,9 +115,11 @@ public enum BattyShortcuts {
         case .newSession:
             window.addSession()
         case .closeTab:
-            // `WindowRuntime.closeFocusedTab()` itself kind-gates through
+            // `WindowRuntime.closeFocusedTab()` itself branches on
             // `SessionRuntime.focusedTerminalPane` (#0315 review round 2,
-            // finding 2) — no separate check needed here.
+            // finding 2): closes the active Tab for a `.terminal` focused
+            // pane, or the Pane itself otherwise (#0334) — no separate
+            // check needed here either way.
             window.closeFocusedTab()
         case .newTab:
             // Kind-gated via `focusedTerminalPane`, not `focusedPane`: a

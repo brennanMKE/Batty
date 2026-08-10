@@ -334,7 +334,11 @@ public struct BattyCommands: Commands {
             // accessor every dispatch path (this menu, the
             // `BattyShortcuts` NSEvent monitor, the Command Palette) routes
             // through, so the gate lives in one place, not one copy per
-            // path.
+            // path. **Close is the one deliberate exception** (#0334): a
+            // non-terminal pane has no Tab to close, but it still needs a
+            // ⌘W route to being closed, so that item alone targets
+            // `focusedPane`/`closeFocusedItemTitle` and relabels itself
+            // "Close Pane" rather than staying disabled.
             Button {
                 keyWindow?.selectedSession?.focusedTerminalPane?.addTab()
             } label: {
@@ -344,13 +348,19 @@ public struct BattyCommands: Commands {
             .disabled(focusedTerminalPane == nil)
 
             Button {
-                logger.info("Cmd-W action fired (Tab → Close Tab)")
+                let title = keyWindow?.closeFocusedItemTitle ?? "Close Tab"
+                logger.info("Cmd-W action fired (Tab menu, title=\(title, privacy: .public))")
                 keyWindow?.requestCloseFocusedTab()
             } label: {
-                Label("Close Tab", systemImage: "xmark")
+                // Title reflects what this actually does (#0334): a
+                // focused non-terminal pane has no Tab bar, so ⌘W closes
+                // the Pane itself, not a Tab — the label must say so
+                // rather than claiming "Close Tab" for a close that isn't
+                // one. See `WindowRuntime.closeFocusedItemTitle`.
+                Label(keyWindow?.closeFocusedItemTitle ?? "Close Tab", systemImage: "xmark")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
-            .disabled(focusedTerminalPane == nil)
+            .disabled(keyWindow?.selectedSession == nil)
 
             Button {
                 ExitDispatcher.sendExit(store: store)

@@ -102,7 +102,13 @@ struct CommandPaletteViewActionTests {
                 "dispatch(.newTab) must not add a second invisible tab to a non-terminal focused pane")
     }
 
-    @Test func dispatchCloseTabDoesNotRemoveANonTerminalFocusedPane() {
+    /// #0334 changed the target of `.closeTab` for a non-terminal focused
+    /// pane: `requestCloseFocusedTab()` (which this dispatch case calls)
+    /// still never mutates the placeholder tab, but it no longer no-ops
+    /// either — it closes the **Pane**, since #0315's Tab-command gating
+    /// otherwise left non-terminal panes with no route to being closed at
+    /// all.
+    @Test func dispatchCloseTabClosesTheFocusedNonTerminalPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPane
@@ -113,8 +119,9 @@ struct CommandPaletteViewActionTests {
         let view = CommandPaletteView(isPresented: .constant(true), store: store)
         view.dispatch(.closeTab)
 
-        #expect(session.tree.allPanes.count == paneCountBefore,
-                "dispatch(.closeTab) must not close a non-terminal pane's structural placeholder tab")
+        #expect(session.tree.allPanes.count == paneCountBefore - 1,
+                "dispatch(.closeTab) must close a non-terminal focused pane rather than no-op")
+        #expect(!session.tree.allPanes.contains { $0.id == nonTerminalPane.id })
     }
 
     @Test func dispatchPreviousAndNextTabDoNotMutateANonTerminalFocusedPane() {
