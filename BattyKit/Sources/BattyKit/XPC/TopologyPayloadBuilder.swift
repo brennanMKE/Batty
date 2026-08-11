@@ -1,26 +1,37 @@
 // TopologyPayloadBuilder.swift
 
-import BattyXPCCore
+
+
+
+
+
+
+import AppKit
+@_exported import BattyXPCCore // Re-export for the Rectangle type used throughout.
 import Foundation
 
-/// Builds `Topology*Payload` (`BattyXPCCore`) values from the live runtime
-/// tree — `WindowRuntime` / `SessionRuntime` / `SplitTreeNode` /
-/// `PaneRuntime` / `TabRuntime` — for the `list` and `sessionInfo` XPC
-/// verbs (#0274).
-///
-/// Every method here only reads: no property on any runtime type is ever
-/// assigned. Building a payload for a session that isn't selected, or a
-/// window that isn't key, must never change `selectedSessionID`,
-/// `focusedPaneID`, or `activeTabID` — the "reads must not mutate" rule
-/// #0257/#0274 both call out for cross-session queries.
+/// WindowRuntime / SessionRuntime / SplitTreeNode / PaneRuntime / TabRuntime → Topology*Payload.
+/// Builds the wire-format payloads for `batty list` / `session info`.
+
+
+
 extension WindowRuntime {
-    func topologyPayload() -> TopologyWindowPayload {
+    
+
+
+
+
+    func topologyPayload(includeDimensions: Bool = false) -> TopologyWindowPayload {
         TopologyWindowPayload(
             id: id.value,
             selectedSessionID: selectedSessionID,
-            sessions: sessions.map { $0.topologyPayload(isActive: $0.id == selectedSessionID) }
+            sessions: sessions.map { $0.topologyPayload(isActive: $0.id == selectedSessionID, includeDimensions: includeDimensions) }
         )
     }
+
+
+
+
 }
 
 extension SessionRuntime {
@@ -33,7 +44,12 @@ extension SessionRuntime {
     /// tracking cwd changes for background sessions and hidden panes even
     /// while their SwiftUI view isn't mounted — exactly the panes `list`
     /// and `session info` exist to report on.
-    func topologyPayload(isActive: Bool) -> TopologySessionPayload {
+    
+
+
+
+
+    func topologyPayload(isActive: Bool, includeDimensions: Bool = false) -> TopologySessionPayload {
         let anchorTab = tree.root.firstLeafPane.tabs.first
         return TopologySessionPayload(
             id: id,
@@ -41,16 +57,24 @@ extension SessionRuntime {
             path: anchorTab?.workingDirectory,
             isActive: isActive,
             focusedPaneID: tree.focusedPaneID,
-            root: tree.root.topologyPayload(focusedPaneID: tree.focusedPaneID)
+            root: tree.root.topologyPayload(focusedPaneID: tree.focusedPaneID, includeDimensions: includeDimensions)
         )
     }
+
+
+
 }
 
 extension SplitTreeNode {
-    func topologyPayload(focusedPaneID: UUID) -> TopologySplitNodePayload {
+    
+
+
+
+
+    func topologyPayload(focusedPaneID: UUID, includeDimensions: Bool = false) -> TopologySplitNodePayload {
         switch self {
         case .leaf(let pane):
-            return .leaf(pane: pane.topologyPayload(isFocused: pane.id == focusedPaneID))
+            return .leaf(pane: pane.topologyPayload(isFocused: pane.id == focusedPaneID, includeDimensions: includeDimensions))
         case .split(let id, let direction, let ratio, let left, let right):
             // Exhaustive, not a ternary — a future third SplitDirection case
             // must fail this build rather than silently mapping to .vertical.
@@ -63,11 +87,14 @@ extension SplitTreeNode {
                 id: id,
                 direction: mappedDirection,
                 ratio: ratio,
-                left: left.topologyPayload(focusedPaneID: focusedPaneID),
-                right: right.topologyPayload(focusedPaneID: focusedPaneID)
+                left: left.topologyPayload(focusedPaneID: focusedPaneID, includeDimensions: includeDimensions),
+                right: right.topologyPayload(focusedPaneID: focusedPaneID, includeDimensions: includeDimensions)
             )
         }
     }
+
+
+
 }
 
 extension PaneRuntime {
@@ -89,16 +116,66 @@ extension PaneRuntime {
     /// this field alone — a known residual gap, not a regression this fix
     /// introduces, left for whichever issue adds `kind` to the topology
     /// payload.
-    func topologyPayload(isFocused: Bool) -> TopologyPanePayload {
+    
+
+
+
+
+
+    
+
+
+    func topologyPayload(isFocused: Bool, includeDimensions: Bool = false) -> TopologyPanePayload {
         let visibleTabs = kind == .terminal ? tabs : []
+        var frame: Rectangle?
+        if includeDimensions {
+            // Get dimensions from the pane's terminal view, fall back to layer bounds if layout hasn't run.
+            for tab in tabs where tab.terminalNSView != nil {
+                let view = tab.terminalNSView!
+                if !view.frame.width.isZero && !view.frame.height.isZero {
+                    frame = Rectangle(
+                        x: Int(view.frame.origin.x),
+                        y: Int(view.frame.origin.y),
+                        width: Int(view.frame.width),
+                        height: Int(view.frame.height)
+                    )
+                } else if !view.bounds.width.isZero && !view.bounds.height.isZero {
+                    frame = Rectangle(
+                        x: Int(view.frame.origin.x),
+                        y: Int(view.frame.origin.y),
+                        width: Int(view.bounds.width),
+                        height: Int(view.bounds.height)
+                    )
+                } else if !view.subviews.isEmpty {
+                    // Some ghostty views leave the terminal as a child view.
+                    let subview = view.subviews[0]
+                    frame = Rectangle(
+                        x: Int(view.frame.origin.x + subview.frame.origin.x),
+                        y: Int(view.frame.origin.y + subview.frame.origin.y),
+                        width: Int(subview.frame.width),
+                        height: Int(subview.frame.height)
+                    )
+                }
+            }
+        }
+
+
+
+
         return TopologyPanePayload(
             id: id,
             isHidden: isHidden,
             isFocused: isFocused,
             activeTabID: activeTabID,
-            tabs: visibleTabs.map { $0.topologyPayload(isActive: $0.id == activeTabID) }
+            tabs: visibleTabs.map { $0.topologyPayload(isActive: $0.id == activeTabID) },
+            frame: frame,
+            visibleRect: nil
         )
     }
+
+
+
+
 }
 
 extension TabRuntime {

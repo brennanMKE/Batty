@@ -35,8 +35,12 @@ struct SessionInfoCommand: ParsableCommand {
     @Option(name: .long, help: "Session id to inspect. Falls back to the focused session when omitted.")
     var session: String?
 
+
     @Flag(name: .long, help: "Emit JSON instead of a plain-text summary.")
     var json = false
+
+    @Flag(name: .long, help: "Include `frame` and `visibleRect` dimensions in pane objects. Not included by default.")
+    var includeDimensions = false
 
     nonisolated func run() throws {
         let sessionID = try resolveSessionID()
@@ -48,13 +52,16 @@ struct SessionInfoCommand: ParsableCommand {
         case .failure(.appUnavailable):
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
+        
+
+
         case .success(let endpoint):
-            switch AppServiceClient.sessionInfo(endpoint: endpoint, sessionID: sessionID, timeout: 3.0) {
+            switch AppServiceClient.sessionInfo(endpoint: endpoint, sessionID: sessionID, includeDimensions: includeDimensions, timeout: 3.0) {
             case .success(let payload):
                 if json {
                     try Self.printJSON(payload)
                 } else {
-                    Self.printPlainText(payload)
+                    Self.printPlainText(payload, includeDimensions: includeDimensions)
                 }
             case .unreachable:
                 fputs("batty: app unavailable\n", stderr)
@@ -67,6 +74,9 @@ struct SessionInfoCommand: ParsableCommand {
                 throw ExitCode(XPCExitCode.sessionTerminated)
             }
         }
+
+
+
     }
 
     /// `--session` flag → `BATTY_SESSION_ID` env → `nil`, meaning "let the
@@ -91,7 +101,12 @@ struct SessionInfoCommand: ParsableCommand {
         print(text)
     }
 
-    private static func printPlainText(_ payload: TopologySessionPayload) {
+    
+
+
+
+
+    private static func printPlainText(_ payload: TopologySessionPayload, includeDimensions: Bool) {
         let flags = payload.isActive ? " active" : ""
         let path = payload.path.map { " path=\($0)" } ?? ""
         print("session \(payload.id) \"\(payload.name)\"\(flags)\(path)")
@@ -99,8 +114,17 @@ struct SessionInfoCommand: ParsableCommand {
             var paneFlags: [String] = []
             if pane.isHidden { paneFlags.append("hidden") }
             if pane.isFocused { paneFlags.append("focused") }
+            var dims = ""
+            if includeDimensions {
+                if let frame = pane.frame {
+                    dims += " frame=\(frame.x),\(frame.y),\(frame.width)x\(frame.height)"
+                }
+                if let visibleRect = pane.visibleRect {
+                    dims += " visible=\(visibleRect.x),\(visibleRect.y),\(visibleRect.width)x\(visibleRect.height)"
+                }
+            }
             let paneFlagText = paneFlags.isEmpty ? "" : " " + paneFlags.joined(separator: " ")
-            print("  pane \(pane.id)\(paneFlagText)")
+            print("  pane \(pane.id)\(paneFlagText)\(dims)")
             for tab in pane.tabs {
                 let tabFlags = tab.isActive ? " active" : ""
                 let cwd = tab.workingDirectory.map { " cwd=\($0)" } ?? ""
@@ -108,4 +132,7 @@ struct SessionInfoCommand: ParsableCommand {
             }
         }
     }
+
+
+
 }

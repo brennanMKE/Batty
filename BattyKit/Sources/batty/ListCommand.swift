@@ -27,6 +27,9 @@ struct ListCommand: ParsableCommand {
     @Flag(name: .long, help: "Emit JSON instead of a plain-text summary.")
     var json = false
 
+    @Flag(name: .long, help: "Include `frame` and `visibleRect` dimensions in pane objects. Not included by default.")
+    var includeDimensions = false
+
     nonisolated func run() throws {
         switch AppConnectDance.resolveEndpoint() {
         case .failure(.brokerUnreachable):
@@ -35,13 +38,17 @@ struct ListCommand: ParsableCommand {
         case .failure(.appUnavailable):
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
+        
+
+
+
         case .success(let endpoint):
-            switch AppServiceClient.list(endpoint: endpoint, timeout: 3.0) {
+            switch AppServiceClient.list(endpoint: endpoint, includeDimensions: includeDimensions, timeout: 3.0) {
             case .success(let payload):
                 if json {
                     try Self.printJSON(payload)
                 } else {
-                    Self.printPlainText(payload, scope: scope ?? .sessions)
+                    Self.printPlainText(payload, scope: scope ?? .sessions, includeDimensions: includeDimensions)
                 }
             case .unreachable:
                 fputs("batty: app unavailable\n", stderr)
@@ -54,6 +61,9 @@ struct ListCommand: ParsableCommand {
                 throw ExitCode(XPCExitCode.sessionTerminated)
             }
         }
+
+
+
     }
 
     private static func printJSON(_ payload: TopologyPayload) throws {
@@ -66,7 +76,12 @@ struct ListCommand: ParsableCommand {
         print(text)
     }
 
-    private static func printPlainText(_ payload: TopologyPayload, scope: Scope) {
+    
+
+
+
+
+    private static func printPlainText(_ payload: TopologyPayload, scope: Scope, includeDimensions: Bool) {
         for window in payload.windows {
             switch scope {
             case .sessions:
@@ -76,7 +91,7 @@ struct ListCommand: ParsableCommand {
             case .panes:
                 for session in window.sessions {
                     for pane in session.allPanes {
-                        print(paneLine(pane, session: session))
+                        print(paneLine(pane, session: session, includeDimensions: includeDimensions))
                     }
                 }
             case .tabs:
@@ -98,13 +113,25 @@ struct ListCommand: ParsableCommand {
         return "session \(session.id) \"\(session.name)\"\(flags) panes=\(paneCount)\(path)"
     }
 
-    private static func paneLine(_ pane: TopologyPanePayload, session: TopologySessionPayload) -> String {
+    private static func paneLine(_ pane: TopologyPanePayload, session: TopologySessionPayload, includeDimensions: Bool) -> String {
         var flags: [String] = []
         if pane.isHidden { flags.append("hidden") }
         if pane.isFocused { flags.append("focused") }
+        var dims = ""
+        if includeDimensions {
+            if let frame = pane.frame {
+                dims += " frame=\(frame.x),\(frame.y),\(frame.width)x\(frame.height)"
+            }
+            if let visibleRect = pane.visibleRect {
+                dims += " visible=\(visibleRect.x),\(visibleRect.y),\(visibleRect.width)x\(visibleRect.height)"
+            }
+        }
         let flagText = flags.isEmpty ? "" : " " + flags.joined(separator: " ")
-        return "pane \(pane.id) session=\(session.id)\(flagText) tabs=\(pane.tabs.count)"
+        return "pane \(pane.id) session=\(session.id)\(flagText) tabs=\(pane.tabs.count)\(dims)"
     }
+
+
+
 
     private static func tabLine(_ tab: TopologyTabPayload, pane: TopologyPanePayload, session: TopologySessionPayload) -> String {
         let flags = tab.isActive ? " active" : ""

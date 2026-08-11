@@ -41,10 +41,12 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+
     /// #0274. No request payload — `list` always reports the full topology;
     /// the CLI's `--json`/plain-text filtering happens client-side.
-    static func list(endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<TopologyPayload> {
-        let outcome: Outcome<TopologyPayload> = perform(verb: XPCVerb.list, requestPayload: nil, endpoint: endpoint, timeout: timeout, logLabel: "list")
+    static func list(endpoint: NSXPCListenerEndpoint, includeDimensions: Bool, timeout: TimeInterval) -> Outcome<TopologyPayload> {
+        let requestPayload = try? JSONEncoder().encode(ListRequest(includeDimensions: includeDimensions))
+        let outcome: Outcome<TopologyPayload> = perform(verb: XPCVerb.list, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "list")
         // Counts only, never paths/titles — matches #0271's reviewed
         // "no user paths" logging discipline; topology payloads carry cwds
         // and titles that status's counts-only payload never did.
@@ -56,8 +58,8 @@ nonisolated enum AppServiceClient {
 
     /// #0274. `sessionID == nil` asks the app to resolve the focused
     /// session (see `AppStateStore.sessionInfoPayload(sessionID:)`).
-    static func sessionInfo(endpoint: NSXPCListenerEndpoint, sessionID: UUID?, timeout: TimeInterval) -> Outcome<TopologySessionPayload> {
-        let requestPayload = try? JSONEncoder().encode(SessionInfoRequest(sessionID: sessionID))
+    static func sessionInfo(endpoint: NSXPCListenerEndpoint, sessionID: UUID?, includeDimensions: Bool, timeout: TimeInterval) -> Outcome<TopologySessionPayload> {
+        let requestPayload = try? JSONEncoder().encode(SessionInfoRequest(sessionID: sessionID, includeDimensions: includeDimensions))
         let outcome: Outcome<TopologySessionPayload> = perform(verb: XPCVerb.sessionInfo, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "sessionInfo")
         // The session id alone, not its name/path — same "no user paths" rule.
         if case .success(let payload) = outcome {

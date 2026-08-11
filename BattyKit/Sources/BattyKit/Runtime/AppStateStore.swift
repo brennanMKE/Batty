@@ -324,12 +324,19 @@ public final class AppStateStore {
     /// `selectedSessionID`, `focusedPaneID`, or `activeTabID`, so listing a
     /// background session's topology cannot steal focus or switch the
     /// active session.
-    public func topologyPayload() -> TopologyPayload {
+    
+
+
+    public func topologyPayload(includeDimensions: Bool = false) -> TopologyPayload {
         TopologyPayload(
             pid: ProcessInfo.processInfo.processIdentifier,
-            windows: windows.map { $0.topologyPayload() }
+            windows: windows.map { $0.topologyPayload(includeDimensions: includeDimensions) }
         )
     }
+
+
+
+
 
     /// The slice for a single session, for the `sessionInfo` XPC verb.
     ///
@@ -350,11 +357,15 @@ public final class AppStateStore {
     /// (no windows, or a window with an empty session list — both
     /// unreachable in practice since every window seeds one session, but
     /// handled rather than force-unwrapped).
-    public func sessionInfoPayload(sessionID: UUID? = nil) -> TopologySessionPayload? {
+    
+
+
+
+    public func sessionInfoPayload(sessionID: UUID? = nil, includeDimensions: Bool = false) -> TopologySessionPayload? {
         if let sessionID {
             for window in windows {
                 if let session = window.sessions.first(where: { $0.id == sessionID }) {
-                    return session.topologyPayload(isActive: window.selectedSessionID == session.id)
+                    return session.topologyPayload(isActive: window.selectedSessionID == session.id, includeDimensions: includeDimensions)
                 }
             }
             return nil
@@ -364,8 +375,11 @@ public final class AppStateStore {
         else {
             return nil
         }
-        return session.topologyPayload(isActive: window.selectedSessionID == session.id)
+        return session.topologyPayload(isActive: window.selectedSessionID == session.id, includeDimensions: includeDimensions)
     }
+
+
+
 
     // MARK: - XPC pane split (#0282)
 

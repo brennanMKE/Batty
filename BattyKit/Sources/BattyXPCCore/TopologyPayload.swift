@@ -70,13 +70,33 @@ public nonisolated struct TopologyPanePayload: Codable, Sendable, Equatable {
     public let isFocused: Bool
     public let activeTabID: UUID
     public let tabs: [TopologyTabPayload]
+    /// Optional frame rectangle for the pane's terminal surface. Only populated when `--include-dimensions` is set on the CLI request.
+    public let frame: Rectangle?
+    /// Optional visible rectangle (frame minus window chrome). Only populated when `--include-dimensions` is set.
+    public let visibleRect: Rectangle?
 
-    public init(id: UUID, isHidden: Bool, isFocused: Bool, activeTabID: UUID, tabs: [TopologyTabPayload]) {
+    public init(id: UUID, isHidden: Bool, isFocused: Bool, activeTabID: UUID, tabs: [TopologyTabPayload], frame: Rectangle? = nil, visibleRect: Rectangle? = nil) {
         self.id = id
         self.isHidden = isHidden
         self.isFocused = isFocused
         self.activeTabID = activeTabID
         self.tabs = tabs
+        self.frame = frame
+        self.visibleRect = visibleRect
+    }
+}
+
+public nonisolated struct Rectangle: Codable, Sendable, Equatable {
+    public let x: Int
+    public let y: Int
+    public let width: Int
+    public let height: Int
+
+    public init(x: Int, y: Int, width: Int, height: Int) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
     }
 }
 
@@ -163,6 +183,19 @@ public nonisolated struct TopologyPayload: Codable, Sendable, Equatable {
     }
 }
 
+
+
+
+/// Request payload for the `list` verb. Supports optional dimensions flag.
+public nonisolated struct ListRequest: Codable, Sendable, Equatable {
+    /// When true, each pane includes `frame` and `visibleRect` fields.
+    public let includeDimensions: Bool
+
+    public init(includeDimensions: Bool = false) {
+        self.includeDimensions = includeDimensions
+    }
+}
+
 /// Request payload for the `sessionInfo` verb, JSON-encoded into
 /// `XPCRequest.payload`. `sessionID == nil` means "no explicit target" —
 /// the app falls back to the focused session
@@ -178,7 +211,13 @@ public nonisolated struct TopologyPayload: Codable, Sendable, Equatable {
 public nonisolated struct SessionInfoRequest: Codable, Sendable, Equatable {
     public let sessionID: UUID?
 
-    public init(sessionID: UUID? = nil) {
+    /// When true, each pane includes `frame` and `visibleRect` fields.
+    public let includeDimensions: Bool
+
+    public init(sessionID: UUID? = nil, includeDimensions: Bool = false) {
         self.sessionID = sessionID
+        self.includeDimensions = includeDimensions
     }
 }
+
+
