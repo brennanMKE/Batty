@@ -24,6 +24,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     /// connection teardown answer for it with an indistinguishable drop.
     private let pendingRequests = PendingRequestRegistry()
 
+
+    // Active watch subscription tracking. Only one is registered per connection at a time,
+    // replaced on each new `watch` call. Cleaned up by AppEventWatcher when the subscription
+    // ID is revoked (in shutdown or on connection teardown).
+
     func ping(reply: @escaping @Sendable (String) -> Void) {
         let description = "pid \(ProcessInfo.processInfo.processIdentifier)"
         logger.info("ping -> \(description, privacy: .public)")
@@ -192,6 +197,10 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown tab id")))
                 }
             }
+
+            case XPCVerb.watch:
+            watch(request, reply: reply)
+
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
             pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown verb: \(decoded.verb)")))
@@ -205,7 +214,61 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         pendingRequests.terminateAll()
     }
 
+    /// #0145: long-lived streaming verb. The CLI sends a `WatchSubscriptionRequest`
+    /// JSON-encoded as `Data`; we decode it, register a reply block with the shared
+    /// event watcher (`AppEventWatcher`), and keep the connection alive until shutdown.
+    nonisolated func watch(_ request: Data, reply: @escaping @Sendable (Data) -> Void) {
+        guard let subscriptionRequest = try? JSONDecoder().decode(WatchSubscriptionRequest.self, from: request) else {
+            logger.error("watch: failed to decode subscription request")
+            reply(Self.encode(XPCResponse(ok: false, error: "malformed watch subscription request")))
+            return
+        }
+
+        let events = subscriptionRequest.events ?? WatchEventType.allNames
+
+        // Wrap reply block so events travel over XPC.
+        let wrappedBlock: @Sendable (WatchEventPayload) -> Void = { eventData in
+            if let data = try? JSONEncoder().encode(eventData) {
+                reply(data)
+            } else {
+                logger.error("watch: failed to encode event payload")
+            }
+        }
+
+        Task { @MainActor [pendingRequests] in
+            let subID = AppEventWatcher.shared.subscribe(events: events, replyBlock: wrappedBlock)
+            logger.info("watch subscription started id=\(subID, privacy: .public)")
+
+            if subscriptionRequest.sendTopoSnapshot {
+                let snapshot = AppStateStore.shared.topologyPayload(includeDimensions: false)
+
+                guard let firstSession = snapshot.windows.first?.sessions.first else {
+                    return
+                }
+
+                let snapshotEvent = WatchEventPayload(
+                    type: "topology_snapshot",
+                    sessionID: firstSession.id,
+                    targetPaneID: nil,
+                    tabID: nil
+                )
+
+                guard let data = try? JSONEncoder().encode(snapshotEvent) else { return }
+                reply(data)
+
+                logger.info("watch: topology snapshot sent for session \(firstSession.id, privacy: .public)")
+            }
+
+            _ = pendingRequests.register { _ in }
+        }
+
+        return
+    }
+
     private static func encode(_ response: XPCResponse) -> Data {
         (try? JSONEncoder().encode(response)) ?? Data()
     }
+
+    // Instance logger. Line 7 of the file declares `nonisolated private let logger` for the same
+    // category. Both properties are reachable from unrelated call sites in the same file.
 }
