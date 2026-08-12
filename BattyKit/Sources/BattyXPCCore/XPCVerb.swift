@@ -47,4 +47,16 @@ public nonisolated enum XPCVerb {
     /// believes the user was told, but nothing happened" is the least
     /// recoverable silent failure in the whole agent loop.
     public static let notify = "notify"
+
+    /// #0145: the non-mutating long-lived verb — keeps the connection open
+    /// after this call returns, then pushes `WatchEventPayload` values back
+    /// through the same reply block as mutations happen. The CLI wraps the
+    /// single `reply` closure in an `AsyncStream` so the caller reads events
+    /// sequentially; the connection's only purpose is to carry those events,
+    /// and it closes when every subscription shuts down (app quit or broker
+    /// restart, never normal CLI exit). The request payload is a JSON-encoded
+    /// `WatchSubscriptionRequest`; errors (unknown verb variant, malformed
+    /// request) are still delivered through the one-shot path — this verb is
+    /// what's observed by subscribing to a real mutation stream.
+    public static let watch = "watch"
 }

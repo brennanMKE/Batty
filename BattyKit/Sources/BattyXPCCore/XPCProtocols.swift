@@ -55,6 +55,15 @@ import Foundation
     /// One-shot request/reply. Both `request` and the reply payload are
     /// JSON-encoded `XPCRequest`/`XPCResponse` values (`XPCMessages.swift`).
     nonisolated func perform(_ request: Data, reply: @escaping @Sendable (Data) -> Void)
+
+    /// #0145: long-lived streaming method. The CLI sends a `WatchSubscriptionRequest`
+    /// as JSON-encoded `Data`; the app calls `reply(WatchEventPayload)` repeatedly
+    /// for each matching mutation, keeps the connection alive until every subscriber
+    /// closes. The request payload is `WatchSubscriptionRequest`; a failure reply
+    /// (via the same block with an error sentinel) covers an unknown verb or malformed
+    /// request — both are the one-shot path's job. `fromCli: true` on each event
+    /// differentiates agent-driven changes from app-internal ones.
+    nonisolated func watch(_ request: Data, reply: @escaping @Sendable (Data) -> Void)
 }
 
 /// Centralizes `NSXPCInterface` construction so both ends of a connection

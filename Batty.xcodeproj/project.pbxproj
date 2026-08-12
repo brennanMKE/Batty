@@ -32,11 +32,11 @@
 		26863F7B2FBD83D700A3A939 /* Prod.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prod.xcconfig; sourceTree = "<group>"; };
 		26A324032FB591FA0088AE9A /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = App.xcconfig; sourceTree = "<group>"; };
 		26A324062FB5943B0088AE9A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		26B100030000000000000003 /* co.sstools.Batty.broker.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = co.sstools.Batty.broker.plist; sourceTree = "<group>"; };
 		26D5431B2FAEC4AC00BA9AF8 /* Batty.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Batty.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		26D543282FAEC4AD00BA9AF8 /* BattyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BattyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		26D543322FAEC4AD00BA9AF8 /* BattyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BattyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		26D543522FAEC88B00BA9AF8 /* Build.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Build.xcconfig; sourceTree = "<group>"; };
-		26B100030000000000000003 /* co.sstools.Batty.broker.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "co.sstools.Batty.broker.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
