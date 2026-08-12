@@ -521,11 +521,30 @@ public final class WindowRuntime {
 
     public func jumpToTab(sessionID: UUID, tabID: UUID) {
         guard let session = sessions.first(where: { $0.id == sessionID }),
-              let pane = session.tree.allPanes.first(where: { $0.tabs.contains(where: { $0.id == tabID }) })
+              let pane = session.tree.allPanes.first(where: { $0.tabs.contains(where: { $0.id == tabID }) }),
+              let oldPane = session.tree.allPanes.first(where: { $0.id == session.tree.focusedPaneID }),
+              let oldTab = oldPane.tabs.first(where: { $0.id == oldPane.activeTabID })
         else { return }
+
+        let oldActiveTabTitle = oldTab.titleOverride ?? ""
+
         selectedSessionID = session.id
         session.tree.focusedPaneID = pane.id
         pane.activeTabID = tabID
+
+        if let newTab = pane.tabs.first(where: { $0.id == tabID }) {
+            let newActiveTabTitle = newTab.titleOverride ?? ""
+
+            // #0145: notify the active XPC watchers of an active-tab change.
+            let event = WatchEventPayload(
+                type: "active_tab_changed",
+                sessionID: session.id,
+                targetPaneID: pane.id,
+                oldTabTitle: oldActiveTabTitle,
+                newTabTitle: newActiveTabTitle
+            )
+            AppEventWatcher.shared.send(eventType: event.type, payload: event)
+        }
     }
 
     public func jumpToBellEntry(_ entry: BellFeedEntry) {

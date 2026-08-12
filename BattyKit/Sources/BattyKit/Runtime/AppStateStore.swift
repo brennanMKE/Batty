@@ -434,8 +434,13 @@ public final class AppStateStore {
     @discardableResult
     public func splitPane(id paneID: UUID, direction: SplitDirection, command: String? = nil, kind: PaneContentKind = .terminal) -> UUID? {
         for window in windows {
-            for session in window.sessions where session.tree.root.contains(paneID: paneID) {
-                return session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind)?.id
+            if let session = window.sessions.first(where: { $0.tree.root.contains(paneID: paneID) }) {
+                if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind) {
+                    let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: newPane.id)
+                    AppEventWatcher.shared.send(eventType: event.type, payload: event)
+
+                    return newPane.id
+                }
             }
         }
         return nil
@@ -641,11 +646,22 @@ public final class AppStateStore {
             return nil
         }
         logger.debug("addSession: targeting windowID=\(target.id.value, privacy: .public) totalWindows=\(self.windows.count, privacy: .public) registeredContentWindows=\(self.nsWindowMap.count, privacy: .public) workingDirectory=\(workingDirectory ?? "<nil>", privacy: .public)")
-        return target.addSession(title: title, workingDirectory: workingDirectory)
+        let result = target.addSession(title: title, workingDirectory: workingDirectory)
+
+        // #0145: notify the active XPC watchers of a session creation.
+        let event = WatchEventPayload(type: "session_created", sessionID: result.id)
+        AppEventWatcher.shared.send(eventType: event.type, payload: event)
+
+        return result
     }
 
     public func removeSession(id: UUID) {
         cancelNameSuggestion(forSessionID: id)
+
+        // #0145: notify the active XPC watchers before mutating.
+        let sessionEvent = WatchEventPayload(type: "session_destroyed", sessionID: id)
+        AppEventWatcher.shared.send(eventType: sessionEvent.type, payload: sessionEvent)
+
         // Locate the owning window by session ID — the session may be in any window.
         windowOwning(sessionID: id)?.removeSession(id: id)
     }
