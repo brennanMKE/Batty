@@ -44,7 +44,7 @@ A named workspace, listed as one row in the Window's Sidebar.
 
 - **Purpose:** group Panes that belong together — typically one Session per project, context, or remote host.
 - **Contains:** a recursive **Split tree** whose leaves are **Panes**. Plus a `focusedPaneID`. A new Session starts with one Pane that contains one Tab that contains one Terminal Session.
-- **Identity:** stable `id: UUID`, plus a user-editable `title` (and optional icon/color).
+- **Identity:** stable `id: UUID`, plus a user-editable `title` and a **Session color** — one of a fixed 10-color palette (`SessionColor`), assigned automatically at creation by a least-used round-robin scoped to the Window and stable for the Session's lifetime. Shown by tinting the Sidebar row's `rectangle.split.3x1` icon; not user-overridable yet (#0336).
 - **Selection:** exactly one Session is selected per Window at a time. Selecting a Session swaps the Detail Area to that Session's Split tree. Surfaces in non-selected Sessions stay alive so switching is instant and processes keep running.
 - **Sidebar affordances:** drag to reorder; right-click to Rename / Duplicate / Close; "+" toolbar button creates a new Session.
 - **CWD inheritance:** a newly created Session's first Pane spawns its shell in the previously-focused Pane's active-Tab cwd when one is known, mirroring the way Cmd-T inherits cwd within a Pane; falls back to the shell's default (`$HOME`) when no previously-selected Session exists.

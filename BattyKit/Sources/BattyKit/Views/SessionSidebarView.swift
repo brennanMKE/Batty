@@ -205,7 +205,7 @@ private struct SessionRow: View {
                     .lineLimit(1)
             } icon: {
                 Image(systemName: "rectangle.split.3x1")
-                    .foregroundStyle(HierarchicalShapeStyle.secondary)
+                    .foregroundStyle(session.sessionColor.color)
             }
             Spacer()
             if session.unseenBellCount > 0 {

@@ -23,6 +23,14 @@ public final class SessionRuntime: Identifiable {
     /// default; `WindowRuntime.hidePane` expands it so a just-hidden pane's
     /// restore control is always reachable (#0258). Not persisted.
     public var isPaneListExpanded: Bool = false
+    /// Index into `SessionColor.allCases`, assigned once by
+    /// `WindowRuntime`'s least-used round-robin at creation and stable for
+    /// the Session's lifetime (#0335). A plain `Int`, not `SessionColor`
+    /// itself, so a future persisted Session (`Concepts.md`: "Persisted:
+    /// nothing" today) stores a trivially codable value. `var`, not `let`,
+    /// so a future explicit user override (#0336) can write it without
+    /// restructuring this type.
+    public var colorIndex: Int
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     public init(
@@ -31,7 +39,8 @@ public final class SessionRuntime: Identifiable {
         tree: SplitTree? = nil,
         unseenBellCount: Int = 0,
         notificationsMuted: Bool = false,
-        titleOverride: Bool = false
+        titleOverride: Bool = false,
+        colorIndex: Int = 0
     ) {
         self.id = id
         self.title = title
@@ -39,6 +48,7 @@ public final class SessionRuntime: Identifiable {
         self.unseenBellCount = unseenBellCount
         self.notificationsMuted = notificationsMuted
         self.titleOverride = titleOverride
+        self.colorIndex = colorIndex
         self.paneFrames = PaneFrameTracker()
         // #0281: attach every pane/tab already in the tree (whether the
         // caller-supplied tree or the default single-pane one above) to
@@ -49,6 +59,14 @@ public final class SessionRuntime: Identifiable {
 
     public var focusedPane: PaneRuntime {
         tree.focusedPane
+    }
+
+    /// The resolved palette color for `colorIndex`. Falls back to `.blue`
+    /// for an out-of-range index rather than crashing — defensive only;
+    /// every assignment path keeps `colorIndex` within `SessionColor`'s
+    /// case count.
+    public var sessionColor: SessionColor {
+        SessionColor(rawValue: colorIndex) ?? .blue
     }
 
     /// `focusedPane`, but `nil` when it isn't a `.terminal`-kind pane.

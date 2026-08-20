@@ -61,6 +61,13 @@ public final class WindowRuntime {
     @ObservationIgnored let bellFeed: BellFeedStore
     @ObservationIgnored let nameCache: SessionNameCache
 
+    /// Palette index most recently handed out by `nextColorIndex()`, so
+    /// consecutive Session creations keep walking `SessionColor`'s palette
+    /// in order even after a closure frees up an earlier index (#0335). Not
+    /// a Session's color — Sessions never lose their assigned index; this
+    /// is purely the assigner's own cursor.
+    @ObservationIgnored private var lastAssignedColorIndex = SessionColor.allCases.count - 1
+
     public init(
         id: WindowID = WindowID(),
         sessions: [SessionRuntime] = [],
@@ -71,13 +78,43 @@ public final class WindowRuntime {
         self.bellFeed = bellFeed
         self.nameCache = nameCache
         if sessions.isEmpty {
-            let initial = SessionRuntime(title: String(localized: "Session 1"))
+            // First-ever Session in an empty window: least-used-with-no-
+            // usage always resolves to palette index 0, the same result
+            // `nextColorIndex()` would compute from a fresh cursor — spelled
+            // out directly here because `self.sessions` can't be read by
+            // an instance method until phase-1 init finishes.
+            let initial = SessionRuntime(title: String(localized: "Session 1"), colorIndex: 0)
             self.sessions = [initial]
             self.selectedSessionID = initial.id
+            self.lastAssignedColorIndex = 0
         } else {
             self.sessions = sessions
             self.selectedSessionID = sessions.first?.id
         }
+    }
+
+    /// Least-used round-robin palette assignment, scoped to this window
+    /// (#0335). Picks the palette index used by the fewest live Sessions;
+    /// ties break by palette order starting just after the last index this
+    /// assigner handed out, so a run of creations spreads across the
+    /// palette instead of piling onto whatever index a recent closure freed.
+    private func nextColorIndex() -> Int {
+        let paletteCount = SessionColor.allCases.count
+        var counts = [Int](repeating: 0, count: paletteCount)
+        for session in sessions where counts.indices.contains(session.colorIndex) {
+            counts[session.colorIndex] += 1
+        }
+        let minCount = counts.min() ?? 0
+        var chosen = (lastAssignedColorIndex + 1) % paletteCount
+        for step in 0..<paletteCount {
+            let candidate = (lastAssignedColorIndex + 1 + step) % paletteCount
+            if counts[candidate] == minCount {
+                chosen = candidate
+                break
+            }
+        }
+        lastAssignedColorIndex = chosen
+        return chosen
     }
 
     public var selectedSession: SessionRuntime? {
@@ -105,7 +142,7 @@ public final class WindowRuntime {
         let resolvedTitle = title ?? cachedName ?? String(localized: "Session \(sessions.count + 1)")
         let firstPane = PaneRuntime(tabs: [TabRuntime(workingDirectory: effectiveCWD)])
         let tree = SplitTree(root: .leaf(firstPane))
-        let session = SessionRuntime(title: resolvedTitle, tree: tree)
+        let session = SessionRuntime(title: resolvedTitle, tree: tree, colorIndex: nextColorIndex())
         if title != nil {
             session.titleOverride = true
         }
@@ -173,7 +210,10 @@ public final class WindowRuntime {
     public func duplicateSession(id: UUID) -> SessionRuntime? {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return nil }
         let source = sessions[index]
-        let copy = SessionRuntime(title: String(localized: "\(source.title) Copy"))
+        // Fresh color, not the source's — the source is still in `sessions`
+        // while `nextColorIndex()` tallies usage, so it naturally counts as
+        // "in use" and the least-used pick tends to land elsewhere.
+        let copy = SessionRuntime(title: String(localized: "\(source.title) Copy"), colorIndex: nextColorIndex())
         sessions.insert(copy, at: index + 1)
         selectedSessionID = copy.id
         return copy
