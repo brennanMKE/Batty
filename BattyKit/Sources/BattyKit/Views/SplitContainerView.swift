@@ -90,6 +90,33 @@ private struct SplitNodeView: View {
     }
 }
 
+/// Pure math for turning a divider drag into a new split ratio. Factored out
+/// of `DraggableSplitView` so it can be unit tested without constructing a
+/// `DragGesture.Value` (SwiftUI gives that type no public initializer).
+///
+/// #0338: the drag must be measured in a coordinate space that does not move
+/// as a consequence of the drag itself. `startLocation`/`currentLocation` are
+/// expected to already be expressed in such a space (a `.named` space rooted
+/// at the container `GeometryReader`, not the divider's own `.local` space —
+/// the divider moves every time `onRatioChange` repositions it, which made
+/// `.local`-measured translation collapse back toward zero each frame and
+/// produced the reported jitter/snap-back).
+enum SplitDividerMath {
+    static func ratio(
+        direction: SplitDirection,
+        startRatio: Double,
+        startLocation: CGPoint,
+        currentLocation: CGPoint,
+        containerLength: CGFloat
+    ) -> Double {
+        guard containerLength > 0 else { return startRatio }
+        let delta = direction == .horizontal
+            ? currentLocation.x - startLocation.x
+            : currentLocation.y - startLocation.y
+        return startRatio + Double(delta) / Double(containerLength)
+    }
+}
+
 private struct DraggableSplitView<Left: View, Right: View>: View {
     let direction: SplitDirection
     let ratio: Double
@@ -100,6 +127,12 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     @Environment(\.themeChrome) private var themeChrome
     @State private var dragStartRatio: Double?
     @State private var containerLength: CGFloat = 0
+    // Identifies this instance's stable coordinate space (rooted at the
+    // GeometryReader below, whose frame is fixed by the *parent* split's
+    // layout and does not move as this divider's own ratio changes). One
+    // per `DraggableSplitView` identity so nested/sibling splits never
+    // collide on the same name — see `SplitDividerMath` doc comment.
+    @State private var dividerCoordinateSpaceID = UUID()
 
     private static var dividerThickness: CGFloat { 4 }
 
@@ -143,6 +176,12 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                     .environment(\.paneAllottedSize, allottedSize(containerSize: proxy.size, main: rightLength))
             }
         }
+        // Roots the `.named` coordinate space the divider's drag gesture
+        // measures in (#0338). This `GeometryReader`'s own frame is set by
+        // the *parent* split's layout, not by `ratio` above, so it stays
+        // fixed for the whole drag — unlike the divider `Rectangle`, which
+        // `SplitLayout` repositions on every `onRatioChange`.
+        .coordinateSpace(.named(dividerCoordinateSpaceID))
         // `onGeometryChange(for:of:action:)`'s `of:` transform is
         // `@escaping @Sendable` — SwiftUI documents it as a pure,
         // possibly-off-main-actor computation of a value from the proxy.
@@ -176,13 +215,22 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                 }
             }
             .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                // #0338: measured in the container's stable `.named` space,
+                // not `.local` (the divider's own space, which moves every
+                // time `onRatioChange` repositions the divider — see
+                // `SplitDividerMath`'s doc comment for the mechanism).
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(dividerCoordinateSpaceID))
                     .onChanged { value in
                         guard containerLength > 0 else { return }
                         let startRatio = dragStartRatio ?? ratio
                         if dragStartRatio == nil { dragStartRatio = startRatio }
-                        let delta = direction == .horizontal ? value.translation.width : value.translation.height
-                        let newRatio = startRatio + (delta / containerLength)
+                        let newRatio = SplitDividerMath.ratio(
+                            direction: direction,
+                            startRatio: startRatio,
+                            startLocation: value.startLocation,
+                            currentLocation: value.location,
+                            containerLength: containerLength
+                        )
                         onRatioChange(newRatio)
                     }
                     .onEnded { _ in
