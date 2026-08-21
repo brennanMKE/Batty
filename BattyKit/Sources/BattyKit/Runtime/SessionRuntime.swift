@@ -23,14 +23,23 @@ public final class SessionRuntime: Identifiable {
     /// default; `WindowRuntime.hidePane` expands it so a just-hidden pane's
     /// restore control is always reachable (#0258). Not persisted.
     public var isPaneListExpanded: Bool = false
-    /// Index into `SessionColor.allCases`, assigned once by
-    /// `WindowRuntime`'s least-used round-robin at creation and stable for
-    /// the Session's lifetime (#0335). A plain `Int`, not `SessionColor`
-    /// itself, so a future persisted Session (`Concepts.md`: "Persisted:
-    /// nothing" today) stores a trivially codable value. `var`, not `let`,
-    /// so a future explicit user override (#0336) can write it without
-    /// restructuring this type.
+    /// Index into `SessionColor.allCases`. Assigned by `WindowRuntime`'s
+    /// least-used round-robin at creation and stable for the Session's
+    /// lifetime unless the user explicitly picks a color (#0336, via
+    /// `WindowRuntime.setSessionColor(id:to:)`). A plain `Int`, not
+    /// `SessionColor` itself, so a future persisted Session (`Concepts.md`:
+    /// "Persisted: nothing" today) stores a trivially codable value.
     public var colorIndex: Int
+    /// `true` once the user has explicitly chosen this Session's color via
+    /// the Sidebar context menu's color picker, overriding the automatic
+    /// assigner — the same precedent as `titleOverride` (#0089): a
+    /// user-pinned value that auto-derivation paths must not rewrite.
+    /// `WindowRuntime.resetSessionColor(id:)` clears this without touching
+    /// `colorIndex`, so the Session keeps its current color and simply
+    /// re-enters assigner control (#0336's Open questions: no immediate
+    /// re-derivation on reset). Not persisted — resets to `false` on every
+    /// launch, same as every other `SessionRuntime` UI-state field.
+    public var colorOverride: Bool
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     public init(
@@ -40,7 +49,8 @@ public final class SessionRuntime: Identifiable {
         unseenBellCount: Int = 0,
         notificationsMuted: Bool = false,
         titleOverride: Bool = false,
-        colorIndex: Int = 0
+        colorIndex: Int = 0,
+        colorOverride: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -49,6 +59,7 @@ public final class SessionRuntime: Identifiable {
         self.notificationsMuted = notificationsMuted
         self.titleOverride = titleOverride
         self.colorIndex = colorIndex
+        self.colorOverride = colorOverride
         self.paneFrames = PaneFrameTracker()
         // #0281: attach every pane/tab already in the tree (whether the
         // caller-supplied tree or the default single-pane one above) to

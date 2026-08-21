@@ -9,6 +9,7 @@ public struct SessionSidebarView: View {
     @State private var renamingSessionID: UUID?
     @State private var renameDraft: String = ""
     @State private var themingSessionID: UUID?
+    @State private var coloringSessionID: UUID?
 
     public init(store: AppStateStore, windowID: WindowID) {
         self.store = store
@@ -64,6 +65,9 @@ public struct SessionSidebarView: View {
                         },
                         onTheme: {
                             themingSessionID = session.id
+                        },
+                        onSetColor: {
+                            coloringSessionID = session.id
                         }
                     )
                 }
@@ -123,6 +127,15 @@ public struct SessionSidebarView: View {
                 session: session
             )
         }
+        .sheet(item: coloringBinding) { session in
+            SessionColorPickerView(
+                isPresented: coloringPresentedBinding,
+                windowRuntime: windowRuntime,
+                sessionID: session.id,
+                currentIndex: session.colorIndex,
+                isOverride: session.colorOverride
+            )
+        }
     }
 
     /// Routes List selection writes through the validated setter so pane ids
@@ -154,6 +167,20 @@ public struct SessionSidebarView: View {
         Binding(
             get: { themingSessionID != nil },
             set: { if !$0 { themingSessionID = nil } }
+        )
+    }
+
+    private var coloringBinding: Binding<SessionRuntime?> {
+        Binding(
+            get: { windowRuntime.sessions.first { $0.id == coloringSessionID } },
+            set: { coloringSessionID = $0?.id }
+        )
+    }
+
+    private var coloringPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { coloringSessionID != nil },
+            set: { if !$0 { coloringSessionID = nil } }
         )
     }
 
@@ -197,6 +224,7 @@ private struct SessionRow: View {
     let accent: Color?
     let onRename: () -> Void
     let onTheme: () -> Void
+    let onSetColor: () -> Void
 
     var body: some View {
         HStack {
@@ -223,6 +251,13 @@ private struct SessionRow: View {
                 windowRuntime.clearSessionName(id: session.id)
             }
             .disabled(AppStateStore.isDefaultSessionTitle(session.title))
+            Divider()
+            Button("Set Color\u{2026}") { onSetColor() }
+            if session.colorOverride {
+                Button("Reset Color") {
+                    windowRuntime.resetSessionColor(id: session.id)
+                }
+            }
             Divider()
             Button("Set Session Theme\u{2026}") { onTheme() }
             if session.localThemeName != nil {

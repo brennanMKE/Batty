@@ -117,6 +117,37 @@ public final class WindowRuntime {
         return chosen
     }
 
+    /// Explicit per-Session color choice (#0336), routed here rather than
+    /// as a direct `SessionRuntime` write because the automatic assigner's
+    /// bookkeeping is Window-scoped — `nextColorIndex()`'s usage tally
+    /// already counts every live Session's `colorIndex` regardless of
+    /// `colorOverride`, so an explicit pick composes with the assigner for
+    /// free and needs no change there. No-op for an out-of-range index or a
+    /// redundant write, per the idempotence rule (`setSelectedSession`'s
+    /// pattern) — `@Observable` notifies on every write, equal values
+    /// included.
+    public func setSessionColor(id: UUID, to colorIndex: Int) {
+        guard SessionColor.allCases.indices.contains(colorIndex) else {
+            logger.warning("setSessionColor: rejected out-of-range colorIndex=\(colorIndex, privacy: .public)")
+            return
+        }
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        guard session.colorIndex != colorIndex || !session.colorOverride else { return }
+        session.colorIndex = colorIndex
+        session.colorOverride = true
+    }
+
+    /// Returns a Session to automatic assigner control (#0336). Leaves
+    /// `colorIndex` untouched — the Session keeps the color it currently
+    /// shows rather than jumping to a freshly re-derived one the instant
+    /// the user resets it (#0336's Open questions). No-op if the Session
+    /// isn't explicitly colored.
+    public func resetSessionColor(id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        guard session.colorOverride else { return }
+        session.colorOverride = false
+    }
+
     public var selectedSession: SessionRuntime? {
         guard let id = selectedSessionID else { return nil }
         return sessions.first { $0.id == id }
