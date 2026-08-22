@@ -6,6 +6,17 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
 
 ## Available
 
+- [`issue-work-obstacles.md`](issue-work-obstacles.md) — a record of what
+  has actually stopped, stalled, or reversed issue work: approval gates with
+  no owner (the four `#0301` view kinds sat two weeks), scope that leaves a
+  shared surface unassigned (`#0331`), a tool bug that blocks diagnosing
+  other bugs (`#0361` blocking `#0362`), documentation that is confidently
+  wrong (the `pane-view-lifecycle.md` "single choke point" claim, reproduced
+  in four branches), green suites that concealed leaks and a three-round
+  argv bug, hand-copied dispatch switches, `Active.xcconfig` flipping the
+  build environment, bundle-identifier ambiguity that worsens with every
+  build (`#0361`/`#0364`), and the reconciliation cost of parallel worktrees.
+  Read it before planning a multi-issue batch or a parallel fan-out.
 - [`swiftui-observation-rules.md`](swiftui-observation-rules.md) — binding
   rules for state mutation with SwiftUI + Observation: view construction is
   pure, `onChange`/`onAppear` writes audited by trigger origin, observed-state
