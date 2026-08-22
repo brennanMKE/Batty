@@ -125,7 +125,15 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
                 let direction = SplitDirection(rawValue: request.direction.rawValue) ?? .horizontal
                 let kind = request.kind ?? .terminal
-                guard let newPaneID = AppStateStore.shared.splitPane(id: targetPaneID, direction: direction, command: request.command, kind: kind, processStatusPid: request.processStatusPid) else {
+                // Each kind reads its own key out of the same generic bag
+                // (#0304's shared-wire-shape decision) — `path` only
+                // matters inside `.gitStatus`'s own construction path,
+                // `pid` only inside `.processStatus`'s; neither is read
+                // or validated against the other's kind here (the CLI
+                // already rejected the mismatched combination client-side).
+                let path = request.viewOptions?["path"]
+                let processStatusPid = request.viewOptions?["pid"].flatMap { Int32($0) }
+                guard let newPaneID = AppStateStore.shared.splitPane(id: targetPaneID, direction: direction, command: request.command, kind: kind, processStatusPid: processStatusPid, path: path) else {
                     logger.error("perform paneSplit: unknown pane id \(targetPaneID, privacy: .public)")
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
                     return

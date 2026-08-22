@@ -214,29 +214,45 @@ public final class SplitTree {
     /// XPC `pane split --view <kind>`).
     /// `contentFactory` forwards to `PaneRuntime.init`'s own injection
     /// point (#0313 review round 1) — `nil` (the default) means "resolve
-    /// automatically": `PaneRuntime.makeContent` for every kind except
-    /// `.processStatus`, which needs call-site context (`processStatusPid`,
-    /// the tree's own tab-lookup closure) `makeContent(for:)`'s `kind`-only
-    /// signature can't carry, so it's resolved here instead (#0305 merge).
-    /// A caller that explicitly supplies its own `contentFactory` — test
-    /// code that needs a non-terminal-kind pane without triggering its
-    /// real conformer's `setUp()` (a real subprocess/HTTP poll for
-    /// `.lmStudioDashboard`, a real sampling `Task` for `.systemMetrics`
-    /// or `.processStatus`) — always wins outright, regardless of kind:
+    /// automatically," per kind: `PaneRuntime.makeContent` for every kind
+    /// except `.processStatus` and `.gitStatus`, each of which needs
+    /// call-site context (`processStatusPid`/the tree's tab-lookup
+    /// closure; `path`/`source`'s cwd) that `makeContent(for:)`'s
+    /// `kind`-only signature can't carry, so both are resolved here
+    /// instead. A caller that explicitly supplies its own `contentFactory`
+    /// — test code that needs a non-terminal-kind pane without triggering
+    /// its real conformer's `setUp()` (a real subprocess/HTTP poll for
+    /// `.lmStudioDashboard`, a real sampling `Task` for `.systemMetrics`,
+    /// a real `FSEventStream`/subprocess for `.gitStatus`, or `.processStatus`'s
+    /// own polling) — always wins outright, regardless of kind:
     /// `contentFactory: { _ in nil }` must suppress real construction even
-    /// for `.processStatus`, not be silently overridden by the automatic
-    /// per-instance resolution below. This is why the parameter is
-    /// `Optional` with a `nil` default rather than defaulting directly to
+    /// for a kind with call-site-specific resolution below, not be
+    /// silently overridden by it. This is why the parameter is `Optional`
+    /// with a `nil` default rather than defaulting directly to
     /// `PaneRuntime.makeContent` the way `PaneRuntime.init`'s own
     /// parameter still does — a concrete closure default can't be
     /// distinguished from an explicitly-passed one, so there would be no
     /// way to tell "caller wants the automatic per-kind behavior" apart
-    /// from "caller wants exactly `PaneRuntime.makeContent`, verbatim."
+    /// from "caller wants exactly `PaneRuntime.makeContent`, verbatim." The
+    /// order matters: the `if let contentFactory` check must run *first*,
+    /// unconditionally, before any kind-specific branch — putting a
+    /// kind-specific branch first would silently ignore an explicit
+    /// override for that one kind, exactly the trap `#0304`'s own rebase
+    /// onto this parameter hit and had to fix.
+    ///
+    /// `path`, added by #0304, is the directory a `.gitStatus` pane
+    /// monitors when this function's own default applies — resolved by
+    /// the caller per `docs/design/git-status-view.md` §1's order:
+    /// explicit CLI `--path`, else `source`'s active Tab's working
+    /// directory (the same cwd a terminal split would inherit), else
+    /// `$HOME`. Ignored for `.terminal`, and ignored (not just unused —
+    /// never read) whenever an explicit `contentFactory` is supplied.
     private static func makePane(
         inheritingFrom source: PaneRuntime?,
         command: String? = nil,
         kind: PaneContentKind = .terminal,
         processStatusPid: Int32? = nil,
+        path: String? = nil,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
         tabLookup: @escaping (UUID) -> TabRuntime? = { _ in nil }
     ) -> PaneRuntime {
@@ -255,6 +271,14 @@ public final class SplitTree {
                 let target: ProcessStatusPaneContent.Target? = processStatusPid.map { .pinned($0) }
                     ?? source.map { .followingTab($0.activeTabID) }
                 resolvedFactory = { _ in ProcessStatusPaneContent(target: target, tabLookup: tabLookup) }
+            } else if kind == .gitStatus {
+                // #0304's own directory resolution — see this function's
+                // doc comment above for why this branch comes *after* the
+                // `if let contentFactory` check, never before it.
+                let sourceCWD = source?.activeTab?.terminal.workingDirectory
+                    ?? source?.activeTab?.terminal.configuration.workingDirectory
+                let resolvedPath = path ?? sourceCWD ?? NSHomeDirectory()
+                resolvedFactory = { _ in GitStatusPaneContent(directoryPath: resolvedPath) }
             } else {
                 resolvedFactory = PaneRuntime.makeContent
             }
@@ -298,6 +322,7 @@ public final class SplitTree {
         command: String? = nil,
         kind: PaneContentKind = .terminal,
         processStatusPid: Int32? = nil,
+        path: String? = nil,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
     ) -> PaneRuntime? {
         guard let targetPane = root.findPane(id: targetPaneID) else { return nil }
@@ -306,6 +331,7 @@ public final class SplitTree {
             command: command,
             kind: kind,
             processStatusPid: processStatusPid,
+            path: path,
             contentFactory: contentFactory,
             tabLookup: { [weak self] tabID in
                 self?.allPanes.flatMap(\.tabs).first(where: { $0.id == tabID })

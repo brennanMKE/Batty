@@ -341,7 +341,11 @@ struct TabAutoNamingTests {
     /// display name, not the phantom tab's chip title, or a Git Status
     /// pane's sidebar row would read "2/1 — Tab".
     @Test func paneRowLabelUsesKindDisplayNameForANonTerminalPane() {
-        let pane = PaneRuntime(kind: .gitStatus)
+        // `contentFactory: { _ in nil }` — this test is about the sidebar
+        // row's label, not `.gitStatus`'s own conformer (#0304, post-#0314
+        // rebase: `.gitStatus` now has a real one that would otherwise
+        // start a real `FSEventStream` here).
+        let pane = PaneRuntime(kind: .gitStatus, contentFactory: { _ in nil })
 
         let label = PaneRow.label(position: "2/1", firstTab: pane.tabs.first, kind: pane.kind)
 

@@ -64,7 +64,12 @@ struct PaneContentKindTests {
     }
 
     @Test func paneRuntimeAcceptsAnExplicitNonTerminalKind() {
-        #expect(PaneRuntime(kind: .gitStatus).kind == .gitStatus)
+        // `contentFactory: { _ in nil }` — this test is about `kind`
+        // assignment, not about `.gitStatus`'s own conformer, so it
+        // shouldn't construct a real `GitStatusPaneContent` (and the real
+        // `FSEventStream` that comes with it) as a side effect (#0304,
+        // post-#0314 rebase).
+        #expect(PaneRuntime(kind: .gitStatus, contentFactory: { _ in nil }).kind == .gitStatus)
     }
 
     @Test func paneRuntimeSnapshotCarriesItsKind() {

@@ -327,11 +327,13 @@ public struct PaneView: View {
 
     /// Non-terminal pane body (#0315): no Tab bar, no `TerminalPlaceholderView`
     /// — a provisional placeholder stands in for the (not yet approved)
-    /// concrete view design. `docs/pane-kinds.md` §2 moves the Tab bar into
-    /// the `.terminal` arm, which took `paneDragHandle`/`paneEyeButton` with
-    /// it; both are re-hosted in this header so a non-terminal pane keeps a
-    /// mouse-reachable swap handle and hide button, matching every design
-    /// doc under `docs/design/` that assumes this relocation.
+    /// concrete view design, for every kind that has no conformer yet (see
+    /// `nonTerminalContent` below for which do). `docs/pane-kinds.md` §2
+    /// moves the Tab bar into the `.terminal` arm, which took
+    /// `paneDragHandle`/`paneEyeButton` with it; both are re-hosted in this
+    /// header so a non-terminal pane keeps a mouse-reachable swap handle
+    /// and hide button, matching every design doc under `docs/design/`
+    /// that assumes this relocation.
     ///
     /// Fixes landing here for #0334, closing the gaps `PaneContentPlaceholderView`'s
     /// own doc comment recorded as known at #0315 review time:
@@ -369,7 +371,6 @@ public struct PaneView: View {
     ///   was previously sized only by its 22pt icon buttons, so a
     ///   non-terminal pane's content started ~14pt higher than a terminal
     ///   sibling's. `Self.nonTerminalHeaderHeight` pins it to the same 36pt.
-    @ViewBuilder
     private var nonTerminalBody: some View {
         nonTerminalShell {
             nonTerminalContent
@@ -405,12 +406,14 @@ public struct PaneView: View {
 
     /// The non-terminal kind's real content, where one has landed
     /// (`.systemMetrics`, #0314; `.lmStudioDashboard`, #0313;
-    /// `.processStatus`, #0305) — `PaneContentPlaceholderView` otherwise,
-    /// for kinds whose visual design isn't approved/implemented yet
-    /// (`.gitStatus` at the time of writing). `pane.content`'s type is
-    /// cast, not switched on `pane.kind` directly, so a kind whose
-    /// conformer hasn't landed yet falls back to the placeholder
-    /// automatically rather than needing its own branch added here first.
+    /// `.processStatus`, #0305; `.gitStatus`, #0304) —
+    /// `PaneContentPlaceholderView` otherwise, for any kind whose visual
+    /// design isn't approved/implemented yet (none, at the time of
+    /// writing — every `PaneContentKind` case has a real conformer).
+    /// `pane.content`'s type is cast, not switched on `pane.kind`
+    /// directly, so a kind whose conformer hasn't landed yet falls back
+    /// to the placeholder automatically rather than needing its own
+    /// branch added here first.
     @ViewBuilder
     private var nonTerminalContent: some View {
         if let systemMetricsContent = pane.content as? SystemMetricsPaneContent {
@@ -421,6 +424,8 @@ public struct PaneView: View {
             // #0305: the real designed view, replacing #0315's
             // provisional placeholder now that the design is approved.
             ProcessStatusPaneView(content: processStatusContent, tree: tree)
+        } else if let gitStatusContent = pane.content as? GitStatusPaneContent {
+            GitStatusPaneView(content: gitStatusContent)
         } else {
             PaneContentPlaceholderView(kind: pane.kind)
         }

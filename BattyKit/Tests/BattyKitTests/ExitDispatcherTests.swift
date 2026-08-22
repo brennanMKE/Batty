@@ -57,7 +57,19 @@ struct ExitDispatcherTests {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPane
-        _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus)
+        // `contentFactory: { _ in nil }` (#0313's seam) keeps this
+        // split from starting `.gitStatus`'s real conformer (a real
+        // `FSEventStream`) as a side effect (review round 3: swapping to
+        // a conformer-less kind just moves the hazard onto whichever kind
+        // lands next, rather than actually using the injection point
+        // built for this).
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
+        // Permanent regression check, not just a comment's promise: if a
+        // future edit drops the `contentFactory` argument above, this
+        // fails loudly instead of silently starting a real FSEventStream
+        // (review round 3's own point: "the suite will still pass if you
+        // miss one").
+        #expect(nonTerminalPane?.content == nil)
         #expect(session.focusedPane.kind == .gitStatus, "test setup: the split must move focus to the non-terminal pane")
 
         #expect(ExitDispatcher.focusedTerminalTab(in: store) == nil)

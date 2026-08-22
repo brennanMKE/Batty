@@ -206,9 +206,20 @@ struct SplitTreeTargetedSplitTests {
         let tree = SplitTree()
         let target = tree.focusedPane
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .gitStatus)!
+        // `contentFactory: { _ in nil }` (#0313's seam) keeps this
+        // split from starting `.gitStatus`'s real conformer (a real
+        // `FSEventStream`) as a side effect (review round 3: swapping to
+        // a conformer-less kind just moves the hazard onto whichever kind
+        // lands next).
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
 
         #expect(newPane.kind == .gitStatus)
+        // Permanent regression check, not just a comment's promise: if a
+        // future edit drops the `contentFactory` argument above, this
+        // fails loudly instead of silently starting a real FSEventStream
+        // (review round 3's own point: "the suite will still pass if you
+        // miss one").
+        #expect(newPane.content == nil)
     }
 
     /// A non-terminal kind has no cwd to inherit "in the same sense" a

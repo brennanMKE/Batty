@@ -89,9 +89,22 @@ struct PaneSplitCommand: ParsableCommand {
     /// `#0305`: pins a `.processStatus` pane to a literal pid (mode A,
     /// `docs/design/process-status-view.md` §2) instead of the default
     /// mode B (follow the split-source pane's active Tab's foreground
-    /// process). Rejected client-side for any other `--view` kind.
+    /// process). Rejected client-side for any other `--view` kind. Carried
+    /// over the wire in `PaneSplitRequest.viewOptions["pid"]` — #0304's
+    /// generic per-kind option bag, not a bespoke field of its own.
     @Option(name: .long, help: "Pin a process-status pane to this pid instead of following a terminal's foreground process. Only valid with --view process-status.")
     var pid: Int32?
+
+    /// #0304. The directory a `--view git-status` pane monitors
+    /// (`docs/design/git-status-view.md` §1's resolution order — this flag
+    /// first, else the target pane's own working directory, else `$HOME`).
+    /// Resolved to an absolute path here, against the CLI process's own
+    /// cwd, before the XPC call — no relative-path resolution happens
+    /// app-side, the same discipline `BattyTargetResolver` already applies
+    /// to ids. Carried over the wire in
+    /// `PaneSplitRequest.viewOptions["path"]`.
+    @Option(name: .long, help: "Directory for the new pane to monitor (only valid with --view git-status). Resolved to an absolute path.")
+    var path: String?
 
     nonisolated func run() throws {
         let targetPaneID = try resolveTargetPaneID(flag: pane)
@@ -117,6 +130,32 @@ struct PaneSplitCommand: ParsableCommand {
             fputs("batty: --pid must be a positive integer, got \(pid)\n", stderr)
             throw ExitCode.failure
         }
+        // `--path` is `.gitStatus`-specific, not "any non-terminal kind" —
+        // review round 1, D3: the original check only rejected `--path`
+        // for terminal/omitted `--view`, so it was silently accepted (and
+        // silently dropped, since nothing read it) for every *other*
+        // non-terminal kind too (e.g. `--view process-status --path ...`).
+        // Each kind's own option key is validated against that kind
+        // specifically, mirroring `--pid`/`.processStatus` above, not
+        // against "is this a non-terminal pane at all."
+        if path != nil, resolvedKind != .gitStatus {
+            let kindDescription = resolvedKind?.rawValue ?? "terminal"
+            fputs("batty: --path is not valid with --view \(kindDescription) (only git-status accepts --path)\n", stderr)
+            throw ExitCode.failure
+        }
+        let resolvedPath = path.map { URL(fileURLWithPath: $0).path }
+        // Built incrementally, one key per kind-specific flag, so a future
+        // flag is one more `if let` here rather than a restructuring of
+        // this one — see the same reasoning on `viewOptions`'s doc comment
+        // in `PaneSplitPayload.swift`.
+        var viewOptions: [String: String] = [:]
+        if let resolvedPath {
+            viewOptions["path"] = resolvedPath
+        }
+        if let pid {
+            viewOptions["pid"] = String(pid)
+        }
+        let wireViewOptions: [String: String]? = viewOptions.isEmpty ? nil : viewOptions
 
         switch AppConnectDance.resolveEndpoint() {
         case .failure(.brokerUnreachable):
@@ -126,7 +165,7 @@ struct PaneSplitCommand: ParsableCommand {
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
         case .success(let endpoint):
-            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, processStatusPid: pid, timeout: 3.0) {
+            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, viewOptions: wireViewOptions, timeout: 3.0) {
             case .success(let reply):
                 print(reply.paneID)
             case .unreachable:

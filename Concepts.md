@@ -60,7 +60,7 @@ A named workspace, listed as one row in the Window's Sidebar.
 
 A single visible region inside a Session — a leaf of the Split tree.
 
-- **Purpose:** hosts either a Tab bar rendering the active Tab's Terminal Session (a `.terminal`-kind Pane, still the default and the only kind that renders real content today) or a single non-terminal view (any other `PaneContentKind`, #0315 — `git-status`, `process-status`, `lm-studio-dashboard`, `system-metrics`; each currently renders as a provisional placeholder pending its own design approval, see `docs/pane-kinds.md`/`docs/design/`).
+- **Purpose:** hosts either a Tab bar rendering the active Tab's Terminal Session (a `.terminal`-kind Pane, still the default) or a single non-terminal view (any other `PaneContentKind`, #0315 — `git-status`, `process-status`, `lm-studio-dashboard`, `system-metrics`). `git-status` (#0304) renders its real, approved Git Status view (`docs/design/git-status-view.md`); the remaining kinds still render a provisional placeholder pending their own design approval, see `docs/pane-kinds.md`/`docs/design/`.
 - **Contains:** an ordered list of **Tabs** plus an `activeTabID`. A Pane always has at least one Tab (closing the last Tab removes the Pane) — including a non-terminal-kind Pane, whose one Tab is never rendered or given a live Terminal Session (`docs/pane-kinds.md` §1 names the fuller `tabs: []` design; #0315 deliberately keeps this simpler shape for its scope).
 - **Layout:** Panes are arranged within a Session by the **Split tree**.
 - **Splitting:**

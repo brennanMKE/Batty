@@ -431,6 +431,13 @@ public final class AppStateStore {
     /// `SplitTree.splitPane(id:direction:ratio:command:)` for the
     /// tree-focus decision (moves only when `paneID` was already that
     /// tree's focused pane).
+    /// `contentFactory` is `nil` by default (not the concrete
+    /// `PaneRuntime.makeContent`), forwarded unchanged from whatever the
+    /// caller passed — see `SplitTree.makePane`'s doc comment for why `nil`
+    /// specifically (not "the production default") has to survive all the
+    /// way down to the layer that can resolve a `.gitStatus` pane's
+    /// directory, so an explicit test override isn't silently shadowed by
+    /// path resolution.
     @discardableResult
     public func splitPane(
         id paneID: UUID,
@@ -438,11 +445,12 @@ public final class AppStateStore {
         command: String? = nil,
         kind: PaneContentKind = .terminal,
         processStatusPid: Int32? = nil,
+        path: String? = nil,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
     ) -> UUID? {
         for window in windows {
             if let session = window.sessions.first(where: { $0.tree.root.contains(paneID: paneID) }) {
-                if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind, processStatusPid: processStatusPid, contentFactory: contentFactory) {
+                if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind, processStatusPid: processStatusPid, path: path, contentFactory: contentFactory) {
                     let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: newPane.id)
                     AppEventWatcher.shared.send(eventType: event.type, payload: event)
 

@@ -45,7 +45,11 @@ struct LMStudioDashboardWiringTests {
 
     @Test func makeContentReturnsNilForTerminalAndUnshippedKinds() {
         #expect(PaneRuntime.makeContent(for: .terminal) == nil)
-        #expect(PaneRuntime.makeContent(for: .gitStatus) == nil)
+        // `.gitStatus` is no longer nil here (#0304 landed its conformer
+        // after this test was written) — see
+        // `GitStatusPaneContentTests`/`ProcessGitStatusScannerTests` for
+        // its own coverage; `.processStatus` is the one case still
+        // genuinely unshipped at the time of writing.
         #expect(PaneRuntime.makeContent(for: .processStatus) == nil)
     }
 

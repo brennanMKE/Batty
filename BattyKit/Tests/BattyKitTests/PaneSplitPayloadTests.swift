@@ -67,6 +67,48 @@ struct PaneSplitPayloadTests {
         #expect(request.kind == nil)
     }
 
+    // MARK: - #0304's `viewOptions` field (review round 1: replaces an
+    // earlier `path: String?` field this issue shipped first — retargeted
+    // to the shared, per-kind-generic shape so #0305/#0313/#0314 don't each
+    // need their own wire-shape change).
+
+    @Test func requestRoundTripsWithExplicitViewOptions() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .gitStatus, viewOptions: ["path": "/Users/example/project"])
+        let data = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: data)
+        #expect(decoded == request)
+        #expect(decoded.viewOptions?["path"] == "/Users/example/project")
+    }
+
+    @Test func requestDefaultViewOptionsIsNil() {
+        let request = PaneSplitRequest(paneID: nil, direction: .horizontal)
+        #expect(request.viewOptions == nil)
+    }
+
+    @Test func requestJSONOmitsViewOptionsKeyWhenNil() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .gitStatus)
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(!raw.keys.contains("viewOptions"))
+    }
+
+    @Test func requestJSONTopLevelKeysIncludeViewOptionsWhenPresent() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .gitStatus, viewOptions: ["path": "/tmp"])
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(raw.keys) == ["paneID", "direction", "kind", "viewOptions"])
+    }
+
+    /// The bag is generic — nothing about the wire shape pins it to
+    /// `"path"` specifically. A future kind's own key round-trips the
+    /// same way, without touching this struct.
+    @Test func requestViewOptionsCarriesArbitraryKeysForFutureKinds() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .processStatus, viewOptions: ["pid": "1234"])
+        let data = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: data)
+        #expect(decoded.viewOptions?["pid"] == "1234")
+    }
+
     /// A `nil` kind omits the JSON key entirely (Optional's synthesized
     /// `encodeIfPresent` behavior) rather than encoding an explicit `null`.
     /// Unlike `TopologyPanePayload.activeTabID` (a *read* contract
@@ -81,27 +123,32 @@ struct PaneSplitPayloadTests {
         #expect(!raw.keys.contains("kind"))
     }
 
-    // MARK: - #0305's `processStatusPid` field
+    // MARK: - #0305's `processStatusPid` folded into `viewOptions["pid"]`
+    //
+    // #0305 landed `processStatusPid: Int32?` as its own flat field before
+    // this issue's `viewOptions` bag existed; the #0304/#0305 rebase folds
+    // it into `viewOptions["pid"]` the same way `path` already lives in
+    // `viewOptions["path"]` — one generic bag, not one field per kind.
+    // The general round-trip/default/omission behavior is already covered
+    // by the `viewOptions` tests above (the bag doesn't care which string
+    // key it holds); what's worth pinning specifically here is `pid`'s own
+    // round trip and the legacy-client decode path.
 
-    @Test func requestRoundTripsWithProcessStatusPid() throws {
-        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .processStatus, processStatusPid: 4242)
+    @Test func requestRoundTripsWithPidInViewOptions() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .processStatus, viewOptions: ["pid": "4242"])
         let data = try JSONEncoder().encode(request)
         let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: data)
         #expect(decoded == request)
-        #expect(decoded.processStatusPid == 4242)
+        #expect(decoded.viewOptions?["pid"] == "4242")
     }
 
-    @Test func requestDefaultProcessStatusPidIsNil() {
-        let request = PaneSplitRequest(paneID: nil, direction: .horizontal)
-        #expect(request.processStatusPid == nil)
-    }
-
-    /// A legacy client (any `batty` binary built before #0305) never sends
-    /// `processStatusPid` at all — its JSON, decoded here as a raw literal
-    /// rather than round-tripped through this version's own encoder, must
-    /// still decode successfully with `processStatusPid == nil` rather
-    /// than failing to decode.
-    @Test func requestDecodesFromLegacyJSONMissingTheProcessStatusPidKey() throws {
+    /// A legacy client (any `batty` binary built before `viewOptions`
+    /// existed, including #0305's own `processStatusPid`-only build) never
+    /// sends `viewOptions` at all — its JSON, decoded here as a raw
+    /// literal rather than round-tripped through this version's own
+    /// encoder, must still decode successfully with `viewOptions == nil`
+    /// rather than failing to decode.
+    @Test func requestDecodesFromLegacyJSONMissingTheViewOptionsKey() throws {
         let legacyJSON = """
         {"paneID":null,"direction":"horizontal"}
         """
@@ -109,21 +156,7 @@ struct PaneSplitPayloadTests {
         #expect(decoded.paneID == nil)
         #expect(decoded.direction == .horizontal)
         #expect(decoded.kind == nil)
-        #expect(decoded.processStatusPid == nil)
-    }
-
-    @Test func requestJSONOmitsProcessStatusPidKeyWhenNil() throws {
-        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal)
-        let data = try JSONEncoder().encode(request)
-        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(!raw.keys.contains("processStatusPid"))
-    }
-
-    @Test func requestJSONIncludesProcessStatusPidWhenPresent() throws {
-        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .processStatus, processStatusPid: 99)
-        let data = try JSONEncoder().encode(request)
-        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(Set(raw.keys) == ["paneID", "direction", "kind", "processStatusPid"])
+        #expect(decoded.viewOptions == nil)
     }
 
     @Test func requestRoundTripsOffActor() throws {

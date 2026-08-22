@@ -30,24 +30,38 @@ import Foundation
 /// default are the same rule stated once. This keeps every existing `pane
 /// split` invocation (no `--view`) producing exactly the terminal pane it
 /// always did.
+///
+/// `viewOptions` (#0304, review round 1's shared-wire-shape decision) is a
+/// per-kind string-keyed option bag for CLI-supplied creation options:
+/// `["path": "/abs/dir"]` for `.gitStatus`
+/// (`docs/design/git-status-view.md` §1's resolution order: this key
+/// first, else the target pane's own working directory, else `$HOME`),
+/// `["pid": "1234"]` for `.processStatus`'s mode-A pin
+/// (`docs/design/process-status-view.md` §2 — absent means mode B, follow
+/// the split-source pane's active Tab). Deliberately one generic field
+/// rather than one bespoke optional per kind (`#0305` landed
+/// `processStatusPid: Int32?` as its own flat field before this bag
+/// existed; folded in here) — a future kind's own option is one more key,
+/// not a wire-shape change. `nil` when no `--<kind-specific-flag>` was
+/// given. The CLI validates which keys are legal for the requested `kind`
+/// and rejects the rest with exit `1` before this ever reaches the wire —
+/// e.g. `path` is meaningless for anything but `.gitStatus`, `pid` for
+/// anything but `.processStatus`, and either combined with `kind ==
+/// .terminal` (or an omitted `--view`) is rejected the same way `--command`
+/// combined with a non-terminal `--view` already is.
 public nonisolated struct PaneSplitRequest: Codable, Sendable, Equatable {
     public let paneID: UUID?
     public let direction: TopologySplitDirection
     public let command: String?
     public let kind: PaneContentKind?
-    /// `#0305`: a literal pid to pin a `.processStatus` pane to (mode A,
-    /// `docs/design/process-status-view.md` §2). `nil` with `kind ==
-    /// .processStatus` means mode B — follow the target pane's active
-    /// Tab's foreground process instead. Meaningless (and rejected
-    /// client-side, `PaneCommand.swift`) for any other kind.
-    public let processStatusPid: Int32?
+    public let viewOptions: [String: String]?
 
-    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil, processStatusPid: Int32? = nil) {
+    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil, viewOptions: [String: String]? = nil) {
         self.paneID = paneID
         self.direction = direction
         self.command = command
         self.kind = kind
-        self.processStatusPid = processStatusPid
+        self.viewOptions = viewOptions
     }
 }
 

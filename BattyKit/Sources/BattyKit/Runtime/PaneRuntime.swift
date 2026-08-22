@@ -55,25 +55,32 @@ public final class PaneRuntime: Identifiable {
     /// `TabRuntime.terminal: TerminalViewState` has to its Tab
     /// (`docs/pane-view-lifecycle.md` §5, "the conformer is model-owned").
     /// `nil` for `.terminal` panes and for any non-terminal kind that
-    /// hasn't wired a concrete conformer yet — `.systemMetrics` (#0314) is
-    /// the only kind with one today. Set once at `init`, alongside `kind`,
-    /// and never mutated.
+    /// hasn't wired a concrete conformer yet — `.systemMetrics` (#0314) and
+    /// `.gitStatus` (#0304) are the only kinds with one today. Set once at
+    /// `init`, alongside `kind`, and never mutated.
     public let content: (any PaneContentLifecycle)?
 
     /// Builds the concrete `PaneContentLifecycle` conformer for `kind`, or
     /// `nil` for kinds with no conformer (yet). The default
     /// `contentFactory` `PaneRuntime.init` uses.
     ///
+    /// A `.gitStatus` pane built through this default resolves its
+    /// directory to `$HOME` — the resolution-order fallback of last resort
+    /// (`docs/design/git-status-view.md` §1). A caller that has a better
+    /// answer (the CLI's `--path`, or the source pane's cwd when splitting)
+    /// passes its own `contentFactory` to `PaneRuntime.init` instead of
+    /// relying on this default — see `SplitTree.makePane`.
+    ///
     /// **Exhaustive, no `default:`** — adding a new `PaneContentKind` case
     /// without adding a matching arm here is a compile error, not a
-    /// silently-resolved-to-`nil` gap. `#0304`/`#0305`/`#0313` land their
-    /// own arms as each conformer ships; today they still resolve to `nil`
+    /// silently-resolved-to-`nil` gap. `#0305`/`#0313` land their own arms
+    /// as each conformer ships; today they still resolve to `nil`
     /// explicitly, matched case-by-case, not through a catch-all that
     /// would also swallow a real future omission.
     public static func makeContent(for kind: PaneContentKind) -> (any PaneContentLifecycle)? {
         switch kind {
         case .terminal: return nil
-        case .gitStatus: return nil
+        case .gitStatus: return GitStatusPaneContent(directoryPath: NSHomeDirectory())
         case .processStatus: return nil
         case .lmStudioDashboard: return LMStudioDashboardPaneContent()
         case .systemMetrics: return SystemMetricsPaneContent()
