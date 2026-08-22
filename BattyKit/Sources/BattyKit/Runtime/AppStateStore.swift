@@ -307,12 +307,23 @@ public final class AppStateStore {
                 .flatMap { $0.tabs }
                 .count
         }
+        // #0361: ground truth about *this* process's own bundle, so a CLI
+        // that connects to an already-registered endpoint (no bundle
+        // resolution on its side at all) can still tell which on-disk app
+        // it's talking to — the diagnostic gap that made the ambiguous
+        // bundle-identifier bug undiagnosable in the first place.
+        let bundleInfo = Bundle.main.infoDictionary
+        let appVersion = (bundleInfo?["CFBundleShortVersionString"] as? String)
+            ?? (bundleInfo?["CFBundleVersion"] as? String)
+            ?? "unknown"
         return StatusPayload(
             pid: ProcessInfo.processInfo.processIdentifier,
             uptimeSeconds: Date().timeIntervalSince(launchDate),
             windowCount: windows.count,
             sessionCount: totalSessions,
-            tabCount: totalTabs
+            tabCount: totalTabs,
+            bundlePath: Bundle.main.bundleURL.path,
+            appVersion: appVersion
         )
     }
 

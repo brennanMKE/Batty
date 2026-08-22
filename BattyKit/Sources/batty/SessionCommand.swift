@@ -51,16 +51,40 @@ nonisolated func resolvePath(_ input: String) throws -> String {
 /// Opens the batty:// URL via `/usr/bin/open`, which activates and (if
 /// needed) launches the Batty app and delivers the URL to its handler.
 ///
-/// Targeted with `-b <bundleIdentifier>` — same precedent as
-/// `AppLauncher.launch` — because both variants register the `batty`
-/// scheme (`Configuration/Info.plist` is shared, #0279) and an untargeted
-/// `open` lets LaunchServices pick either handler. Without `-b`, `batty
-/// <path>` — the CLI's primary mutation verb — could silently land a
-/// session in the wrong variant whenever both are installed.
-nonisolated func openURL(_ url: URL, bundleIdentifier: String = ServiceNames.appBundleIdentifier) throws {
+/// #0361 round 3 (review B1): this was the CLI's **default** subcommand
+/// path (bare `batty` / `batty <path>` — `NewSessionCommand`, `BattyCLI`'s
+/// `defaultSubcommand`) and, uniquely among the CLI's verbs, never went
+/// through `AppConnectDance`/`AppBundleLocator` at all — it targeted
+/// `open -b <bundleIdentifier>`, which asks LaunchServices to resolve the
+/// identifier and, on a machine with several bundles claiming it (every
+/// `scripts/build.sh` run adds one), can resolve to any of them. That made
+/// the most-typed invocation of the CLI exempt from every fix this issue
+/// otherwise made to every other verb.
+///
+/// Now resolves the same way every other verb does — `AppBundleLocator
+/// .resolve()` — and targets that resolved bundle by **path**: `open -a
+/// <bundlePath> <url>`. `-a <path>` is strictly stronger than `-b
+/// <bundleIdentifier>` for the reason `-b` was added in the first place
+/// (#0279: keep the shared `batty://` scheme registration — both variants
+/// register it, `Configuration/Info.plist` is shared — from resolving to
+/// the wrong variant): a path names one exact bundle, so it can never
+/// resolve to the other variant's, or to a stale/DerivedData one, the way
+/// an unqualified `open <url>` or an ambiguous `-b <id>` can.
+nonisolated func openURL(
+    _ url: URL,
+    resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() }
+) throws {
+    let bundleURL: URL
+    switch resolveAppBundle() {
+    case .failure(let failure):
+        fputs("batty: \(failure.diagnosticMessage)\n", stderr)
+        throw ExitCode(XPCExitCode.appBundleUnresolved)
+    case .success(let resolved):
+        bundleURL = resolved
+    }
     let process = Process()
     process.executableURL = URL(filePath: "/usr/bin/open")
-    process.arguments = ["-b", bundleIdentifier, url.absoluteString]
+    process.arguments = ["-a", bundleURL.path(percentEncoded: false), url.absoluteString]
     do {
         try process.run()
         process.waitUntilExit()

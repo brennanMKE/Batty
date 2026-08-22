@@ -164,6 +164,12 @@ struct PaneSplitCommand: ParsableCommand {
         case .failure(.appUnavailable):
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
         case .success(let endpoint):
             switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, viewOptions: wireViewOptions, timeout: 3.0) {
             case .success(let reply):
@@ -220,6 +226,12 @@ struct PaneCloseCommand: ParsableCommand {
         case .failure(.appUnavailable):
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
         case .success(let endpoint):
             switch AppServiceClient.paneClose(endpoint: endpoint, paneID: targetPaneID, timeout: 3.0) {
             case .success:

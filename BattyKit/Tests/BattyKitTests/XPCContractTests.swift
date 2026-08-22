@@ -211,6 +211,8 @@ struct XPCContractTests {
         #expect(XPCExitCode.appUnavailable == 3)
         #expect(XPCExitCode.requestFailed == 4)
         #expect(XPCExitCode.sessionTerminated == 5)
+        #expect(XPCExitCode.appRunningUnregistered == 6)
+        #expect(XPCExitCode.appBundleUnresolved == 7)
     }
 
     @Test func xpcExitCodesAreDistinct() {
@@ -219,14 +221,16 @@ struct XPCContractTests {
             XPCExitCode.appUnavailable,
             XPCExitCode.requestFailed,
             XPCExitCode.sessionTerminated,
+            XPCExitCode.appRunningUnregistered,
+            XPCExitCode.appBundleUnresolved,
         ]
-        #expect(codes.count == 4)
+        #expect(codes.count == 6)
     }
 
     // MARK: - StatusPayload (#0271) round trips
 
     @Test func statusPayloadRoundTrips() throws {
-        let payload = StatusPayload(pid: 4242, uptimeSeconds: 12.5, windowCount: 1, sessionCount: 3, tabCount: 5)
+        let payload = StatusPayload(pid: 4242, uptimeSeconds: 12.5, windowCount: 1, sessionCount: 3, tabCount: 5, bundlePath: "/Applications/Batty.app", appVersion: "1.1.0")
         let data = try JSONEncoder().encode(payload)
         let decoded = try JSONDecoder().decode(StatusPayload.self, from: data)
         #expect(decoded == payload)
@@ -235,10 +239,12 @@ struct XPCContractTests {
         #expect(decoded.windowCount == 1)
         #expect(decoded.sessionCount == 3)
         #expect(decoded.tabCount == 5)
+        #expect(decoded.bundlePath == "/Applications/Batty.app")
+        #expect(decoded.appVersion == "1.1.0")
     }
 
     @Test func statusPayloadRoundTripsInsideXPCResponsePayload() throws {
-        let payload = StatusPayload(pid: 1, uptimeSeconds: 0, windowCount: 0, sessionCount: 0, tabCount: 0)
+        let payload = StatusPayload(pid: 1, uptimeSeconds: 0, windowCount: 0, sessionCount: 0, tabCount: 0, bundlePath: "/Applications/Batty.app", appVersion: "1.0.0")
         let payloadData = try JSONEncoder().encode(payload)
         let response = XPCResponse(ok: true, payload: payloadData)
         let responseData = try JSONEncoder().encode(response)
@@ -248,7 +254,7 @@ struct XPCContractTests {
     }
 
     @Test func statusPayloadRoundTripsOffActor() throws {
-        let decoded = try roundTripOffActor(StatusPayload(pid: 7, uptimeSeconds: 1, windowCount: 1, sessionCount: 1, tabCount: 1))
+        let decoded = try roundTripOffActor(StatusPayload(pid: 7, uptimeSeconds: 1, windowCount: 1, sessionCount: 1, tabCount: 1, bundlePath: "/Applications/Batty.app", appVersion: "1.0.0"))
         #expect(decoded.pid == 7)
     }
 

@@ -23,10 +23,20 @@ struct StatusCommand: ParsableCommand {
         case .failure(.appUnavailable):
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
         case .success(let endpoint):
             switch AppServiceClient.status(endpoint: endpoint, timeout: 3.0) {
             case .success(let payload):
-                print("batty: pid \(payload.pid) uptime \(Self.formatUptime(payload.uptimeSeconds))s windows \(payload.windowCount) sessions \(payload.sessionCount) tabs \(payload.tabCount)")
+                // #0361: `path=`/`version=` is the diagnostic this issue
+                // was missing entirely — which on-disk app bundle actually
+                // answered, straight from that process's own `Bundle.main`,
+                // not a CLI-side guess.
+                print("batty: pid \(payload.pid) uptime \(Self.formatUptime(payload.uptimeSeconds))s windows \(payload.windowCount) sessions \(payload.sessionCount) tabs \(payload.tabCount) path=\(payload.bundlePath) version=\(payload.appVersion)")
             case .unreachable:
                 fputs("batty: app unavailable\n", stderr)
                 throw ExitCode(XPCExitCode.appUnavailable)

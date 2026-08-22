@@ -26,4 +26,20 @@ public nonisolated enum XPCExitCode {
 
     /// The app terminated while a session was attached.
     public static let sessionTerminated: Int32 = 5
+
+    /// The app is running but not registered with the broker, and did not
+    /// re-register within the poll bound (#0361). Distinct from
+    /// `appUnavailable`: launching would spawn a duplicate process
+    /// alongside the one already running, so the CLI reports this instead
+    /// of launching.
+    public static let appRunningUnregistered: Int32 = 6
+
+    /// Could not determine, deterministically, which on-disk app bundle to
+    /// target (#0361 round 2) — neither the CLI's own embedded/symlinked
+    /// location nor the well-known `/Applications` fallback resolved to a
+    /// real bundle. Distinct from every other code here: this is reported
+    /// instead of falling back to an ambiguous bundle-identifier lookup via
+    /// LaunchServices, which is what let the CLI launch the wrong one of
+    /// several bundles sharing `co.sstools.Batty` in the first place.
+    public static let appBundleUnresolved: Int32 = 7
 }

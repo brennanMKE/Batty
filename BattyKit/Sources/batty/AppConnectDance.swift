@@ -18,8 +18,27 @@ nonisolated enum AppConnectDance {
         case brokerUnreachable
         /// The broker answered but no app endpoint ever appeared, whether
         /// because the launch itself failed or the poll bound was
-        /// exhausted waiting for the launched app to register.
+        /// exhausted waiting for the launched app to register. Only
+        /// reached when no process at the resolved app bundle was running
+        /// — see `appRunningUnregistered` for the case where one is.
         case appUnavailable
+        /// The app is already running at the resolved bundle path, but the
+        /// broker has no registered endpoint for it and it did not
+        /// re-register within the poll bound (#0361) — most likely an
+        /// exhausted `BrokerReconnectBudget`, or a broker restart the app
+        /// hasn't caught up with yet. Launching here would spawn a
+        /// duplicate process alongside the one already running, which is
+        /// exactly the defect this case exists to prevent: the caller
+        /// reports this distinctly and tells the user to check/relaunch
+        /// Batty, rather than silently launching another instance.
+        case appRunningUnregistered
+        /// #0361 round 2: could not determine, deterministically, which
+        /// on-disk app bundle to target — see `AppBundleLocator.Failure`.
+        /// Carries a human-readable diagnostic naming the expected path and
+        /// any other bundles Spotlight knows claim the same identifier,
+        /// rather than falling through to LaunchServices' own ambiguous
+        /// bundle-id resolution.
+        case appBundleUnresolved(String)
     }
 
     /// Poll defaults follow the measured reference point in the issue
@@ -38,35 +57,84 @@ nonisolated enum AppConnectDance {
         pollTimeout: TimeInterval = 1.0,
         pollMaxAttempts: Int = 20,
         pollInterval: TimeInterval = 0.25,
-        launch: (String) -> Bool = { AppLauncher.launch(bundleIdentifier: $0) }
+        resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() },
+        launch: (URL) -> Bool = { AppLauncher.launch(bundleURL: $0) },
+        isAppRunning: (URL) -> Bool = { RunningAppChecker.isRunning(atBundleURL: $0) }
     ) -> Swift.Result<NSXPCListenerEndpoint, Failure> {
         switch BrokerAppEndpointClient.fetchEndpoint(timeout: brokerTimeout) {
         case .unreachable:
             logger.notice("resolveEndpoint -> broker unreachable")
             return .failure(.brokerUnreachable)
         case .endpoint(.some(let endpoint)):
+            // #0361: a registered endpoint is used exactly as handed to us
+            // by the broker — no bundle resolution, no path comparison.
+            // Whichever process registered it *is* the one the caller
+            // wants; the ambiguity this issue fixes only exists on the
+            // launch-decision path below, never here.
             logger.info("resolveEndpoint -> endpoint already registered, no launch needed")
             return .success(endpoint)
         case .endpoint(.none):
             break
         }
 
-        logger.info("resolveEndpoint: no app registered, launching \(ServiceNames.appBundleIdentifier, privacy: .public)")
-        guard launch(ServiceNames.appBundleIdentifier) else {
-            // Short-circuits rather than burning the full poll bound: a
-            // failed launch (bad bundle id, LaunchServices rejection) will
-            // never produce a registration, so waiting out the bound only
-            // delays the exit-3 the caller is going to get anyway.
-            logger.error("resolveEndpoint -> launch failed, not polling")
-            return .failure(.appUnavailable)
+        // #0361: "no endpoint registered" is ambiguous — it means either
+        // "nothing is running" or "something is running but hasn't
+        // registered." Conflating the two used to launch a duplicate
+        // process every time the app was running but temporarily
+        // unregistered (an exhausted `BrokerReconnectBudget`, a broker
+        // restart). `NoEndpointRegisteredDecision` makes the branch explicit
+        // and unit-testable; only the `.launchAndPoll` arm may call `launch`.
+        //
+        // Round 2: which app that decision is even *about* was itself
+        // ambiguous — `open -b <bundle-id>` and
+        // `NSRunningApplication.runningApplications(withBundleIdentifier:)`
+        // both delegate to LaunchServices' own bundle-id resolution, which
+        // silently picks among every bundle sharing the identifier
+        // (DerivedData debug builds, stale DMG mounts, ...). `resolveAppBundle`
+        // (`AppBundleLocator`) resolves one specific bundle path first, and
+        // every decision below is about that exact bundle, not the identifier.
+        let bundleURL: URL
+        switch resolveAppBundle() {
+        case .failure(let failure):
+            logger.error("resolveEndpoint -> could not resolve which app bundle to target: \(failure.diagnosticMessage, privacy: .public)")
+            return .failure(.appBundleUnresolved(failure.diagnosticMessage))
+        case .success(let resolved):
+            bundleURL = resolved
+            logger.info("resolveEndpoint: targeting app bundle \(resolved.path, privacy: .public)")
         }
 
-        // A broker that goes briefly unreachable mid-poll (e.g. mid-restart)
-        // is treated the same as "no endpoint yet" and simply retried until
-        // the bound is exhausted — distinguishing it further is #0272's
-        // lifecycle-hardening scope, not this child's.
+        let appAlreadyRunning = isAppRunning(bundleURL)
+        switch NoEndpointRegisteredDecision.action(isAppRunning: appAlreadyRunning) {
+        case .launchAndPoll:
+            logger.info("resolveEndpoint: no app registered and none running at \(bundleURL.path, privacy: .public), launching")
+            guard launch(bundleURL) else {
+                // Short-circuits rather than burning the full poll bound: a
+                // failed launch (missing bundle, LaunchServices rejection)
+                // will never produce a registration, so waiting out the
+                // bound only delays the exit-3 the caller is going to get
+                // anyway.
+                logger.error("resolveEndpoint -> launch failed, not polling")
+                return .failure(.appUnavailable)
+            }
+            return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appUnavailable)
+        case .waitForReregistration:
+            logger.notice("resolveEndpoint: app already running at \(bundleURL.path, privacy: .public) but not registered with the broker — waiting for it to re-register instead of launching a duplicate")
+            return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appRunningUnregistered)
+        }
+    }
+
+    // A broker that goes briefly unreachable mid-poll (e.g. mid-restart) is
+    // treated the same as "no endpoint yet" and simply retried until the
+    // bound is exhausted — distinguishing it further is #0272's
+    // lifecycle-hardening scope, not this child's.
+    private static func pollForEndpoint(
+        maxAttempts: Int,
+        interval: TimeInterval,
+        pollTimeout: TimeInterval,
+        notRegisteredFailure: Failure
+    ) -> Swift.Result<NSXPCListenerEndpoint, Failure> {
         var attempt = 0
-        let endpoint = BoundedPoll.poll(maxAttempts: pollMaxAttempts, interval: pollInterval) { () -> NSXPCListenerEndpoint? in
+        let endpoint = BoundedPoll.poll(maxAttempts: maxAttempts, interval: interval) { () -> NSXPCListenerEndpoint? in
             attempt += 1
             if case .endpoint(.some(let endpoint)) = BrokerAppEndpointClient.fetchEndpoint(timeout: pollTimeout) {
                 logger.info("resolveEndpoint: poll attempt \(attempt, privacy: .public) -> endpoint registered")
@@ -76,8 +144,8 @@ nonisolated enum AppConnectDance {
         }
 
         guard let endpoint else {
-            logger.error("resolveEndpoint -> app unavailable after \(attempt, privacy: .public) poll attempts")
-            return .failure(.appUnavailable)
+            logger.error("resolveEndpoint -> \(String(describing: notRegisteredFailure), privacy: .public) after \(attempt, privacy: .public) poll attempts")
+            return .failure(notRegisteredFailure)
         }
         return .success(endpoint)
     }

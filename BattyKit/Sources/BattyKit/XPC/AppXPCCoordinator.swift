@@ -46,6 +46,23 @@ public final class AppXPCCoordinator {
     /// paired with the other.
     private var currentBrokerGeneration: UInt64?
     private var listenerEndpoint: NSXPCListenerEndpoint?
+    /// #0361: once `reconnectBudget` exhausts its burst of attempts (or the
+    /// SMAppService repair path gives up because it already ran once this
+    /// launch), this process previously had no path back to a registered
+    /// state short of being relaunched by hand. `scheduleBackoffRetry`
+    /// schedules exactly one deferred `connectToBroker` attempt at a time,
+    /// at a growing-then-capped interval from `BrokerReconnectBackoff` —
+    /// self-healing without ever retrying hot in a loop. `backoffAttempt`
+    /// is the index fed to that schedule; both are reset on a confirmed
+    /// registration.
+    private var backoffAttempt = 0
+    /// Guarantees at most one deferred backoff retry is ever pending —
+    /// several give-up events in a row (`handleBrokerSignal`'s exhausted
+    /// budget, `attemptRepairIfNeeded`'s already-attempted-this-launch) each
+    /// call `scheduleBackoffRetry`, and without this, each would schedule
+    /// its own `DispatchWorkItem`, racing multiple overlapping
+    /// `connectToBroker` calls against each other.
+    private let backoffRetryScheduler = SingleSlotRetryScheduler<DispatchWorkItem> { $0.cancel() }
 
     public init(
         repairGuard: BrokerRepairGuard = BrokerRepairGuard(),
@@ -113,6 +130,7 @@ public final class AppXPCCoordinator {
         currentBrokerGeneration = nil
         brokerConnection?.invalidate()
         brokerConnection = nil
+        cancelPendingBackoffRetry()
     }
 
     // MARK: - Broker connection lifecycle
@@ -189,6 +207,8 @@ public final class AppXPCCoordinator {
                 }
                 self.isRegisteredWithBroker = true
                 self.reconnectBudget.reset()
+                self.cancelPendingBackoffRetry()
+                self.backoffAttempt = 0
                 logger.info("endpoint registered and confirmed — \(description, privacy: .public)")
             }
         }
@@ -213,7 +233,8 @@ public final class AppXPCCoordinator {
         }
         isRegisteredWithBroker = false
         guard reconnectBudget.consumeAttempt() else {
-            logger.error("broker \(String(describing: signal), privacy: .public) — reconnect budget exhausted this launch, not retrying automatically (a future CLI call may still recover it)")
+            logger.error("broker \(String(describing: signal), privacy: .public) — reconnect budget exhausted, scheduling a backoff retry so this process can recover automatically without retrying hot")
+            scheduleBackoffRetry()
             return
         }
         switch BrokerConnectionLifecycle.response(for: signal) {
@@ -267,11 +288,19 @@ public final class AppXPCCoordinator {
     private func attemptRepairIfNeeded() {
         brokerAgentController.refresh()
         guard brokerAgentController.state == .enabled else {
+            // Deliberately no backoff retry here (unlike the two guards
+            // below): `.notRegistered`/`.requiresApproval` means the user
+            // hasn't opted in yet, and retrying forever against a service
+            // they haven't enabled would just spin quietly in the
+            // background for no reachable outcome — `SettingsView` staying
+            // the user-initiated path out of this state is deliberate, see
+            // this method's doc comment.
             logger.notice("attemptRepairIfNeeded: SMAppService state is \(String(describing: self.brokerAgentController.state), privacy: .public), not .enabled — not a wedged-registration case, skipping repair")
             return
         }
         guard repairGuard.attemptRepair() else {
-            logger.notice("broker repair already attempted this launch — not retrying")
+            logger.notice("broker repair already attempted this launch — not retrying immediately, scheduling a backoff retry instead")
+            scheduleBackoffRetry()
             return
         }
         logger.notice("SMAppService reports enabled but the broker call failed — repairing registration (unregister, then register)")
@@ -293,5 +322,44 @@ public final class AppXPCCoordinator {
         if let endpoint = listenerEndpoint {
             connectToBroker(endpoint: endpoint)
         }
+    }
+
+    // MARK: - Self-healing backoff retry (#0361)
+
+    /// Schedules exactly one deferred reconnect attempt, replacing any
+    /// already pending, at `BrokerReconnectBackoff`'s interval for
+    /// `backoffAttempt` — growing on repeated failures, capped so it never
+    /// stops trying altogether. `retryAfterBackoff` resets `reconnectBudget`
+    /// before calling `connectToBroker` so the retry itself gets a full
+    /// burst of the ordinary interruption/invalidation handling; if that
+    /// burst also exhausts, `handleBrokerSignal` calls back into this method
+    /// with `backoffAttempt` one higher.
+    private func scheduleBackoffRetry() {
+        let interval = BrokerReconnectBackoff.interval(forAttempt: backoffAttempt)
+        backoffAttempt += 1
+        logger.notice("scheduleBackoffRetry: retrying broker connection in \(interval, privacy: .public)s (attempt \(self.backoffAttempt, privacy: .public))")
+        let workItem = DispatchWorkItem { @Sendable [weak self] in
+            Task { @MainActor [weak self] in
+                self?.retryAfterBackoff()
+            }
+        }
+        // `replace(with:)` cancels any already-pending retry first, so
+        // repeated give-up events in a row (e.g. several broker
+        // interruptions before the first retry even fires) never leave
+        // more than one pending `DispatchWorkItem` — see the property's
+        // own doc comment.
+        backoffRetryScheduler.replace(with: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: workItem)
+    }
+
+    private func retryAfterBackoff() {
+        guard let endpoint = listenerEndpoint else { return }
+        logger.notice("retryAfterBackoff: attempting reconnect")
+        reconnectBudget.reset()
+        connectToBroker(endpoint: endpoint)
+    }
+
+    private func cancelPendingBackoffRetry() {
+        backoffRetryScheduler.clear()
     }
 }

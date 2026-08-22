@@ -62,6 +62,30 @@ public nonisolated enum ServiceNames {
             "/usr/local/bin/\(cliCommandName)"
         }
 
+        /// This variant's product name, matching `PRODUCT_NAME` /
+        /// `APP_PRODUCT_NAME` (`Configuration/App.xcconfig`,
+        /// `Configuration/Beta.xcconfig`) — "Batty" for Prod, "Batty Beta"
+        /// for Beta.
+        public var appProductName: String {
+            switch self {
+            case .prod: "Batty"
+            case .beta: "Batty Beta"
+            }
+        }
+
+        /// The well-known, deterministic install location for this
+        /// variant's app bundle. #0361: when the CLI cannot derive the
+        /// bundle it belongs to from its own on-disk location (e.g. a
+        /// standalone copy of the CLI placed directly on `PATH`, not the
+        /// symlink `CLIInstaller` creates), this is the one path it falls
+        /// back to — deliberately *not* a bundle-identifier lookup via
+        /// LaunchServices/`open -b`, which can resolve to any of several
+        /// bundles sharing the identifier (DerivedData debug builds, stale
+        /// DMG mounts, ...) rather than the one the user actually installed.
+        public var applicationsInstallPath: String {
+            "/Applications/\(appProductName).app"
+        }
+
         /// Maps a bundle identifier — typically `Bundle.main.bundleIdentifier`
         /// read at runtime by the app — back to the `Variant` it belongs
         /// to. `nil` for anything that isn't one of the two known variants;

@@ -71,6 +71,12 @@ struct NotifyCommand: ParsableCommand {
         case .failure(.appUnavailable):
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
         case .success(let endpoint):
             switch AppServiceClient.notify(endpoint: endpoint, tabID: targetTabID, title: title, body: bodyOverride, sound: sound, timeout: 3.0) {
             case .success:
