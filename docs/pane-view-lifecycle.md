@@ -313,21 +313,51 @@ the same function. That per-kind teardown step is `#0303`'s job."* Two
 answers, both consequences of tracing the actual terminal precedent
 rather than assuming SwiftUI view lifecycle already covers it:
 
-**Teardown's call site is `WindowRuntime.closePane(id:refuseIfAppsLastPane:)`,
-not a view's `onDisappear`.** The terminal path's own teardown is not
-driven by any SwiftUI view disappearing — `TerminalHostStore
-.releaseTerminalView(forTabID:)` is called directly from the tab-id loop
-inside `closePane` (`BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift:328-330`),
-the single choke point every close path (`removeTab`, `closeOtherTabs`,
-`removeSession`, `closePane`, window close) already funnels through per
-`docs/view-hierarchy.md` §5. A non-terminal conformer's `tearDown()`
-belongs at the same choke point: an explicit, kind-gated call inside
-`closePane` (guarded on `pane.kind != .terminal`, once that field exists)
-alongside the existing tab-teardown loop — not a `View.onDisappear`,
-which SwiftUI does not guarantee to fire synchronously, or at all, on
-every path a Pane can stop being rendered (a hidden Pane's `PaneView`
-already stops being constructed at all without the Pane closing, per the
-Hidden-Pane row above).
+**Teardown's call sites are `WindowRuntime.closePane(id:refuseIfAppsLastPane:)`,
+`removeSession(id:)`, `closeTab(id:)`, `RootWindowView.windowWillClose`,
+and `BattyAppDelegate.applicationWillTerminate` — not a view's
+`onDisappear`, and not one single choke point.** The terminal path's own
+teardown is not driven by any SwiftUI view disappearing — `TerminalHostStore
+.releaseTerminalView(forTabID:)` is called directly from a tab-id loop —
+but **this document's earlier claim that `closePane` is "the single choke
+point every close path ... already funnels through" is corrected here,
+not repeated: it is false in this tree.** #0314's phase-2 review round 1
+caught the first two gaps as a live bug, not a documentation nit;
+a sibling issue's review round independently found the remaining two
+gaps and folded them into the same fix, since the wiring is shared across
+every non-terminal kind, not per-kind.
+`WindowRuntime.removeSession(id:)` (the sidebar's "close session" control)
+runs its own `releaseTerminalView` sweep over every pane in the session
+and never calls `closePane`; `WindowRuntime.closeTab(id:)` calls
+`SplitTree.removePane(id:)` directly when a pane's last Tab closes, again
+without going through `closePane`; `RootWindowView.windowWillClose` and
+`BattyAppDelegate.applicationWillTerminate` remove whole windows (and,
+for the latter, every window in the app) without going through any
+pane- or Session-scoped path at all. All five are ordinary,
+production-reachable paths — a user closing a Session from the sidebar,
+closing the one Tab a non-terminal pane structurally holds
+(`docs/pane-kinds.md` §1's phantom-tab shape), closing a window, or
+quitting the app — not edge cases.
+
+A non-terminal conformer's `tearDown()` must therefore be called from
+**all five** pane-removal paths, before (or as) the pane leaves its
+Session's tree, or as the window/app it belongs to goes away — not a
+`View.onDisappear`, which SwiftUI does not guarantee to fire
+synchronously, or at all, on every path a Pane can stop being rendered (a
+hidden Pane's `PaneView` already stops being constructed at all without
+the Pane closing, per the Hidden-Pane row above). #0314's implementation
+(`WindowRuntime.swift`) funnels all five through one private helper,
+`tearDownNonTerminalContent(in:)` — the pane-scoped three call it
+directly; the window/app-scoped two call the public
+`tearDownAllPaneContent()`, which sweeps every Session's every pane and
+calls the same private helper — rather than re-deriving the release step
+at each site. Idempotent per pane (`tearDown()`'s own contract, §5
+below), so a pane torn down explicitly by `closeTab` and then swept again
+by a `removeSession` call it triggers (when closing the pane's last Tab
+also empties the Session), or by a `tearDownAllPaneContent()` call that
+happens to race a pane-level close, is harmless either way. Any future
+kind's conformer inherits this wiring for free; it does not need its own
+kind-gated call at any of the five sites.
 
 **Visibility's call sites are `WindowRuntime.hidePane(id:)` and
 `showPane(id:)` — but the two are not symmetric today, and this document
@@ -346,23 +376,24 @@ the terminal path because the placeholder is deliberately lightweight and
 remounting it is cheap and side-effect-free — it doesn't restart a PTY,
 only re-reports geometry for a surface that never stopped existing.
 
-A future `#0304`/`#0305` implementation should still call the conformer's
-`setVisible(false)` from `hidePane` — that part carries over unchanged,
-an explicit call at the site the terminal path already uses. But adding
-`setVisible(true)` to `showPane` would be **new behavior for that
-function**, not a symmetric counterpart to something already there:
-today `showPane` does nothing beyond the model flip and relies entirely
-on the remount to do the rest. Whether a non-terminal conformer's
-`setVisible(true)` should ride an equivalent remount-triggered path (a
-future non-terminal pane body's own `onAppear`, mirroring
-`TerminalPlaceholderView`'s pattern) or should instead be added as an
-explicit call inside `showPane` (matching `hidePane`'s more robust shape,
-rather than the terminal path's actual asymmetric one) is a decision for
-whichever child wires this in — it depends on whether that future
-conformer's own remount is as cheap and side-effect-free as the terminal
-placeholder's, which nothing in this document's scope can establish ahead
-of a concrete kind existing. This document flags the asymmetry rather
-than picking an answer.
+**Resolved by #0314, adopted as the shape every non-terminal kind
+wires: `showPane` gets an explicit, unconditional
+`pane.content?.setVisible(true)` call, matching `hidePane`'s more robust
+shape rather than the terminal path's own asymmetric one.** The two
+candidates this document originally left open were an explicit call
+(this one) versus riding a future non-terminal pane body's own
+`onAppear`/remount, mirroring `TerminalPlaceholderView`'s pattern. The
+remount-based option is rejected, not left open any longer: it would make
+a non-terminal pane's resumed sampling/watching depend on that specific
+kind's own view being cheap and side-effect-free to remount — true of
+the terminal placeholder by design, not something every future kind can
+be assumed to inherit — and it would need re-deriving per kind, the same
+duplication problem the teardown correction above exists to avoid.
+`hidePane`'s call is unconditional the same way: both call sites read
+`pane.content?.setVisible(...)`, a no-op for `.terminal` panes (`content
+== nil`) and for any non-terminal kind without a conformer yet, so a
+future kind inherits both halves of show/hide for free rather than
+adding its own kind-gated branch to either function.
 
 The non-selected-Session fact (§2) has no equivalent model-level function
 today — `SessionDetailView`'s environment write (`SessionDetailView.swift:203`)
@@ -412,6 +443,30 @@ inside a view's `body` or `init` instead of at model-construction time —
 not from routine SwiftUI behavior, which is precisely the failure mode
 `.rejected`'s logging exists to surface loudly rather than silently
 tolerate.
+
+**`setUp` staying in `PaneRuntime.init` created a real test-side-effect
+problem once a concrete conformer existed, resolved by making *who
+constructs the conformer* injectable rather than moving `setUp` out of
+`init`.** A sibling issue's reviewer raised exactly the failure mode this
+paragraph predicts is the only legitimate reason to deviate: unit-test
+code that constructs a `PaneRuntime(kind: .someNonTerminalKind)` for
+unrelated reasons (a split-tree test, a topology test) was, before this
+fix, also starting that kind's real background work — a live subprocess,
+an HTTP poll, or (`#0314`'s own case) a real 1 Hz sampling `Task` making
+real host/IOKit calls — as an unavoidable side effect of construction.
+Moving `setUp` into a view's `.task`/`onAppear` (one sibling branch's
+original fix) is the wrong lever: it is exactly the "calling `setUp` from
+inside a view" bug class named above. **The right lever is
+`PaneRuntime.init`'s new `contentFactory` parameter**
+(`(PaneContentKind) -> (any PaneContentLifecycle)?`, defaulting to
+`PaneRuntime.makeContent`, an exhaustive switch with no `default:` so a
+future kind forces a compile-time decision instead of silently resolving
+to `nil`): production call sites are unaffected (the default factory
+behaves exactly as before), and test code that doesn't want a real
+conformer's real side effects injects an inert test double instead.
+`setUp` still runs synchronously inside `init`, unconditionally, exactly
+as this section already required — only *what `contentFactory` returns*
+is now a caller's choice, never *when or whether `setUp` is called*.
 
 ### What this document's tests do and do not prove
 
@@ -551,3 +606,21 @@ shipped with the terminal floating on screen. Also corrected: `showPane`
 has no equivalent direct call — the un-hide is delivered by the
 placeholder's remount, an asymmetry the document previously glossed over
 by describing both functions as driving the store "for the same reason."*
+
+*Version 4 (`#0314` phase-2 review round 1, escalated by a sibling
+issue's review): corrected the "`closePane` is the single choke point
+every close path funnels through" claim — false in this tree.
+`removeSession` and `closeTab` both remove panes without ever calling
+`closePane`, and `RootWindowView.windowWillClose`/
+`BattyAppDelegate.applicationWillTerminate` remove whole windows/the
+whole app without going through any of the three. All five now funnel
+through `WindowRuntime`'s `tearDownNonTerminalContent(in:)`/
+`tearDownAllPaneContent()`. Resolved the `showPane` asymmetry this
+document previously left open: an explicit, unconditional
+`pane.content?.setVisible(true)` call, matching `hidePane`'s shape, not a
+remount-dependent one. Resolved the setUp-in-`init` vs. test-side-effect
+tension a sibling issue's reviewer raised: `PaneRuntime.init` gained an
+injectable `contentFactory` parameter (default: an exhaustive,
+no-`default:` `PaneRuntime.makeContent(for:)`) so test code can supply an
+inert conformer instead of triggering a real one's real side effects —
+`setUp` itself still runs synchronously inside `init`, unchanged.*

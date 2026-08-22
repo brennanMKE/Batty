@@ -186,11 +186,12 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
 
     /// Tears down the window's resources after the window has closed:
     ///   1. Clean up bell-feed state for all tabs in the window.
-    ///   2. Release every terminal view in the window's host.
-    ///   3. Release the host itself.
-    ///   4. Remove the window from the NSWindow ↔ WindowID registry (this
+    ///   2. Tear down every non-terminal pane's own content (#0303/#0314).
+    ///   3. Release every terminal view in the window's host.
+    ///   4. Release the host itself.
+    ///   5. Remove the window from the NSWindow ↔ WindowID registry (this
     ///      also triggers `terminateIfLastContentWindowGone` on the store).
-    ///   5. Remove the `WindowRuntime` from `AppStateStore.windows`.
+    ///   6. Remove the `WindowRuntime` from `AppStateStore.windows`.
     func windowWillClose(_ notification: Notification) {
         logger.info("windowWillClose windowID=\(self.windowID.value, privacy: .public)")
         let runtime = store.windowRuntime(for: self.windowID)
@@ -201,17 +202,25 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
         if !allTabIDs.isEmpty {
             runtime.cleanUpBellState(forTabIDs: allTabIDs)
         }
-        // 2. Release terminal views (the only sanctioned removeFromSuperview path).
+        // 2. Non-terminal pane content (#0303/#0314): review round 1 found
+        // this window-close path never tore any of it down — a
+        // system-metrics pane's sampling Task, or a git-status/lm-studio
+        // kind's watcher/subprocess, would otherwise keep running past the
+        // window closing, relying on ARC to eventually free the conformer
+        // rather than a synchronous, observable teardown
+        // (`docs/pane-view-lifecycle.md` §5).
+        runtime.tearDownAllPaneContent()
+        // 3. Release terminal views (the only sanctioned removeFromSuperview path).
         for tabID in allTabIDs {
             TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
         }
-        // 3. Release the host (gated: waits until all tab views are gone).
+        // 4. Release the host (gated: waits until all tab views are gone).
         TerminalHostStore.shared.releaseHost(forWindowID: windowID)
-        // 4. Unregister the NSWindow from the store (triggers termination check).
+        // 5. Unregister the NSWindow from the store (triggers termination check).
         if let nsWindow = notification.object as? NSWindow {
             store.unregisterNSWindow(nsWindow)
         }
-        // 5. Remove the WindowRuntime from the windows list.
+        // 6. Remove the WindowRuntime from the windows list.
         store.removeWindow(id: windowID)
     }
 

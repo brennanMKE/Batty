@@ -194,6 +194,13 @@ public final class WindowRuntime {
         for tabID in tabIDsToClear {
             TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
         }
+        // Review round 1 (#0314): this path never funneled through
+        // closePane, so a non-terminal pane's content never got torn down
+        // when its Session closed directly (the sidebar's "close session"
+        // control, AppStateStore.removeSession) — `docs/pane-view-lifecycle.md`
+        // §5's "closePane is the single choke point every close path
+        // funnels through" is corrected below; it wasn't true of this one.
+        tearDownNonTerminalContent(in: session.tree.allPanes)
         sessions.remove(at: index)
         if selectedSessionID == id {
             let newIndex = max(0, index - 1)
@@ -287,6 +294,11 @@ public final class WindowRuntime {
                 logger.info("closeTab removed tab=\(tabID, privacy: .public) pane=\(pane.id, privacy: .public) session=\(session.id, privacy: .public) paneTabsRemaining=\(pane.tabs.count)")
                 if pane.tabs.isEmpty {
                     logger.info("closeTab pane=\(pane.id, privacy: .public) empty; removing from tree")
+                    // Review round 1 (#0314): the pane is about to leave the
+                    // tree without ever going through closePane — tear down
+                    // its non-terminal content here directly, the same
+                    // correction applied to removeSession above.
+                    tearDownNonTerminalContent(in: [pane])
                     let treeEmptied = session.tree.removePane(id: pane.id)
                     if treeEmptied {
                         logger.info("closeTab tree empty for session=\(session.id, privacy: .public); removing session")
@@ -460,6 +472,14 @@ public final class WindowRuntime {
             for tabID in tabIDs {
                 TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
             }
+            // A non-terminal pane's own resources (#0303/#0314) are torn
+            // down before the pane leaves the tree, synchronously — not a
+            // view's onDisappear (`docs/pane-view-lifecycle.md` §5). `nil`
+            // for `.terminal` panes and any non-terminal kind without a
+            // conformer yet, so this is a no-op there. `closePane` is only
+            // one of three pane-removal paths (`removeSession`, `closeTab`
+            // are the other two) — see `tearDownNonTerminalContent(in:)`.
+            tearDownNonTerminalContent(in: [pane])
             let treeEmptied = session.tree.removePane(id: pane.id)
             if treeEmptied {
                 logger.info("closePane tree empty for session=\(session.id, privacy: .public); removing session")
@@ -489,6 +509,59 @@ public final class WindowRuntime {
             return .closed
         }
         return .unknownPane
+    }
+
+    /// Tears down every non-terminal pane's own content (#0303/#0314) for
+    /// each pane in `panes` — the one release step every pane-removal path
+    /// must run before (or as) the pane leaves its Session's tree, per
+    /// `docs/pane-view-lifecycle.md` §5.
+    ///
+    /// **Three call sites, not one.** An earlier round of this design
+    /// asserted `closePane` was "the single choke point every close path
+    /// funnels through" — review round 1 found that false in this tree:
+    /// `removeSession` (the sidebar's "close session" control) runs its
+    /// own `releaseTerminalView` sweep and never calls `closePane`, and
+    /// `closeTab` calls `SplitTree.removePane` directly when a pane's last
+    /// Tab closes. Both are production-reachable for a `.systemMetrics`
+    /// pane (every `PaneRuntime` holds at least one `TabRuntime`,
+    /// `PaneRuntime.init`'s precondition) — closing a Session or the one
+    /// tab in a metrics pane through either path left `tearDown()` never
+    /// called, so `lifecyclePhase` stayed `.active` and the 1 Hz sampling
+    /// `Task` kept running (sweeping ~800 pids, opening the SMC connection
+    /// every tick) until `[weak self]` happened to let ARC free the
+    /// conformer — exactly the ARC-timing dependence
+    /// `PaneContentLifecycle.tearDown()`'s contract forbids relying on.
+    /// All three call sites (`closePane`, `removeSession`, `closeTab`) now
+    /// funnel through this one helper instead of each re-deriving the
+    /// release step.
+    ///
+    /// Safe to call more than once for the same pane — `tearDown()` is
+    /// idempotent (`PaneLifecycleController`'s `.tornDown → .tearDown`
+    /// transition is a `.noOp`) — which matters here because `closeTab`
+    /// tears its pane down directly and then may call `removeSession`,
+    /// whose own sweep no longer finds that pane (already removed from the
+    /// tree) but would be harmless even if it did.
+    private func tearDownNonTerminalContent(in panes: some Sequence<PaneRuntime>) {
+        for pane in panes {
+            pane.content?.tearDown()
+        }
+    }
+
+    /// Tears down every non-terminal pane's content across every Session in
+    /// this window — the release step the *window* closing (not any single
+    /// pane or Session) must still run. `closePane`/`removeSession`/
+    /// `closeTab` all cover a pane or a Session going away individually;
+    /// none of them run when the window itself closes with Sessions still
+    /// in it (`RootWindowView.windowWillClose`) or when the whole app
+    /// quits (`BattyAppDelegate.applicationWillTerminate`, which reaches
+    /// every window via `AppStateStore.windows`). Found missing by #0313's
+    /// reviewer (that kind's own conformer orphans child processes onto
+    /// launchd through the same two gaps) and folded into this round's
+    /// shared wiring rather than fixed once per kind.
+    public func tearDownAllPaneContent() {
+        for session in sessions {
+            tearDownNonTerminalContent(in: session.tree.allPanes)
+        }
     }
 
     // MARK: - Pane focus
@@ -574,6 +647,12 @@ public final class WindowRuntime {
                     )
                 }
             }
+            // Non-terminal content (#0303/#0314): suspend periodic
+            // sampling/watching to zero cost while hidden, driven directly
+            // here rather than from a view's unmount for the same reason
+            // the terminal placement above is — `docs/pane-view-lifecycle.md`
+            // §5. `nil` for `.terminal` panes, so this is a no-op there.
+            pane.content?.setVisible(false)
             return
         }
     }
@@ -584,6 +663,16 @@ public final class WindowRuntime {
             guard let pane = session.tree.allPanes.first(where: { $0.id == id }) else { continue }
             guard pane.isHidden else { return }
             pane.isHidden = false
+            // Non-terminal content (#0303/#0314): resume and perform one
+            // immediate refresh, matching `docs/pane-view-lifecycle.md`
+            // §4's "showing resumes and refreshes" rule. Unlike the
+            // terminal path (which relies on `TerminalPlaceholderView`'s
+            // remount to re-report a placement, `docs/pane-view-lifecycle.md`
+            // §5's noted asymmetry), a non-terminal conformer has no
+            // remount to lean on since it isn't torn down and rebuilt by
+            // SwiftUI churn — so this call site drives it explicitly rather
+            // than leaving it to a view lifecycle event that may not fire.
+            pane.content?.setVisible(true)
             return
         }
     }

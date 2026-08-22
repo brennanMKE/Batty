@@ -49,12 +49,44 @@ public final class PaneRuntime: Identifiable {
     /// the CLI plumbing this issue ships.
     public let kind: PaneContentKind
 
+    /// Model-owned non-terminal content, addressable by the pane's owner
+    /// (`WindowRuntime.hidePane`/`showPane`/`closePane`) without depending
+    /// on SwiftUI view identity — the same relationship
+    /// `TabRuntime.terminal: TerminalViewState` has to its Tab
+    /// (`docs/pane-view-lifecycle.md` §5, "the conformer is model-owned").
+    /// `nil` for `.terminal` panes and for any non-terminal kind that
+    /// hasn't wired a concrete conformer yet — `.systemMetrics` (#0314) is
+    /// the only kind with one today. Set once at `init`, alongside `kind`,
+    /// and never mutated.
+    public let content: (any PaneContentLifecycle)?
+
+    /// Builds the concrete `PaneContentLifecycle` conformer for `kind`, or
+    /// `nil` for kinds with no conformer (yet). The default
+    /// `contentFactory` `PaneRuntime.init` uses.
+    ///
+    /// **Exhaustive, no `default:`** — adding a new `PaneContentKind` case
+    /// without adding a matching arm here is a compile error, not a
+    /// silently-resolved-to-`nil` gap. `#0304`/`#0305`/`#0313` land their
+    /// own arms as each conformer ships; today they still resolve to `nil`
+    /// explicitly, matched case-by-case, not through a catch-all that
+    /// would also swallow a real future omission.
+    public static func makeContent(for kind: PaneContentKind) -> (any PaneContentLifecycle)? {
+        switch kind {
+        case .terminal: return nil
+        case .gitStatus: return nil
+        case .processStatus: return nil
+        case .lmStudioDashboard: return nil
+        case .systemMetrics: return SystemMetricsPaneContent()
+        }
+    }
+
     public init(
         id: UUID = UUID(),
         tabs: [TabRuntime]? = nil,
         unseenBellCount: Int = 0,
         isHidden: Bool = false,
-        kind: PaneContentKind = .terminal
+        kind: PaneContentKind = .terminal,
+        contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
     ) {
         self.id = id
         let initial = tabs ?? [TabRuntime()]
@@ -63,6 +95,25 @@ public final class PaneRuntime: Identifiable {
         self.activeTabID = initial[0].id
         self.unseenBellCount = unseenBellCount
         self.isHidden = isHidden
+        // `contentFactory` is injectable specifically so test code that
+        // constructs a `.systemMetrics` (or future non-terminal-kind)
+        // `PaneRuntime` isn't forced to also start a real conformer's real
+        // background work (a live 1 Hz sampling `Task` making real host/
+        // IOKit calls, in this kind's case) as a side effect of
+        // construction — `docs/pane-view-lifecycle.md` §5 still requires
+        // `setUp` to run "at Pane creation," not from view-driven code; the
+        // factory changes *who builds the conformer*, not *when `setUp`
+        // runs*. Production call sites all use the default, unchanged
+        // behavior (`PaneRuntime.makeContent`).
+        let content = contentFactory(kind)
+        self.content = content
+        // The non-selected-Session visibility fact has no model-level
+        // function to source from yet (`docs/pane-view-lifecycle.md` §5's
+        // own open item) — `isHidden` is the only fact available at
+        // construction time, so a pane created in a background session
+        // starts `.active` rather than `.suspended`. Documented, not
+        // silently assumed away (see #0314's Gotchas).
+        content?.setUp(visible: !isHidden)
         self.kind = kind
     }
 

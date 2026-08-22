@@ -112,6 +112,17 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         // -initiated quit) — tells any attached CLI before the connection
         // just drops out from under it (#0272 item 4).
         xpcCoordinator.prepareForTermination()
+        // Non-terminal pane content (#0303/#0314): review round 1 found no
+        // path tore this down on quit either — a system-metrics pane's
+        // sampling Task, or #0313's own child-process-owning conformer,
+        // would otherwise be abandoned to process teardown rather than
+        // torn down deterministically. The OS reclaims the Task/process
+        // either way on exit, but relying on that instead of an explicit,
+        // observable teardown is exactly what
+        // `docs/pane-view-lifecycle.md` §5 argues against.
+        for window in AppStateStore.shared.windows {
+            window.tearDownAllPaneContent()
+        }
     }
 }
 

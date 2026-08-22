@@ -377,12 +377,29 @@ public struct PaneView: View {
             }
             .frame(height: Self.nonTerminalHeaderHeight)
 
-            PaneContentPlaceholderView(kind: pane.kind)
+            nonTerminalContent
         }
         .background(themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor))
         .contentShape(Rectangle())
         .onTapGesture {
             appStore?.focusPane(id: pane.id)
+        }
+    }
+
+    /// The non-terminal kind's real content, where one has landed
+    /// (`.systemMetrics`, #0314) — `PaneContentPlaceholderView` otherwise,
+    /// for kinds whose visual design isn't approved/implemented yet
+    /// (`.gitStatus`/`.processStatus`/`.lmStudioDashboard` at the time of
+    /// writing). `pane.content`'s type is cast, not switched on `pane.kind`
+    /// directly, so a kind whose conformer hasn't landed yet falls back to
+    /// the placeholder automatically rather than needing its own branch
+    /// added here first.
+    @ViewBuilder
+    private var nonTerminalContent: some View {
+        if let systemMetricsContent = pane.content as? SystemMetricsPaneContent {
+            SystemMetricsPaneView(content: systemMetricsContent)
+        } else {
+            PaneContentPlaceholderView(kind: pane.kind)
         }
     }
 
