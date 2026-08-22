@@ -92,7 +92,14 @@ struct RequestCloseTabTests {
         let session = store.sessions[0]
         let terminalPane = session.focusedPane
         let tabCountBefore = terminalPane.tabs.count
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus)!
+        // contentFactory: { _ in nil } -- this test is about the terminal
+        // sibling's tabs being unaffected by closing a non-terminal pane,
+        // not .processStatus's own behavior (review round 3,
+        // post-#0313-rebase).
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil })!
+        // Permanent regression check — see CommandPaletteViewActionTests's
+        // comment on the same pattern.
+        #expect(nonTerminalPane.content == nil)
         #expect(session.tree.focusedPaneID == nonTerminalPane.id)
 
         store.windows[0].closeFocusedTab()

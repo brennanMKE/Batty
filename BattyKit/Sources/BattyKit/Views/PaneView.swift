@@ -93,6 +93,11 @@ public struct PaneView: View {
             case .terminal:
                 terminalBody
             case .gitStatus, .processStatus, .lmStudioDashboard, .systemMetrics:
+                // #0314 merge: a single shared non-terminal arm for every
+                // kind — `nonTerminalContent` (below) resolves which real
+                // view (if any) to render via `pane.content`'s runtime
+                // type, so a new kind's conformer landing doesn't need a
+                // new case here, only a new branch in `nonTerminalContent`.
                 nonTerminalBody
             }
         }
@@ -366,6 +371,18 @@ public struct PaneView: View {
     ///   sibling's. `Self.nonTerminalHeaderHeight` pins it to the same 36pt.
     @ViewBuilder
     private var nonTerminalBody: some View {
+        nonTerminalShell {
+            nonTerminalContent
+        }
+    }
+
+    /// The pane-level chrome every non-terminal kind shares: the header
+    /// row (drag handle + hide/eye button, re-hosted here per #0334
+    /// since the tab bar that used to carry them is terminal-only now),
+    /// the opaque themed background, and click-to-focus. `content()` is
+    /// the one thing that varies per kind.
+    @ViewBuilder
+    private func nonTerminalShell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
@@ -377,7 +394,7 @@ public struct PaneView: View {
             }
             .frame(height: Self.nonTerminalHeaderHeight)
 
-            nonTerminalContent
+            content()
         }
         .background(themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor))
         .contentShape(Rectangle())
@@ -387,19 +404,23 @@ public struct PaneView: View {
     }
 
     /// The non-terminal kind's real content, where one has landed
-    /// (`.systemMetrics`, #0314; `.lmStudioDashboard`, #0313) —
-    /// `PaneContentPlaceholderView` otherwise, for kinds whose visual
-    /// design isn't approved/implemented yet (`.gitStatus`/`.processStatus`
-    /// at the time of writing). `pane.content`'s type is cast, not switched
-    /// on `pane.kind` directly, so a kind whose conformer hasn't landed yet
-    /// falls back to the placeholder automatically rather than needing its
-    /// own branch added here first.
+    /// (`.systemMetrics`, #0314; `.lmStudioDashboard`, #0313;
+    /// `.processStatus`, #0305) — `PaneContentPlaceholderView` otherwise,
+    /// for kinds whose visual design isn't approved/implemented yet
+    /// (`.gitStatus` at the time of writing). `pane.content`'s type is
+    /// cast, not switched on `pane.kind` directly, so a kind whose
+    /// conformer hasn't landed yet falls back to the placeholder
+    /// automatically rather than needing its own branch added here first.
     @ViewBuilder
     private var nonTerminalContent: some View {
         if let systemMetricsContent = pane.content as? SystemMetricsPaneContent {
             SystemMetricsPaneView(content: systemMetricsContent)
         } else if let lmStudioContent = pane.content as? LMStudioDashboardPaneContent {
             LMStudioDashboardView(content: lmStudioContent)
+        } else if let processStatusContent = pane.content as? ProcessStatusPaneContent {
+            // #0305: the real designed view, replacing #0315's
+            // provisional placeholder now that the design is approved.
+            ProcessStatusPaneView(content: processStatusContent, tree: tree)
         } else {
             PaneContentPlaceholderView(kind: pane.kind)
         }

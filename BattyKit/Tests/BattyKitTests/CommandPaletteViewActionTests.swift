@@ -128,7 +128,18 @@ struct CommandPaletteViewActionTests {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPane
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus)!
+        // contentFactory: { _ in nil } -- this test is about tab-dispatch
+        // guards on a non-terminal focused pane, not .processStatus's own
+        // behavior; without it the real ProcessStatusPaneContent's setUp()
+        // would start a real 1s sampling Task as a side effect of this
+        // unrelated test (review round 3, post-#0313-rebase).
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil })!
+        // Permanent regression check, not just a comment's promise: if a
+        // future edit drops the `contentFactory` argument above, this
+        // fails loudly instead of silently starting a real sampling Task
+        // (review round 3's own point: "the suite will still pass if you
+        // miss one").
+        #expect(nonTerminalPane.content == nil)
         let activeTabIDBefore = nonTerminalPane.activeTabID
 
         let view = CommandPaletteView(isPresented: .constant(true), store: store)

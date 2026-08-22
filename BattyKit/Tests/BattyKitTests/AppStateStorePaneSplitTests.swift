@@ -75,6 +75,72 @@ struct AppStateStorePaneSplitTests {
         #expect(newPane?.kind == .lmStudioDashboard)
     }
 
+    // MARK: - #0305's `.processStatus` kind: mode selection at creation
+
+    /// Mode B (the default): no `--pid` means the new pane follows the
+    /// split-source pane's active Tab (`docs/design/process-status-view.md`
+    /// §2's "previously-focused Pane's active Tab").
+    @Test func splitPaneWithProcessStatusKindDefaultsToFollowingTheSourcePanesActiveTab() {
+        let store = AppStateStore()
+        let source = store.sessions[0].focusedPane
+        let sourceTabID = source.activeTabID
+
+        let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus)
+
+        let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
+        #expect(newPane?.kind == .processStatus)
+        #expect((newPane?.content as? ProcessStatusPaneContent)?.target == .followingTab(sourceTabID))
+
+        // Deterministic cleanup, not left to ARC timing (docs/pane-view-
+        // lifecycle.md §5's own binding lesson) — this test needs the real
+        // conformer to assert `.target`, so it must tear it down explicitly
+        // rather than leak its 1s sampling Task for the rest of this test
+        // process (review round 3, post-#0313-rebase: #0313's own reviewer
+        // found exactly this leak class at three other call sites).
+        if let newPaneID { _ = store.closePane(id: newPaneID) }
+    }
+
+    /// Mode A: an explicit `--pid` pins the new pane instead.
+    @Test func splitPaneWithProcessStatusKindAndAnExplicitPidPinsToThatPid() {
+        let store = AppStateStore()
+        let source = store.sessions[0].focusedPane
+
+        let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus, processStatusPid: 4242)
+
+        let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
+        #expect((newPane?.content as? ProcessStatusPaneContent)?.target == .pinned(4242))
+
+        // Deterministic cleanup — see the comment above.
+        if let newPaneID { _ = store.closePane(id: newPaneID) }
+    }
+
+    /// The new pane's `ProcessStatusPaneContent` can look up tabs across
+    /// the whole tree by id (`docs/design/process-status-view.md` §2's
+    /// by-id lookup, not a strong `TabRuntime` reference) — verified here
+    /// via the mode-B target resolving a real sample once made visible.
+    @Test func processStatusPaneCanResolveTheSourceTabsForegroundPidThroughTheTree() {
+        let store = AppStateStore()
+        let source = store.sessions[0].focusedPane
+
+        let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus)
+        let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
+
+        // No AppKit surface is ever attached in this headless test, so
+        // `foregroundPid` is nil and the tick reports "no selection" —
+        // this asserts the tab *lookup* succeeded (not a tombstone), which
+        // is the thing this test is actually about.
+        let newProcessStatusContent = newPane?.content as? ProcessStatusPaneContent
+        #expect(newProcessStatusContent?.hasNoSelection == true)
+        guard case .running = newProcessStatusContent?.runState else {
+            Issue.record("expected .running (a successful, if empty, lookup), not a tombstone")
+            if let newPaneID { _ = store.closePane(id: newPaneID) }
+            return
+        }
+
+        // Deterministic cleanup — see the comment above.
+        if let newPaneID { _ = store.closePane(id: newPaneID) }
+    }
+
     // MARK: - Background-session mutation must not steal focus or switch
     // the active session (#0257, binding doubly for the first mutation)
 

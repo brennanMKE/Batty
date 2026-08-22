@@ -220,7 +220,13 @@ struct SplitTreeTargetedSplitTests {
         let target = tree.focusedPane
         target.activeTab!.terminal.configuration.workingDirectory = "/tmp/example"
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .processStatus)!
+        // contentFactory: { _ in nil } -- this test is about cwd-inheritance
+        // being skipped for a non-terminal kind, not .processStatus's own
+        // behavior (review round 3, post-#0313-rebase).
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil })!
+        // Permanent regression check — see CommandPaletteViewActionTests's
+        // comment on the same pattern.
+        #expect(newPane.content == nil)
 
         #expect(newPane.tabs[0].terminal.configuration.workingDirectory != "/tmp/example")
     }

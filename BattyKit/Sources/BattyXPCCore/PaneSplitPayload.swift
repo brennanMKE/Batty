@@ -35,12 +35,19 @@ public nonisolated struct PaneSplitRequest: Codable, Sendable, Equatable {
     public let direction: TopologySplitDirection
     public let command: String?
     public let kind: PaneContentKind?
+    /// `#0305`: a literal pid to pin a `.processStatus` pane to (mode A,
+    /// `docs/design/process-status-view.md` §2). `nil` with `kind ==
+    /// .processStatus` means mode B — follow the target pane's active
+    /// Tab's foreground process instead. Meaningless (and rejected
+    /// client-side, `PaneCommand.swift`) for any other kind.
+    public let processStatusPid: Int32?
 
-    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil) {
+    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil, processStatusPid: Int32? = nil) {
         self.paneID = paneID
         self.direction = direction
         self.command = command
         self.kind = kind
+        self.processStatusPid = processStatusPid
     }
 }
 

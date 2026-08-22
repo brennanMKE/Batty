@@ -81,6 +81,51 @@ struct PaneSplitPayloadTests {
         #expect(!raw.keys.contains("kind"))
     }
 
+    // MARK: - #0305's `processStatusPid` field
+
+    @Test func requestRoundTripsWithProcessStatusPid() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .processStatus, processStatusPid: 4242)
+        let data = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: data)
+        #expect(decoded == request)
+        #expect(decoded.processStatusPid == 4242)
+    }
+
+    @Test func requestDefaultProcessStatusPidIsNil() {
+        let request = PaneSplitRequest(paneID: nil, direction: .horizontal)
+        #expect(request.processStatusPid == nil)
+    }
+
+    /// A legacy client (any `batty` binary built before #0305) never sends
+    /// `processStatusPid` at all — its JSON, decoded here as a raw literal
+    /// rather than round-tripped through this version's own encoder, must
+    /// still decode successfully with `processStatusPid == nil` rather
+    /// than failing to decode.
+    @Test func requestDecodesFromLegacyJSONMissingTheProcessStatusPidKey() throws {
+        let legacyJSON = """
+        {"paneID":null,"direction":"horizontal"}
+        """
+        let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: Data(legacyJSON.utf8))
+        #expect(decoded.paneID == nil)
+        #expect(decoded.direction == .horizontal)
+        #expect(decoded.kind == nil)
+        #expect(decoded.processStatusPid == nil)
+    }
+
+    @Test func requestJSONOmitsProcessStatusPidKeyWhenNil() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal)
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(!raw.keys.contains("processStatusPid"))
+    }
+
+    @Test func requestJSONIncludesProcessStatusPidWhenPresent() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .processStatus, processStatusPid: 99)
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(raw.keys) == ["paneID", "direction", "kind", "processStatusPid"])
+    }
+
     @Test func requestRoundTripsOffActor() throws {
         let decoded = try roundTripOffActor(PaneSplitRequest(paneID: UUID(), direction: .horizontal))
         #expect(decoded.direction == .horizontal)

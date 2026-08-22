@@ -213,22 +213,52 @@ public final class SplitTree {
     /// is the only caller that can pass a non-terminal `kind` today (#0315's
     /// XPC `pane split --view <kind>`).
     /// `contentFactory` forwards to `PaneRuntime.init`'s own injection
-    /// point (#0313 review round 1) — defaults to the real
-    /// `PaneRuntime.makeContent` so every production caller (the XPC
-    /// `pane split --view <kind>` verb, `splitFocusedPane`/
-    /// `splitFullDimension`) is unaffected; test code that needs a
-    /// non-terminal-kind pane without triggering its real conformer's
-    /// `setUp()` (a real subprocess/HTTP poll for `.lmStudioDashboard`, a
-    /// real sampling `Task` for `.systemMetrics`) passes its own factory
-    /// instead.
+    /// point (#0313 review round 1) — `nil` (the default) means "resolve
+    /// automatically": `PaneRuntime.makeContent` for every kind except
+    /// `.processStatus`, which needs call-site context (`processStatusPid`,
+    /// the tree's own tab-lookup closure) `makeContent(for:)`'s `kind`-only
+    /// signature can't carry, so it's resolved here instead (#0305 merge).
+    /// A caller that explicitly supplies its own `contentFactory` — test
+    /// code that needs a non-terminal-kind pane without triggering its
+    /// real conformer's `setUp()` (a real subprocess/HTTP poll for
+    /// `.lmStudioDashboard`, a real sampling `Task` for `.systemMetrics`
+    /// or `.processStatus`) — always wins outright, regardless of kind:
+    /// `contentFactory: { _ in nil }` must suppress real construction even
+    /// for `.processStatus`, not be silently overridden by the automatic
+    /// per-instance resolution below. This is why the parameter is
+    /// `Optional` with a `nil` default rather than defaulting directly to
+    /// `PaneRuntime.makeContent` the way `PaneRuntime.init`'s own
+    /// parameter still does — a concrete closure default can't be
+    /// distinguished from an explicitly-passed one, so there would be no
+    /// way to tell "caller wants the automatic per-kind behavior" apart
+    /// from "caller wants exactly `PaneRuntime.makeContent`, verbatim."
     private static func makePane(
         inheritingFrom source: PaneRuntime?,
         command: String? = nil,
         kind: PaneContentKind = .terminal,
-        contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
+        processStatusPid: Int32? = nil,
+        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
+        tabLookup: @escaping (UUID) -> TabRuntime? = { _ in nil }
     ) -> PaneRuntime {
         guard kind == .terminal else {
-            return PaneRuntime(kind: kind, contentFactory: contentFactory)
+            let resolvedFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)?
+            if let contentFactory {
+                resolvedFactory = contentFactory
+            } else if kind == .processStatus {
+                // #0305 mode selection: an explicit `--pid` pins mode A;
+                // otherwise mode B follows the split-source pane's active
+                // Tab (`docs/design/process-status-view.md` §2 — "the
+                // previously-focused Pane's active Tab"). No source pane
+                // (a freestanding creation with no sibling to inherit
+                // from) falls through to the "No process selected" empty
+                // state.
+                let target: ProcessStatusPaneContent.Target? = processStatusPid.map { .pinned($0) }
+                    ?? source.map { .followingTab($0.activeTabID) }
+                resolvedFactory = { _ in ProcessStatusPaneContent(target: target, tabLookup: tabLookup) }
+            } else {
+                resolvedFactory = PaneRuntime.makeContent
+            }
+            return PaneRuntime(kind: kind, contentFactory: resolvedFactory)
         }
         guard let sourceTab = source?.activeTab else {
             return command == nil ? PaneRuntime() : PaneRuntime(tabs: [TabRuntime(command: command)])
@@ -267,10 +297,20 @@ public final class SplitTree {
         ratio: Double = 0.5,
         command: String? = nil,
         kind: PaneContentKind = .terminal,
-        contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
+        processStatusPid: Int32? = nil,
+        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
     ) -> PaneRuntime? {
         guard let targetPane = root.findPane(id: targetPaneID) else { return nil }
-        let newPane = Self.makePane(inheritingFrom: targetPane, command: command, kind: kind, contentFactory: contentFactory)
+        let newPane = Self.makePane(
+            inheritingFrom: targetPane,
+            command: command,
+            kind: kind,
+            processStatusPid: processStatusPid,
+            contentFactory: contentFactory,
+            tabLookup: { [weak self] tabID in
+                self?.allPanes.flatMap(\.tabs).first(where: { $0.id == tabID })
+            }
+        )
         if let sessionID {
             newPane.attachToSession(sessionID)
         }

@@ -86,6 +86,13 @@ struct PaneSplitCommand: ParsableCommand {
     @Option(name: .long, help: "Pane content kind for the new pane. Defaults to terminal. One of: \(PaneContentKind.allCases.map(\.rawValue).joined(separator: ", ")).")
     var view: String?
 
+    /// `#0305`: pins a `.processStatus` pane to a literal pid (mode A,
+    /// `docs/design/process-status-view.md` §2) instead of the default
+    /// mode B (follow the split-source pane's active Tab's foreground
+    /// process). Rejected client-side for any other `--view` kind.
+    @Option(name: .long, help: "Pin a process-status pane to this pid instead of following a terminal's foreground process. Only valid with --view process-status.")
+    var pid: Int32?
+
     nonisolated func run() throws {
         let targetPaneID = try resolveTargetPaneID(flag: pane)
         let wireDirection: TopologySplitDirection = direction == .vertical ? .vertical : .horizontal
@@ -98,6 +105,18 @@ struct PaneSplitCommand: ParsableCommand {
             fputs("batty: --command is not valid with --view \(resolvedKind.rawValue) (non-terminal panes have no shell)\n", stderr)
             throw ExitCode.failure
         }
+        if pid != nil, resolvedKind != .processStatus {
+            fputs("batty: --pid is only valid with --view process-status\n", stderr)
+            throw ExitCode.failure
+        }
+        // Review round 1 ("keep it" caveat): a non-positive pid is never
+        // a real process id and previously surfaced as a confusing
+        // permission-denied state at the app layer instead of a CLI
+        // parse error — reject it here, before any XPC round trip.
+        if let pid, pid <= 0 {
+            fputs("batty: --pid must be a positive integer, got \(pid)\n", stderr)
+            throw ExitCode.failure
+        }
 
         switch AppConnectDance.resolveEndpoint() {
         case .failure(.brokerUnreachable):
@@ -107,7 +126,7 @@ struct PaneSplitCommand: ParsableCommand {
             fputs("batty: app unavailable\n", stderr)
             throw ExitCode(XPCExitCode.appUnavailable)
         case .success(let endpoint):
-            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, timeout: 3.0) {
+            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, processStatusPid: pid, timeout: 3.0) {
             case .success(let reply):
                 print(reply.paneID)
             case .unreachable:
