@@ -19,6 +19,14 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 | Split Vertically | `Cmd-Shift-D` |
 | Split Full-Height Column | `Cmd-Option-D` |
 | Split Full-Width Row | `Cmd-Shift-Option-D` |
+| Split Horizontally (Git Status) | `Cmd-G` |
+| Split Vertically (Git Status) | `Cmd-Shift-G` |
+| Split Horizontally (Process Status) | `Cmd-J` |
+| Split Vertically (Process Status) | `Cmd-Shift-J` |
+| Split Horizontally (LM Studio Dashboard) | `Cmd-Y` |
+| Split Vertically (LM Studio Dashboard) | `Cmd-Shift-Y` |
+| Split Horizontally (System Metrics) | `Cmd-E` |
+| Split Vertically (System Metrics) | `Cmd-Shift-E` |
 | Focus Pane Left | `Cmd-Option-←` |
 | Focus Pane Right | `Cmd-Option-→` |
 | Focus Pane Above | `Cmd-Option-↑` |
@@ -27,6 +35,10 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 | Move Split Divider Right | `Cmd-Ctrl-→` |
 | Move Split Divider Up | `Cmd-Ctrl-↑` |
 | Move Split Divider Down | `Cmd-Ctrl-↓` |
+
+In the Pane menu, "Split Horizontally" and "Split Vertically" are
+submenus: Terminal first (same as the plain chord above), then Git
+Status, Process Status, LM Studio Dashboard, and System Metrics.
 
 ### Tabs
 

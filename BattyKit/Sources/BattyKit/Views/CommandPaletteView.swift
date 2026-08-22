@@ -237,6 +237,25 @@ struct CommandPaletteView: View {
             if let tree = window.selectedSession?.tree {
                 tree.splitFullDimension(direction: .vertical, inheritingFrom: tree.focusedPane)
             }
+        // #0331: same as the menu and NSEvent-monitor cases — no
+        // terminal-vs-non-terminal gate needed, splitting works the same
+        // regardless of the focused Pane's own kind.
+        case .splitHorizontalGitStatus:
+            window.createPane(kind: .gitStatus, direction: .horizontal)
+        case .splitVerticalGitStatus:
+            window.createPane(kind: .gitStatus, direction: .vertical)
+        case .splitHorizontalProcessStatus:
+            window.createPane(kind: .processStatus, direction: .horizontal)
+        case .splitVerticalProcessStatus:
+            window.createPane(kind: .processStatus, direction: .vertical)
+        case .splitHorizontalLMStudioDashboard:
+            window.createPane(kind: .lmStudioDashboard, direction: .horizontal)
+        case .splitVerticalLMStudioDashboard:
+            window.createPane(kind: .lmStudioDashboard, direction: .vertical)
+        case .splitHorizontalSystemMetrics:
+            window.createPane(kind: .systemMetrics, direction: .horizontal)
+        case .splitVerticalSystemMetrics:
+            window.createPane(kind: .systemMetrics, direction: .vertical)
         case .focusPaneLeft:
             window.selectedSession?.focusPane(adjacent: .left)
         case .focusPaneRight:

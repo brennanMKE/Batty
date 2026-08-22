@@ -20,6 +20,21 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
     case splitVertical
     case splitFullHeightColumn
     case splitFullWidthRow
+    // #0331: creates a typed Pane split off the focused Pane — the menu/
+    // Command Palette/shortcut counterpart to #0315's CLI
+    // `batty pane split --view <kind>`. Eight cases (one pair per kind,
+    // matching splitHorizontal/splitVertical's own plain-Cmd/Cmd-Shift
+    // pairing) rather than a single "pick a kind" action, so each is
+    // individually rebindable and shows up in the Command Palette and
+    // Settings ▸ Shortcuts on its own, same as every other catalog entry.
+    case splitHorizontalGitStatus
+    case splitVerticalGitStatus
+    case splitHorizontalProcessStatus
+    case splitVerticalProcessStatus
+    case splitHorizontalLMStudioDashboard
+    case splitVerticalLMStudioDashboard
+    case splitHorizontalSystemMetrics
+    case splitVerticalSystemMetrics
     case focusPaneLeft
     case focusPaneRight
     case focusPaneUp
@@ -50,6 +65,14 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .splitVertical:   return String(localized: "Split Vertically")
         case .splitFullHeightColumn: return String(localized: "Split Full-Height Column")
         case .splitFullWidthRow:     return String(localized: "Split Full-Width Row")
+        case .splitHorizontalGitStatus: return String(localized: "Split Horizontally (Git Status)")
+        case .splitVerticalGitStatus:   return String(localized: "Split Vertically (Git Status)")
+        case .splitHorizontalProcessStatus: return String(localized: "Split Horizontally (Process Status)")
+        case .splitVerticalProcessStatus:   return String(localized: "Split Vertically (Process Status)")
+        case .splitHorizontalLMStudioDashboard: return String(localized: "Split Horizontally (LM Studio Dashboard)")
+        case .splitVerticalLMStudioDashboard:   return String(localized: "Split Vertically (LM Studio Dashboard)")
+        case .splitHorizontalSystemMetrics: return String(localized: "Split Horizontally (System Metrics)")
+        case .splitVerticalSystemMetrics:   return String(localized: "Split Vertically (System Metrics)")
         case .focusPaneLeft:   return String(localized: "Focus Pane Left")
         case .focusPaneRight:  return String(localized: "Focus Pane Right")
         case .focusPaneUp:     return String(localized: "Focus Pane Above")
@@ -88,6 +111,29 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
             return ShortcutBinding(key: "d", modifiers: EventModifiers([.command, .option]).rawValue)
         case .splitFullWidthRow:
             return ShortcutBinding(key: "d", modifiers: EventModifiers([.command, .shift, .option]).rawValue)
+        // #0331: `g`/`j`/`y`/`e` — chosen free of every existing catalog
+        // entry, every fixed/clipboard combo, and every macOS-reserved
+        // combo in `docs/shortcuts.md` (verified against
+        // `ShortcutAction.allCases` and `ShortcutsStore.reservedShortcuts`
+        // by hand before picking these). Mnemonic where one was free
+        // (`g` for Git); arbitrary but collision-free otherwise, per the
+        // user's own "pick reasonable letters, adjust later" directive.
+        case .splitHorizontalGitStatus:
+            return ShortcutBinding(key: "g", modifiers: EventModifiers([.command]).rawValue)
+        case .splitVerticalGitStatus:
+            return ShortcutBinding(key: "g", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .splitHorizontalProcessStatus:
+            return ShortcutBinding(key: "j", modifiers: EventModifiers([.command]).rawValue)
+        case .splitVerticalProcessStatus:
+            return ShortcutBinding(key: "j", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .splitHorizontalLMStudioDashboard:
+            return ShortcutBinding(key: "y", modifiers: EventModifiers([.command]).rawValue)
+        case .splitVerticalLMStudioDashboard:
+            return ShortcutBinding(key: "y", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .splitHorizontalSystemMetrics:
+            return ShortcutBinding(key: "e", modifiers: EventModifiers([.command]).rawValue)
+        case .splitVerticalSystemMetrics:
+            return ShortcutBinding(key: "e", modifiers: EventModifiers([.command, .shift]).rawValue)
         case .focusPaneLeft:
             return ShortcutBinding(key: ShortcutBinding.SpecialKey.leftArrow.rawValue,
                                    modifiers: EventModifiers([.command, .option]).rawValue)

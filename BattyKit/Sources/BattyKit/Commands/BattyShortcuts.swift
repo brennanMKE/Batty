@@ -146,6 +146,27 @@ public enum BattyShortcuts {
             if let tree = window.selectedSession?.tree {
                 tree.splitFullDimension(direction: .vertical, inheritingFrom: tree.focusedPane)
             }
+        // #0331: creates a typed Pane split off the focused Pane. No
+        // terminal-vs-non-terminal gate needed here (unlike the Tab-scoped
+        // cases below) — splitting works the same regardless of what kind
+        // the focused Pane already is, exactly like the existing
+        // `splitHorizontal`/`splitVertical` cases above.
+        case .splitHorizontalGitStatus:
+            window.createPane(kind: .gitStatus, direction: .horizontal)
+        case .splitVerticalGitStatus:
+            window.createPane(kind: .gitStatus, direction: .vertical)
+        case .splitHorizontalProcessStatus:
+            window.createPane(kind: .processStatus, direction: .horizontal)
+        case .splitVerticalProcessStatus:
+            window.createPane(kind: .processStatus, direction: .vertical)
+        case .splitHorizontalLMStudioDashboard:
+            window.createPane(kind: .lmStudioDashboard, direction: .horizontal)
+        case .splitVerticalLMStudioDashboard:
+            window.createPane(kind: .lmStudioDashboard, direction: .vertical)
+        case .splitHorizontalSystemMetrics:
+            window.createPane(kind: .systemMetrics, direction: .horizontal)
+        case .splitVerticalSystemMetrics:
+            window.createPane(kind: .systemMetrics, direction: .vertical)
         case .focusPaneLeft:
             window.selectedSession?.focusPane(adjacent: .left)
         case .focusPaneRight:

@@ -208,22 +208,115 @@ public struct BattyCommands: Commands {
         }
 
         CommandMenu("Pane") {
-            Button {
-                guard let tree = keyWindow?.selectedSession?.tree else { return }
-                tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
+            // #0331: "Split Horizontally"/"Split Vertically" became
+            // submenus, each listing Terminal first (identical to today's
+            // plain action — same call, same result) followed by the four
+            // typed-Pane kinds, the menu counterpart to #0315's CLI
+            // `batty pane split --view <kind>`. This was originally
+            // attempted as an AppKit `NSMenuItem.isAlternate` pair —
+            // Option-hover swapping "Split Horizontally" for a kind
+            // submenu, leaving the plain click unchanged — per the user's
+            // initial request. That is not implementable cleanly: the
+            // alternate mechanism requires the alternate item to share the
+            // primary's key equivalent plus exactly one more modifier
+            // (Option), which for `Cmd-D`/`Cmd-Shift-D` forces
+            // `Cmd-Option-D`/`Cmd-Shift-Option-D` — already the live
+            // bindings for "Split Full-Height Column"/"Split Full-Width
+            // Row" *in this same menu* (see below). Two rows visibly
+            // claiming the same chord in one open menu is exactly the
+            // collision the user asked to avoid, so this uses the
+            // always-visible-submenu fallback the user explicitly
+            // pre-approved for this case instead. Cost: a single click on
+            // "Split Horizontally"/"Split Vertically" no longer performs
+            // the terminal split directly — it opens the submenu, and
+            // "Terminal" is the first item. `Cmd-D`/`Cmd-Shift-D` from the
+            // keyboard are unaffected either way: `BattyShortcuts`' NSEvent
+            // monitor dispatches those chords directly, independent of
+            // this menu's structure.
+            Menu {
+                Button {
+                    guard let tree = keyWindow?.selectedSession?.tree else { return }
+                    tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
+                } label: {
+                    Label(PaneContentKind.terminal.displayName, systemImage: "rectangle.split.2x1")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontal))
+
+                Divider()
+
+                Button {
+                    keyWindow?.createPane(kind: .gitStatus, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.gitStatus.displayName, systemImage: "arrow.triangle.branch")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalGitStatus))
+
+                Button {
+                    keyWindow?.createPane(kind: .processStatus, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.processStatus.displayName, systemImage: "list.bullet.rectangle")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalProcessStatus))
+
+                Button {
+                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalLMStudioDashboard))
+
+                Button {
+                    keyWindow?.createPane(kind: .systemMetrics, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalSystemMetrics))
             } label: {
                 Label("Split Horizontally", systemImage: "rectangle.split.2x1")
             }
-            .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontal))
             .disabled(keyWindow?.selectedSession == nil)
 
-            Button {
-                guard let tree = keyWindow?.selectedSession?.tree else { return }
-                tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
+            Menu {
+                Button {
+                    guard let tree = keyWindow?.selectedSession?.tree else { return }
+                    tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
+                } label: {
+                    Label(PaneContentKind.terminal.displayName, systemImage: "rectangle.split.1x2")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVertical))
+
+                Divider()
+
+                Button {
+                    keyWindow?.createPane(kind: .gitStatus, direction: .vertical)
+                } label: {
+                    Label(PaneContentKind.gitStatus.displayName, systemImage: "arrow.triangle.branch")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalGitStatus))
+
+                Button {
+                    keyWindow?.createPane(kind: .processStatus, direction: .vertical)
+                } label: {
+                    Label(PaneContentKind.processStatus.displayName, systemImage: "list.bullet.rectangle")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalProcessStatus))
+
+                Button {
+                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .vertical)
+                } label: {
+                    Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalLMStudioDashboard))
+
+                Button {
+                    keyWindow?.createPane(kind: .systemMetrics, direction: .vertical)
+                } label: {
+                    Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalSystemMetrics))
             } label: {
                 Label("Split Vertically", systemImage: "rectangle.split.1x2")
             }
-            .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVertical))
             .disabled(keyWindow?.selectedSession == nil)
 
             Button {
@@ -243,6 +336,8 @@ public struct BattyCommands: Commands {
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitFullWidthRow))
             .disabled(keyWindow?.selectedSession == nil)
+
+            Divider()
 
             Button {
                 NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)

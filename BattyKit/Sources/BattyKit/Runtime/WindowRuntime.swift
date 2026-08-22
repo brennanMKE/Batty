@@ -437,6 +437,53 @@ public final class WindowRuntime {
         pendingCloseRequest = nil
     }
 
+    // MARK: - Pane create (#0331)
+
+    /// Creates a new Pane of `kind`, split off the currently focused Pane in
+    /// the selected Session along `direction` — the menu/Command
+    /// Palette/shortcut counterpart to #0315's CLI
+    /// `batty pane split --view <kind>`. `direction` defaults to
+    /// `.horizontal`, matching the CLI's own default
+    /// (`PaneSplitCommand.direction`'s "Defaults to horizontal"); callers
+    /// that offer both directions (#0331's `splitHorizontal<Kind>` /
+    /// `splitVertical<Kind>` action pairs) pass it explicitly, the same
+    /// way `splitFocusedPane`/`splitFullDimension` already take an explicit
+    /// `direction` for the terminal-only split actions.
+    ///
+    /// Routes through `SplitTree.splitPane(id:direction:kind:...)` directly
+    /// — the same entry point `AppStateStore.splitPane(id:...)` forwards to
+    /// for the XPC path (#0303: a menu-created typed pane obeys the same
+    /// create machinery as a CLI-created one). Deliberately bypasses
+    /// `AppStateStore.splitPane`'s cross-window search and
+    /// `AppEventWatcher` notification, matching how the existing GUI split
+    /// actions (`splitFocusedPane`/`splitFullDimension`, wired to the
+    /// existing Pane menu items and their shortcuts) already behave: a
+    /// GUI-driven split has the session in hand and does not emit a watch
+    /// event today, typed or not.
+    ///
+    /// Returns `nil` when there is no selected Session (mirrors the
+    /// existing split items' `.disabled(keyWindow?.selectedSession == nil)`
+    /// gating) or when the focused Pane has since left the tree — both
+    /// defensive, not expected in practice since `focusedPaneID` is always
+    /// a Pane the tree itself vouches for.
+    ///
+    /// `contentFactory` forwards unchanged to `SplitTree.splitPane`'s own
+    /// injection point — `nil` (production default) means "resolve the
+    /// real conformer for `kind`," which is exactly what a menu/palette
+    /// action must do (unlike #0315/#0334's tests, which pass
+    /// `{ _ in nil }` to avoid triggering a kind's real `setUp()` — a real
+    /// `FSEventStream`, subprocess, or sampling `Task` — as a side effect
+    /// of testing unrelated dispatch/gating behavior).
+    @discardableResult
+    public func createPane(
+        kind: PaneContentKind,
+        direction: SplitDirection = .horizontal,
+        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
+    ) -> PaneRuntime? {
+        guard let tree = selectedSession?.tree else { return nil }
+        return tree.splitPane(id: tree.focusedPaneID, direction: direction, kind: kind, contentFactory: contentFactory)
+    }
+
     // MARK: - Pane close (#0283)
 
     /// Ends every Tab's Terminal Session in `paneID` and removes the pane's
