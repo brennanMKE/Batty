@@ -432,10 +432,16 @@ public final class AppStateStore {
     /// tree-focus decision (moves only when `paneID` was already that
     /// tree's focused pane).
     @discardableResult
-    public func splitPane(id paneID: UUID, direction: SplitDirection, command: String? = nil, kind: PaneContentKind = .terminal) -> UUID? {
+    public func splitPane(
+        id paneID: UUID,
+        direction: SplitDirection,
+        command: String? = nil,
+        kind: PaneContentKind = .terminal,
+        contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
+    ) -> UUID? {
         for window in windows {
             if let session = window.sessions.first(where: { $0.tree.root.contains(paneID: paneID) }) {
-                if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind) {
+                if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind, contentFactory: contentFactory) {
                     let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: newPane.id)
                     AppEventWatcher.shared.send(eventType: event.type, payload: event)
 

@@ -212,13 +212,23 @@ public final class SplitTree {
     /// callers (`splitFocusedPane`/`splitFullDimension`); `splitPane(id:...)`
     /// is the only caller that can pass a non-terminal `kind` today (#0315's
     /// XPC `pane split --view <kind>`).
+    /// `contentFactory` forwards to `PaneRuntime.init`'s own injection
+    /// point (#0313 review round 1) — defaults to the real
+    /// `PaneRuntime.makeContent` so every production caller (the XPC
+    /// `pane split --view <kind>` verb, `splitFocusedPane`/
+    /// `splitFullDimension`) is unaffected; test code that needs a
+    /// non-terminal-kind pane without triggering its real conformer's
+    /// `setUp()` (a real subprocess/HTTP poll for `.lmStudioDashboard`, a
+    /// real sampling `Task` for `.systemMetrics`) passes its own factory
+    /// instead.
     private static func makePane(
         inheritingFrom source: PaneRuntime?,
         command: String? = nil,
-        kind: PaneContentKind = .terminal
+        kind: PaneContentKind = .terminal,
+        contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
     ) -> PaneRuntime {
         guard kind == .terminal else {
-            return PaneRuntime(kind: kind)
+            return PaneRuntime(kind: kind, contentFactory: contentFactory)
         }
         guard let sourceTab = source?.activeTab else {
             return command == nil ? PaneRuntime() : PaneRuntime(tabs: [TabRuntime(command: command)])
@@ -256,10 +266,11 @@ public final class SplitTree {
         direction: SplitDirection,
         ratio: Double = 0.5,
         command: String? = nil,
-        kind: PaneContentKind = .terminal
+        kind: PaneContentKind = .terminal,
+        contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
     ) -> PaneRuntime? {
         guard let targetPane = root.findPane(id: targetPaneID) else { return nil }
-        let newPane = Self.makePane(inheritingFrom: targetPane, command: command, kind: kind)
+        let newPane = Self.makePane(inheritingFrom: targetPane, command: command, kind: kind, contentFactory: contentFactory)
         if let sessionID {
             newPane.attachToSession(sessionID)
         }

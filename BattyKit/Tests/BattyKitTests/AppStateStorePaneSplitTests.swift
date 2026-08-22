@@ -63,7 +63,13 @@ struct AppStateStorePaneSplitTests {
         let store = AppStateStore()
         let target = store.sessions[0].focusedPane
 
-        let newPaneID = store.splitPane(id: target.id, direction: .horizontal, kind: .lmStudioDashboard)
+        // contentFactory: { _ in nil } — this test is only about the kind
+        // field surviving the split, not about content behavior. Without
+        // it, `.lmStudioDashboard`'s real conformer would `setUp()` a real
+        // subprocess/HTTP poll as a side effect of this unrelated test
+        // (review round 1, post-#0314-rebase: `splitPane`'s default
+        // factory now constructs the real `LMStudioDashboardPaneContent`).
+        let newPaneID = store.splitPane(id: target.id, direction: .horizontal, kind: .lmStudioDashboard, contentFactory: { _ in nil })
 
         let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
         #expect(newPane?.kind == .lmStudioDashboard)

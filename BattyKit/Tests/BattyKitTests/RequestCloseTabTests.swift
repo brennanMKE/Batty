@@ -114,7 +114,12 @@ struct RequestCloseTabTests {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPane
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .lmStudioDashboard)!
+        // contentFactory: { _ in nil } — this test only needs a
+        // non-terminal *kind* to check the menu-item title, and never
+        // closes the pane afterward; without the override,
+        // `.lmStudioDashboard`'s real conformer would `setUp()` a real
+        // subprocess/HTTP poll that outlives this test.
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .lmStudioDashboard, contentFactory: { _ in nil })!
         #expect(session.tree.focusedPaneID == nonTerminalPane.id)
 
         #expect(store.windows[0].closeFocusedItemTitle == "Close Pane")

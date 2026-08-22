@@ -387,17 +387,19 @@ public struct PaneView: View {
     }
 
     /// The non-terminal kind's real content, where one has landed
-    /// (`.systemMetrics`, #0314) — `PaneContentPlaceholderView` otherwise,
-    /// for kinds whose visual design isn't approved/implemented yet
-    /// (`.gitStatus`/`.processStatus`/`.lmStudioDashboard` at the time of
-    /// writing). `pane.content`'s type is cast, not switched on `pane.kind`
-    /// directly, so a kind whose conformer hasn't landed yet falls back to
-    /// the placeholder automatically rather than needing its own branch
-    /// added here first.
+    /// (`.systemMetrics`, #0314; `.lmStudioDashboard`, #0313) —
+    /// `PaneContentPlaceholderView` otherwise, for kinds whose visual
+    /// design isn't approved/implemented yet (`.gitStatus`/`.processStatus`
+    /// at the time of writing). `pane.content`'s type is cast, not switched
+    /// on `pane.kind` directly, so a kind whose conformer hasn't landed yet
+    /// falls back to the placeholder automatically rather than needing its
+    /// own branch added here first.
     @ViewBuilder
     private var nonTerminalContent: some View {
         if let systemMetricsContent = pane.content as? SystemMetricsPaneContent {
             SystemMetricsPaneView(content: systemMetricsContent)
+        } else if let lmStudioContent = pane.content as? LMStudioDashboardPaneContent {
+            LMStudioDashboardView(content: lmStudioContent)
         } else {
             PaneContentPlaceholderView(kind: pane.kind)
         }

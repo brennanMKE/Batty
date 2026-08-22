@@ -88,7 +88,11 @@ struct PaneContentKindTests {
     @Test func focusedTerminalPaneIsNilWhenTheFocusedPaneIsNonTerminal() {
         let session = SessionRuntime()
         let terminalPane = session.focusedPane
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .lmStudioDashboard)!
+        // contentFactory: { _ in nil } — this test only needs a
+        // non-terminal *kind*, not a live conformer; without it,
+        // `.lmStudioDashboard`'s real conformer would `setUp()` a real
+        // subprocess/HTTP poll as a side effect of this unrelated test.
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .lmStudioDashboard, contentFactory: { _ in nil })!
         #expect(session.tree.focusedPaneID == nonTerminalPane.id, "test setup: splitting the focused pane must move focus to it")
 
         #expect(session.focusedTerminalPane == nil)

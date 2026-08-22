@@ -75,7 +75,7 @@ public final class PaneRuntime: Identifiable {
         case .terminal: return nil
         case .gitStatus: return nil
         case .processStatus: return nil
-        case .lmStudioDashboard: return nil
+        case .lmStudioDashboard: return LMStudioDashboardPaneContent()
         case .systemMetrics: return SystemMetricsPaneContent()
         }
     }
