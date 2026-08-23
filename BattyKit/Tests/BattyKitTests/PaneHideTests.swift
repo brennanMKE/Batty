@@ -441,4 +441,95 @@ struct PaneHideTests {
         #expect(nonTerminalPane.isHidden == true)
         #expect(hostStore.placement(forTabID: phantomTabID) == nil)
     }
+
+    // MARK: 11. allPanes vs. visiblePanes pairing (#0362 test gap)
+
+    /// #0362: the Session-level Pane count disagreed with what was visible
+    /// on screen. `visiblePanesExcludesHiddenPanes` above only ever checks
+    /// `visiblePanes.count`; pairing it with `allPanes.count` in the same
+    /// assertions is the shape that would pin a "count says N, screen shows
+    /// fewer" bug. Hiding must never change the total -- only the visible
+    /// subset shrinks and later restores.
+    @Test func hidingAndUnhidingPaneKeepsAllPanesCountConstant() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        let paneB = tree.splitFocusedPane(direction: .horizontal)
+
+        #expect(tree.allPanes.count == 2)
+        #expect(tree.visiblePanes.count == 2)
+
+        paneB.isHidden = true
+        #expect(tree.allPanes.count == 2)
+        #expect(tree.visiblePanes.count == 1)
+        #expect(tree.visiblePanes.first?.id == paneA.id)
+
+        paneB.isHidden = false
+        #expect(tree.allPanes.count == 2)
+        #expect(tree.visiblePanes.count == 2)
+    }
+
+    // MARK: 12. Closing a Pane decrements allPanes.count (#0362 test gap)
+
+    /// #0362 Notes hypothesis 4 ("a close path removes the view but leaves
+    /// the node in the Split tree") was ruled out by inspection of
+    /// `SplitTree.removePane`/`SplitTreeNode.removingPane`; this pins that
+    /// finding as a regression test. No stale node should survive a close,
+    /// and `allPanes.count` must drop with it.
+    @Test func closingPaneDecrementsAllPanesCountWithNoStaleNode() {
+        let tree = SplitTree()
+        let paneA = tree.focusedPane
+        let paneB = tree.splitFocusedPane(direction: .horizontal)
+
+        #expect(tree.allPanes.count == 2)
+        #expect(tree.visiblePanes.count == 2)
+
+        let becameEmpty = tree.removePane(id: paneB.id)
+
+        #expect(becameEmpty == false)
+        #expect(tree.allPanes.count == 1)
+        #expect(tree.visiblePanes.count == 1)
+        #expect(tree.allPanes.first?.id == paneA.id)
+        #expect(tree.root.contains(paneID: paneB.id) == false)
+    }
+
+    // MARK: 13. Non-terminal Pane is counted in allPanes (#0362 test gap)
+
+    /// Pins the invariant #0362 turns on: `SplitTree`'s pane counts are
+    /// deliberately kind-blind. `allPanes`/`visiblePanes` count every Pane
+    /// regardless of `kind` -- #0315 kind-gated only *tab*-level counts (see
+    /// the "Ruled out" reasoning in `issues/0362.md`). This fixture builds
+    /// one terminal Pane plus one `.gitStatus` Pane and asserts 2, not the
+    /// issue's reported "3" -- that figure describes the user's Session, not
+    /// this test. Only the tree primitives are pinned here; whether the
+    /// display sites that read them (`SessionSidebarView`'s listing, `batty
+    /// list`'s `panes=`) should also stay kind-blind is #0362's open
+    /// question.
+    @Test func nonTerminalPaneIsCountedInAllPanes() {
+        let store = AppStateStore()
+        let session = store.sessions.first!
+        let terminalPane = session.focusedPane
+
+        // `contentFactory: { _ in nil }` avoids constructing a real
+        // `GitStatusPaneContent` (and its real `FSEventStream`) as a side
+        // effect of this test's setup -- see test 10 above for why that
+        // matters. The pane's counted-ness is what's under test, not its
+        // content lifecycle.
+        let nonTerminalPane = session.tree.splitPane(
+            id: terminalPane.id,
+            direction: .horizontal,
+            kind: .gitStatus,
+            contentFactory: { _ in nil }
+        )!
+
+        // Permanent regression check, not just a comment's promise: if a
+        // future edit drops the `contentFactory` argument above, this
+        // fails loudly instead of silently starting a real FSEventStream
+        // (test 10's own precedent, from #0315 review round 3: "the suite
+        // will still pass if you miss one").
+        #expect(nonTerminalPane.content == nil)
+        #expect(nonTerminalPane.kind == .gitStatus)
+        #expect(session.tree.allPanes.count == 2)
+        #expect(session.tree.visiblePanes.count == 2)
+        #expect(session.tree.allPanes.contains { $0.id == nonTerminalPane.id })
+    }
 }
