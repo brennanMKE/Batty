@@ -65,6 +65,27 @@ public enum ThemePreference {
         activeTheme(isDark: NSApp?.effectiveAppearance.isDark ?? true)
     }
 
+    /// Resolves a Session's *effective* Theme: `localThemeName` if it names
+    /// a catalog entry, else the global Theme for `isDark` — the same
+    /// fallback chain `AppStateStore.applyActiveSessionTheme(for:)` applies
+    /// when re-theming surfaces. Used by `SessionThemeSelectorView` (`#0363`)
+    /// to mark which card is "in effect", which is deliberately not the
+    /// same question as "does this Session have a local override" — a
+    /// Session following the global Theme (the default on every launch)
+    /// still has an effective Theme, and it must be markable too.
+    public static func effectiveTheme(localThemeName: String?, isDark: Bool) -> GhosttyThemeDefinition? {
+        effectiveTheme(localThemeName: localThemeName, isDark: isDark, defaults: .standard)
+    }
+
+    /// Testable overload — see `activeTheme(isDark:defaults:)`.
+    static func effectiveTheme(localThemeName: String?, isDark: Bool, defaults: UserDefaults) -> GhosttyThemeDefinition? {
+        if let localThemeName, !localThemeName.isEmpty,
+           let theme = BattyThemeCatalog.theme(named: localThemeName) {
+            return theme
+        }
+        return activeTheme(isDark: isDark, defaults: defaults)
+    }
+
     // MARK: - Migration + default seeding
 
     /// Migration flag key. Written once; presence indicates that the legacy

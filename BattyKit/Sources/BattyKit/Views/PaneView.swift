@@ -140,13 +140,7 @@ public struct PaneView: View {
                 .opacity(bellFlashOpacity)
                 .allowsHitTesting(false)
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(accentColor, lineWidth: 2)
-                .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
-                .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
-                .allowsHitTesting(false)
-        }
+        .activeOutline(hasSiblingPanes && isPaneFocused, cornerRadius: 4, color: accentColor)
         .overlay {
             let state = PaneSwapDragState.shared
             if state.isDragging,

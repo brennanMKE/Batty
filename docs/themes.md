@@ -417,6 +417,49 @@ Set `session.localThemeName = nil` and call
 `applyActiveSessionTheme()`. The session immediately picks up the
 current global theme.
 
+### Theme Selector presentation: marking the active Theme (`#0363`)
+
+Both `ThemeSelectorView` (global, `Cmd-Shift-T`) and
+`SessionThemeSelectorView` (per-session) mark whichever Theme is
+currently in effect when the sheet opens, and scroll it into view —
+important with ~500 catalog entries, where the active Theme is almost
+always off-screen otherwise:
+
+- **Which Theme counts as "active" differs between the two selectors,
+  matching the fallback chain above.** `ThemeSelectorView` uses
+  `ThemePreference.activeTheme()` — the global Theme for the current
+  appearance. `SessionThemeSelectorView` uses
+  `ThemePreference.effectiveTheme(localThemeName:isDark:)` — the
+  Session's `localThemeName` if set, else the same global Theme.
+  Marking only `localThemeName` would leave every Session that follows
+  the global Theme (the default on every launch) unmarked, so the
+  Session selector always resolves the *effective* Theme, not just the
+  override.
+- **The mark reuses the Pane focus outline** (`ActiveOutline`,
+  `BattyKit/Sources/BattyKit/Views/ActiveOutline.swift` — extracted
+  from `PaneView`'s inlined focus highlight, `#0052`) at the card's own
+  8pt corner radius, colored with the active Theme's chrome accent
+  (`themeChrome?.accent`, same resolution `PaneView` uses), falling
+  back to `Color.accentColor` when no Theme chrome is active.
+- **The keyboard cursor is a separate concept from the active mark.**
+  It is seeded onto the active Theme on open (so `Down` steps past it
+  rather than an arbitrary catalog entry, and `Return` on open
+  re-selects the Theme already in effect), but it renders as a small
+  `cursorarrow` badge, not the outline — a checkmark-style outline on
+  the cursor would read as "this is also active", which is exactly the
+  ambiguity this feature exists to remove. Once the user arrows away,
+  the outline and the badge can sit on different cards.
+- **The initial scroll is unanimated.** An animated scroll to a target
+  that may already be on-screen (a pinned active Theme renders in the
+  first section) is a jarring twitch; arrow-key navigation afterward
+  still scrolls with animation.
+- **Degrades cleanly with no active Theme or a filtered-out one.** No
+  stored/resolvable Theme (`ThemePreference.activeTheme(isDark:)` /
+  `effectiveTheme` returning `nil`) → no mark, no scroll, cursor starts
+  at index 0. Typing a search query that excludes the active Theme from
+  the filtered results → the mark simply doesn't render; it is never
+  pinned to a stale index.
+
 ### Invariants
 
 - `localThemeName` is never persisted. Every launch starts all

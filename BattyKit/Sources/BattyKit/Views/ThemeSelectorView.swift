@@ -10,14 +10,86 @@ extension Notification.Name {
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ThemeSelectorView")
 
+/// The Theme display order used at presentation, before any filter query is
+/// applied — pinned Themes (catalog order) followed by the rest (catalog
+/// order). Matches `filteredPinned + filteredOthers` in both selectors below
+/// when `query` is empty, which it always is at presentation. Pulled out as
+/// a standalone function (rather than an instance computed property) so the
+/// keyboard cursor's initial index can be derived inside `init`, before
+/// `pinnedIDs` exists as instance state to back a property read (`#0363`).
+/// `internal`, not `private`, so `BattyKitTests` can exercise it directly.
+func themeDisplayOrder(pinnedIDs: [String]) -> [GhosttyThemeDefinition] {
+    let pinned = BattyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
+    let others = BattyThemeCatalog.allThemes.filter { !PinnedThemes.contains($0.name, in: pinnedIDs) }
+    return pinned + others
+}
+
+/// The keyboard-cursor index for `activeThemeName` within
+/// `themeDisplayOrder(pinnedIDs:)`, or `0` when there is no active Theme, or
+/// it isn't present in the catalog order — which shouldn't happen (the
+/// catalog is the only source both selectors read from) but degrades to the
+/// pre-`#0363` default rather than crashing.
+func themeCursorIndex(activeThemeName: String?, pinnedIDs: [String]) -> Int {
+    guard let activeThemeName else { return 0 }
+    let order = themeDisplayOrder(pinnedIDs: pinnedIDs)
+    return order.firstIndex(where: { $0.name == activeThemeName }) ?? 0
+}
+
 struct ThemeSelectorView: View {
     @Binding var isPresented: Bool
     let store: AppStateStore
 
     @State private var query = ""
-    @State private var selectedIndex = 0
+    /// Keyboard-cursor position — seeded onto the active Theme in `init` so
+    /// `Down` steps past it rather than an arbitrary catalog entry, and
+    /// `Return` on open re-selects the Theme already in effect (`#0363`).
+    @State private var cursorIndex: Int
     @FocusState private var searchFocused: Bool
-    @State private var pinnedIDs: [String] = []
+    /// Loaded in `init`, not `.onAppear`, because `themeDisplayOrder` (used
+    /// to seed `cursorIndex` above) depends on pinning order, and `onAppear`
+    /// runs too late to affect the initial-state seeding (`#0363`).
+    /// `PinnedThemes.load()` is a pure `UserDefaults` read, so this is safe.
+    @State private var pinnedIDs: [String]
+    /// The global Theme for the current appearance
+    /// (`ThemePreference.activeTheme()`). This is a `let`, but it is not a
+    /// frozen snapshot: SwiftUI re-initializes this view struct on every
+    /// body re-run of the presenting view, which happens constantly while
+    /// this sheet is open (both presenters read `themeChrome`, and every
+    /// applied Theme calls `themeChrome.update(from:)`), so this property
+    /// is re-read from `UserDefaults` on every one of those re-inits. It
+    /// *looks* stable while the user arrows around only because
+    /// `moveSelection` previews via `applyThemeToAllSurfaces`, which never
+    /// writes the preference — the value this reads simply hasn't moved.
+    /// Clicking a card calls `selectTheme`, which does write the
+    /// preference, so the very next re-init picks up the new value and the
+    /// mark hops there. Net effect: **the outline marks the committed
+    /// Theme; the cursor badge (`isCursor`) marks the live preview.**
+    /// Distinct from `cursorIndex`, which tracks keyboard navigation and
+    /// can end up on a different card than either. `nil` when no Theme is
+    /// currently active; the mark then simply doesn't render (`#0363`).
+    private let activeThemeName: String?
+
+    init(isPresented: Binding<Bool>, store: AppStateStore) {
+        self._isPresented = isPresented
+        self.store = store
+
+        let pinned = PinnedThemes.load()
+        self._pinnedIDs = State(initialValue: pinned)
+
+        // `activeTheme()` routes through `migrateAndSeedIfNeeded`, which
+        // writes UserDefaults keys that `@AppStorage` observers watch
+        // (BattyCommands.swift:22-23, SettingsView.swift:120-121) — an
+        // observed-state write during view construction, which the
+        // observation rules forbid. It can't actually fire here:
+        // `AppStateStore.swift:593` already calls `activeTheme()` during
+        // store construction, long before any `RootWindowView` (and so
+        // this sheet) exists, so the migration flag is always already set
+        // by the time this init runs. That's an undocumented launch-order
+        // guarantee this call site relies on, not something it enforces.
+        let active = ThemePreference.activeTheme()
+        self.activeThemeName = active?.name
+        self._cursorIndex = State(initialValue: themeCursorIndex(activeThemeName: active?.name, pinnedIDs: pinned))
+    }
 
     private var filteredPinned: [GhosttyThemeDefinition] {
         let pinned = BattyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
@@ -73,7 +145,6 @@ struct ThemeSelectorView: View {
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
         .onAppear {
-            pinnedIDs = PinnedThemes.load()
             searchFocused = true
         }
     }
@@ -92,14 +163,33 @@ struct ThemeSelectorView: View {
                     }
                 }
                 .padding(12)
-                .onChange(of: selectedIndex) { _, newIdx in
+                .onAppear {
+                    // Initial positioning only — deliberately not wrapped in
+                    // `withAnimation`. An animated scroll to a target that's
+                    // already visible (the common case: a pinned active
+                    // Theme lands in the first section) reads as a jarring
+                    // twitch; an unanimated `scrollTo` is either an
+                    // imperceptible no-op or a silent jump straight to the
+                    // right place. Attached to the `ScrollViewReader`'s
+                    // content, not the sheet's root `onAppear`, so it runs
+                    // after this LazyVStack/LazyVGrid pair has had a layout
+                    // pass — calling `scrollTo` before that can silently
+                    // no-op in a lazy container (`#0363`).
+                    scrollToActiveIfNeeded(proxy: proxy)
+                }
+                .onChange(of: cursorIndex) { _, newIdx in
                     if allDisplayed.indices.contains(newIdx) {
                         withAnimation { proxy.scrollTo(allDisplayed[newIdx].name, anchor: .center) }
                     }
                 }
-                .onChange(of: query) { _, _ in selectedIndex = 0 }
+                .onChange(of: query) { _, _ in cursorIndex = 0 }
             }
         }
+    }
+
+    private func scrollToActiveIfNeeded(proxy: ScrollViewProxy) {
+        guard let activeThemeName, allDisplayed.contains(where: { $0.name == activeThemeName }) else { return }
+        proxy.scrollTo(activeThemeName, anchor: .center)
     }
 
     @ViewBuilder
@@ -118,18 +208,19 @@ struct ThemeSelectorView: View {
                 let globalIndex = startIndex + localIndex
                 ThemeCard(
                     theme: theme,
-                    isSelected: globalIndex == selectedIndex,
+                    isActive: theme.name == activeThemeName,
+                    isCursor: globalIndex == cursorIndex,
                     isPinned: PinnedThemes.contains(theme.name, in: pinnedIDs),
                     onTogglePin: { togglePin(theme.name) }
                 )
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
-                    selectedIndex = globalIndex
+                    cursorIndex = globalIndex
                     selectTheme(theme)
                     isPresented = false
                 }
                 .onTapGesture {
-                    selectedIndex = globalIndex
+                    cursorIndex = globalIndex
                     selectTheme(theme)
                 }
                 .id(theme.name)
@@ -146,11 +237,11 @@ struct ThemeSelectorView: View {
     }
 
     private func confirmSelection() {
-        guard allDisplayed.indices.contains(selectedIndex) else {
+        guard allDisplayed.indices.contains(cursorIndex) else {
             isPresented = false
             return
         }
-        selectTheme(allDisplayed[selectedIndex])
+        selectTheme(allDisplayed[cursorIndex])
         isPresented = false
     }
 
@@ -161,8 +252,8 @@ struct ThemeSelectorView: View {
     private func moveSelection(_ delta: Int) {
         let count = allDisplayed.count
         guard count > 0 else { return }
-        selectedIndex = (selectedIndex + delta + count) % count
-        store.applyThemeToAllSurfaces(allDisplayed[selectedIndex])
+        cursorIndex = (cursorIndex + delta + count) % count
+        store.applyThemeToAllSurfaces(allDisplayed[cursorIndex])
     }
 
     private func togglePin(_ name: String) {
@@ -180,9 +271,38 @@ struct SessionThemeSelectorView: View {
     @Bindable var session: SessionRuntime
 
     @State private var query = ""
-    @State private var selectedIndex = 0
+    /// See `ThemeSelectorView.cursorIndex` — same seeding rationale.
+    @State private var cursorIndex: Int
     @FocusState private var searchFocused: Bool
-    @State private var pinnedIDs: [String] = []
+    /// See `ThemeSelectorView.pinnedIDs` — loaded in `init`, not `.onAppear`.
+    @State private var pinnedIDs: [String]
+    /// The Session's *effective* Theme: `session.localThemeName` if set,
+    /// else the global Theme for the current appearance
+    /// (`ThemePreference.effectiveTheme`). Deliberately not just
+    /// `session.localThemeName` — a Session with no override still has an
+    /// effective Theme (the global one), which is the default state for
+    /// every Session on every launch, and must be markable too. Like
+    /// `ThemeSelectorView.activeThemeName`, this `let` is re-read on every
+    /// re-init of this view struct rather than frozen at presentation; it
+    /// holds steady while arrow-key previewing (`applyTheme(_:to:)` never
+    /// writes `localThemeName` or the global preference) and only moves
+    /// when a click commits a new choice via `selectTheme` — outline marks
+    /// committed, cursor badge marks preview (`#0363`).
+    private let activeThemeName: String?
+
+    init(isPresented: Binding<Bool>, store: AppStateStore, session: SessionRuntime) {
+        self._isPresented = isPresented
+        self.store = store
+        self._session = Bindable(wrappedValue: session)
+
+        let pinned = PinnedThemes.load()
+        self._pinnedIDs = State(initialValue: pinned)
+
+        let isDark = NSApp?.effectiveAppearance.isDark ?? true
+        let active = ThemePreference.effectiveTheme(localThemeName: session.localThemeName, isDark: isDark)
+        self.activeThemeName = active?.name
+        self._cursorIndex = State(initialValue: themeCursorIndex(activeThemeName: active?.name, pinnedIDs: pinned))
+    }
 
     private var filteredPinned: [GhosttyThemeDefinition] {
         let pinned = BattyThemeCatalog.allThemes.filter { PinnedThemes.contains($0.name, in: pinnedIDs) }
@@ -238,7 +358,6 @@ struct SessionThemeSelectorView: View {
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
         .onAppear {
-            pinnedIDs = PinnedThemes.load()
             searchFocused = true
         }
     }
@@ -257,14 +376,24 @@ struct SessionThemeSelectorView: View {
                     }
                 }
                 .padding(12)
-                .onChange(of: selectedIndex) { _, newIdx in
+                .onAppear {
+                    // See `ThemeSelectorView.scrollContent` — same
+                    // no-animation, post-layout rationale (`#0363`).
+                    scrollToActiveIfNeeded(proxy: proxy)
+                }
+                .onChange(of: cursorIndex) { _, newIdx in
                     if allDisplayed.indices.contains(newIdx) {
                         withAnimation { proxy.scrollTo(allDisplayed[newIdx].name, anchor: .center) }
                     }
                 }
-                .onChange(of: query) { _, _ in selectedIndex = 0 }
+                .onChange(of: query) { _, _ in cursorIndex = 0 }
             }
         }
+    }
+
+    private func scrollToActiveIfNeeded(proxy: ScrollViewProxy) {
+        guard let activeThemeName, allDisplayed.contains(where: { $0.name == activeThemeName }) else { return }
+        proxy.scrollTo(activeThemeName, anchor: .center)
     }
 
     @ViewBuilder
@@ -283,18 +412,19 @@ struct SessionThemeSelectorView: View {
                 let globalIndex = startIndex + localIndex
                 ThemeCard(
                     theme: theme,
-                    isSelected: globalIndex == selectedIndex,
+                    isActive: theme.name == activeThemeName,
+                    isCursor: globalIndex == cursorIndex,
                     isPinned: PinnedThemes.contains(theme.name, in: pinnedIDs),
                     onTogglePin: { togglePin(theme.name) }
                 )
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
-                    selectedIndex = globalIndex
+                    cursorIndex = globalIndex
                     selectTheme(theme)
                     isPresented = false
                 }
                 .onTapGesture {
-                    selectedIndex = globalIndex
+                    cursorIndex = globalIndex
                     selectTheme(theme)
                 }
                 .id(theme.name)
@@ -308,11 +438,11 @@ struct SessionThemeSelectorView: View {
     }
 
     private func confirmSelection() {
-        guard allDisplayed.indices.contains(selectedIndex) else {
+        guard allDisplayed.indices.contains(cursorIndex) else {
             isPresented = false
             return
         }
-        selectTheme(allDisplayed[selectedIndex])
+        selectTheme(allDisplayed[cursorIndex])
         isPresented = false
     }
 
@@ -323,8 +453,8 @@ struct SessionThemeSelectorView: View {
     private func moveSelection(_ delta: Int) {
         let count = allDisplayed.count
         guard count > 0 else { return }
-        selectedIndex = (selectedIndex + delta + count) % count
-        store.applyTheme(allDisplayed[selectedIndex], to: session)
+        cursorIndex = (cursorIndex + delta + count) % count
+        store.applyTheme(allDisplayed[cursorIndex], to: session)
     }
 
     private func togglePin(_ name: String) {

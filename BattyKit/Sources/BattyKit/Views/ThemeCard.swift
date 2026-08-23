@@ -4,9 +4,22 @@ import SwiftUI
 
 struct ThemeCard: View {
     let theme: GhosttyThemeDefinition
-    let isSelected: Bool
+    /// This Theme is the one currently in effect (global appearance slot,
+    /// or the Session's effective Theme for `SessionThemeSelectorView`) —
+    /// drawn with the same outline `PaneView` uses for focus (`#0363`).
+    let isActive: Bool
+    /// This Theme is under the keyboard cursor. Distinct from `isActive`:
+    /// once the user arrows away from the active Theme the two can sit on
+    /// different cards, so they must never share a visual (`#0363`).
+    let isCursor: Bool
     let isPinned: Bool
     let onTogglePin: () -> Void
+
+    @Environment(\.themeChrome) private var themeChrome
+
+    private var accentColor: Color {
+        themeChrome?.accent ?? Color.accentColor
+    }
 
     private var bgColor: Color {
         RGBColor(hex: theme.background)?.swiftUIColor ?? Color(nsColor: .windowBackgroundColor)
@@ -68,11 +81,20 @@ struct ThemeCard: View {
         }
         .frame(width: 130, height: 90)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.accentColor, lineWidth: 2)
+        .overlay(alignment: .topTrailing) {
+            if isCursor {
+                // Cursor badge, deliberately not a checkmark: a checkmark
+                // reads as "selected/active", which `isActive`'s outline
+                // already owns. `cursorarrow` reads as "the keyboard
+                // cursor is here" instead (#0363).
+                Image(systemName: "cursorarrow")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .padding(4)
+                    .background(.regularMaterial, in: Circle())
+                    .padding(4)
             }
         }
+        .activeOutline(isActive, cornerRadius: 8, color: accentColor)
     }
 }

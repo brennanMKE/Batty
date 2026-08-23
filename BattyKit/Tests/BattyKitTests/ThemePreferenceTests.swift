@@ -176,4 +176,59 @@ struct ThemePreferenceTests {
         let theme = ThemePreference.activeTheme(isDark: true, defaults: defaults)
         #expect(theme == nil)
     }
+
+    // MARK: - Effective theme (session-local override → global fallback), #0363
+
+    @Test func effectiveThemeUsesLocalOverrideWhenSet() {
+        let defaults = isolatedDefaults()
+        defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
+        defaults.set(true, forKey: ThemePreference.migrationDoneKey)
+
+        let theme = ThemePreference.effectiveTheme(
+            localThemeName: ThemePreference.defaultLightThemeName,
+            isDark: true,
+            defaults: defaults
+        )
+        #expect(theme?.name == ThemePreference.defaultLightThemeName)
+    }
+
+    @Test func effectiveThemeFallsBackToGlobalWhenNoLocalOverride() {
+        let defaults = isolatedDefaults()
+        defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
+        defaults.set(true, forKey: ThemePreference.migrationDoneKey)
+
+        let theme = ThemePreference.effectiveTheme(localThemeName: nil, isDark: true, defaults: defaults)
+        #expect(theme?.name == ThemePreference.defaultDarkThemeName)
+    }
+
+    @Test func effectiveThemeFallsBackToGlobalWhenLocalOverrideIsEmptyString() {
+        let defaults = isolatedDefaults()
+        defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
+        defaults.set(true, forKey: ThemePreference.migrationDoneKey)
+
+        let theme = ThemePreference.effectiveTheme(localThemeName: "", isDark: true, defaults: defaults)
+        #expect(theme?.name == ThemePreference.defaultDarkThemeName)
+    }
+
+    @Test func effectiveThemeFallsBackToGlobalWhenLocalOverrideUnknownToCatalog() {
+        let defaults = isolatedDefaults()
+        defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
+        defaults.set(true, forKey: ThemePreference.migrationDoneKey)
+
+        let theme = ThemePreference.effectiveTheme(
+            localThemeName: "NonExistentThemeName12345",
+            isDark: true,
+            defaults: defaults
+        )
+        #expect(theme?.name == ThemePreference.defaultDarkThemeName)
+    }
+
+    @Test func effectiveThemeReturnsNilWhenNeitherLocalNorGlobalResolve() {
+        let defaults = isolatedDefaults()
+        defaults.set("", forKey: ThemePreference.darkDefaultsKey)
+        defaults.set(true, forKey: ThemePreference.migrationDoneKey)
+
+        let theme = ThemePreference.effectiveTheme(localThemeName: nil, isDark: true, defaults: defaults)
+        #expect(theme == nil)
+    }
 }
