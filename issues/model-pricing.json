@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-08-20",
+  "fetched": "2026-08-22",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "currency": "USD per MTok",
   "models": {
@@ -25,14 +25,7 @@
       "input": 2.0,
       "output": 10.0,
       "cache_write_5m": 2.5,
-      "cache_read": 0.2,
-      "note": "the $2/$10 launch price is now standard; the planned 2026-09-01 increase to 3.00/15.00 will not occur"
-    },
-    "claude-sonnet-4-6": {
-      "input": 3.0,
-      "output": 15.0,
-      "cache_write_5m": 3.75,
-      "cache_read": 0.3
+      "cache_read": 0.2
     },
     "claude-haiku-4-5": {
       "input": 1.0,
@@ -40,5 +33,6 @@
       "cache_write_5m": 1.25,
       "cache_read": 0.1
     }
-  }
+  },
+  "notes": "Sonnet 5's $2/$10 launch pricing is now the standard rate; the previously scheduled 2026-09-01 increase to $3/$15 will not occur."
 }
