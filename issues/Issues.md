@@ -255,7 +255,7 @@ Then add a structured summary in this order so the issue becomes a primary-sourc
 - **`## Root cause`** — what was actually wrong (often different from the original report). For feature/prototype issues, describe the starting state instead.
 - **`## Fix`** — the approach taken.
 - **`## Review`** — who reviewed (model), how many rounds, and a one-line note of what the review changed (or "approved first pass").
-- **`## Verification`** — the exact command(s) run and what was observed (e.g. "`scripts/build.sh unit` — 277 tests in 36 suites passed including the 3 new tests in `SessionNameToolTests`"). If new tests were added, name them and confirm they ran. Mandatory — this is the audit trail that distinguishes "verified" from "compiled and hoped". For UI work the implementer can't run locally, say so here and in Gotchas, and mark `resolved` (the user's visual sign-off is what moves it to `closed`).
+- **`## Verification`** — the exact command(s) run and what was observed (e.g. "`./build.sh unit` — 277 tests in 36 suites passed including the 3 new tests in `SessionNameToolTests`"). If new tests were added, name them and confirm they ran. Mandatory — this is the audit trail that distinguishes "verified" from "compiled and hoped". For UI work the implementer can't run locally, say so here and in Gotchas, and mark `resolved` (the user's visual sign-off is what moves it to `closed`).
 - **`## Files changed`** — a bulleted list, one bullet per file touched, with a short note describing what changed in each.
 - **`## Gotchas`** *(optional)* — surprises, dead ends, non-obvious behavior, or anything a future engineer working on similar code should know. Skip if nothing is notable. libghostty quirks, SwiftUI ↔ NSView lifecycle gotchas, Metal layer sizing surprises, and IME edge cases are exactly the kind of thing that belongs here.
 
@@ -270,13 +270,13 @@ Status flow: `open` → `in-progress` → `resolved`. **Never set `closed`** —
 The canonical "did I break the build?" check is:
 
 ```bash
-scripts/build.sh
+./build.sh
 ```
 
 To run the fast `BattyKit` unit tests (the pre-commit gate — <30s, no UI, no machine lock):
 
 ```bash
-scripts/build.sh unit
+./build.sh unit
 ```
 
 The UI suite is slow (~10 min), locks the machine, and runs only for release preflight or when adding/fixing a UI-level feature — on the Mac mini, not the MacBook:
@@ -286,7 +286,7 @@ scripts/run-ui-tests.sh                              # all UI tests
 scripts/run-ui-tests.sh BattyUITests/TabRenameTests  # one class
 ```
 
-`scripts/build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `scripts/build.sh` invocation passes before committing; Xcode previews are not a build pass. See `CLAUDE.md` for the full test strategy.
+`./build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `./build.sh` invocation passes before committing; Xcode previews are not a build pass. See `CLAUDE.md` for the full test strategy.
 
 ### When the implementer can't finish
 

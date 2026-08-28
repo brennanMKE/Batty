@@ -228,7 +228,7 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   install (`#0279`): unregister the LaunchAgent *before* deleting the app
   bundle (the ordering `#0270` says matters to avoid wedging launchd), then
   remove `Batty Beta.app`, the `batty-beta` CLI symlink, and Beta's
-  Application Support directory. `scripts/build-beta.sh --teardown` prints
+  Application Support directory. `./build.sh package --teardown` prints
   the same steps.
 - [`xpc/`](xpc/README.md) — vendored reference docs from the RemoteControl
   XPC prototype (`xpc-cli-architecture.md`, `cli-embedding-and-install.md`,

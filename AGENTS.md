@@ -49,10 +49,10 @@ The `docs/` folder has additional topical guides (see `docs/README.md`).
 
 ```bash
 # Build only (the canonical "did I break the build?" check)
-scripts/build.sh
+./build.sh
 
 # Run BattyKit unit tests — fast, no UI, runs before every commit
-scripts/build.sh unit
+./build.sh unit
 
 # Run UI tests (slow; blocks the machine; run on the Mac mini for preflight/release)
 scripts/run-ui-tests.sh                              # all UI tests
@@ -67,18 +67,16 @@ open Batty.xcworkspace
 
 **Test strategy:**
 
-- **Unit tests** (`scripts/build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package so BattyKitTests appear in the Test Navigator under the `Batty (Prod)` and `Batty (Beta)` schemes.
+- **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package so BattyKitTests appear in the Test Navigator under the `Batty (Prod)` and `Batty (Beta)` schemes.
 - **UI tests** (`scripts/run-ui-tests.sh`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
 
-`scripts/build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. Direct `xcodebuild` calls work too; the wrapper is a convenience. The actual scheme is `Batty (Prod)`, not `Batty`.
+`./build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. Direct `xcodebuild` calls work too; the wrapper is a convenience. The actual scheme is `Batty (Prod)`, not `Batty`.
 
-Always confirm the headless `scripts/build.sh` invocation passes before committing — Xcode previews are not a build pass.
+Always confirm the headless `./build.sh` invocation passes before committing — Xcode previews are not a build pass.
 
-**Build Beta only via `scripts/build-beta.sh`. Never `SCHEME="Batty (Beta)" scripts/build.sh`.**
+**`./build.sh` in the repo root is the single entry point, and it defaults to the `Batty (Beta)` scheme.** Prod is for release builds only (`./build.sh release`).
 
-This project selects Prod vs Beta through `Configuration/Active.xcconfig`, a gitignored file that `#include`s either `Prod.xcconfig` or `Beta.xcconfig`. The `Batty (Beta)` scheme's pre-action points it at Beta via `scripts/set-environment.sh`; otherwise it stays on Prod. That is the design, and it works — but it is *persistent machine state*, and the scheme pre-action runs **after** `xcodebuild` has already resolved build settings, so it only takes effect on the *next* invocation.
-
-The consequence: anything that builds Beta and does not put the file back leaves the environment switched, and the **next `scripts/build.sh` silently builds the Beta product while reporting Prod** (`PRODUCT_NAME = Batty Beta`, `PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty.beta`). The pre-commit gate then verifies the wrong artifact and says nothing. `scripts/build-beta.sh` exists precisely to snapshot `Active.xcconfig` on entry and restore it on exit; reaching around it with the `SCHEME` override defeats that.
+Prod vs Beta is selected by `Configuration/Active.xcconfig`, a gitignored file that `#include`s either variant. The `Batty (Beta)` scheme's pre-action sets it, but runs *after* `xcodebuild` has resolved build settings, so it lags one invocation behind (#0280). `./build.sh`, `./build.sh package`, and `scripts/run-ui-tests.sh` each snapshot that file, select the variant they need before invoking `xcodebuild`, and restore what they found on every exit path. Use them rather than a hand-rolled `xcodebuild` or a `SCHEME` override, either of which can silently build the other variant while reporting the scheme you asked for.
 
 If a build ever looks wrong, check the environment first:
 
