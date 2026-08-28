@@ -41,6 +41,41 @@ DESTINATION="platform=macOS"
 
 cd "$REPO_ROOT"
 
+# The UI suite must build the Beta product. Selecting the scheme is not
+# enough: the "Batty (Beta)" scheme's pre-action runs set-environment.sh
+# *after* xcodebuild has already resolved build settings, so it only takes
+# effect on the *next* invocation (#0280). Without this block, whatever
+# Active.xcconfig happened to say on entry decides what actually gets
+# built -- so a run right after a Prod build silently tests a Prod-named,
+# co.sstools.Batty-identified host while reporting the Beta scheme.
+#
+# Snapshot Active.xcconfig exactly as found (including "absent"), point it
+# at Beta for the duration, and restore it on every exit path -- same
+# pattern, and same reasoning, as scripts/build-beta.sh.
+ACTIVE_XCCONFIG="$REPO_ROOT/Configuration/Active.xcconfig"
+ACTIVE_XCCONFIG_EXISTED=0
+ACTIVE_XCCONFIG_BACKUP=""
+if [[ -f "$ACTIVE_XCCONFIG" ]]; then
+    ACTIVE_XCCONFIG_EXISTED=1
+    ACTIVE_XCCONFIG_BACKUP="$(mktemp "${TMPDIR:-/tmp}/batty-active-xcconfig.XXXXXX")"
+    cp "$ACTIVE_XCCONFIG" "$ACTIVE_XCCONFIG_BACKUP"
+fi
+restore_active_xcconfig() {
+    # Capture the triggering status first and re-exit with it, so a Ctrl-C
+    # or a test failure is not masked by the trap's own last command.
+    local exit_status=$?
+    if (( ACTIVE_XCCONFIG_EXISTED )); then
+        cp "$ACTIVE_XCCONFIG_BACKUP" "$ACTIVE_XCCONFIG"
+        rm -f "$ACTIVE_XCCONFIG_BACKUP"
+    else
+        rm -f "$ACTIVE_XCCONFIG"
+    fi
+    exit "$exit_status"
+}
+trap restore_active_xcconfig EXIT
+
+"$SCRIPT_DIR/set-environment.sh" Beta
+
 print "==> Building test bundle..."
 xcodebuild \
     -scheme "$SCHEME" \
