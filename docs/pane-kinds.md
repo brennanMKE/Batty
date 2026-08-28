@@ -747,7 +747,7 @@ below is a baseline check that the branch is known-green going in — it is
 not evidence of any new behavior, because none was added.
 
 ```
-scripts/build.sh unit
+./build.sh unit
 ```
 
 Observed (2026-08-08, branch `issue/0302`, round 1): **933 tests in 107

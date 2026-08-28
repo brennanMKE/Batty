@@ -1011,7 +1011,7 @@ spike (§1) ran as direct `curl`/`lms` CLI commands against the live LM
 Studio server and is not part of this commit.
 
 ```
-scripts/build.sh unit
+./build.sh unit
 ```
 
 `Configuration/Active.xcconfig` read `#include "Prod.xcconfig"` before

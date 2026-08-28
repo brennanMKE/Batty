@@ -223,7 +223,7 @@ anything else in this doc.
 ### Restore, end to end, on a fresh Mac
 
 1. Install Xcode + Command Line Tools, `brew install create-dmg fileicon`.
-2. One `scripts/build.sh` run, so the Sparkle SPM artifacts
+2. One `./build.sh` run, so the Sparkle SPM artifacts
    (`generate_keys`) exist for the next step.
 3. Restore the three credentials from wherever the backup bundle lives:
 

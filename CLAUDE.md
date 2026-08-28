@@ -82,7 +82,7 @@ Any other action passes through to `xcodebuild` under the Beta scheme, so
 
 **Test strategy:**
 
-- **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package so BattyKitTests appear in the Test Navigator under the `Batty (Prod)` and `Batty (Beta)` schemes.
+- **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package, so BattyKitTests appear in the Test Navigator. Use the `Batty (Beta)` scheme there; `Batty (Prod)` also lists them, but Prod is for release builds only.
 - **UI tests** (`./build.sh ui`, which delegates to `scripts/run-ui-tests.sh`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
 
 Always confirm the headless `./build.sh` invocation passes before committing — Xcode previews are not a build pass.

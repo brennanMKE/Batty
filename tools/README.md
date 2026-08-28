@@ -318,7 +318,7 @@ count.
 ## Recommended target for driven experiments
 
 Use `--target beta` (scheme `Batty (Beta)`, bundle id `co.sstools.Batty.beta`,
-built with `SCHEME="Batty (Beta)" scripts/build.sh`) for experiments (a)-(d).
+built with `SCHEME="Batty (Beta)" ./build.sh`) for experiments (a)-(d).
 Its distinct bundle id means separate UserDefaults and workspace persistence,
 so opening/closing 20 Tabs or driving Tab content doesn't touch the user's
 release-instance sessions. Passive sampling (`sample`, `invariants`) of the

@@ -422,7 +422,7 @@ does **not** copy a package's *executable* product into the bundle.
 > BattyKit/resource_bundle_accessor.swift:44: Fatal error: unable to find bundle named BattyKit_BattyKit
 > ** TEST FAILED **
 > ```
-> This breaks the mandatory `scripts/build.sh unit` gate (372 tests). The fix
+> This breaks the mandatory `./build.sh unit` gate (372 tests). The fix
 > is to never add the executable product as an Xcode dependency — instead, let
 > the Run Script phase invoke `swift build` to build it from the package.
 
@@ -653,7 +653,7 @@ the admin auth covers). Specifically:
   layer. The embedding is done by having the Run Script invoke `swift build`
   directly from the package (§4.2) — **not** by wiring a `XCSwiftPackageProductDependency`
   on the app target, which would break the `BattyKitTests` bundle-resource
-  resolution and fail the `scripts/build.sh unit` gate. A standalone Xcode
+  resolution and fail the `./build.sh unit` gate. A standalone Xcode
   target would embed slightly more turnkey but would either duplicate the model
   code or link BattyKit anyway; given the keep-it-in-the-package goal, the
   package target wins.

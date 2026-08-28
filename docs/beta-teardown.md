@@ -4,10 +4,10 @@
 product name (`Batty Beta.app`), LaunchAgent, CLI install path
 (`/usr/local/bin/batty-beta`), and Application Support directory
 (`~/Library/Application Support/Batty Beta`) — fully separate from Prod's
-`/Applications/Batty.app`. This page is the reverse of `scripts/build-beta.sh`:
+`/Applications/Batty.app`. This page is the reverse of `./build.sh package`:
 how to remove a Beta install cleanly once you're done testing it.
 
-`scripts/build-beta.sh --teardown` prints the same steps below without
+`./build.sh package --teardown` prints the same steps below without
 performing any of them — read them here, run them yourself.
 
 ## Why the order matters
@@ -80,6 +80,6 @@ variants were made to not share state for exactly this reason.
 ## Reinstalling later
 
 Removing everything above is a clean slate — a subsequent
-`scripts/build-beta.sh` + copy-to-`/Applications` starts Beta fresh, with
+`./build.sh package` + copy-to-`/Applications` starts Beta fresh, with
 no leftover cache entries or stale LaunchAgent registration to conflict
 with the new install.

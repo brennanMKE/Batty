@@ -313,7 +313,7 @@ SIGN_UPDATE=$(find_sparkle_tool sign_update) || true
 if [[ -n "$SIGN_UPDATE" ]]; then
     pass "sign_update present ($SIGN_UPDATE)"
 else
-    warn "sign_update not found — this machine cannot actually sign a Sparkle update yet. Run: scripts/build.sh (once) to produce the Sparkle SPM artifacts"
+    warn "sign_update not found — this machine cannot actually sign a Sparkle update yet. Run: ./build.sh (once) to produce the Sparkle SPM artifacts"
     SPARKLE_UNVERIFIED=1
 fi
 
@@ -325,7 +325,7 @@ fi
 GENERATE_KEYS=$(find_sparkle_tool generate_keys) || true
 SU_KEY=$(xcconfig_value 'SU_PUBLIC_ED_KEY' "$APP_XCCONFIG")
 if [[ -z "$GENERATE_KEYS" ]]; then
-    warn "generate_keys not found — the Sparkle private key could NOT be checked (not confirmed present, not confirmed absent). Run: scripts/build.sh (once) to produce generate_keys, then re-run this check"
+    warn "generate_keys not found — the Sparkle private key could NOT be checked (not confirmed present, not confirmed absent). Run: ./build.sh (once) to produce generate_keys, then re-run this check"
     SPARKLE_UNVERIFIED=1
 else
     SPARKLE_PUB=$("$GENERATE_KEYS" --account Batty -p 2>/dev/null) || SPARKLE_PUB=""
@@ -353,7 +353,7 @@ if (( CREDENTIALS_ONLY )); then
         print "  This machine can sign and notarize, but Sparkle update signing is"
         print "  UNVERIFIED — generate_keys/sign_update were not found, so the EdDSA"
         print "  private key was never actually probed (see [!] items above). Run:"
-        print "  scripts/build.sh (once) to materialise them from the Sparkle SPM"
+        print "  ./build.sh (once) to materialise them from the Sparkle SPM"
         print "  artifact, then re-run this check before relying on this machine for"
         print "  a release."
         exit 0

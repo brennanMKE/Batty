@@ -54,7 +54,7 @@ find_sign_update() {
 }
 
 SIGN_UPDATE=$(find_sign_update) || {
-    print -u2 "error: sign_update not found. Build BattyKit once (scripts/build.sh) so"
+    print -u2 "error: sign_update not found. Build BattyKit once (./build.sh) so"
     print -u2 "       the Sparkle SPM artifacts are produced, then retry."
     exit 1
 }

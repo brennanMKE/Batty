@@ -83,8 +83,8 @@ private key) in one pair of commands, non-destructively.
 2. **Sanity-check the build and run tests**
 
    ```bash
-   scripts/build.sh          # confirms the build is clean
-   scripts/build.sh unit     # BattyKit unit tests — fast, <30 s
+   ./build.sh          # confirms the build is clean
+   ./build.sh unit     # BattyKit unit tests — fast, <30 s
    scripts/run-ui-tests.sh   # full UI test suite — ~10 min, locks the machine
    ```
 
@@ -96,7 +96,7 @@ private key) in one pair of commands, non-destructively.
 
    UI tests are the gate for releases. Any regression found here must be
    fixed and tracked as a new issue before cutting the release — do not
-   ship over a failing UI test. Unit tests (`scripts/build.sh unit`)
+   ship over a failing UI test. Unit tests (`./build.sh unit`)
    should already be passing from routine development commits.
 
 3. **Run the release pipeline**

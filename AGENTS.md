@@ -56,8 +56,8 @@ The `docs/` folder has additional topical guides (see `docs/README.md`).
 
 # Run UI tests (slow; blocks the machine; run on the Mac mini for preflight/release)
 scripts/run-ui-tests.sh                              # all UI tests
-scripts/run-ui-tests.sh BattyUITests/TabRenameTests  # one class
-scripts/run-ui-tests.sh BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle  # one test
+./build.sh ui BattyUITests/TabRenameTests  # one class
+./build.sh ui BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle  # one test
 
 # Open in Xcode for live development, breakpoints, SwiftUI previews
 # (use the workspace, not the .xcodeproj, so BattyKitTests appears in
@@ -68,7 +68,7 @@ open Batty.xcworkspace
 **Test strategy:**
 
 - **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package so BattyKitTests appear in the Test Navigator under the `Batty (Prod)` and `Batty (Beta)` schemes.
-- **UI tests** (`scripts/run-ui-tests.sh`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
+- **UI tests** (`./build.sh ui`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
 
 `./build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. Direct `xcodebuild` calls work too; the wrapper is a convenience. The actual scheme is `Batty (Prod)`, not `Batty`.
 
@@ -76,7 +76,7 @@ Always confirm the headless `./build.sh` invocation passes before committing —
 
 **`./build.sh` in the repo root is the single entry point, and it defaults to the `Batty (Beta)` scheme.** Prod is for release builds only (`./build.sh release`).
 
-Prod vs Beta is selected by `Configuration/Active.xcconfig`, a gitignored file that `#include`s either variant. The `Batty (Beta)` scheme's pre-action sets it, but runs *after* `xcodebuild` has resolved build settings, so it lags one invocation behind (#0280). `./build.sh`, `./build.sh package`, and `scripts/run-ui-tests.sh` each snapshot that file, select the variant they need before invoking `xcodebuild`, and restore what they found on every exit path. Use them rather than a hand-rolled `xcodebuild` or a `SCHEME` override, either of which can silently build the other variant while reporting the scheme you asked for.
+Prod vs Beta is selected by `Configuration/Active.xcconfig`, a gitignored file that `#include`s either variant. The `Batty (Beta)` scheme's pre-action sets it, but runs *after* `xcodebuild` has resolved build settings, so it lags one invocation behind (#0280). `./build.sh`, `./build.sh package`, and `./build.sh ui` each snapshot that file, select the variant they need before invoking `xcodebuild`, and restore what they found on every exit path. Use them rather than a hand-rolled `xcodebuild` or a `SCHEME` override, either of which can silently build the other variant while reporting the scheme you asked for.
 
 If a build ever looks wrong, check the environment first:
 
@@ -89,7 +89,7 @@ xcodebuild -project Batty.xcodeproj -scheme "Batty (Prod)" \
 
 Related: Prod and Beta share one target, so whichever scheme resolved last caches its product name into the tracked `Batty.xcodeproj/project.pbxproj` (`Batty.app` ↔ `Batty Beta.app`). **A dirty `project.pbxproj` after a Beta build is expected residue — discard it (`git checkout --`), never commit it.** Committing it just makes the next Prod build flip it back.
 
-**Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test`.** Xcode builds `BattyUITests-Runner.app` by dropping our xctest bundle into Apple's signed XCTRunner template without re-signing the outer app. Ad-hoc local builds end up with a broken signature ("code has no resources but signature indicates they must be present"), which AppleSystemPolicy treats as a tampered Apple binary — macOS Gatekeeper translocates the runner to `~/.Trash` and kills it before `xcodebuild test` can bootstrap. The script re-signs the runner + host app ad-hoc after `build-for-testing` and then invokes `test-without-building`, sidestepping the trash-prompt loop.
+**Run UI tests via `./build.sh ui`, not raw `xcodebuild test`.** Xcode builds `BattyUITests-Runner.app` by dropping our xctest bundle into Apple's signed XCTRunner template without re-signing the outer app. Ad-hoc local builds end up with a broken signature ("code has no resources but signature indicates they must be present"), which AppleSystemPolicy treats as a tampered Apple binary — macOS Gatekeeper translocates the runner to `~/.Trash` and kills it before `xcodebuild test` can bootstrap. The script re-signs the runner + host app ad-hoc after `build-for-testing` and then invokes `test-without-building`, sidestepping the trash-prompt loop.
 
 ## Release / distribution
 

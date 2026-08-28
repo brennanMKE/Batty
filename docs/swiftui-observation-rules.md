@@ -189,7 +189,7 @@ each path, and delete inferred echoes before reaching for guards.
 4. For crashes, read `asiBacktraces` in the `.ips` before trusting the
    faulting-thread stack.
 5. Verify with the *minimal* targeted UI tests
-   (`scripts/run-ui-tests.sh BattyUITests/<Class>/<test>` — seconds of
+   (`./build.sh ui BattyUITests/<Class>/<test>` — seconds of
    machine lock when green) plus a manual pass of the pointer behaviors in
    `terminal-pane-requirements.md` for anything in the pane path. Focus and
    click behavior cannot be signed off by compilation or unit tests.

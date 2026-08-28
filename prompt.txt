@@ -1,0 +1,12 @@
+Look at this shell script.
+
+~/bin/list-recent-issues
+
+It is great for listing issues. But it could be better as a Python script. In the scripts/ folder create a new one and use the files in issues/
+
+I would like a few options added though. I'd like it to support 3 modes.
+
+1. Status - List recent filtered to open, in-progress and recently resolved
+2. Brief - List just the most recently updated issues limited to 20
+3. Full - List all issues in order of the number
+

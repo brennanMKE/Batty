@@ -612,7 +612,7 @@ broke `xcodebuild`'s test-runner resolution of `BattyKit`'s
 on launch (`resource_bundle_accessor.swift: Fatal error: unable to find
 bundle named BattyKit_BattyKit`). `swift test` run standalone does *not*
 reproduce this, so it's easy to reintroduce by accident; the project's own
-canonical gate (`scripts/build.sh unit`) is what catches it. The shipped
+canonical gate (`./build.sh unit`) is what catches it. The shipped
 fix instead builds `batty` **from the package**, invoked from inside the
 Run Script phase, so the executable product never enters the Xcode build
 graph at all.
@@ -974,7 +974,7 @@ automatic-signing pass re-signs a loose `Resources/bin/*` Mach-O; `#0249`'s
   see `issues/0273.md` for the exact steps needed to close it (a Developer
   ID certificate plus a real, user-authorized release run).
 - `#0249`'s verification log asserted, for a plain (non-notarized)
-  `scripts/build.sh` run: "embedded binary confirmed at
+  `./build.sh` run: "embedded binary confirmed at
   `Batty.app/Contents/Resources/bin/batty` (Mach-O 64-bit executable
   arm64, **re-signed by the app pass**)". `#0273` could not reproduce this
   under the same conditions (plain signed build, `codesign -dv` showed
@@ -1015,7 +1015,7 @@ Unit tests (Swift Testing, `BattyKit/Tests/BattyKitTests/`):
   call from a built `SessionURLBuilder.buildURL` URL produces a selected
   session with the right working directory.
 
-Run via the project's standard gate: `scripts/build.sh unit` (runs
+Run via the project's standard gate: `./build.sh unit` (runs
 `BattyKitTests` only, no UI, <30 s).
 
 **Running the CLI standalone**, with no Xcode/app bundle involved:
@@ -1208,7 +1208,7 @@ Grounded directly in the code above, not aspirational:
 | `BattyKit/Sources/BattyKit/Model/SessionNameCache.swift` | `resolvedDirectoryName`/`canonicalFileURL` derive the Application Support directory from the running variant's bundle identifier instead of a hardcoded `"Batty"` literal — Prod's path stays byte-identical (`#0279`). |
 | `BattyKit/Sources/BattyXPCCore/Logging.swift`, `BattyKit/Sources/batty/Logging.swift`, `BattyKit/Sources/BattyBroker/Logging.swift` | The bare-Mach-O broker/CLI logging-subsystem fallback now resolves to `ServiceNames.appBundleIdentifier` (the compile-time-baked variant) instead of the Prod literal (`#0279`). |
 | `Configuration/Beta.xcconfig` | `PRODUCT_NAME = Batty Beta` so the Beta build produces a distinctly-named bundle that can sit in `/Applications` next to `Batty.app` (`#0279`). |
-| `scripts/build-beta.sh` | Builds the Beta scheme (unsigned by default, `--sign` opt-in), leaves the product at `beta-build/Products/Batty Beta.app`, and never copies into `/Applications` or touches the running Prod app (`#0279`). |
+| `./build.sh package` | Builds the Beta scheme (unsigned by default, `--sign` opt-in), leaves the product at `beta-build/Products/Batty Beta.app`, and never copies into `/Applications` or touches the running Prod app (`#0279`). |
 | `issues/0249.md` | Filed/resolved: CLI target + install plumbing. Source of the `BattyKit`-product-dependency trap warning. |
 | `issues/0250.md` | Filed/resolved: `batty <path>` verb, `batty://` scheme, `@main` entry point rename. |
 | `issues/0251.md` | Filed/resolved: fixed phantom-window and stray-SwiftUI-window bugs in the URL round-trip (two rounds). |

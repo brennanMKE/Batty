@@ -482,7 +482,7 @@ synchronously) and proves the *test infrastructure* can detect a
 regression (deleting the `release()` call from the test double's
 `tearDown()` makes the corresponding test fail deterministically — verify
 this the same way `#0288`/`#0289` did, by temporarily deleting the call
-and re-running `scripts/build.sh unit` before trusting the test).
+and re-running `./build.sh unit` before trusting the test).
 
 **What it does not and cannot prove**, because no concrete non-terminal
 view kind exists yet to prove it about: that a *real* watcher (an actual
@@ -554,7 +554,7 @@ lifecyclePhase == .active else { return }` before doing any work.
 ## 7. Verification for this issue
 
 ```
-scripts/build.sh unit
+./build.sh unit
 ```
 
 Run against branch `issue/0303`. Baseline going in (per `#0302`'s own

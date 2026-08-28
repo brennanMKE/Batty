@@ -246,7 +246,7 @@ section_sparkle() {
     print -- "-- Sparkle EdDSA private key --"
     local generate_keys
     generate_keys=$(find_sparkle_tool generate_keys) || {
-        warn "generate_keys not found — run scripts/build.sh once to produce the Sparkle SPM artifacts, then re-run this export"
+        warn "generate_keys not found — run ./build.sh once to produce the Sparkle SPM artifacts, then re-run this export"
         SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
         return
     }

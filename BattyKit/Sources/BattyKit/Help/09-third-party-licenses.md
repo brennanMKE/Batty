@@ -21,7 +21,7 @@ same seam the other eight Help topics use
 (`BattyKit/Sources/BattyKit/Views/Help/HelpCatalog.swift`,
 `HelpView.swift`), not a new UI surface. In the built app the file lands
 at `Batty.app/Contents/Resources/BattyKit_BattyKit.bundle/Contents/Resources/Help/09-third-party-licenses.md`
-(confirmed by inspecting a fresh `scripts/build.sh` product — `.copy("Help")`
+(confirmed by inspecting a fresh `./build.sh` product — `.copy("Help")`
 in `BattyKit/Package.swift` preserves the `Help/` subdirectory rather than
 flattening it the way `.process("Resources")` does).
 
@@ -47,7 +47,7 @@ Launch Services dependency, no new event-routing path.
 paragraph:** `BattyKitTests/ThirdPartyLicensesSyncTests.swift` asserts
 this file's content is byte-identical to
 `BattyKit/Sources/BattyKit/Help/09-third-party-licenses.md`. It runs in
-`scripts/build.sh unit`, the pre-commit gate — drift fails the build,
+`./build.sh unit`, the pre-commit gate — drift fails the build,
 it doesn't rely on a maintainer remembering. When updating one file,
 update the other in the same commit; the test is there so a forgotten
 half doesn't silently ship.
@@ -542,7 +542,7 @@ Ranch (primary notice), plus Colin Percival (bsdiff/bsplit), Yuta Mori
 (sais-lite), Orson Peters (ed25519), and Mark Hamlin
 (`SUSignatureVerifier.m`) for vendored components.
 
-**Ships in the bundle:** confirmed by inspecting a fresh `scripts/build.sh`
+**Ships in the bundle:** confirmed by inspecting a fresh `./build.sh`
 output (`#0318`) — `Sparkle.framework` is embedded at
 `Contents/Frameworks/Sparkle.framework`, including its `Autoupdate`
 binary, `Updater.app`, and `XPCServices/Downloader.xpc` +

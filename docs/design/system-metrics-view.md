@@ -983,7 +983,7 @@ spike (§1) ran as standalone Swift scripts outside the repository and is
 not part of this commit.
 
 ```
-scripts/build.sh unit
+./build.sh unit
 ```
 
 `Configuration/Active.xcconfig` read `#include "Prod.xcconfig"` before

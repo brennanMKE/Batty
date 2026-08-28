@@ -57,7 +57,7 @@ nonisolated func resolvePath(_ input: String) throws -> String {
 /// through `AppConnectDance`/`AppBundleLocator` at all — it targeted
 /// `open -b <bundleIdentifier>`, which asks LaunchServices to resolve the
 /// identifier and, on a machine with several bundles claiming it (every
-/// `scripts/build.sh` run adds one), can resolve to any of them. That made
+/// `./build.sh` run adds one), can resolve to any of them. That made
 /// the most-typed invocation of the CLI exempt from every fix this issue
 /// otherwise made to every other verb.
 ///

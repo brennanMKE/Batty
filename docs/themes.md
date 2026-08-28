@@ -497,7 +497,7 @@ Two different paths, depending on where the theme comes from:
    naming was authored; don't force every pair into `<Name> Day`.
 4. Add or extend tests in
    `BattyKit/Tests/BattyKitTests/BattyThemeCatalogTests.swift`.
-5. `scripts/build.sh unit` — the new theme name appears in the Theme
+5. `./build.sh unit` — the new theme name appears in the Theme
    menu, Settings picker, Command Palette, and Theme Selector
    immediately; no package change, no revision bump, no
    `Package.resolved` update.

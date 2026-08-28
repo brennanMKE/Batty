@@ -157,7 +157,7 @@ in sync, and drive hand-written UI lists from `allCases`.
 Beta scheme's pre-action rewrites it **after** `xcodebuild` has resolved
 settings, so it only takes effect on the *next* invocation. Anything that
 builds Beta without restoring it leaves the environment switched, and the
-next `scripts/build.sh` builds the Beta product **while reporting Prod**.
+next `./build.sh` builds the Beta product **while reporting Prod**.
 
 Found flipped mid-session with no build having been intentionally run
 against Beta. Related: `Batty.xcodeproj/project.pbxproj` and the shared
@@ -178,7 +178,7 @@ Debug builds, `/Applications/Batty.app`, a local release build, and two
 stale `/Volumes` registrations for unmounted DMGs. `open -b <id>` and
 `runningApplications(withBundleIdentifier:)` cannot tell them apart.
 
-**Every `scripts/build.sh` run adds another claimant.** The orchestration
+**Every `./build.sh` run adds another claimant.** The orchestration
 that landed these issues ran builds across six worktrees, so the debugging
 session actively worsened the bug it was debugging.
 

@@ -283,10 +283,10 @@ The UI suite is slow (~10 min), locks the machine, and runs only for release pre
 
 ```bash
 scripts/run-ui-tests.sh                              # all UI tests
-scripts/run-ui-tests.sh BattyUITests/TabRenameTests  # one class
+./build.sh ui BattyUITests/TabRenameTests  # one class
 ```
 
-`./build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `scripts/run-ui-tests.sh`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `./build.sh` invocation passes before committing; Xcode previews are not a build pass. See `CLAUDE.md` for the full test strategy.
+`./build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `./build.sh ui`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `./build.sh` invocation passes before committing; Xcode previews are not a build pass. See `CLAUDE.md` for the full test strategy.
 
 ### When the implementer can't finish
 

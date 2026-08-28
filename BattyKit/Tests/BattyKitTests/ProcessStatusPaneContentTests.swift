@@ -239,7 +239,7 @@ struct ProcessStatusPaneContentTests {
         // for its whole duration (this was observed directly: adding this
         // test as originally written, spinning inline, made the
         // unrelated `samplingStopsWhileSuspendedAndResumesWhenShown`
-        // timing test flake under `scripts/build.sh unit`'s xcodebuild
+        // timing test flake under `./build.sh unit`'s xcodebuild
         // harness even though it had been stable for three consecutive
         // full-suite `swift test` runs beforehand). The CPU time still
         // accrues to this same process (`getpid()`) regardless of which

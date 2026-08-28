@@ -62,7 +62,7 @@
 #   invocation that triggers it -- so whatever Active.xcconfig says at the
 #   START of a build is what that build actually uses, and any pre-action
 #   write only takes effect for the NEXT invocation. Left pointed at Beta,
-#   the very next `-scheme 'Batty (Prod)'` build (scripts/build.sh, this
+#   the very next `-scheme 'Batty (Prod)'` build (./build.sh, this
 #   project's pre-commit gate, CI, or you) would silently build the BETA
 #   product while claiming to be Prod -- confusing at best, and a direct
 #   violation of "don't interfere with the Prod build" at worst. This

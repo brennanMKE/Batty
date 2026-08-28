@@ -605,12 +605,12 @@ state-machine level regardless of caller.
 **Documentation and a static HTML mockup only — no Swift source changed,
 no `PaneRuntime`/`PaneView`/`PaneContentKind` touched.** The feasibility
 spike (§1) ran as standalone Swift scripts outside the repository and is
-not part of this commit. `scripts/build.sh unit` below is a baseline check
+not part of this commit. `./build.sh unit` below is a baseline check
 that the branch is known-green going in; it is not evidence of anything
 this document proposes, because none of it exists as code yet.
 
 ```
-scripts/build.sh unit
+./build.sh unit
 ```
 
 `Configuration/Active.xcconfig` read `#include "Prod.xcconfig"` before
