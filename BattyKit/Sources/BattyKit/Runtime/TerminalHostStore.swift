@@ -403,7 +403,9 @@ public final class TerminalHostStore {
             // case the surface itself must still stop rendering (#0288).
             // `!view.isHidden` (not `placement`) is the visibility input —
             // see `effectiveSurfaceVisible`'s doc comment for why.
-            view.setSurfaceVisible(Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible))
+            let effective = Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible)
+            logger.debug("occlusionApply[updatePlacements] tab=\(id, privacy: .public) isHidden=\(view.isHidden, privacy: .public) windowVisible=\(windowVisible, privacy: .public) effective=\(effective, privacy: .public)")
+            view.setSurfaceVisible(effective)
         }
         syncOccludedTicker()
     }
@@ -430,7 +432,9 @@ public final class TerminalHostStore {
             view.isHidden = true
         }
         let windowVisible = tabWindowMap[id].flatMap { windowOcclusionVisible[$0] } ?? true
-        view.setSurfaceVisible(Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible))
+        let effective = Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible)
+        logger.debug("occlusionApply[setPlacement] tab=\(id, privacy: .public) isHidden=\(view.isHidden, privacy: .public) windowVisible=\(windowVisible, privacy: .public) effective=\(effective, privacy: .public)")
+        view.setSurfaceVisible(effective)
         syncOccludedTicker()
     }
 
@@ -459,7 +463,9 @@ public final class TerminalHostStore {
         guard windowOcclusionVisible[windowID] != visible else { return }
         windowOcclusionVisible[windowID] = visible
         for (id, view) in terminalViews where tabWindowMap[id] == windowID {
-            view.setSurfaceVisible(Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: visible))
+            let effective = Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: visible)
+            logger.debug("occlusionApply[setWindowOcclusionVisible] tab=\(id, privacy: .public) isHidden=\(view.isHidden, privacy: .public) windowVisible=\(visible, privacy: .public) effective=\(effective, privacy: .public)")
+            view.setSurfaceVisible(effective)
         }
         logger.debug("window occlusion changed window=\(windowID.value, privacy: .public) visible=\(visible, privacy: .public)")
         syncOccludedTicker()
