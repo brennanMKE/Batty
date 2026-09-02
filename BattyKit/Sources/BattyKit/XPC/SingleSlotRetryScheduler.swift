@@ -21,6 +21,23 @@ public final class SingleSlotRetryScheduler<Handle> {
         self.cancel = cancel
     }
 
+    /// Explicit, empty deinit — workaround for #0391. The implicit deinit
+    /// crashes swift-frontend 6.3.3's SIL EarlyPerfInliner at `-O`
+    /// (`SILFunctionTransform "EarlyPerfInliner" on @$s8BattyKit24SingleSlotRetrySchedulerCfD`),
+    /// which otherwise blocks every Release build of the app. Simply writing
+    /// an explicit deinit — even an empty one — sidesteps whatever about the
+    /// synthesized one trips the inliner. This is a defect in swift-frontend,
+    /// not in this class.
+    ///
+    /// Safe to remove once the project's toolchain moves past Swift 6.3.3 —
+    /// delete this `deinit` and confirm `./build.sh release archive
+    /// -configuration Release` still succeeds.
+    ///
+    /// The body MUST stay empty. Calling `clear()` here would cancel the
+    /// pending handle on deallocation — a real behavior change, not a
+    /// compiler workaround — and that change belongs to #0367, not here.
+    deinit {}
+
     /// `true` while a handle is pending.
     public var hasPending: Bool { pending != nil }
 
