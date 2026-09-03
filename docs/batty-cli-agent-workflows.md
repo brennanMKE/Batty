@@ -199,6 +199,47 @@ a second run — hitting `--unique`'s match path, which creates nothing —
 leaves focus exactly where it was. Chaining is unaffected either way, since
 a following command targets by `--pane`/env, never by focus.
 
+## Showing the human what you did: `notify` tells, `focus` shows
+
+`batty notify` posts to the Bell Feed and hopes the human clicks it. `batty
+{session,pane,tab} focus` brings the relevant Session/Pane/Tab and Batty's
+window in front of the human directly — the pair from `#0381` closes the gap
+`notify`-alone leaves. A typical sequence after opening a Pane the human
+should see:
+
+```sh
+new_pane=$(batty pane split --horizontal --command "npm run dev")
+batty notify --title "Dev server starting" --tab "$new_pane"
+# ... later, once something needs the human's attention ...
+batty pane focus "$new_pane"
+```
+
+`notify` attributes the Bell Feed entry to a Tab (`--tab <id>`), while focus
+verbs take a Pane/Session/Tab id directly. All three focus verbs are
+activating even when their target lives in a background Session or window —
+the CLI's one sanctioned exception to "a mutation aimed at a background
+Session must not switch the active Session" (#0257's 2026-07-27 terminology
+amendment). `pane focus`/`tab focus` also un-hide their target if it was
+hidden — focus must never land on a Pane the human can't see (#0256).
+
+A `batty watch` subscriber should read the `session_focused`/`pane_focused`/
+`tab_focused` events as "a `batty {session,pane,tab} focus` call ran", not as
+"the focused Session/Pane/Tab changed" — they fire only from these CLI
+verbs (clicks, tab chips, and keyboard shortcuts emit nothing), and a no-op
+focus (already-focused target) still emits.
+
+Semantics recap:
+
+- `batty session focus <id>` — selects the Session and activates its window.
+  No Pane/Tab side effects. Id-based targeting only; `<name>` is not
+  implemented.
+- `batty pane focus <id>` — focuses the Pane, leaving its selected Tab
+  unchanged. Directional targeting (`up`/`down`/`left`/`right`) is
+  deliberately deferred; only id-based targeting is implemented.
+- `batty tab focus <id>` — selects the Tab if it isn't already active, and
+  implies focusing its containing Pane. Id-based targeting only; `<n>`
+  (index-based) is not implemented.
+
 ## Failure handling
 
 | Exit | Meaning | Agent response |

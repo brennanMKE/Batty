@@ -21,8 +21,9 @@ struct CapabilitiesCommandTests {
         let names = Set(CapabilitiesCommand.verbs().map(\.name))
         #expect(names == [
             "new", "ping", "status", "list",
-            "session info",
-            "pane split", "pane close",
+            "session info", "session focus",
+            "pane split", "pane close", "pane focus",
+            "tab focus",
             "id", "notify", "capabilities",
         ])
     }

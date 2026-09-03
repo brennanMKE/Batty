@@ -221,6 +221,87 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown tab id")))
                 }
             }
+        case XPCVerb.sessionFocus:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(SessionFocusRequest.self, from: payloadData)
+                else {
+                    logger.error("perform sessionFocus: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed session focus request")))
+                    return
+                }
+                guard let targetSessionID = request.sessionID ?? AppStateStore.shared.focusedSessionIDFallback() else {
+                    logger.error("perform sessionFocus: no session to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no session to target")))
+                    return
+                }
+                switch AppStateStore.shared.focusSessionForXPC(id: targetSessionID) {
+                case .focused:
+                    guard let replyData = try? JSONEncoder().encode(SessionFocusReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode session focus reply")))
+                        return
+                    }
+                    logger.info("perform sessionFocus -> session=\(targetSessionID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownSession:
+                    logger.error("perform sessionFocus: unknown session id \(targetSessionID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown session id")))
+                }
+            }
+        case XPCVerb.paneFocus:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(PaneFocusRequest.self, from: payloadData)
+                else {
+                    logger.error("perform paneFocus: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed pane focus request")))
+                    return
+                }
+                guard let targetPaneID = request.paneID ?? AppStateStore.shared.focusedPaneIDFallback() else {
+                    logger.error("perform paneFocus: no pane to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no pane to target")))
+                    return
+                }
+                switch AppStateStore.shared.focusPaneForXPC(id: targetPaneID) {
+                case .focused:
+                    guard let replyData = try? JSONEncoder().encode(PaneFocusReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane focus reply")))
+                        return
+                    }
+                    logger.info("perform paneFocus -> pane=\(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownPane:
+                    logger.error("perform paneFocus: unknown pane id \(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
+                }
+            }
+        case XPCVerb.tabFocus:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(TabFocusRequest.self, from: payloadData)
+                else {
+                    logger.error("perform tabFocus: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed tab focus request")))
+                    return
+                }
+                guard let targetTabID = request.tabID ?? AppStateStore.shared.focusedTabIDFallback() else {
+                    logger.error("perform tabFocus: no tab to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no tab to target")))
+                    return
+                }
+                switch AppStateStore.shared.focusTabForXPC(id: targetTabID) {
+                case .focused:
+                    guard let replyData = try? JSONEncoder().encode(TabFocusReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode tab focus reply")))
+                        return
+                    }
+                    logger.info("perform tabFocus -> tab=\(targetTabID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownTab:
+                    logger.error("perform tabFocus: unknown tab id \(targetTabID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown tab id")))
+                }
+            }
 
             case XPCVerb.watch:
             watch(request, reply: reply)

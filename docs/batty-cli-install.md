@@ -36,8 +36,8 @@ The CLI now has four execution paths:
 - `batty new [<path>]`, bare `batty`, and `batty <path>` use the original
   one-way `batty://session?path=<path>` URL.
 - Live queries and acknowledged mutations use the broker-mediated XPC
-  channel: `ping`, `status`, `list`, `session info`, `pane split`, `pane
-  close`, and `notify`.
+  channel: `ping`, `status`, `list`, `session info`, `session focus`, `pane
+  split`, `pane close`, `pane focus`, `tab focus`, and `notify`.
 - `id` (alias `whoami`) reads `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
   `BATTY_TAB_ID` from the environment without contacting the broker or app.
 - `capabilities` reads neither the environment nor the app: its verb roster
@@ -53,8 +53,11 @@ The CLI now has four execution paths:
 | `batty status [--json]` | Print live pid, uptime, Window, Session, and Tab counts; `--json` also reports failure states (broker/app unreachable, etc.) as JSON | XPC |
 | `batty list [sessions\|panes\|tabs] [--json]` | Print live topology; JSON always contains the full topology | XPC |
 | `batty session info [--session <id>] [--json]` | Print one Session; target is flag → `BATTY_SESSION_ID` → focused Session | XPC |
+| `batty session focus <id>` | Select a Session and activate its window; id-based targeting only (no `<name>`) | XPC |
 | `batty pane split [-h\|-v] [-c <command>] [--pane <id>] [--view <kind>] [--unique]` | Split a Pane (or, with `--unique`, find-or-create) and print the Pane id | XPC |
 | `batty pane close [--pane <id>]` | Close every Tab in a Pane and remove the Pane | XPC |
+| `batty pane focus <id>` | Focus a Pane, leaving its selected Tab unchanged; directional targeting (`up\|down\|left\|right`) is deferred | XPC |
+| `batty tab focus <id>` | Select a Tab (implies focusing its containing Pane); id-based targeting only (no `<n>`) | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
 | `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |
@@ -322,8 +325,10 @@ struct BattyCLI: ParsableCommand {
             ListCommand.self,
             SessionNounCommand.self,
             PaneNounCommand.self,
+            TabNounCommand.self,
             IDCommand.self,
             NotifyCommand.self,
+            CapabilitiesCommand.self,
         ],
         defaultSubcommand: NewSessionCommand.self
     )
@@ -332,9 +337,16 @@ struct BattyCLI: ParsableCommand {
 
 Key points, verified against this source:
 
-- **Eight registered top-level commands.** `new`, `ping`, `status`, `list`,
-  `session`, `pane`, `id`/`whoami`, and `notify`. `session` currently contains
-  only `info`; `pane` currently contains `split` and `close`.
+- **Ten registered top-level commands.** `new`, `ping`, `status`, `list`,
+  `session`, `pane`, `tab`, `id`/`whoami`, `notify`, and `capabilities`.
+  `session` contains `info` and `focus`; `pane` contains `split`, `close`,
+  and `focus`; `tab` (new with `#0381`) contains only `focus` — the rest of
+  the `tab` verbs are deliberately not built yet (see #0257's "a filed
+  ticket reads as scheduled work" rule and #0382). Directional `pane focus
+  <up|down|left|right>` is deferred (id-based targeting only); `session
+  focus <name>` and `tab focus <n>` are likewise not implemented — only a
+  UUID parses for either (#0257's table lists both forms; only the id form
+  shipped in #0381).
 - **Bare `batty` (no arguments) defaults to `batty .`** — creates a
   session at the current working directory rather than printing usage.
   `batty <path>` remains shorthand for the default `new` subcommand. A path

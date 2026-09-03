@@ -48,6 +48,38 @@ public nonisolated enum XPCVerb {
     /// recoverable silent failure in the whole agent loop.
     public static let notify = "notify"
 
+    /// #0381: the fourth mutating XPC verb. Selects the target session
+    /// (the CLI's one sanctioned exception to "a mutation aimed at a
+    /// background session must not switch the active session") and
+    /// activates its window, replying with an empty `SessionFocusReply` on
+    /// success as `XPCResponse.payload`. Request payload is
+    /// `SessionFocusRequest`. A failure reply (`ok: false`) covers an
+    /// unknown/stale `SessionFocusRequest.sessionID` and "no session to
+    /// target" — the CLI surfaces both as exit `4`.
+    public static let sessionFocus = "sessionFocus"
+
+    /// #0381: the fifth mutating XPC verb. Focuses the target pane and
+    /// selects its owning session/activates its window, but leaves the
+    /// pane's selected tab unchanged (#0257's 2026-07-27 terminology
+    /// amendment: `pane focus` never re-selects tabs). Replying with an
+    /// empty `PaneFocusReply` on success as `XPCResponse.payload`. Request
+    /// payload is `PaneFocusRequest`. A failure reply (`ok: false`) covers
+    /// an unknown/stale `PaneFocusRequest.paneID` and "no pane to
+    /// target" — the CLI surfaces both as exit `4`. Directional targeting
+    /// (`up`/`down`/`left`/`right`) is deferred; only id-based targeting is
+    /// implemented.
+    public static let paneFocus = "paneFocus"
+
+    /// #0381: the sixth mutating XPC verb. Selects the target tab (if not
+    /// already selected) and implies focusing its containing pane — both
+    /// activating per the same terminology amendment as `paneFocus`.
+    /// Replies with an empty `TabFocusReply` on success as
+    /// `XPCResponse.payload`. Request payload is `TabFocusRequest`. A
+    /// failure reply (`ok: false`) covers an unknown/stale
+    /// `TabFocusRequest.tabID` and "no tab to target" — the CLI surfaces
+    /// both as exit `4`.
+    public static let tabFocus = "tabFocus"
+
     /// #0145: the non-mutating long-lived verb — keeps the connection open
     /// after this call returns, then pushes `WatchEventPayload` values back
     /// through the same reply block as mutations happen. The CLI wraps the

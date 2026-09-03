@@ -6,13 +6,13 @@ import BattyXPCCore
 import Foundation
 
 /// `batty pane` — the noun #0257's eventual grammar (`pane hide`, `show`,
-/// `focus`, `zoom`) will grow siblings under. `split` (#0282) and `close`
-/// (#0283) exist today.
+/// `zoom`) will grow siblings under. `split` (#0282), `close` (#0283), and
+/// `focus` (#0381) exist today.
 struct PaneNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "pane",
         abstract: "Split, close, or otherwise control a Batty pane.",
-        subcommands: [PaneSplitCommand.self, PaneCloseCommand.self]
+        subcommands: [PaneSplitCommand.self, PaneCloseCommand.self, PaneFocusCommand.self]
     )
 }
 
@@ -278,6 +278,90 @@ struct PaneCloseCommand: ParsableCommand {
                 fputs("batty: app terminated\n", stderr)
                 throw ExitCode(XPCExitCode.sessionTerminated)
             }
+        }
+    }
+}
+
+/// `batty pane focus` — #0381: one of the three "show the human what I
+/// did" verbs, over XPC request/reply following #0282's mutation-verb
+/// pattern.
+///
+/// **Id-based targeting only.** #0257's table also lists directional
+/// targeting (`up`/`down`/`left`/`right`), but that's deferred: id-based
+/// targeting is what an agent needs (the id comes straight from `pane
+/// split`, `batty new`, or `batty list --json`), and directional targeting
+/// drags in split-tree geometry work with no agent-facing payoff.
+///
+/// **Activating**, unlike `pane split`/`pane close`: #0257's 2026-07-27
+/// terminology amendment names the `focus` verbs as the CLI's one
+/// sanctioned exception to "a mutation aimed at a background session must
+/// not switch the active session." Focusing a pane in a non-selected
+/// session selects that session and brings its window forward — but the
+/// target pane's own selected tab is left unchanged; moving focus between
+/// panes must never re-select tabs.
+struct PaneFocusCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "focus",
+        abstract: "Focus a pane by id, selecting its session and activating its window.",
+        discussion: """
+        Focuses the target pane, selects its owning session, and brings its \
+        window forward. The pane's own active tab is left unchanged — \
+        moving focus between panes never re-selects tabs. Directional \
+        targeting (up/down/left/right) is deferred; only id-based targeting \
+        is implemented.
+        """,
+        helpNames: .long
+    )
+
+    @Argument(help: "Pane id to focus. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.")
+    var id: String?
+
+    nonisolated func run() throws {
+        let targetPaneID = try Self.resolveTargetPaneID(flag: id)
+
+        switch AppConnectDance.resolveEndpoint() {
+        case .failure(.brokerUnreachable):
+            fputs("batty: broker unreachable\n", stderr)
+            throw ExitCode(XPCExitCode.brokerUnreachable)
+        case .failure(.appUnavailable):
+            fputs("batty: app unavailable\n", stderr)
+            throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
+        case .success(let endpoint):
+            switch AppServiceClient.paneFocus(endpoint: endpoint, paneID: targetPaneID, timeout: 3.0) {
+            case .success:
+                break
+            case .unreachable:
+                fputs("batty: app unavailable\n", stderr)
+                throw ExitCode(XPCExitCode.appUnavailable)
+            case .requestFailed(let message):
+                fputs("batty: request failed — \(message)\n", stderr)
+                throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
+            }
+        }
+    }
+
+    /// `<id>` argument → `BATTY_PANE_ID` env → `nil` (let the app resolve
+    /// the focused pane). Deliberately its own resolver, not the free
+    /// `resolveTargetPaneID(flag:)` above: that one's error text says
+    /// "invalid --pane id," which is wrong here — this command's target is
+    /// a positional `<id>` argument, not a `--pane` flag (see this type's
+    /// doc for why focus verbs use a positional id).
+    private nonisolated static func resolveTargetPaneID(flag: String?) throws -> UUID? {
+        switch BattyTargetResolver.resolve(flag: flag, environmentKey: .paneID) {
+        case let .success(id):
+            return id
+        case let .failure(.malformedFlag(raw)):
+            fputs("batty: invalid pane id: \(raw)\n", stderr)
+            throw ExitCode.failure
         }
     }
 }

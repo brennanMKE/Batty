@@ -49,7 +49,7 @@ struct AppXPCServicePaneSplitUniqueTests {
 
     @Test func performPaneSplitWithUniqueMatchReturnsTheExistingPaneAndCreatesNothing() async throws {
         let session = AppStateStore.shared.addSession(title: "AppXPCServicePaneSplitUniqueTests-match")!
-        let target = session.focusedPane.id
+        let target = session.focusedPaneAnyKind.id
         let existing = AppStateStore.shared.splitPane(id: target, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
         let beforeCount = session.tree.allPanes.count
 
@@ -65,7 +65,7 @@ struct AppXPCServicePaneSplitUniqueTests {
 
     @Test func performPaneSplitWithUniqueTrueAndTerminalKindFallsThroughToCreating() async throws {
         let session = AppStateStore.shared.addSession(title: "AppXPCServicePaneSplitUniqueTests-terminal")!
-        let target = session.focusedPane.id
+        let target = session.focusedPaneAnyKind.id
         let beforeCount = session.tree.allPanes.count
 
         // `kind` omitted (nil) means terminal, matching the CLI's own
@@ -91,7 +91,7 @@ struct AppXPCServicePaneSplitUniqueTests {
     /// the CLI actually sends when `--unique` is omitted.
     @Test func performPaneSplitWithUniqueNilAlwaysCreates() async throws {
         let session = AppStateStore.shared.addSession(title: "AppXPCServicePaneSplitUniqueTests-nil")!
-        let target = session.focusedPane.id
+        let target = session.focusedPaneAnyKind.id
         let beforeCount = session.tree.allPanes.count
 
         let response = try await performPaneSplit(PaneSplitRequest(paneID: target, direction: .horizontal, kind: .gitStatus))

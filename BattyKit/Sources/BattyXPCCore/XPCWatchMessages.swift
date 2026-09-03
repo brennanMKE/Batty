@@ -82,14 +82,25 @@ public nonisolated struct WatchSubscriptionRequest: Codable, Sendable {
 /// to raw strings for `Codable` payload shape; the client sees these same
 /// strings back as JSON.
 
-public nonisolated enum WatchEventType: String, Sendable {
+public nonisolated enum WatchEventType: String, CaseIterable, Sendable {
     case sessionCreated = "session_created"
     case sessionDestroyed = "session_destroyed"
     case paneSplit = "pane_split"
     case tabCreated = "tab_created"
     case activeTabChanged = "active_tab_changed"
+    /// #0381: emitted by `AppStateStore.focusSessionForXPC(id:)`.
+    case sessionFocused = "session_focused"
+    /// #0381: emitted by `AppStateStore.focusPaneForXPC(id:)`.
+    case paneFocused = "pane_focused"
+    /// #0381: emitted by `AppStateStore.focusTabForXPC(id:)`.
+    case tabFocused = "tab_focused"
 
-    public static let allNames: [String] = ["session_created", "session_destroyed", "pane_split", "tab_created", "active_tab_changed"]
+    /// Derived from `allCases` (via `CaseIterable`) rather than hand-listed
+    /// — a hand-listed literal array can silently drift from the case list
+    /// (a case added/removed here without updating the literal), which
+    /// `WatchSubscriptionRequest.init`'s `events ?? allNames` default relies
+    /// on to subscribe every default `batty watch` to every event.
+    public static let allNames: [String] = allCases.map(\.rawValue)
 
     static func fromString(_ string: String) -> WatchEventType? {
         // Keep this exhaustive so future event names don't silently match nothing

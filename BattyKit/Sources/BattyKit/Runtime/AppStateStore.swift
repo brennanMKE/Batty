@@ -392,6 +392,21 @@ public final class AppStateStore {
 
 
 
+    /// The session to target when the XPC `session focus` verb (#0381)
+    /// receives no explicit `--session` id and no `BATTY_SESSION_ID` env —
+    /// the same "focused element" fallback `sessionInfoPayload(sessionID:
+    /// nil)` and `focusedPaneIDFallback()` use, one tier up from the pane
+    /// fallback (the session itself, not its focused pane). `nil` only
+    /// when there is no window/session to fall back to (unreachable in
+    /// practice — every window seeds one session — but handled rather than
+    /// force-unwrapped).
+    public func focusedSessionIDFallback() -> UUID? {
+        guard let window = keyWindowRuntime() ?? windows.first,
+              let session = window.selectedSession ?? window.sessions.first
+        else { return nil }
+        return session.id
+    }
+
     // MARK: - XPC pane split (#0282)
 
     /// The pane to target when an XPC mutation verb (`pane split` #0282,
@@ -934,6 +949,169 @@ public final class AppStateStore {
         // Locate the owning window by session ID so the jump navigates the
         // correct window's state, not always windows[0].
         windowOwning(sessionID: sessionID)?.jumpToTab(sessionID: sessionID, tabID: tabID)
+    }
+
+    // MARK: - XPC focus verbs (#0381)
+
+    /// Outcome of `focusSessionForXPC(id:)` — the app-side source of the
+    /// XPC `session focus` verb.
+    public enum SessionFocusOutcome: Equatable, Sendable {
+        case focused
+        /// No session with that id exists in any window — the
+        /// stale/unknown-id case `AppXPCService` turns into a failure
+        /// reply (CLI exit `4`).
+        case unknownSession
+    }
+
+    /// `session focus <id>` (#0381): selects the target session and
+    /// activates its window — #0257's 2026-07-27 terminology amendment
+    /// names the `focus` verbs as the CLI's one sanctioned exception to
+    /// "a mutation aimed at a background session must not switch the
+    /// active session." Unlike `pane focus`/`tab focus`, there is no pane
+    /// or tab to touch — this only ever changes `selectedSessionID` and
+    /// brings the window forward. Reuses `windowOwning(sessionID:)` (the
+    /// same lookup `renameSession`/`removeSession`/`duplicateSession` use)
+    /// and `WindowRuntime.setSelectedSession(id:)` (the sidebar's own
+    /// selection entry point).
+    @discardableResult
+    public func focusSessionForXPC(id sessionID: UUID) -> SessionFocusOutcome {
+        guard let window = windowOwning(sessionID: sessionID) else { return .unknownSession }
+        window.setSelectedSession(id: sessionID)
+        activateWindow(window)
+        let event = WatchEventPayload(type: "session_focused", sessionID: sessionID, fromCli: true)
+        AppEventWatcher.shared.send(eventType: event.type, payload: event)
+        return .focused
+    }
+
+    /// Outcome of `focusPaneForXPC(id:)` — the app-side source of the XPC
+    /// `pane focus` verb. Only one failure mode exists (unlike
+    /// `PaneCloseOutcome`'s three cases), so this mirrors `NotifyOutcome`'s
+    /// two-case shape.
+    public enum PaneFocusOutcome: Equatable, Sendable {
+        case focused
+        /// No pane with that id exists in any window — the stale/unknown-id
+        /// case `AppXPCService` turns into a failure reply (CLI exit `4`).
+        case unknownPane
+    }
+
+    /// Outcome of `focusTabForXPC(id:)` — the app-side source of the XPC
+    /// `tab focus` verb.
+    public enum TabFocusOutcome: Equatable, Sendable {
+        case focused
+        /// No tab with that id exists in any window — the stale/unknown-id
+        /// case `AppXPCService` turns into a failure reply (CLI exit `4`).
+        case unknownTab
+    }
+
+    /// `pane focus <id>` (#0381): selects the pane's owning session and
+    /// activates its window — #0257's 2026-07-27 terminology amendment
+    /// names the `focus` verbs as the CLI's one sanctioned exception to
+    /// "a mutation aimed at a background session must not switch the
+    /// active session" — but leaves the pane's `activeTabID` untouched:
+    /// moving focus between panes must never re-select tabs.
+    ///
+    /// Reuses `WindowRuntime.setSelectedSession(id:)` (the sidebar's own
+    /// selection entry point, not a direct `selectedSessionID` write) and
+    /// `WindowRuntime.focusPane(id:)` (already idempotent — an equal-value
+    /// write is skipped rather than re-notifying every `PaneView`), and the
+    /// same pane-owner search shape `splitPane`/`closePane`/`hidePane`/
+    /// `showPane` above already use.
+    @discardableResult
+    public func focusPaneForXPC(id paneID: UUID) -> PaneFocusOutcome {
+        for window in windows {
+            guard let session = window.sessions.first(where: { $0.tree.allPanes.contains(where: { $0.id == paneID }) }) else { continue }
+            window.setSelectedSession(id: session.id)
+            // #0256's invariant ("focus must never land on a hidden pane")
+            // holds for this verb too — un-hide before the focus write
+            // below, same as `jumpToBellEntry`'s un-hide-before-navigating
+            // rule, though the session-selection write above happens
+            // first here rather than after (not observable: both are
+            // synchronous main-actor writes with no reconciliation
+            // between them).
+            if let pane = session.tree.allPanes.first(where: { $0.id == paneID }), pane.isHidden {
+                window.showPane(id: paneID)
+            }
+            window.focusPane(id: paneID)
+            activateWindow(window)
+            let event = WatchEventPayload(type: "pane_focused", sessionID: session.id, targetPaneID: paneID, fromCli: true)
+            AppEventWatcher.shared.send(eventType: event.type, payload: event)
+            return .focused
+        }
+        return .unknownPane
+    }
+
+    /// `tab focus <id>` (#0381): selects the tab if it isn't already its
+    /// pane's active tab, and implies focusing that pane — the tab-level
+    /// counterpart of `focusPaneForXPC(id:)`, one tier further down, both
+    /// activating per the same terminology amendment. Mirrors
+    /// `WindowRuntime.jumpToTab`'s session/pane/tab write order (select
+    /// session, focus pane, set `activeTabID`) and, per #0145, also emits
+    /// `active_tab_changed` when the write actually flips the active tab —
+    /// `jumpToTab` emits it (`WindowRuntime.swift`), and a `batty watch`
+    /// subscriber relying on that event to track the active tab must not
+    /// silently miss a change driven by `tab focus`. Reuses
+    /// `WindowRuntime.locate(tabID:)` rather than re-walking the tree.
+    @discardableResult
+    public func focusTabForXPC(id tabID: UUID) -> TabFocusOutcome {
+        for window in windows {
+            guard let location = window.locate(tabID: tabID) else { continue }
+            window.setSelectedSession(id: location.session.id)
+            // Same #0256 invariant as `focusPaneForXPC`: un-hide the
+            // containing pane before the focus write, since `tab focus`
+            // implies focusing its pane.
+            if location.pane.isHidden {
+                window.showPane(id: location.pane.id)
+            }
+            window.focusPane(id: location.pane.id)
+            let oldTabID = location.pane.activeTabID
+            if oldTabID != tabID {
+                let oldTabTitle = location.pane.tabs.first(where: { $0.id == oldTabID })?.titleOverride ?? ""
+                location.pane.activeTabID = tabID
+                let newTabTitle = location.pane.tabs.first(where: { $0.id == tabID })?.titleOverride ?? ""
+                let activeTabChangedEvent = WatchEventPayload(
+                    type: "active_tab_changed",
+                    sessionID: location.session.id,
+                    targetPaneID: location.pane.id,
+                    oldTabTitle: oldTabTitle,
+                    newTabTitle: newTabTitle,
+                    fromCli: true
+                )
+                AppEventWatcher.shared.send(eventType: activeTabChangedEvent.type, payload: activeTabChangedEvent)
+            }
+            activateWindow(window)
+            let event = WatchEventPayload(type: "tab_focused", sessionID: location.session.id, targetPaneID: location.pane.id, tabID: tabID, fromCli: true)
+            AppEventWatcher.shared.send(eventType: event.type, payload: event)
+            return .focused
+        }
+        return .unknownTab
+    }
+
+    /// Makes `window`'s `NSWindow` key and front and brings the app itself
+    /// forward — the cross-window bring-forward half of the focus verbs'
+    /// activation. The XPC focus verbs are always the out-of-app case (an
+    /// agent runs `batty` from a shell while the human is in another app or
+    /// Space), unlike `jumpToBellEntry`'s in-app feed-click path, where
+    /// Batty is already frontmost and `makeKeyAndOrderFront` alone
+    /// suffices. The correct precedent is `BellNotifier`'s
+    /// notification-tap path, which pairs the jump with
+    /// `NSApp.activate(ignoringOtherApps:)` for exactly this reason.
+    /// Also deminiaturizes first — `makeKeyAndOrderFront` does not restore
+    /// a minimized window, so `pane focus` into one would otherwise be a
+    /// silent visual no-op. A responder/app-activation-changing AppKit
+    /// call: legal here for the same reason it's legal in
+    /// `jumpToBellEntry`/`BellNotifier` — this runs from the XPC-dispatched
+    /// `Task { @MainActor }` in `AppXPCService.perform`, an event-origin
+    /// call, never from view-update code. No-op when the window has no
+    /// registered `NSWindow` yet (unit tests, headless CLI-only contexts)
+    /// — the selection/focus writes above already ran regardless, which is
+    /// what the store-state assertions in tests exercise.
+    private func activateWindow(_ window: WindowRuntime) {
+        guard let nsWindow = nsWindow(for: window.id) else { return }
+        if nsWindow.isMiniaturized {
+            nsWindow.deminiaturize(nil)
+        }
+        nsWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Marks the active tab in the key content window as seen. Falls back to

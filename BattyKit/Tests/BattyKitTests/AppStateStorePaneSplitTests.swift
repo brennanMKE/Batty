@@ -226,7 +226,7 @@ struct AppStateStorePaneSplitTests {
 
     @Test func findUniquePaneReturnsAVisiblePaneOfTheRequestedKindInTheSameSession() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
         let gitStatusPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
 
         #expect(store.findUniquePane(paneID: source.id, kind: .gitStatus) == gitStatusPaneID)
@@ -234,7 +234,7 @@ struct AppStateStorePaneSplitTests {
 
     @Test func findUniquePaneReturnsNilWhenNoPaneOfThatKindExistsYet() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
 
         #expect(store.findUniquePane(paneID: source.id, kind: .gitStatus) == nil)
     }
@@ -243,7 +243,7 @@ struct AppStateStorePaneSplitTests {
     /// satisfy `--unique`.
     @Test func findUniquePaneDoesNotMatchAHiddenPaneOfTheSameKind() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
         let gitStatusPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
         let hiddenPane = store.sessions[0].tree.allPanes.first { $0.id == gitStatusPaneID }
         hiddenPane?.isHidden = true
@@ -257,9 +257,9 @@ struct AppStateStorePaneSplitTests {
     @Test func findUniquePaneDoesNotMatchAcrossSessions() {
         let store = AppStateStore()
         let background = store.addSession(title: "Background")!
-        _ = store.splitPane(id: background.focusedPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
+        _ = store.splitPane(id: background.focusedPaneAnyKind.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
 
-        let sourceInFirstSession = store.sessions[0].focusedPane
+        let sourceInFirstSession = store.sessions[0].focusedPaneAnyKind
         #expect(store.findUniquePane(paneID: sourceInFirstSession.id, kind: .gitStatus) == nil)
     }
 
@@ -272,7 +272,7 @@ struct AppStateStorePaneSplitTests {
     /// defeat the match — #0383's pinned scope rule.
     @Test func findUniquePaneMatchesRegardlessOfViewOptions() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
         let processStatusPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus, processStatusPid: 4242, contentFactory: { _ in nil })
 
         #expect(store.findUniquePane(paneID: source.id, kind: .processStatus) == processStatusPaneID)
@@ -295,7 +295,7 @@ struct AppStateStorePaneSplitTests {
     /// to which element a fixed function of unchanged state prefers.
     @Test func findUniquePaneReturnsTheFirstMatchInTheSessionsDepthFirstOrder() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
         let first = store.splitPane(id: source.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
         let second = store.splitPane(id: source.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
 
@@ -312,7 +312,7 @@ struct AppStateStorePaneSplitTests {
     /// it is the only other pane in the session.
     @Test func findUniquePaneDoesNotMatchADifferentKind() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
         _ = store.splitPane(id: source.id, direction: .horizontal, kind: .systemMetrics, contentFactory: { _ in nil })
 
         #expect(store.findUniquePane(paneID: source.id, kind: .gitStatus) == nil)
@@ -328,7 +328,7 @@ struct AppStateStorePaneSplitTests {
     /// back its own pane id instead of ever splitting.
     @Test func findUniquePaneReturnsNilForTerminalKindEvenThoughATerminalPaneExists() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
 
         #expect(store.findUniquePane(paneID: source.id, kind: .terminal) == nil)
     }

@@ -131,6 +131,59 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0381. Reuses #0282/#0283/#0284's mutating-verb dance. The app
+    /// either selects the target session and activates its window, or
+    /// reports a failure (unknown/stale `sessionID`, no session to target)
+    /// via `.requestFailed`, which the CLI turns into exit `4`.
+    static func sessionFocus(
+        endpoint: NSXPCListenerEndpoint,
+        sessionID: UUID?,
+        timeout: TimeInterval
+    ) -> Outcome<SessionFocusReply> {
+        let requestPayload = try? JSONEncoder().encode(SessionFocusRequest(sessionID: sessionID))
+        let outcome: Outcome<SessionFocusReply> = perform(verb: XPCVerb.sessionFocus, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "sessionFocus")
+        if case .success = outcome {
+            logger.info("sessionFocus -> session=\(sessionID?.uuidString ?? "<focused>", privacy: .public)")
+        }
+        return outcome
+    }
+
+    /// #0381. Reuses the same mutating-verb dance. The app either focuses
+    /// the target pane (selecting its owning session, activating its
+    /// window, and leaving its active tab unchanged) or reports a failure
+    /// (unknown/stale `paneID`, no pane to target) via `.requestFailed`,
+    /// which the CLI turns into exit `4`.
+    static func paneFocus(
+        endpoint: NSXPCListenerEndpoint,
+        paneID: UUID?,
+        timeout: TimeInterval
+    ) -> Outcome<PaneFocusReply> {
+        let requestPayload = try? JSONEncoder().encode(PaneFocusRequest(paneID: paneID))
+        let outcome: Outcome<PaneFocusReply> = perform(verb: XPCVerb.paneFocus, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "paneFocus")
+        if case .success = outcome {
+            logger.info("paneFocus -> pane=\(paneID?.uuidString ?? "<focused>", privacy: .public)")
+        }
+        return outcome
+    }
+
+    /// #0381. Reuses the same mutating-verb dance. The app either selects
+    /// the target tab (if not already selected), focuses its containing
+    /// pane, and activates the session/window, or reports a failure
+    /// (unknown/stale `tabID`, no tab to target) via `.requestFailed`,
+    /// which the CLI turns into exit `4`.
+    static func tabFocus(
+        endpoint: NSXPCListenerEndpoint,
+        tabID: UUID?,
+        timeout: TimeInterval
+    ) -> Outcome<TabFocusReply> {
+        let requestPayload = try? JSONEncoder().encode(TabFocusRequest(tabID: tabID))
+        let outcome: Outcome<TabFocusReply> = perform(verb: XPCVerb.tabFocus, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "tabFocus")
+        if case .success = outcome {
+            logger.info("tabFocus -> tab=\(tabID?.uuidString ?? "<focused>", privacy: .public)")
+        }
+        return outcome
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

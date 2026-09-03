@@ -55,9 +55,10 @@ struct CapabilitiesCommand: ParsableCommand {
     /// names, so a verb wired into `BattyCLI.configuration.subcommands`
     /// later is reported automatically — the pinned decision in #0384: "a
     /// verb added later cannot silently go unreported." A noun with
-    /// children (`session`, `pane`) is never itself directly invocable, so
-    /// only its leaves are reported (`session info`, `pane split`, `pane
-    /// close`), joined with the noun as `"pane split"`. `XPCVerb.watch` is
+    /// children (`session`, `pane`, `tab`) is never itself directly
+    /// invocable, so only its leaves are reported (`session info`,
+    /// `session focus`, `pane split`, `pane close`, `pane focus`, `tab
+    /// focus`), joined with the noun as `"pane split"`. `XPCVerb.watch` is
     /// correctly absent from this list: it has no entry anywhere in
     /// `BattyCLI`'s tree because #0145 never gave it a CLI command.
     static func verbs() -> [CapabilitiesVerbPayload] {

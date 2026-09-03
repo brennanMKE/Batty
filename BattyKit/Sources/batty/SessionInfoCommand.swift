@@ -6,13 +6,13 @@ import BattyXPCCore
 import Foundation
 
 /// `batty session` — the noun #0257's eventual grammar (`session new`,
-/// `session rename`, `session focus`, `session close`) will grow siblings
-/// under. Only `info` (#0274) exists today.
+/// `session rename`, `session close`) will grow siblings under. `info`
+/// (#0274) and `focus` (#0381) exist today.
 struct SessionNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "session",
         abstract: "Inspect or control a Batty session.",
-        subcommands: [SessionInfoCommand.self]
+        subcommands: [SessionInfoCommand.self, SessionFocusCommand.self]
     )
 }
 
@@ -138,4 +138,84 @@ struct SessionInfoCommand: ParsableCommand {
 
 
 
+}
+
+/// `batty session focus` — #0381: one of the three "show the human what I
+/// did" verbs, over XPC request/reply following #0282's mutation-verb
+/// pattern so a stale/unknown id is visible to the caller (exit `4`)
+/// instead of silently swallowed.
+///
+/// **Activating**, unlike every other mutation verb: #0257's 2026-07-27
+/// terminology amendment names the `focus` verbs as the CLI's one
+/// sanctioned exception to "a mutation aimed at a background session must
+/// not switch the active session." Focusing a session that isn't the
+/// window's selected session selects it, and brings the containing window
+/// forward (the same bring-forward chain a Bell Feed click-to-jump uses).
+struct SessionFocusCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "focus",
+        abstract: "Select a session and activate its window.",
+        discussion: """
+        Selects the target session (making it the window's active session) \
+        and brings its window forward. This is one of the CLI's sanctioned \
+        focus-stealing exceptions (#0257): every other mutation verb aimed \
+        at a background session leaves the active session untouched, but \
+        focus verbs exist specifically to bring what an agent did to the \
+        human's attention. Only id-based targeting is implemented; \
+        name-based targeting (`<name>`) is not.
+        """,
+        helpNames: .long
+    )
+
+    @Argument(help: "Session id to focus. Falls back to BATTY_SESSION_ID, then the focused session, when omitted.")
+    var id: String?
+
+    nonisolated func run() throws {
+        let targetSessionID = try resolveTargetSessionID(flag: id)
+
+        switch AppConnectDance.resolveEndpoint() {
+        case .failure(.brokerUnreachable):
+            fputs("batty: broker unreachable\n", stderr)
+            throw ExitCode(XPCExitCode.brokerUnreachable)
+        case .failure(.appUnavailable):
+            fputs("batty: app unavailable\n", stderr)
+            throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
+        case .success(let endpoint):
+            switch AppServiceClient.sessionFocus(endpoint: endpoint, sessionID: targetSessionID, timeout: 3.0) {
+            case .success:
+                break
+            case .unreachable:
+                fputs("batty: app unavailable\n", stderr)
+                throw ExitCode(XPCExitCode.appUnavailable)
+            case .requestFailed(let message):
+                fputs("batty: request failed — \(message)\n", stderr)
+                throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
+            }
+        }
+    }
+
+    /// `<id>` argument → `BATTY_SESSION_ID` env → `nil` (let the app
+    /// resolve the focused session). Same chain shape as `SessionInfoCommand
+    /// .resolveSessionID()`, driven by a positional argument rather than a
+    /// `--session` flag — a focus verb's whole purpose is naming a target,
+    /// so it reads as `batty session focus <id>`, not `batty session focus
+    /// --session <id>`.
+    private nonisolated func resolveTargetSessionID(flag: String?) throws -> UUID? {
+        switch BattyTargetResolver.resolve(flag: flag, environmentKey: .sessionID) {
+        case let .success(id):
+            return id
+        case let .failure(.malformedFlag(raw)):
+            fputs("batty: invalid session id: \(raw)\n", stderr)
+            throw ExitCode.failure
+        }
+    }
 }
