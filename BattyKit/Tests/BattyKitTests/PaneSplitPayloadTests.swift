@@ -174,6 +174,78 @@ struct PaneSplitPayloadTests {
         #expect(decodedRequest == request)
     }
 
+    // MARK: - #0383's `unique` field
+
+    @Test func requestRoundTripsWithUniqueTrue() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .gitStatus, unique: true)
+        let data = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: data)
+        #expect(decoded == request)
+        #expect(decoded.unique == true)
+    }
+
+    @Test func requestDefaultUniqueIsNil() {
+        let request = PaneSplitRequest(paneID: nil, direction: .horizontal)
+        #expect(request.unique == nil)
+    }
+
+    @Test func requestJSONOmitsUniqueKeyWhenNil() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .gitStatus)
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(!raw.keys.contains("unique"))
+    }
+
+    /// A CLI build predating `--unique` never sends the key at all — the
+    /// app must still decode the rest of the request rather than failing
+    /// closed on an absent optional field.
+    @Test func requestDecodesFromLegacyJSONMissingTheUniqueKey() throws {
+        let legacyJSON = """
+        {"paneID":null,"direction":"horizontal"}
+        """
+        let decoded = try JSONDecoder().decode(PaneSplitRequest.self, from: Data(legacyJSON.utf8))
+        #expect(decoded.unique == nil)
+    }
+
+    /// The `unique` addition is deliberate, visible wire-shape growth when
+    /// present — the omission-when-nil test above only proves the key
+    /// vanishes; this is the companion that proves it actually appears on
+    /// the wire when set, the same pairing #0315 established for `kind`
+    /// (`requestJSONOmitsKindKeyWhenNil` / `requestJSONTopLevelKeysIncludeKindWhenPresent`).
+    @Test func requestJSONTopLevelKeysIncludeUniqueWhenPresent() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .horizontal, kind: .gitStatus, unique: true)
+        let data = try JSONEncoder().encode(request)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(raw.keys) == ["paneID", "direction", "kind", "unique"])
+    }
+
+    // MARK: - #0383's `created` field on the reply
+
+    @Test func replyRoundTripsWithCreatedFalse() throws {
+        let paneID = UUID()
+        let reply = PaneSplitReply(paneID: paneID, created: false)
+        let data = try JSONEncoder().encode(reply)
+        let decoded = try JSONDecoder().decode(PaneSplitReply.self, from: data)
+        #expect(decoded == reply)
+        #expect(decoded.created == false)
+    }
+
+    @Test func replyDefaultCreatedIsNil() {
+        let reply = PaneSplitReply(paneID: UUID())
+        #expect(reply.created == nil)
+    }
+
+    /// An app build predating #0383 never sends the key — a caller must
+    /// still decode a bare `{"paneID": ...}` reply, interpreting the
+    /// absent field as "no opinion," not a decode failure.
+    @Test func replyDecodesFromLegacyJSONMissingTheCreatedKey() throws {
+        let paneID = UUID()
+        let legacyJSON = "{\"paneID\":\"\(paneID.uuidString)\"}"
+        let decoded = try JSONDecoder().decode(PaneSplitReply.self, from: Data(legacyJSON.utf8))
+        #expect(decoded.paneID == paneID)
+        #expect(decoded.created == nil)
+    }
+
     // MARK: - PaneSplitReply
 
     @Test func replyRoundTrips() throws {
@@ -228,6 +300,16 @@ struct PaneSplitPayloadTests {
         let data = try JSONEncoder().encode(reply)
         let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(Set(raw.keys) == ["paneID"])
+    }
+
+    /// The stable-keys test above only proves `created` vanishes when
+    /// `nil` (the ordinary/legacy-compatible case); nothing until this
+    /// test observed `created` in real encoded JSON at all.
+    @Test func replyJSONTopLevelKeysIncludeCreatedWhenPresent() throws {
+        let reply = PaneSplitReply(paneID: UUID(), created: false)
+        let data = try JSONEncoder().encode(reply)
+        let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(raw.keys) == ["paneID", "created"])
     }
 
     // MARK: - XPCVerb

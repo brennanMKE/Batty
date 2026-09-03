@@ -125,6 +125,22 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
                 let direction = SplitDirection(rawValue: request.direction.rawValue) ?? .horizontal
                 let kind = request.kind ?? .terminal
+                // #0383: `--unique` find-or-create. `findUniquePane` itself
+                // guards `kind != .terminal` (there is no sensible "the
+                // terminal Pane" to find) — the CLI also rejects `--unique`
+                // without a non-terminal `--view` client-side, but the
+                // invariant lives on the function that can violate it, not
+                // duplicated here.
+                if request.unique == true,
+                   let existingPaneID = AppStateStore.shared.findUniquePane(paneID: targetPaneID, kind: kind) {
+                    guard let replyData = try? JSONEncoder().encode(PaneSplitReply(paneID: existingPaneID, created: false)) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane split reply")))
+                        return
+                    }
+                    logger.info("perform paneSplit -> unique match, pane=\(existingPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                    return
+                }
                 // Each kind reads its own key out of the same generic bag
                 // (#0304's shared-wire-shape decision) — `path` only
                 // matters inside `.gitStatus`'s own construction path,
@@ -138,7 +154,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
                     return
                 }
-                guard let replyData = try? JSONEncoder().encode(PaneSplitReply(paneID: newPaneID)) else {
+                guard let replyData = try? JSONEncoder().encode(PaneSplitReply(paneID: newPaneID, created: true)) else {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane split reply")))
                     return
                 }

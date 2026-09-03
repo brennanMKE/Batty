@@ -472,6 +472,54 @@ public final class AppStateStore {
         return nil
     }
 
+    // MARK: - XPC pane split `--unique` (#0383)
+
+    /// The "find" half of `pane split --view <kind> --unique`: a visible
+    /// Pane of `kind` already in `paneID`'s owning Session, or `nil` when
+    /// none exists — `AppXPCService` falls through to `splitPane` unchanged
+    /// when this returns `nil`.
+    ///
+    /// Matches `PaneRuntime.kind` directly — the same field #0379 exposes
+    /// over the wire as `TopologyPanePayload.kind` (`docs/pane-kinds.md`
+    /// §5's "one string, three call sites") — rather than growing a second
+    /// way to ask what kind a Pane is. Unlike that wire field,
+    /// `PaneRuntime.kind` is never optional: it has been a concrete,
+    /// always-populated `PaneContentKind` since #0315, well before #0379
+    /// added the wire projection for stale-reader compatibility. The
+    /// "kind unknown" question #0383 raises for a stale reader therefore
+    /// does not apply here — this only ever runs inside a live app process
+    /// comparing its own Panes' real, concrete kinds, never round-tripping
+    /// through the optional payload type.
+    ///
+    /// Scope is the target Session, not the Window and not the app
+    /// (#0383's pinned match rule) — mirrors `splitPane`'s own
+    /// same-Session resolution via `paneID`. Hidden Panes never match
+    /// (`SplitTree.visiblePanes`, not `.allPanes`): a hidden Pane isn't
+    /// "showing," and `pane show` (#0382) is the verb for un-hiding one.
+    /// `viewOptions` differences (a different `--path`/`--pid`) never
+    /// defeat the match — the first visible Pane of `kind`, in the
+    /// Session's existing depth-first pane ordering, wins deterministically
+    /// when more than one exists.
+    ///
+    /// Always `nil` for `kind == .terminal` — there is no sensible "the
+    /// terminal Pane" to find (#0383's issue text). The CLI already
+    /// rejects `--unique` without a non-terminal `--view` before this ever
+    /// round-trips over XPC, but the invariant belongs here too: without
+    /// it, `.terminal` would match the *first visible terminal Pane in the
+    /// Session*, almost always the split's own source Pane, so `pane
+    /// split --view terminal --unique` (or a caller that bypasses the CLI
+    /// check some other way) would silently hand back the caller's own
+    /// pane id instead of ever splitting.
+    public func findUniquePane(paneID: UUID, kind: PaneContentKind) -> UUID? {
+        guard kind != .terminal else { return nil }
+        for window in windows {
+            if let session = window.sessions.first(where: { $0.tree.root.contains(paneID: paneID) }) {
+                return session.tree.visiblePanes.first { $0.kind == kind }?.id
+            }
+        }
+        return nil
+    }
+
     // MARK: - XPC pane close (#0283)
 
     /// Ends every Tab's Terminal Session in `paneID` and removes its region

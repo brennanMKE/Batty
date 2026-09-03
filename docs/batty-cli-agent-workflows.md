@@ -168,6 +168,37 @@ The first split targets `BATTY_PANE_ID`; the second explicitly targets the
 Pane returned by the first command. Do not use this shortcut after `batty new`
 because the inherited environment still identifies the old Pane.
 
+## Idempotent setup: re-running safely with `--unique`
+
+Both workflows above call `batty pane split` unconditionally, so re-running
+the same script — after a retry, a restart, or just running it twice by
+habit — stacks a second identical Pane next to the first every time. An
+agent that opens a status view as part of its own setup step, rather than
+as a one-shot action a human triggered once, wants find-or-create instead:
+
+```sh
+git_status_pane=$(batty pane split --view git-status --unique) || exit $?
+```
+
+Safe to run any number of times: the first call creates the Pane; every
+call after that finds the same **visible** git-status Pane already in the
+target Session and returns its id without creating anything, so `batty
+list --json` never grows a second Git Status Pane just because the setup
+step ran again. `--unique` only matches within the target Session (not the
+whole app), only a Pane the user can currently see (a hidden one doesn't
+count — see `pane show`), and it doesn't care whether a matching Pane was
+pointed at a different `--path`; see `docs/batty-cli-install.md`'s
+`--unique` entry for the full match rule and its two asymmetries (co-supplied
+flags are ignored on a match; an app predating this flag ignores `--unique`
+entirely and always creates, though the CLI warns on stderr when it detects
+that case). "Safe to run any number of times" describes the Pane it returns,
+not necessarily the rest of the layout: an ordinary (non-`--unique`) split
+moves focus to the new Pane only when the split target was already focused,
+so the first run of a setup script can yank focus to the new dashboard while
+a second run — hitting `--unique`'s match path, which creates nothing —
+leaves focus exactly where it was. Chaining is unaffected either way, since
+a following command targets by `--pane`/env, never by focus.
+
 ## Failure handling
 
 | Exit | Meaning | Agent response |

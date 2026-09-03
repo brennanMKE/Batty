@@ -55,13 +55,34 @@ public nonisolated struct PaneSplitRequest: Codable, Sendable, Equatable {
     public let command: String?
     public let kind: PaneContentKind?
     public let viewOptions: [String: String]?
+    /// `--unique` (#0383): when `true` and `kind` names a non-terminal
+    /// kind, the app returns an existing **visible** Pane of that kind in
+    /// the target Session instead of creating a new one
+    /// (`AppStateStore.findUniquePane(paneID:kind:)`) — the find-or-create
+    /// primitive an agent needs for idempotent setup scripts. `nil` (the
+    /// CLI omits the key entirely when `--unique` was not passed) means
+    /// "no dedup, split unconditionally," matching every invocation before
+    /// this flag existed.
+    ///
+    /// An app build that predates this field never sees the key —
+    /// `JSONDecoder` ignores unrecognized request keys — and always
+    /// creates, exactly as `pane split --view <kind>` always has. That is
+    /// a deliberate, accepted gap rather than an oversight: there is no
+    /// capability round trip this CLI can use to ask the app whether it
+    /// understands `unique` before sending it (`batty capabilities`,
+    /// #0384, is a static, CLI-local description of this binary's own
+    /// surface, not a query of the app's), so silently falling back to
+    /// "always create" is the only option available without new
+    /// version-negotiation infrastructure this issue does not own.
+    public let unique: Bool?
 
-    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil, viewOptions: [String: String]? = nil) {
+    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil, viewOptions: [String: String]? = nil, unique: Bool? = nil) {
         self.paneID = paneID
         self.direction = direction
         self.command = command
         self.kind = kind
         self.viewOptions = viewOptions
+        self.unique = unique
     }
 }
 
@@ -70,8 +91,21 @@ public nonisolated struct PaneSplitRequest: Codable, Sendable, Equatable {
 /// --pane <id>` needs a real id to chain on, not a guess.
 public nonisolated struct PaneSplitReply: Codable, Sendable, Equatable {
     public let paneID: UUID
+    /// Whether `paneID` names a pane this call just created (`true`) or an
+    /// existing one `--unique` (#0383) matched and returned instead
+    /// (`false`), so a caller can distinguish "found" from "created" if it
+    /// cares — a caller checking specifically *for idempotency* wants
+    /// `created == false`. `nil` means the answering app predates #0383
+    /// and never populated this field at all — an app new enough to ever
+    /// produce an explicit `false` also always populates `true` on the
+    /// ordinary create path, so `nil` is never this app's own answer to
+    /// "was this created," only "I don't know, treat it as possibly
+    /// created" (see `PaneCommand.swift`'s CLI-visible warning for that
+    /// case).
+    public let created: Bool?
 
-    public init(paneID: UUID) {
+    public init(paneID: UUID, created: Bool? = nil) {
         self.paneID = paneID
+        self.created = created
     }
 }

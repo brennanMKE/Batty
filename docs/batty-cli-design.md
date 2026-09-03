@@ -105,7 +105,7 @@ only if needed · **[skip]** off-mission for Batty.
 
 ### A. Structure — sessions / panes / tabs  [core, 1-way]
 - `batty session new [path]` — open a session (today's `batty <path>`; keep as an alias). *(supacode `repo worktree-new`, herdr `workspace.create`, cmux `new-workspace`)*
-- `batty pane split [-h|-v]` — split the focused/target pane. **Shipped over XPC**; also supports `-c/--command`, `--pane`, and `--view`. *(all three: `pane.split` / `surface.split`)* — panes distribute evenly (1/n, #0255).
+- `batty pane split [-h|-v]` — split the focused/target pane. **Shipped over XPC**; also supports `-c/--command`, `--pane`, `--view`, and `--view`'s find-or-create companion `--unique` (#0383). *(all three: `pane.split` / `surface.split`)* — panes distribute evenly (1/n, #0255).
 - `batty pane hide` / `batty pane show <id>` — hide/restore a pane (**#0256 shipped**: surface kept alive, slot retained). `hide` targets the calling/focused pane; `show` needs an id (a hidden pane has no calling context). *(no direct competitor equivalent — Batty-specific)*
 - `batty tab new [-c <cmd>]` — new tab in the focused pane, optionally running a command. *(supacode `tab new -i`, herdr `tab.create`)*
 - `batty pane close` **shipped over XPC**; `batty tab close` and `batty session close` remain proposed. *(all three)*

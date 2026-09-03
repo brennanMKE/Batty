@@ -106,11 +106,26 @@ struct PaneSplitCommand: ParsableCommand {
     @Option(name: .long, help: "Directory for the new pane to monitor (only valid with --view git-status). Resolved to an absolute path.")
     var path: String?
 
+    /// #0383. Find-or-create: if the target Session already has a visible
+    /// Pane of the requested `--view` kind, prints *that* Pane's id and
+    /// creates nothing. `viewOptions` differences (a different `--path` or
+    /// `--pid`) do not defeat the match — a matching-kind Pane is returned
+    /// as-is even if pointed elsewhere; close it first if it needs to be
+    /// re-pointed. Only meaningful with a non-terminal `--view <kind>` —
+    /// rejected against an omitted `--view`/`--view terminal`, the same
+    /// way `--pid`/`--path` are rejected against the wrong kinds above.
+    @Flag(name: .long, help: "With --view <kind>, print the id of an existing visible pane of that kind instead of creating one. viewOptions differences (--path/--pid) do not defeat the match. Requires a non-terminal --view.")
+    var unique: Bool = false
+
     nonisolated func run() throws {
         let targetPaneID = try resolveTargetPaneID(flag: pane)
         let wireDirection: TopologySplitDirection = direction == .vertical ? .vertical : .horizontal
         let commandOverride = command.flatMap { $0.isEmpty ? nil : $0 }
         let resolvedKind = try resolveViewKind(flag: view)
+        if unique, resolvedKind == nil || resolvedKind == .terminal {
+            fputs("batty: --unique requires a non-terminal --view <kind> (there is no sensible \"the terminal pane\" to find)\n", stderr)
+            throw ExitCode.failure
+        }
         // `-c/--command` presumes a shell; a non-terminal pane has none —
         // reject the combination client-side rather than silently dropping
         // `-c` (#0315 review round 1, non-blocking item).
@@ -171,8 +186,25 @@ struct PaneSplitCommand: ParsableCommand {
             fputs("batty: \(message)\n", stderr)
             throw ExitCode(XPCExitCode.appBundleUnresolved)
         case .success(let endpoint):
-            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, viewOptions: wireViewOptions, timeout: 3.0) {
+            let wireUnique: Bool? = unique ? true : nil
+            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, viewOptions: wireViewOptions, unique: wireUnique, timeout: 3.0) {
             case .success(let reply):
+                // No `batty: ` prefix (N1, #0383 review round 1): every
+                // other `batty: ` line in this file sits on a path that
+                // throws non-zero immediately after, so a caller treating
+                // that prefix as a failure signal would misread this
+                // exit-0 line. This is the only channel through which a
+                // shell caller learns found-vs-created at all — `pane
+                // split` has no `--json` and stdout stays a bare id.
+                if reply.created == false {
+                    fputs("--unique matched an existing pane; nothing created\n", stderr)
+                } else if unique, reply.created == nil {
+                    // `created` is only ever `nil` from an app build that
+                    // predates #0383 entirely (a new app always populates
+                    // it on both branches) — the running Batty silently
+                    // ignored `--unique` and created unconditionally.
+                    fputs("--unique is not supported by the running Batty; a new pane may have been created\n", stderr)
+                }
                 print(reply.paneID)
             case .unreachable:
                 fputs("batty: app unavailable\n", stderr)

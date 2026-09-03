@@ -53,7 +53,7 @@ The CLI now has four execution paths:
 | `batty status [--json]` | Print live pid, uptime, Window, Session, and Tab counts; `--json` also reports failure states (broker/app unreachable, etc.) as JSON | XPC |
 | `batty list [sessions\|panes\|tabs] [--json]` | Print live topology; JSON always contains the full topology | XPC |
 | `batty session info [--session <id>] [--json]` | Print one Session; target is flag → `BATTY_SESSION_ID` → focused Session | XPC |
-| `batty pane split [-h\|-v] [-c <command>] [--pane <id>] [--view <kind>]` | Split a Pane and print the new Pane id | XPC |
+| `batty pane split [-h\|-v] [-c <command>] [--pane <id>] [--view <kind>] [--unique]` | Split a Pane (or, with `--unique`, find-or-create) and print the Pane id | XPC |
 | `batty pane close [--pane <id>]` | Close every Tab in a Pane and remove the Pane | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
@@ -1174,6 +1174,44 @@ Grounded directly in the code above, not aspirational:
   the quit-confirmation count, the sidebar pane label, and a
   `TerminalHostStore.placements` leak on hide) — see `docs/pane-kinds.md`'s
   `#0315` implementation note for the full list.
+- **`--unique` on `pane split`, #0383 — idempotent find-or-create.** With a
+  non-terminal `--view <kind>`, `--unique` checks the target Session first:
+  if it already contains a **visible** Pane of that kind, the CLI prints
+  *that* Pane's id and exits `0` without creating anything; otherwise it
+  splits exactly as an ordinary `--view` call would. This is the primitive
+  an agent's setup script needs to be safely re-run — `pane_id=$(batty pane
+  split --view git-status --unique)` is idempotent where the equivalent
+  without `--unique` stacks a new pane on every run. The match rule is
+  fixed, not configurable: same Session (not Window, not app), same kind,
+  and **not hidden** — a hidden Pane doesn't satisfy it (`pane show`,
+  #0382, is the verb for un-hiding one instead). `viewOptions` differences
+  (a different `--path`/`--pid`) never defeat the match: a matching-kind
+  Pane pointed at a different path or pid is still returned as-is, not
+  re-pointed — close it first if it needs to point somewhere else.
+  `--unique` requires a non-terminal `--view` and is rejected client-side
+  with exit `1` when `--view` is omitted or explicitly `terminal` (there
+  is no sensible "the terminal Pane" to find), the same way `--pid`/
+  `--path` are already rejected against the wrong kinds above — that is a
+  validation rule, not an asymmetry. Two actual asymmetries worth knowing:
+  (1) on a match, nothing is created, so `--path`/`--pid`/`-h`/`-v` also
+  passed on that same invocation are silently ignored — they only ever
+  apply to a pane this call actually creates. `-c/--command` is
+  deliberately not on this list: it is already rejected client-side
+  against *any* non-terminal `--view`, `--unique` or not
+  (`PaneCommand.swift`'s existing "non-terminal panes have no shell"
+  check), so it can never reach a match at all to be silently ignored by
+  one — `batty pane split --view git-status --unique -c 'foo'` is a hard
+  exit-`1` error, not a create-time-only flag. (2) An app build that
+  predates this flag never recognizes `unique` on the wire at all
+  (`JSONDecoder` ignores unknown request keys) and always creates — there
+  is no capability round trip the CLI can use to detect that ahead of
+  time. The CLI still surfaces it: when `--unique` was requested but the
+  reply carries no `created` field at all (only ever true of a pre-#0383
+  app; a `--unique`-aware app always populates it on both branches), the
+  CLI prints a stderr warning (`--unique is not supported by the running
+  Batty; a new pane may have been created`) rather than looking like an
+  ordinary idempotent hit — the one case this can arise is upgrading the
+  `batty` binary without restarting an already-running older Batty.
 - **Second mutating XPC verb, #0283.** `batty pane close [--pane <id>]` ends
   **every** Tab's Terminal Session in the calling/target pane — not just the
   active one — and removes the pane's region from the split tree, the
