@@ -58,100 +58,123 @@ The goal is this layout:
 project shell | command 1 | command 2 | ...
 ```
 
-`batty new <path>` uses a one-way macOS URL event. It exits after Launch
-Services accepts the URL, before the CLI can know that Batty created the
-Session. It also prints no Session or Pane ID. Therefore an agent must not
-assume that an immediately following unqualified `batty pane split` targets
-the new Session.
-
-Save the following zsh script as `batty-project-layout` and make it executable.
-It handles that boundary deterministically:
-
-> **This workaround is expected to be superseded.** `#0380` is open to move
-> this snapshot-and-poll logic into the CLI itself, so `batty new` can
-> return the new Session/Pane id directly instead of every caller
-> re-implementing this ~50-line dance. The script below is the current
-> truth — nothing that supersedes it has landed yet — but don't treat it as
-> the permanent interface; check `#0380`'s status before building more
-> tooling on top of it.
+`batty new <path>` (#0380) snapshots topology over XPC *before* dispatching
+the `batty://` URL, dispatches exactly as before, then polls topology until
+exactly one Session appears whose path matches the resolved directory and
+whose id was not in the snapshot — path alone isn't enough, since the user
+may already have a Session open on that directory. If Batty wasn't running
+yet, the snapshot is trivially "no Sessions" and the poll budget is larger,
+since `open` still has to launch the process and it has to register with
+the broker before Session creation even starts — but a cold launch also
+creates its own default Session (usually at `$HOME`, `docs/batty-cli-install.md`'s
+end-to-end trace covers this), so requesting `$HOME` itself (`batty ~`, bare
+`batty`/`batty .` run from home) can make *two* Sessions match. When both
+are visible **at once** with resolved paths, the poll waits rather than
+guessing which one is new, and reports the ambiguity explicitly (see the
+last failure mode below) if it never resolves to exactly one. This does
+not cover every ordering, though: the default Session's path can resolve,
+and be the only visible match, before the requested Session appears in
+topology at all (or the request can be dropped outright, #0251) — in that
+narrow window `batty new ~` can still report the default Session's id with
+no ambiguity signal. See `issues/0380.md`'s `## Gotchas` for the accepted
+residual. Once found, `batty new` prints the new Session id
+on line 1 and its `focusedPaneID` on line 2 (or `{"sessionID": "…",
+"paneID": "…"}` with `--json`), so an agent no longer has to snapshot and
+poll itself. `--no-wait` skips all of this and reverts to the original
+one-way, no-confirmation behavior — for scripts that already have their own
+way to identify the Session, or that genuinely don't care, and for the
+interactive `batty .` habit where nobody is scripting against the output:
 
 ```sh
-#!/bin/zsh
-set -u
-
-if [ "$#" -lt 1 ]; then
-    echo "usage: batty-project-layout <project-directory> [command ...]" >&2
-    exit 64
+new_output=$(batty new "$HOME/Developer/MyApp"); status=$?
+if [ "$status" -ne 0 ]; then
+    echo "batty new failed (exit $status)" >&2
+    exit "$status"
 fi
-
-project_dir=$(cd "$1" 2>/dev/null && pwd -P) || {
-    echo "project directory does not exist: $1" >&2
+pane_id=$(printf '%s\n' "$new_output" | tail -1)
+if [ -z "$pane_id" ]; then
+    echo "batty new created a session but did not report an id (degraded path — see below)" >&2
     exit 1
-}
-shift
-
-before_json=$(mktemp -t batty-before.XXXXXX) || exit 1
-cleanup() { rm -f -- "$before_json" }
-trap cleanup EXIT HUP INT TERM
-
-batty list --json >"$before_json" || exit $?
-batty new "$project_dir" || exit $?
-
-pane_id=
-attempts=0
-while [ "$attempts" -lt 50 ]; do
-    topology=$(batty list --json) || exit $?
-    pane_id=$(printf '%s\n' "$topology" | jq -r \
-        --arg project "$project_dir" \
-        --slurpfile before "$before_json" '
-            [$before[0].windows[].sessions[].id] as $old_ids
-            | first(
-                .windows[].sessions[]
-                | . as $session
-                | select(.path == $project)
-                | select(($old_ids | index($session.id)) == null)
-                | .focusedPaneID
-            ) // empty
-        ')
-
-    [ -n "$pane_id" ] && [ "$pane_id" != "null" ] && break
-    attempts=$((attempts + 1))
-    sleep 0.1
-done
-
-if [ -z "$pane_id" ] || [ "$pane_id" = "null" ]; then
-    echo "Batty did not report the new project Session within 5 seconds" >&2
-    exit 3
 fi
 
-for command in "$@"; do
+for command in "npm run dev" "npm test -- --watch"; do
     pane_id=$(batty pane split --horizontal --pane "$pane_id" \
         --command "$command") || exit $?
 done
 ```
 
-Example:
-
-```sh
-batty-project-layout "$HOME/Developer/MyApp" \
-    "npm run dev" \
-    "npm test -- --watch"
-```
-
-How it works:
-
-1. Canonicalizes and validates the project directory.
-2. Saves the existing Session IDs from `batty list --json`.
-3. Requests a new Session at the project path.
-4. Polls topology until a new Session with that path appears.
-5. Reads that Session's `focusedPaneID` and passes it explicitly to the first
-   split.
-6. Uses each successful `pane split` result as the next target, so subsequent
-   Panes extend to the right in command order.
-
 `--horizontal` creates a left/right split and the returned ID belongs to the
 new right-hand Pane. `--command` replaces the configured shell for that Pane
-and keeps the Pane open after the command exits so its output remains visible.
+and keeps the Pane open after the command exits so its output remains
+visible. Capture `batty new`'s exit status separately from its output — piping
+straight into `tail -1` (or any consumer) discards the exit code and hides a
+failure, including the degraded case below where stdout is legitimately empty.
+
+**Four failure modes are specific to `batty new`:**
+
+- **Degraded (exit `0`, no stdout):** if the pre-dispatch check couldn't
+  establish that Batty was cleanly not-running (broker unreachable) or
+  cleanly running-and-registered (app running but the broker has no
+  endpoint for it — a state a launch would only duplicate, not fix), there
+  is no reliable snapshot to diff against, so the CLI cannot safely identify
+  which Session is the new one. It still dispatches the URL (the Session is
+  created) and exits `0`, but prints nothing on stdout and writes a one-line
+  note to stderr instead of guessing. An agent whose script assumes
+  non-empty stdout on success should check for this rather than treat empty
+  output as failure.
+- **Poll timeout while Batty was reachable (exit `4`):** if an XPC endpoint
+  was live at some point during the poll — Batty was already running, or a
+  cold launch registered before the session-match poll ran out — but the
+  poll never saw the new Session appear within its budget, `batty new`
+  exits `4` (the same "request failed" code other mutating verbs use)
+  rather than hanging or inventing a new code. **This is not the same
+  situation as a `4` from another verb:** `list` kept succeeding the whole
+  time, so the app never rejected anything — the Session may have been
+  created and just didn't show up before the poll gave up. Refresh topology
+  (`batty list --json`) and look for it by path; do not re-run `batty new`,
+  which would create a duplicate Session.
+- **Cold-launch timeout with no endpoint ever seen (exit `3`, or `2` if
+  the *last* poll attempt found the broker itself unreachable):** if Batty
+  was not running before dispatch and no XPC endpoint ever came up within
+  the (larger) cold-launch poll budget, `batty new` exits `3` ("app
+  unavailable") — the same code every other verb uses when the broker
+  answers but no app ever registers. If the broker's response to the
+  *final* attempt was "unreachable" specifically — rather than "reachable,
+  but no endpoint registered yet" — the exit is `2` ("broker unreachable")
+  instead, the same distinction every other XPC-backed verb makes. (Only
+  the last attempt is checked, not the whole history: a poll where the
+  broker was briefly unreachable mid-run but answered normally on the
+  final attempt still exits `3`.) Unlike the exit `4` case above, `list`
+  never succeeded even once during the poll, so there is no evidence the
+  Session was ever created. Check whether Batty is installed and
+  launchable (`batty ping`, `batty status`) before retrying.
+- **Persistent ambiguity with a cold-launch default Session (exit `4`):**
+  requesting `$HOME` itself while Batty is not running can make *two*
+  Sessions match the poll's criteria at once — the default Session a cold
+  launch also creates, plus the requested one (see above). `batty new`
+  never guesses here: if the ambiguity never resolves to exactly one match
+  before the poll's budget runs out, it exits `4` with a distinct "multiple
+  sessions matched" message on stderr instead of printing either id.
+  Refresh topology and disambiguate manually rather than re-running
+  `batty new`, which would add a third Session to the pile.
+
+Any other XPC failure during the pre-dispatch check or the poll (broker
+unreachable, app unavailable, app terminated, running but unregistered, or
+bundle unresolved) surfaces through the same exit codes documented below.
+
+Two agents racing `batty new` on the same path at the same time still
+can't be told apart — there's no client-supplied token to disambiguate
+them — but the ambiguity guard (`#0380` round 3 review, B1) changed the
+likely outcome. If neither agent's dispatch has landed before the other's
+pre-dispatch snapshot, each agent's own snapshot excludes only its own
+pre-existing Sessions, so both new Sessions look "new" to both agents'
+polls; the guard treats that as unresolvable ambiguity and both callers
+time out at exit `4` rather than silently swapping ids. A silent swap is
+still possible in principle if the two dispatches are far enough apart
+that one agent's snapshot ends up including the other's already-created
+Session (making it look pre-existing, not new, to that agent) — narrower
+than before this issue, not eliminated. Avoid racing `batty new` against
+the same directory from parallel agents regardless.
 
 ## Simpler workflow inside the current Pane
 
@@ -166,7 +189,8 @@ batty pane split --horizontal --pane "$right_pane" --command "npm test -- --watc
 
 The first split targets `BATTY_PANE_ID`; the second explicitly targets the
 Pane returned by the first command. Do not use this shortcut after `batty new`
-because the inherited environment still identifies the old Pane.
+because the inherited environment still identifies the old Pane — use the
+pane id `batty new` itself prints instead (see above).
 
 ## Idempotent setup: re-running safely with `--unique`
 
@@ -254,14 +278,17 @@ Semantics recap:
 | `7` | Couldn't determine which on-disk app bundle to target | Stop; this is a local install problem (moved/missing `Batty.app`, or multiple bundles claiming the same identifier), not something a retry fixes. Report stderr, which names the expected path and any other claimant bundles. |
 | `64` | Invalid CLI syntax | Correct the invocation; do not retry unchanged. |
 
+**`batty new`'s exit `4` is an exception to the "retry a stale target" advice
+above:** it means the poll timed out waiting to see the new Session, not that
+the app rejected the request — retrying re-dispatches `batty new` and creates
+a second Session. Refresh topology and look for the one that was (very
+likely) already created instead.
+
 Never parse human-readable `list sessions`, `list panes`, or `list tabs`
 output in automation. Use `list --json`; the plain-text forms are for people.
 
 ## Current limitations relevant to agents
 
-- `new` is the only shipped mutation without an app acknowledgement or returned
-  object ID. Use the snapshot-and-poll pattern above (`#0380` is open to move
-  this into the CLI itself; until it lands, the pattern above is required).
 - There is no command that creates a Session and its Pane layout atomically.
   If a later split fails, the earlier Session and Panes remain.
 - Batty currently exposes no CLI verbs for sending terminal input, reading

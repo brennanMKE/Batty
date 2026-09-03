@@ -33,8 +33,11 @@ the other's.
 
 The CLI now has four execution paths:
 
-- `batty new [<path>]`, bare `batty`, and `batty <path>` use the original
-  one-way `batty://session?path=<path>` URL.
+- `batty new [<path>]`, bare `batty`, and `batty <path>` dispatch the
+  original one-way `batty://session?path=<path>` URL to create the
+  Session, then — unless `--no-wait` — also use the broker-mediated XPC
+  channel to confirm it and print the new Session id and focused Pane id
+  (#0380). `new` is the only command that uses both paths.
 - Live queries and acknowledged mutations use the broker-mediated XPC
   channel: `ping`, `status`, `list`, `session info`, `session focus`, `pane
   split`, `pane close`, `pane focus`, `tab focus`, and `notify`.
@@ -48,7 +51,7 @@ The CLI now has four execution paths:
 
 | Command | Purpose | Transport |
 |---|---|---|
-| `batty [<path>]` / `batty new [<path>]` | Create and select a Session rooted at a directory; defaults to `.` | `batty://` |
+| `batty [<path>]` / `batty new [<path>] [--json] [--no-wait]` | Create a Session rooted at a directory (defaults to `.`); prints the new Session id and focused Pane id (or `{"sessionID":…,"paneID":…}` with `--json`); `--no-wait` dispatches and exits without confirming | `batty://` + XPC |
 | `batty ping` | Check whether this variant's broker is reachable | XPC broker |
 | `batty status [--json]` | Print live pid, uptime, Window, Session, and Tab counts; `--json` also reports failure states (broker/app unreachable, etc.) as JSON | XPC |
 | `batty list [sessions\|panes\|tabs] [--json]` | Print live topology; JSON always contains the full topology | XPC |
@@ -102,7 +105,20 @@ broker → app-endpoint handoff described in `docs/xpc/`.
    somehow fails (not expected for a valid absolute path), the CLI prints
    `batty: failed to build IPC URL for path: <resolved>` and exits 1.
 
-5. `openURL(url)` (`SessionCommand.swift`) first resolves exactly one
+5. Unless `--no-wait`, `NewSessionCommand.run()` (`BattyKit/Sources/batty/NewSessionCommand.swift`,
+   `#0380`) first takes a **pre-dispatch topology snapshot** over XPC
+   (`fetchPreDispatchState()`): if the broker reports a registered app
+   endpoint, it calls `list` through it and keeps both the endpoint and the
+   snapshot; if the broker reports no endpoint and no process is running at
+   the resolved bundle, it proceeds with an intentionally empty snapshot
+   (nothing can predate a launch that hasn't happened yet); any other
+   broker/app state is the **degraded path** (see `### 8. Known
+   limitations`) — the snapshot step is skipped and the command dispatches
+   the URL anyway, but cannot later report an id. `--no-wait` skips this
+   step entirely and reverts to the pre-`#0380` fire-and-forget behavior:
+   dispatch below, then return immediately.
+
+   `openURL(url)` (`SessionCommand.swift`) then resolves exactly one
    on-disk app bundle to target via `AppBundleLocator.resolve()`
    (`BattyKit/Sources/batty/AppBundleLocator.swift`) — the same resolution
    every other verb uses (see `## 2. The CLI's actual current behavior`
@@ -135,9 +151,16 @@ broker → app-endpoint handoff described in `docs/xpc/`.
    `open` itself launches the targeted bundle if it isn't running, or
    activates it if it is, and delivers the URL through the standard macOS
    Launch-Services/URL-event mechanism — no code in Batty has to poll or
-   listen for this beyond registering the URL scheme (step 6). This is the
-   full extent of the `new` command's work; the XPC-backed commands do talk
-   to the broker and app directly.
+   listen for the *launch itself* beyond registering the URL scheme (step
+   6). **This is not, however, the full extent of the `new` command's
+   work as of `#0380`:** unless `--no-wait`, once `open` returns,
+   `run()` polls `list` over XPC (steps 7-8 happen concurrently with, and
+   usually finish well within, this poll) until a Session appears whose
+   `path` matches the resolved directory from step 4 and whose id was not
+   in the pre-dispatch snapshot, then prints that Session's id and
+   focused Pane id (or exits `2`/`3`/`4` if the poll never resolves — see
+   `### 8. Known limitations` for the exact failure modes, including the
+   cold-launch two-Session ambiguity noted at the end of this trace).
 
 6. On the app side, the `batty` URL scheme is registered via
    `CFBundleURLTypes` in the **literal** `Configuration/Info.plist` (not a
@@ -318,18 +341,7 @@ struct BattyCLI: ParsableCommand {
         abstract: "Control Batty from the command line.",
         discussion: "Bare `batty` and `batty <path>` are shorthand for `batty new <path>`.",
         version: resolveAppVersion(),
-        subcommands: [
-            NewSessionCommand.self,
-            PingCommand.self,
-            StatusCommand.self,
-            ListCommand.self,
-            SessionNounCommand.self,
-            PaneNounCommand.self,
-            TabNounCommand.self,
-            IDCommand.self,
-            NotifyCommand.self,
-            CapabilitiesCommand.self,
-        ],
+        subcommands: [NewSessionCommand.self, PingCommand.self, StatusCommand.self, ListCommand.self, SessionNounCommand.self, PaneNounCommand.self, TabNounCommand.self, IDCommand.self, NotifyCommand.self, CapabilitiesCommand.self],
         defaultSubcommand: NewSessionCommand.self
     )
 }
@@ -367,9 +379,11 @@ Key points, verified against this source:
   target, so it reports this instead of falling back to an ambiguous
   bundle-identifier lookup (`#0361`); and ArgumentParser's `64` for invalid
   command syntax. See `BattyKit/Sources/BattyXPCCore/XPCExitCode.swift` for
-  the canonical definitions. Only the URL-backed `new` command lacks an app
-  acknowledgement — see the exit-code note in `## 8. Known limitations`
-  below for exactly what that does and doesn't mean post-`#0361`.
+  the canonical definitions. `new` also confirms the Session it dispatches
+  via `batty://` by polling XPC (`#0380`, unless `--no-wait`) — see
+  `### 8. Known limitations` below for its poll-timeout failure modes
+  (exit `2`, `3`, or `4` depending on what the poll observed) and the
+  degraded no-snapshot path.
 
 `resolveAppVersion()` and the path/URL helpers, from
 `BattyKit/Sources/batty/SessionCommand.swift`:
@@ -1102,32 +1116,75 @@ verification with an installed, signed app.
 
 Grounded directly in the code above, not aspirational:
 
-- **Session creation remains one-way and fire-and-forget, even after `#0361`
-  gave it a resolution-failure code.** `openURL` in `SessionCommand.swift`
-  can now fail *before* ever spawning `open` — exit `7` when
-  `AppBundleLocator.resolve()` can't determine which bundle to target — but
-  once `open` is successfully spawned and exits zero, the CLI still has no
-  visibility into whether `BattyURLHandler.handle` ran, whether
-  `SessionURLBuilder.sessionPath(from:)` parsed the URL successfully, or
-  whether a session was actually created. A `batty /valid/dir` that reaches
-  a running-but-broken Batty will still exit `0`. Other shipped mutations
-  use XPC specifically so the caller receives an acknowledgement and
-  meaningful failure code.
-- **`new` still lacks an app-side *request* failure code, but it is no
-  longer the only command without any failure code of its own.** Before
-  `#0361`, `new`'s exit `1` was the only way it could fail short of success,
-  and it conflated "the CLI rejected the path" with "`/usr/bin/open`
-  failed" — it could never mean "Batty rejected the request," because `new`
-  never asked Batty anything before handing off to `open`. `#0361` added a
-  real pre-`open` failure mode, `appBundleUnresolved` (`7`) — a resolution
-  failure the CLI itself detects, not an app-side rejection. So `new` now
-  distinguishes two non-zero exits: `1` (client-side path/URL validation, or
-  `/usr/bin/open` itself failing to spawn or exiting non-zero) and `7`
-  (couldn't resolve which app bundle to target). Neither means "the app
-  received the URL and rejected it" — nothing in the one-way `batty://`
-  mechanism could produce that acknowledgement. XPC-backed commands use exit
-  codes `2` through `7` for transport and app-side failures (see
-  `BattyKit/Sources/BattyXPCCore/XPCExitCode.swift`).
+- **Session creation is still one-way (`#0380` pinned decision), but no
+  longer blind by default.** `openURL` in `SessionCommand.swift` can fail
+  *before* ever spawning `open` — exit `7` when `AppBundleLocator.resolve()`
+  can't determine which bundle to target (`#0361`) — and once `open` is
+  spawned and exits zero, that alone still only proves LaunchServices
+  accepted the `batty://` URL, not that `BattyURLHandler.handle` ran, that
+  `SessionURLBuilder.sessionPath(from:)` parsed successfully, or that a
+  Session was created. Creation stays on the one-way URL deliberately,
+  since it's the only path that can launch Batty when it isn't running
+  (`issues/0265.md`, reaffirmed by `issues/0257.md`'s transport amendment).
+  What `#0380` added is a second, XPC-backed step that runs after dispatch:
+  unless `--no-wait`, `new` snapshots topology before dispatching, then
+  polls `list` until a Session appears whose path matches and whose id is
+  new, printing that Session's id and its focused Pane id once found —
+  closing most of the visibility gap without moving creation itself onto
+  XPC. `--no-wait` reverts to the original blind exit `0` behavior.
+- **`new`'s app-side failure codes now come from the confirmation poll, not
+  from creation itself.** There still isn't a mutating XPC verb for session
+  creation, so nothing in the one-way `batty://` mechanism can produce an
+  acknowledgement that Batty rejected the request — `#0361`'s `7`
+  (`appBundleUnresolved`) is a CLI-side resolution failure detected before
+  `open` is even spawned, not an app-side rejection, and remains the only
+  pre-dispatch failure mode. What can now fail *after* a successful
+  dispatch, and does report through `XPCExitCode`, is the post-dispatch
+  confirmation (`#0380`), which maps to three different exit codes
+  depending on what the poll actually observed:
+  - **Exit `4`, endpoint live throughout:** an XPC endpoint answered at
+    least once during the poll but no Session ever matched, or (round 4
+    review, B1) more than one Session matched at once and the ambiguity
+    never resolved to exactly one before the bound — the cold-launch
+    `$HOME`-collision case below. Either way the Session may well have
+    been created; the poll just couldn't confirm which one, or that it
+    showed up in time. The two cases print distinct stderr messages but
+    share the exit code.
+  - **Exit `3`, no endpoint ever reachable:** most likely a cold launch
+    that never finished registering with the broker — no evidence the
+    Session was created.
+  - **Exit `2`, the broker unreachable on the last attempt:** distinct
+    from exit `3` — the *final* poll attempt found the broker itself
+    unreachable (not merely "reachable, no endpoint registered yet"),
+    the same "broker unreachable" vocabulary every other verb uses for
+    this state. Only the last attempt is checked, not the whole poll's
+    history.
+
+  A pre-dispatch snapshot that can't be established at all (broker
+  unreachable, or app running but unregistered) is the separate
+  **degraded path**: the URL still dispatches and the Session is still
+  created, but the CLI can't safely diff against a snapshot, so it prints
+  nothing on stdout, writes a note to stderr, and exits `0`.
+
+  **Cold-launch `$HOME` collision (round 3/4 review, B1):** a cold launch
+  also creates its own default Session (usually at `$HOME`,
+  `WindowRuntime.init`), so `batty ~` (or bare `batty`/`batty .` run from
+  home) can make two Sessions match the poll's criteria. When both are
+  visible in the same `list` response, `NewSessionResolver.findNewSessions`
+  reports the ambiguity and the poll keeps waiting rather than guessing —
+  the exit-`4` ambiguity case above. This is **not** fully closed, though:
+  the default Session's path can resolve, and be the only visible match,
+  before the requested Session appears in topology at all — or the
+  dispatch can be dropped outright (`AppStateStore.addSession` returns `nil`
+  when no window is registered yet, #0251) — and in either case the poll
+  has no ambiguity to detect, so it can still report the default Session's
+  id as if it were the answer. Accepted as a documented residual rather
+  than fixed; see `issues/0380.md`'s pinned decisions and `## Gotchas`.
+
+  See `docs/batty-cli-agent-workflows.md`'s failure-handling table for the
+  full agent-facing breakdown, including why `new`'s exit `4` is an
+  exception to the "retry a stale target" advice that applies to every
+  other verb's `4`.
 - **Query surface, updated as of #0281.** `issues/0257.md` originally
   proposed (as an *unimplemented* plan) a debounced, atomically-written
   JSON topology snapshot on disk (`~/Library/Application Support/Batty/
