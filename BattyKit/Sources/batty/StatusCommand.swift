@@ -15,39 +15,71 @@ struct StatusCommand: ParsableCommand {
         abstract: "Report live state (pid, uptime, windows, sessions) from a running Batty."
     )
 
+    /// #0384: unlike the other `--json` verbs, this one must also cover
+    /// every failure branch below — `status`'s whole job is diagnosing a
+    /// wedged or unreachable broker/app, so a script asking for JSON must
+    /// never see empty stdout on exactly the paths it cares about most.
+    @Flag(name: .long, help: "Emit JSON instead of a plain-text summary. Reports failure states as JSON too, so a script never sees empty stdout.")
+    var json = false
+
     nonisolated func run() throws {
         switch AppConnectDance.resolveEndpoint() {
         case .failure(.brokerUnreachable):
-            fputs("batty: broker unreachable\n", stderr)
-            throw ExitCode(XPCExitCode.brokerUnreachable)
+            try fail(state: "brokerUnreachable", exitCode: XPCExitCode.brokerUnreachable, message: "batty: broker unreachable")
         case .failure(.appUnavailable):
-            fputs("batty: app unavailable\n", stderr)
-            throw ExitCode(XPCExitCode.appUnavailable)
+            try fail(state: "appUnavailable", exitCode: XPCExitCode.appUnavailable, message: "batty: app unavailable")
         case .failure(.appRunningUnregistered):
-            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
-            throw ExitCode(XPCExitCode.appRunningUnregistered)
+            try fail(state: "appRunningUnregistered", exitCode: XPCExitCode.appRunningUnregistered, message: "batty: Batty is running but isn't responding to the broker — try relaunching it")
         case .failure(.appBundleUnresolved(let message)):
-            fputs("batty: \(message)\n", stderr)
-            throw ExitCode(XPCExitCode.appBundleUnresolved)
+            try fail(state: "appBundleUnresolved", exitCode: XPCExitCode.appBundleUnresolved, message: "batty: \(message)")
         case .success(let endpoint):
             switch AppServiceClient.status(endpoint: endpoint, timeout: 3.0) {
             case .success(let payload):
-                // #0361: `path=`/`version=` is the diagnostic this issue
-                // was missing entirely — which on-disk app bundle actually
-                // answered, straight from that process's own `Bundle.main`,
-                // not a CLI-side guess.
-                print("batty: pid \(payload.pid) uptime \(Self.formatUptime(payload.uptimeSeconds))s windows \(payload.windowCount) sessions \(payload.sessionCount) tabs \(payload.tabCount) path=\(payload.bundlePath) version=\(payload.appVersion)")
+                if json {
+                    guard let text = Self.encodeJSON(.ok(payload)) else {
+                        fputs("batty: failed to encode status as JSON\n", stderr)
+                        throw ExitCode.failure
+                    }
+                    print(text)
+                } else {
+                    // #0361: `path=`/`version=` is the diagnostic this issue
+                    // was missing entirely — which on-disk app bundle actually
+                    // answered, straight from that process's own `Bundle.main`,
+                    // not a CLI-side guess.
+                    print("batty: pid \(payload.pid) uptime \(Self.formatUptime(payload.uptimeSeconds))s windows \(payload.windowCount) sessions \(payload.sessionCount) tabs \(payload.tabCount) path=\(payload.bundlePath) version=\(payload.appVersion)")
+                }
             case .unreachable:
-                fputs("batty: app unavailable\n", stderr)
-                throw ExitCode(XPCExitCode.appUnavailable)
+                try fail(state: "appUnavailable", exitCode: XPCExitCode.appUnavailable, message: "batty: app unavailable")
             case .requestFailed(let message):
-                fputs("batty: request failed — \(message)\n", stderr)
-                throw ExitCode(XPCExitCode.requestFailed)
+                try fail(state: "requestFailed", exitCode: XPCExitCode.requestFailed, message: "batty: request failed — \(message)")
             case .appTerminated:
-                fputs("batty: app terminated\n", stderr)
-                throw ExitCode(XPCExitCode.sessionTerminated)
+                try fail(state: "sessionTerminated", exitCode: XPCExitCode.sessionTerminated, message: "batty: app terminated")
             }
         }
+    }
+
+    /// Always writes the prose line to stderr (unchanged from before
+    /// `--json` existed) and, when `--json` was requested, a machine-
+    /// readable `StatusJSONPayload` to stdout whose `state`/`exitCode`
+    /// name the exact failure the process is about to exit with — never a
+    /// generic `ExitCode.failure` that would disagree with the JSON.
+    private func fail(state: String, exitCode: Int32, message: String) throws -> Never {
+        fputs(message + "\n", stderr)
+        if json {
+            if let text = Self.encodeJSON(.failure(state: state, exitCode: exitCode, message: message)) {
+                print(text)
+            } else {
+                fputs("batty: failed to encode status as JSON\n", stderr)
+            }
+        }
+        throw ExitCode(exitCode)
+    }
+
+    private static func encodeJSON(_ payload: StatusJSONPayload) -> String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(payload) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     private static func formatUptime(_ seconds: Double) -> String {

@@ -98,7 +98,7 @@ let package = Package(
         ),
         .testTarget(
             name: "BattyKitTests",
-            dependencies: ["BattyKit"],
+            dependencies: ["BattyKit", "batty"],
             resources: [
                 .copy("Fixtures"),
             ],

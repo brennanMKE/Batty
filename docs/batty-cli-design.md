@@ -89,7 +89,8 @@ The earlier URL/snapshot/socket recommendation was superseded by #0265–#0274:
   first-class consumers.
 - Meaningful exit codes; `send`-style verbs accept stdin piping; quiet by default.
 - `batty ping` (is Batty running) and `batty capabilities` (list supported verbs)
-  are cheap introspection worth having early (both in cmux).
+  are cheap introspection worth having early (both in cmux). **Both shipped**
+  (`ping` earlier; `capabilities` in `#0384`, static/no XPC round trip).
 
 ---
 
@@ -149,10 +150,10 @@ renders them in the session sidebar / pane chrome / bell feed it already has.
 ### E. Introspection / query  [2-way unless noted]
 - `batty id` (alias `whoami`) — current session/pane/tab **[1-way / local env]** (no socket). **Landed (#0281).** *(cmux `identify`)*
 - `batty ping` — check whether the broker is reachable **[XPC, shipped]**. *(all three)*
-- `batty status` — live process and topology counts **[XPC, shipped]**.
+- `batty status [--json]` — live process and topology counts **[XPC, shipped]**. `--json` also reports every failure state as JSON (**#0384**).
 - `batty list [sessions|panes|tabs] [--json]` — enumerate live state **[XPC, shipped]**. *(all three: `*.list`)*
 - `batty session info [--session <id>] [--json]` — one Session's topology slice **[XPC, shipped]**.
-- `batty capabilities [--json]` — list supported verbs **[2-way or static]**. *(cmux)*
+- `batty capabilities [--json]` — list supported verbs **[static, no XPC round trip]**. **Landed (#0384).** *(cmux)*
 
 ### F. App / window / theme  [core, 1-way]
 - `batty open` — activate/foreground Batty. *(supacode `open`)*
@@ -193,7 +194,7 @@ worth a look:
 7. **`events subscribe`** — stream state changes as newline JSON (adv, socket).
 8. **`pane zoom` / `swap` / `move`** — richer layout control than just split/close.
 9. **`layout export/apply`** — declarative layouts; could merge with Batty's presets.
-10. **`capabilities`** — self-describing CLI so agents can discover verbs.
+10. **`capabilities`** — self-describing CLI so agents can discover verbs. **Landed (#0384).**
 
 ---
 

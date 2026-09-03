@@ -31,7 +31,7 @@ shell `PATH` — `/usr/local/bin/batty` for the Prod build,
 path" below), so installing one variant's CLI can never silently repoint
 the other's.
 
-The CLI now has three execution paths:
+The CLI now has four execution paths:
 
 - `batty new [<path>]`, bare `batty`, and `batty <path>` use the original
   one-way `batty://session?path=<path>` URL.
@@ -40,6 +40,9 @@ The CLI now has three execution paths:
   close`, and `notify`.
 - `id` (alias `whoami`) reads `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
   `BATTY_TAB_ID` from the environment without contacting the broker or app.
+- `capabilities` reads neither the environment nor the app: its verb roster
+  and exit-code vocabulary are static data compiled into the binary
+  (`#0384`), so it works even when Batty is not running at all.
 
 ## Current command surface
 
@@ -47,13 +50,14 @@ The CLI now has three execution paths:
 |---|---|---|
 | `batty [<path>]` / `batty new [<path>]` | Create and select a Session rooted at a directory; defaults to `.` | `batty://` |
 | `batty ping` | Check whether this variant's broker is reachable | XPC broker |
-| `batty status` | Print live pid, uptime, Window, Session, and Tab counts | XPC |
+| `batty status [--json]` | Print live pid, uptime, Window, Session, and Tab counts; `--json` also reports failure states (broker/app unreachable, etc.) as JSON | XPC |
 | `batty list [sessions\|panes\|tabs] [--json]` | Print live topology; JSON always contains the full topology | XPC |
 | `batty session info [--session <id>] [--json]` | Print one Session; target is flag → `BATTY_SESSION_ID` → focused Session | XPC |
 | `batty pane split [-h\|-v] [-c <command>] [--pane <id>] [--view <kind>]` | Split a Pane and print the new Pane id | XPC |
 | `batty pane close [--pane <id>]` | Close every Tab in a Pane and remove the Pane | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
+| `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |
 
 Run `batty <subcommand> --help` for exact options. The full noun/verb grammar
 in `docs/batty-cli-design.md` is a forward-looking catalog; only the commands
@@ -1230,6 +1234,23 @@ Grounded directly in the code above, not aspirational:
   cold-launch session and the requested-path session — acceptable per
   `#0251`'s own notes, but a real behavior a caller should expect, not
   a bug to work around blindly.
+- **`status --json` and `capabilities`, #0384.** `batty status --json`
+  encodes the same `StatusPayload` the plain-text line already prints, via
+  a `StatusJSONPayload` wrapper (`state`, `exitCode`, `message`, `status`).
+  Unlike every other `--json` verb, it must also produce valid JSON on
+  every failure path `status` can hit — broker unreachable, app
+  unavailable, the app running but unregistered, an unresolved app bundle,
+  a declined request, the app terminating mid-request — since diagnosing
+  exactly those states is the command's whole job; `state` always names the
+  same failure the process's exit code represents, so the two can never
+  disagree. `batty capabilities [--json]` is new: it reports the verb
+  roster, derived by walking `BattyCLI`'s own `ArgumentParser` subcommand
+  tree rather than a hand-maintained list (so a verb wired in later is
+  reported automatically), and the exit-code vocabulary (`0`/`1`/`64` from
+  `ArgumentParser` plus every `XPCExitCode` constant). It makes **no XPC
+  round trip** — the CLI and the app ship in the same bundle, so the CLI
+  already knows its own surface, and this must succeed even when Batty is
+  not running at all, unlike `status`.
 
 ## File inventory
 
@@ -1237,7 +1258,7 @@ Grounded directly in the code above, not aspirational:
 |---|---|
 | `BattyKit/Package.swift` | Declares dependency-free `BattyCLICore` and `BattyXPCCore` targets, the `BattyKit` library, and the `batty` executable target/product (depends on both cores plus ArgumentParser). |
 | `BattyKit/Sources/batty/BattyCLI.swift` | `@main` entry point and top-level/default-subcommand registration. |
-| `BattyKit/Sources/batty/{Ping,Status,List,SessionInfo,Pane,ID,Notify}Command.swift` | Current command implementations, validation, output, and exit-code mapping. |
+| `BattyKit/Sources/batty/{Ping,Status,List,SessionInfo,Pane,ID,Notify,Capabilities}Command.swift` | Current command implementations, validation, output, and exit-code mapping. |
 | `BattyKit/Sources/batty/{AppConnectDance,BrokerPingClient,BrokerAppEndpointClient,AppServiceClient}.swift` | Broker discovery, app launch/poll, endpoint handoff, and request/reply XPC clients. |
 | `BattyKit/Sources/batty/{AppBundleLocator,AppLauncher,RunningAppChecker}.swift` | `#0361`: resolve one on-disk app bundle by absolute path (never by bundle identifier), launch it (`open -g <path>`, no `-b`), and check whether a process at that exact bundle path is already running (`NSWorkspace`, matched by `bundleURL`, not identifier). What every CLI entry point's launch decision is now based on. |
 | `BattyKit/Sources/batty/SessionCommand.swift` | `resolveAppVersion()` (reads the host app's `Info.plist`), `resolvePath(_:)`, `openURL(_:resolveAppBundle:)` (resolves one on-disk bundle via `AppBundleLocator.resolve()`, then spawns `/usr/bin/open -a <bundlePath>` — `#0361` round 3, superseding `#0279`'s `-b <bundleIdentifier>`). |
