@@ -53,7 +53,7 @@ struct AppStateStoreCWDChangeTests {
 
         let session = store.sessions[0]
         let originalTitle = session.title
-        let pane = session.focusedPane
+        let pane = session.focusedPaneAnyKind
         let secondTab = pane.addTab()
         secondTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
 

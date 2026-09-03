@@ -13,7 +13,7 @@ struct AppStateStorePaneSplitTests {
     @Test func splitPaneOnTheSelectedSessionReturnsTheNewPaneID() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let target = session.focusedPane
+        let target = session.focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: target.id, direction: .horizontal)
 
@@ -29,7 +29,7 @@ struct AppStateStorePaneSplitTests {
     @Test func splitPaneResolvesAPaneInANonKeyWindow() {
         let store = AppStateStore()
         let w2 = store.windowRuntime(for: WindowID())
-        let target = w2.sessions[0].focusedPane
+        let target = w2.sessions[0].focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: target.id, direction: .vertical)
 
@@ -39,7 +39,7 @@ struct AppStateStorePaneSplitTests {
 
     @Test func splitPaneThreadsTheCommandOverrideIntoTheNewPane() {
         let store = AppStateStore()
-        let target = store.sessions[0].focusedPane
+        let target = store.sessions[0].focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: target.id, direction: .horizontal, command: "top")
 
@@ -51,7 +51,7 @@ struct AppStateStorePaneSplitTests {
 
     @Test func splitPaneDefaultsToTerminalKindWhenOmitted() {
         let store = AppStateStore()
-        let target = store.sessions[0].focusedPane
+        let target = store.sessions[0].focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: target.id, direction: .horizontal)
 
@@ -61,7 +61,7 @@ struct AppStateStorePaneSplitTests {
 
     @Test func splitPaneThreadsAnExplicitKindIntoTheNewPane() {
         let store = AppStateStore()
-        let target = store.sessions[0].focusedPane
+        let target = store.sessions[0].focusedPaneAnyKind
 
         // contentFactory: { _ in nil } — this test is only about the kind
         // field surviving the split, not about content behavior. Without
@@ -82,7 +82,7 @@ struct AppStateStorePaneSplitTests {
     /// §2's "previously-focused Pane's active Tab").
     @Test func splitPaneWithProcessStatusKindDefaultsToFollowingTheSourcePanesActiveTab() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
         let sourceTabID = source.activeTabID
 
         let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus)
@@ -103,7 +103,7 @@ struct AppStateStorePaneSplitTests {
     /// Mode A: an explicit `--pid` pins the new pane instead.
     @Test func splitPaneWithProcessStatusKindAndAnExplicitPidPinsToThatPid() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus, processStatusPid: 4242)
 
@@ -120,7 +120,7 @@ struct AppStateStorePaneSplitTests {
     /// via the mode-B target resolving a real sample once made visible.
     @Test func processStatusPaneCanResolveTheSourceTabsForegroundPidThroughTheTree() {
         let store = AppStateStore()
-        let source = store.sessions[0].focusedPane
+        let source = store.sessions[0].focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus)
         let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
@@ -152,7 +152,7 @@ struct AppStateStorePaneSplitTests {
 
         let selectedFocusedPaneBefore = selected.tree.focusedPaneID
         let selectedSessionIDBefore = store.windows[0].selectedSessionID
-        let backgroundTarget = background.focusedPane
+        let backgroundTarget = background.focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: backgroundTarget.id, direction: .horizontal)
 
@@ -175,7 +175,7 @@ struct AppStateStorePaneSplitTests {
         let selected = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.windows[0].selectedSessionID = selected.id
-        let backgroundTarget = background.focusedPane
+        let backgroundTarget = background.focusedPaneAnyKind
         #expect(background.tree.focusedPaneID == backgroundTarget.id)
 
         let newPaneID = store.splitPane(id: backgroundTarget.id, direction: .horizontal)
@@ -191,7 +191,7 @@ struct AppStateStorePaneSplitTests {
     @Test func splitOfANonFocusedPaneInTheSelectedSessionLeavesFocusUnchanged() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
         session.tree.focusedPaneID = paneB.id
 

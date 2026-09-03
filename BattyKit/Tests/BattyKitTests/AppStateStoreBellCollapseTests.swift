@@ -24,7 +24,7 @@ struct AppStateStoreBellCollapseTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Claude is waiting for your input", body: nil, playSound: false)
         store.recordCLINotification(tabID: tabID, title: "Claude is waiting for your input", body: nil, playSound: false)
@@ -39,7 +39,7 @@ struct AppStateStoreBellCollapseTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "build failed", body: nil, playSound: false)
         store.recordCLINotification(tabID: tabID, title: "build failed", body: nil, playSound: false)
@@ -54,7 +54,7 @@ struct AppStateStoreBellCollapseTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "build failed", body: nil, playSound: false)
         store.recordCLINotification(tabID: tabID, title: "tests passed", body: nil, playSound: false)
@@ -109,7 +109,7 @@ struct AppStateStoreBellCollapseTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
-        let tab = session.focusedPane.activeTab!
+        let tab = session.focusedPaneAnyKind.activeTab!
 
         tab.terminal.terminalDidRingBell()
         tab.terminal.terminalDidRingBell()

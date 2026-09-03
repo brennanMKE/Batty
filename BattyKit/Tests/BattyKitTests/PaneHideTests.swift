@@ -119,7 +119,7 @@ struct PaneHideTests {
     @Test func focusMovesOffHiddenPaneViaWindowRuntime() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
 
         // Add a second pane
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -140,7 +140,7 @@ struct PaneHideTests {
         let nameCache = SessionNameCache()
         let window = WindowRuntime(bellFeed: bellFeed, nameCache: nameCache)
         let session = window.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
 
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
         session.tree.focusedPaneID = paneB.id
@@ -157,7 +157,7 @@ struct PaneHideTests {
     @Test func hidingUnfocusedPaneLeavesFocusUnchanged() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
 
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
         // Focus A (not B)
@@ -178,7 +178,7 @@ struct PaneHideTests {
         let nameCache = SessionNameCache()
         let window = WindowRuntime(bellFeed: bellFeed, nameCache: nameCache)
         let session = window.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
 
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
 
@@ -214,7 +214,7 @@ struct PaneHideTests {
     @Test func cannotHideLastVisiblePane() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
 
         // Only one pane — hiding must be a no-op
         store.hidePane(id: paneA.id)
@@ -224,7 +224,7 @@ struct PaneHideTests {
     @Test func cannotHideLastVisiblePaneWhenOthersAreHidden() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
 
         // Add paneB, hide paneA (now B is the only visible pane)
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -242,7 +242,7 @@ struct PaneHideTests {
         let nameCache = SessionNameCache()
         let window = WindowRuntime(bellFeed: bellFeed, nameCache: nameCache)
         let session = window.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
 
         // One pane — refuse
         window.hidePane(id: paneA.id)
@@ -320,7 +320,7 @@ struct PaneHideTests {
     @Test func showPaneRestoresVisibility() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
         _ = session.tree.splitFocusedPane(direction: .horizontal)
 
         store.hidePane(id: paneA.id)
@@ -343,7 +343,7 @@ struct PaneHideTests {
     @Test func hidePaneDrivesHostStorePlacement() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
         _ = session.tree.splitFocusedPane(direction: .horizontal)
 
         let hostStore = TerminalHostStore.shared
@@ -384,7 +384,7 @@ struct PaneHideTests {
     @Test func showPaneDoesNotBlockPlaceholderSelfHeal() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
         _ = session.tree.splitFocusedPane(direction: .horizontal)
 
         let hostStore = TerminalHostStore.shared
@@ -422,7 +422,7 @@ struct PaneHideTests {
     @Test func hidingANonTerminalPaneDoesNotLeakATerminalHostStorePlacement() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).
         let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
         // Permanent regression check, not just a comment's promise: if a
@@ -507,7 +507,7 @@ struct PaneHideTests {
     @Test func nonTerminalPaneIsCountedInAllPanes() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
 
         // `contentFactory: { _ in nil }` avoids constructing a real
         // `GitStatusPaneContent` (and its real `FSEventStream`) as a side

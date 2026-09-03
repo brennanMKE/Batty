@@ -57,7 +57,7 @@ struct RequestCloseTabTests {
     @Test func closeFocusedTabClosesTheFocusedNonTerminalPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)!
         #expect(session.tree.focusedPaneID == nonTerminalPane.id)
         let paneCountBefore = session.tree.allPanes.count
@@ -72,7 +72,7 @@ struct RequestCloseTabTests {
     @Test func requestCloseFocusedTabClosesTheFocusedNonTerminalPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).
         let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
         // Permanent regression check, not just a comment's promise: if a
@@ -97,7 +97,7 @@ struct RequestCloseTabTests {
     @Test func closingANonTerminalFocusedPaneDoesNotTouchTheTerminalSiblingsTabs() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         let tabCountBefore = terminalPane.tabs.count
         // contentFactory: { _ in nil } -- this test is about the terminal
         // sibling's tabs being unaffected by closing a non-terminal pane,
@@ -119,7 +119,7 @@ struct RequestCloseTabTests {
 
     @Test func closeFocusedItemTitleIsCloseTabForATerminalFocusedPane() {
         let store = AppStateStore()
-        #expect(store.sessions[0].focusedPane.kind == .terminal, "test setup: default pane is terminal-kind")
+        #expect(store.sessions[0].focusedPaneAnyKind.kind == .terminal, "test setup: default pane is terminal-kind")
 
         #expect(store.windows[0].closeFocusedItemTitle == "Close Tab")
     }
@@ -127,7 +127,7 @@ struct RequestCloseTabTests {
     @Test func closeFocusedItemTitleIsClosePaneForANonTerminalFocusedPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // contentFactory: { _ in nil } — this test only needs a
         // non-terminal *kind* to check the menu-item title, and never
         // closes the pane afterward; without the override,

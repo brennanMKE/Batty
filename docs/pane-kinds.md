@@ -834,13 +834,23 @@ fixed at the root):
   split target was already focused — exactly what `batty pane split
   --view git-status` does to the pane it targets, making this issue's own
   headline demo the setup for the bug. **Fixed once, not a fourth copy**:
-  `SessionRuntime.focusedTerminalPane` is a new accessor (`focusedPane`,
+  `SessionRuntime.focusedTerminalPane` is a new accessor (`focusedPaneAnyKind`,
   or `nil` when it isn't `.terminal`-kind) that all three dispatch paths
   now route through for `.newTab`/`.previousTab`/`.nextTab`; `WindowRuntime
   .closeFocusedTab()`/`.requestCloseFocusedTab()` and `ExitDispatcher
   .focusedTerminalTab` gained the same guard internally, which fixes
   `.closeTab`/`.exitShell` for every caller (present and future) in one
-  place rather than three.
+  place rather than three. **#0332 went further**: `SessionRuntime
+  .focusedPane` was renamed to `focusedPaneAnyKind` outright (there is no
+  plain `focusedPane` left to reach for by accident), and the kind gate was
+  additionally pushed down to the mutation itself —
+  `PaneRuntime.addTab(inheritingCWDFrom:)`/`.closeActiveTab()` and
+  `AppStateStore.focusedTabIDFallback()` (the XPC `notify` verb's no-`--tab`
+  fallback — a fourth ungated consumer #0332 found live) all no-op/return
+  `nil` on a non-terminal pane internally, so the invariant holds even for
+  a caller that never touches a focused-pane accessor at all. See
+  `AppStateStore.focusedTerminalTab`'s doc comment for the single shared
+  resolver `ExitDispatcher`/`PasteDispatcher` both call.
 - `QuitConfirmation.shouldQuitOrPrompt` / `.windowNeedsConfirmClose` —
   inflated the user-facing "There are N open terminal(s)" Cmd-Q prompt
   and the needs-confirmation check.

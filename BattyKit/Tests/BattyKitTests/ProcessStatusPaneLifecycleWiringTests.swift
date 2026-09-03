@@ -16,7 +16,7 @@ struct ProcessStatusPaneLifecycleWiringTests {
     private func makeProcessStatusPane(pinnedTo pid: Int32) -> (store: AppStateStore, session: SessionRuntime, paneID: UUID) {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let source = session.focusedPane
+        let source = session.focusedPaneAnyKind
         let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus, processStatusPid: pid)!
         return (store, session, newPaneID)
     }

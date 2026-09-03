@@ -5,7 +5,7 @@ import Testing
 @testable import BattyKit
 
 /// #0309: `ExitDispatcher` resolves its target the same way `PasteDispatcher`
-/// does (`store.keyWindowOrFirstRegistered()?.selectedSession?.focusedPane
+/// does (`store.keyWindowOrFirstRegistered()?.selectedSession?.focusedPaneAnyKind
 /// .activeTab`), so it inherits the same no-window edge case exercised by
 /// `PasteConfirmationTests` — must no-op cleanly rather than trap when
 /// `windows` is empty, the state the app deliberately lives in for one
@@ -32,7 +32,7 @@ struct ExitDispatcherTests {
 
     @Test func focusedTerminalTabResolvesToFocusedPaneActiveTabWhenTerminalIsFocused() {
         let store = AppStateStore()
-        let expectedTabID = store.windows[0].selectedSession?.focusedPane.activeTab?.id
+        let expectedTabID = store.windows[0].selectedSession?.focusedPaneAnyKind.activeTab?.id
         #expect(expectedTabID != nil, "test setup: a fresh store must have a focused tab")
 
         let resolved = ExitDispatcher.focusedTerminalTab(in: store)
@@ -56,7 +56,7 @@ struct ExitDispatcherTests {
     @Test func focusedTerminalTabIsNilWhenANonTerminalPaneIsFocused() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` (#0313's seam) keeps this
         // split from starting `.gitStatus`'s real conformer (a real
         // `FSEventStream`) as a side effect (review round 3: swapping to
@@ -70,7 +70,7 @@ struct ExitDispatcherTests {
         // (review round 3's own point: "the suite will still pass if you
         // miss one").
         #expect(nonTerminalPane?.content == nil)
-        #expect(session.focusedPane.kind == .gitStatus, "test setup: the split must move focus to the non-terminal pane")
+        #expect(session.focusedPaneAnyKind.kind == .gitStatus, "test setup: the split must move focus to the non-terminal pane")
 
         #expect(ExitDispatcher.focusedTerminalTab(in: store) == nil)
     }

@@ -182,7 +182,7 @@ struct AppStateStoreBellRoutingTests {
         store.selectedSessionID = focused.id
 
         let pane = target.tree.allPanes[0]
-        target.focusedPane.addTab()
+        target.focusedPaneAnyKind.addTab()
         let secondaryTab = pane.tabs.last!
         pane.activeTabID = pane.tabs[0].id
 

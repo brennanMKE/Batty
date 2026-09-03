@@ -162,16 +162,16 @@ struct MultiWindowCWDNamingTests {
         let w2 = store.windowRuntime(for: WindowID())
         let w2Session = w2.sessions[0]
         // Add a second tab so closing one doesn't cascade to remove the session.
-        let secondTab = w2Session.focusedPane.addTab()
+        let secondTab = w2Session.focusedPaneAnyKind.addTab()
         let secondTabID = secondTab.id
-        #expect(w2Session.focusedPane.tabs.count == 2)
-        let w1TabCount = store.windows[0].sessions[0].focusedPane.tabs.count
+        #expect(w2Session.focusedPaneAnyKind.tabs.count == 2)
+        let w1TabCount = store.windows[0].sessions[0].focusedPaneAnyKind.tabs.count
 
         store.closeTab(id: secondTabID)
 
-        #expect(!w2Session.focusedPane.tabs.contains(where: { $0.id == secondTabID }),
+        #expect(!w2Session.focusedPaneAnyKind.tabs.contains(where: { $0.id == secondTabID }),
                 "closeTab must remove the tab from its owning window, not windows[0]")
-        #expect(store.windows[0].sessions[0].focusedPane.tabs.count == w1TabCount,
+        #expect(store.windows[0].sessions[0].focusedPaneAnyKind.tabs.count == w1TabCount,
                 "closeTab on w2's tab must not affect windows[0]")
     }
 

@@ -14,7 +14,7 @@ struct BellFeedCleanupTests {
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
-        background.focusedPane.addTab()
+        background.focusedPaneAnyKind.addTab()
         let tabA = pane.tabs[0]
         let tabB = pane.tabs[1]
         pane.activeTabID = tabA.id
@@ -46,7 +46,7 @@ struct BellFeedCleanupTests {
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
-        background.focusedPane.addTab()
+        background.focusedPaneAnyKind.addTab()
         let tabA = pane.tabs[0]
         let tabB = pane.tabs[1]
         pane.activeTabID = tabA.id
@@ -120,7 +120,7 @@ struct BellFeedCleanupTests {
         store.selectedSessionID = focused.id
 
         let pane = background.tree.allPanes[0]
-        background.focusedPane.addTab()
+        background.focusedPaneAnyKind.addTab()
         let tabA = pane.tabs[0]
         let tabB = pane.tabs[1]
         pane.activeTabID = tabA.id

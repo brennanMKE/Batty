@@ -411,15 +411,25 @@ public final class AppStateStore {
     /// The tab to target when the XPC `notify` verb (#0284) receives no
     /// explicit `--tab` id and no `BATTY_TAB_ID` env — one tier below
     /// `focusedPaneIDFallback()`, since a `BellFeedEntry` needs a real tab,
-    /// not merely a real pane: the focused pane's active tab. `nil` only
-    /// when there is no window/session/pane to fall back to (unreachable in
-    /// practice, mirroring `focusedPaneIDFallback()`'s own note).
+    /// not merely a real pane: the focused pane's active tab. `nil` when
+    /// there is no window/session/pane to fall back to (unreachable in
+    /// practice, mirroring `focusedPaneIDFallback()`'s own note), **and
+    /// also when the focused pane is not `.terminal`-kind** (#0332): a
+    /// non-terminal pane's `activeTabID` names a structural placeholder Tab
+    /// no view ever renders (`PaneRuntime.kind`'s doc comment), so filing a
+    /// `BellFeedEntry` against it would be visible nowhere and its unseen
+    /// counts would never clear (`WindowRuntime.markActiveTabSeen()` only
+    /// walks tabs a session's tree actually surfaces to the user). Callers
+    /// that receive `nil` here fall back to the CLI's existing "no tab to
+    /// target" failure reply (`AppXPCService`'s notify handler) rather than
+    /// silently accepting a tab that can never be seen or cleared.
     public func focusedTabIDFallback() -> UUID? {
         guard let paneID = focusedPaneIDFallback(),
               let window = keyWindowRuntime() ?? windows.first
         else { return nil }
         for session in window.sessions {
             if let pane = session.tree.allPanes.first(where: { $0.id == paneID }) {
+                guard pane.kind == .terminal else { return nil }
                 return pane.activeTabID
             }
         }
@@ -611,6 +621,27 @@ public final class AppStateStore {
     /// happen and for how long.
     public func keyWindowOrFirstRegistered() -> WindowRuntime? {
         keyWindowRuntime() ?? windows.first
+    }
+
+    /// The Terminal Session tab safe to target for tab-scoped Terminal
+    /// actions dispatched app-wide (paste, "exit\n" injection): the key
+    /// content window's focused pane's active tab, resolved through
+    /// `SessionRuntime.focusedTerminalPane` so a non-terminal focused
+    /// pane's structural placeholder tab (`PaneRuntime.kind`'s doc comment)
+    /// never becomes a target. `nil` for that case as well as for the
+    /// ordinary "no window" / "no selected session" ones.
+    ///
+    /// `ExitDispatcher.sendExit` and `PasteDispatcher.handlePasteRequest`/
+    /// `.confirm` both resolve their target through this single property.
+    /// Before #0332 each dispatcher hand-copied this expression; one copy
+    /// (`PasteDispatcher`'s) drifted to resolve through plain `focusedPane`
+    /// instead of `focusedTerminalPane`, silently reintroducing the
+    /// structural-placeholder hazard for Cmd-V while `ExitDispatcher`'s own
+    /// doc comment kept asserting the two "mirror exactly." One
+    /// implementation, called from both sites, is what makes that claim
+    /// true rather than merely stated.
+    public var focusedTerminalTab: TabRuntime? {
+        keyWindowOrFirstRegistered()?.selectedSession?.focusedTerminalPane?.activeTab
     }
 
     /// The `WindowRuntime` for any registered content window. Used as a

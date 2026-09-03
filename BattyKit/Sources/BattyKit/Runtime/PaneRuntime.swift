@@ -2,6 +2,9 @@
 
 import Foundation
 import Observation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "PaneRuntime")
 
 @Observable
 public final class PaneRuntime: Identifiable {
@@ -133,8 +136,25 @@ public final class PaneRuntime: Identifiable {
         tabs.first { $0.id == activeTabID } ?? tabs.first
     }
 
+    /// Adds a new Tab to this Pane. **Gated on `kind == .terminal`** (#0332)
+    /// — a non-terminal pane's one `TabRuntime` is a structural placeholder
+    /// `PaneView` never renders (`kind`'s doc comment above); adding a
+    /// second one would produce an invisible orphan tab no view can reach,
+    /// the exact defect class `docs/pane-kinds.md`'s `#0315` implementation
+    /// note catalogs. Gating here, at the mutation itself, means the
+    /// invariant holds regardless of which accessor spelling a caller used
+    /// to reach this pane — `SessionRuntime.focusedPaneAnyKind`'s rename
+    /// only helps callers that go through it; this does not require that.
+    /// Returns the existing active tab and logs rather than trapping: this
+    /// guards a call-site bug, not a fatal invariant, and the caller is
+    /// often shared UI dispatch code where a crash is worse than a no-op.
     @discardableResult
     public func addTab(inheritingCWDFrom source: TabRuntime? = nil) -> TabRuntime {
+        guard kind == .terminal else {
+            let kindName = kind.rawValue
+            logger.error("addTab called on a non-terminal pane (kind=\(kindName, privacy: .public)); ignoring")
+            return activeTab ?? tabs[0]
+        }
         let cwd = source?.terminal.workingDirectory
         let tab = TabRuntime(workingDirectory: cwd)
         tabs.append(tab)
@@ -175,7 +195,23 @@ public final class PaneRuntime: Identifiable {
         TerminalHostStore.shared.releaseTerminalView(forTabID: id)
     }
 
+    /// Closes this pane's active Tab. **Gated on `kind == .terminal`**
+    /// (#0332), for the same reason as `addTab(inheritingCWDFrom:)` above —
+    /// a non-terminal pane's one Tab is the structural placeholder that
+    /// keeps the pane's active-tab bookkeeping well-formed; removing it
+    /// would leave the pane with zero tabs, which `removeTab(id:)`'s own
+    /// doc comment says callers must handle by removing the pane instead
+    /// (`WindowRuntime.closeFocusedTab()`/`closePane` do that, and don't
+    /// call this method — they call `closeFocusedNonTerminalPane` for a
+    /// non-terminal focused pane). No production call site reaches this
+    /// today, but it is public API, and the whole point of this gate is
+    /// that the next caller does not have to already know that.
     public func closeActiveTab() {
+        guard kind == .terminal else {
+            let kindName = kind.rawValue
+            logger.error("closeActiveTab called on a non-terminal pane (kind=\(kindName, privacy: .public)); ignoring")
+            return
+        }
         removeTab(id: activeTabID)
     }
 

@@ -242,7 +242,21 @@ public struct SessionDetailView: View {
 
     private func focusSelectedSessionTerminal() {
         guard let session = windowRuntime.selectedSession else { return }
-        guard let activeTab = session.focusedPane.activeTab else { return }
+        // Deliberately `focusedPaneAnyKind`, not `focusedTerminalPane`
+        // (#0332 B4, reverted from an earlier round's gate): gating this on
+        // `.terminal` kind would skip `focusWhenReady`'s `generation += 1`
+        // bump on the early-return path, leaving a still-live retry ladder
+        // from a *previously* focused tab free to keep firing after focus
+        // has moved to a non-terminal pane — the exact stale-retry /
+        // isFocused-echo ping-pong `generation`'s own doc comment
+        // (`TerminalSurfaceFocuser.swift`) says it exists to prevent
+        // (#0229, #0230). `focus(tab:)`'s own `view.window != nil` /
+        // `!view.isHidden` guards make a non-terminal pane's placeholder
+        // tab (`activeTab` here) a harmless no-op target today — this was
+        // already dead code for that case before #0332 touched it, and
+        // gating it here bought nothing but risk in the most fragile area
+        // of the app (`docs/swiftui-observation-rules.md`).
+        guard let activeTab = session.focusedPaneAnyKind.activeTab else { return }
         TerminalSurfaceFocuser.focusWhenReady(tab: activeTab)
     }
 }

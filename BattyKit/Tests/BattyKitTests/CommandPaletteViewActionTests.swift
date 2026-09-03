@@ -90,7 +90,7 @@ struct CommandPaletteViewActionTests {
     @Test func dispatchNewTabDoesNotMutateANonTerminalFocusedPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).
         let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
         // Permanent regression check, not just a comment's promise: if a
@@ -118,7 +118,7 @@ struct CommandPaletteViewActionTests {
     @Test func dispatchCloseTabClosesTheFocusedNonTerminalPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).
         let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
         // Permanent regression check, not just a comment's promise: if a
@@ -141,7 +141,7 @@ struct CommandPaletteViewActionTests {
     @Test func dispatchPreviousAndNextTabDoNotMutateANonTerminalFocusedPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // contentFactory: { _ in nil } -- this test is about tab-dispatch
         // guards on a non-terminal focused pane, not .processStatus's own
         // behavior; without it the real ProcessStatusPaneContent's setUp()

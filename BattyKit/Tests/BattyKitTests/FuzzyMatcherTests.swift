@@ -120,7 +120,7 @@ struct OpenQuicklyFilterTests {
         let nameCache = SessionNameCache()
         let window = WindowRuntime(bellFeed: bellFeed, nameCache: nameCache)
         let session = window.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         let before = OpenQuicklyFilter.allResults(for: window).count
 
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).

@@ -72,7 +72,12 @@ public struct PasteConfirmationSheet: View {
 @MainActor
 public enum PasteDispatcher {
     public static func handlePasteRequest(store: AppStateStore?) {
-        guard let store, let tab = focusedTerminalTab(in: store) else {
+        // Resolving through `store.focusedTerminalTab` directly (#0332 N3)
+        // rather than a local passthrough — the passthrough existed only
+        // to be re-inlined and re-drift from `ExitDispatcher`'s copy the
+        // way it already had once; calling the shared property at both
+        // sites makes that drift unwritable rather than merely undetected.
+        guard let store, let tab = store.focusedTerminalTab else {
             forwardStandardPaste()
             return
         }
@@ -97,16 +102,8 @@ public enum PasteDispatcher {
     }
 
     public static func confirm(_ paste: PendingPaste, in store: AppStateStore?) {
-        guard let tab = store.flatMap(focusedTerminalTab) else { return }
+        guard let tab = store?.focusedTerminalTab else { return }
         tab.terminal.send(paste.text)
-    }
-
-    private static func focusedTerminalTab(in store: AppStateStore) -> TabRuntime? {
-        // Resolve against the key content window, not the windows[0] shim, so
-        // paste targets the terminal the user is actually looking at (#0244).
-        // No window (#0316) resolves to nil like any other "nothing focused"
-        // case, rather than trapping.
-        store.keyWindowOrFirstRegistered()?.selectedSession?.focusedPane.activeTab
     }
 
     private static var isEditingTextField: Bool {
@@ -116,7 +113,15 @@ public enum PasteDispatcher {
         return false
     }
 
-    private static func forwardStandardPaste() {
+    /// Injectable seam (#0332 N2), not `private`: `handlePasteRequest`'s
+    /// early-return branch (no focused Terminal pane, or the responder
+    /// chain is already editing a text field) must fall back to the
+    /// standard AppKit paste action rather than silently dropping the
+    /// paste. A test asserting only "`.battyRequestPaste` was not posted"
+    /// cannot distinguish that fallback firing from the whole method
+    /// merely no-oping — swapping this in for a recording closure lets a
+    /// test assert the fallback actually ran.
+    static var forwardStandardPaste: () -> Void = {
         NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
     }
 }

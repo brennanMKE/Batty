@@ -213,8 +213,10 @@ Call sites:
 
 What the method does:
 
-1. Resolves the now-active tab via `selectedSession.focusedPane` and
-   its `activeTabID`.
+1. Resolves the now-active tab via `selectedSession.focusedTerminalPane`
+   and its `activeTabID` — `nil` (no-op) when the focused pane is not
+   `.terminal`-kind (#0332), since a non-terminal pane's placeholder Tab
+   can never carry a real bell entry.
 2. Walks `bellFeed.entries`, picks every unseen entry whose `tabID`
    matches, and calls `markBellSeen(id:)` on each. `markBellSeen`
    flips the entry's `seen` flag and decrements

@@ -21,9 +21,9 @@ struct AppStateStoreBellDecisionHistoryTests {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
-        session.focusedPane.activeTab?.terminal.terminalDidRingBell()
+        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRingBell()
         store.recordBellTick(forTabID: tabID)
 
         #expect(store.bellDecisionHistory.records.count == 1)
@@ -34,9 +34,9 @@ struct AppStateStoreBellDecisionHistoryTests {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
-        session.focusedPane.activeTab?.terminal.terminalDidRequestDesktopNotification(
+        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRequestDesktopNotification(
             title: "Build", body: "Succeeded"
         )
         store.recordDesktopNotification(forTabID: tabID)
@@ -48,7 +48,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func recordCLINotificationCapturesTheCliNotificationTriggerKind() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
 
@@ -61,7 +61,7 @@ struct AppStateStoreBellDecisionHistoryTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
         session.notificationsMuted = true
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
 
@@ -72,7 +72,7 @@ struct AppStateStoreBellDecisionHistoryTests {
 
     @Test func nilNotifierCapturesTheNilNotifierSuppressionReason() {
         let store = AppStateStore(notifier: nil)
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
 
@@ -89,7 +89,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func capturedMessageIsTruncatedToMaxFieldLengthAtTheStore() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
         let longBody = String(repeating: "x", count: BellDecisionFormat.maxFieldLength * 4)
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: longBody, playSound: false)
@@ -104,7 +104,7 @@ struct AppStateStoreBellDecisionHistoryTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
         session.title = String(repeating: "s", count: BellDecisionFormat.maxFieldLength * 4)
-        let tab = session.focusedPane.activeTab!
+        let tab = session.focusedPaneAnyKind.activeTab!
         tab.titleOverride = String(repeating: "t", count: BellDecisionFormat.maxFieldLength * 4)
         let tabID = tab.id
 
@@ -124,7 +124,7 @@ struct AppStateStoreBellDecisionHistoryTests {
         // still captures on the very first bell.
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
 

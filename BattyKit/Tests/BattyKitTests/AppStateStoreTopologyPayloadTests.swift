@@ -61,7 +61,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func topologyPayloadLeafPaneHasNoSplitShape() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let pane = session.focusedPane
+        let pane = session.focusedPaneAnyKind
         let payload = store.topologyPayload()
         guard case .leaf(pane: let leafPane) = payload.windows[0].sessions[0].root else {
             Issue.record("expected a leaf root for a single-pane session")
@@ -74,7 +74,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func topologyPayloadSplitShapeMatchesTree() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
         let paneB = session.tree.splitFocusedPane(direction: .horizontal, ratio: 0.5)
         let payload = store.topologyPayload()
         guard case .split(let id, let direction, let ratio, let left, let right) = payload.windows[0].sessions[0].root else {
@@ -103,7 +103,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func topologyPayloadNestedSplitShapeMatchesTreeRecursively() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
         let paneB = session.tree.splitFocusedPane(direction: .vertical)
         session.tree.focusedPaneID = paneA.id
         let paneC = session.tree.splitFocusedPane(direction: .horizontal)
@@ -137,7 +137,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func topologyPayloadReportsHiddenPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let paneA = session.focusedPane
+        let paneA = session.focusedPaneAnyKind
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
         store.hidePane(id: paneB.id)
         let payload = store.topologyPayload()
@@ -149,7 +149,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func topologyPayloadTabTitleAndActiveFlagMatchRuntime() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let pane = session.focusedPane
+        let pane = session.focusedPaneAnyKind
         let secondTab = pane.addTab()
         let payload = store.topologyPayload()
         let panePayload = payload.windows[0].sessions[0].allPanes[0]
@@ -168,7 +168,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func topologyPayloadReportsEmptyTabsForANonTerminalPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).
         let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
         // Permanent regression check, not just a comment's promise: if a
@@ -194,7 +194,7 @@ struct AppStateStoreTopologyPayloadTests {
     @Test func topologyPayloadReportsRealKindPerPane() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         let gitStatusPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
 
         let payload = store.topologyPayload()
@@ -267,7 +267,7 @@ struct AppStateStoreTopologyPayloadTests {
 
         // Give the background session a split with a non-default focused pane
         // and a non-default active tab, so any accidental reset is visible.
-        let bgPaneA = background.focusedPane
+        let bgPaneA = background.focusedPaneAnyKind
         let bgPaneB = background.tree.splitFocusedPane(direction: .vertical)
         background.tree.focusedPaneID = bgPaneB.id
         let bgSecondTab = bgPaneB.addTab()
@@ -275,7 +275,7 @@ struct AppStateStoreTopologyPayloadTests {
 
         let selectedSessionIDBefore = store.windows[0].selectedSessionID
         let selectedFocusedPaneBefore = selected.tree.focusedPaneID
-        let selectedActiveTabBefore = selected.focusedPane.activeTabID
+        let selectedActiveTabBefore = selected.focusedPaneAnyKind.activeTabID
         let backgroundFocusedPaneBefore = background.tree.focusedPaneID
         let backgroundActiveTabBefore = bgPaneB.activeTabID
 
@@ -287,7 +287,7 @@ struct AppStateStoreTopologyPayloadTests {
                 "reading a background session's info must not change the window's selected session")
         #expect(selected.tree.focusedPaneID == selectedFocusedPaneBefore,
                 "reading a background session's info must not change the selected session's focus")
-        #expect(selected.focusedPane.activeTabID == selectedActiveTabBefore,
+        #expect(selected.focusedPaneAnyKind.activeTabID == selectedActiveTabBefore,
                 "reading a background session's info must not change the selected session's active tab")
         #expect(background.tree.focusedPaneID == backgroundFocusedPaneBefore,
                 "reading a session's own info must not change its own focused pane")

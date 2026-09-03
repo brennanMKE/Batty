@@ -13,30 +13,30 @@ struct AppStateStoreSessionAtPathTests {
 
         let session = store.addSession(workingDirectory: path)!
 
-        let configuredPath = session.focusedPane.activeTab?.terminal.configuration.workingDirectory
+        let configuredPath = session.focusedPaneAnyKind.activeTab?.terminal.configuration.workingDirectory
         #expect(configuredPath == path)
     }
 
     @Test func addSessionWithExplicitPathOverridesCWDInheritance() {
         let store = AppStateStore()
         let source = store.sessions[0]
-        source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/inherited"
+        source.focusedPaneAnyKind.activeTab?.terminal.configuration.workingDirectory = "/Users/test/inherited"
         let explicit = "/Users/test/explicit"
 
         let session = store.addSession(workingDirectory: explicit)!
 
-        let configuredPath = session.focusedPane.activeTab?.terminal.configuration.workingDirectory
+        let configuredPath = session.focusedPaneAnyKind.activeTab?.terminal.configuration.workingDirectory
         #expect(configuredPath == explicit)
     }
 
     @Test func addSessionWithNilWorkingDirectoryFallsBackToInheritance() {
         let store = AppStateStore()
         let source = store.sessions[0]
-        source.focusedPane.activeTab?.terminal.configuration.workingDirectory = "/Users/test/inherited"
+        source.focusedPaneAnyKind.activeTab?.terminal.configuration.workingDirectory = "/Users/test/inherited"
 
         let session = store.addSession(workingDirectory: nil)!
 
-        let configuredPath = session.focusedPane.activeTab?.terminal.configuration.workingDirectory
+        let configuredPath = session.focusedPaneAnyKind.activeTab?.terminal.configuration.workingDirectory
         #expect(configuredPath == "/Users/test/inherited")
     }
 

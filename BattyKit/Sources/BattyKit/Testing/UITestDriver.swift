@@ -37,7 +37,11 @@ public enum UITestDriver {
         logger.info("ui-test: script complete")
     }
 
-    private static func dispatch(_ intent: UITestIntent, store: AppStateStore) {
+    // Not `private` — a `@testable import` test exercises intent
+    // resolution directly against this production code rather than
+    // re-typing it, the same precedent as `ExitDispatcher.focusedTerminalTab`
+    // (#0332 N1).
+    static func dispatch(_ intent: UITestIntent, store: AppStateStore) {
         logger.info("ui-test: dispatch intent=\(intent.intentName, privacy: .public)")
         switch intent {
         case .createSession(let name):
@@ -76,8 +80,12 @@ public enum UITestDriver {
             layout.apply(to: session.tree)
 
         case .createTab:
-            guard let pane = store.selectedSession?.focusedPane else {
-                logger.notice("ui-test: createTab no focused pane")
+            // Kind-gated (#0332): a non-terminal focused pane's `TabRuntime`
+            // is a structural placeholder `PaneView` never renders — adding
+            // a second one produces an invisible orphan tab, the exact
+            // defect class `docs/pane-kinds.md`'s `#0315` note catalogs.
+            guard let pane = store.selectedSession?.focusedTerminalPane else {
+                logger.notice("ui-test: createTab no focused terminal pane")
                 return
             }
             pane.addTab(inheritingCWDFrom: pane.activeTab)
@@ -86,8 +94,11 @@ public enum UITestDriver {
             store.closeFocusedTab()
 
         case .renameActiveTab(let name):
-            guard let tab = store.selectedSession?.focusedPane.activeTab else {
-                logger.notice("ui-test: renameActiveTab no active tab")
+            // Kind-gated (#0332): writing `titleOverride` on a non-terminal
+            // pane's placeholder tab is cosmetic (nothing reads it), but
+            // there is no reason for a UI-test intent to touch it at all.
+            guard let tab = store.selectedSession?.focusedTerminalPane?.activeTab else {
+                logger.notice("ui-test: renameActiveTab no focused terminal tab")
                 return
             }
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,8 +106,8 @@ public enum UITestDriver {
             logger.info("ui-test: renameActiveTab tab=\(tab.id, privacy: .public) new=\(tab.titleOverride ?? "nil", privacy: .public)")
 
         case .resetActiveTabTitle:
-            guard let tab = store.selectedSession?.focusedPane.activeTab else {
-                logger.notice("ui-test: resetActiveTabTitle no active tab")
+            guard let tab = store.selectedSession?.focusedTerminalPane?.activeTab else {
+                logger.notice("ui-test: resetActiveTabTitle no focused terminal tab")
                 return
             }
             logger.info("ui-test: resetActiveTabTitle tab=\(tab.id, privacy: .public)")
@@ -107,7 +118,7 @@ public enum UITestDriver {
                 logger.notice("ui-test: splitHorizontal no selected session")
                 return
             }
-            let pane = session.focusedPane
+            let pane = session.focusedPaneAnyKind
             session.tree.splitFocusedPane(direction: .horizontal, inheritingFrom: pane)
 
         case .splitVertical:
@@ -115,7 +126,7 @@ public enum UITestDriver {
                 logger.notice("ui-test: splitVertical no selected session")
                 return
             }
-            let pane = session.focusedPane
+            let pane = session.focusedPaneAnyKind
             session.tree.splitFocusedPane(direction: .vertical, inheritingFrom: pane)
 
         case .focusPane(let index):

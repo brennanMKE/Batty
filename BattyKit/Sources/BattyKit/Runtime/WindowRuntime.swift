@@ -157,7 +157,13 @@ public final class WindowRuntime {
 
     @discardableResult
     public func addSession(title: String? = nil, workingDirectory: String? = nil) -> SessionRuntime {
-        let sourceTab = selectedSession?.focusedPane.activeTab
+        // `focusedTerminalPane`, not `focusedPaneAnyKind` (#0332 B3): this
+        // reads `.activeTab` to inherit its cwd, and a non-terminal pane's
+        // placeholder Tab never has a real `workingDirectory` to inherit
+        // anyway (`PaneRuntime.kind`'s doc comment) — resolving through the
+        // kind-aware accessor makes "nothing to inherit" explicit instead
+        // of an accident of the placeholder never being spawned.
+        let sourceTab = selectedSession?.focusedTerminalPane?.activeTab
         // An explicit workingDirectory overrides CWD inheritance.
         let effectiveCWD: String?
         if let explicit = workingDirectory, !explicit.isEmpty {
@@ -329,7 +335,7 @@ public final class WindowRuntime {
         if let pane = session.focusedTerminalPane {
             closeTab(id: pane.activeTabID)
         } else {
-            closeFocusedNonTerminalPane(session.focusedPane.id)
+            closeFocusedNonTerminalPane(session.focusedPaneAnyKind.id)
         }
     }
 
@@ -341,7 +347,7 @@ public final class WindowRuntime {
     /// Pane. Falls back to "Close Tab" when there's no selected session,
     /// matching the item's disabled state in that case.
     public var closeFocusedItemTitle: String {
-        guard let session = selectedSession, session.focusedPane.kind != .terminal else {
+        guard let session = selectedSession, session.focusedPaneAnyKind.kind != .terminal else {
             return String(localized: "Close Tab")
         }
         return String(localized: "Close Pane")
@@ -374,7 +380,7 @@ public final class WindowRuntime {
         if let pane = session.focusedTerminalPane {
             requestCloseTab(id: pane.activeTabID)
         } else {
-            closeFocusedNonTerminalPane(session.focusedPane.id)
+            closeFocusedNonTerminalPane(session.focusedPaneAnyKind.id)
         }
     }
 
@@ -773,8 +779,15 @@ public final class WindowRuntime {
     // MARK: - Bell state (per-window tab-level counters)
 
     public func markActiveTabSeen() {
-        guard let session = selectedSession else { return }
-        let pane = session.focusedPane
+        // `focusedTerminalPane`, not `focusedPaneAnyKind` (#0332 B3): this
+        // reads `.activeTabID` (and, below, `.tabs`) to clear bell entries
+        // for the now-focused tab. A non-terminal pane's placeholder Tab
+        // can never carry a real bell entry (only a live surface fires
+        // OSC 9 / BEL, and the placeholder never gets one —
+        // `PaneRuntime.kind`'s doc comment), so the lookup was already a
+        // guaranteed no-op there; resolving through the kind-aware accessor
+        // makes that explicit instead of incidental.
+        guard let session = selectedSession, let pane = session.focusedTerminalPane else { return }
         let tabID = pane.activeTabID
         let entriesToClear = bellFeed.entries.filter { $0.tabID == tabID && !$0.seen }
         for entry in entriesToClear {

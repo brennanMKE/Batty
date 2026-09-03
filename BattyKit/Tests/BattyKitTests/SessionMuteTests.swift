@@ -33,8 +33,8 @@ struct SessionMuteTests {
         }
         session.notificationsMuted = true
 
-        let tabID = session.focusedPane.activeTabID
-        session.focusedPane.activeTab?.terminal.terminalDidRequestDesktopNotification(
+        let tabID = session.focusedPaneAnyKind.activeTabID
+        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRequestDesktopNotification(
             title: "Build", body: "Succeeded"
         )
         store.recordDesktopNotification(forTabID: tabID)
@@ -56,8 +56,8 @@ struct SessionMuteTests {
         store.addSession(title: "Other")
         store.selectedSessionID = store.sessions.last?.id
 
-        let tabID = session.focusedPane.activeTabID
-        session.focusedPane.activeTab?.terminal.terminalDidRequestDesktopNotification(
+        let tabID = session.focusedPaneAnyKind.activeTabID
+        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRequestDesktopNotification(
             title: "Build", body: "Succeeded"
         )
         store.recordDesktopNotification(forTabID: tabID)
@@ -78,11 +78,11 @@ struct SessionMuteTests {
         store.addSession(title: "Other")
         store.selectedSessionID = store.sessions.last?.id
 
-        guard let tabID = session.focusedPane.activeTab?.id else {
+        guard let tabID = session.focusedPaneAnyKind.activeTab?.id else {
             Issue.record("Expected an active tab")
             return
         }
-        session.focusedPane.activeTab?.terminal.terminalDidRingBell()
+        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRingBell()
         store.recordBellTick(forTabID: tabID)
 
         #expect(notifier.postedEntries.isEmpty)

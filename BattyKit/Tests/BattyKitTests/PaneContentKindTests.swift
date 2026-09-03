@@ -85,14 +85,14 @@ struct PaneContentKindTests {
 
     @Test func focusedTerminalPaneReturnsTheFocusedPaneWhenItIsTerminalKind() {
         let session = SessionRuntime()
-        #expect(session.focusedPane.kind == .terminal, "test setup: a fresh session's default pane is terminal-kind")
+        #expect(session.focusedPaneAnyKind.kind == .terminal, "test setup: a fresh session's default pane is terminal-kind")
 
-        #expect(session.focusedTerminalPane?.id == session.focusedPane.id)
+        #expect(session.focusedTerminalPane?.id == session.focusedPaneAnyKind.id)
     }
 
     @Test func focusedTerminalPaneIsNilWhenTheFocusedPaneIsNonTerminal() {
         let session = SessionRuntime()
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         // contentFactory: { _ in nil } — this test only needs a
         // non-terminal *kind*, not a live conformer; without it,
         // `.lmStudioDashboard`'s real conformer would `setUp()` a real

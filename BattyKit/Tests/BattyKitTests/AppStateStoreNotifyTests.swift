@@ -55,14 +55,14 @@ struct AppStateStoreNotifyTests {
 
     @Test func messageIsTitleAloneWhenNoBody() {
         let store = AppStateStore()
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
         #expect(store.bellFeed.entries.first?.message == "Done")
     }
 
     @Test func messageIsTitleAndBodyWhenBodyGiven() {
         let store = AppStateStore()
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
         store.recordCLINotification(tabID: tabID, title: "Done", body: "All tests passed", playSound: false)
         #expect(store.bellFeed.entries.first?.message == "Done\nAll tests passed")
     }
@@ -72,7 +72,7 @@ struct AppStateStoreNotifyTests {
     @Test func notifyingTheFocusedTabRecordsAsSeenAndDoesNotBumpUnseenCounters() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
 
@@ -83,7 +83,7 @@ struct AppStateStoreNotifyTests {
     @Test func notifyingANonFocusedSessionsTabRecordsAsUnseenAndBumpsCounters() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
         store.addSession(title: "Other")
         store.selectedSessionID = store.sessions.last?.id
 
@@ -98,16 +98,37 @@ struct AppStateStoreNotifyTests {
     @Test func focusedTabIDFallbackResolvesTheFocusedPanesActiveTab() {
         let store = AppStateStore()
         let session = store.sessions[0]
-        let expected = session.focusedPane.activeTabID
+        let expected = session.focusedPaneAnyKind.activeTabID
         #expect(store.focusedTabIDFallback() == expected)
     }
 
     @Test func focusedTabIDFallbackTracksAPaneSwitchToANewlyAddedTab() {
         let store = AppStateStore()
-        let pane = store.sessions[0].focusedPane
+        let pane = store.sessions[0].focusedPaneAnyKind
         let newTab = pane.addTab()
         pane.activeTabID = newTab.id
         #expect(store.focusedTabIDFallback() == newTab.id)
+    }
+
+    /// #0332 B2: without this gate, `batty notify` with no `--tab` (and no
+    /// `BATTY_TAB_ID` — never injected for a non-terminal pane per #0315's
+    /// Gotchas) would resolve a non-terminal focused pane's structural
+    /// placeholder tab as the notify target — a `BellFeedEntry` no
+    /// `PaneView` ever renders, whose unseen count `WindowRuntime
+    /// .markActiveTabSeen()` can never clear because it only walks tabs the
+    /// session's tree actually surfaces.
+    @Test func focusedTabIDFallbackIsNilWhenTheFocusedPaneIsNotTerminal() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPaneAnyKind
+        // `contentFactory: { _ in nil }` (#0313's seam) keeps this split
+        // from starting `.gitStatus`'s real conformer (a real
+        // `FSEventStream`) as a side effect.
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
+        #expect(nonTerminalPane?.content == nil)
+        #expect(session.focusedPaneAnyKind.kind == .gitStatus, "test setup: the split must move focus to the non-terminal pane")
+
+        #expect(store.focusedTabIDFallback() == nil)
     }
 
     // MARK: - Mute suppresses the banner, not the feed entry (per
@@ -118,7 +139,7 @@ struct AppStateStoreNotifyTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
         session.notificationsMuted = true
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
         let outcome = store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: true)
 
@@ -132,7 +153,7 @@ struct AppStateStoreNotifyTests {
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
         #expect(session.notificationsMuted == false)
-        let tabID = session.focusedPane.activeTabID
+        let tabID = session.focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: true)
 
@@ -146,7 +167,7 @@ struct AppStateStoreNotifyTests {
     @Test func soundFlagTrueIsForwardedToTheNotifier() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: true)
 
@@ -156,7 +177,7 @@ struct AppStateStoreNotifyTests {
     @Test func soundFlagFalseIsForwardedToTheNotifier() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
 
@@ -174,7 +195,7 @@ struct AppStateStoreNotifyTests {
         store.windows[0].selectedSessionID = selected.id
         let selectedFocusedPaneBefore = selected.tree.focusedPaneID
         let selectedSessionIDBefore = store.windows[0].selectedSessionID
-        let backgroundTabID = background.focusedPane.activeTabID
+        let backgroundTabID = background.focusedPaneAnyKind.activeTabID
 
         let outcome = store.recordCLINotification(tabID: backgroundTabID, title: "Done", body: nil, playSound: false)
 
@@ -190,7 +211,7 @@ struct AppStateStoreNotifyTests {
     @Test func notifyResolvesATabInANonKeyWindow() {
         let store = AppStateStore()
         let w2 = store.windowRuntime(for: WindowID())
-        let target = w2.sessions[0].focusedPane.activeTabID
+        let target = w2.sessions[0].focusedPaneAnyKind.activeTabID
 
         let outcome = store.recordCLINotification(tabID: target, title: "Done", body: nil, playSound: false)
 
@@ -204,7 +225,7 @@ struct AppStateStoreNotifyTests {
 
     @Test func repeatedNotifyCallsRespectTheExistingFeedCap() {
         let store = AppStateStore()
-        let tabID = store.sessions[0].focusedPane.activeTabID
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
         for i in 0..<(BellFeedStore.cap + 5) {
             store.recordCLINotification(tabID: tabID, title: "Tick \(i)", body: nil, playSound: false)
         }

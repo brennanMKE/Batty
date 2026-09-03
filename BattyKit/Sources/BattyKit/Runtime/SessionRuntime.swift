@@ -68,7 +68,19 @@ public final class SessionRuntime: Identifiable {
         self.tree.attachToSession(self.id)
     }
 
-    public var focusedPane: PaneRuntime {
+    /// The focused Pane, regardless of `kind`. Named `AnyKind` (not
+    /// `focusedPane`) so reaching for it reads as a deliberate opt-out of
+    /// the kind check, not the path of least resistance (#0332) — safe for
+    /// kind-agnostic uses (focus tracking, tree layout, "which pane is
+    /// this" lookups) that never read `.tabs`/`.activeTab`. Anything that
+    /// resolves a Tab to act on — add, close, rename, send text — must go
+    /// through `focusedTerminalPane` (or `AppStateStore.focusedTerminalTab`
+    /// for tab-scoped Terminal actions) instead: a non-terminal pane's one
+    /// `TabRuntime` is a structural placeholder `PaneView` never renders
+    /// (`PaneRuntime.kind`'s doc comment), and treating it like a real Tab
+    /// container is the defect class `docs/pane-kinds.md`'s `#0315`
+    /// implementation note catalogs at length.
+    public var focusedPaneAnyKind: PaneRuntime {
         tree.focusedPane
     }
 
@@ -80,29 +92,21 @@ public final class SessionRuntime: Identifiable {
         SessionColor(rawValue: colorIndex) ?? .blue
     }
 
-    /// `focusedPane`, but `nil` when it isn't a `.terminal`-kind pane.
+    /// `focusedPaneAnyKind`, but `nil` when it isn't a `.terminal`-kind
+    /// pane.
     ///
     /// Every Tab-scoped command (Cmd-T, Cmd-W, tab-switching, Exit Shell —
     /// whether dispatched from the menu bar, the global keyboard-shortcut
     /// monitor, or the Command Palette) must resolve its target pane
-    /// through this, not `focusedPane` directly: a non-terminal pane's one
-    /// `TabRuntime` is a structural placeholder `PaneView` never renders
-    /// (`PaneRuntime.kind`'s doc comment), and mutating it (adding a
-    /// second invisible tab, closing the only one) is a real bug, not a
+    /// through this, not `focusedPaneAnyKind` directly: a non-terminal
+    /// pane's one `TabRuntime` is a structural placeholder `PaneView` never
+    /// renders (`PaneRuntime.kind`'s doc comment), and mutating it (adding
+    /// a second invisible tab, closing the only one) is a real bug, not a
     /// cosmetic one — see `docs/pane-kinds.md`'s `#0315` implementation
     /// note for the three independent dispatch paths this was found
     /// reachable from in review (#0315 review rounds 1 and 2, finding 2).
     public var focusedTerminalPane: PaneRuntime? {
-        let pane = focusedPane
+        let pane = focusedPaneAnyKind
         return pane.kind == .terminal ? pane : nil
-    }
-
-    public func closeFocusedTab() {
-        let pane = focusedPane
-        if pane.tabs.count > 1 {
-            pane.closeActiveTab()
-        } else if tree.allPanes.count > 1 {
-            tree.removeFocusedPane()
-        }
     }
 }

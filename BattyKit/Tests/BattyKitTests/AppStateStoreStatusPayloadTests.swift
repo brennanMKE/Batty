@@ -53,7 +53,7 @@ struct AppStateStoreStatusPayloadTests {
     @Test func statusPayloadTabCountExcludesNonTerminalPanes() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         let before = store.statusPayload().tabCount
 
         // contentFactory: { _ in nil } -- this test is about tabCount excluding

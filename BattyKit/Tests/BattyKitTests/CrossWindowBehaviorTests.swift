@@ -261,7 +261,7 @@ struct CrossWindowBehaviorTests {
     @Test func quitConfirmationCountExcludesNonTerminalPanes() {
         let store = AppStateStore()
         let session = store.sessions.first!
-        let terminalPane = session.focusedPane
+        let terminalPane = session.focusedPaneAnyKind
         let before = QuitConfirmation.openTerminalTabCount(store: store)
 
         _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)
