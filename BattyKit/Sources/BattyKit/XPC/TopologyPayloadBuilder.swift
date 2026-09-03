@@ -110,12 +110,10 @@ extension PaneRuntime {
     /// .activeTabID` stays non-optional — see `docs/pane-kinds.md` §5,
     /// deliberately not built by #0315): a non-terminal pane's
     /// `activeTabID` still names the placeholder tab's real id, which will
-    /// not appear in `tabs`. `TopologyPanePayload` also carries no `kind`
-    /// field yet, so an agent parsing `list` output cannot distinguish
-    /// "empty tabs, no active tab really" from any other empty-tabs pane by
-    /// this field alone — a known residual gap, not a regression this fix
-    /// introduces, left for whichever issue adds `kind` to the topology
-    /// payload.
+    /// not appear in `tabs`. Since #0379, `TopologyPanePayload.kind` lets
+    /// an agent distinguish "empty tabs because this is a non-terminal
+    /// pane" from any other empty-tabs pane, so this is no longer the
+    /// residual gap it once was.
     
 
 
@@ -168,6 +166,7 @@ extension PaneRuntime {
             isFocused: isFocused,
             activeTabID: activeTabID,
             tabs: visibleTabs.map { $0.topologyPayload(isActive: $0.id == activeTabID) },
+            kind: kind,
             frame: frame,
             visibleRect: nil
         )

@@ -65,11 +65,11 @@ struct TopologyPayloadTests {
 
     // MARK: - Fixtures
 
-    private static func leafPane(hidden: Bool = false, focused: Bool = false, tabCount: Int = 1) -> TopologyPanePayload {
+    private static func leafPane(hidden: Bool = false, focused: Bool = false, tabCount: Int = 1, kind: PaneContentKind? = .terminal) -> TopologyPanePayload {
         let tabs = (0..<tabCount).map { index in
             TopologyTabPayload(id: UUID(), title: "tab\(index)", workingDirectory: "/tmp", isActive: index == 0)
         }
-        return TopologyPanePayload(id: UUID(), isHidden: hidden, isFocused: focused, activeTabID: tabs[0].id, tabs: tabs)
+        return TopologyPanePayload(id: UUID(), isHidden: hidden, isFocused: focused, activeTabID: tabs[0].id, tabs: tabs, kind: kind)
     }
 
     // MARK: - TopologySplitDirection
@@ -126,6 +126,61 @@ struct TopologyPayloadTests {
         #expect(decoded.tabs.count == 1)
     }
 
+    @Test func panePayloadNonTerminalKindRoundTrips() throws {
+        let tabs = [TopologyTabPayload(id: UUID(), title: "tab0", workingDirectory: nil, isActive: true)]
+        let pane = TopologyPanePayload(id: UUID(), isHidden: false, isFocused: false, activeTabID: tabs[0].id, tabs: tabs, kind: .gitStatus)
+        let data = try JSONEncoder().encode(pane)
+        let decoded = try JSONDecoder().decode(TopologyPanePayload.self, from: data)
+        #expect(decoded == pane)
+        #expect(decoded.kind == .gitStatus)
+    }
+
+    /// #0379 review round 1: an absent/`null` `kind` must decode to `nil`,
+    /// not a guessed `.terminal` — the answering app might be a
+    /// pre-#0379 build that already hosts non-terminal Panes
+    /// (#0304/#0305/#0313/#0314 shipped before #0379), so `.terminal`
+    /// would assert something the app never said.
+    @Test func panePayloadDecodesAbsentKindAsNil() throws {
+        let tabID = UUID()
+        let json = """
+        {
+            "id": "\(UUID().uuidString)",
+            "isHidden": false,
+            "isFocused": true,
+            "activeTabID": "\(tabID.uuidString)",
+            "tabs": []
+        }
+        """
+        let decoded = try JSONDecoder().decode(TopologyPanePayload.self, from: Data(json.utf8))
+        #expect(decoded.kind == nil)
+        #expect(decoded.isFocused)
+        #expect(decoded.activeTabID == tabID)
+    }
+
+    /// #0379 review round 1: a *present but unrecognised* `kind` raw value
+    /// (a newer app reporting a kind this build's `PaneContentKind` has no
+    /// case for) must also decode to `nil`, not throw. A direct
+    /// `decodeIfPresent(PaneContentKind.self, ...)` throws
+    /// `DecodingError.dataCorrupted` here, and `AppServiceClient.perform`
+    /// decodes the whole response with `try?` — one unrecognised kind on
+    /// one Pane would otherwise collapse the entire `list`/`session info`
+    /// response into a generic failure.
+    @Test func panePayloadDecodesUnrecognisedKindAsNil() throws {
+        let tabID = UUID()
+        let json = """
+        {
+            "id": "\(UUID().uuidString)",
+            "isHidden": false,
+            "isFocused": false,
+            "activeTabID": "\(tabID.uuidString)",
+            "tabs": [],
+            "kind": "some-future-kind"
+        }
+        """
+        let decoded = try JSONDecoder().decode(TopologyPanePayload.self, from: Data(json.utf8))
+        #expect(decoded.kind == nil)
+    }
+
     // MARK: - TopologySplitNodePayload (leaf / split)
 
     @Test func splitNodeLeafRoundTrips() throws {
@@ -180,7 +235,8 @@ struct TopologyPayloadTests {
         #expect(leafBody["_0"] == nil)
 
         let paneBody = try #require(leafBody["pane"] as? [String: Any])
-        #expect(Set(paneBody.keys) == ["id", "isHidden", "isFocused", "activeTabID", "tabs"])
+        #expect(Set(paneBody.keys) == ["id", "isHidden", "isFocused", "activeTabID", "tabs", "kind"])
+        #expect(paneBody["kind"] as? String == "terminal")
 
         let split = TopologySplitNodePayload.split(id: UUID(), direction: .horizontal, ratio: 0.5, left: leaf, right: leaf)
         let splitData = try JSONEncoder().encode(split)

@@ -127,7 +127,7 @@ struct SessionInfoCommand: ParsableCommand {
                 }
             }
             let paneFlagText = paneFlags.isEmpty ? "" : " " + paneFlags.joined(separator: " ")
-            print("  pane \(pane.id)\(paneFlagText)\(dims)")
+            print("  pane \(pane.id) kind=\(pane.kind?.rawValue ?? "unknown")\(paneFlagText)\(dims)")
             for tab in pane.tabs {
                 let tabFlags = tab.isActive ? " active" : ""
                 let cwd = tab.workingDirectory.map { " cwd=\($0)" } ?? ""

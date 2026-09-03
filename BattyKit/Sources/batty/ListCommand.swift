@@ -129,7 +129,7 @@ struct ListCommand: ParsableCommand {
             }
         }
         let flagText = flags.isEmpty ? "" : " " + flags.joined(separator: " ")
-        return "pane \(pane.id) session=\(session.id)\(flagText) tabs=\(pane.tabs.count)\(dims)"
+        return "pane \(pane.id) session=\(session.id) kind=\(pane.kind?.rawValue ?? "unknown")\(flagText) tabs=\(pane.tabs.count)\(dims)"
     }
 
 

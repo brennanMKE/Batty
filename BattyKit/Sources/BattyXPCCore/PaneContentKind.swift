@@ -10,9 +10,9 @@ import Foundation
 /// `BattyKit/Package.swift` — the CLI must not transitively drag in
 /// Sparkle/libghostty), and this is deliberately **one string used
 /// identically in three places**: the Codable `Pane.kind` raw value, the
-/// CLI `--view` flag value, and (should a future issue extend it) the
-/// `TopologyPanePayload.kind` JSON value — `docs/pane-kinds.md` §5, "one
-/// string, three call sites, zero translation table to keep in sync."
+/// CLI `--view` flag value, and the `TopologyPanePayload.kind` JSON value
+/// (#0379) — `docs/pane-kinds.md` §5, "one string, three call sites, zero
+/// translation table to keep in sync."
 ///
 /// `nonisolated` for consistency with this file's siblings
 /// (`TopologyPayload.swift`) — defensive rather than load-bearing, since a

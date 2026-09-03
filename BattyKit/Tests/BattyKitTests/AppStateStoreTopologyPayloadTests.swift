@@ -188,6 +188,21 @@ struct AppStateStoreTopologyPayloadTests {
         #expect(terminalPanePayload?.tabs.isEmpty == false)
     }
 
+    /// #0379 — the payload must report each Pane's real `PaneContentKind`,
+    /// not just `.terminal` for everything, so an agent can distinguish a
+    /// `git-status` Pane from a terminal Pane in `batty list --json`.
+    @Test func topologyPayloadReportsRealKindPerPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.focusedPane
+        let gitStatusPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
+
+        let payload = store.topologyPayload()
+        let panes = payload.windows[0].sessions[0].allPanes
+        #expect(panes.first { $0.id == terminalPane.id }?.kind == .terminal)
+        #expect(panes.first { $0.id == gitStatusPane.id }?.kind == .gitStatus)
+    }
+
     // MARK: - sessionInfoPayload(sessionID:)
 
     @Test func sessionInfoPayloadResolvesExplicitSessionID() {

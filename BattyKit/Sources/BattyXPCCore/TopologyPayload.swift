@@ -21,6 +21,11 @@ import Foundation
 /// applies here. Adding either is new scope for a future issue, not a gap
 /// in this one.
 ///
+/// A third field, `TopologyPanePayload.kind`, is present since #0379 —
+/// `PaneContentKind`'s doc comment reserved it as the third leg of "one
+/// string, three call sites." Unlike `zoom`/pty-path above, this was never
+/// a deliberate #0257 omission — it was an unfiled gap that #0379 closed.
+///
 /// `nonisolated` at every type's declaration for the same reason as
 /// `StatusPayload`: under this package's `SWIFT_DEFAULT_ACTOR_ISOLATION =
 /// MainActor`, an unannotated struct/enum's synthesized `Codable`
@@ -70,20 +75,78 @@ public nonisolated struct TopologyPanePayload: Codable, Sendable, Equatable {
     public let isFocused: Bool
     public let activeTabID: UUID
     public let tabs: [TopologyTabPayload]
+    /// The kind of content this pane hosts (`docs/pane-kinds.md`) — the
+    /// same `PaneContentKind` raw value as `Pane.kind` and the CLI
+    /// `--view` flag, so an agent can select on it directly (e.g. `jq
+    /// 'select(.kind == "git-status")'`) with no translation table.
+    ///
+    /// Optional, and deliberately so: `nil` means "the answering app does
+    /// not report a kind I understand" — either the key was absent/`null`
+    /// (an app build that predates #0379 — which is every build installed
+    /// today, since non-terminal Panes shipped earlier, in
+    /// #0304/#0305/#0313/#0314), or the key held a raw value this build's
+    /// `PaneContentKind` has no case for (a newer app, an older CLI). An
+    /// earlier draft of this field defaulted absent kind to `.terminal`,
+    /// mirroring `Pane.init(from:)` in `LayoutModel.swift` — but that
+    /// analogy doesn't transfer here: there, an absent kind genuinely
+    /// predates non-terminal Panes existing at all, so `.terminal` is
+    /// truthful. Here it would have the CLI assert, on the app's behalf,
+    /// something the app never said — printing `"kind": "terminal"` for a
+    /// Pane that might be `git-status`. `nil` is the honest value.
+    public let kind: PaneContentKind?
     /// Optional frame rectangle for the pane's terminal surface. Only populated when `--include-dimensions` is set on the CLI request.
     public let frame: Rectangle?
     /// Optional visible rectangle (frame minus window chrome). Only populated when `--include-dimensions` is set.
     public let visibleRect: Rectangle?
 
-    public init(id: UUID, isHidden: Bool, isFocused: Bool, activeTabID: UUID, tabs: [TopologyTabPayload], frame: Rectangle? = nil, visibleRect: Rectangle? = nil) {
+    public init(id: UUID, isHidden: Bool, isFocused: Bool, activeTabID: UUID, tabs: [TopologyTabPayload], kind: PaneContentKind?, frame: Rectangle? = nil, visibleRect: Rectangle? = nil) {
         self.id = id
         self.isHidden = isHidden
         self.isFocused = isFocused
         self.activeTabID = activeTabID
         self.tabs = tabs
+        self.kind = kind
         self.frame = frame
         self.visibleRect = visibleRect
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, isHidden, isFocused, activeTabID, tabs, kind, frame, visibleRect
+    }
+
+    /// `kind` decodes leniently on two independent axes, both resolving to
+    /// `nil` rather than a guessed default (see the property's own doc
+    /// comment for why `.terminal` was wrong): absent/explicit-`null`, and
+    /// *present but unrecognised* — a raw string this build's
+    /// `PaneContentKind` has no case for. Decoding the raw `String` and
+    /// mapping it through `PaneContentKind.init(rawValue:)`, instead of
+    /// `decodeIfPresent(PaneContentKind.self, ...)` directly, is what
+    /// covers the second axis: the direct form only tolerates
+    /// absent/`null` and *throws* `DecodingError.dataCorrupted` on an
+    /// unrecognised value. That throw matters more than it looks —
+    /// `AppServiceClient.perform` decodes the whole response with `try?`,
+    /// so one unknown `kind` on one Pane would collapse the entire
+    /// `list`/`session info` response into a generic failure, handing the
+    /// caller nothing instead of every other Pane's real data. This
+    /// tolerance has to exist now, not when a sixth `PaneContentKind` case
+    /// ships — a CLI build already in the field can't be patched
+    /// retroactively.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        isHidden = try container.decode(Bool.self, forKey: .isHidden)
+        isFocused = try container.decode(Bool.self, forKey: .isFocused)
+        activeTabID = try container.decode(UUID.self, forKey: .activeTabID)
+        tabs = try container.decode([TopologyTabPayload].self, forKey: .tabs)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind).flatMap(PaneContentKind.init(rawValue:))
+        frame = try container.decodeIfPresent(Rectangle.self, forKey: .frame)
+        visibleRect = try container.decodeIfPresent(Rectangle.self, forKey: .visibleRect)
+    }
+    // Synthesized encode(to:) is fine — Codable's default memberwise
+    // encoding always writes `kind` whenever it's non-nil (Optional
+    // properties encode via `encodeIfPresent`, matching `frame`/
+    // `visibleRect` above), so only decoding an old/absent/unrecognised
+    // value needs the custom initializer above.
 }
 
 public nonisolated struct Rectangle: Codable, Sendable, Equatable {
