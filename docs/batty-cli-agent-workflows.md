@@ -67,6 +67,14 @@ the new Session.
 Save the following zsh script as `batty-project-layout` and make it executable.
 It handles that boundary deterministically:
 
+> **This workaround is expected to be superseded.** `#0380` is open to move
+> this snapshot-and-poll logic into the CLI itself, so `batty new` can
+> return the new Session/Pane id directly instead of every caller
+> re-implementing this ~50-line dance. The script below is the current
+> truth — nothing that supersedes it has landed yet — but don't treat it as
+> the permanent interface; check `#0380`'s status before building more
+> tooling on top of it.
+
 ```sh
 #!/bin/zsh
 set -u
@@ -170,6 +178,8 @@ because the inherited environment still identifies the old Pane.
 | `3` | App unavailable | Retry once; then report that Batty could not launch or register. |
 | `4` | App rejected the request | Report stderr; refresh topology before retrying a stale target. |
 | `5` | App terminated during the request | Stop or restart the complete workflow from a fresh topology snapshot. |
+| `6` | App is running but hasn't responded to the broker within the poll bound | Do not retry blindly — a retry cannot launch a duplicate, but the app may need a manual relaunch. Report stderr and ask the user to check/relaunch Batty. |
+| `7` | Couldn't determine which on-disk app bundle to target | Stop; this is a local install problem (moved/missing `Batty.app`, or multiple bundles claiming the same identifier), not something a retry fixes. Report stderr, which names the expected path and any other claimant bundles. |
 | `64` | Invalid CLI syntax | Correct the invocation; do not retry unchanged. |
 
 Never parse human-readable `list sessions`, `list panes`, or `list tabs`
@@ -178,7 +188,8 @@ output in automation. Use `list --json`; the plain-text forms are for people.
 ## Current limitations relevant to agents
 
 - `new` is the only shipped mutation without an app acknowledgement or returned
-  object ID. Use the snapshot-and-poll pattern above.
+  object ID. Use the snapshot-and-poll pattern above (`#0380` is open to move
+  this into the CLI itself; until it lands, the pattern above is required).
 - There is no command that creates a Session and its Pane layout atomically.
   If a later split fails, the earlier Session and Panes remain.
 - Batty currently exposes no CLI verbs for sending terminal input, reading
@@ -186,3 +197,14 @@ output in automation. Use `list --json`; the plain-text forms are for people.
   commands from the forward-looking catalog in `batty-cli-design.md`.
 - `pane close` closes every Tab in the Pane and may refuse when confirmation is
   required or the Pane is the last one in the app.
+- Since `#0379`, each Pane object in `list --json` / `session info --json`
+  carries a `kind` field (`terminal`, `git-status`, `process-status`,
+  `lm-studio-dashboard`, or `system-metrics`) — an agent can `jq
+  'select(.kind == "git-status")'` to skip non-terminal Panes, for example.
+  It renders as the string `"unknown"` in the plain-text forms; in `--json`
+  output the `kind` key is simply absent from that Pane's object (the CLI
+  decodes a `nil` and its `JSONEncoder` omits absent optionals rather than
+  writing `null`). This is the case whenever the answering app predates
+  `#0379` — which includes every currently installed build as of this
+  writing. Treat an unrecognized or missing `kind` as "assume nothing about
+  this Pane's content," not as an error.

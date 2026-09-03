@@ -6,7 +6,12 @@
 > for Batty issue [#0267](../../issues/0267.md). It describes the
 > RemoteControl XPC prototype — a different app — not Batty; the
 > "must rename" / "copy verbatim" markers throughout are written for that
-> porting exercise. The body below is unedited from the source.
+> porting exercise. The body below is unedited from the source, except for
+> two `> **Batty deviation**` blockquotes (added 2026-09-02, issue `#0368`)
+> marking spots where Batty's shipped implementation diverged from this
+> generic advice after `#0361` — the exit-code table and "Launching the
+> app on demand" section. Those two blocks are Batty-specific commentary,
+> not part of the vendored source.
 >
 > **Any bare `#NNNN` below is a RemoteControl issue** (that project's own
 > `issues/0001`–`issues/0031` tracker), never a Batty issue — Batty's
@@ -357,12 +362,43 @@ Give each failure mode its own exit code so scripts can tell them apart:
 | 4 | delivered, app replied `ok: false` |
 | 5 | app went away while a session was attached |
 
+> **Batty deviation (`#0361`), added post-vendoring — the four codes above are
+> this source document's original baseline, not Batty's current exit-code
+> vocabulary.** Batty's actual codes 2–5 match this table, but it added two
+> more: `6` `appRunningUnregistered` — the app is running at the resolved
+> bundle path but hasn't re-registered with the broker within the poll
+> bound, reported instead of launching a duplicate process — and `7`
+> `appBundleUnresolved` — couldn't determine, deterministically, which
+> on-disk bundle to target, reported instead of an ambiguous
+> bundle-identifier lookup. See
+> `BattyKit/Sources/BattyXPCCore/XPCExitCode.swift` for the canonical
+> definitions and `docs/batty-cli-install.md` for the as-built reference.
+
 ### Launching the app on demand
 
 When the broker reports no registered endpoint, the CLI can start the app
 (`NSWorkspace`, or `open -b <bundle-id>`) and poll the broker until an endpoint
 appears. Bound the wait and exit 3 when it expires. This is what makes `yourctl
 status` work as the first thing a user types after a reboot.
+
+> **Batty deviation (`#0361`), added post-vendoring.** Batty does not launch
+> by bundle identifier (`open -b <bundle-id>`) as this line's generic advice
+> suggests. On a developer machine, several bundles can claim the same
+> `CFBundleIdentifier` (DerivedData debug builds, stale DMG mounts, the
+> installed app), and `open -b` lets LaunchServices pick among them
+> non-deterministically — which is exactly what let Batty launch a second
+> instance alongside one already running. Batty instead resolves one
+> specific on-disk bundle **path** first
+> (`AppBundleLocator.resolve()`, `BattyKit/Sources/batty/AppBundleLocator.swift`)
+> and launches that exact path with `open -g <path>`
+> (`AppLauncher.swift`, no `-b`) — and also checks whether a process at that
+> exact path is already running before deciding to launch at all
+> (`RunningAppChecker.swift`), rather than launching unconditionally on
+> every "no endpoint registered" broker reply as this section's generic
+> advice describes. Also unlike this section: exhausting the poll bound
+> reports a distinct exit `6` rather than `3` when the app is already
+> running but unregistered (see the exit-code table's annotation above). See
+> `docs/batty-cli-install.md` for the as-built mechanism.
 
 ## Long-lived sessions
 

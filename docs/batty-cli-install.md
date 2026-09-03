@@ -1,7 +1,7 @@
 # `batty` CLI: build, embed, install, invoke (as-built)
 
 This is a from-the-source record of how the `batty` command-line tool
-actually works in this repo today (updated 2026-08-10): how it's declared, how it gets into
+actually works in this repo today (updated 2026-09-02, post-`#0361`): how it's declared, how it gets into
 `Batty.app`, how it lands on the user's `PATH`, and what happens when you
 run it. It is written to be self-contained for a reader with no access to
 this repo — every path, target name, and code excerpt below was read
@@ -95,25 +95,42 @@ broker → app-endpoint handoff described in `docs/xpc/`.
    somehow fails (not expected for a valid absolute path), the CLI prints
    `batty: failed to build IPC URL for path: <resolved>` and exits 1.
 
-5. `openURL(url)` (`SessionCommand.swift`) spawns `/usr/bin/open -b
-   <bundleIdentifier> <url-string>` via `Foundation.Process`, waits for it
-   to exit synchronously, and propagates failure: a non-zero `open` exit
-   status or a spawn error both produce a stderr message and
-   `ExitCode.failure`. `-b <bundleIdentifier>` defaults to
-   `ServiceNames.appBundleIdentifier` — the CLI's own compile-time-baked
+5. `openURL(url)` (`SessionCommand.swift`) first resolves exactly one
+   on-disk app bundle to target via `AppBundleLocator.resolve()`
+   (`BattyKit/Sources/batty/AppBundleLocator.swift`) — the same resolution
+   every other verb uses (see `## 2. The CLI's actual current behavior`
+   below, and `#0361`'s round-3 fix). On a resolution failure it prints the
+   locator's diagnostic message to stderr and exits with
+   `XPCExitCode.appBundleUnresolved` (`7`) — no `open` is spawned. On
+   success it spawns `/usr/bin/open -a <bundlePath> <url-string>` via
+   `Foundation.Process`, waits for it to exit synchronously, and propagates
+   failure: a non-zero `open` exit status or a spawn error both produce a
+   stderr message and `ExitCode.failure` (`1`).
+
+   **History (superseded by `#0361`):** this used to run `open -b
+   <bundleIdentifier> <url-string>`, with `<bundleIdentifier>` defaulting
+   to `ServiceNames.appBundleIdentifier` — the CLI's own compile-time-baked
    variant (`co.sstools.Batty` for Prod, `co.sstools.Batty.beta` for Beta;
-   see "Variant-aware install path" below). **`#0279`:** before this, the
-   CLI called plain `open <url-string>` with no `-b`, and since both
-   variants register the same `batty` scheme (`Configuration/Info.plist`
-   is shared), LaunchServices could route `batty <path>` to *either*
-   installed variant when both were present — the fix mirrors
-   `AppLauncher.launch`'s existing `-b` precedent, which the XPC path
-   already used correctly. `open` itself launches the targeted variant if
-   it isn't running, or activates it if it is, and delivers the URL through
-   the standard macOS Launch-Services/URL-event mechanism — no code in
-   Batty has to poll or listen for this beyond registering the URL scheme
-   (step 6). This is the full extent of the `new` command's work; the
-   XPC-backed commands do talk to the broker and app directly.
+   see "Variant-aware install path" below). That `-b` targeting was
+   `#0279`'s fix for a real problem (before it, plain `open <url-string>`
+   with no `-b` let LaunchServices route `batty <path>` to *either*
+   installed variant, since both register the same `batty` scheme). But
+   `-b <bundleIdentifier>` asks LaunchServices to resolve *some* bundle
+   claiming that identifier, and a developer machine can have several —
+   DerivedData debug builds, stale DMG mounts, the installed app — all
+   claiming `co.sstools.Batty` at once. `#0361` (filed when this let the
+   CLI launch a duplicate instance alongside an already-running one)
+   replaced it with the path-based `open -a <bundlePath>` shown above,
+   which names one exact bundle with no LaunchServices arbitration — a
+   strictly stronger fix for the same variant-targeting problem `#0279`
+   set out to solve, since a path can never resolve to the other variant's
+   bundle, or to a stale one, the way an ambiguous `-b <id>` could.
+   `open` itself launches the targeted bundle if it isn't running, or
+   activates it if it is, and delivers the URL through the standard macOS
+   Launch-Services/URL-event mechanism — no code in Batty has to poll or
+   listen for this beyond registering the URL scheme (step 6). This is the
+   full extent of the `new` command's work; the XPC-backed commands do talk
+   to the broker and app directly.
 
 6. On the app side, the `batty` URL scheme is registered via
    `CFBundleURLTypes` in the **literal** `Configuration/Info.plist` (not a
@@ -325,9 +342,18 @@ Key points, verified against this source:
   `CommandConfiguration`/`@Argument` metadata — nothing custom.
 - **Exit codes:** `0` on success; `1` for client-side validation or general
   failures; `2` when the broker is unreachable; `3` when the app is
-  unavailable; `4` when the app rejects a request; `5` when the app
-  terminates during a request; and ArgumentParser's `64` for invalid command
-  syntax. Only the URL-backed `new` command lacks an app acknowledgement.
+  unavailable (not running, and launching it failed or timed out); `4` when
+  the app rejects a request; `5` when the app terminates during a request;
+  `6` when the app is running at the resolved bundle path but hasn't
+  re-registered with the broker within the poll bound, so the CLI reports
+  this instead of launching a duplicate process (`#0361`); `7` when the CLI
+  could not determine, deterministically, which on-disk app bundle to
+  target, so it reports this instead of falling back to an ambiguous
+  bundle-identifier lookup (`#0361`); and ArgumentParser's `64` for invalid
+  command syntax. See `BattyKit/Sources/BattyXPCCore/XPCExitCode.swift` for
+  the canonical definitions. Only the URL-backed `new` command lacks an app
+  acknowledgement — see the exit-code note in `## 8. Known limitations`
+  below for exactly what that does and doesn't mean post-`#0361`.
 
 `resolveAppVersion()` and the path/URL helpers, from
 `BattyKit/Sources/batty/SessionCommand.swift`:
@@ -373,10 +399,21 @@ nonisolated func resolvePath(_ input: String) throws -> String {
     return resolved
 }
 
-nonisolated func openURL(_ url: URL, bundleIdentifier: String = ServiceNames.appBundleIdentifier) throws {
+nonisolated func openURL(
+    _ url: URL,
+    resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() }
+) throws {
+    let bundleURL: URL
+    switch resolveAppBundle() {
+    case .failure(let failure):
+        fputs("batty: \(failure.diagnosticMessage)\n", stderr)
+        throw ExitCode(XPCExitCode.appBundleUnresolved)
+    case .success(let resolved):
+        bundleURL = resolved
+    }
     let process = Process()
     process.executableURL = URL(filePath: "/usr/bin/open")
-    process.arguments = ["-b", bundleIdentifier, url.absoluteString]
+    process.arguments = ["-a", bundleURL.path(percentEncoded: false), url.absoluteString]
     do {
         try process.run()
         process.waitUntilExit()
@@ -391,7 +428,9 @@ nonisolated func openURL(_ url: URL, bundleIdentifier: String = ServiceNames.app
 }
 ```
 
-(`#0279` added the `-b bundleIdentifier` targeting — see step 5 above.)
+(`#0279` first added `-b <bundleIdentifier>` targeting here; `#0361` round 3
+replaced it with path-based resolution via `AppBundleLocator` — see step 5
+above for why.)
 
 `SessionURLBuilder` (`BattyKit/Sources/BattyCLICore/SessionURLBuilder.swift`),
 in full:
@@ -1047,18 +1086,32 @@ verification with an installed, signed app.
 
 Grounded directly in the code above, not aspirational:
 
-- **Session creation remains one-way and fire-and-forget.** `openURL` in `SessionCommand.swift` only
-  observes whether `/usr/bin/open` itself launched and exited zero — it
-  has no visibility into whether `BattyURLHandler.handle` ran, whether
+- **Session creation remains one-way and fire-and-forget, even after `#0361`
+  gave it a resolution-failure code.** `openURL` in `SessionCommand.swift`
+  can now fail *before* ever spawning `open` — exit `7` when
+  `AppBundleLocator.resolve()` can't determine which bundle to target — but
+  once `open` is successfully spawned and exits zero, the CLI still has no
+  visibility into whether `BattyURLHandler.handle` ran, whether
   `SessionURLBuilder.sessionPath(from:)` parsed the URL successfully, or
-  whether a session was actually created. A `batty /valid/dir` that
-  reaches a running-but-broken Batty will still exit `0`.
-  Other shipped mutations use XPC specifically so the caller receives an
-  acknowledgement and meaningful failure code.
-- **Only `new` lacks an app-side failure code.** Its exit `1` means the CLI
-  rejected the path or `/usr/bin/open` failed; it cannot mean that Batty
-  rejected the request. XPC-backed commands use exit codes `2` through `5`
-  for transport and app-side failures.
+  whether a session was actually created. A `batty /valid/dir` that reaches
+  a running-but-broken Batty will still exit `0`. Other shipped mutations
+  use XPC specifically so the caller receives an acknowledgement and
+  meaningful failure code.
+- **`new` still lacks an app-side *request* failure code, but it is no
+  longer the only command without any failure code of its own.** Before
+  `#0361`, `new`'s exit `1` was the only way it could fail short of success,
+  and it conflated "the CLI rejected the path" with "`/usr/bin/open`
+  failed" — it could never mean "Batty rejected the request," because `new`
+  never asked Batty anything before handing off to `open`. `#0361` added a
+  real pre-`open` failure mode, `appBundleUnresolved` (`7`) — a resolution
+  failure the CLI itself detects, not an app-side rejection. So `new` now
+  distinguishes two non-zero exits: `1` (client-side path/URL validation, or
+  `/usr/bin/open` itself failing to spawn or exiting non-zero) and `7`
+  (couldn't resolve which app bundle to target). Neither means "the app
+  received the URL and rejected it" — nothing in the one-way `batty://`
+  mechanism could produce that acknowledgement. XPC-backed commands use exit
+  codes `2` through `7` for transport and app-side failures (see
+  `BattyKit/Sources/BattyXPCCore/XPCExitCode.swift`).
 - **Query surface, updated as of #0281.** `issues/0257.md` originally
   proposed (as an *unimplemented* plan) a debounced, atomically-written
   JSON topology snapshot on disk (`~/Library/Application Support/Batty/
@@ -1186,7 +1239,8 @@ Grounded directly in the code above, not aspirational:
 | `BattyKit/Sources/batty/BattyCLI.swift` | `@main` entry point and top-level/default-subcommand registration. |
 | `BattyKit/Sources/batty/{Ping,Status,List,SessionInfo,Pane,ID,Notify}Command.swift` | Current command implementations, validation, output, and exit-code mapping. |
 | `BattyKit/Sources/batty/{AppConnectDance,BrokerPingClient,BrokerAppEndpointClient,AppServiceClient}.swift` | Broker discovery, app launch/poll, endpoint handoff, and request/reply XPC clients. |
-| `BattyKit/Sources/batty/SessionCommand.swift` | `resolveAppVersion()` (reads the host app's `Info.plist`), `resolvePath(_:)`, `openURL(_:bundleIdentifier:)` (spawns `/usr/bin/open -b <bundleIdentifier>`, defaulting to `ServiceNames.appBundleIdentifier` — `#0279`). |
+| `BattyKit/Sources/batty/{AppBundleLocator,AppLauncher,RunningAppChecker}.swift` | `#0361`: resolve one on-disk app bundle by absolute path (never by bundle identifier), launch it (`open -g <path>`, no `-b`), and check whether a process at that exact bundle path is already running (`NSWorkspace`, matched by `bundleURL`, not identifier). What every CLI entry point's launch decision is now based on. |
+| `BattyKit/Sources/batty/SessionCommand.swift` | `resolveAppVersion()` (reads the host app's `Info.plist`), `resolvePath(_:)`, `openURL(_:resolveAppBundle:)` (resolves one on-disk bundle via `AppBundleLocator.resolve()`, then spawns `/usr/bin/open -a <bundlePath>` — `#0361` round 3, superseding `#0279`'s `-b <bundleIdentifier>`). |
 | `BattyKit/Sources/BattyCLICore/SessionURLBuilder.swift` | `resolve`/`buildURL`/`sessionPath` — the shared wire format between CLI, app, and tests. |
 | `BattyKit/Sources/BattyCLICore/{BattyIdentityContext,BattyTargetResolver,BattyContextEnvironment}.swift` | Local identity parsing and flag → environment → focused-target resolution. |
 | `BattyKit/Sources/BattyXPCCore/` | Shared XPC protocols, payloads, service names, exit codes, polling/once primitives, and code-signing requirements. |
