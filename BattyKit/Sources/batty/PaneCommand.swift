@@ -5,14 +5,14 @@ import BattyCLICore
 import BattyXPCCore
 import Foundation
 
-/// `batty pane` — the noun #0257's eventual grammar (`pane hide`, `show`,
-/// `zoom`) will grow siblings under. `split` (#0282), `close` (#0283), and
-/// `focus` (#0381) exist today.
+/// `batty pane` — the noun #0257's eventual grammar (`pane zoom`) will grow
+/// siblings under. `split` (#0282), `close` (#0283), `focus` (#0381), and
+/// `hide`/`show` (#0382) exist today.
 struct PaneNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "pane",
         abstract: "Split, close, or otherwise control a Batty pane.",
-        subcommands: [PaneSplitCommand.self, PaneCloseCommand.self, PaneFocusCommand.self]
+        subcommands: [PaneSplitCommand.self, PaneCloseCommand.self, PaneFocusCommand.self, PaneHideCommand.self, PaneShowCommand.self]
     )
 }
 
@@ -362,6 +362,144 @@ struct PaneFocusCommand: ParsableCommand {
         case let .failure(.malformedFlag(raw)):
             fputs("batty: invalid pane id: \(raw)\n", stderr)
             throw ExitCode.failure
+        }
+    }
+}
+
+/// `batty pane hide` — #0382: reverses what `pane split`/`batty new` built,
+/// over XPC request/reply following #0282's mutation-verb pattern so a
+/// stale/unknown `--pane` id or a refusal (the pane is its session's last
+/// visible one) is visible to the caller (exit `4`) instead of a silent
+/// no-op.
+///
+/// **Idempotent**: hiding an already-hidden pane succeeds quietly (exit
+/// `0`), matching `pane show`'s own idempotence — scripts that don't track
+/// visibility state don't need to.
+///
+/// **Not activating**, unlike the `focus` verbs (#0381): hiding a
+/// background Pane must not steal focus or switch the selected Session
+/// (#0257).
+struct PaneHideCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "hide",
+        abstract: "Hide a pane (the eye-toggle's CLI equivalent), leaving it in the split but out of view.",
+        discussion: """
+        Hides the calling/target pane, matching the sidebar's eye toggle. \
+        Idempotent — hiding an already-hidden pane succeeds quietly. \
+        Refused when the pane is its session's only visible pane (a \
+        session must always have at least one visible pane). Does not \
+        select the pane's session or activate the window.
+        """,
+        helpNames: .long
+    )
+
+    @Option(name: .long, help: "Pane id to hide. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.")
+    var pane: String?
+
+    nonisolated func run() throws {
+        let targetPaneID = try resolveTargetPaneID(flag: pane)
+
+        switch AppConnectDance.resolveEndpoint() {
+        case .failure(.brokerUnreachable):
+            fputs("batty: broker unreachable\n", stderr)
+            throw ExitCode(XPCExitCode.brokerUnreachable)
+        case .failure(.appUnavailable):
+            fputs("batty: app unavailable\n", stderr)
+            throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
+        case .success(let endpoint):
+            switch AppServiceClient.paneHide(endpoint: endpoint, paneID: targetPaneID, timeout: 3.0) {
+            case .success:
+                break
+            case .unreachable:
+                fputs("batty: app unavailable\n", stderr)
+                throw ExitCode(XPCExitCode.appUnavailable)
+            case .requestFailed(let message):
+                fputs("batty: request failed — \(message)\n", stderr)
+                throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
+            }
+        }
+    }
+}
+
+/// `batty pane show` — #0382: the un-hide counterpart of `pane hide`, over
+/// XPC request/reply following the same mutation-verb pattern.
+///
+/// **Requires an explicit id — no `BATTY_PANE_ID`/focused-pane fallback,
+/// unlike every other targeted verb.** #0257 already recorded why: a
+/// hidden pane has no shell a `batty` call could be running from, so there
+/// is no "focused element" to fall back to. Ids come from `batty list
+/// --json`, which flags hidden panes.
+///
+/// **Idempotent**: showing an already-visible pane succeeds quietly (exit
+/// `0`). **Not activating**, unlike the `focus` verbs (#0381): showing a
+/// background Pane must not steal focus or switch the selected Session
+/// (#0257).
+struct PaneShowCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "show",
+        abstract: "Show (un-hide) a pane by id, printing nothing on success.",
+        discussion: """
+        Un-hides the target pane, matching the sidebar's eye toggle. \
+        Idempotent — showing an already-visible pane succeeds quietly. \
+        Unlike every other targeted verb, this one requires an explicit id \
+        and never falls back to BATTY_PANE_ID or the focused pane: a \
+        hidden pane has no shell to run `batty` from. Find hidden pane ids \
+        with `batty list --json`. Does not select the pane's session or \
+        activate the window.
+        """,
+        helpNames: .long
+    )
+
+    // `valueName: "pane-id"` (review round 1, N7): the issue and both docs
+    // pin the literal usage as `batty pane show <pane-id>`, distinguishing
+    // this required id from `pane focus <id>`'s optional/fallback-eligible
+    // one — left at ArgumentParser's default (`<id>`), the two looked
+    // identical in `--help` despite meaning different things.
+    @Argument(help: ArgumentHelp("Pane id to show. Required — no BATTY_PANE_ID/focused-pane fallback (a hidden pane has no shell to run batty from).", valueName: "pane-id"))
+    var id: String
+
+    nonisolated func run() throws {
+        guard let targetPaneID = UUID(uuidString: id) else {
+            fputs("batty: invalid pane id: \(id)\n", stderr)
+            throw ExitCode.failure
+        }
+
+        switch AppConnectDance.resolveEndpoint() {
+        case .failure(.brokerUnreachable):
+            fputs("batty: broker unreachable\n", stderr)
+            throw ExitCode(XPCExitCode.brokerUnreachable)
+        case .failure(.appUnavailable):
+            fputs("batty: app unavailable\n", stderr)
+            throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
+        case .success(let endpoint):
+            switch AppServiceClient.paneShow(endpoint: endpoint, paneID: targetPaneID, timeout: 3.0) {
+            case .success:
+                break
+            case .unreachable:
+                fputs("batty: app unavailable\n", stderr)
+                throw ExitCode(XPCExitCode.appUnavailable)
+            case .requestFailed(let message):
+                fputs("batty: request failed — \(message)\n", stderr)
+                throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
+            }
         }
     }
 }

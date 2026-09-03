@@ -6,14 +6,35 @@ import BattyXPCCore
 import Foundation
 
 /// `batty session` — the noun #0257's eventual grammar (`session new`,
-/// `session rename`, `session close`) will grow siblings under. `info`
-/// (#0274) and `focus` (#0381) exist today.
+/// `session rename`) will grow siblings under. `info` (#0274), `focus`
+/// (#0381), and `close` (#0382) exist today.
 struct SessionNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "session",
         abstract: "Inspect or control a Batty session.",
-        subcommands: [SessionInfoCommand.self, SessionFocusCommand.self]
+        subcommands: [SessionInfoCommand.self, SessionFocusCommand.self, SessionCloseCommand.self]
     )
+}
+
+/// Shared `--session` resolution for the `--session`-flag subcommands
+/// (`info`, `close`): explicit flag → `BATTY_SESSION_ID` env → `nil` (let
+/// the app resolve the focused session). Mirrors `PaneCommand.swift`'s
+/// `resolveTargetPaneID(flag:)` — review round 1 (#0382) found this exact
+/// chain duplicated verbatim across `SessionInfoCommand`/`SessionCloseCommand`
+/// and hoisted it here. `SessionFocusCommand` below keeps its own resolver:
+/// its target is a positional `<id>` argument, not a `--session` flag, so
+/// its error text ("invalid session id," no `--session` prefix) is
+/// legitimately different, the same way `PaneFocusCommand` keeps its own
+/// positional-argument resolver distinct from this file's flag-based one.
+/// `nonisolated` — called from each subcommand's `nonisolated func run()`.
+private nonisolated func resolveTargetSessionID(flag: String?) throws -> UUID? {
+    switch BattyTargetResolver.resolve(flag: flag, environmentKey: .sessionID) {
+    case let .success(id):
+        return id
+    case let .failure(.malformedFlag(raw)):
+        fputs("batty: invalid --session id: \(raw)\n", stderr)
+        throw ExitCode.failure
+    }
 }
 
 /// `batty session info` — the calling/target session's topology slice
@@ -43,7 +64,7 @@ struct SessionInfoCommand: ParsableCommand {
     var includeDimensions = false
 
     nonisolated func run() throws {
-        let sessionID = try resolveSessionID()
+        let sessionID = try resolveTargetSessionID(flag: session)
 
         switch AppConnectDance.resolveEndpoint() {
         case .failure(.brokerUnreachable):
@@ -80,18 +101,6 @@ struct SessionInfoCommand: ParsableCommand {
 
 
 
-    }
-
-    /// `--session` flag → `BATTY_SESSION_ID` env → `nil`, meaning "let the
-    /// app resolve the focused session."
-    private func resolveSessionID() throws -> UUID? {
-        switch BattyTargetResolver.resolve(flag: session, environmentKey: .sessionID) {
-        case let .success(id):
-            return id
-        case let .failure(.malformedFlag(raw)):
-            fputs("batty: invalid --session id: \(raw)\n", stderr)
-            throw ExitCode.failure
-        }
     }
 
     private static func printJSON(_ payload: TopologySessionPayload) throws {
@@ -216,6 +225,78 @@ struct SessionFocusCommand: ParsableCommand {
         case let .failure(.malformedFlag(raw)):
             fputs("batty: invalid session id: \(raw)\n", stderr)
             throw ExitCode.failure
+        }
+    }
+}
+
+/// `batty session close` — #0382: reverses what `batty new`/`session new`
+/// (eventually) built, over XPC request/reply following #0282's
+/// mutation-verb pattern so a stale/unknown `--session` id or a refusal is
+/// visible to the caller (exit `4`) instead of a silent no-op.
+///
+/// **Three distinct refusal causes**, mirroring `pane close` (#0283) one
+/// tier up: an unknown/stale `--session` id (or none resolvable at all); a
+/// session holding a Tab that libghostty reports as still needing close
+/// confirmation, refused outright since XPC has no UI to confirm in (no
+/// `--force` flag exists to bypass this, #0283's pinned shape applied here
+/// unchanged); and closing what would be the app's very last session,
+/// refused so an unattended agent cannot chain a single command into
+/// quitting Batty with no confirmation dialog.
+///
+/// **Not activating**, unlike the `focus` verbs (#0381): closing a
+/// background Session must not steal focus or switch the selected Session
+/// (#0257) — there is nothing left to select if the closed Session was the
+/// selection's target other than whatever `removeSession`'s existing
+/// "only reassign if the removed session was selected" rule already picks.
+struct SessionCloseCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "close",
+        abstract: "Close a session, ending every Tab's Terminal Session across its panes.",
+        discussion: """
+        Ends every Tab's Terminal Session across the calling/target \
+        session's panes and removes the session. Refused (exit 4) rather \
+        than closed outright when: the session id is unknown/stale; a Tab \
+        in the session needs confirmation to close and XPC has no UI to \
+        give it (no --force flag exists to bypass this); or closing it \
+        would leave Batty with zero sessions. Does not select the \
+        session's window or activate it.
+        """,
+        helpNames: .long
+    )
+
+    @Option(name: .long, help: "Session id to close. Falls back to BATTY_SESSION_ID, then the focused session, when omitted.")
+    var session: String?
+
+    nonisolated func run() throws {
+        let targetSessionID = try resolveTargetSessionID(flag: session)
+
+        switch AppConnectDance.resolveEndpoint() {
+        case .failure(.brokerUnreachable):
+            fputs("batty: broker unreachable\n", stderr)
+            throw ExitCode(XPCExitCode.brokerUnreachable)
+        case .failure(.appUnavailable):
+            fputs("batty: app unavailable\n", stderr)
+            throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
+        case .success(let endpoint):
+            switch AppServiceClient.sessionClose(endpoint: endpoint, sessionID: targetSessionID, timeout: 3.0) {
+            case .success:
+                break
+            case .unreachable:
+                fputs("batty: app unavailable\n", stderr)
+                throw ExitCode(XPCExitCode.appUnavailable)
+            case .requestFailed(let message):
+                fputs("batty: request failed — \(message)\n", stderr)
+                throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
+            }
         }
     }
 }

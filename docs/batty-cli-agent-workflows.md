@@ -264,6 +264,68 @@ Semantics recap:
   implies focusing its containing Pane. Id-based targeting only; `<n>`
   (index-based) is not implemented.
 
+## Cleaning up what you created: `session close`, `pane hide`, `pane show`
+
+An agent that opened a Session for a task, or split status Panes into it,
+should be able to reverse that from the CLI too — not leave the Session
+sitting in the sidebar or the Pane sitting visible for a human to dismiss by
+hand. `#0382` closes that gap:
+
+```sh
+batty id                                  # confirms BATTY_SESSION_ID/BATTY_PANE_ID
+git_pane=$(batty pane split --view git-status --unique)
+# ... work happens ...
+batty pane hide --pane "$git_pane"        # tuck it away without destroying it
+batty pane show "$git_pane"               # bring it back later
+batty session close                       # done — falls back to BATTY_SESSION_ID
+```
+
+`session close` and `pane hide` resolve their target through the same
+chain as every other targeted verb (explicit flag → `BATTY_*` env → the
+focused element). `pane show` is the one exception in the whole CLI:
+**it requires an explicit `<pane-id>` and never falls back to
+`BATTY_PANE_ID` or the focused Pane** — a hidden Pane has no shell a
+`batty` call could be running from, so there is no "focused element" to
+resolve. Get hidden Pane ids from `batty list --json`, which already flags
+them (`"hidden": true`).
+
+`pane hide`/`pane show` are idempotent: hiding an already-hidden Pane, or
+showing an already-visible one, succeeds quietly (exit `0`) rather than
+erroring — a setup/cleanup script doesn't need to track visibility state
+itself. `pane hide` does refuse (exit `4`) when the target is its
+Session's only visible Pane: a Session must always show at least one Pane,
+so there is nothing to hide it behind.
+
+`session close` can also refuse (exit `4`, with a distinct stderr message
+per cause): an unknown/stale id; a Session holding a Tab that still needs
+confirmation to close, which XPC has no UI to present (there is
+deliberately no `--force` flag to bypass this — see `pane close`'s own
+`#0283` note); and closing what would be Batty's very last Session, so an
+agent script cannot chain a single command into quitting the app with no
+confirmation dialog. Check `batty list --json`/`batty session info` before
+retrying a refused close rather than looping blindly.
+
+None of these three verbs activate Batty's window or change the selected
+Session/Tab, even when the target is a background Session — that
+focus-stealing exception is reserved for the `focus` verbs above (#0257).
+A `batty watch` subscriber will not see a `pane_hide`/`pane_show` event for
+either of those two (mirroring `pane close`'s own lack of one, deferred to
+`#0145` so as not to collide with its in-progress work on the event
+vocabulary) — a hidden Pane is invisible to `watch` regardless of how it
+got hidden. `session close` does still produce the pre-existing
+`session_destroyed` event, but **only because this verb calls
+`AppStateStore.removeSession(id:)`** — the sole emitter of that event. The
+sidebar's own "Close" control is a *different* call site
+(`WindowRuntime.removeSession(id:)`, called directly) and emits nothing at
+all, so a Session a human closes from the sidebar is invisible to `batty
+watch` today. Don't assume `session_destroyed` fires for every Session
+removal — only for one reached through this CLI verb.
+
+**Deliberately out of scope** (#0257's "a filed ticket reads as scheduled
+work" rule): `tab new`, `tab close`, `session rename`, `tab rename`, and
+`pane zoom` have no CLI verb yet. Do not invent them from
+`batty-cli-design.md`'s forward-looking catalog.
+
 ## Failure handling
 
 | Exit | Meaning | Agent response |
@@ -292,10 +354,13 @@ output in automation. Use `list --json`; the plain-text forms are for people.
 - There is no command that creates a Session and its Pane layout atomically.
   If a later split fails, the earlier Session and Panes remain.
 - Batty currently exposes no CLI verbs for sending terminal input, reading
-  screen contents, waiting for process state, or closing one Tab. Do not invent
-  commands from the forward-looking catalog in `batty-cli-design.md`.
+  screen contents, waiting for process state, creating a Tab, closing one
+  Tab, renaming a Session/Tab, or zooming a Pane. Do not invent commands from
+  the forward-looking catalog in `batty-cli-design.md`.
 - `pane close` closes every Tab in the Pane and may refuse when confirmation is
-  required or the Pane is the last one in the app.
+  required or the Pane is the last one in the app. `session close` (`#0382`)
+  has the same confirmation/last-remaining refusal one tier up, applied to
+  Sessions instead of Panes — see "Cleaning up what you created" above.
 - Since `#0379`, each Pane object in `list --json` / `session info --json`
   carries a `kind` field (`terminal`, `git-status`, `process-status`,
   `lm-studio-dashboard`, or `system-metrics`) — an agent can `jq

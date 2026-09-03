@@ -80,6 +80,50 @@ public nonisolated enum XPCVerb {
     /// both as exit `4`.
     public static let tabFocus = "tabFocus"
 
+    /// #0382: the seventh mutating XPC verb. Ends every Tab's Terminal
+    /// Session across the target session's panes and removes the session —
+    /// reusing `AppStateStore.removeSession(id:)` for the mutation, wrapped
+    /// with the same refusal shape `paneClose` already established one
+    /// tier down. Note this is a different call site from the Sidebar's
+    /// own "Close" control, which calls `WindowRuntime.removeSession(id:)`
+    /// directly and emits no watch event — see `AppStateStore
+    /// .closeSessionForXPC(id:)`'s doc for that asymmetry. Replies with
+    /// an empty `SessionCloseReply` on success as `XPCResponse.payload`.
+    /// Request payload is `SessionCloseRequest`. A failure reply (`ok:
+    /// false`) covers an unknown/stale `SessionCloseRequest.sessionID`,
+    /// "no session to target," a session with a Tab that needs
+    /// confirmation XPC has no UI to give, and a refusal to close the
+    /// app's last remaining session — the CLI surfaces all four as exit
+    /// `4`. Does **not** add a `--force` flag (#0283's confirmation shape,
+    /// applied here unchanged).
+    public static let sessionClose = "sessionClose"
+
+    /// #0382: the eighth mutating XPC verb. Hides the target pane —
+    /// reusing `WindowRuntime.hidePane(id:)` (the eye-toggle's own entry
+    /// point) for the mutation. Idempotent: hiding an already-hidden pane
+    /// succeeds quietly. Replies with an empty `PaneHideReply` on success
+    /// as `XPCResponse.payload`. Request payload is `PaneHideRequest`. A
+    /// failure reply (`ok: false`) covers an unknown/stale
+    /// `PaneHideRequest.paneID`, "no pane to target," and a refusal to
+    /// hide a session's last visible pane (the ≥1-visible-pane invariant
+    /// `hidePane(id:)` already enforces, made a visible failure over XPC
+    /// instead of a silent no-op) — the CLI surfaces all three as exit
+    /// `4`.
+    public static let paneHide = "paneHide"
+
+    /// #0382: the ninth mutating XPC verb. Shows (un-hides) the target
+    /// pane — reusing `WindowRuntime.showPane(id:)` for the mutation.
+    /// Idempotent: showing an already-visible pane succeeds quietly.
+    /// **No fallback target**, unlike every other targeted verb: a hidden
+    /// pane has no shell to run `batty` from (#0257), so the CLI requires
+    /// an explicit `<pane-id>` and never falls back to `BATTY_PANE_ID`/the
+    /// focused pane — `PaneShowRequest.paneID` is non-optional, enforcing
+    /// this at the wire level too. Replies with an empty `PaneShowReply`
+    /// on success as `XPCResponse.payload`. A failure reply (`ok: false`)
+    /// covers only an unknown/stale `PaneShowRequest.paneID` — the CLI
+    /// surfaces it as exit `4`.
+    public static let paneShow = "paneShow"
+
     /// #0145: the non-mutating long-lived verb — keeps the connection open
     /// after this call returns, then pushes `WatchEventPayload` values back
     /// through the same reply block as mutations happen. The CLI wraps the

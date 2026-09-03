@@ -39,8 +39,9 @@ The CLI now has four execution paths:
   channel to confirm it and print the new Session id and focused Pane id
   (#0380). `new` is the only command that uses both paths.
 - Live queries and acknowledged mutations use the broker-mediated XPC
-  channel: `ping`, `status`, `list`, `session info`, `session focus`, `pane
-  split`, `pane close`, `pane focus`, `tab focus`, and `notify`.
+  channel: `ping`, `status`, `list`, `session info`, `session focus`,
+  `session close`, `pane split`, `pane close`, `pane focus`, `pane hide`,
+  `pane show`, `tab focus`, and `notify`.
 - `id` (alias `whoami`) reads `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
   `BATTY_TAB_ID` from the environment without contacting the broker or app.
 - `capabilities` reads neither the environment nor the app: its verb roster
@@ -57,9 +58,12 @@ The CLI now has four execution paths:
 | `batty list [sessions\|panes\|tabs] [--json]` | Print live topology; JSON always contains the full topology | XPC |
 | `batty session info [--session <id>] [--json]` | Print one Session; target is flag → `BATTY_SESSION_ID` → focused Session | XPC |
 | `batty session focus <id>` | Select a Session and activate its window; id-based targeting only (no `<name>`) | XPC |
+| `batty session close [--session <id>]` | Close a Session, ending every Tab's Terminal Session across its panes | XPC |
 | `batty pane split [-h\|-v] [-c <command>] [--pane <id>] [--view <kind>] [--unique]` | Split a Pane (or, with `--unique`, find-or-create) and print the Pane id | XPC |
 | `batty pane close [--pane <id>]` | Close every Tab in a Pane and remove the Pane | XPC |
 | `batty pane focus <id>` | Focus a Pane, leaving its selected Tab unchanged; directional targeting (`up\|down\|left\|right`) is deferred | XPC |
+| `batty pane hide [--pane <id>]` | Hide a Pane (the eye-toggle's CLI equivalent); idempotent | XPC |
+| `batty pane show <pane-id>` | Show (un-hide) a Pane by id; idempotent; no env/focused-element fallback | XPC |
 | `batty tab focus <id>` | Select a Tab (implies focusing its containing Pane); id-based targeting only (no `<n>`) | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
@@ -351,14 +355,16 @@ Key points, verified against this source:
 
 - **Ten registered top-level commands.** `new`, `ping`, `status`, `list`,
   `session`, `pane`, `tab`, `id`/`whoami`, `notify`, and `capabilities`.
-  `session` contains `info` and `focus`; `pane` contains `split`, `close`,
-  and `focus`; `tab` (new with `#0381`) contains only `focus` — the rest of
-  the `tab` verbs are deliberately not built yet (see #0257's "a filed
-  ticket reads as scheduled work" rule and #0382). Directional `pane focus
-  <up|down|left|right>` is deferred (id-based targeting only); `session
-  focus <name>` and `tab focus <n>` are likewise not implemented — only a
-  UUID parses for either (#0257's table lists both forms; only the id form
-  shipped in #0381).
+  `session` contains `info`, `focus`, and `close` (`close` new with
+  `#0382`); `pane` contains `split`, `close`, `focus`, `hide`, and `show`
+  (`hide`/`show` new with `#0382`); `tab` (new with `#0381`) contains only
+  `focus` — the rest of the `tab` verbs, plus `tab new`, `session rename`,
+  `tab rename`, and `pane zoom`, are deliberately not built yet (see
+  #0257's "a filed ticket reads as scheduled work" rule and #0382's own
+  explicit scope boundary). Directional `pane focus <up|down|left|right>`
+  is deferred (id-based targeting only); `session focus <name>` and `tab
+  focus <n>` are likewise not implemented — only a UUID parses for either
+  (#0257's table lists both forms; only the id form shipped in #0381).
 - **Bare `batty` (no arguments) defaults to `batty .`** — creates a
   session at the current working directory rather than printing usage.
   `batty <path>` remains shorthand for the default `new` subcommand. A path
@@ -1329,13 +1335,60 @@ Grounded directly in the code above, not aspirational:
   that toggle. On success there is nothing to chain on, so the CLI prints
   nothing and exits `0`, matching `pane close`. See `docs/notifications.md`
   for the full pipeline this rides.
+- **`session close`/`pane hide`/`pane show`, #0382 — reversing what an
+  agent built.** `batty session close [--session <id>]` reuses
+  `AppStateStore.removeSession(id:)` to end every Tab's Terminal Session
+  across the target session's panes and remove it — a *different* call
+  site from the sidebar's own "Close" context-menu item, which calls
+  `WindowRuntime.removeSession(id:)` directly (see the watch-event note
+  below for why that distinction matters); `batty pane hide [--pane <id>]`
+  / `batty pane show
+  <pane-id>` reuse `hidePane(id:)`/`showPane(id:)` (the eye toggle's own
+  entry points) to toggle a pane's visibility without destroying it.
+  `--session`/`--pane` resolve through the same `BattyTargetResolver`
+  chain as every other targeted verb — except `pane show`, which takes a
+  required positional `<pane-id>` and never falls back to
+  `BATTY_PANE_ID`/the focused pane: a hidden pane has no shell a `batty`
+  call could be running from, so there is no "focused element" to fall
+  back to (find hidden ids with `batty list --json`, which already flags
+  them). `pane hide`/`pane show` are idempotent — hiding an already-hidden
+  pane, or showing an already-visible one, succeeds quietly (exit `0`)
+  rather than erroring, and `pane hide` additionally refuses (exit `4`)
+  rather than silently no-opping when the target is its session's only
+  visible pane (the ≥1-visible-pane invariant `hidePane(id:)` already
+  enforced as a silent no-op — this makes that refusal a visible failure
+  over XPC instead). `session close` mirrors `pane close` (#0283) one tier
+  up: refused (exit `4`, distinct stderr messages) for an unknown/stale
+  id, for a session holding a Tab that needs confirmation to close (no UI
+  to confirm in over XPC, and deliberately no `--force` flag to bypass
+  it), and for closing what would be the app's last remaining session.
+  None of the three activate — unlike the `focus` verbs (#0381), acting on
+  a background target here must not steal focus or switch the selected
+  Session (#0257). No new `batty watch` event exists for any of the
+  three: `pane hide`/`pane show` follow `pane close`'s own precedent
+  (#0283) of not streaming pane-level mutations — deferred to `#0145`
+  (which owns `XPCWatchMessages.swift` and is `in-progress` on its own
+  branch) rather than adding `WatchEventType` cases here and risking a
+  collision. A hidden Pane is therefore invisible to `batty watch` either
+  way it got hidden. `session close` needs no new event of its own since
+  it reuses `AppStateStore.removeSession(id:)`, the sole emitter of the
+  pre-existing `session_destroyed` event (#0145) — but that emission is
+  **not** shared with the sidebar's "Close" control: that button calls
+  `WindowRuntime.removeSession(id:)` directly, which emits nothing at
+  all. A `batty watch` subscriber sees `session_destroyed` for a Session
+  closed via this XPC verb (or `UITestDriver`'s `.closeSession`, which
+  also calls the `AppStateStore` method), but **not** for one a human
+  closes from the sidebar — a pre-existing asymmetry #0382 did not
+  introduce and does not fix.
 - **The rest of the command surface is still growing.** `session`/`pane`
-  now each have real subcommands (`session info`, `pane split`, `pane
-  close`), and the bare `notify` verb has shipped, but the full
-  `session`/`pane`/`tab`/`window` noun/verb grammar, `--json` on every
-  verb, client-generated ids for chaining, and the `open` bare verb remain
-  `issues/0257.md`'s (open) Tier 0 + Tier 1 proposal — see that issue's
-  "Children and gating order" table for what has and hasn't shipped.
+  now each have real subcommands (`session info`, `session focus`,
+  `session close`, `pane split`, `pane close`, `pane focus`, `pane hide`,
+  `pane show`), `tab` has `tab focus`, and the bare `notify` verb has
+  shipped, but the full `session`/`pane`/`tab`/`window` noun/verb grammar,
+  `--json` on every verb, client-generated ids for chaining, and the
+  `open` bare verb remain `issues/0257.md`'s (open) Tier 0 + Tier 1
+  proposal — see that issue's "Children and gating order" table for what
+  has and hasn't shipped.
 - **Cold-launch double-session.** As noted in the trace above, `batty
   <path>` against a not-yet-running Batty produces both the default
   cold-launch session and the requested-path session — acceptable per

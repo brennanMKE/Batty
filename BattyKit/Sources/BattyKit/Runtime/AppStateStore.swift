@@ -581,6 +581,99 @@ public final class AppStateStore {
         return .unknownPane
     }
 
+    // MARK: - XPC session close (#0382)
+
+    /// Outcome of `closeSessionForXPC(id:)` — the app-side source of the
+    /// XPC `session close` verb. Mirrors `PaneCloseOutcome`'s shape one
+    /// tier up.
+    public enum SessionCloseOutcome: Equatable, Sendable {
+        /// The session was closed: every Tab's Terminal Session across its
+        /// panes ended and the session left its window.
+        case closed
+        /// No session with that id exists in any window — the
+        /// stale/unknown-id case `AppXPCService` turns into a failure
+        /// reply (CLI exit `4`).
+        case unknownSession
+        /// At least one Tab across the session's panes has a process
+        /// libghostty reports as still needing confirmation to close
+        /// (`TerminalViewState.needsConfirmClose`) — the session-level
+        /// counterpart of `PaneCloseOutcome.needsConfirmation` (#0283):
+        /// there is no UI to confirm over XPC, so the close is refused
+        /// rather than silently bypassing the guard the user configured
+        /// or force-closing behind their back. Written even though the
+        /// Sidebar's own "Close" control (`WindowRuntime.removeSession`,
+        /// driven from `SessionSidebarView`'s context menu) applies no
+        /// such gate today — the XPC verb is unattended and gets the
+        /// stricter rule #0283 already established one tier down. No
+        /// `--force` flag exists to bypass this (#0382's pinned decision,
+        /// following #0283's).
+        ///
+        /// **Unreachable today, same as `PaneCloseOutcome.needsConfirmation`
+        /// one tier down** (#0283 never got a test for it either):
+        /// `TerminalViewState+Polyfill.swift` hard-codes
+        /// `needsConfirmClose` to an unconditional `false` pending an
+        /// upstream libghostty-spm change, so this branch cannot fire
+        /// against a real process yet, regardless of caller
+        /// (`WindowRuntime.requestCloseFocusedTab()`'s doc comment notes
+        /// the same limitation honestly for its own confirmation gate).
+        /// The logic here is correct for the day the polyfill is removed:
+        /// it scans every Tab across the session's Panes
+        /// (`allPanes.flatMap(\.tabs)`) and refuses before mutating
+        /// anything.
+        case needsConfirmation
+        /// Closing would leave the app with zero sessions across every
+        /// window — the session-level counterpart of `PaneCloseOutcome
+        /// .refusedLastPane`. An unattended XPC caller must not have a
+        /// one-command path into #0217's silent-quit cascade.
+        case refusedLastSession
+    }
+
+    /// `session close` (#0382): ends every Tab's Terminal Session across
+    /// `sessionID`'s panes and removes the session — reusing this class's
+    /// own `removeSession(id:)` for the actual mutation, wrapped with the
+    /// same refusal shape `closePane(id:)` already applies one tier down:
+    /// refuse rather than close when a Tab needs confirmation XPC has no
+    /// UI to give, and refuse rather than leave the app with zero
+    /// sessions.
+    ///
+    /// **Correction (review round 1): this is not "the same path the
+    /// Sidebar's Close control already emits from."** `SessionSidebarView`'s
+    /// "Close" context-menu item calls `WindowRuntime.removeSession(id:)`
+    /// directly (`SessionSidebarView.swift`), not this `AppStateStore`
+    /// method — and `WindowRuntime.removeSession` contains no
+    /// `AppEventWatcher.send` call at all. This `AppStateStore.removeSession`
+    /// wrapper is the *only* emitter of `session_destroyed` (#0145). So a
+    /// human closing a Session from the Sidebar is invisible to `batty
+    /// watch` today; only this XPC verb's close is observable. That
+    /// asymmetry is real and pre-existing (this issue doesn't create or
+    /// fix it) — a `batty watch` consumer must not assume `session_destroyed`
+    /// fires for every Session removal, only for ones that reached it
+    /// through this method (this XPC verb, and `UITestDriver`'s
+    /// `.closeSession`, which also calls this method rather than the
+    /// window-level one).
+    ///
+    /// Never touches `selectedSessionID` beyond what `removeSession`
+    /// itself already does (reassigning selection only when the *closed*
+    /// session was the one selected) — mutating a background target must
+    /// not steal focus or switch the active session (#0257).
+    @discardableResult
+    public func closeSessionForXPC(id sessionID: UUID) -> SessionCloseOutcome {
+        guard let window = windowOwning(sessionID: sessionID),
+              let session = window.sessions.first(where: { $0.id == sessionID })
+        else { return .unknownSession }
+        if session.tree.allPanes.flatMap(\.tabs).contains(where: { $0.terminal.needsConfirmClose }) {
+            logger.notice("closeSessionForXPC: refused session=\(sessionID, privacy: .public) reason=needs-confirmation")
+            return .needsConfirmation
+        }
+        let totalSessions = windows.reduce(0) { $0 + $1.sessions.count }
+        guard totalSessions > 1 else {
+            logger.notice("closeSessionForXPC: refused session=\(sessionID, privacy: .public) reason=last-session-in-app")
+            return .refusedLastSession
+        }
+        removeSession(id: sessionID)
+        return .closed
+    }
+
     /// Registers the association between an `NSWindow` and its `WindowID`.
     /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
     /// the hosting NSWindow is known (from `updateNSView`, deferred off the
@@ -929,6 +1022,90 @@ public final class AppStateStore {
                 return
             }
         }
+    }
+
+    // MARK: - XPC pane hide/show (#0382)
+
+    /// Outcome of `hidePaneForXPC(id:)` — the app-side source of the XPC
+    /// `pane hide` verb.
+    public enum PaneHideOutcome: Equatable, Sendable {
+        /// The pane was visible and is now hidden.
+        case hidden
+        /// The pane was already hidden — `pane hide` on a hidden pane
+        /// succeeds quietly (idempotent), matching `pane show`'s own
+        /// already-visible case.
+        case alreadyHidden
+        /// No pane with that id exists in any window — the
+        /// stale/unknown-id case `AppXPCService` turns into a failure
+        /// reply (CLI exit `4`).
+        case unknownPane
+        /// The pane is its session's only visible pane. `hidePane(id:)`
+        /// already enforces the ≥1-visible-pane invariant (#0256) as a
+        /// silent no-op (Void return, nothing for a caller to read); over
+        /// XPC that would read as a false success (exit `0` for a hide
+        /// that never happened), so this makes the refusal a visible
+        /// failure instead — the same "visible failure over silent no-op"
+        /// shape `PaneCloseOutcome.refusedLastPane` already established
+        /// one tier up, applied to this pane-hide-specific invariant.
+        case refusedLastVisiblePane
+    }
+
+    /// `pane hide` (#0382): hides `paneID`, reusing `hidePane(id:)` (the
+    /// same entry point the sidebar's eye toggle uses) for the actual
+    /// mutation — this method only classifies the outcome, it never
+    /// duplicates `hidePane`'s hide/focus-move logic. Searches every
+    /// window's every session, same as `closePane`/`splitPane`, so a
+    /// background-session target resolves identically to a foreground one
+    /// (#0257); never touches `selectedSessionID`.
+    @discardableResult
+    public func hidePaneForXPC(id paneID: UUID) -> PaneHideOutcome {
+        for window in windows {
+            guard let session = window.sessions.first(where: { $0.tree.allPanes.contains(where: { $0.id == paneID }) }),
+                  let pane = session.tree.allPanes.first(where: { $0.id == paneID })
+            else { continue }
+            if pane.isHidden { return .alreadyHidden }
+            guard session.tree.visiblePanes.count > 1 else {
+                logger.notice("hidePaneForXPC: refused pane=\(paneID, privacy: .public) reason=last-visible-pane")
+                return .refusedLastVisiblePane
+            }
+            window.hidePane(id: paneID)
+            return .hidden
+        }
+        return .unknownPane
+    }
+
+    /// Outcome of `showPaneForXPC(id:)` — the app-side source of the XPC
+    /// `pane show` verb.
+    public enum PaneShowOutcome: Equatable, Sendable {
+        /// The pane was hidden and is now visible.
+        case shown
+        /// The pane was already visible — `pane show` on a visible pane
+        /// succeeds quietly (idempotent).
+        case alreadyVisible
+        /// No pane with that id exists in any window — the
+        /// stale/unknown-id case `AppXPCService` turns into a failure
+        /// reply (CLI exit `4`). The only failure mode: unlike `pane
+        /// hide`, showing a pane never violates the ≥1-visible-pane
+        /// invariant.
+        case unknownPane
+    }
+
+    /// `pane show <pane-id>` (#0382): un-hides `paneID`, reusing
+    /// `showPane(id:)` for the actual mutation. **No fallback target** —
+    /// the CLI never resolves `BATTY_PANE_ID`/the focused pane for this
+    /// verb (#0257: a hidden pane has no shell to run `batty` from), so
+    /// `paneID` always names an explicit id by the time it reaches here.
+    @discardableResult
+    public func showPaneForXPC(id paneID: UUID) -> PaneShowOutcome {
+        for window in windows {
+            guard let session = window.sessions.first(where: { $0.tree.allPanes.contains(where: { $0.id == paneID }) }),
+                  let pane = session.tree.allPanes.first(where: { $0.id == paneID })
+            else { continue }
+            if !pane.isHidden { return .alreadyVisible }
+            window.showPane(id: paneID)
+            return .shown
+        }
+        return .unknownPane
     }
 
     public func focusPane(containingTabID tabID: UUID) {

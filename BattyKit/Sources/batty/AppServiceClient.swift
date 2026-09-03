@@ -184,6 +184,63 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0382. Reuses the same mutating-verb dance. The app either ends
+    /// every Tab's Terminal Session across the target session's panes and
+    /// removes the session, or reports a failure (unknown/stale
+    /// `sessionID`, no session to target, a session needing confirmation
+    /// XPC has no UI to give, or a refusal to close the app's last
+    /// session) via `.requestFailed`, which the CLI turns into exit `4`.
+    static func sessionClose(
+        endpoint: NSXPCListenerEndpoint,
+        sessionID: UUID?,
+        timeout: TimeInterval
+    ) -> Outcome<SessionCloseReply> {
+        let requestPayload = try? JSONEncoder().encode(SessionCloseRequest(sessionID: sessionID))
+        let outcome: Outcome<SessionCloseReply> = perform(verb: XPCVerb.sessionClose, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "sessionClose")
+        if case .success = outcome {
+            logger.info("sessionClose -> session=\(sessionID?.uuidString ?? "<focused>", privacy: .public)")
+        }
+        return outcome
+    }
+
+    /// #0382. Reuses the same mutating-verb dance. The app either hides the
+    /// target pane (idempotent — already-hidden succeeds quietly) or
+    /// reports a failure (unknown/stale `paneID`, no pane to target, or a
+    /// refusal to hide a session's last visible pane) via
+    /// `.requestFailed`, which the CLI turns into exit `4`.
+    static func paneHide(
+        endpoint: NSXPCListenerEndpoint,
+        paneID: UUID?,
+        timeout: TimeInterval
+    ) -> Outcome<PaneHideReply> {
+        let requestPayload = try? JSONEncoder().encode(PaneHideRequest(paneID: paneID))
+        let outcome: Outcome<PaneHideReply> = perform(verb: XPCVerb.paneHide, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "paneHide")
+        if case .success = outcome {
+            logger.info("paneHide -> pane=\(paneID?.uuidString ?? "<focused>", privacy: .public)")
+        }
+        return outcome
+    }
+
+    /// #0382. Reuses the same mutating-verb dance. Unlike every other
+    /// targeted verb, `paneID` is never optional — this verb has no
+    /// fallback target (#0257: a hidden pane has no shell to run `batty`
+    /// from). The app either shows the target pane (idempotent —
+    /// already-visible succeeds quietly) or reports a failure
+    /// (unknown/stale `paneID`) via `.requestFailed`, which the CLI turns
+    /// into exit `4`.
+    static func paneShow(
+        endpoint: NSXPCListenerEndpoint,
+        paneID: UUID,
+        timeout: TimeInterval
+    ) -> Outcome<PaneShowReply> {
+        let requestPayload = try? JSONEncoder().encode(PaneShowRequest(paneID: paneID))
+        let outcome: Outcome<PaneShowReply> = perform(verb: XPCVerb.paneShow, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "paneShow")
+        if case .success = outcome {
+            logger.info("paneShow -> pane=\(paneID, privacy: .public)")
+        }
+        return outcome
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

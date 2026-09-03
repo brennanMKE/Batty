@@ -302,6 +302,91 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown tab id")))
                 }
             }
+        case XPCVerb.sessionClose:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(SessionCloseRequest.self, from: payloadData)
+                else {
+                    logger.error("perform sessionClose: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed session close request")))
+                    return
+                }
+                guard let targetSessionID = request.sessionID ?? AppStateStore.shared.focusedSessionIDFallback() else {
+                    logger.error("perform sessionClose: no session to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no session to target")))
+                    return
+                }
+                switch AppStateStore.shared.closeSessionForXPC(id: targetSessionID) {
+                case .closed:
+                    guard let replyData = try? JSONEncoder().encode(SessionCloseReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode session close reply")))
+                        return
+                    }
+                    logger.info("perform sessionClose -> session=\(targetSessionID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownSession:
+                    logger.error("perform sessionClose: unknown session id \(targetSessionID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown session id")))
+                case .needsConfirmation:
+                    logger.notice("perform sessionClose: refused session=\(targetSessionID, privacy: .public) reason=needs-confirmation")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "session has a running process; close refused without confirmation")))
+                case .refusedLastSession:
+                    logger.notice("perform sessionClose: refused session=\(targetSessionID, privacy: .public) reason=last-session-in-app")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "refusing to close the app's last session")))
+                }
+            }
+        case XPCVerb.paneHide:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(PaneHideRequest.self, from: payloadData)
+                else {
+                    logger.error("perform paneHide: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed pane hide request")))
+                    return
+                }
+                guard let targetPaneID = request.paneID ?? AppStateStore.shared.focusedPaneIDFallback() else {
+                    logger.error("perform paneHide: no pane to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no pane to target")))
+                    return
+                }
+                switch AppStateStore.shared.hidePaneForXPC(id: targetPaneID) {
+                case .hidden, .alreadyHidden:
+                    guard let replyData = try? JSONEncoder().encode(PaneHideReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane hide reply")))
+                        return
+                    }
+                    logger.info("perform paneHide -> pane=\(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownPane:
+                    logger.error("perform paneHide: unknown pane id \(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
+                case .refusedLastVisiblePane:
+                    logger.notice("perform paneHide: refused pane=\(targetPaneID, privacy: .public) reason=last-visible-pane")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "refusing to hide the session's last visible pane")))
+                }
+            }
+        case XPCVerb.paneShow:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(PaneShowRequest.self, from: payloadData)
+                else {
+                    logger.error("perform paneShow: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed pane show request")))
+                    return
+                }
+                switch AppStateStore.shared.showPaneForXPC(id: request.paneID) {
+                case .shown, .alreadyVisible:
+                    guard let replyData = try? JSONEncoder().encode(PaneShowReply()) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane show reply")))
+                        return
+                    }
+                    logger.info("perform paneShow -> pane=\(request.paneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownPane:
+                    logger.error("perform paneShow: unknown pane id \(request.paneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
+                }
+            }
 
             case XPCVerb.watch:
             watch(request, reply: reply)
