@@ -17,28 +17,32 @@ import Testing
 @MainActor
 struct AppStateStoreBellDecisionHistoryTests {
 
-    @Test func recordBellTickCapturesTheBelTriggerKind() {
+    @Test func recordBellTickCapturesTheBelTriggerKind() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
         let tabID = session.focusedPaneAnyKind.activeTabID
+        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
 
-        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRingBell()
+        terminal?.terminalDidRingBell()
+        await awaitTerminalStatePublish { (terminal?.bellCount ?? 0) > 0 }
         store.recordBellTick(forTabID: tabID)
 
         #expect(store.bellDecisionHistory.records.count == 1)
         #expect(store.bellDecisionHistory.records[0].trigger == .bel)
     }
 
-    @Test func recordDesktopNotificationCapturesTheOscNotificationTriggerKind() {
+    @Test func recordDesktopNotificationCapturesTheOscNotificationTriggerKind() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         let session = store.sessions[0]
         let tabID = session.focusedPaneAnyKind.activeTabID
+        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
 
-        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRequestDesktopNotification(
+        terminal?.terminalDidRequestDesktopNotification(
             title: "Build", body: "Succeeded"
         )
+        await awaitTerminalStatePublish { terminal?.lastDesktopNotificationAt != nil }
         store.recordDesktopNotification(forTabID: tabID)
 
         #expect(store.bellDecisionHistory.records.count == 1)

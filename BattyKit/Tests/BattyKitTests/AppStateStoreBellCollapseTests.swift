@@ -71,7 +71,7 @@ struct AppStateStoreBellCollapseTests {
     /// feed-click / notification-tap path (`AppStateStore.markBellSeen`),
     /// not just the tab-visit path (`markActiveTabSeen`, which already had
     /// its own residual-reset safety net before this issue).
-    @Test func markBellSeenOnACollapsedEntryDecrementsByTheFullRepeatCount() {
+    @Test func markBellSeenOnACollapsedEntryDecrementsByTheFullRepeatCount() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         let focused = store.sessions[0]
@@ -81,10 +81,13 @@ struct AppStateStoreBellCollapseTests {
         let pane = background.tree.allPanes[0]
         let tab = pane.tabs[0]
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: tab.id)
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
         store.recordBellTick(forTabID: tab.id)
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 3 }
         store.recordBellTick(forTabID: tab.id)
 
         #expect(store.bellFeed.entries.count == 1)
@@ -104,7 +107,7 @@ struct AppStateStoreBellCollapseTests {
     /// arrive batched in one call (#0288's occluded-Tab poll can do this).
     /// Each iteration must see the entry the previous iteration just
     /// recorded/collapsed as a live candidate.
-    @Test func batchedBellTicksInOneCallCollapseTogether() {
+    @Test func batchedBellTicksInOneCallCollapseTogether() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         let session = store.addSession(title: "Background")!
@@ -114,6 +117,7 @@ struct AppStateStoreBellCollapseTests {
         tab.terminal.terminalDidRingBell()
         tab.terminal.terminalDidRingBell()
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 3 }
         store.recordBellTick(forTabID: tab.id)
 
         #expect(store.bellFeed.entries.count == 1)

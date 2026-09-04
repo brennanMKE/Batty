@@ -24,7 +24,7 @@ final class SpyBellNotifier: BellNotifying {
 @MainActor
 struct SessionMuteTests {
 
-    @Test func mutedSessionSuppressesDesktopNotification() {
+    @Test func mutedSessionSuppressesDesktopNotification() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         guard let session = store.sessions.first else {
@@ -34,15 +34,18 @@ struct SessionMuteTests {
         session.notificationsMuted = true
 
         let tabID = session.focusedPaneAnyKind.activeTabID
-        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRequestDesktopNotification(
+        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
+        terminal?.terminalDidRequestDesktopNotification(
             title: "Build", body: "Succeeded"
         )
+        await awaitTerminalStatePublish { terminal?.lastDesktopNotificationAt != nil }
         store.recordDesktopNotification(forTabID: tabID)
 
+        #expect(store.bellFeed.entries.first != nil)
         #expect(notifier.postedEntries.isEmpty)
     }
 
-    @Test func unmutedSessionPostsDesktopNotification() {
+    @Test func unmutedSessionPostsDesktopNotification() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         guard let session = store.sessions.first else {
@@ -57,15 +60,17 @@ struct SessionMuteTests {
         store.selectedSessionID = store.sessions.last?.id
 
         let tabID = session.focusedPaneAnyKind.activeTabID
-        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRequestDesktopNotification(
+        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
+        terminal?.terminalDidRequestDesktopNotification(
             title: "Build", body: "Succeeded"
         )
+        await awaitTerminalStatePublish { terminal?.lastDesktopNotificationAt != nil }
         store.recordDesktopNotification(forTabID: tabID)
 
         #expect(notifier.postedEntries.count == 1)
     }
 
-    @Test func mutedSessionSuppressesBellTickNotification() {
+    @Test func mutedSessionSuppressesBellTickNotification() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         guard let session = store.sessions.first else {
@@ -82,9 +87,12 @@ struct SessionMuteTests {
             Issue.record("Expected an active tab")
             return
         }
-        session.focusedPaneAnyKind.activeTab?.terminal.terminalDidRingBell()
+        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
+        terminal?.terminalDidRingBell()
+        await awaitTerminalStatePublish { (terminal?.bellCount ?? 0) > 0 }
         store.recordBellTick(forTabID: tabID)
 
+        #expect(store.bellFeed.entries.first != nil)
         #expect(notifier.postedEntries.isEmpty)
         // Bell feed still records — mute is about delivery, not capture.
         #expect(store.bellFeed.entries.count == 1)

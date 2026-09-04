@@ -80,13 +80,14 @@ struct BellFeedStoreTests {
 @MainActor
 struct AppStateStoreBellRoutingTests {
 
-    @Test func bellFromFocusedTabRecordsButLeavesUnseenAlone() {
+    @Test func bellFromFocusedTabRecordsButLeavesUnseenAlone() async {
         let store = AppStateStore()
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
         #expect(store.bellFeed.entries.count == 1)
@@ -96,7 +97,7 @@ struct AppStateStoreBellRoutingTests {
         #expect(session.unseenBellCount == 0)
     }
 
-    @Test func bellFromUnfocusedTabIncrementsAllLevels() {
+    @Test func bellFromUnfocusedTabIncrementsAllLevels() async {
         let store = AppStateStore()
         let focusedSession = store.sessions[0]
         let backgroundSession = store.addSession(title: "Background")!
@@ -106,6 +107,7 @@ struct AppStateStoreBellRoutingTests {
         let tab = pane.tabs[0]
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
         #expect(store.bellFeed.entries.count == 1)
@@ -116,7 +118,7 @@ struct AppStateStoreBellRoutingTests {
         #expect(focusedSession.unseenBellCount == 0)
     }
 
-    @Test func markBellSeenDecrementsAllLevels() {
+    @Test func markBellSeenDecrementsAllLevels() async {
         let store = AppStateStore()
         let focusedSession = store.sessions[0]
         let backgroundSession = store.addSession()!
@@ -126,7 +128,9 @@ struct AppStateStoreBellRoutingTests {
         let tab = pane.tabs[0]
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
+        #expect(store.bellFeed.entries.first != nil)
         let entryID = store.bellFeed.entries[0].id
 
         store.markBellSeen(id: entryID)
@@ -136,7 +140,7 @@ struct AppStateStoreBellRoutingTests {
         #expect(backgroundSession.unseenBellCount == 0)
     }
 
-    @Test func markAllBellsSeenZerosCounters() {
+    @Test func markAllBellsSeenZerosCounters() async {
         let store = AppStateStore()
         let focusedSession = store.sessions[0]
         let backgroundSession = store.addSession()!
@@ -146,8 +150,10 @@ struct AppStateStoreBellRoutingTests {
         let tab = pane.tabs[0]
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: tab.id)
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
         store.recordBellTick(forTabID: tab.id)
 
         #expect(tab.unseenBellCount == 2)
@@ -158,7 +164,7 @@ struct AppStateStoreBellRoutingTests {
         #expect(backgroundSession.unseenBellCount == 0)
     }
 
-    @Test func desktopNotificationCarriesMessageThroughEntry() {
+    @Test func desktopNotificationCarriesMessageThroughEntry() async {
         let store = AppStateStore()
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
@@ -168,14 +174,16 @@ struct AppStateStoreBellRoutingTests {
         tab.terminal.terminalDidRequestDesktopNotification(
             title: "Build", body: "OK"
         )
+        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
         store.recordDesktopNotification(forTabID: tab.id)
 
+        #expect(store.bellFeed.entries.first != nil)
         #expect(store.bellFeed.entries.first?.message == "Build: OK")
         #expect(store.bellFeed.entries.first?.seen == false)
         #expect(tab.unseenBellCount == 1)
     }
 
-    @Test func jumpToBellEntrySelectsSessionPaneAndTab() {
+    @Test func jumpToBellEntrySelectsSessionPaneAndTab() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let target = store.addSession()!
@@ -187,7 +195,9 @@ struct AppStateStoreBellRoutingTests {
         pane.activeTabID = pane.tabs[0].id
 
         secondaryTab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { secondaryTab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: secondaryTab.id)
+        #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries[0]
 
         store.jumpToBellEntry(entry)

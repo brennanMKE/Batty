@@ -260,13 +260,15 @@ struct TabAutoNamingTests {
 
     // MARK: - Observation bridge (TabRuntime.syncWorkingDirectoryFromTerminal)
 
-    @Test func syncMirrorsLiveWorkingDirectoryIntoObservedProperty() {
+    @Test func syncMirrorsLiveWorkingDirectoryIntoObservedProperty() async {
         let tab = TabRuntime()
         #expect(tab.workingDirectory == nil)
 
         tab.terminalDelegate.terminalDidChangeWorkingDirectory("/Users/test/project")
-        // The live Combine value moved, but the Observation-tracked mirror
-        // only updates once synced — exactly the gap that left chips stale.
+        await awaitTerminalStatePublish { tab.terminal.workingDirectory != nil }
+        // The live Combine value moved (awaited above), but the
+        // Observation-tracked mirror only updates once synced — exactly the
+        // gap that left chips stale.
         #expect(tab.workingDirectory == nil)
 
         let changed = tab.syncWorkingDirectoryFromTerminal()

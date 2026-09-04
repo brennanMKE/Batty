@@ -29,7 +29,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/Lakr233/libghostty-spm",
-            revision: "b146b73a8ba3ed2678a22a9de5feecfcbf298d48"
+            revision: "a2565ccf047c03c74a59dd7c16a8fac7c477852f"
         ),
         .package(path: "../../SlidingTabs"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),

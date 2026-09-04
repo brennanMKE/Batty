@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct BellFeedCleanupTests {
 
-    @Test func closingTabRemovesItsFeedEntriesAndDecrementsAggregates() {
+    @Test func closingTabRemovesItsFeedEntriesAndDecrementsAggregates() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
@@ -20,8 +20,10 @@ struct BellFeedCleanupTests {
         pane.activeTabID = tabA.id
 
         tabA.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tabA.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tabA.id)
         tabB.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tabB.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tabB.id)
 
         #expect(store.bellFeed.entries.count == 2)
@@ -39,7 +41,7 @@ struct BellFeedCleanupTests {
         #expect(tabB.unseenBellCount == 1)
     }
 
-    @Test func closingTabDoesNotTouchOtherTabsEntries() {
+    @Test func closingTabDoesNotTouchOtherTabsEntries() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession()!
@@ -52,7 +54,9 @@ struct BellFeedCleanupTests {
         pane.activeTabID = tabA.id
 
         tabB.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tabB.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tabB.id)
+        #expect(store.bellFeed.entries.first != nil)
         let entryID = store.bellFeed.entries[0].id
 
         store.closeTab(id: tabA.id)
@@ -64,7 +68,7 @@ struct BellFeedCleanupTests {
         #expect(background.unseenBellCount == 1)
     }
 
-    @Test func closingLastTabInPaneClearsItsEntries() {
+    @Test func closingLastTabInPaneClearsItsEntries() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession()!
@@ -76,6 +80,7 @@ struct BellFeedCleanupTests {
 
         let originalTab = originalPane.tabs[0]
         originalTab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { originalTab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: originalTab.id)
 
         #expect(store.bellFeed.entries.count == 1)
@@ -88,7 +93,7 @@ struct BellFeedCleanupTests {
         #expect(background.unseenBellCount == 0)
     }
 
-    @Test func closingLastTabCascadingToSessionClearsItsEntries() {
+    @Test func closingLastTabCascadingToSessionClearsItsEntries() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
@@ -97,8 +102,10 @@ struct BellFeedCleanupTests {
         let pane = background.tree.allPanes[0]
         let tab = pane.tabs[0]
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: tab.id)
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
         store.recordBellTick(forTabID: tab.id)
 
         // #0298: both bare BELs are still unseen and share this tab, so the
@@ -113,7 +120,7 @@ struct BellFeedCleanupTests {
         #expect(store.bellFeed.entries.isEmpty)
     }
 
-    @Test func removeSessionDirectlyClearsAllEntriesUnderIt() {
+    @Test func removeSessionDirectlyClearsAllEntriesUnderIt() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession()!
@@ -126,8 +133,10 @@ struct BellFeedCleanupTests {
         pane.activeTabID = tabA.id
 
         tabA.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tabA.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tabA.id)
         tabB.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tabB.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tabB.id)
 
         let backgroundID = background.id
@@ -139,14 +148,16 @@ struct BellFeedCleanupTests {
         #expect(store.bellFeed.entries.isEmpty)
     }
 
-    @Test func cleanupLeavesSeenEntriesAlone() {
+    @Test func cleanupLeavesSeenEntriesAlone() async {
         let store = AppStateStore()
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
+        #expect(store.bellFeed.entries.first != nil)
         #expect(store.bellFeed.entries.first?.seen == true)
         #expect(session.unseenBellCount == 0)
 

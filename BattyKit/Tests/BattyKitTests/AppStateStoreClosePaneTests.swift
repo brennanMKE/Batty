@@ -23,7 +23,7 @@ struct AppStateStoreClosePaneTests {
     /// only the active tab could not satisfy — unlike asserting pane/tab
     /// counts alone, which pass identically whether one tab or three were
     /// torn down.
-    @Test func closingAPaneWithMultipleTabsEndsEveryTabsTerminalSession() {
+    @Test func closingAPaneWithMultipleTabsEndsEveryTabsTerminalSession() async {
         let store = AppStateStore()
         let session = store.sessions[0]
         let originalPane = session.tree.allPanes[0]
@@ -37,6 +37,7 @@ struct AppStateStoreClosePaneTests {
         for tabID in tabIDs {
             let tab = originalPane.tabs.first { $0.id == tabID }!
             tab.terminal.terminalDidRingBell()
+            await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
             store.recordBellTick(forTabID: tabID)
         }
         #expect(store.bellFeed.entries.count == 3, "precondition: every tab has a live bell-feed entry")

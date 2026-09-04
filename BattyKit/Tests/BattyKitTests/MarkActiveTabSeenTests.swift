@@ -7,7 +7,7 @@ import Testing
 @MainActor
 struct MarkActiveTabSeenTests {
 
-    @Test func markActiveTabSeenClearsCountsAndEntries() {
+    @Test func markActiveTabSeenClearsCountsAndEntries() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
@@ -17,8 +17,10 @@ struct MarkActiveTabSeenTests {
         let tab = pane.tabs[0]
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: tab.id)
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
         store.recordBellTick(forTabID: tab.id)
 
         #expect(tab.unseenBellCount == 2)
@@ -36,7 +38,7 @@ struct MarkActiveTabSeenTests {
         #expect(store.bellFeed.entries.allSatisfy { $0.seen })
     }
 
-    @Test func markActiveTabSeenZeroesTabEvenWhenEntryEvicted() {
+    @Test func markActiveTabSeenZeroesTabEvenWhenEntryEvicted() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
@@ -47,6 +49,7 @@ struct MarkActiveTabSeenTests {
 
         // One real bell tick lands on the tab/pane/session aggregates...
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: tab.id)
         #expect(tab.unseenBellCount == 1)
 
@@ -56,8 +59,10 @@ struct MarkActiveTabSeenTests {
         let evictedSession = store.addSession(title: "Filler")!
         let evictedPane = evictedSession.tree.allPanes[0]
         let evictedTab = evictedPane.tabs[0]
-        for _ in 0..<(BellFeedStore.cap + 5) {
+        for i in 0..<(BellFeedStore.cap + 5) {
+            let expectedCount = i + 1
             evictedTab.terminal.terminalDidRingBell()
+            await awaitTerminalStatePublish { evictedTab.terminal.bellCount >= expectedCount }
             store.recordBellTick(forTabID: evictedTab.id)
         }
 
@@ -93,7 +98,7 @@ struct MarkActiveTabSeenTests {
         #expect(store.bellFeed.entries.isEmpty)
     }
 
-    @Test func markActiveTabSeenLeavesOtherTabsAlone() {
+    @Test func markActiveTabSeenLeavesOtherTabsAlone() async {
         let store = AppStateStore()
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
@@ -106,8 +111,10 @@ struct MarkActiveTabSeenTests {
         pane.activeTabID = firstTab.id
 
         firstTab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { firstTab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: firstTab.id)
         secondTab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { secondTab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: secondTab.id)
 
         #expect(firstTab.unseenBellCount == 1)

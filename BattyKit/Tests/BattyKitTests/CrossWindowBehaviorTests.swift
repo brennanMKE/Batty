@@ -25,7 +25,7 @@ struct CrossWindowBehaviorTests {
 
     // MARK: - Bell windowID routing
 
-    @Test func bellEntryCarriesOwningWindowID() {
+    @Test func bellEntryCarriesOwningWindowID() async {
         let store = AppStateStore()
         let w1 = store.windows[0]
         let w2 = store.windowRuntime(for: WindowID())
@@ -36,6 +36,7 @@ struct CrossWindowBehaviorTests {
         w2.selectedSessionID = nil
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
         let entry = store.bellFeed.entries.first
@@ -45,7 +46,7 @@ struct CrossWindowBehaviorTests {
         _ = w1  // Suppress unused warning
     }
 
-    @Test func bellEntryWindowIDMatchesOwningWindowNotFirst() {
+    @Test func bellEntryWindowIDMatchesOwningWindowNotFirst() async {
         let store = AppStateStore()
         let w2 = store.windowRuntime(for: WindowID())
 
@@ -55,6 +56,7 @@ struct CrossWindowBehaviorTests {
         w2.selectedSessionID = nil  // Make it unfocused within w2
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
         let entry = store.bellFeed.entries.first
@@ -66,7 +68,7 @@ struct CrossWindowBehaviorTests {
 
     // MARK: - Key-window isFocused term
 
-    @Test func bellInNonKeyWindowCountsAsUnseenEvenIfFocused() {
+    @Test func bellInNonKeyWindowCountsAsUnseenEvenIfFocused() async {
         // Simulate multi-window: register w2's NSWindow as key, w1 as non-key.
         // Then record a bell in w1's active tab — should count as unseen.
         let store = AppStateStore()
@@ -95,15 +97,17 @@ struct CrossWindowBehaviorTests {
         pane.activeTabID = tab.id
 
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
+        #expect(store.bellFeed.entries.first != nil)
         // In single-window mode (no key window registered), isFocused alone governs.
         #expect(store.bellFeed.entries.first?.seen == true,
                 "Single-window-mode: focused tab bell should be seen")
         #expect(tab.unseenBellCount == 0)
     }
 
-    @Test func bellInUnfocusedWindowSessionIsUnseenInSingleWindowMode() {
+    @Test func bellInUnfocusedWindowSessionIsUnseenInSingleWindowMode() async {
         let store = AppStateStore()
         let w1 = store.windows[0]
         let focusedSession = w1.sessions[0]
@@ -113,6 +117,7 @@ struct CrossWindowBehaviorTests {
         let pane = bgSession.tree.allPanes[0]
         let tab = pane.tabs[0]
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
         #expect(store.bellFeed.entries.first?.seen == false)
@@ -122,7 +127,7 @@ struct CrossWindowBehaviorTests {
 
     // MARK: - jumpToBellEntry: dead-window entries
 
-    @Test func jumpToBellEntryDeadWindowNoOpsAndMarksSeen() {
+    @Test func jumpToBellEntryDeadWindowNoOpsAndMarksSeen() async {
         let store = AppStateStore()
         let w2 = store.windowRuntime(for: WindowID())
 
@@ -131,8 +136,10 @@ struct CrossWindowBehaviorTests {
         let tab = pane.tabs[0]
         w2.selectedSessionID = nil
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
+        #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries.first!
 
         // Now remove w2 from windows (simulating the window having closed).
@@ -151,7 +158,7 @@ struct CrossWindowBehaviorTests {
 
     // MARK: - jumpToBellEntry: live-window entries
 
-    @Test func jumpToBellEntryLiveWindowNavigatesToCorrectSession() {
+    @Test func jumpToBellEntryLiveWindowNavigatesToCorrectSession() async {
         let store = AppStateStore()
         let w1 = store.windows[0]
         let focusedSession = w1.sessions[0]
@@ -164,8 +171,10 @@ struct CrossWindowBehaviorTests {
                 "precondition: bell pane is not focused before the jump")
         let tab = pane.tabs[0]
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
+        #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries.first!
         #expect(entry.windowID == w1.id.value)
 
@@ -177,7 +186,7 @@ struct CrossWindowBehaviorTests {
                 "jumpToBellEntry should focus the entry's pane within the target session")
     }
 
-    @Test func jumpToBellEntryInSecondWindowNavigatesSecondWindow() {
+    @Test func jumpToBellEntryInSecondWindowNavigatesSecondWindow() async {
         let store = AppStateStore()
         let w1 = store.windows[0]
         let w2 = store.windowRuntime(for: WindowID())
@@ -188,8 +197,10 @@ struct CrossWindowBehaviorTests {
         let pane = w2Session.tree.allPanes[0]
         let tab = pane.tabs[0]
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
         store.recordBellTick(forTabID: tab.id)
 
+        #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries.first!
         #expect(entry.windowID == w2.id.value)
 
@@ -206,7 +217,7 @@ struct CrossWindowBehaviorTests {
 
     // MARK: - Window-close bell cleanup
 
-    @Test func windowCloseBellCleanupRemovesWindowEntries() {
+    @Test func windowCloseBellCleanupRemovesWindowEntries() async {
         let store = AppStateStore()
         let w2 = store.windowRuntime(for: WindowID())
 
@@ -215,8 +226,10 @@ struct CrossWindowBehaviorTests {
         let tab = pane.tabs[0]
         w2.selectedSessionID = nil
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
         store.recordBellTick(forTabID: tab.id)
         tab.terminal.terminalDidRingBell()
+        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
         store.recordBellTick(forTabID: tab.id)
 
         // #0298: both bare BELs are unseen and share this tab, so they
