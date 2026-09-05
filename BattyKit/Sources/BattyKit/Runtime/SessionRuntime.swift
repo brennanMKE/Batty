@@ -1,6 +1,7 @@
 // SessionRuntime.swift
 
 import Foundation
+import GhosttyTerminal
 import Observation
 
 @Observable
@@ -41,6 +42,108 @@ public final class SessionRuntime: Identifiable {
     /// launch, same as every other `SessionRuntime` UI-state field.
     public var colorOverride: Bool
     @ObservationIgnored public let paneFrames: PaneFrameTracker
+
+    /// Clipboard-read confirmation awaiting the user's answer, shown via
+    /// `.confirmationDialog` in `SessionDetailView`. At most one at a time
+    /// per Session: a second request arriving while one is already pending
+    /// immediately denies the first (`decide(false)`, in
+    /// `requestClipboardReadConfirmation(kind:decide:)`) rather than
+    /// queuing it — nothing here waits silently for a confirmation that
+    /// isn't the one on screen. `answerPendingClipboardConfirmation` and
+    /// `cancelPendingClipboardConfirmation` take the specific
+    /// `PendingClipboardConfirmation` the caller means to resolve and check
+    /// its identity against whatever is *currently* pending, so a view
+    /// closure holding a reference to an already-displaced or
+    /// already-answered request safely no-ops instead of re-firing a
+    /// decision or clobbering a newer request's bookkeeping (#0390 round 2,
+    /// B2).
+    public var pendingClipboardConfirmation: PendingClipboardConfirmation?
+
+    /// This Session's remembered answers to a clipboard confirmation
+    /// (unsafe paste, or a protected OSC 52 read/write) — one slot **per
+    /// `TerminalClipboardRequestKind`**, not a single Session-wide flag.
+    /// An Allow on a benign-sounding kind (e.g. a clipboard *write*
+    /// prompt) must never silently authorize a more dangerous kind (e.g.
+    /// an OSC 52 *read* / exfiltration path) just because both happened in
+    /// the same Session (#0390 round 2, B1). `nil` per kind until the user
+    /// answers a request of that kind once, then applied to later requests
+    /// of that same kind without prompting again. **Not persisted**:
+    /// resets on every relaunch and dies with the Session, matching every
+    /// other per-Session UI-state field here (`Concepts.md`: Session
+    /// "Persisted: nothing").
+    ///
+    /// `TerminalClipboardRequestKind` is `Sendable` but not `Hashable`, so
+    /// this is three explicit slots rather than a dictionary keyed by it.
+    @ObservationIgnored private var rememberedPasteDecision: Bool?
+    @ObservationIgnored private var rememberedOSC52ReadDecision: Bool?
+    @ObservationIgnored private var rememberedOSC52WriteDecision: Bool?
+
+    private func rememberedDecision(for kind: TerminalClipboardRequestKind) -> Bool? {
+        switch kind {
+        case .paste: rememberedPasteDecision
+        case .osc52Read: rememberedOSC52ReadDecision
+        case .osc52Write: rememberedOSC52WriteDecision
+        }
+    }
+
+    private func setRememberedDecision(_ allow: Bool, for kind: TerminalClipboardRequestKind) {
+        switch kind {
+        case .paste: rememberedPasteDecision = allow
+        case .osc52Read: rememberedOSC52ReadDecision = allow
+        case .osc52Write: rememberedOSC52WriteDecision = allow
+        }
+    }
+
+    /// Test/diagnostic probe for the per-kind remembered policy above —
+    /// there's no other way to observe it from outside this type.
+    public func rememberedClipboardDecision(for kind: TerminalClipboardRequestKind) -> Bool? {
+        rememberedDecision(for: kind)
+    }
+
+    /// Routes a clipboard confirmation from the terminal wrapper
+    /// (`TerminalSurfaceClipboardConfirmationDelegate`) through this
+    /// Session's remembered-answer policy. A request already pending when
+    /// this is called is displaced and immediately denied — see
+    /// `pendingClipboardConfirmation`'s doc comment.
+    public func requestClipboardReadConfirmation(
+        kind: TerminalClipboardRequestKind,
+        decide: @escaping (Bool) -> Void
+    ) {
+        if let remembered = rememberedDecision(for: kind) {
+            decide(remembered)
+            return
+        }
+        pendingClipboardConfirmation?.decide(false)
+        pendingClipboardConfirmation = PendingClipboardConfirmation(
+            kind: kind,
+            decide: decide
+        )
+    }
+
+    /// The user answered the dialog for `request`. A no-op if `request`
+    /// isn't the request currently pending (already displaced by a later
+    /// request, or already resolved by a Session switch) — its decision
+    /// already fired wherever that happened, and firing again here would
+    /// double-answer it.
+    public func answerPendingClipboardConfirmation(_ request: PendingClipboardConfirmation, allow: Bool) {
+        guard pendingClipboardConfirmation?.id == request.id else { return }
+        pendingClipboardConfirmation = nil
+        setRememberedDecision(allow, for: request.kind)
+        request.decide(allow)
+    }
+
+    /// The dialog for `request` was dismissed without an explicit answer
+    /// (e.g. Escape, click-outside, or the user navigating away from this
+    /// Session while it was up). Never a silent allow — deny, matching the
+    /// policy that motivated the confirmation in the first place. Not
+    /// remembered: a dismiss isn't the user expressing a Session-wide
+    /// policy, just closing the prompt. Identity-checked the same way as
+    /// `answerPendingClipboardConfirmation`.
+    public func cancelPendingClipboardConfirmation(_ request: PendingClipboardConfirmation) {
+        guard pendingClipboardConfirmation?.id == request.id else { return }
+        pendingClipboardConfirmation = nil
+        request.decide(false)
+    }
 
     public init(
         id: UUID = UUID(),

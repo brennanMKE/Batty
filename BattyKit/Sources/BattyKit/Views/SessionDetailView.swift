@@ -96,6 +96,40 @@ public struct SessionDetailView: View {
         } message: { request in
             Text(request.message)
         }
+        // #0390: a terminal program's clipboard-read request (OSC 52 /
+        // Kitty clipboard protocol). Bound to the *selected* Session's
+        // pending confirmation — a request from a non-selected Session's
+        // Pane waits until the user switches to it. The `pending` captured
+        // here (from `presenting:`) is threaded into every action instead
+        // of re-reading `windowRuntime.selectedSession?.pendingClipboardConfirmation`
+        // at tap time: a second request can displace this one while the
+        // dialog is still showing (`SessionRuntime.requestClipboardReadConfirmation`
+        // denies the displaced one immediately), and resolving by identity
+        // means a stale tap against the request the user actually read
+        // safely no-ops instead of answering whatever is live now (#0390
+        // round 2, B2). Switching Sessions away from a still-pending
+        // request denies it explicitly in the `selectedSessionID`
+        // `onChange` above, rather than relying on this dialog's own
+        // dismiss handler below, which by then would be reading the
+        // newly-selected Session, not the one that owned the request
+        // (#0390 round 2, B3). Dismissing without an explicit answer
+        // (Escape, click-outside) denies via `pendingClipboardConfirmationBinding`
+        // below, never a silent allow.
+        .confirmationDialog(
+            windowRuntime.selectedSession?.pendingClipboardConfirmation?.title ?? "",
+            isPresented: pendingClipboardConfirmationBinding,
+            titleVisibility: .visible,
+            presenting: windowRuntime.selectedSession?.pendingClipboardConfirmation
+        ) { pending in
+            Button("Allow") {
+                windowRuntime.selectedSession?.answerPendingClipboardConfirmation(pending, allow: true)
+            }
+            Button("Deny", role: .cancel) {
+                windowRuntime.selectedSession?.answerPendingClipboardConfirmation(pending, allow: false)
+            }
+        } message: { pending in
+            Text(pending.message)
+        }
     }
 
     @ViewBuilder private var configuredStack: some View {
@@ -117,6 +151,18 @@ public struct SessionDetailView: View {
             focusSelectedSessionTerminal()
             windowRuntime.markActiveTabSeen()
             store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
+            // #0390 round 2, B3: deny a clipboard confirmation left pending
+            // on the Session being navigated away from, right here and
+            // synchronously — not left for `pendingClipboardConfirmationBinding`'s
+            // dismiss handler, which by the time SwiftUI calls it is
+            // already reading the *new* selectedSession (whose pending is
+            // nil) and so silently no-ops, orphaning the old request until
+            // Session teardown eventually denies it or the user switches
+            // back to a stale, out-of-context prompt.
+            if let old, let previousSession = store.session(id: old),
+               let pending = previousSession.pendingClipboardConfirmation {
+                previousSession.cancelPendingClipboardConfirmation(pending)
+            }
         }
         .onChange(of: windowRuntime.selectedSession?.tree.focusedPaneID) { _, _ in
             windowRuntime.markActiveTabSeen()
@@ -232,6 +278,19 @@ public struct SessionDetailView: View {
             get: { windowRuntime.pendingCloseRequest != nil },
             set: { newValue in
                 if !newValue { windowRuntime.cancelPendingClose() }
+            }
+        )
+    }
+
+    private var pendingClipboardConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { windowRuntime.selectedSession?.pendingClipboardConfirmation != nil },
+            set: { newValue in
+                guard !newValue,
+                      let session = windowRuntime.selectedSession,
+                      let pending = session.pendingClipboardConfirmation
+                else { return }
+                session.cancelPendingClipboardConfirmation(pending)
             }
         )
     }

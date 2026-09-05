@@ -1,6 +1,7 @@
 // PaneView.swift
 
 import AppKit
+import GhosttyTerminal
 import OSLog
 import SwiftUI
 import UniformTypeIdentifiers
@@ -288,6 +289,20 @@ public struct PaneView: View {
                                 tab.syncWorkingDirectoryFromTerminal()
                                 appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
                                 appStore?.updateTabAutoName(for: tab)
+                            }
+                            // #0390: route a clipboard-read confirmation
+                            // (OSC 52 / Kitty clipboard protocol) to this
+                            // tab's owning Session, which applies the
+                            // per-kind remembered-answer policy. No
+                            // resolvable Session -> routeClipboardReadConfirmation
+                            // denies on its own, so a tab that closes before
+                            // this wiring runs can't leave a request
+                            // unanswered. `[weak tab]` avoids a retain cycle:
+                            // this closure is stored on `tab.terminalDelegate`,
+                            // which `TabRuntime` owns.
+                            tab.terminalDelegate.onClipboardReadConfirmationRequest = { [weak appStore, weak tab] kind, decide in
+                                let session = tab?.sessionID.flatMap { appStore?.session(id: $0) }
+                                routeClipboardReadConfirmation(to: session, kind: kind, decide: decide)
                             }
                             // Initial resolve in case the surface reported its cwd
                             // before this wiring ran (the callback only catches

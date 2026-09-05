@@ -1880,6 +1880,14 @@ public final class AppStateStore {
         windows.first { $0.sessions.contains(where: { $0.id == sessionID }) }
     }
 
+    /// Resolves a `SessionRuntime` by id across all windows. Used to route
+    /// a tab-scoped event (e.g. a clipboard-read confirmation) up to its
+    /// owning Session, whose id is already known once `TabRuntime.attachContext(paneID:sessionID:)`
+    /// has run (#0281).
+    public func session(id sessionID: UUID) -> SessionRuntime? {
+        windows.flatMap(\.sessions).first { $0.id == sessionID }
+    }
+
     /// #0297's single choke point: every real-tab bell path (BEL, OSC
     /// 9/777, CLI `notify`) — `recordBellTick`, `recordDesktopNotification`,
     /// `recordCLINotification` — calls this exactly once per entry, so
