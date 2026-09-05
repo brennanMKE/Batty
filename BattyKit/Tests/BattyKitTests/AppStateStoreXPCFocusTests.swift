@@ -290,6 +290,109 @@ struct AppStateStoreXPCFocusTests {
         #expect(w2.sessions[0].tree.focusedPaneID == targetPane.id)
     }
 
+    // MARK: - #0337 wiring: XPC focus writers must feed the recency stack
+
+    /// The test that actually isolates "did `focusPaneForXPC` record its
+    /// write into the recency stack" from "does a recency stack exist at
+    /// all" — the two simpler tests below share a nested-chain tree shape
+    /// where closing the just-XPC-focused pane's structural sibling always
+    /// happens to equal the recency answer too, so they'd stay green even
+    /// if `focusPaneForXPC` never touched history (confirmed by mutation,
+    /// see the report).
+    ///
+    /// Shape: `split(H, split(V, main, y), split(V, x, z))`. `y` is
+    /// spliced next to `main` (via `splitPane(id: main.id)`) while `x` (not
+    /// `main`) holds focus, so `y` is never itself focused by the split;
+    /// `z` is spliced next to `x` the same way while `y` holds focus. Three
+    /// distinct predictions fall out depending on what actually happened:
+    /// if `focusPaneForXPC(id: y.id)` pushed `y` onto the stack the way an
+    /// ordinary focus write does, closing `z` afterward must land on `y`
+    /// (`y` outranks `main`, which was focused right before the XPC call);
+    /// if the XPC write moved `focusedPaneID` but never touched history,
+    /// it lands on `main` instead (`y` never entered the stack at all); if
+    /// no history mechanism existed at all, it lands on `x` (`z`'s
+    /// structural sibling). Only the first matches the issue's Gotchas
+    /// note.
+    @Test func focusPaneForXPCReordersTheRecencyStackNotJustFocusedPaneID() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let main = session.tree.allPanes[0]
+        let x = session.tree.splitFocusedPane(direction: .horizontal)
+        let y = session.tree.splitPane(id: main.id, direction: .vertical)!
+        #expect(session.tree.focusedPaneID == x.id, "precondition: splitPane(id: main) must not steal focus from x")
+        session.tree.focusedPaneID = main.id
+
+        let outcome = store.focusPaneForXPC(id: y.id)
+        #expect(outcome == .focused)
+
+        let z = session.tree.splitPane(id: x.id, direction: .vertical)!
+        #expect(session.tree.focusedPaneID == y.id, "precondition: splitPane(id: x) must not steal focus from y")
+        session.tree.focusedPaneID = z.id
+
+        #expect(store.closePane(id: z.id) == .closed)
+
+        #expect(session.tree.focusedPaneID == y.id,
+                "closing z must fall back to y, the pane focusPaneForXPC brought forward — landing on main means the XPC write never reached the recency stack; landing on x means no recency stack was consulted at all")
+    }
+
+    /// A simpler end-to-end check of the same Gotchas requirement, matching
+    /// the issue's own framing ("closing a Pane right after `batty pane
+    /// focus` falls back to the wrong Pane"). Documented limitation: this
+    /// tree is a nested chain, so B's structural sibling is already A —
+    /// this alone would stay green even if `focusPaneForXPC` never touched
+    /// history (confirmed by mutation). The test above is the one that
+    /// actually isolates the wiring; this one is kept because it mirrors
+    /// the issue's literal repro shape.
+    @Test func focusPaneForXPCFeedsTheRecencyStackSoClosingRightAfterFallsBackCorrectly() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let main = session.tree.allPanes[0]
+        let paneA = session.tree.splitFocusedPane(direction: .horizontal)
+        let paneB = session.tree.splitFocusedPane(direction: .horizontal)
+        // B is focused by the split itself; explicitly re-focus A through
+        // the ordinary (non-XPC) path first so history reads B, A before
+        // the XPC call below adds to it.
+        session.tree.focusedPaneID = paneA.id
+
+        let outcome = store.focusPaneForXPC(id: paneB.id)
+        #expect(outcome == .focused)
+        #expect(session.tree.focusedPaneID == paneB.id, "precondition: the XPC verb moved focus to B")
+
+        // Closing the pane the XPC verb just focused must fall back to A —
+        // the pane focused immediately before it — not to Main.
+        #expect(store.closePane(id: paneB.id) == .closed)
+        #expect(session.tree.focusedPaneID == paneA.id,
+                "focusPaneForXPC must push onto the same recency stack closePane reads, or this falls back to Main instead of A")
+
+        #expect(store.closePane(id: paneA.id) == .closed)
+        #expect(session.tree.focusedPaneID == main.id)
+    }
+
+    /// Same wiring requirement, one tier down: `focusTabForXPC(id:)`
+    /// focuses its containing pane via the same `WindowRuntime.focusPane
+    /// (id:)` choke point, so it must feed the stack too. Same documented
+    /// limitation as the simpler pane-focus test above (nested-chain
+    /// shape; `focusPaneForXPCReordersTheRecencyStackNotJustFocusedPaneID`
+    /// is the one that isolates the wiring specifically) — `focusTabForXPC`
+    /// delegates to the identical `WindowRuntime.focusPane(id:)` call, so
+    /// the isolation already proven there covers this path too.
+    @Test func focusTabForXPCFeedsTheRecencyStackSoClosingRightAfterFallsBackCorrectly() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let paneA = session.tree.allPanes[0]
+        let paneB = session.tree.splitFocusedPane(direction: .horizontal)
+        session.tree.focusedPaneID = paneA.id
+        let tabOnB = paneB.activeTabID
+
+        let outcome = store.focusTabForXPC(id: tabOnB)
+        #expect(outcome == .focused)
+        #expect(session.tree.focusedPaneID == paneB.id, "precondition: the XPC verb moved focus to B's pane")
+
+        #expect(store.closePane(id: paneB.id) == .closed)
+        #expect(session.tree.focusedPaneID == paneA.id,
+                "focusTabForXPC must push its pane onto the same recency stack closePane reads")
+    }
+
     // MARK: - focusedSessionIDFallback()
 
     @Test func focusedSessionIDFallbackResolvesTheSelectedSession() {

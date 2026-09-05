@@ -309,6 +309,12 @@ public final class WindowRuntime {
                     if treeEmptied {
                         logger.info("closeTab tree empty for session=\(session.id, privacy: .public); removing session")
                         removeSession(id: session.id)
+                    } else {
+                        // #0337: this cascade had no post-remove focus fixup
+                        // at all before — `closePane`'s hidden-pane backstop
+                        // (below) must hold here too, not only on the
+                        // `closePane` branch.
+                        resolveHiddenFocusFallback(in: session)
                     }
                 }
                 return
@@ -537,31 +543,36 @@ public final class WindowRuntime {
             if treeEmptied {
                 logger.info("closePane tree empty for session=\(session.id, privacy: .public); removing session")
                 removeSession(id: session.id)
-            } else if let focused = session.tree.allPanes.first(where: { $0.id == session.tree.focusedPaneID }),
-                      focused.isHidden {
-                // #0256 binds "never leave focus on a hidden pane" — full
-                // stop, not conditioned on whether some other pane is still
-                // visible. `SplitTree.removePane` reassigns `focusedPaneID`
-                // to `firstLeafPaneID` (the tree's leftmost leaf) whenever
-                // the closed pane was focused, with no regard for `isHidden`
-                // — that leaf can be hidden even while a different, visible
-                // pane exists elsewhere in the tree. Prefer moving focus to
-                // that visible pane (mirrors `hidePane`'s own focus move);
-                // only when none exists (every remaining pane hidden, so
-                // `visiblePanes` is empty) is there nothing to move to, and
-                // the hidden focused pane itself un-hides so the session
-                // isn't rendered blank (#0256's "≥1 visible pane" rule).
-                if let nextVisible = session.tree.visiblePanes.first {
-                    logger.notice("closePane: session=\(session.id, privacy: .public) focus dangled on hidden pane=\(focused.id, privacy: .public); moving to visible=\(nextVisible.id, privacy: .public)")
-                    session.tree.focusedPaneID = nextVisible.id
-                } else {
-                    logger.notice("closePane: session=\(session.id, privacy: .public) left with no visible panes; un-hiding focusedPaneID=\(focused.id, privacy: .public)")
-                    showPane(id: focused.id)
-                }
+            } else {
+                resolveHiddenFocusFallback(in: session)
             }
             return .closed
         }
         return .unknownPane
+    }
+
+    /// #0256 binds "never leave focus on a hidden pane" — full stop.
+    /// `SplitTree.removePane`'s recency-based successor chain (#0337)
+    /// already guarantees a *visible* successor whenever any visible pane
+    /// survives in the session (history, then the sibling subtree, then a
+    /// full-tree scan for any visible leaf — only the absolute last resort,
+    /// `firstLeafPaneID`, ignores `isHidden`). So reaching this guard with
+    /// `focused.isHidden == true` implies `session.tree.visiblePanes` is
+    /// already empty — there is no "move to some other visible pane"
+    /// branch to take, only un-hiding `focused` itself so the session isn't
+    /// rendered blank (#0256's "≥1 visible pane" rule). Un-hiding is
+    /// Runtime-layer work (`TerminalHostStore` placements, content
+    /// lifecycle via `showPane`), which is why this lives here rather than
+    /// inside `SplitTree` itself.
+    ///
+    /// Shared by both pane-removal routes that can leave `focusedPaneID`
+    /// dangling on a hidden pane — `closePane` above and the `closeTab`
+    /// last-Tab cascade, which had no such fixup at all before #0337.
+    private func resolveHiddenFocusFallback(in session: SessionRuntime) {
+        guard let focused = session.tree.allPanes.first(where: { $0.id == session.tree.focusedPaneID }),
+              focused.isHidden else { return }
+        logger.notice("resolveHiddenFocusFallback: session=\(session.id, privacy: .public) left with no visible panes; un-hiding focusedPaneID=\(focused.id, privacy: .public)")
+        showPane(id: focused.id)
     }
 
     /// Tears down every non-terminal pane's own content (#0303/#0314) for

@@ -91,12 +91,70 @@ extension SplitTreeNode {
     public func contains(paneID: UUID) -> Bool {
         findPane(id: paneID) != nil
     }
+
+    /// First (leftmost/topmost) leaf pane id in this subtree that is not
+    /// hidden, or `nil` when every leaf is hidden. Used by
+    /// `SplitTree.removePane`'s successor fallback chain (#0337) so a
+    /// positional fallback never blindly lands on a hidden pane the way the
+    /// pre-#0337 `firstLeafPaneID` fallback did.
+    var firstVisibleLeafPaneID: UUID? {
+        switch self {
+        case .leaf(let pane):
+            return pane.isHidden ? nil : pane.id
+        case .split(_, _, _, let left, let right):
+            return left.firstVisibleLeafPaneID ?? right.firstVisibleLeafPaneID
+        }
+    }
+
+    /// The other child of the split whose *direct* leaf child is `id` — the
+    /// subtree that absorbs `id`'s space when it is removed
+    /// (`SplitTreeNode.removingPane`'s `(nil, r?) -> r` / `(l?, nil) -> l`
+    /// cases). The recursion descends to any depth to find `id`'s actual
+    /// immediate parent split, so `nil` means only "`id` is not present in
+    /// this subtree at all" — never "found, but too deep." Must be computed
+    /// against the tree as it existed *before* removal — the sibling
+    /// relationship is structural and unaffected by the pane's own removal,
+    /// but is only discoverable while both leaves are still present.
+    static func siblingSubtree(of id: UUID, in node: SplitTreeNode) -> SplitTreeNode? {
+        guard case .split(_, _, _, let left, let right) = node else { return nil }
+        if case .leaf(let pane) = left, pane.id == id { return right }
+        if case .leaf(let pane) = right, pane.id == id { return left }
+        return siblingSubtree(of: id, in: left) ?? siblingSubtree(of: id, in: right)
+    }
 }
 
 @Observable
 public final class SplitTree {
     public var root: SplitTreeNode
-    public var focusedPaneID: UUID
+    /// Most-recent-first history of every pane this tree has deliberately
+    /// focused (#0337). `@ObservationIgnored` — bookkeeping no view should
+    /// re-render on, same precedent as `SessionRuntime.paneFrames`.
+    /// Populated entirely by `focusedPaneID`'s `didSet` below, which is the
+    /// single choke point every write to `focusedPaneID` passes through
+    /// (splits, clicks, XPC focus verbs, layout application, adjacent-pane
+    /// movement) — no call site needs to remember to push explicitly, so
+    /// none can silently degrade the stack to stale entries the way a
+    /// call-site-by-call-site audit could. `private(set)` (rather than
+    /// fully `private`) only so `@testable` unit tests can assert it stays
+    /// bounded — still opaque to every non-test, non-file caller.
+    ///
+    /// **Bounding:** the dedupe in `didSet` (`removeAll { $0 ==
+    /// focusedPaneID }` before inserting) is what keeps this array from
+    /// growing without limit — alternating focus between the same two
+    /// panes writes the same two ids over and over, and without the dedupe
+    /// each write would append a fresh duplicate forever (the issue's fix
+    /// sketch item 3 required the stack not grow unboundedly). Combined
+    /// with `removePane`'s own pruning, this array's length can never
+    /// exceed the tree's current live pane count.
+    @ObservationIgnored private(set) var focusHistory: [UUID] = []
+
+    public var focusedPaneID: UUID {
+        didSet {
+            guard focusedPaneID != oldValue else { return }
+            focusHistory.removeAll { $0 == focusedPaneID }
+            focusHistory.insert(focusedPaneID, at: 0)
+        }
+    }
 
     /// The owning session, set once by `SessionRuntime.init` via
     /// ``attachToSession(_:)``. Every pane created afterward through
@@ -109,6 +167,11 @@ public final class SplitTree {
 
     public init(root: SplitTreeNode) {
         self.root = root
+        // `didSet` never fires for a property's own initializer assignment,
+        // so this does not seed `focusHistory` — it starts empty (its own
+        // declared default) and the first *deliberate* focus change after
+        // construction is the first real entry, matching `paneFrames`'s own
+        // "starts empty" shape.
         self.focusedPaneID = root.firstLeafPaneID
     }
 
@@ -362,27 +425,62 @@ public final class SplitTree {
         return newPane
     }
 
+    /// Delegates to `removePane(id:)` so the two never drift (#0337) — this
+    /// has no callers at all outside `SplitTreePanePositionTests.swift`
+    /// (the shipping ⌘W path is `WindowRuntime.closeFocusedTab()`, which
+    /// never reaches this method), but keeping it a thin wrapper means it
+    /// automatically gets the same recency-based successor choice rather
+    /// than needing its own copy to stay in sync.
     public func removeFocusedPane() {
         let leaves = root.allLeafPanes
         guard leaves.count > 1 else { return }
-        guard let newRoot = SplitTreeNode.removingPane(focusedPaneID, from: root) else { return }
-        root = newRoot
-        focusedPaneID = newRoot.firstLeafPaneID
+        removePane(id: focusedPaneID)
     }
 
     /// Removes a pane by id. Returns `true` when the tree became empty
     /// (the removed pane was the only one). Callers should treat that as
     /// "session is now empty and should be closed."
+    ///
+    /// **Focus successor (#0337):** when the removed pane was the focused
+    /// one, the replacement is chosen in this order: (1) the most recently
+    /// focused surviving, *visible* pane from `focusHistory`; (2) the
+    /// nearest visible leaf of the sibling subtree that absorbed the closed
+    /// pane's space (`SplitTreeNode.siblingSubtree`) — the geometric
+    /// neighbor #0021 originally deferred; (3) the first visible leaf
+    /// anywhere in the tree; (4) `firstLeafPaneID` as the absolute last
+    /// resort, which can be hidden if literally every remaining pane is
+    /// hidden. Step 4 landing on a hidden pane is intentional and matches
+    /// pre-#0337 behavior — the caller (`WindowRuntime.closePane`) is the
+    /// one that un-hides it as a backstop, since un-hiding has Runtime-layer
+    /// side effects (`TerminalHostStore` placements, content lifecycle)
+    /// that this Model-layer type must not perform itself.
     @discardableResult
     public func removePane(id: UUID) -> Bool {
         guard let newRoot = SplitTreeNode.removingPane(id, from: root) else {
+            focusHistory.removeAll()
             return true
         }
+        let sibling = SplitTreeNode.siblingSubtree(of: id, in: root)
         root = newRoot
+        focusHistory.removeAll { $0 == id || !newRoot.contains(paneID: $0) }
         if !newRoot.contains(paneID: focusedPaneID) {
-            focusedPaneID = newRoot.firstLeafPaneID
+            focusedPaneID = Self.resolveSuccessor(sibling: sibling, in: newRoot, history: focusHistory)
         }
         return false
+    }
+
+    private static func resolveSuccessor(
+        sibling: SplitTreeNode?,
+        in newRoot: SplitTreeNode,
+        history: [UUID]
+    ) -> UUID {
+        if let fromHistory = history.first(where: { newRoot.findPane(id: $0)?.isHidden == false }) {
+            return fromHistory
+        }
+        if let visibleSiblingLeaf = sibling?.firstVisibleLeafPaneID {
+            return visibleSiblingLeaf
+        }
+        return newRoot.firstVisibleLeafPaneID ?? newRoot.firstLeafPaneID
     }
 
     public func updateRatio(forSplitID id: UUID, to newRatio: Double) {

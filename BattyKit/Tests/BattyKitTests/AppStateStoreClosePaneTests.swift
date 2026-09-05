@@ -87,6 +87,104 @@ struct AppStateStoreClosePaneTests {
     // MARK: - Focus after close (#0283's own decision, distinct from #0282's
     // split-focus policy)
 
+    /// #0337's centerpiece — the issue's own repro steps, verbatim: three
+    /// temporary Panes (A, B, C) split off Main and clicked into in order,
+    /// closing the focused Pane three times in a row walks focus back
+    /// C -> B -> A -> Main.
+    ///
+    /// **This alone does not prove recency is doing the work.** Each split
+    /// here nests inside the previously-focused Pane (Cmd-D three times in
+    /// a row), so C's structural sibling *is* B and B's structural sibling
+    /// *is* A — the `#0021` sibling-subtree fallback (`SplitTreeNode
+    /// .siblingSubtree`, used when no history is available) would answer
+    /// exactly the same walk-back with the recency stack deleted entirely.
+    /// Confirmed by mutation: disabling the history branch in
+    /// `SplitTree.resolveSuccessor` left this test green. The test that
+    /// actually isolates recency from sibling-adjacency is
+    /// `closingFallsBackToTheMostRecentlyFocusedPaneEvenWhenItIsNotTheStructuralSibling`
+    /// below — kept as a separate test because this one still guards the
+    /// literal acceptance-criteria wording and the "not Main both times"
+    /// property no positional fallback satisfies.
+    @Test func closingThreeSequentialPanesWalksFocusBackByRecencyNotPosition() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let main = session.tree.allPanes[0]
+        let paneA = session.tree.splitFocusedPane(direction: .horizontal)
+        let paneB = session.tree.splitFocusedPane(direction: .horizontal)
+        let paneC = session.tree.splitFocusedPane(direction: .horizontal)
+        // Click into A, then B, then C — independent of whichever Pane the
+        // splits themselves happened to leave focused — so history reads
+        // C -> B -> A -> Main, per the issue's own repro steps.
+        session.tree.focusedPaneID = paneA.id
+        session.tree.focusedPaneID = paneB.id
+        session.tree.focusedPaneID = paneC.id
+        #expect(session.tree.allPanes.count == 4)
+
+        #expect(store.closePane(id: paneC.id) == .closed)
+        #expect(session.tree.focusedPaneID == paneB.id,
+                "closing C must focus B, the most recently focused survivor — not Main, the leftmost leaf")
+
+        #expect(store.closePane(id: paneB.id) == .closed)
+        #expect(session.tree.focusedPaneID == paneA.id,
+                "closing B must focus A next, matching the recorded recency order, not Main again")
+
+        #expect(store.closePane(id: paneA.id) == .closed)
+        #expect(session.tree.focusedPaneID == main.id,
+                "only Main survives at this point, so recency and position necessarily agree here")
+    }
+
+    /// The test that actually isolates recency from sibling-adjacency
+    /// (see the comment above): builds a tree where the Pane about to close
+    /// has a structural sibling that is a *different* Pane than the one
+    /// most recently focused before it, so a sibling-only fallback and a
+    /// true recency stack disagree.
+    ///
+    /// Shape: `split(H, split(V, Main, Other), Focused)` — `Other` is
+    /// spliced in next to Main via `splitPane(id:)` while Focused (not
+    /// Main) holds focus, so `Other` is never itself focused
+    /// (`SplitTree.splitPane`'s "Focus decision" doc comment: focus only
+    /// transfers when the split target was already focused). Clicking
+    /// `Other` then back onto `Focused` makes `Other` the most recently
+    /// focused survivor without ever making it Focused's structural
+    /// sibling — Focused's actual sibling is the whole `split(V, Main,
+    /// Other)` subtree, whose own first (structural) leaf is Main, not
+    /// Other. A sibling-only fallback would therefore answer Main; the
+    /// recency stack must answer Other.
+    @Test func closingFallsBackToTheMostRecentlyFocusedPaneEvenWhenItIsNotTheStructuralSibling() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let main = session.tree.allPanes[0]
+        let focused = session.tree.splitFocusedPane(direction: .horizontal)
+        let other = session.tree.splitPane(id: main.id, direction: .vertical)!
+        #expect(session.tree.focusedPaneID == focused.id, "precondition: splitPane(id: main) must not steal focus from Focused")
+
+        session.tree.focusedPaneID = other.id
+        session.tree.focusedPaneID = focused.id
+
+        #expect(store.closePane(id: focused.id) == .closed)
+
+        #expect(session.tree.focusedPaneID == other.id,
+                "the most recently focused survivor is `other`, not `main` — a sibling-subtree-only fallback would wrongly answer `main`, other's structural sibling within Focused's absorbed space")
+    }
+
+    /// A dedicated three-Pane version of "closing a non-focused Pane leaves
+    /// focus untouched" — guards against a regression where introducing the
+    /// recency stack accidentally reassigns focus on every close instead of
+    /// only when the closed Pane was the focused one.
+    @Test func closingANonFocusedPaneAmongThreeSurvivorsLeavesFocusUnchanged() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        _ = session.tree.allPanes[0]
+        let paneA = session.tree.splitFocusedPane(direction: .horizontal)
+        let paneB = session.tree.splitFocusedPane(direction: .horizontal)
+        session.tree.focusedPaneID = paneA.id
+
+        #expect(store.closePane(id: paneB.id) == .closed)
+
+        #expect(session.tree.focusedPaneID == paneA.id,
+                "closing a Pane that wasn't focused must never disturb focus, even with a populated recency stack")
+    }
+
     @Test func closingTheFocusedPaneMovesFocusToTheRemainingSibling() {
         let store = AppStateStore()
         let session = store.sessions[0]
@@ -170,6 +268,39 @@ struct AppStateStoreClosePaneTests {
         #expect(!session.tree.visiblePanes.isEmpty)
         #expect(!(session.tree.allPanes.first { $0.id == session.tree.focusedPaneID }?.isHidden ?? true),
                 "focus must never sit on a hidden pane (#0256), even when another pane is still visible")
+    }
+
+    /// Proves the history-lookup step's `isHidden == false` filter is
+    /// observable through the **production** `closePane` path, not only in
+    /// isolation at the Model layer
+    /// (`SplitTreeFocusHistoryTests
+    /// .theHistoryLookupItselfSkipsAHiddenEntryRankedAheadOfAVisibleOne`).
+    /// The key is that the correct answer here (the most recent *visible*
+    /// history entry, `recentVisibleSurvivor`) is **not** the same value
+    /// `WindowRuntime`'s hidden-pane backstop would produce on its own
+    /// (`visiblePanes.first`, which is `main`) — so a regression that drops
+    /// the filter is still caught even though the backstop papers over the
+    /// worse case of a hidden pane actually being exposed. History reads
+    /// [`focused`, `recentHiddenSurvivor`, `recentVisibleSurvivor`] going
+    /// into the close; `recentHiddenSurvivor` ranks ahead of
+    /// `recentVisibleSurvivor` but is hidden, so it must be skipped.
+    @Test func closingFallsBackToTheMostRecentVisibleHistoryEntryNotTheFirstVisiblePane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let main = session.tree.allPanes[0]
+        let focused = session.tree.splitFocusedPane(direction: .horizontal)
+        let recentVisibleSurvivor = session.tree.splitPane(id: main.id, direction: .vertical)!
+        let recentHiddenSurvivor = session.tree.splitPane(id: recentVisibleSurvivor.id, direction: .vertical)!
+        session.tree.focusedPaneID = recentVisibleSurvivor.id
+        session.tree.focusedPaneID = recentHiddenSurvivor.id
+        session.tree.focusedPaneID = focused.id
+        store.windows[0].hidePane(id: recentHiddenSurvivor.id)
+        #expect(recentHiddenSurvivor.isHidden)
+
+        #expect(store.closePane(id: focused.id) == .closed)
+
+        #expect(session.tree.focusedPaneID == recentVisibleSurvivor.id,
+                "recentHiddenSurvivor ranks ahead of recentVisibleSurvivor in history but is hidden, so the history lookup must skip it — landing on main (visiblePanes.first, the hidden-pane backstop's own answer) would mean the filter is gone")
     }
 
     @Test func closingAPaneLeavesAnAlreadyVisibleSiblingsHiddenStateAlone() {
