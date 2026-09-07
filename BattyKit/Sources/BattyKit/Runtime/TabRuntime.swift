@@ -185,6 +185,28 @@ public final class TabRuntime: Identifiable {
             // against; Cmd-C and Edit > Copy still copy explicitly via
             // the `cmd+c=copy_to_clipboard` keybind set below.
             builder.withCustom("copy-on-select", "false")
+            // libghostty's default leaves `ssh-env` off, so `COLORTERM`/
+            // `TERM_PROGRAM` never reach a remote host (#0392). Turning it on
+            // declares Batty's intent correctly against libghostty's config
+            // model, but the pinned `libghostty-spm` fork's bash/zsh
+            // shell-integration scripts are a from-scratch MIT rewrite that
+            // explicitly does not act on `ssh-env` (or `sudo`/`ssh-terminfo`/
+            // `path`) — see docs/ssh-colors-and-terminfo.md. So this line is
+            // currently a no-op in practice, kept for forward-compatibility
+            // and because it is the correct declared config either way.
+            // `ssh-terminfo` is deliberately left off: it writes to
+            // `~/.terminfo` on whatever host `ssh` reaches, and #0392 was
+            // told not to decide that trade-off unilaterally — see the
+            // follow-up ticket. Every other feature (`cursor`, `no-sudo`,
+            // `title`, `no-ssh-terminfo`, `path`) is omitted rather than
+            // spelled out: per libghostty's own doc comment on this key, an
+            // omitted feature keeps its default, so spelling out a value
+            // identical to the default only widens the token list a future
+            // pin bump could reject wholesale (one bad token here has been
+            // observed to take the entire config down, `keybind = clear`
+            // included) for zero behavioral gain. `ssh-env` is the only
+            // actual delta from libghostty's default.
+            builder.withCustom("shell-integration-features", "ssh-env")
             // A per-tab command override (#0282's `pane split -c`) replaces
             // the shell preference entirely for this one tab, rather than
             // appending a second `command` line — `command`'s repeat-key
@@ -200,8 +222,8 @@ public final class TabRuntime: Identifiable {
                 // ordinary shell tab must keep closing when the shell
                 // exits, since Cmd-D and every existing tab rely on that.
                 // `wait-after-command` verified against the pinned
-                // libghostty (`b146b73a8ba3ed2678a22a9de5feecfcbf298d48`,
-                // tag 1.3.2) rather than assumed: `ghostty +show-config
+                // libghostty (`a2565ccf047c03c74a59dd7c16a8fac7c477852f`,
+                // tag 1.5.20260903) rather than assumed: `ghostty +show-config
                 // --default --docs` documents `false` as the default and
                 // "the terminal window will stay open until any keypress is
                 // received" as the semantic; `true` round-trips with zero

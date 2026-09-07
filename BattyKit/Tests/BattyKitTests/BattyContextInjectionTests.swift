@@ -141,4 +141,26 @@ struct BattyContextInjectionTests {
         #expect(newPane.tabs[0].terminal.renderedConfig.contains("BATTY_PANE_ID=\(newPane.id.uuidString)"))
         #expect(!newPane.tabs[0].terminal.renderedConfig.contains("BATTY_PANE_ID=\(originalPane.id.uuidString)"))
     }
+
+    // MARK: - shell-integration-features (#0392)
+
+    /// Asserts the exact rendered line, not a substring — a review-round
+    /// mutation to `"ssh-env,no-cursor,no-title,no-path"` (silently
+    /// disabling three default-on features) still contains the substring
+    /// `"shell-integration-features = ssh-env"` and left this suite green
+    /// at a naive `.contains` check. Splitting on `"\n"` and matching a
+    /// whole line catches that: `withCustom` emits this key exactly once
+    /// per builder, so the line's entire content must equal `"ssh-env"`.
+    @Test func freshTabEnablesSSHShellIntegrationFeatures() {
+        let tab = TabRuntime()
+        let lines = tab.terminal.renderedConfig.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines.contains("shell-integration-features = ssh-env"))
+    }
+
+    @Test func attachContextPreservesSSHShellIntegrationFeatures() {
+        let tab = TabRuntime()
+        tab.attachContext(paneID: UUID(), sessionID: UUID())
+        let lines = tab.terminal.renderedConfig.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines.contains("shell-integration-features = ssh-env"))
+    }
 }

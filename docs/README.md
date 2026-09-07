@@ -164,6 +164,24 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   shortcuts aren't the load-bearing path. Read this before touching
   `BattyShortcuts`, the NSEvent monitor in `BattyAppDelegate`, or the
   Settings → Shortcuts pane.
+- [`ssh-colors-and-terminfo.md`](ssh-colors-and-terminfo.md) — why `COLORTERM`
+  doesn't carry a Theme (it only says "may I send 24-bit colour", not which
+  colours) and why the ANSI-indices-0–15 route is what actually makes a
+  Theme follow a remote app over SSH, with the `termguicolors = false` nvim
+  recipe. Also the #0392 finding that Batty's `shell-integration-features =
+  ssh-env` is correctly declared but currently inert: the pinned
+  `libghostty-spm` fork's bash/zsh shell-integration scripts are a
+  from-scratch MIT rewrite that doesn't act on `ssh-env`/`ssh-terminfo` (or
+  `sudo`/`path`), and Batty's own vendored `Resources/ghostty-runtime`
+  shell-integration/terminfo tree (bash/zsh/fish/elvish/nushell, working
+  `ssh()` wrapper included) is dead code at runtime — `GHOSTTY_RESOURCES_DIR`
+  always points at the SPM package's own bundled copy instead. This is a
+  #0389 re-pin regression, not a standing gap: SSH colours and fish/nushell
+  integration both worked before it. Follow-up tickets #0399 (SSH) and
+  #0400 (fish/elvish/nushell) own restoring the behavior. Read this before
+  touching `shell-integration-features`, assuming Batty's vendored
+  terminfo/shell-integration bundle is what's live, or promising a user
+  that a Ghostty SSH config flag will "just work."
 - [`themes.md`](themes.md) — where themes come from (the
   `brennanMKE/libghostty-spm` catalog), how the active theme is
   persisted in `UserDefaults`, how new tabs pick it up, and how

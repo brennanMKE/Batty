@@ -175,6 +175,22 @@ extension AppStateStore {
             builder.withFontSize(fontSize)
             builder.withCursorStyle(cursor)
             builder.withCursorStyleBlink(blink)
+            // Emits the same `shell-integration-features` value as
+            // `TabRuntime.applyShellAndAppearancePreferences` (#0392) —
+            // `setTerminalConfiguration` replaces rather than merges, so a
+            // key emitted from only one of the two builders is silently
+            // dropped the next time the other one runs. (This builder still
+            // omits `copy-on-select`, `command`, `env BATTY_*`,
+            // `keybind = clear`, and `cmd+c` — #0373's pre-existing gap, not
+            // fixed here.) Consumed at process spawn, so reapplying here
+            // can't affect an already-running shell; what it does protect is
+            // a Tab created *before* an appearance change whose surface
+            // hasn't spawned yet — a Tab created after the change already
+            // gets the key from `TabRuntime`'s own builder. Only `ssh-env`
+            // is spelled out; every other feature is left at libghostty's
+            // default by omission — see the sibling comment in
+            // `TabRuntime.swift` for why that's deliberate.
+            builder.withCustom("shell-integration-features", "ssh-env")
             builder.withCustom("keybind", "super+left=text:\\x01")
             builder.withCustom("keybind", "super+right=text:\\x05")
             builder.withCustom("keybind", "super+backspace=text:\\x15")

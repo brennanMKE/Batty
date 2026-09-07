@@ -39,4 +39,14 @@ If you change the theme and the cursor or font stays put, that's working as inte
 
 Custom user themes — dropping a theme file into a Batty support folder and seeing it appear in the menu — are a planned future feature, not in this release. For now, pick from the bundled catalog.
 
+## Your theme over SSH
+
+Connecting to a remote host doesn't disconnect your theme the way you might expect — but it depends on how the remote app draws its colors.
+
+Programs that paint with the 16 standard ANSI colors (color slots, not fixed values) get resolved through Batty's active theme wherever they're running, local or remote — switch the theme and a remote program repaints instantly, with no reconnect. Programs that paint with 24-bit true color paint exact values instead, and your theme has nothing to override.
+
+For example, neovim over SSH: turn `termguicolors` off and pick a colorscheme that mostly sticks to the 16 standard colors (`vim` is a good starting point) to have it follow your Batty theme. Turn `termguicolors` on for full true-color accuracy instead — but then the remote program's own palette wins, not Batty's.
+
+`COLORTERM=truecolor` (the signal that tells a remote program true color is available) and a resolvable `TERM` are separate concerns from theme-following, and depend on your `ssh` client configuration reaching that remote host — they aren't automatic today.
+
 For the rest of Settings, see [Keyboard Shortcuts](05-shortcuts.md) and [Notifications](06-notifications.md).

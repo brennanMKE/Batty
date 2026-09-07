@@ -573,6 +573,27 @@ struct CrossWindowBehaviorTests {
                 "applyAppearanceToAllSurfaces must update surfaces in every window, not only windows[0] (#0248)")
     }
 
+    /// #0392: `applyAppearanceToAllSurfaces` must emit the same
+    /// `shell-integration-features` value as `TabRuntime`'s own builder —
+    /// `setTerminalConfiguration` replaces rather than merges, so a value
+    /// missing from either apply site would be silently dropped whenever
+    /// the other one next runs. Asserts the exact rendered line, not a
+    /// substring — see `BattyContextInjectionTests`'s sibling assertions
+    /// for why a naive `.contains` check doesn't catch a dropped default
+    /// (e.g. `"ssh-env,no-cursor,no-title,no-path"` still contains
+    /// `"shell-integration-features = ssh-env"` as a prefix).
+    @Test func applyAppearanceToAllSurfacesSetsSSHShellIntegrationFeatures() {
+        let store = AppStateStore()
+        for tab in store.windows[0].sessions.flatMap({ $0.tree.allPanes.flatMap(\.tabs) }) {
+            tab.terminal.controller.setTerminalConfiguration(.default)
+        }
+        store.applyAppearanceToAllSurfaces()
+        for tab in store.windows[0].sessions.flatMap({ $0.tree.allPanes.flatMap(\.tabs) }) {
+            let lines = tab.terminal.renderedConfig.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            #expect(lines.contains("shell-integration-features = ssh-env"))
+        }
+    }
+
     @Test func onAllSessionsClosedIsTriggeredWhenSessionsEmpty() {
         let store = AppStateStore()
         var closeCalled = false
