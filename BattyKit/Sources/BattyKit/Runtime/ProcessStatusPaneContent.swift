@@ -95,6 +95,14 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
 
     private let controller = PaneLifecycleController()
     private let tabLookup: (UUID) -> TabRuntime?
+    /// Sampling cadence (design: 1 second). Injectable so
+    /// `ProcessStatusPaneContentTests`/`ProcessStatusPaneLifecycleWiringTests`
+    /// can exercise the real periodic-resume/periodic-suspend behavior
+    /// without a real 1s (or, for the negative "nothing sampled while
+    /// hidden" assertion, several-seconds) wait per test — the same
+    /// injectable-cadence seam `GitStatusPaneContent.debounceNanoseconds`
+    /// already uses for its own timer.
+    private let samplingInterval: Duration
     private var samplingTask: Task<Void, Never>?
     /// `#0314` merge: the pid-keyed CPU-delta baseline (review round 1,
     /// B2 — mode B's followed pid changes tick to tick, and delta-ing
@@ -120,6 +128,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// `Task` would have gone undetected.
     var isSamplingTaskAlive: Bool { samplingTask != nil }
 
+    /// Testability hook only (`internal`) — review round 2, N3: every test
+    /// that constructs a `ProcessStatusPaneContent` now injects a short
+    /// cadence (so the production `.seconds(1)` default itself is never
+    /// exercised timing-wise), so nothing previously pinned that default
+    /// directly. `ProcessStatusPaneContentTests` reads this once, on a
+    /// default-initialized instance, to catch a regression to the default
+    /// argument instantly rather than relying on any real wait to notice.
+    var samplingIntervalForTesting: Duration { samplingInterval }
+
     /// Testability hook only (`internal`) — forces one `performSample()`
     /// call synchronously, so a test can control exactly when a sample
     /// happens (e.g. immediately after a real busy-loop or a real
@@ -129,10 +146,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         performSample()
     }
 
-    public init(target: Target?, tabLookup: @escaping (UUID) -> TabRuntime? = { _ in nil }) {
+    public init(
+        target: Target?,
+        tabLookup: @escaping (UUID) -> TabRuntime? = { _ in nil },
+        samplingInterval: Duration = .seconds(1)
+    ) {
         self.target = target
         self.hasNoSelection = target == nil
         self.tabLookup = tabLookup
+        self.samplingInterval = samplingInterval
     }
 
     // MARK: - PaneContentLifecycle
@@ -203,9 +225,10 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         if case .exited = runState { return }
         performSample()
         if case .exited = runState { return }
+        let interval = samplingInterval
         samplingTask = Task { [weak self] in
             while true {
-                try? await Task.sleep(for: .seconds(1))
+                try? await Task.sleep(for: interval)
                 guard let self else { return }
                 if Task.isCancelled { return }
                 guard self.lifecyclePhase == .active else { return }

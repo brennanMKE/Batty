@@ -106,21 +106,70 @@ private func makeContent(
     return (content, box)
 }
 
-/// Polls until `condition()` is true or a short deadline elapses — used
+/// Polls until `condition()` is true or a generous deadline elapses — used
 /// only to synchronize with `GitStatusPaneContent`'s internally-scheduled
 /// `Task`s (the debounce timer, the scan `Task`), which run asynchronously
 /// relative to the test's own statements. Not a sleep-and-hope: the loop
 /// exits the instant the condition is met.
+///
+/// 15s, back down from round 2's 30s (review round 3, N1). 30s was this
+/// suite's answer to *misattribution* — a starved wait failing on an
+/// unrelated downstream `#expect` instead of on itself — but round 2 also
+/// added loud `Issue.record` on timeout, which fixes misattribution
+/// directly regardless of deadline size. What actually reduces how often
+/// this deadline is threatened is `.serialized` (below), confirmed by
+/// measurement to remove the specific starvation this suite was hitting.
+/// With that lever doing the real work, a large ceiling only taxes the
+/// case that matters most for fast feedback: a genuine hang, which this
+/// suite's 15 call sites can each cost up to 15s (225s worst case) to
+/// report, vs. 30s each (450s) before this change — no run that finishes
+/// under load costs anything either way, since this is a ceiling, not a
+/// per-call charge.
+///
+/// Polls every 10ms (not the original 2ms) — review round 2, N4: tight
+/// polling on the MainActor is itself a small contributor to the
+/// contention this issue is about, and 2ms bought no responsiveness this
+/// suite's own workloads (sub-100ms in the typical case) actually needed.
+///
+/// Records a loud `Issue` on timeout (review round 2, B2's follow-up)
+/// rather than silently returning: a caller with a downstream `#expect`
+/// after this call used to see that unrelated expectation fail when the
+/// real problem was this wait never resolving — under extreme contention,
+/// misattributing a starved wait as a behavioral regression is exactly
+/// the failure mode this issue exists to eliminate.
 @MainActor
-private func waitUntil(timeoutNanoseconds: UInt64 = 15_000_000_000, _ condition: () -> Bool) async {
+private func waitUntil(
+    timeoutNanoseconds: UInt64 = 15_000_000_000,
+    sourceLocation: SourceLocation = #_sourceLocation,
+    _ condition: () -> Bool
+) async {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: .nanoseconds(Int64(timeoutNanoseconds)))
     while !condition(), clock.now < deadline {
         await Task.yield()
-        try? await Task.sleep(nanoseconds: 2_000_000)
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    if !condition() {
+        Issue.record(
+            "waitUntil timed out after \(timeoutNanoseconds / 1_000_000)ms without the condition becoming true",
+            sourceLocation: sourceLocation
+        )
     }
 }
 
+/// `.serialized` (review round 2, B3): empirically, not on the theory that
+/// it protects shared mutable state — this suite and `ProcessStatusPaneContentTests`
+/// own no state shared with any other suite, so that specific #0383 finding
+/// ("`.serialized` does not protect cross-suite shared state") does not
+/// apply here either way. What was measured: under ~30-process CPU
+/// contention, this suite (and `ProcessStatusPaneContentTests`) failed the
+/// majority of their timing-sensitive tests when running unserialized
+/// alongside the rest of the ~1478-test parallel batch, and passed cleanly,
+/// repeatedly, once serialized — reducing how many of this suite's own
+/// `Task`s can be mid-flight and contending for the MainActor at once is
+/// a real, measured lever on the starvation this issue is about, distinct
+/// from (and not contradicted by) the shared-state finding.
+@Suite(.serialized)
 @MainActor
 struct GitStatusPaneContentTests {
 
@@ -130,6 +179,14 @@ struct GitStatusPaneContentTests {
         let scanner = RecordingScanner()
         let (content, box) = makeContent(scanner: scanner)
         content.setUp(visible: false)
+        // Review round 3, B2: a *synchronous* mutation that makes
+        // `setUp(visible: false)` call `activate()` unconditionally is
+        // already caught with no wait at all (M1 in this issue's mutation
+        // table) — but a *deferred* variant (`Task { self.activate() }`
+        // scheduled from the correct-looking synchronous path) is not: it
+        // schedules a `Task` this instant-check can't see yet. This real
+        // wait is what actually exercises that path; a synchronous-only
+        // mutation made round 2's deletion of it look safe when it wasn't.
         try? await Task.sleep(nanoseconds: 20_000_000)
         #expect(content.lifecyclePhase == .suspended)
         #expect(box.created.isEmpty)
@@ -165,9 +222,21 @@ struct GitStatusPaneContentTests {
         let scanCountAtHide = scanner.scanCount
         // Zero periodic work while suspended: mirrors
         // `PaneContentLifecycleTests`'s own "count attempted work, observe
-        // it doesn't move" pattern — no further scan happens without an
-        // explicit `show`, even after waiting past the debounce window.
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        // it doesn't move" pattern. This real wait is load-bearing, not
+        // decorative (review round 2, B1): a regression that gives
+        // `activate()` an uncancelled periodic poller — the textbook
+        // "periodic work survives suspend" bug `docs/pane-view-lifecycle.md`
+        // §4 exists to prevent — leaks a `Task` that is not held in
+        // `debounceTask`/`scanTask` at all, so no synchronous/structural
+        // check on this type's stored properties can ever observe it;
+        // letting real time pass and re-reading `scanner.scanCount` can,
+        // for any leaked poller whose own period is inside this wait's
+        // window (review round 3, N3 — a fixed window is necessarily
+        // cadence-dependent: a leaked poller firing slower than this
+        // still escapes, the same limit every fixed-window wait in this
+        // suite has). Without this wait the assertion below is `x == x`
+        // and cannot fail for any reason, regardless of cadence.
+        try? await Task.sleep(nanoseconds: 30_000_000)
         #expect(scanner.scanCount == scanCountAtHide)
     }
 
@@ -196,9 +265,29 @@ struct GitStatusPaneContentTests {
         let scanner = RecordingScanner()
         let (content, box) = makeContent(scanner: scanner)
         content.setUp(visible: true)
-        await waitUntil { content.state != .loading }
+        // Wait on the *full* precondition, not just `state != .loading`:
+        // `handleScanResult` sets `isRefreshing = false` before it sets
+        // `state`, in the same synchronous call, so this never adds a real
+        // race — but folding it into the wait means a starved machine that
+        // hasn't finished the initial scan yet fails *here*, on the wait,
+        // rather than downstream on `isRefreshing == false` reading like a
+        // behavioral regression (review round 2, B2).
+        await waitUntil { content.state != .loading && content.isRefreshing == false }
 
         content.setVisible(true) // already visible — must be a no-op
+        // `isRefreshing` is an instant check for a *synchronous*
+        // regression: `requestScan()` sets it to `true` synchronously,
+        // before ever reaching the `await` inside its scan `Task` — so a
+        // no-op path that regressed into calling `activate()` directly
+        // flips this immediately, no wait required.
+        #expect(content.isRefreshing == false)
+        // Review round 3, B2: that instant check alone is not enough — a
+        // *deferred* variant of the same regression (`Task { self
+        // .activate() }` scheduled from the no-op path, rather than
+        // calling it directly) schedules work the instant check above
+        // can't see yet. This real wait is what actually exercises that
+        // path; round 2 deleted it on the strength of a mutation
+        // (synchronous-only) that couldn't have shown the gap.
         try? await Task.sleep(nanoseconds: 20_000_000)
         #expect(box.created.count == 1)
         #expect(box.current?.startCount == 1)
@@ -239,6 +328,11 @@ struct GitStatusPaneContentTests {
         content.tearDown()
 
         content.setVisible(true)
+        // Review round 3, B2: `.rejected` taking the synchronous
+        // `case .noOp, .rejected: break` branch rules out a *direct*
+        // `activate()` call with no wait — but not a *deferred* one
+        // (`Task { self.activate() }` scheduled from that branch), which
+        // this real wait is what actually exercises.
         try? await Task.sleep(nanoseconds: 20_000_000)
         #expect(box.created.isEmpty)
         #expect(scanner.scanCount == 0)
@@ -266,7 +360,7 @@ struct GitStatusPaneContentTests {
         // lag well past its 60ms nominal delay. The assertion below is
         // about *coalescing* (exactly one scan, not five), not about
         // hitting a tight deadline.
-        await waitUntil(timeoutNanoseconds: 15_000_000_000) { scanner.scanCount > scanCountBeforeBurst }
+        await waitUntil { scanner.scanCount > scanCountBeforeBurst }
         #expect(scanner.scanCount == scanCountBeforeBurst + 1)
     }
 
@@ -279,7 +373,13 @@ struct GitStatusPaneContentTests {
         // The scan is now in flight (100ms delay) — hide before it resolves.
         content.setVisible(false)
 
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        // Await the in-flight scan's actual resolution instead of sleeping
+        // longer than its known 100ms delay: `handledScanResultCount`
+        // increments at the top of `handleScanResult`, before the
+        // generation/phase guard that discards this particular result, so
+        // this reliably fires the instant the stale result is (correctly)
+        // thrown away — no fixed margin to tune against scheduler jitter.
+        await waitUntil { content.handledScanResultCount >= 1 }
         // The scan that was in flight when hidden must not have flipped
         // state to `.notARepository` — the generation guard in
         // `handleScanResult` discards it because the pane is no longer

@@ -13,11 +13,39 @@ import Testing
 @MainActor
 struct ProcessStatusPaneLifecycleWiringTests {
 
-    private func makeProcessStatusPane(pinnedTo pid: Int32) -> (store: AppStateStore, session: SessionRuntime, paneID: UUID) {
+    /// `samplingInterval`, when supplied, overrides the production 1s
+    /// sampling cadence via `contentFactory` — the same injectable-cadence
+    /// seam `ProcessStatusPaneContentTests` uses directly — so
+    /// `aHiddenProcessStatusPaneDoesNotKeepSampling` below can prove "zero
+    /// periodic work while suspended" across several real cadences without
+    /// paying production's cadence in wall clock. `contentFactory` is
+    /// forwarded through `SplitTree.makePane` for exactly this purpose
+    /// (see its doc comment): an explicit override that survives all the
+    /// way down without being shadowed by the kind-specific default.
+    ///
+    /// Left `nil` by default (review round 2, N2) so every other test in
+    /// this file still exercises `SplitTree.makePane`'s real `.processStatus`
+    /// branch and its `processStatusPid:` argument, rather than
+    /// short-circuiting through `contentFactory` just because one test
+    /// needs to.
+    private func makeProcessStatusPane(
+        pinnedTo pid: Int32,
+        samplingInterval: Duration? = nil
+    ) -> (store: AppStateStore, session: SessionRuntime, paneID: UUID) {
         let store = AppStateStore()
         let session = store.sessions[0]
         let source = session.focusedPaneAnyKind
-        let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus, processStatusPid: pid)!
+        var contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)?
+        if let samplingInterval {
+            contentFactory = { _ in ProcessStatusPaneContent(target: .pinned(pid), samplingInterval: samplingInterval) }
+        }
+        let newPaneID = store.splitPane(
+            id: source.id,
+            direction: .horizontal,
+            kind: .processStatus,
+            processStatusPid: pid,
+            contentFactory: contentFactory
+        )!
         return (store, session, newPaneID)
     }
 
@@ -53,7 +81,7 @@ struct ProcessStatusPaneLifecycleWiringTests {
         #expect(processStatusContent(of: pane)?.snapshot?.pid == getpid())
 
         // Deterministic cleanup — this test ends with the pane resumed
-        // (an active 1s sampling Task), not left to ARC timing
+        // (an active periodic sampling Task), not left to ARC timing
         // (docs/pane-view-lifecycle.md §5's own binding lesson).
         _ = store.closePane(id: paneID)
     }
@@ -72,14 +100,18 @@ struct ProcessStatusPaneLifecycleWiringTests {
     /// A hidden `.processStatus` pane costs zero periodic work — the
     /// `docs/pane-view-lifecycle.md` §4 guarantee, checked the same way
     /// `ProcessStatusPaneContentTests` checks it: real wall-clock time
-    /// passes and the snapshot does not change while suspended.
+    /// passes and the snapshot does not change while suspended. The
+    /// `contentFactory` override in `makeProcessStatusPane` gives this a
+    /// 20ms cadence, so a wait spanning many real cadences (still a
+    /// genuine "did anything happen" window) costs 200ms here instead of
+    /// production's 1s-cadence multiple.
     @Test func aHiddenProcessStatusPaneDoesNotKeepSampling() async throws {
-        let (store, session, paneID) = makeProcessStatusPane(pinnedTo: Int32(getpid()))
+        let (store, session, paneID) = makeProcessStatusPane(pinnedTo: Int32(getpid()), samplingInterval: .milliseconds(20))
         let pane = session.tree.allPanes.first { $0.id == paneID }!
         store.hidePane(id: paneID)
         let capturedAtWhenHidden = processStatusContent(of: pane)?.snapshot?.capturedAt
 
-        try await Task.sleep(for: .seconds(1.2))
+        try await Task.sleep(for: .milliseconds(200))
 
         #expect(processStatusContent(of: pane)?.snapshot?.capturedAt == capturedAtWhenHidden)
     }

@@ -2,6 +2,7 @@
 
 import CoreServices
 import Foundation
+import Observation
 import OSLog
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "GitStatusPaneContent")
@@ -451,6 +452,17 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
     private var isScanning = false
     private var pendingRescanRequested = false
 
+    /// Testability hook only (`internal`, reached via `@testable import` in
+    /// `BattyKitTests`) — counts every `handleScanResult` call, including
+    /// ones the generation/phase guard below discards. Lets a test that
+    /// hides the pane mid-scan await the in-flight scan's actual
+    /// resolution deterministically (`await waitUntil { content
+    /// .handledScanResultCount >= 1 }`) instead of sleeping a fixed real
+    /// duration chosen to outlast the scanner double's injected delay,
+    /// which either over-waits on a fast machine or under-waits on a
+    /// loaded one.
+    @ObservationIgnored private(set) var handledScanResultCount = 0
+
     /// Bumped on every `activate`/`suspend`/`changeDirectory` so a
     /// debounce/scan `Task` scheduled before a phase change can recognize
     /// it's stale and decline to act on a result nobody wants anymore.
@@ -569,6 +581,7 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
     }
 
     private func handleScanResult(_ result: GitStatusScanResult?, generation resultGeneration: Int) {
+        handledScanResultCount += 1
         guard resultGeneration == generation, lifecyclePhase == .active else { return }
         isScanning = false
         isRefreshing = false

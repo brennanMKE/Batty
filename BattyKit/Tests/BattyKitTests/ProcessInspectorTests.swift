@@ -190,6 +190,63 @@ struct ProcessInspectorTests {
         #expect(totalNanoseconds < 60_000_000_000) // 60s of cumulative CPU
     }
 
+    /// Review round 3, B1: neither test above catches a corrupted
+    /// `MachTimebase.nanosecondsPerTick`. The ratio test above is
+    /// `x / y * y ≈ x`, tautological for any non-zero `y` — it cancels
+    /// out an error *in* the constant it multiplies by. The plausibility
+    /// bound above is 60s, wide enough that a ~42x under-report (this
+    /// issue's own B1: `nanosecondsPerTick` collapsed to `1.0`, the
+    /// original ticks-as-nanoseconds bug) sails through undetected —
+    /// proven: forcing it to `1.0` left `main`'s full suite at 1 failure
+    /// (only `ProcessStatusPaneContentTests`'s live CPU% test, which
+    /// re-derives its expectation using this same constant and is
+    /// therefore just as circular against a bug *in* it).
+    ///
+    /// This is the non-circular pin: `mach_absolute_time()` is exactly
+    /// the counter `mach_timebase_info` (and so `nanosecondsPerTick`)
+    /// converts — the same doc comment on `MachTimebase` says so — and
+    /// `ri_user_time`/`ri_system_time` (`CoreMetrics.cpuTicksUser`/
+    /// `cpuTicksSystem`) are ticks in that identical unit. Bracketing a
+    /// real sleep with both `mach_absolute_time()` and an independently-
+    /// implemented clock (`ContinuousClock`) gives two measurements of
+    /// the same real interval that do not share `nanosecondsPerTick`
+    /// anywhere in their computation — so a corrupted constant makes them
+    /// disagree, by exactly its error factor, regardless of CPU
+    /// contention: both clocks advance at a fixed hardware rate whether
+    /// or not this process is actually scheduled, unlike CPU-time ticks
+    /// (which is exactly why `cpuPercentReflectsSubstantialRealCoreUsage`
+    /// could not use this same trick to check *its* subject, CPU share,
+    /// but can be used here to check the *conversion constant*).
+    @Test func machTimebaseNanosecondsPerTickAgreesWithAnIndependentClock() async {
+        let ticksBefore = mach_absolute_time()
+        let clockBefore = ContinuousClock.now
+
+        try? await Task.sleep(for: .milliseconds(200))
+
+        let ticksAfter = mach_absolute_time()
+        let clockAfter = ContinuousClock.now
+
+        let deltaTicks = ticksAfter - ticksBefore
+        let computedNanoseconds = Double(deltaTicks) * MachTimebase.nanosecondsPerTick
+
+        let elapsed = clockAfter - clockBefore
+        let components = elapsed.components
+        let independentNanoseconds = Double(components.seconds) * 1_000_000_000
+            + Double(components.attoseconds) / 1_000_000_000
+
+        #expect(independentNanoseconds > 0, "expected the bracketing sleep to take measurable time")
+        let ratio = computedNanoseconds / independentNanoseconds
+        // A 2x band: real scheduling jitter between two back-to-back
+        // clock reads is microseconds against a 200ms interval, nowhere
+        // near enough to approach this band, while a corrupted constant
+        // (this issue's ~42x, or the more paranoid case of an inverted
+        // conversion) lands far outside it either direction.
+        #expect(
+            ratio > 0.5 && ratio < 2.0,
+            "MachTimebase.nanosecondsPerTick (\(MachTimebase.nanosecondsPerTick)) converts a real mach-tick interval to \(computedNanoseconds)ns, but an independent clock (ContinuousClock) measured the same bracketed interval as \(independentNanoseconds)ns — the conversion constant itself looks wrong"
+        )
+    }
+
     // MARK: - `parseProcArgs2` argv/environment boundary (review round 1, F1)
 
     /// Builds a synthetic `KERN_PROCARGS2`-shaped buffer by hand — argc,
