@@ -576,7 +576,11 @@ public final class AppStateStore {
     public func closePane(id paneID: UUID) -> PaneCloseOutcome {
         let totalPanes = windows.reduce(0) { $0 + $1.sessions.reduce(0) { $0 + $1.tree.allPanes.count } }
         for window in windows where window.sessions.contains(where: { $0.tree.root.contains(paneID: paneID) }) {
-            return window.closePane(id: paneID, refuseIfAppsLastPane: totalPanes == 1)
+            // #0396: this verb is XPC-only (see the doc comment above) — a
+            // pane close that empties its Session is CLI-origin, not the
+            // GUI/PTY-origin default `WindowRuntime.closePane` otherwise
+            // assumes.
+            return window.closePane(id: paneID, refuseIfAppsLastPane: totalPanes == 1, fromCli: true)
         }
         return .unknownPane
     }
@@ -600,13 +604,14 @@ public final class AppStateStore {
         /// counterpart of `PaneCloseOutcome.needsConfirmation` (#0283):
         /// there is no UI to confirm over XPC, so the close is refused
         /// rather than silently bypassing the guard the user configured
-        /// or force-closing behind their back. Written even though the
-        /// Sidebar's own "Close" control (`WindowRuntime.removeSession`,
-        /// driven from `SessionSidebarView`'s context menu) applies no
-        /// such gate today — the XPC verb is unattended and gets the
-        /// stricter rule #0283 already established one tier down. No
-        /// `--force` flag exists to bypass this (#0382's pinned decision,
-        /// following #0283's).
+        /// or force-closing behind their back. The Sidebar's own "Close"
+        /// control now sweeps the same guard via `WindowRuntime
+        /// .requestRemoveSession(id:)` (#0396) and raises a confirmation
+        /// dialog instead of refusing outright — the XPC verb stays
+        /// stricter because it is unattended and has no UI to raise that
+        /// dialog through. No `--force` flag exists to bypass this
+        /// (#0382's pinned decision, following #0283's, not reopened by
+        /// #0396).
         ///
         /// **Unreachable today, same as `PaneCloseOutcome.needsConfirmation`
         /// one tier down** (#0283 never got a test for it either):
@@ -636,21 +641,24 @@ public final class AppStateStore {
     /// UI to give, and refuse rather than leave the app with zero
     /// sessions.
     ///
-    /// **Correction (review round 1): this is not "the same path the
-    /// Sidebar's Close control already emits from."** `SessionSidebarView`'s
-    /// "Close" context-menu item calls `WindowRuntime.removeSession(id:)`
-    /// directly (`SessionSidebarView.swift`), not this `AppStateStore`
-    /// method — and `WindowRuntime.removeSession` contains no
-    /// `AppEventWatcher.send` call at all. This `AppStateStore.removeSession`
-    /// wrapper is the *only* emitter of `session_destroyed` (#0145). So a
-    /// human closing a Session from the Sidebar is invisible to `batty
-    /// watch` today; only this XPC verb's close is observable. That
-    /// asymmetry is real and pre-existing (this issue doesn't create or
-    /// fix it) — a `batty watch` consumer must not assume `session_destroyed`
-    /// fires for every Session removal, only for ones that reached it
-    /// through this method (this XPC verb, and `UITestDriver`'s
-    /// `.closeSession`, which also calls this method rather than the
-    /// window-level one).
+    /// **#0396 update:** `session_destroyed` now emits from
+    /// `WindowRuntime.removeSession(id:fromCli:)` itself — the single
+    /// choke point every `removeSession`-based removal path funnels
+    /// through (this verb, the Sidebar's "Close" control via
+    /// `requestRemoveSession`, and the `closeTab`/`closePane` cascades) —
+    /// rather than only from this `AppStateStore` wrapper. This call
+    /// passes `fromCli: true` so the event correctly reports XPC origin,
+    /// matching `focusSessionForXPC`/`focusPaneForXPC`/`focusTabForXPC`'s
+    /// existing convention.
+    ///
+    /// **Still not universal**: closing a whole `NSWindow` (red button,
+    /// ⌘⇧W) never calls `removeSession` at all —
+    /// `RootWindowView.windowWillClose` tears the window down and calls
+    /// `removeWindow(id:)`, which does `windows.removeAll { ... }`
+    /// directly, dropping every Session the window held with no
+    /// `session_destroyed` for any of them. A `batty watch` consumer must
+    /// not assume Session removal is fully covered; this remaining gap is
+    /// left to #0145 (or a follow-up) rather than decided here.
     ///
     /// Never touches `selectedSessionID` beyond what `removeSession`
     /// itself already does (reassigning selection only when the *closed*
@@ -670,7 +678,7 @@ public final class AppStateStore {
             logger.notice("closeSessionForXPC: refused session=\(sessionID, privacy: .public) reason=last-session-in-app")
             return .refusedLastSession
         }
-        removeSession(id: sessionID)
+        removeSession(id: sessionID, fromCli: true)
         return .closed
     }
 
@@ -868,15 +876,17 @@ public final class AppStateStore {
         return result
     }
 
-    public func removeSession(id: UUID) {
+    /// `fromCli` forwards to `WindowRuntime.removeSession(id:fromCli:)`,
+    /// which is now the sole `session_destroyed` emitter (#0396) — this
+    /// wrapper no longer emits its own copy, so a stale/unknown `id` (for
+    /// which `windowOwning` finds nothing) emits nothing, fixing the
+    /// phantom-event-before-validation defect the old duplicate emission
+    /// here had.
+    public func removeSession(id: UUID, fromCli: Bool = false) {
         cancelNameSuggestion(forSessionID: id)
 
-        // #0145: notify the active XPC watchers before mutating.
-        let sessionEvent = WatchEventPayload(type: "session_destroyed", sessionID: id)
-        AppEventWatcher.shared.send(eventType: sessionEvent.type, payload: sessionEvent)
-
         // Locate the owning window by session ID — the session may be in any window.
-        windowOwning(sessionID: id)?.removeSession(id: id)
+        windowOwning(sessionID: id)?.removeSession(id: id, fromCli: fromCli)
     }
 
     public func renameSession(id: UUID, to newTitle: String) {

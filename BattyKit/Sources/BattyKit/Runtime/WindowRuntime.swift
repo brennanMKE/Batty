@@ -188,13 +188,39 @@ public final class WindowRuntime {
         return session
     }
 
-    public func removeSession(id: UUID) {
+    /// `fromCli` marks the emitted `session_destroyed` event as XPC-driven
+    /// (#0396), matching `focusSessionForXPC`/`focusPaneForXPC`/
+    /// `focusTabForXPC`'s `fromCli: true`. Per caller: Sidebar close (via
+    /// `requestRemoveSession`) and the `closeTab` cascade keep the default
+    /// `false` — no XPC verb reaches `closeTab` (`XPCVerb` has no tab-close
+    /// verb), so every route into it (menu ⌘W, the NSEvent monitor, the
+    /// Command Palette, the tab-chip close button, the confirmation
+    /// dialog, and libghostty's `onClose`) is GUI or PTY. The `closePane`
+    /// cascade is **not** exclusively GUI-origin the way `closeTab`'s is:
+    /// `WindowRuntime.closePane` has two production callers —
+    /// `closeFocusedNonTerminalPane` (⌘W on a
+    /// non-terminal pane, GUI-origin) and `AppStateStore.closePane(id:)`,
+    /// the XPC `batty pane close` verb (see that method's own doc comment)
+    /// — so `closePane` threads its own `fromCli` through from its caller
+    /// rather than hard-coding either value.
+    public func removeSession(id: UUID, fromCli: Bool = false) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else {
             logger.warning("removeSession id=\(id, privacy: .public) not found in window \(self.id.value, privacy: .public)")
             return
         }
         let session = sessions[index]
         logger.info("removeSession id=\(id, privacy: .public) title='\(session.title, privacy: .public)' sessionsAfter=\(self.sessions.count - 1)")
+        // #0145/#0396: notify the active XPC watchers before mutating — the
+        // single choke point every removal path funnels through (Sidebar's
+        // "Close", the closeTab/closePane cascades when their tree empties,
+        // and AppStateStore.removeSession/closeSessionForXPC), so
+        // session_destroyed now fires regardless of which hand destroyed
+        // the Session. Placed after the existence guard above rather than
+        // before it (unlike the emission this replaces, at the old
+        // AppStateStore.removeSession) so an unknown id never emits a
+        // phantom event for a Session that was never destroyed.
+        let sessionEvent = WatchEventPayload(type: "session_destroyed", sessionID: id, fromCli: fromCli)
+        AppEventWatcher.shared.send(eventType: sessionEvent.type, payload: sessionEvent)
         let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
         cleanUpBellState(forTabIDs: tabIDsToClear)
         for tabID in tabIDsToClear {
@@ -216,6 +242,38 @@ public final class WindowRuntime {
             logger.info("removeSession all sessions gone; invoking onAllSessionsClosed")
             onAllSessionsClosed?()
         }
+    }
+
+    /// Confirmation-gated entry point for closing a whole Session (#0396) —
+    /// the Sidebar's "Close" control's counterpart to `requestCloseTab`/
+    /// `requestCloseOtherTabs`. Sweeps every Tab across every Pane in the
+    /// Session for `needsConfirmClose`; if any are found, raises the same
+    /// `PendingCloseRequest` dialog those two use rather than mutating
+    /// immediately, so closing a Session from the Sidebar is never *more*
+    /// destructive than closing one of its Tabs with ⌘W. No-op (with its
+    /// own warning log) if `id` isn't a live Session.
+    ///
+    /// `removeSession(id:)` itself stays unconditional — the `closeTab`/
+    /// `closePane` cascades that call it already swept their own tabs/panes
+    /// before the tree emptied (by which point there is nothing left to
+    /// find here), and the XPC verb (`AppStateStore.closeSessionForXPC`)
+    /// has its own refusal shape with no UI to prompt through.
+    public func requestRemoveSession(id: UUID) {
+        guard let session = sessions.first(where: { $0.id == id }) else {
+            logger.warning("requestRemoveSession id=\(id, privacy: .public) not found in window \(self.id.value, privacy: .public)")
+            return
+        }
+        let busy = session.tree.allPanes.flatMap(\.tabs).filter { $0.terminal.needsConfirmClose }
+        guard !busy.isEmpty else {
+            removeSession(id: id)
+            return
+        }
+        let busyCount = busy.count
+        let title = session.title
+        let message = busyCount == 1
+            ? String(localized: "\(title) has a tab that is still running a process. Closing it will end that process.")
+            : String(localized: "\(title) has \(busyCount) tabs that are still running processes. Closing it will end them.")
+        pendingCloseRequest = PendingCloseRequest(kind: .session(sessionID: id), message: message)
     }
 
     public func renameSession(id: UUID, to newTitle: String) {
@@ -442,6 +500,8 @@ public final class WindowRuntime {
                 .flatMap({ $0.tree.allPanes })
                 .first(where: { $0.id == paneID }) else { return }
             pane.closeOtherTabs(keeping: keepingTabID)
+        case .session(let sessionID):
+            removeSession(id: sessionID)
         }
     }
 
@@ -513,8 +573,14 @@ public final class WindowRuntime {
     /// Trusted as given rather than re-derived here: this window's own
     /// `sessions`/pane counts can't distinguish "the app's last pane" from
     /// "this window's last pane, but a sibling window still has sessions."
+    ///
+    /// `fromCli` (#0396) forwards to `removeSession(id:fromCli:)` when this
+    /// close empties the owning Session's tree. Two production callers:
+    /// `AppStateStore.closePane(id:)` — the XPC `batty pane close` verb —
+    /// passes `true`; `closeFocusedNonTerminalPane` (⌘W on a non-terminal
+    /// pane) is the one GUI caller and keeps the default `false`.
     @discardableResult
-    public func closePane(id paneID: UUID, refuseIfAppsLastPane: Bool) -> PaneCloseOutcome {
+    public func closePane(id paneID: UUID, refuseIfAppsLastPane: Bool, fromCli: Bool = false) -> PaneCloseOutcome {
         for session in sessions {
             guard let pane = session.tree.allPanes.first(where: { $0.id == paneID }) else { continue }
             if pane.tabs.contains(where: { $0.terminal.needsConfirmClose }) {
@@ -542,7 +608,7 @@ public final class WindowRuntime {
             let treeEmptied = session.tree.removePane(id: pane.id)
             if treeEmptied {
                 logger.info("closePane tree empty for session=\(session.id, privacy: .public); removing session")
-                removeSession(id: session.id)
+                removeSession(id: session.id, fromCli: fromCli)
             } else {
                 resolveHiddenFocusFallback(in: session)
             }

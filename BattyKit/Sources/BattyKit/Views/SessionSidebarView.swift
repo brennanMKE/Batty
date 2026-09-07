@@ -276,7 +276,7 @@ private struct SessionRow: View {
             }
             Divider()
             Button("Close", role: .destructive) {
-                windowRuntime.removeSession(id: session.id)
+                windowRuntime.requestRemoveSession(id: session.id)
             }
         }
     }

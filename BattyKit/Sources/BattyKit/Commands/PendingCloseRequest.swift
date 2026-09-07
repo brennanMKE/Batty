@@ -15,12 +15,17 @@ public struct PendingCloseRequest: Identifiable, Equatable {
         case singleTab(tabID: UUID)
         /// Close every tab in `paneID` except `keepingTabID`.
         case otherTabs(paneID: UUID, keepingTabID: UUID)
+        /// Close every Tab across every Pane in `sessionID` and remove the
+        /// Session itself (#0396) — the Sidebar's "Close" control routed
+        /// through the same confirmation gate `singleTab`/`otherTabs` use.
+        case session(sessionID: UUID)
     }
 
     public var title: String {
         switch kind {
         case .singleTab: return String(localized: "Close tab?")
         case .otherTabs: return String(localized: "Close other tabs?")
+        case .session: return String(localized: "Close session?")
         }
     }
 }

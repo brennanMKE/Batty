@@ -84,10 +84,13 @@ public nonisolated enum XPCVerb {
     /// Session across the target session's panes and removes the session —
     /// reusing `AppStateStore.removeSession(id:)` for the mutation, wrapped
     /// with the same refusal shape `paneClose` already established one
-    /// tier down. Note this is a different call site from the Sidebar's
-    /// own "Close" control, which calls `WindowRuntime.removeSession(id:)`
-    /// directly and emits no watch event — see `AppStateStore
-    /// .closeSessionForXPC(id:)`'s doc for that asymmetry. Replies with
+    /// tier down. The Sidebar's own "Close" control reaches the same
+    /// `WindowRuntime.removeSession(id:fromCli:)` mutation (via
+    /// `requestRemoveSession`, gated the same way) and emits the same
+    /// `session_destroyed` watch event (#0396) — the two paths differ only
+    /// in refusal shape: this verb refuses outright with no UI to confirm
+    /// through, the Sidebar raises a confirmation dialog instead. See
+    /// `AppStateStore.closeSessionForXPC(id:)`'s doc for detail. Replies with
     /// an empty `SessionCloseReply` on success as `XPCResponse.payload`.
     /// Request payload is `SessionCloseRequest`. A failure reply (`ok:
     /// false`) covers an unknown/stale `SessionCloseRequest.sessionID`,
