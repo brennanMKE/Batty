@@ -171,9 +171,7 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
         guard QuitConfirmation.windowNeedsConfirmClose(window: runtime) else {
             return true
         }
-        let busyCount = runtime.sessions.reduce(0) { acc, session in
-            acc + session.tree.allPanes.reduce(0) { $0 + $1.tabs.filter { $0.terminal.needsConfirmClose }.count }
-        }
+        let busyCount = Self.busyTabCount(in: runtime)
         let alert = NSAlert()
         alert.messageText = String(localized: "Close Window?")
         alert.informativeText = String(localized: "There are \(busyCount) running process(es) in this window. Closing it will end them.")
@@ -182,6 +180,17 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
         alert.alertStyle = .warning
         let result = alert.runModal()
         return result == .alertFirstButtonReturn
+    }
+
+    /// The count `windowShouldClose` shows the user ("There are N running
+    /// process(es)..."). Extracted (#0398) so the counting logic is
+    /// unit-testable without triggering the modal `NSAlert` above — the same
+    /// reason `QuitConfirmation.openTerminalTabCount` was pulled out of
+    /// `shouldQuitOrPrompt`.
+    static func busyTabCount(in runtime: WindowRuntime) -> Int {
+        runtime.sessions.reduce(0) { acc, session in
+            acc + session.tree.allPanes.reduce(0) { $0 + $1.tabs.filter { $0.needsConfirmClose }.count }
+        }
     }
 
     /// Tears down the window's resources after the window has closed:

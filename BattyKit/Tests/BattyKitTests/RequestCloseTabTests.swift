@@ -7,11 +7,16 @@ import Testing
 @MainActor
 struct RequestCloseTabTests {
 
-    // Without a real attached surface, TerminalViewState.needsConfirmClose
-    // returns false (surface?.needsConfirmClose ?? false). Every test here
-    // exercises the idle path; the busy path is integration-only because
-    // it requires a live ghostty_surface_t. The fork test suite covers the
-    // ghostty_surface_needs_confirm_quit call itself.
+    // TerminalViewState+Polyfill.swift hard-codes needsConfirmClose to an
+    // unconditional `false` regardless of surface state — not the
+    // surface?.needsConfirmClose ?? false this comment used to claim (that
+    // described #0054's intended fork-side implementation, never the code
+    // that shipped). Every test in this file that doesn't set
+    // TabRuntime.needsConfirmCloseOverride exercises the idle path against
+    // a real (surfaceless, in these unit tests) TerminalViewState; the busy
+    // path is covered via that override (#0398) below, and remains
+    // integration-only against a live ghostty_surface_t reporting a real
+    // busy process.
 
     @Test func requestCloseTabOnIdleTabClosesImmediately() {
         let store = AppStateStore()
@@ -26,6 +31,37 @@ struct RequestCloseTabTests {
         #expect(pane.tabs.count == 1)
         #expect(!pane.tabs.contains { $0.id == target })
         #expect(store.pendingCloseRequest == nil)
+    }
+
+    /// #0398: the previously-unreachable half of `requestCloseTab` —
+    /// forcing `TabRuntime.needsConfirmCloseOverride` lets this drive the
+    /// dialog branch without a live surface. Non-default fixture: the tab
+    /// starts idle (the type's default) and is flipped busy explicitly, so
+    /// this doesn't pass merely because "no pending request" was already
+    /// the starting state.
+    @Test func requestCloseTabOnABusyTabRaisesAConfirmationInsteadOfClosing() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let pane = session.tree.allPanes[0]
+        pane.addTab()
+        let target = pane.tabs[0]
+        target.needsConfirmCloseOverride = true
+        #expect(pane.tabs.count == 2)
+        #expect(store.pendingCloseRequest == nil, "precondition: nothing pending yet")
+
+        store.requestCloseTab(id: target.id)
+
+        #expect(pane.tabs.count == 2, "a busy tab must not close before the dialog is confirmed")
+        #expect(pane.tabs.contains { $0.id == target.id })
+        guard case .singleTab(let tabID) = store.pendingCloseRequest?.kind else {
+            Issue.record("expected requestCloseTab to raise a .singleTab pending close request")
+            return
+        }
+        #expect(tabID == target.id)
+        // #0398 review round 1, N1: pins the dialog message too — a fresh
+        // TabRuntime's terminal.title is "" (no live surface), which
+        // Self.runningLabel(for:) maps to "A process".
+        #expect(store.pendingCloseRequest?.message == "A process is still running. Closing this tab will end it.")
     }
 
     @Test func requestCloseFocusedTabRoutesThroughTheCascade() {
@@ -153,6 +189,36 @@ struct RequestCloseTabTests {
         #expect(pane.tabs.count == 1)
         #expect(pane.activeTabID == keeperID)
         #expect(store.pendingCloseRequest == nil)
+    }
+
+    /// #0398: `requestCloseOtherTabs`'s dialog branch, previously
+    /// unreachable in any environment.
+    @Test func requestCloseOtherTabsWithABusyVictimRaisesAConfirmation() {
+        let pane = PaneRuntime()
+        pane.addTab()
+        pane.addTab()
+        let store = AppStateStore(sessions: [
+            SessionRuntime(tree: SplitTree(root: .leaf(pane)))
+        ])
+        let keeperID = pane.tabs[2].id
+        let busyVictim = pane.tabs[0]
+        busyVictim.needsConfirmCloseOverride = true
+        let tabCountBefore = pane.tabs.count
+
+        store.requestCloseOtherTabs(paneID: pane.id, keepingTabID: keeperID)
+
+        #expect(pane.tabs.count == tabCountBefore, "busy victims must not close before confirmation")
+        guard case .otherTabs(let paneID, let keepingTabID) = store.pendingCloseRequest?.kind else {
+            Issue.record("expected requestCloseOtherTabs to raise an .otherTabs pending close request")
+            return
+        }
+        #expect(paneID == pane.id)
+        #expect(keepingTabID == keeperID)
+        // #0398 review round 1, N1: only 1 of the 2 victims is busy, so
+        // this pins the "N of M" message branch specifically, distinct
+        // from the "all of these tabs" branch that fires when every
+        // victim is busy.
+        #expect(store.pendingCloseRequest?.message == "1 of the 2 tabs about to close are running processes.")
     }
 
     @Test func confirmPendingCloseSingleTabClosesAndClears() {

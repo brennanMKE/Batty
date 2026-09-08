@@ -26,6 +26,26 @@ struct AppStateStoreCloseSessionForXPCTests {
         #expect(store.sessions.first?.id == firstSession.id)
     }
 
+    /// #0398: `.needsConfirmation` was unreachable in any environment
+    /// before `TabRuntime.needsConfirmCloseOverride` — the polyfill
+    /// hard-codes the real signal to `false`, and this doc comment on
+    /// `SessionCloseOutcome.needsConfirmation` said so outright. Non-default
+    /// fixture: a second session so this isn't also the app's last one
+    /// (which would confound the assertion with `.refusedLastSession`
+    /// instead), and the tab starts idle before being flipped busy.
+    @Test func closingASessionWithABusyTabIsRefused() {
+        let store = AppStateStore()
+        let firstSession = store.sessions[0]
+        _ = store.addSession(title: "Second")!
+        firstSession.tree.allPanes[0].tabs[0].needsConfirmCloseOverride = true
+
+        let outcome = store.closeSessionForXPC(id: firstSession.id)
+
+        #expect(outcome == .needsConfirmation)
+        #expect(store.sessions.count == 2, "a refused close must leave every session untouched")
+        #expect(store.sessions.contains { $0.id == firstSession.id })
+    }
+
     @Test func closingAnUnknownSessionIDReturnsUnknownSession() {
         let store = AppStateStore()
         let sessionsBefore = store.sessions.count

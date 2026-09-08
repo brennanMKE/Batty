@@ -61,7 +61,7 @@ public enum QuitConfirmation {
         guard SettingsPreference.resolvedConfirmQuit() else { return false }
         return window.sessions.contains { session in
             session.tree.allPanes.contains { pane in
-                pane.kind == .terminal && pane.tabs.contains { $0.terminal.needsConfirmClose }
+                pane.kind == .terminal && pane.tabs.contains { $0.needsConfirmClose }
             }
         }
     }

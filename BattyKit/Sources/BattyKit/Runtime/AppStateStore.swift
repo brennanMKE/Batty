@@ -613,16 +613,20 @@ public final class AppStateStore {
         /// (#0382's pinned decision, following #0283's, not reopened by
         /// #0396).
         ///
-        /// **Unreachable today, same as `PaneCloseOutcome.needsConfirmation`
-        /// one tier down** (#0283 never got a test for it either):
+        /// **Unreachable against a real process today, same as
+        /// `PaneCloseOutcome.needsConfirmation` one tier down**:
         /// `TerminalViewState+Polyfill.swift` hard-codes
         /// `needsConfirmClose` to an unconditional `false` pending an
         /// upstream libghostty-spm change, so this branch cannot fire
-        /// against a real process yet, regardless of caller
+        /// against a live surface yet, regardless of caller
         /// (`WindowRuntime.requestCloseFocusedTab()`'s doc comment notes
         /// the same limitation honestly for its own confirmation gate).
-        /// The logic here is correct for the day the polyfill is removed:
-        /// it scans every Tab across the session's Panes
+        /// It is, however, unit-testable as of #0398:
+        /// `TabRuntime.needsConfirmCloseOverride` lets a test force a Tab
+        /// to report busy without a live surface, so
+        /// `AppStateStoreCloseSessionForXPCTests` exercises this branch
+        /// directly. The logic here is correct for the day the polyfill is
+        /// removed: it scans every Tab across the session's Panes
         /// (`allPanes.flatMap(\.tabs)`) and refuses before mutating
         /// anything.
         case needsConfirmation
@@ -669,7 +673,7 @@ public final class AppStateStore {
         guard let window = windowOwning(sessionID: sessionID),
               let session = window.sessions.first(where: { $0.id == sessionID })
         else { return .unknownSession }
-        if session.tree.allPanes.flatMap(\.tabs).contains(where: { $0.terminal.needsConfirmClose }) {
+        if session.tree.allPanes.flatMap(\.tabs).contains(where: { $0.needsConfirmClose }) {
             logger.notice("closeSessionForXPC: refused session=\(sessionID, privacy: .public) reason=needs-confirmation")
             return .needsConfirmation
         }

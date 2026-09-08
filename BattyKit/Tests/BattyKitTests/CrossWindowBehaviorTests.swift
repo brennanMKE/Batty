@@ -282,6 +282,78 @@ struct CrossWindowBehaviorTests {
         #expect(QuitConfirmation.openTerminalTabCount(store: store) == before)
     }
 
+    // MARK: - QuitConfirmation.windowNeedsConfirmClose (#0398)
+
+    /// Forces `confirmQuit` to its default-`true` value explicitly (rather
+    /// than assuming an untouched `UserDefaults`) so this doesn't depend on
+    /// test execution order against the shared `UserDefaults.standard`.
+    private func withConfirmQuitEnabled(_ body: () -> Void) {
+        let saved = UserDefaults.standard.object(forKey: SettingsPreference.confirmQuitKey)
+        UserDefaults.standard.set(true, forKey: SettingsPreference.confirmQuitKey)
+        defer {
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: SettingsPreference.confirmQuitKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: SettingsPreference.confirmQuitKey)
+            }
+        }
+        body()
+    }
+
+    /// Previously unreachable in any environment — the polyfill hard-codes
+    /// `needsConfirmClose` to `false`. `TabRuntime.needsConfirmCloseOverride`
+    /// (#0398) drives this true without a live surface. Non-default
+    /// fixture: the tab starts idle (the type's default) and is flipped
+    /// busy explicitly.
+    @Test func windowNeedsConfirmCloseIsTrueWhenATerminalTabIsBusy() {
+        withConfirmQuitEnabled {
+            let store = AppStateStore()
+            let window = store.windows[0]
+            let pane = window.sessions[0].tree.allPanes[0]
+            #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == false,
+                    "precondition: idle window must not need confirmation")
+
+            pane.tabs[0].needsConfirmCloseOverride = true
+
+            #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == true)
+        }
+    }
+
+    @Test func windowNeedsConfirmCloseIgnoresABusyTabInANonTerminalPane() {
+        // Mirrors quitConfirmationCountExcludesNonTerminalPanes: a
+        // non-terminal pane's placeholder TabRuntime has no live Terminal
+        // Session behind it, so even a forced-busy override on it must not
+        // trip the window-close confirmation.
+        withConfirmQuitEnabled {
+            let store = AppStateStore()
+            let window = store.windows[0]
+            let session = window.sessions[0]
+            let terminalPane = session.focusedPaneAnyKind
+            let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)!
+            nonTerminalPane.tabs[0].needsConfirmCloseOverride = true
+
+            #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == false)
+        }
+    }
+
+    @Test func windowNeedsConfirmCloseIsFalseWhenConfirmQuitIsDisabled() {
+        let saved = UserDefaults.standard.object(forKey: SettingsPreference.confirmQuitKey)
+        UserDefaults.standard.set(false, forKey: SettingsPreference.confirmQuitKey)
+        defer {
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: SettingsPreference.confirmQuitKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: SettingsPreference.confirmQuitKey)
+            }
+        }
+        let store = AppStateStore()
+        let window = store.windows[0]
+        window.sessions[0].tree.allPanes[0].tabs[0].needsConfirmCloseOverride = true
+
+        #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == false,
+                "the setting gate must be checked before the busy-tab sweep")
+    }
+
     // MARK: - App termination on last content window
 
     @Test func removeWindowReducesWindowCount() {

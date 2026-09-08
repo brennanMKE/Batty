@@ -20,6 +20,9 @@ public enum PaneCloseOutcome: Equatable, Sendable {
     /// .needsConfirmClose`). There is no UI to confirm in over XPC, so the
     /// close is refused outright rather than silently bypassing the guard
     /// the user configured or force-killing the process unasked.
+    /// Unreachable against a real process today — the polyfill hard-codes
+    /// the signal to `false` — but unit-testable via
+    /// `TabRuntime.needsConfirmCloseOverride` (#0398).
     case needsConfirmation
     /// Closing would leave the app with zero sessions across every
     /// window — the exact condition that walks into #0217's silent-quit
@@ -263,7 +266,7 @@ public final class WindowRuntime {
             logger.warning("requestRemoveSession id=\(id, privacy: .public) not found in window \(self.id.value, privacy: .public)")
             return
         }
-        let busy = session.tree.allPanes.flatMap(\.tabs).filter { $0.terminal.needsConfirmClose }
+        let busy = session.tree.allPanes.flatMap(\.tabs).filter { $0.needsConfirmClose }
         guard !busy.isEmpty else {
             removeSession(id: id)
             return
@@ -419,7 +422,7 @@ public final class WindowRuntime {
 
     public func requestCloseTab(id tabID: UUID) {
         guard let location = locate(tabID: tabID) else { return }
-        if location.tab.terminal.needsConfirmClose {
+        if location.tab.needsConfirmClose {
             let label = Self.runningLabel(for: location.tab)
             pendingCloseRequest = PendingCloseRequest(
                 kind: .singleTab(tabID: tabID),
@@ -470,7 +473,7 @@ public final class WindowRuntime {
             .flatMap({ $0.tree.allPanes })
             .first(where: { $0.id == paneID }) else { return }
         let victims = pane.tabs.filter { $0.id != keepingTabID }
-        let busy = victims.filter { $0.terminal.needsConfirmClose }
+        let busy = victims.filter { $0.needsConfirmClose }
         if busy.isEmpty {
             pane.closeOtherTabs(keeping: keepingTabID)
             return
@@ -583,7 +586,7 @@ public final class WindowRuntime {
     public func closePane(id paneID: UUID, refuseIfAppsLastPane: Bool, fromCli: Bool = false) -> PaneCloseOutcome {
         for session in sessions {
             guard let pane = session.tree.allPanes.first(where: { $0.id == paneID }) else { continue }
-            if pane.tabs.contains(where: { $0.terminal.needsConfirmClose }) {
+            if pane.tabs.contains(where: { $0.needsConfirmClose }) {
                 logger.notice("closePane: refused pane=\(paneID, privacy: .public) reason=needs-confirmation")
                 return .needsConfirmation
             }

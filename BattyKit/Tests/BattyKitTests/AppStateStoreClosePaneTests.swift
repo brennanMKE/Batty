@@ -61,6 +61,53 @@ struct AppStateStoreClosePaneTests {
         #expect(store.closePane(id: UUID()) == .unknownPane)
     }
 
+    /// #0398: `.needsConfirmation` was unreachable in any environment
+    /// before `TabRuntime.needsConfirmCloseOverride` — the polyfill
+    /// hard-codes the real signal to `false`. Review round 1, B1a: a
+    /// sibling pane keeps `totalPanes > 1`, so `refuseIfAppsLastPane` is
+    /// `false` and this pane was *not* going to refuse anyway on the
+    /// last-pane guard — without the sibling, the structural assertions
+    /// below hold identically whether the needs-confirmation guard fired
+    /// or the pane was refused as the app's last one, which is dead
+    /// weight, not coverage (`closingTheAppsLastPaneWhenItIsAlsoBusy
+    /// ReturnsNeedsConfirmationNotRefusedLastPane` below covers that
+    /// single-pane shape explicitly instead). Non-default fixture: the
+    /// tab starts idle and is flipped busy explicitly.
+    @Test func closingAPaneWithABusyTabIsRefused() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let pane = session.tree.allPanes[0]
+        _ = session.tree.splitFocusedPane(direction: .horizontal)
+        pane.tabs[0].needsConfirmCloseOverride = true
+        let paneCountBefore = session.tree.allPanes.count
+
+        let outcome = store.closePane(id: pane.id)
+
+        #expect(outcome == .needsConfirmation)
+        #expect(session.tree.allPanes.count == paneCountBefore, "a refused close must leave the pane in the tree")
+        #expect(session.tree.allPanes.contains { $0.id == pane.id })
+    }
+
+    /// #0398 review round 1: pins guard precedence explicitly — the app's
+    /// last pane, when also busy, must refuse as `.needsConfirmation`, not
+    /// `.refusedLastPane`. `WindowRuntime.closePane` checks
+    /// `needsConfirmClose` before `refuseIfAppsLastPane`, so the
+    /// needs-confirmation branch is the *more* reachable one in
+    /// production, not a corner case. Previously pinned only by accident
+    /// (the prior single-pane version of `closingAPaneWithABusyTabIsRefused`
+    /// happened to also be the app's only pane, without saying so).
+    @Test func closingTheAppsLastPaneWhenItIsAlsoBusyReturnsNeedsConfirmationNotRefusedLastPane() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let pane = session.tree.allPanes[0]
+        #expect(session.tree.allPanes.count == 1, "precondition: this is the app's only pane")
+        pane.tabs[0].needsConfirmCloseOverride = true
+
+        let outcome = store.closePane(id: pane.id)
+
+        #expect(outcome == .needsConfirmation, "needsConfirmClose must be checked before refuseIfAppsLastPane")
+    }
+
     // MARK: - Sibling takes over the freed space (split tree rebalancing)
 
     @Test func closingAPaneCollapsesTheSplitSoTheSiblingTakesTheFullSpace() {

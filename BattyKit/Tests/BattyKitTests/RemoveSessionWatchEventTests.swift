@@ -24,19 +24,20 @@ import Testing
 /// round 1's fixture-thinness finding: a single-Session window makes
 /// `sessionID == session.id` true for *any* id the code happens to emit).
 ///
-/// **What this suite cannot cover**: the confirmation-*refusal* branch of
-/// `requestRemoveSession` (raising `PendingCloseRequest` instead of closing
-/// immediately). `TerminalViewState.needsConfirmClose` is hard-coded
+/// **The confirmation-*refusal* branch of `requestRemoveSession`** (raising
+/// `PendingCloseRequest` instead of closing immediately) used to be
+/// uncoverable here: `TerminalViewState.needsConfirmClose` is hard-coded
 /// `false` by `TerminalViewState+Polyfill.swift` for every real
 /// `TerminalViewState` — a class from the external `libghostty-spm`
-/// package, not mockable — so no `TabRuntime` in any test can ever report
-/// "needs confirmation." The same hole already made
-/// `PaneCloseOutcome.needsConfirmation`/`SessionCloseOutcome
-/// .needsConfirmation` untestable in #0283/#0382. `confirmPendingCloseRoutesTheSessionCaseToRemoveSession`
-/// below covers the *reachable* half of that plumbing instead: it injects
-/// a `PendingCloseRequest(kind: .session(...))` directly (bypassing the
-/// unreachable busy-tab detection) and confirms `confirmPendingClose()`
-/// wires that case to `removeSession(id:)`.
+/// package, not mockable directly. #0398 added
+/// `TabRuntime.needsConfirmCloseOverride`, an indirection one layer up that
+/// every one of the seven `needsConfirmClose` call sites now reads instead
+/// of `terminal.needsConfirmClose` directly, so
+/// `requestRemoveSessionWithABusyTabRaisesAConfirmationInsteadOfClosing`
+/// below exercises the busy-tab sweep for real. This does not change
+/// production behavior — the polyfill is untouched, and no real
+/// `TerminalViewState` can ever set the override — only which branches are
+/// unit-testable.
 @MainActor
 struct RemoveSessionWatchEventTests {
 
@@ -319,8 +320,9 @@ struct RemoveSessionWatchEventTests {
 
     @Test func requestRemoveSessionClosesImmediatelyWhenNothingNeedsConfirmation() {
         // Every real TabRuntime reports needsConfirmClose == false today
-        // (the polyfill), so this is the only branch of
-        // requestRemoveSession reachable by a live TerminalViewState.
+        // against a live TerminalViewState (the polyfill) — this is the
+        // branch of requestRemoveSession a real surface can reach. The
+        // dialog branch below is reachable only via the #0398 test seam.
         let (window, session) = makeWindow()
         let recorder = EventRecorder()
         defer { recorder.stop() }
@@ -331,6 +333,40 @@ struct RemoveSessionWatchEventTests {
         #expect(window.pendingCloseRequest == nil)
         #expect(recorder.payloads.count == 1)
         #expect(recorder.payloads.first?.sessionID == session.id)
+    }
+
+    /// #0398: forcing `TabRuntime.needsConfirmCloseOverride` drives the
+    /// busy-tab sweep this type doc comment used to call unreachable by
+    /// construction. Review round 1, B1b: uses `makeTwoSessionWindow()`,
+    /// not `makeWindow()` — a single-Session fixture makes
+    /// `sessionID == session.id` true for *any* id the code happens to
+    /// emit (this file's own fixture doc above says so), so `target` at
+    /// index 1 is the one flipped busy and asserted, with `bystander`
+    /// checked absent to make a mutation that names the wrong session fail
+    /// loudly. Non-default fixture: the tab starts idle and is flipped
+    /// busy explicitly, then the session must still be present and no
+    /// event must have fired — a no-op dialog raise looks identical to a
+    /// silently-skipped sweep unless both are asserted. Also pins the
+    /// dialog message (#0398 review round 1, N1) — #0396's Gotchas noted
+    /// this message, with a real Session title interpolated, "has never
+    /// been seen"; this is now assertable at the model layer.
+    @Test func requestRemoveSessionWithABusyTabRaisesAConfirmationInsteadOfClosing() {
+        let (window, bystander, target) = makeTwoSessionWindow()
+        target.tree.allPanes[0].tabs[0].needsConfirmCloseOverride = true
+        let recorder = EventRecorder()
+        defer { recorder.stop() }
+
+        window.requestRemoveSession(id: target.id)
+
+        #expect(window.sessions.contains { $0.id == target.id }, "a busy session must not close before confirmation")
+        #expect(recorder.payloads.isEmpty, "no session_destroyed until the dialog is confirmed")
+        guard case .session(let sessionID) = window.pendingCloseRequest?.kind else {
+            Issue.record("expected requestRemoveSession to raise a .session pending close request")
+            return
+        }
+        #expect(sessionID == target.id)
+        #expect(sessionID != bystander.id)
+        #expect(window.pendingCloseRequest?.message == "Target has a tab that is still running a process. Closing it will end that process.")
     }
 
     @Test func requestRemoveSessionOnAnUnknownIDIsANoOp() {
@@ -348,11 +384,12 @@ struct RemoveSessionWatchEventTests {
 
     @Test func confirmPendingCloseRoutesTheSessionCaseToRemoveSession() {
         // Injects the PendingCloseRequest directly rather than going
-        // through requestRemoveSession's busy-tab sweep (unreachable, see
-        // the type doc comment above) — this isolates and pins the new
-        // switch case in confirmPendingClose() itself: given a pending
-        // .session request, confirming it must call removeSession(id:),
-        // not leave the session in place.
+        // through requestRemoveSession's busy-tab sweep (covered separately
+        // by requestRemoveSessionWithABusyTabRaisesAConfirmationInsteadOfClosing
+        // above) — this isolates and pins the new switch case in
+        // confirmPendingClose() itself: given a pending .session request,
+        // confirming it must call removeSession(id:), not leave the
+        // session in place.
         let (window, session) = makeWindow()
         window.pendingCloseRequest = PendingCloseRequest(
             kind: .session(sessionID: session.id),

@@ -100,6 +100,22 @@ public final class TabRuntime: Identifiable {
     @ObservationIgnored
     private var lastObservedCommandDurationNanos: UInt64?
 
+    /// Testability hook only (`internal`, reached via `@testable import` in
+    /// `BattyKitTests`) — lets a test force this Tab's ``needsConfirmClose``
+    /// to `true` without a live libghostty surface (#0398). `nil` (every
+    /// production `TabRuntime`, which never sets this) falls through to the
+    /// real `terminal.needsConfirmClose`, so production behavior is
+    /// unchanged: that predicate is itself hard-coded `false` by
+    /// `TerminalViewState+Polyfill.swift` until upstream `libghostty-spm`
+    /// exposes the real signal. Setting this is the *only* way any of the
+    /// seven close-confirmation call sites across
+    /// `WindowRuntime`/`AppStateStore`/`QuitConfirmation`/`RootWindowView`
+    /// can be driven `true` today, in any environment — not even a running
+    /// Beta with a real busy shell can do it, because the polyfill ignores
+    /// the surface entirely.
+    @ObservationIgnored
+    var needsConfirmCloseOverride: Bool?
+
     public init(
         id: UUID = UUID(),
         titleOverride: String? = nil,
@@ -266,6 +282,16 @@ public final class TabRuntime: Identifiable {
             builder.withCustom("keybind", "alt+backspace=text:\\x1b\\x7f")
         }
         terminal.controller.setTerminalConfiguration(configuration)
+    }
+
+    /// Whether this Tab has a process libghostty reports as still needing
+    /// confirmation to close. Single choke point every close-confirmation
+    /// call site reads (#0398) instead of reaching past this indirection to
+    /// `terminal.needsConfirmClose` directly — see
+    /// ``needsConfirmCloseOverride``'s doc comment for what the override
+    /// changes (tests only) and what it doesn't (the production signal).
+    public var needsConfirmClose: Bool {
+        needsConfirmCloseOverride ?? terminal.needsConfirmClose
     }
 
     /// Bridges libghostty's authoritative pwd signal into ``workingDirectory``.

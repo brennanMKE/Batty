@@ -26,18 +26,23 @@ import Testing
 /// `sessions[0]`, and no `.serialized` is needed since no two tests share
 /// a Session.
 ///
-/// **Not covered at this layer**: `SessionCloseOutcome.needsConfirmation`
-/// (unreachable today — `TerminalViewState+Polyfill.swift` hard-codes
-/// `needsConfirmClose` to `false`, same limitation `AppStateStore
-/// .closeSessionForXPC(id:)`'s doc records) and `.refusedLastSession`
-/// (forcing the *entire app-wide* `.shared` singleton down to exactly one
-/// Session would disturb every other test's Sessions running against the
-/// same process-wide store — unsafe to construct here). Both *outcomes* are
-/// covered at the `AppStateStore` layer by
-/// `AppStateStoreCloseSessionForXPCTests`, which exercises
-/// `closeSessionForXPC` directly against a throwaway `AppStateStore()`.
-/// Their error strings are not: those live in `AppXPCService.swift`, and
-/// `"refusing to close the app's last session"` is pinned nowhere.
+/// **`SessionCloseOutcome.needsConfirmation`** is covered at this layer too
+/// (#0398, `performSessionCloseWithABusyTabReturnsNeedsConfirmationFailure`)
+/// via `TabRuntime.needsConfirmCloseOverride` — the polyfill still hard-codes
+/// the real `needsConfirmClose` signal to `false`
+/// (`TerminalViewState+Polyfill.swift`), so this remains unreachable against
+/// a live process, but the seam makes the verb-string -> outcome ->
+/// `XPCResponse` mapping (and its error string) testable regardless.
+///
+/// **Not covered at this layer**: `.refusedLastSession` — forcing the
+/// *entire app-wide* `.shared` singleton down to exactly one Session would
+/// disturb every other test's Sessions running against the same
+/// process-wide store, unsafe to construct here. That *outcome* is covered
+/// at the `AppStateStore` layer by `AppStateStoreCloseSessionForXPCTests`,
+/// which exercises `closeSessionForXPC` directly against a throwaway
+/// `AppStateStore()`. Its error string is not: that lives in
+/// `AppXPCService.swift`, and `"refusing to close the app's last session"`
+/// is pinned nowhere.
 struct AppXPCServiceCloseHideShowTests {
 
     private func performSessionClose(_ request: SessionCloseRequest) async throws -> XPCResponse {
@@ -182,5 +187,34 @@ struct AppXPCServiceCloseHideShowTests {
 
         #expect(response.ok == false)
         #expect(response.error == "unknown session id")
+    }
+
+    /// #0398: `.needsConfirmation` is no longer unreachable at this layer
+    /// either — `TabRuntime.needsConfirmCloseOverride` forces the signal on
+    /// this session's own tab, so the full `verb string -> AppStateStore
+    /// outcome -> XPCResponse` mapping this file exists to cover (see the
+    /// doc comment above) now includes the refusal path too, error string
+    /// included.
+    @Test func performSessionCloseWithABusyTabReturnsNeedsConfirmationFailure() async throws {
+        let session = AppStateStore.shared.addSession(title: "AppXPCServiceCloseHideShowTests-session-close-busy")!
+        let tab = session.tree.allPanes[0].tabs[0]
+        tab.needsConfirmCloseOverride = true
+        // #0398 review round 1, N2: a refused close is a *permanently*
+        // busy Session by design — left as-is, it survives on
+        // `AppStateStore.shared` for the rest of the test process (this
+        // file's own doc comment above cites exactly that hazard for
+        // `.refusedLastSession`). Clear the override and actually close it
+        // so nothing lands on a future test sweeping the shared store.
+        defer {
+            tab.needsConfirmCloseOverride = nil
+            _ = AppStateStore.shared.closeSessionForXPC(id: session.id)
+        }
+
+        let response = try await performSessionClose(SessionCloseRequest(sessionID: session.id))
+
+        #expect(response.ok == false)
+        #expect(response.error == "session has a running process; close refused without confirmation")
+        #expect(AppStateStore.shared.windows.contains { window in window.sessions.contains { $0.id == session.id } },
+                "a refused close must leave the session untouched")
     }
 }
