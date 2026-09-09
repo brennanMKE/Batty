@@ -242,6 +242,13 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   deterministic recipes for agents: target-resolution precedence, topology
   discovery, exit-code handling, and creating a project Session followed by
   right-hand command Panes without racing the one-way `batty new` URL event.
+- [`beta-demo-script.md`](beta-demo-script.md) — a runnable walkthrough of the
+  CLI / agentic-workflow / view-type surface for Beta testing, using
+  `batty-beta` so Prod is never touched. Written from source and unit tests;
+  nothing in it has been exercised against a live app, and the steps expected
+  to fail (`#0333`'s invisible view Panes, `#0392`'s inert SSH config) say so
+  rather than being omitted. §4 doubles as `#0333`'s re-verification spike.
+
 - [`beta-teardown.md`](beta-teardown.md) — how to cleanly remove a Beta
   install (`#0279`): unregister the LaunchAgent *before* deleting the app
   bundle (the ordering `#0270` says matters to avoid wedging launchd), then
