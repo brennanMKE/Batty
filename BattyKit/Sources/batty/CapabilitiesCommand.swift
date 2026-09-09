@@ -208,16 +208,105 @@ struct CapabilitiesCommand: ParsableCommand {
     }
 
     private static func printPlainText(_ payload: CapabilitiesPayload) {
-        print("batty \(payload.cliVersion) capabilities")
-        print("verbs:")
+        print(Self.plainTextSummary(payload))
+    }
+
+    /// The human-readable `capabilities` body, including the agent-skill
+    /// install pointer (#0403). Split out from `run()` so it's a pure
+    /// function of a payload — testable without capturing real stdout —
+    /// and kept entirely off the `--json` path: `run()`'s two branches
+    /// (`JSONEncoder` here, this string there) never share output, so the
+    /// skill pointer text structurally cannot leak into `--json`'s stdout
+    /// (also asserted by `CapabilitiesCommandTests
+    /// .payloadJSONTopLevelKeysAreStable`'s exact key-set check).
+    static func plainTextSummary(_ payload: CapabilitiesPayload) -> String {
+        var lines: [String] = []
+        lines.append("batty \(payload.cliVersion) capabilities")
+        lines.append("verbs:")
         for verb in payload.verbs {
             let aliasText = verb.aliases.isEmpty ? "" : " (alias: \(verb.aliases.joined(separator: ", ")))"
-            print("  \(verb.name)\(aliasText) — \(verb.abstract)")
+            lines.append("  \(verb.name)\(aliasText) — \(verb.abstract)")
         }
-        print("exit codes:")
+        lines.append("exit codes:")
         for exitCode in payload.exitCodes {
-            print("  \(exitCode.code) — \(exitCode.meaning)")
+            lines.append("  \(exitCode.code) — \(exitCode.meaning)")
         }
+        lines.append("")
+        lines.append(contentsOf: Self.skillInstallLines(cliVersion: payload.cliVersion))
+        return lines.joined(separator: "\n")
+    }
+
+    /// The GitHub repository the agent skill (`.claude/skills/batty-cli/`,
+    /// #0403) is authored in and tagged from. Matches `issues/project.json`
+    /// and `scripts/tag-release.sh`'s `v<MARKETING_VERSION>` tagging, so a
+    /// tag named from this build's own `cliVersion` names the exact commit
+    /// that shipped it — no registry, no "latest" ambiguity.
+    static let skillRepositoryURL = "https://github.com/brennanMKE/Batty.git"
+    static let skillRepositoryRelativePath = ".claude/skills/batty-cli"
+
+    /// #0403: point a human/agent reading plain-text `capabilities` at the
+    /// installable skill and how to fetch the copy tagged from this exact
+    /// build — human-readable output only, never the `--json` path (#0384
+    /// pinned JSON-stdout purity for that path). `cliVersion == "unknown"`
+    /// (a bare SwiftPM-built binary, `SessionCommand.swift`'s
+    /// `resolveAppVersion()`) is not a real release tag, so this
+    /// deliberately does not fabricate a `--branch vunknown` clone that
+    /// would fail — it points at the tag list instead.
+    ///
+    /// **Non-destructive by construction (round-1 review B1, round-2 review
+    /// B2).** An existing tag can exist without containing the skill at all
+    /// — `v1.1.0` predates #0403 entirely (`issues/0403.md`'s Gotchas) — so
+    /// `rm -rf`-ing the existing install before confirming a replacement is
+    /// actually in hand would delete the user's working copy and replace it
+    /// with nothing. Three independent failure points are checked
+    /// separately, each leaving the existing install untouched: the `git
+    /// clone` itself can fail (network, or a tag that doesn't exist —
+    /// round-2 B2/N6, previously misattributed to "predates #0403"); the
+    /// cloned tag can lack `.claude/skills/batty-cli` entirely; and staging
+    /// (`cp -R` into a `.new` suffix) can fail or produce a partial tree —
+    /// checked by requiring `batty-cli.new/SKILL.md` to actually exist
+    /// before the swap, not just checking the *source* directory existed
+    /// (round-2 review B2: verifying only the source left a window where a
+    /// failed or partial `cp` still proceeded to `rm -rf` the working copy).
+    /// Any pre-existing `batty-cli.new` from an interrupted prior run is
+    /// cleared before staging, since BSD `cp -R` copies *into* an existing
+    /// destination directory rather than replacing it. The swap itself is
+    /// `mv`, never an overwrite in place, so there's never a moment with
+    /// neither copy on disk; `$tmp` is removed unconditionally at the end
+    /// regardless of which branch ran.
+    static func skillInstallLines(cliVersion: String) -> [String] {
+        var lines = [
+            "agent skill:",
+            "  Claude Code skill teaching agents to drive this CLI: \(Self.skillRepositoryRelativePath)",
+        ]
+        if cliVersion == "unknown" {
+            lines.append("  Could not determine this build's version (\"unknown\") — this binary was")
+            lines.append("  likely built standalone via `swift build`, outside an app bundle, so there")
+            lines.append("  is no tag to install from automatically. Run `batty status --json` from an")
+            lines.append("  installed, running Batty for its status.appVersion, then pick the matching tag:")
+            lines.append("    \(Self.skillRepositoryURL) (tags)")
+        } else {
+            lines.append("  Install/refresh it from this build's own tagged release (each failure")
+            lines.append("  point below is checked separately and leaves the existing copy untouched):")
+            lines.append("    tmp=$(mktemp -d)")
+            lines.append("    if ! git clone --quiet --depth 1 --branch v\(cliVersion) \(Self.skillRepositoryURL) \"$tmp\"; then")
+            lines.append("      echo \"clone of v\(cliVersion) failed (network error, or the tag doesn't exist) — existing copy left untouched\" >&2")
+            lines.append("    elif [ ! -d \"$tmp/\(Self.skillRepositoryRelativePath)\" ]; then")
+            lines.append("      echo \"tag v\(cliVersion) has no \(Self.skillRepositoryRelativePath) (predates #0403) — not installing, existing copy left untouched\" >&2")
+            lines.append("    else")
+            lines.append("      mkdir -p ~/.claude/skills")
+            lines.append("      rm -rf ~/.claude/skills/batty-cli.new")
+            lines.append("      if cp -R \"$tmp/\(Self.skillRepositoryRelativePath)\" ~/.claude/skills/batty-cli.new && [ -f ~/.claude/skills/batty-cli.new/SKILL.md ]; then")
+            lines.append("        rm -rf ~/.claude/skills/batty-cli")
+            lines.append("        mv ~/.claude/skills/batty-cli.new ~/.claude/skills/batty-cli")
+            lines.append("      else")
+            lines.append("        echo \"stage incomplete — existing copy left untouched\" >&2")
+            lines.append("        rm -rf ~/.claude/skills/batty-cli.new")
+            lines.append("      fi")
+            lines.append("    fi")
+            lines.append("    rm -rf \"$tmp\"")
+        }
+        return lines
     }
 }
 

@@ -4,6 +4,15 @@ This guide shows agents and scripts how to control Batty reliably. For the
 complete command reference, installation details, transports, and exit codes,
 see [`batty-cli-install.md`](batty-cli-install.md).
 
+**An agent working outside this repo** — no access to this doc, running in
+some unrelated project's Pane — should install the condensed Claude Code
+skill this doc is packaged into instead of reading this file directly:
+[`.claude/skills/batty-cli/SKILL.md`](../.claude/skills/batty-cli/SKILL.md)
+(#0403). This doc stays the canonical, fuller reference — the skill is a
+subset for a reader with no repo access, not a replacement — and
+`batty capabilities`'s plain-text output prints the install command
+pre-filled with the running build's own version.
+
 ## Prerequisites
 
 - Install the CLI from Batty → Settings → Advanced. Prod installs `batty`;
@@ -20,10 +29,13 @@ command -v batty
 batty --version
 batty ping
 batty status
+batty capabilities --json   # this build's actual verb/flag surface (#0384, #0402) — read this, not this doc, for call signatures
 ```
 
 `ping` checks the broker, while `status` confirms the app can answer through
-the complete broker → app-endpoint connection.
+the complete broker → app-endpoint connection. `capabilities` needs neither:
+it's a static, compiled-in description of this CLI binary's own verbs,
+parameters, and exit codes, so it works even when Batty isn't running.
 
 ## Target resolution: always know which Pane will change
 
@@ -233,12 +245,16 @@ should see:
 
 ```sh
 new_pane=$(batty pane split --horizontal --command "npm run dev")
-batty notify --title "Dev server starting" --tab "$new_pane"
+batty notify --title "Dev server starting"
 # ... later, once something needs the human's attention ...
 batty pane focus "$new_pane"
 ```
 
-`notify` attributes the Bell Feed entry to a Tab (`--tab <id>`), while focus
+`notify` attributes the Bell Feed entry to a Tab, via `--tab <tab-id>` — a
+**Tab** id, not the Pane id `pane split` just returned; passing a Pane id
+there resolves to `.unknownTab` and exits `4`. Omitting `--tab` (as above)
+falls back to `BATTY_TAB_ID`, then the focused Tab, which is what a script
+still holding only a Pane id from the split above actually wants. Focus
 verbs take a Pane/Session/Tab id directly. All three focus verbs are
 activating even when their target lives in a background Session or window —
 the CLI's one sanctioned exception to "a mutation aimed at a background

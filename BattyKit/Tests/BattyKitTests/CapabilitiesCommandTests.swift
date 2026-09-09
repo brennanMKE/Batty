@@ -115,4 +115,130 @@ struct CapabilitiesCommandTests {
         let decoded = try JSONDecoder().decode(CapabilitiesPayload.self, from: data)
         #expect(decoded == payload)
     }
+
+    // MARK: - Agent skill install pointer (#0403)
+
+    @Test func skillInstallLinesForAKnownVersionCloneTheMatchingTag() {
+        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
+        #expect(lines == [
+            "agent skill:",
+            "  Claude Code skill teaching agents to drive this CLI: .claude/skills/batty-cli",
+            "  Install/refresh it from this build's own tagged release (each failure",
+            "  point below is checked separately and leaves the existing copy untouched):",
+            "    tmp=$(mktemp -d)",
+            "    if ! git clone --quiet --depth 1 --branch v1.1.0 https://github.com/brennanMKE/Batty.git \"$tmp\"; then",
+            "      echo \"clone of v1.1.0 failed (network error, or the tag doesn't exist) — existing copy left untouched\" >&2",
+            "    elif [ ! -d \"$tmp/.claude/skills/batty-cli\" ]; then",
+            "      echo \"tag v1.1.0 has no .claude/skills/batty-cli (predates #0403) — not installing, existing copy left untouched\" >&2",
+            "    else",
+            "      mkdir -p ~/.claude/skills",
+            "      rm -rf ~/.claude/skills/batty-cli.new",
+            "      if cp -R \"$tmp/.claude/skills/batty-cli\" ~/.claude/skills/batty-cli.new && [ -f ~/.claude/skills/batty-cli.new/SKILL.md ]; then",
+            "        rm -rf ~/.claude/skills/batty-cli",
+            "        mv ~/.claude/skills/batty-cli.new ~/.claude/skills/batty-cli",
+            "      else",
+            "        echo \"stage incomplete — existing copy left untouched\" >&2",
+            "        rm -rf ~/.claude/skills/batty-cli.new",
+            "      fi",
+            "    fi",
+            "    rm -rf \"$tmp\"",
+        ])
+    }
+
+    // #0403 round-1 review B1: the destination is never removed before the
+    // staged copy is confirmed present under `.new`, and the swap always
+    // happens via `mv` from that staged path — never a bare `cp` over an
+    // existing install. A regression here (e.g. reordering `rm -rf` before
+    // the `if` guard) would delete a user's skill with nothing to replace it
+    // whenever a tag exists but predates the skill (`v1.1.0` does, today).
+    @Test func skillInstallLinesNeverRemoveTheExistingInstallBeforeStagingTheReplacement() throws {
+        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
+        let removeIndex = try #require(lines.firstIndex { $0.contains("rm -rf ~/.claude/skills/batty-cli") && !$0.contains(".new") })
+        let stageIndex = try #require(lines.firstIndex { $0.contains("cp -R") && $0.contains("batty-cli.new") })
+        let swapIndex = try #require(lines.firstIndex { $0.contains("mv ") && $0.contains("batty-cli.new") })
+        #expect(stageIndex < removeIndex)
+        #expect(removeIndex < swapIndex)
+    }
+
+    // #0403 round-2 review B2: verifying only the *source* tag had the
+    // skill (the `[ -d "$tmp/..." ]` check) was not enough — a failed or
+    // partial `cp -R` into the `.new` stage still let the destructive
+    // `rm -rf` proceed. The swap must be gated on the *staged copy* itself
+    // (`.new/SKILL.md` actually existing), joined to the `cp -R` by `&&` so
+    // a failed copy short-circuits before anything destructive runs.
+    @Test func skillInstallLinesGateTheSwapOnTheStagedCopyActuallyContainingSKILLMD() throws {
+        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
+        let guardLine = try #require(lines.first { $0.contains("cp -R") && $0.contains("batty-cli.new") })
+        #expect(guardLine.contains("&&"), "staging and verifying the stage must be one atomic condition")
+        #expect(guardLine.contains("batty-cli.new/SKILL.md"), "checking the source directory alone (round-2 B2) is not enough — must check the staged copy")
+    }
+
+    // #0403 round-2 review B2: BSD `cp -R src dest` copies *into* an
+    // existing `dest` directory rather than replacing it, so a `.new` left
+    // behind by a prior run interrupted between `cp` and `mv` must be
+    // cleared before staging into it again, or the result nests one level
+    // too deep (`batty-cli.new/batty-cli/SKILL.md`) and the swap installs a
+    // directory with no `SKILL.md` where Claude Code expects one.
+    @Test func skillInstallLinesClearAnyStaleStageBeforeCopyingIntoIt() throws {
+        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
+        let preClearIndex = try #require(lines.firstIndex { $0.contains("rm -rf") && $0.contains("batty-cli.new") })
+        let stageIndex = try #require(lines.firstIndex { $0.contains("cp -R") && $0.contains("batty-cli.new") })
+        #expect(preClearIndex < stageIndex)
+    }
+
+    // #0403 round-2 review B2/N6: a clone failure, a tag missing the skill,
+    // and a failed/partial stage are three distinct causes and must report
+    // distinct messages — a clone failure was previously misattributed to
+    // "predates #0403", which would mislead anyone debugging a network
+    // error or typo'd version as if the tag were simply old.
+    @Test func skillInstallLinesReportEachFailureCauseWithADistinctMessage() {
+        let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0").joined(separator: "\n")
+        #expect(text.contains("clone of v1.1.0 failed (network error, or the tag doesn't exist)"))
+        #expect(text.contains("has no .claude/skills/batty-cli (predates #0403)"))
+        #expect(text.contains("stage incomplete"))
+    }
+
+    @Test func skillInstallLinesForAnUnknownVersionNeverFabricateATag() {
+        // "unknown" (a bare SwiftPM-built binary, SessionCommand.swift's
+        // resolveAppVersion()) is not a real git tag — `--branch vunknown`
+        // would just fail. This must fall back to pointing at the tag list,
+        // never interpolate the literal string "unknown" into a `--branch`.
+        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "unknown")
+        #expect(lines == [
+            "agent skill:",
+            "  Claude Code skill teaching agents to drive this CLI: .claude/skills/batty-cli",
+            "  Could not determine this build's version (\"unknown\") — this binary was",
+            "  likely built standalone via `swift build`, outside an app bundle, so there",
+            "  is no tag to install from automatically. Run `batty status --json` from an",
+            "  installed, running Batty for its status.appVersion, then pick the matching tag:",
+            "    https://github.com/brennanMKE/Batty.git (tags)",
+        ])
+        #expect(!lines.contains { $0.contains("--branch") })
+        #expect(!lines.contains { $0.contains("vunknown") })
+    }
+
+    @Test func plainTextSummaryAppendsTheSkillBlockExactlyOnceAfterExitCodes() throws {
+        let payload = CapabilitiesCommand.buildPayload()
+        let text = CapabilitiesCommand.plainTextSummary(payload)
+        let lines = text.components(separatedBy: "\n")
+        #expect(lines.filter { $0 == "agent skill:" }.count == 1)
+        let exitCodesIndex = try #require(lines.firstIndex(of: "exit codes:"))
+        let skillIndex = try #require(lines.firstIndex(of: "agent skill:"))
+        #expect(skillIndex > exitCodesIndex)
+        #expect(lines.suffix(from: skillIndex).elementsEqual(CapabilitiesCommand.skillInstallLines(cliVersion: payload.cliVersion)))
+    }
+
+    @Test func plainTextSummaryNeverLeaksIntoTheJSONPayloadShape() throws {
+        // Structural guarantee, not a substring check: `--json` encodes
+        // `CapabilitiesPayload` directly (see `run()`), which has no field
+        // this text could occupy — `payloadJSONTopLevelKeysAreStable` above
+        // already pins the exact key set. This test pins the companion half:
+        // the plain-text renderer is a pure function of the payload with no
+        // side channel back into it.
+        let payload = CapabilitiesCommand.buildPayload()
+        let data = try JSONEncoder().encode(payload)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("agent skill"))
+        #expect(!json.contains("git clone"))
+    }
 }
