@@ -202,7 +202,7 @@ public final class PaneRuntime: Identifiable {
     /// would leave the pane with zero tabs, which `removeTab(id:)`'s own
     /// doc comment says callers must handle by removing the pane instead
     /// (`WindowRuntime.closeFocusedTab()`/`closePane` do that, and don't
-    /// call this method — they call `closeFocusedNonTerminalPane` for a
+    /// call this method — they call `closeNonTerminalPane` for a
     /// non-terminal focused pane). No production call site reaches this
     /// today, but it is public API, and the whole point of this gate is
     /// that the next caller does not have to already know that.

@@ -91,6 +91,21 @@ struct RemoveSessionWatchEventTests {
         return (window, bystander, target)
     }
 
+    /// Adds a Session via `AppStateStore.addSession` (so it starts as a
+    /// real Session would, with the default single `.terminal` pane), then
+    /// reshapes it to hold exactly one non-terminal `.systemMetrics` pane —
+    /// splitting one off and removing the original terminal pane — so a
+    /// test naming a non-terminal-Pane scenario actually exercises a
+    /// non-terminal pane rather than the terminal one `addSession`
+    /// produces by default.
+    private func addNonTerminalOnlySession(to store: AppStateStore, title: String) -> (session: SessionRuntime, paneID: UUID) {
+        let session = store.addSession(title: title)!
+        let terminalPaneID = session.tree.allPanes[0].id
+        let nonTerminalPane = session.tree.splitPane(id: terminalPaneID, direction: .horizontal, kind: .systemMetrics)!
+        session.tree.removePane(id: terminalPaneID)
+        return (session, nonTerminalPane.id)
+    }
+
     // MARK: - removeSession emits exactly once, for the right id
 
     @Test func removeSessionEmitsSessionDestroyedForTheClosedSessionID() {
@@ -266,13 +281,13 @@ struct RemoveSessionWatchEventTests {
         #expect(window.sessions.map(\.id) == [bystander.id])
         #expect(recorder.payloads.count == 1)
         #expect(recorder.payloads.first?.sessionID == target.id)
-        #expect(recorder.payloads.first?.fromCli == false, "the GUI caller (closeFocusedNonTerminalPane) keeps the default")
+        #expect(recorder.payloads.first?.fromCli == false, "the GUI caller (closeNonTerminalPane) keeps the default")
     }
 
     // MARK: - closePane's fromCli threading (#0396 review round 1, B1)
     //
     // WindowRuntime.closePane has no GUI caller that empties a Session in
-    // practice (closeFocusedNonTerminalPane's non-terminal pane always has
+    // practice (closeNonTerminalPane's non-terminal pane always has
     // a sibling in the fixtures above); AppStateStore.closePane(id:) is the
     // one call site that does, and it is exclusively the XPC `batty pane
     // close` verb (see that method's doc comment) — so a pane close that
@@ -314,6 +329,56 @@ struct RemoveSessionWatchEventTests {
         #expect(recorder.payloads.count == 1)
         #expect(recorder.payloads.first?.sessionID == secondSession.id)
         #expect(recorder.payloads.first?.fromCli == true)
+    }
+
+    /// Drives the exact call `PaneView.paneCloseButton` makes —
+    /// `PaneView.performPaneClose(paneID:in:)` — rather than reaching past
+    /// the view layer to call `AppStateStore.closeNonTerminalPane(id:)`
+    /// directly. A prior version of this test called the store method
+    /// directly and stayed green even when the button's own call site
+    /// regressed to `AppStateStore.closePane(id:)` (the XPC verb, `fromCli:
+    /// true`) — nothing in the suite reached through the view layer to the
+    /// store call the button actually makes. This version pins that
+    /// routing decision itself: a GUI click that happens to empty its
+    /// Session must never be reported as CLI-driven. Mirrors
+    /// `appStateStoreClosePaneEmitsWithFromCliTrueWhenItEmptiesTheSession`
+    /// with the opposite expectation.
+    @Test func paneViewPerformPaneCloseEmitsWithFromCliFalseWhenItEmptiesTheSession() {
+        let store = AppStateStore()
+        let (secondSession, paneID) = addNonTerminalOnlySession(to: store, title: "Second")
+        let recorder = EventRecorder()
+        defer { recorder.stop() }
+
+        let outcome = PaneView.performPaneClose(paneID: paneID, in: store)
+
+        #expect(outcome == .closed)
+        #expect(recorder.payloads.count == 1)
+        #expect(recorder.payloads.first?.sessionID == secondSession.id)
+        #expect(recorder.payloads.first?.fromCli == false)
+    }
+
+    /// #0378: ⌘W on a non-terminal Pane
+    /// (`WindowRuntime.closeFocusedTab()`) and the header's close button
+    /// must agree about the app's last Pane — both use `closeNonTerminalPane`,
+    /// which always passes `refuseIfAppsLastPane: false` (#0334's
+    /// contract), unlike the XPC `batty pane close` verb
+    /// (`AppStateStore.closePane(id:)`), which still refuses. Both calls
+    /// target the same pane in the same store to prove the two entry
+    /// points now differ only where they should: the first call is a
+    /// non-mutating refusal (`WindowRuntime.closePane` returns
+    /// `.refusedLastPane` before touching the tree), so the pane is still
+    /// there for the second call to actually close.
+    @Test func appStateStoreCloseNonTerminalPaneClosesTheAppsOnlyPaneWhereClosePaneWouldRefuse() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPaneID = session.tree.allPanes[0].id
+        let paneID = session.tree.splitPane(id: terminalPaneID, direction: .horizontal, kind: .systemMetrics)!.id
+        session.tree.removePane(id: terminalPaneID)
+        #expect(store.sessions.reduce(0) { $0 + $1.tree.allPanes.count } == 1, "precondition: this is the app's only pane")
+        #expect(session.tree.allPanes[0].kind == .systemMetrics, "precondition: that pane is non-terminal")
+
+        #expect(store.closePane(id: paneID) == .refusedLastPane, "the XPC verb still refuses the app's last pane")
+        #expect(store.closeNonTerminalPane(id: paneID) == .closed, "the GUI close button must not refuse, matching ⌘W's #0334 contract")
     }
 
     // MARK: - requestRemoveSession (the Sidebar's confirmation-gated entry point)

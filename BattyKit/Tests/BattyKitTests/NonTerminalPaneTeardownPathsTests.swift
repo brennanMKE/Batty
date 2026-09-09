@@ -79,6 +79,105 @@ struct NonTerminalPaneTeardownPathsTests {
         #expect(pane.content?.lifecyclePhase == .tornDown)
     }
 
+    /// Pins `WindowRuntime.closePane`'s own `refuseIfAppsLastPane: true`
+    /// primitive against a non-terminal Pane — a non-terminal Pane can
+    /// absolutely be the app's only Pane (there is no rule requiring at
+    /// least one `.terminal` Pane to exist), so `.refusedLastPane` is a
+    /// real, reachable outcome for this Pane kind via the XPC `pane close`
+    /// verb (`AppStateStore.closePane(id:)`, which passes `true` when this
+    /// is the app's only pane). It is **not** reachable through the
+    /// non-terminal Pane header's close button
+    /// (`PaneView.paneCloseButton`): that button routes through
+    /// `AppStateStore.closeNonTerminalPane(id:)` /
+    /// `WindowRuntime.closeNonTerminalPane(_:)`, which always passes
+    /// `refuseIfAppsLastPane: false` to match ⌘W's own #0334 contract — so
+    /// the button's `paneCloseFailureMessage` alert can never surface this
+    /// particular case in practice, only `.needsConfirmation`/`.unknownPane`.
+    @Test func closePaneRefusesWhenThisNonTerminalPaneIsTheAppsOnlyPane() {
+        let content = InertPaneContent()
+        let (window, _, pane) = makeWindow(paneContent: content)
+
+        let outcome = window.closePane(id: pane.id, refuseIfAppsLastPane: true)
+
+        #expect(outcome == .refusedLastPane)
+        #expect(content.tearDownCallCount == 0, "a refused close must not tear down the pane's content")
+        #expect(pane.content?.lifecyclePhase == .active)
+    }
+
+    /// Pins `.needsConfirmation` as a genuinely reachable outcome through
+    /// `closeNonTerminalPane(_:)` itself, not just a defensive switch arm
+    /// in `PaneView.paneCloseButton`'s outcome handling that can never
+    /// actually fire (see that switch case's own comment for why the
+    /// signal is always `false` against a real process today). A sibling
+    /// pane keeps `refuseIfAppsLastPane`'s irrelevance to this call
+    /// unambiguous — `closeNonTerminalPane` never passes `true` regardless,
+    /// but this rules out any doubt that the refusal seen here is the
+    /// needs-confirmation guard specifically.
+    @Test func closeNonTerminalPaneReturnsNeedsConfirmationWhenTheStructuralTabIsFlaggedBusy() {
+        let content = InertPaneContent()
+        let (window, session, pane) = makeWindow(paneContent: content)
+        session.tree.splitFocusedPane(direction: .horizontal)
+        pane.tabs[0].needsConfirmCloseOverride = true
+
+        let outcome = window.closeNonTerminalPane(pane.id)
+
+        #expect(outcome == .needsConfirmation)
+        #expect(content.tearDownCallCount == 0, "a refused close must not tear down the pane's content")
+        #expect(pane.content?.lifecyclePhase == .active)
+    }
+
+    /// Unlike `closePaneRefusesWhenThisNonTerminalPaneIsTheAppsOnlyPane`
+    /// above, `closeNonTerminalPane(_:)` — the entry point shared by ⌘W on
+    /// a non-terminal pane and the header's close button — must succeed
+    /// even when this pane is this window's only one (`refuseIfAppsLastPane:
+    /// false`, #0334's contract for GUI-origin closes). This is a
+    /// single-window fixture, so it doesn't reach the app-wide "only pane
+    /// across every window" case `AppStateStore.closePane(id:)`'s XPC verb
+    /// guards against — see
+    /// `appStateStoreCloseNonTerminalPaneClosesTheAppsOnlyPaneWhereClosePaneWouldRefuse`
+    /// (`RemoveSessionWatchEventTests.swift`) for that.
+    @Test func closeNonTerminalPaneClosesEvenWhenThisIsTheWindowsOnlyPane() {
+        let content = InertPaneContent()
+        let (window, session, pane) = makeWindow(paneContent: content)
+
+        let outcome = window.closeNonTerminalPane(pane.id)
+
+        #expect(outcome == .closed)
+        #expect(content.tearDownCallCount == 1)
+        // `SplitTree.removePane` leaves `root` untouched when the removed
+        // pane was the tree's only one (its own doc comment: "Returns
+        // `true` when the tree became empty ... callers should treat that
+        // as 'session is now empty and should be closed'") — the session
+        // itself, not its tree, is what disappears, via the `removeSession`
+        // cascade `closePane` triggers on that signal.
+        #expect(window.sessions.contains { $0.id == session.id } == false)
+    }
+
+    @Test func appStoreClosePaneTearsDownNonTerminalContentAndCollapsesItsSplit() {
+        let content = InertPaneContent()
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let terminalPane = session.tree.focusedPane
+        let paneID = store.splitPane(
+            id: terminalPane.id,
+            direction: .horizontal,
+            kind: .systemMetrics,
+            contentFactory: { _ in content }
+        )!
+
+        let outcome = store.closePane(id: paneID)
+
+        #expect(outcome == .closed)
+        #expect(content.tearDownCallCount == 1)
+        #expect(content.lifecyclePhase == .tornDown)
+        #expect(session.tree.allPanes.map(\.id) == [terminalPane.id])
+        guard case .leaf(let remainingPane) = session.tree.root else {
+            Issue.record("expected the parent Split to collapse to its terminal Pane")
+            return
+        }
+        #expect(remainingPane.id == terminalPane.id)
+    }
+
     @Test func removeSessionTearsDownEveryPanesContent() {
         // The bug this pins: removeSession never called closePane, so a
         // Session closed directly (the sidebar's "close session" control)

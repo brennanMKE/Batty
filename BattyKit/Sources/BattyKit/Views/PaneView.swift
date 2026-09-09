@@ -22,6 +22,7 @@ public struct PaneView: View {
     @State private var paneWidth: CGFloat = 0
     @State private var paneHeight: CGFloat = 0
     @State private var frameInSession: CGRect = .zero
+    @State private var paneCloseFailureMessage: String?
 
     /// Approximate per-character text width at the chip's font. Used to
     /// derive a string-level char budget from the per-chip pixel budget.
@@ -357,8 +358,9 @@ public struct PaneView: View {
     /// - **Opaque fill, not just a correctly-sized frame (#0334 review
     ///   round 1).** `PaneContentPlaceholderView` already carries
     ///   `.frame(maxWidth: .infinity, maxHeight: .infinity)`, and this
-    ///   VStack's header row is horizontally greedy via its leading
-    ///   `Spacer(minLength: 0)` — both children were already fully
+    ///   VStack's header row is horizontally greedy via its
+    ///   `Spacer(minLength: 0)` between the close button and the
+    ///   drag-handle/eye-button cluster — both children were already fully
     ///   flexible, so the geometry was never the defect. A terminal pane's
     ///   visible fill isn't SwiftUI at all: `TerminalPlaceholderView` is a
     ///   `Color.clear` geometry probe, and the opaque themed fill comes
@@ -387,14 +389,16 @@ public struct PaneView: View {
     }
 
     /// The pane-level chrome every non-terminal kind shares: the header
-    /// row (drag handle + hide/eye button, re-hosted here per #0334
-    /// since the tab bar that used to carry them is terminal-only now),
-    /// the opaque themed background, and click-to-focus. `content()` is
-    /// the one thing that varies per kind.
+    /// row (close button, drag handle, and hide/eye button — the drag
+    /// handle and eye button re-hosted here per #0334 since the tab bar
+    /// that used to carry them is terminal-only now; the close button
+    /// added per #0378), the opaque themed background, and click-to-focus.
+    /// `content()` is the one thing that varies per kind.
     @ViewBuilder
     private func nonTerminalShell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
+                paneCloseButton
                 Spacer(minLength: 0)
                 if hasSiblingPanes {
                     paneDragHandle
@@ -410,6 +414,11 @@ public struct PaneView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             appStore?.focusPane(id: pane.id)
+        }
+        .alert("Pane Couldn’t Be Closed", isPresented: paneCloseFailureBinding) {
+            Button("OK") {}
+        } message: {
+            Text(paneCloseFailureMessage ?? "")
         }
     }
 
@@ -493,6 +502,91 @@ public struct PaneView: View {
         .disabled(tree.visiblePanes.count <= 1)
         .padding(.trailing, 4)
         .accessibilityIdentifier("pane-eye-button.\(pane.id.uuidString)")
+    }
+
+    /// Testable seam for `paneCloseButton`'s routing decision. The button
+    /// action calls this instead of `AppStateStore.closeNonTerminalPane(id:)`
+    /// directly so a unit test
+    /// (`RemoveSessionWatchEventTests.paneViewPerformPaneCloseEmitsWithFromCliFalseWhenItEmptiesTheSession`)
+    /// can drive the exact call the button makes and catch a regression to
+    /// `AppStateStore.closePane(id:)` — the XPC verb whose `fromCli: true`
+    /// this whole path exists to avoid. That regression shipped once with
+    /// the full suite green, because nothing reached through the view
+    /// layer to the store call the button actually makes. Mirrors
+    /// `truncate(_:limit:)` above as a `static`, `@testable`-reachable
+    /// extraction of view-action logic.
+    static func performPaneClose(paneID: UUID, in store: AppStateStore) -> PaneCloseOutcome {
+        store.closeNonTerminalPane(id: paneID)
+    }
+
+    @ViewBuilder
+    private var paneCloseButton: some View {
+        Button {
+            guard let appStore else { return }
+            let outcome = Self.performPaneClose(paneID: pane.id, in: appStore)
+            switch outcome {
+            case .closed:
+                break
+            case .unknownPane:
+                paneCloseFailureMessage = String(localized: "This Pane no longer exists.")
+            case .needsConfirmation:
+                // Unreachable for a non-terminal Pane, both today and by
+                // design: `.needsConfirmation` fires only when a Tab's
+                // `terminal.needsConfirmClose` is true
+                // (`WindowRuntime.closePane`), and every non-terminal
+                // `PaneRuntime` holds one structural, otherwise-inert Tab
+                // that never spawns a PTY (`PaneRuntime.kind`'s doc
+                // comment) — there is no live process for this Pane kind
+                // to ever need confirmation about. Handled defensively
+                // (the switch is exhaustive) with a message that doesn't
+                // assert the impossible "running process" claim, rather
+                // than routing into the Tab-granularity confirm/cancel
+                // flow (`WindowRuntime.pendingCloseRequest`), which has no
+                // whole-pane case and nothing to confirm here anyway.
+                paneCloseFailureMessage = String(localized: "This Pane can’t be closed right now.")
+            case .refusedLastPane:
+                // Unreachable from this button specifically: `closeNonTerminalPane`
+                // always passes `refuseIfAppsLastPane: false` (#0334's
+                // contract — matching ⌘W on a non-terminal pane, which
+                // must be able to close the app's last pane), so this case
+                // can never fire here. Kept, not deleted, because the
+                // switch must stay exhaustive over `PaneCloseOutcome` and
+                // because `WindowRuntime.closeNonTerminalPane`'s own doc
+                // comment already documents this exact "can't happen with
+                // refuseIfAppsLastPane: false" shape as expected, not a
+                // defect.
+                paneCloseFailureMessage = String(localized: "The app’s last Pane cannot be closed from this control.")
+            }
+            // Matches WindowRuntime.closeNonTerminalPane's own logging
+            // precedent (#0334) — logging any non-.closed outcome here
+            // means this button can never become a silent no-op either,
+            // today or if .needsConfirmation ever becomes reachable.
+            if outcome != .closed {
+                logger.notice("paneCloseButton: pane=\(pane.id, privacy: .public) outcome=\(String(describing: outcome), privacy: .public), expected .closed")
+            }
+        } label: {
+            Image(systemName: "xmark")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help("Close pane")
+        .accessibilityLabel("Close pane")
+        .padding(.leading, 4)
+        .accessibilityIdentifier("pane-close-button.\(pane.id.uuidString)")
+    }
+
+    private var paneCloseFailureBinding: Binding<Bool> {
+        Binding(
+            get: { paneCloseFailureMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    paneCloseFailureMessage = nil
+                }
+            }
+        )
     }
 
     @ViewBuilder

@@ -200,12 +200,13 @@ public final class WindowRuntime {
     /// Command Palette, the tab-chip close button, the confirmation
     /// dialog, and libghostty's `onClose`) is GUI or PTY. The `closePane`
     /// cascade is **not** exclusively GUI-origin the way `closeTab`'s is:
-    /// `WindowRuntime.closePane` has two production callers —
-    /// `closeFocusedNonTerminalPane` (⌘W on a
-    /// non-terminal pane, GUI-origin) and `AppStateStore.closePane(id:)`,
-    /// the XPC `batty pane close` verb (see that method's own doc comment)
-    /// — so `closePane` threads its own `fromCli` through from its caller
-    /// rather than hard-coding either value.
+    /// `WindowRuntime.closePane` has two production entry points —
+    /// `closeNonTerminalPane` (⌘W on a non-terminal pane and #0378's
+    /// non-terminal Pane close button, both GUI-origin) and
+    /// `AppStateStore.closePane(id:)`, the XPC `batty pane close` verb (see
+    /// that method's own doc comment) — so `closePane` threads its own
+    /// `fromCli` through from its caller rather than hard-coding either
+    /// value.
     public func removeSession(id: UUID, fromCli: Bool = false) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else {
             logger.warning("removeSession id=\(id, privacy: .public) not found in window \(self.id.value, privacy: .public)")
@@ -402,7 +403,7 @@ public final class WindowRuntime {
         if let pane = session.focusedTerminalPane {
             closeTab(id: pane.activeTabID)
         } else {
-            closeFocusedNonTerminalPane(session.focusedPaneAnyKind.id)
+            closeNonTerminalPane(session.focusedPaneAnyKind.id)
         }
     }
 
@@ -447,25 +448,36 @@ public final class WindowRuntime {
         if let pane = session.focusedTerminalPane {
             requestCloseTab(id: pane.activeTabID)
         } else {
-            closeFocusedNonTerminalPane(session.focusedPaneAnyKind.id)
+            closeNonTerminalPane(session.focusedPaneAnyKind.id)
         }
     }
 
-    /// Shared tail of `closeFocusedTab()`/`requestCloseFocusedTab()`'s
-    /// non-terminal branch. `closePane(id:refuseIfAppsLastPane:)` is
+    /// Closes a non-terminal pane with `refuseIfAppsLastPane: false`
+    /// (#0334's contract for a GUI-origin close) and `fromCli: false`
+    /// (#0396) — shared by `closeFocusedTab()`/`requestCloseFocusedTab()`'s
+    /// non-terminal branch (⌘W; `paneID` is always the focused pane there)
+    /// and, via `AppStateStore.closeNonTerminalPane(id:)`, the non-terminal
+    /// Pane header's close button (#0378's `PaneView.paneCloseButton`;
+    /// `paneID` there is the button's own pane, which need not be
+    /// focused). `closePane(id:refuseIfAppsLastPane:)` is
     /// `@discardableResult` and can in principle return anything but
     /// `.closed` (`.needsConfirmation` already logs its own refusal
     /// there; `.refusedLastPane` can't happen with `refuseIfAppsLastPane:
     /// false`; `.unknownPane` doesn't log anywhere). Logging any
-    /// non-`.closed` outcome here means ⌘W on a non-terminal pane can
-    /// never become a silent no-op, today or if `needsConfirmClose`'s
-    /// polyfill (`TerminalViewState+Polyfill.swift`) is ever replaced by
-    /// the real thing (#0334 review).
-    private func closeFocusedNonTerminalPane(_ paneID: UUID) {
+    /// non-`.closed` outcome here means every caller can never become a
+    /// silent no-op, today or if `needsConfirmClose`'s polyfill
+    /// (`TerminalViewState+Polyfill.swift`) is ever replaced by the real
+    /// thing (#0334 review). Returns the outcome (rather than logging and
+    /// discarding it here) so a caller with a user-facing surface — the
+    /// close button — can represent a non-`.closed` result instead of
+    /// silently swallowing it.
+    @discardableResult
+    public func closeNonTerminalPane(_ paneID: UUID) -> PaneCloseOutcome {
         let outcome = closePane(id: paneID, refuseIfAppsLastPane: false)
         if outcome != .closed {
-            logger.notice("closeFocusedNonTerminalPane: pane=\(paneID, privacy: .public) outcome=\(String(describing: outcome), privacy: .public), expected .closed")
+            logger.notice("closeNonTerminalPane: pane=\(paneID, privacy: .public) outcome=\(String(describing: outcome), privacy: .public), expected .closed")
         }
+        return outcome
     }
 
     public func requestCloseOtherTabs(paneID: UUID, keepingTabID: UUID) {
@@ -578,10 +590,12 @@ public final class WindowRuntime {
     /// "this window's last pane, but a sibling window still has sessions."
     ///
     /// `fromCli` (#0396) forwards to `removeSession(id:fromCli:)` when this
-    /// close empties the owning Session's tree. Two production callers:
-    /// `AppStateStore.closePane(id:)` — the XPC `batty pane close` verb —
-    /// passes `true`; `closeFocusedNonTerminalPane` (⌘W on a non-terminal
-    /// pane) is the one GUI caller and keeps the default `false`.
+    /// close empties the owning Session's tree. Two production entry
+    /// points: `AppStateStore.closePane(id:)` — the XPC `batty pane close`
+    /// verb — passes `true`; `closeNonTerminalPane(_:)` (⌘W on a
+    /// non-terminal pane, and #0378's non-terminal Pane close button via
+    /// `AppStateStore.closeNonTerminalPane(id:)`) is the GUI path and
+    /// keeps the default `false`.
     @discardableResult
     public func closePane(id paneID: UUID, refuseIfAppsLastPane: Bool, fromCli: Bool = false) -> PaneCloseOutcome {
         for session in sessions {

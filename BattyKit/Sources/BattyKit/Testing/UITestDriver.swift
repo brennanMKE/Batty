@@ -129,6 +129,17 @@ public enum UITestDriver {
             let pane = session.focusedPaneAnyKind
             session.tree.splitFocusedPane(direction: .vertical, inheritingFrom: pane)
 
+        case .createPane(let kind):
+            guard let kind = PaneContentKind(rawValue: kind) else {
+                logger.notice("ui-test: createPane unknown kind=\(kind, privacy: .public)")
+                return
+            }
+            guard let paneID = store.focusedPaneIDFallback() else {
+                logger.notice("ui-test: createPane no focused pane")
+                return
+            }
+            _ = store.splitPane(id: paneID, direction: .horizontal, kind: kind)
+
         case .focusPane(let index):
             guard let session = store.selectedSession else {
                 logger.notice("ui-test: focusPane no selected session")
@@ -233,6 +244,7 @@ public enum UITestIntent: Decodable, Sendable {
     case resetActiveTabTitle
     case splitHorizontal
     case splitVertical
+    case createPane(kind: String)
     case focusPane(at: Int)
     case swapPanes(at: Int, with: Int)
     case applyTheme(name: String)
@@ -254,6 +266,7 @@ public enum UITestIntent: Decodable, Sendable {
         case .resetActiveTabTitle: return "resetActiveTabTitle"
         case .splitHorizontal: return "splitHorizontal"
         case .splitVertical: return "splitVertical"
+        case .createPane: return "createPane"
         case .focusPane: return "focusPane"
         case .swapPanes: return "swapPanes"
         case .applyTheme: return "applyTheme"
@@ -265,7 +278,7 @@ public enum UITestIntent: Decodable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case intent, name, layout, from, to, at, with, urls, ontoPaneAt
+        case intent, name, layout, kind, from, to, at, with, urls, ontoPaneAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -297,6 +310,8 @@ public enum UITestIntent: Decodable, Sendable {
             self = .splitHorizontal
         case "splitVertical":
             self = .splitVertical
+        case "createPane":
+            self = .createPane(kind: try c.decode(String.self, forKey: .kind))
         case "focusPane":
             self = .focusPane(at: try c.decode(Int.self, forKey: .at))
         case "swapPanes":

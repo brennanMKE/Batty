@@ -549,20 +549,25 @@ public final class AppStateStore {
 
     /// Ends every Tab's Terminal Session in `paneID` and removes its region
     /// from its owning session's split tree — #0283's XPC `pane close`
-    /// verb. Searches every window's every session, same as `splitPane`, so
-    /// a background-session target resolves identically to a foreground
-    /// one; the actual mutation happens in `WindowRuntime.closePane`, which
-    /// never touches `selectedSessionID` unless the closed pane emptied its
-    /// own session (in which case `removeSession`'s existing, already-safe
-    /// "only reassign if the removed session was selected" behavior
-    /// applies).
+    /// verb. This method is XPC-only: the non-terminal Pane header's close
+    /// button (#0378's `PaneView.paneCloseButton`) calls
+    /// `closeNonTerminalPane(id:)` below instead, not this one, so it never
+    /// reports a GUI click as `fromCli: true`.
+    /// Searches every window's every session, same as `splitPane`, so a
+    /// background-session target resolves identically to a foreground one;
+    /// the actual mutation happens in `WindowRuntime.closePane`, which
+    /// never touches `selectedSessionID` unless the closed pane emptied
+    /// its own session (in which case `removeSession`'s existing,
+    /// already-safe "only reassign if the removed session was selected"
+    /// behavior applies).
     ///
     /// Refuses (`.refusedLastPane`) rather than closing the app's very last
     /// pane across every window: see `PaneCloseOutcome.refusedLastPane` — an
     /// unattended XPC caller must not have a one-command path into #0217's
-    /// silent-quit cascade. Nothing in the UI calls this method today (no
-    /// pane-level close exists outside this verb), so the guard only ever
-    /// applies to XPC-driven closes.
+    /// silent-quit cascade. There is still no UI path that lets the caller
+    /// *confirm and proceed* past a refusal outcome
+    /// (`.needsConfirmation`/`.refusedLastPane`) — this verb surfaces the
+    /// refusal and stops, rather than bypassing the guard or force-closing.
     ///
     /// The refusal condition counts panes directly (`totalPanes == 1`)
     /// rather than proxying through `windows.count == 1` — a `WindowRuntime`
@@ -581,6 +586,27 @@ public final class AppStateStore {
             // GUI/PTY-origin default `WindowRuntime.closePane` otherwise
             // assumes.
             return window.closePane(id: paneID, refuseIfAppsLastPane: totalPanes == 1, fromCli: true)
+        }
+        return .unknownPane
+    }
+
+    // MARK: - GUI non-terminal pane close (#0378)
+
+    /// The GUI counterpart to `closePane(id:)` above: closes a non-terminal
+    /// Pane on behalf of a mouse click on `PaneView.paneCloseButton`, the
+    /// close control in the non-terminal Pane header's top-left corner.
+    /// Finds the pane's owning window the same way `closePane(id:)` does,
+    /// then delegates to `WindowRuntime.closeNonTerminalPane(_:)` — the
+    /// same method ⌘W on a non-terminal pane calls
+    /// (`closeFocusedTab()`/`requestCloseFocusedTab()`) — so a mouse click
+    /// and ⌘W agree on both `refuseIfAppsLastPane: false` (#0334's
+    /// contract; unlike `closePane(id:)` above, which refuses the app's
+    /// last pane) and `fromCli: false` (#0396; unlike `closePane(id:)`
+    /// above, which is XPC-only and always passes `true`).
+    @discardableResult
+    public func closeNonTerminalPane(id paneID: UUID) -> PaneCloseOutcome {
+        for window in windows where window.sessions.contains(where: { $0.tree.root.contains(paneID: paneID) }) {
+            return window.closeNonTerminalPane(paneID)
         }
         return .unknownPane
     }
