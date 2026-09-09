@@ -4,6 +4,35 @@ import ArgumentParser
 import BattyXPCCore
 import Foundation
 
+/// Conformance point for a leaf `ParsableCommand` to describe its own
+/// parameters as an MCP-shaped `inputSchema` (#0402). Every leaf command in
+/// `BattyCLI`'s tree conforms — `CapabilitiesInputSchemaTests
+/// .everyLeafCommandConformsToCapabilitiesDescribable` walks the same tree
+/// `collectVerbs` below does and fails if a future leaf command omits this,
+/// preserving #0384's "cannot silently go unreported" property for
+/// parameters, not only for the verb roster itself.
+///
+/// **Hand-authored per command, not derived from ArgumentParser's own
+/// argument metadata.** ArgumentParser's real reflection (the machinery
+/// behind its hidden `--experimental-dump-help`, `DumpHelpGenerator`/
+/// `ToolInfoV0(commandStack:)`) lives entirely inside the `ArgumentParser`
+/// module and is not `public` — nothing outside that module, including this
+/// file, can call it. This is candidate 3 from #0402's filing ("hand-authored
+/// JSON Schema per verb, drift-gated by test"), not candidate 1: what keeps
+/// each conformance honest is `CapabilitiesInputSchemaTests`' Mirror-based
+/// drift oracle (built via each command's own `.parse(_:)`, using only
+/// public `Mirror` reflection, no ArgumentParser internals), which fails if
+/// a command's stored properties and its schema diverge — not a compiler
+/// guarantee that the two can never diverge in content, only in count and
+/// name. Round-1 review's B1 finding (a `direction` property whose declared
+/// `cliKind`/`type`/`enum` combination described a `--direction` flag that
+/// does not exist) is exactly the gap that leaves open: the drift oracle
+/// catches a missing/extra *property*, not a wrong *shape* for one that
+/// exists.
+protocol CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload { get }
+}
+
 /// `batty capabilities` — a static, compiled-in description of this build's
 /// verb roster and exit-code vocabulary (#0384), so an agent facing an
 /// installed `batty` can discover what it supports instead of guessing or
@@ -39,6 +68,10 @@ struct CapabilitiesCommand: ParsableCommand {
         }
     }
 
+    /// The JSON Schema dialect every verb's `inputSchema` follows (#0402),
+    /// matching MCP's own default.
+    static let jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema"
+
     static func buildPayload() -> CapabilitiesPayload {
         CapabilitiesPayload(
             cliVersion: resolveAppVersion(),
@@ -47,7 +80,8 @@ struct CapabilitiesCommand: ParsableCommand {
                 success: ExitCode.success.rawValue,
                 failure: ExitCode.failure.rawValue,
                 validationFailure: ExitCode.validationFailure.rawValue
-            )
+            ),
+            jsonSchemaDialect: Self.jsonSchemaDialect
         )
     }
 
@@ -71,9 +105,106 @@ struct CapabilitiesCommand: ParsableCommand {
         let name = config.commandName ?? String(describing: type)
         let path = prefix + [name]
         guard !config.subcommands.isEmpty else {
-            return [CapabilitiesVerbPayload(name: path.joined(separator: " "), abstract: config.abstract, aliases: config.aliases)]
+            let verbPath = path.joined(separator: " ")
+            return [CapabilitiesVerbPayload(
+                name: verbPath,
+                abstract: config.abstract,
+                aliases: config.aliases,
+                inputSchema: (type as? CapabilitiesDescribable.Type)?.capabilitiesInputSchema ?? .empty,
+                annotations: Self.annotations(forVerbPath: verbPath)
+            )]
         }
         return config.subcommands.flatMap { collectVerbs(from: $0, prefix: path) }
+    }
+
+    /// Batty's CLI grammar deliberately reuses a small, closed vocabulary of
+    /// leaf verb *archetypes* across nouns (#0257's terminology amendment):
+    /// every `focus` verb is activating and idempotent (`PaneFocusCommand`,
+    /// `SessionFocusCommand`, `TabFocusCommand`'s own doc comments), every
+    /// `hide`/`show` is idempotent (`PaneHideCommand`/`PaneShowCommand`'s
+    /// "Idempotent" doc comments), every `close` fails rather than
+    /// succeeding quietly on a stale/repeated id (`PaneCloseCommand`
+    /// /`SessionCloseCommand`). `annotationsByArchetype` classifies that
+    /// vocabulary once, keyed by archetype name, not by full verb path — but
+    /// **membership in an archetype is an explicit per-verb-path opt-in**
+    /// (`leafArchetypeByVerbPath` below), not an automatic match on a leaf's
+    /// own `commandName`. Round-1 review demonstrated why the distinction
+    /// matters: with a leaf-name-keyed table, adding a *new* `close` under a
+    /// noun that never had one (e.g. a hypothetical `tab close`) would
+    /// silently inherit `"close"`'s `destructiveHint: true` with every
+    /// existing test green, because the old coverage test compared key
+    /// *sets* — a new verb path with the same trailing word as an existing
+    /// key was indistinguishable from an already-covered one. Keying the
+    /// coverage table by full verb path instead means a new `tab close`
+    /// is simply an unrecognized key until someone deliberately opts it in.
+    ///
+    /// **What is and isn't "derived" here, stated plainly:** coverage is —
+    /// `CapabilitiesInputSchemaTests
+    /// .leafArchetypeByVerbPathCoversExactlyTheShippedVerbPaths` walks
+    /// `BattyCLI`'s own tree the same way `collectVerbs` does (joining each
+    /// leaf's full path exactly as `collectVerbs` does) and fails if
+    /// `leafArchetypeByVerbPath`'s keys and the shipped verb paths ever
+    /// diverge in either direction, so a new verb (or a renamed one) cannot
+    /// silently go unclassified, leave a stale entry behind, or get
+    /// auto-classified by a same-named neighbor. A second test asserts every
+    /// archetype `leafArchetypeByVerbPath` points at actually exists in
+    /// `annotationsByArchetype`. The *values* — which hint is true for
+    /// "close" versus "focus" — are asserted to match this codebase's own
+    /// documented behavior, not mechanically derived from source: Swift has
+    /// no static signal for a function's side-effect class, and the four
+    /// imperative conflicts in `PaneCommand.swift` (#0402's Gap 2) are the
+    /// standing proof that this codebase's semantics are not all reachable
+    /// by reflection.
+    ///
+    /// Not `private`: `CapabilitiesInputSchemaTests`, in a different file of
+    /// this same target, needs to read these directly to check coverage.
+    static let annotationsByArchetype: [String: CapabilitiesAnnotationsPayload] = [
+        "new": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
+        "ping": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "status": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "list": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "info": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "focus": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "close": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false),
+        // Worst-case default: `pane split` is only idempotent with
+        // `--unique` against a non-terminal `--view` (#0383) — the static
+        // per-verb hint reflects its behavior without that flag, per MCP's
+        // own "hints ... with worst-case defaults" guidance. See this
+        // verb's `inputSchema.conflicts` for the `--unique` requirement
+        // itself.
+        "split": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
+        "hide": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "show": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "id": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "notify": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
+        "capabilities": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+    ]
+
+    /// The explicit per-verb-path opt-in into `annotationsByArchetype` — see
+    /// that property's doc comment for why this indirection exists rather
+    /// than keying directly by leaf name.
+    static let leafArchetypeByVerbPath: [String: String] = [
+        "new": "new",
+        "ping": "ping",
+        "status": "status",
+        "list": "list",
+        "session info": "info",
+        "session focus": "focus",
+        "session close": "close",
+        "pane split": "split",
+        "pane close": "close",
+        "pane focus": "focus",
+        "pane hide": "hide",
+        "pane show": "show",
+        "tab focus": "focus",
+        "id": "id",
+        "notify": "notify",
+        "capabilities": "capabilities",
+    ]
+
+    static func annotations(forVerbPath verbPath: String) -> CapabilitiesAnnotationsPayload {
+        guard let archetype = leafArchetypeByVerbPath[verbPath] else { return .worstCaseDefault }
+        return annotationsByArchetype[archetype] ?? .worstCaseDefault
     }
 
     private static func printPlainText(_ payload: CapabilitiesPayload) {
@@ -87,5 +218,13 @@ struct CapabilitiesCommand: ParsableCommand {
         for exitCode in payload.exitCodes {
             print("  \(exitCode.code) — \(exitCode.meaning)")
         }
+    }
+}
+
+extension CapabilitiesCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of a plain-text summary.", required: false, defaultValue: "false"),
+        ])
     }
 }

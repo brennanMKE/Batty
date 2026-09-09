@@ -98,9 +98,13 @@ struct CapabilitiesCommandTests {
     @Test func payloadJSONTopLevelKeysAreStable() throws {
         let data = try JSONEncoder().encode(CapabilitiesCommand.buildPayload())
         let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(Set(raw.keys) == ["cliVersion", "verbs", "exitCodes"])
+        // #0402: `jsonSchemaDialect` is additive; the original three keys
+        // (#0384) are untouched.
+        #expect(Set(raw.keys) == ["cliVersion", "verbs", "exitCodes", "jsonSchemaDialect"])
         let verbs = try #require(raw["verbs"] as? [[String: Any]])
-        #expect(Set(verbs[0].keys) == ["name", "abstract", "aliases"])
+        // #0402: `inputSchema`/`annotations` are additive; `{name, abstract,
+        // aliases}` (#0384) is untouched.
+        #expect(Set(verbs[0].keys) == ["name", "abstract", "aliases", "inputSchema", "annotations"])
         let exitCodes = try #require(raw["exitCodes"] as? [[String: Any]])
         #expect(Set(exitCodes[0].keys) == ["code", "meaning"])
     }

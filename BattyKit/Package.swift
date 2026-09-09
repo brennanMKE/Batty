@@ -98,7 +98,10 @@ let package = Package(
         ),
         .testTarget(
             name: "BattyKitTests",
-            dependencies: ["BattyKit", "batty"],
+            dependencies: [
+                "BattyKit", "batty",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
             resources: [
                 .copy("Fixtures"),
             ],

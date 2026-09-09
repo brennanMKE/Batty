@@ -23,3 +23,7 @@ struct PingCommand: ParsableCommand {
         }
     }
 }
+
+extension PingCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload { .empty }
+}

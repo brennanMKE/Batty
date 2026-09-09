@@ -1235,8 +1235,10 @@ Grounded directly in the code above, not aspirational:
   kind — `terminal` (the default when the flag is omitted; every existing
   `pane split` invocation keeps producing a terminal pane unchanged),
   `git-status`, `process-status`, `lm-studio-dashboard`, or
-  `system-metrics`. An unknown kind is rejected client-side with exit `1`
-  before any XPC round trip, listing the valid set. Non-terminal kinds
+  `system-metrics`. `--view` is typed as the `PaneContentKind` enum itself
+  (#0402), so an unknown kind is rejected by ArgumentParser's own parsing —
+  exit `64`, before any XPC round trip — rather than a hand-rolled check;
+  `--help` lists the valid set automatically. Non-terminal kinds
   render as a deliberately provisional placeholder today — #0301's
   design-first gate means none of their real views has an approved design
   yet (see `docs/design/*.md`); the plumbing (model field, wire field, CLI

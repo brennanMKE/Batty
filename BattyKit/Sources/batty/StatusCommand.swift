@@ -86,3 +86,11 @@ struct StatusCommand: ParsableCommand {
         String(format: "%.1f", seconds)
     }
 }
+
+extension StatusCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of a plain-text summary. Reports failure states as JSON too, so a script never sees empty stdout.", required: false, defaultValue: "false"),
+        ])
+    }
+}

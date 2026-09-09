@@ -149,6 +149,16 @@ struct SessionInfoCommand: ParsableCommand {
 
 }
 
+extension SessionInfoCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "session": CapabilitiesPropertyPayload(cliKind: .option, names: ["--session"], type: "string", description: "Session id to inspect. Falls back to the focused session when omitted.", required: false),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of a plain-text summary.", required: false, defaultValue: "false"),
+            "include-dimensions": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--include-dimensions"], type: "boolean", description: "Include `frame` and `visibleRect` dimensions in pane objects. Not included by default.", required: false, defaultValue: "false"),
+        ])
+    }
+}
+
 /// `batty session focus` — #0381: one of the three "show the human what I
 /// did" verbs, over XPC request/reply following #0282's mutation-verb
 /// pattern so a stale/unknown id is visible to the caller (exit `4`)
@@ -229,6 +239,14 @@ struct SessionFocusCommand: ParsableCommand {
     }
 }
 
+extension SessionFocusCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Session id to focus. Falls back to BATTY_SESSION_ID, then the focused session, when omitted.", required: false),
+        ])
+    }
+}
+
 /// `batty session close` — #0382: reverses what `batty new`/`session new`
 /// (eventually) built, over XPC request/reply following #0282's
 /// mutation-verb pattern so a stale/unknown `--session` id or a refusal is
@@ -298,5 +316,13 @@ struct SessionCloseCommand: ParsableCommand {
                 throw ExitCode(XPCExitCode.sessionTerminated)
             }
         }
+    }
+}
+
+extension SessionCloseCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "session": CapabilitiesPropertyPayload(cliKind: .option, names: ["--session"], type: "string", description: "Session id to close. Falls back to BATTY_SESSION_ID, then the focused session, when omitted.", required: false),
+        ])
     }
 }

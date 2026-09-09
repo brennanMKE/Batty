@@ -2,6 +2,7 @@
 
 import ArgumentParser
 import BattyCLICore
+import BattyXPCCore
 import Foundation
 
 /// `batty id` — print this pane's session/pane/tab identity from
@@ -48,5 +49,13 @@ struct IDCommand: ParsableCommand {
         print("session \(context.sessionID)")
         print("pane \(context.paneID)")
         print("tab \(context.tabID)")
+    }
+}
+
+extension IDCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of a plain-text summary.", required: false, defaultValue: "false"),
+        ])
     }
 }

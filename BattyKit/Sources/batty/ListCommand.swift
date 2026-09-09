@@ -15,7 +15,7 @@ struct ListCommand: ParsableCommand {
         abstract: "List windows, sessions, panes, and tabs from a running Batty."
     )
 
-    enum Scope: String, ExpressibleByArgument {
+    enum Scope: String, ExpressibleByArgument, CaseIterable {
         case sessions
         case panes
         case tabs
@@ -139,5 +139,15 @@ struct ListCommand: ParsableCommand {
         let flags = tab.isActive ? " active" : ""
         let cwd = tab.workingDirectory.map { " cwd=\($0)" } ?? ""
         return "tab \(tab.id) pane=\(pane.id) session=\(session.id) \"\(tab.title)\"\(flags)\(cwd)"
+    }
+}
+
+extension ListCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "scope": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Restrict the plain-text listing to sessions, panes, or tabs. Defaults to sessions. Ignored by --json, which always reports the full topology — slice it with a tool like jq instead.", required: false, enumValues: Scope.allCases.map(\.rawValue), defaultValue: Scope.sessions.rawValue),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of a plain-text summary.", required: false, defaultValue: "false"),
+            "include-dimensions": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--include-dimensions"], type: "boolean", description: "Include `frame` and `visibleRect` dimensions in pane objects. Not included by default.", required: false, defaultValue: "false"),
+        ])
     }
 }

@@ -29,22 +29,6 @@ private nonisolated func resolveTargetPaneID(flag: String?) throws -> UUID? {
     }
 }
 
-/// Resolves `pane split --view <kind>` client-side. `nil` (flag omitted)
-/// means "no explicit kind" — the wire/model layer's own default is
-/// `.terminal` (#0315's directive: omitting `--view` must keep every
-/// existing invocation producing a terminal pane unchanged). An unknown
-/// kind string fails fast here with exit `1`, listing the valid set,
-/// rather than round-tripping to the app only to fail there.
-private nonisolated func resolveViewKind(flag: String?) throws -> PaneContentKind? {
-    guard let flag else { return nil }
-    guard let kind = PaneContentKind(rawValue: flag) else {
-        let valid = PaneContentKind.allCases.map(\.rawValue).joined(separator: ", ")
-        fputs("batty: invalid --view kind: \(flag) (expected one of: \(valid))\n", stderr)
-        throw ExitCode.failure
-    }
-    return kind
-}
-
 /// `batty pane split` — the first mutating verb carried over XPC
 /// request/reply rather than the one-way `batty://` scheme (#0257's
 /// 2026-07-26 transport amendment), so a stale/unknown `--pane` id is
@@ -79,12 +63,13 @@ struct PaneSplitCommand: ParsableCommand {
 
     /// #0315. Omitted means Terminal — every existing `pane split`
     /// invocation keeps producing exactly the terminal pane it always did.
-    /// Validated client-side against `PaneContentKind`'s known raw values
-    /// (the same string used as the Codable/topology spelling,
-    /// `docs/pane-kinds.md` §5) so an unknown kind fails fast with exit `1`
-    /// rather than reaching the app.
-    @Option(name: .long, help: "Pane content kind for the new pane. Defaults to terminal. One of: \(PaneContentKind.allCases.map(\.rawValue).joined(separator: ", ")).")
-    var view: String?
+    /// Typed as `PaneContentKind` itself, not `String` (#0402 Gap 1's fix,
+    /// see `PaneContentKindArgument.swift`), so ArgumentParser validates an
+    /// unknown kind before `run()` ever sees it (exit `64`) and lists the
+    /// valid set in `--help` automatically via `allValueStrings` — no
+    /// hand-rolled check or hand-typed value list needed here anymore.
+    @Option(name: .long, help: "Pane content kind for the new pane. Defaults to terminal.")
+    var view: PaneContentKind?
 
     /// `#0305`: pins a `.processStatus` pane to a literal pid (mode A,
     /// `docs/design/process-status-view.md` §2) instead of the default
@@ -121,7 +106,7 @@ struct PaneSplitCommand: ParsableCommand {
         let targetPaneID = try resolveTargetPaneID(flag: pane)
         let wireDirection: TopologySplitDirection = direction == .vertical ? .vertical : .horizontal
         let commandOverride = command.flatMap { $0.isEmpty ? nil : $0 }
-        let resolvedKind = try resolveViewKind(flag: view)
+        let resolvedKind = view
         if unique, resolvedKind == nil || resolvedKind == .terminal {
             fputs("batty: --unique requires a non-terminal --view <kind> (there is no sensible \"the terminal pane\" to find)\n", stderr)
             throw ExitCode.failure
@@ -520,5 +505,98 @@ nonisolated enum SplitDirectionFlag: EnumerableFlag {
         case .horizontal: return [.customShort("h"), .long]
         case .vertical: return [.customShort("v"), .long]
         }
+    }
+}
+
+extension PaneSplitCommand: CapabilitiesDescribable {
+    /// #0402's motivating case: every parameter, the five `PaneContentKind`
+    /// values under `view`, `direction`'s two values presented as one
+    /// logical enum property (ArgumentParser's own dump flattens the
+    /// `-h`/`-v` `EnumerableFlag` pair into two separate booleans — this
+    /// schema deliberately does not, but see `enumValueNames` below: unlike
+    /// `view`, there is no single `--direction <value>` spelling to invoke
+    /// it with), and the four cross-parameter conflicts `run()` above
+    /// enforces imperatively (#0402 Gap 2).
+    ///
+    /// Each `conflicts` entry's `description` is a **hand-authored
+    /// paraphrase** of the `fputs` message it models, not a verified
+    /// verbatim copy — see `CapabilitiesConstraintPayload.description`'s doc
+    /// comment for exactly which two of these four are and are not
+    /// reproducible as a fixed string at all (two of the four runtime
+    /// messages interpolate the offending `--view` value).
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        let nonTerminalKinds = PaneContentKind.allCases.filter { $0 != .terminal }.map(\.rawValue)
+        return CapabilitiesInputSchemaPayload(
+            properties: [
+                // No `names`: there is no single `--direction` flag to name
+                // (round-1 review's B1) — `-h`/`-v`/`--horizontal`/
+                // `--vertical` are two real, independent `EnumerableFlag`
+                // spellings, one per logical value, so each value's own
+                // invocation is in `enumValueNames` instead.
+                "direction": CapabilitiesPropertyPayload(cliKind: .flag, type: "string", description: "Split direction. Defaults to horizontal.", required: false, enumValues: SplitDirectionFlag.allCases.map { String(describing: $0) }, enumValueNames: ["horizontal": ["-h", "--horizontal"], "vertical": ["-v", "--vertical"]], defaultValue: "horizontal"),
+                "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["-c", "--command"], type: "string", description: "Run this command in the new pane instead of the default shell.", required: false),
+                "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane id to split. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
+                "view": CapabilitiesPropertyPayload(cliKind: .option, names: ["--view"], type: "string", description: "Pane content kind for the new pane. Defaults to terminal.", required: false, enumValues: PaneContentKind.allCases.map(\.rawValue), defaultValue: PaneContentKind.terminal.rawValue),
+                "pid": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pid"], type: "integer", description: "Pin a process-status pane to this pid instead of following a terminal's foreground process. Only valid with --view process-status.", required: false, minimum: 1),
+                "path": CapabilitiesPropertyPayload(cliKind: .option, names: ["--path"], type: "string", description: "Directory for the new pane to monitor (only valid with --view git-status). Resolved to an absolute path.", required: false),
+                "unique": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--unique"], type: "boolean", description: "With --view <kind>, print the id of an existing visible pane of that kind instead of creating one. viewOptions differences (--path/--pid) do not defeat the match. Requires a non-terminal --view.", required: false, defaultValue: "false"),
+            ],
+            conflicts: [
+                // `allowsOmission: false` — `unique`/`pid`/`path` each
+                // require `view` to be *present* and equal to a specific
+                // value; omitting `--view` fails all three exactly like
+                // passing the wrong kind does (`PaneCommand.swift`'s
+                // `resolvedKind == nil || resolvedKind == .terminal`,
+                // `resolvedKind != .processStatus`, `resolvedKind !=
+                // .gitStatus`, respectively — `nil` satisfies none of them).
+                .requires(parameter: "unique", requiresParameter: "view", allowedValues: nonTerminalKinds, allowsOmission: false, description: "--unique requires a non-terminal --view <kind> (there is no sensible \"the terminal pane\" to find)"),
+                // `allowsOmission: true` — the one escape hatch among these
+                // four: `command` is valid both when `--view` is omitted
+                // entirely and when it is explicitly `terminal` (round-1
+                // review's B2: this is what a schema-validating agent must
+                // be able to tell apart from the other three without
+                // reading English, since `batty pane split -c "npm test"`
+                // — no `--view` at all — is the common case, not an
+                // exception).
+                .requires(parameter: "command", requiresParameter: "view", allowedValues: [PaneContentKind.terminal.rawValue], allowsOmission: true, description: "--command is not valid with a non-terminal --view <kind> (non-terminal panes have no shell); omitting --view (which defaults to terminal) is fine"),
+                .requires(parameter: "pid", requiresParameter: "view", allowedValues: [PaneContentKind.processStatus.rawValue], allowsOmission: false, description: "--pid is only valid with --view process-status"),
+                .requires(parameter: "path", requiresParameter: "view", allowedValues: [PaneContentKind.gitStatus.rawValue], allowsOmission: false, description: "--path is not valid with --view <kind> (only git-status accepts --path)"),
+            ]
+        )
+    }
+}
+
+extension PaneCloseCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane id to close. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
+        ])
+    }
+}
+
+extension PaneFocusCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Pane id to focus. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
+        ])
+    }
+}
+
+extension PaneHideCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane id to hide. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
+        ])
+    }
+}
+
+extension PaneShowCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(
+            properties: [
+                "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Pane id to show. Required — no BATTY_PANE_ID/focused-pane fallback (a hidden pane has no shell to run batty from).", required: true),
+            ],
+            required: ["id"]
+        )
     }
 }

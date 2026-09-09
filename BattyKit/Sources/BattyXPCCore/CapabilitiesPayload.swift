@@ -11,11 +11,27 @@ public nonisolated struct CapabilitiesVerbPayload: Codable, Sendable, Equatable 
     public let name: String
     public let abstract: String
     public let aliases: [String]
+    /// #0402: this verb's parameters as an MCP-shaped `inputSchema`, plus
+    /// the cross-parameter conflicts imperative validation code enforces
+    /// but no dump of ArgumentParser's own metadata can see.
+    public let inputSchema: CapabilitiesInputSchemaPayload
+    /// #0402: MCP `tools/list`'s behavioral hints for this verb — see
+    /// `CapabilitiesAnnotationsPayload`'s doc comment for what "derived"
+    /// means here.
+    public let annotations: CapabilitiesAnnotationsPayload
 
-    public init(name: String, abstract: String, aliases: [String]) {
+    public init(
+        name: String,
+        abstract: String,
+        aliases: [String],
+        inputSchema: CapabilitiesInputSchemaPayload,
+        annotations: CapabilitiesAnnotationsPayload
+    ) {
         self.name = name
         self.abstract = abstract
         self.aliases = aliases
+        self.inputSchema = inputSchema
+        self.annotations = annotations
     }
 }
 
@@ -33,11 +49,23 @@ public nonisolated struct CapabilitiesPayload: Codable, Sendable, Equatable {
     public let cliVersion: String
     public let verbs: [CapabilitiesVerbPayload]
     public let exitCodes: [CapabilitiesExitCodePayload]
+    /// #0402: the JSON Schema dialect every verb's `inputSchema` follows,
+    /// stated once here rather than repeated identically on all 16 verbs —
+    /// MCP's own `tools/list` defaults to 2020-12 unless a schema names its
+    /// own `$schema`, so this key makes that choice explicit rather than
+    /// assumed.
+    public let jsonSchemaDialect: String
 
-    public init(cliVersion: String, verbs: [CapabilitiesVerbPayload], exitCodes: [CapabilitiesExitCodePayload]) {
+    public init(
+        cliVersion: String,
+        verbs: [CapabilitiesVerbPayload],
+        exitCodes: [CapabilitiesExitCodePayload],
+        jsonSchemaDialect: String
+    ) {
         self.cliVersion = cliVersion
         self.verbs = verbs
         self.exitCodes = exitCodes
+        self.jsonSchemaDialect = jsonSchemaDialect
     }
 
     /// The exit-code vocabulary in numeric order: `ArgumentParser`'s own

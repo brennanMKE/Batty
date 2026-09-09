@@ -108,3 +108,17 @@ struct NotifyCommand: ParsableCommand {
         }
     }
 }
+
+extension NotifyCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(
+            properties: [
+                "title": CapabilitiesPropertyPayload(cliKind: .option, names: ["--title"], type: "string", description: "Notification title.", required: true),
+                "body": CapabilitiesPropertyPayload(cliKind: .option, names: ["--body"], type: "string", description: "Notification body.", required: false),
+                "sound": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--sound"], type: "boolean", description: "Request sound, subject to Settings → Notifications → \"Play sound\".", required: false, defaultValue: "false"),
+                "tab": CapabilitiesPropertyPayload(cliKind: .option, names: ["--tab"], type: "string", description: "Tab id to attribute the notification to. Falls back to BATTY_TAB_ID, then the focused tab, when omitted.", required: false),
+            ],
+            required: ["title"]
+        )
+    }
+}

@@ -99,3 +99,11 @@ struct TabFocusCommand: ParsableCommand {
         }
     }
 }
+
+extension TabFocusCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Tab id to focus. Falls back to BATTY_TAB_ID, then the focused tab, when omitted.", required: false),
+        ])
+    }
+}

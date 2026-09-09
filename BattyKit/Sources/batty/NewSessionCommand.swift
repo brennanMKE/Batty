@@ -449,3 +449,18 @@ struct NewSessionCommand: ParsableCommand {
         print(text)
     }
 }
+
+extension NewSessionCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(
+            properties: [
+                "path": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Directory for the new session. Defaults to the current directory.", required: false, defaultValue: "."),
+                "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of the two-line session id / pane id text.", required: false, defaultValue: "false"),
+                "no-wait": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--no-wait"], type: "boolean", description: "Dispatch the batty:// URL and exit immediately without confirming the new session — the original fire-and-forget behavior.", required: false, defaultValue: "false"),
+            ],
+            conflicts: [
+                .mutuallyExclusive(["json", "no-wait"], description: "--json has no effect with --no-wait, which exits before there is anything to report"),
+            ]
+        )
+    }
+}
