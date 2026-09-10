@@ -47,17 +47,29 @@ The `docs/` folder has additional topical guides (see `docs/README.md`).
 
 ## Build / verify commands
 
+**`./build.sh` in the repo root is the single entry point.** Everything
+defaults to the `Batty (Beta)` scheme — Beta is the variant you develop and
+test against, building `Batty Beta.app` under `co.sstools.Batty.beta`, so it
+never collides with the Prod app running from `/Applications`. Prod is for
+release builds only.
+
 ```bash
-# Build only (the canonical "did I break the build?" check)
+# Build only (the canonical "did I break the build?" check) — Beta
 ./build.sh
 
 # Run BattyKit unit tests — fast, no UI, runs before every commit
 ./build.sh unit
 
-# Run UI tests (slow; blocks the machine; run on the Mac mini for preflight/release)
-scripts/run-ui-tests.sh                              # all UI tests
-./build.sh ui BattyUITests/TabRenameTests  # one class
-./build.sh ui BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle  # one test
+# Run UI tests (slow; locks the machine; run on the Mac mini for preflight)
+./build.sh ui                                     # all UI tests
+./build.sh ui BattyUITests/TabRenameTests         # one class
+./build.sh ui BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle
+
+# Package a Batty Beta.app to install alongside Prod
+./build.sh package [--sign]
+
+# Release builds — the only path that uses the Prod scheme
+./build.sh release [archive|build|...]
 
 # Open in Xcode for live development, breakpoints, SwiftUI previews
 # (use the workspace, not the .xcodeproj, so BattyKitTests appears in
@@ -65,31 +77,31 @@ scripts/run-ui-tests.sh                              # all UI tests
 open Batty.xcworkspace
 ```
 
+Any other action passes through to `xcodebuild` under the Beta scheme, so
+`./build.sh archive`, `./build.sh analyze`, and friends still work.
+
 **Test strategy:**
 
-- **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package so BattyKitTests appear in the Test Navigator under the `Batty (Prod)` and `Batty (Beta)` schemes.
-- **UI tests** (`./build.sh ui`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
-
-`./build.sh` is a thin wrapper that invokes `xcodebuild` with the correct scheme (`Batty (Prod)`) and destination. Direct `xcodebuild` calls work too; the wrapper is a convenience. The actual scheme is `Batty (Prod)`, not `Batty`.
+- **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package, so BattyKitTests appear in the Test Navigator. Use the `Batty (Beta)` scheme there; `Batty (Prod)` also lists them, but Prod is for release builds only.
+- **UI tests** (`./build.sh ui`, which delegates to `scripts/run-ui-tests.sh`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
+- **Release build** (`./build.sh release archive -archivePath dist/Batty.xcarchive -configuration Release`) — the only path that compiles at `-O`, and the only one that exercises the universal (arm64 + x86_64) slices. **Run it before cutting any release, and after any change to a type with non-trivial generics or deinit.** Debug and Beta builds do not cover it: `-O` reaches optimizer paths Debug never runs, and a Release-only compiler crash went undetected for months because nothing in the routine loop built at `-O` (#0391 — swift-frontend 6.3.3 crashed in the SIL `EarlyPerfInliner` on a generic class's implicit `deinit`, blocking the entire release pipeline).
 
 Always confirm the headless `./build.sh` invocation passes before committing — Xcode previews are not a build pass.
 
-**`./build.sh` in the repo root is the single entry point, and it defaults to the `Batty (Beta)` scheme.** Prod is for release builds only (`./build.sh release`).
+**Never invoke `xcodebuild` directly for a build you intend to trust, and never override the scheme by hand.** Prod vs Beta is selected by `Configuration/Active.xcconfig`, a gitignored file that `#include`s either `Prod.xcconfig` or `Beta.xcconfig`. The `Batty (Beta)` scheme has a pre-action that points it at Beta via `scripts/set-environment.sh`, but that pre-action runs **after** `xcodebuild` has already resolved build settings — so it only takes effect on the *next* invocation (#0280). That lag is why a hand-rolled `xcodebuild` invocation can silently build the other variant while reporting the scheme you asked for.
 
-Prod vs Beta is selected by `Configuration/Active.xcconfig`, a gitignored file that `#include`s either variant. The `Batty (Beta)` scheme's pre-action sets it, but runs *after* `xcodebuild` has resolved build settings, so it lags one invocation behind (#0280). `./build.sh`, `./build.sh package`, and `./build.sh ui` each snapshot that file, select the variant they need before invoking `xcodebuild`, and restore what they found on every exit path. Use them rather than a hand-rolled `xcodebuild` or a `SCHEME` override, either of which can silently build the other variant while reporting the scheme you asked for.
+`./build.sh`, `./build.sh package`, and `scripts/run-ui-tests.sh` each snapshot `Active.xcconfig` on entry, select the variant they need *before* invoking `xcodebuild`, and restore what they found on every exit path — including Ctrl-C and failures. Use them and the problem does not arise.
 
 If a build ever looks wrong, check the environment first:
 
 ```bash
-cat Configuration/Active.xcconfig                        # expect: #include "Prod.xcconfig"
-./scripts/set-environment.sh Prod                        # restore it
-xcodebuild -project Batty.xcodeproj -scheme "Batty (Prod)" \
-    -showBuildSettings | grep PRODUCT_NAME               # expect: Batty
+cat Configuration/Active.xcconfig                        # what is selected right now
+./scripts/set-environment.sh Beta                        # or Prod
+xcodebuild -project Batty.xcodeproj -scheme "Batty (Beta)" \
+    -showBuildSettings | grep PRODUCT_NAME               # expect: Batty Beta
 ```
 
-Related: Prod and Beta share one target, so whichever scheme resolved last caches its product name into the tracked `Batty.xcodeproj/project.pbxproj` (`Batty.app` ↔ `Batty Beta.app`). **A dirty `project.pbxproj` after a Beta build is expected residue — discard it (`git checkout --`), never commit it.** Committing it just makes the next Prod build flip it back.
-
-**Run UI tests via `./build.sh ui`, not raw `xcodebuild test`.** Xcode builds `BattyUITests-Runner.app` by dropping our xctest bundle into Apple's signed XCTRunner template without re-signing the outer app. Ad-hoc local builds end up with a broken signature ("code has no resources but signature indicates they must be present"), which AppleSystemPolicy treats as a tampered Apple binary — macOS Gatekeeper translocates the runner to `~/.Trash` and kills it before `xcodebuild test` can bootstrap. The script re-signs the runner + host app ad-hoc after `build-for-testing` and then invokes `test-without-building`, sidestepping the trash-prompt loop.
+Related: Prod and Beta share one target, so whichever scheme resolved last caches its product name into the tracked `Batty.xcodeproj/project.pbxproj` (`Batty.app` ↔ `Batty Beta.app`), and Xcode also rewrites `BuildableName` in the tracked `.xcscheme` files the same way. **A dirty `project.pbxproj` or `.xcscheme` after a build is expected residue — discard it (`git checkout --`), never commit it.**
 
 ## Release / distribution
 
@@ -166,9 +178,9 @@ See `issues/Issues.md` for the full workflow — **read it before touching any i
 - Status: `open` → `in-progress` → `resolved` → `closed`. **Never set `closed`** — that's the user's transition after they verify.
 - **Resolving an issue is review-gated and role-split (binding, for cost and quality):**
   - All work happens on a branch `issue/NNNN`; `main` receives one squash commit after review approval. The branch is kept, never pushed or deleted.
-  - A **filer subagent pinned to the top available model** (currently Fable, `Codex-fable-5`) creates new `NNNN.md` files on `main` — no branch, no review gate.
-  - An **implementer subagent pinned to Sonnet** (`Codex-sonnet-5`) does the code work and verification on the branch.
-  - A **reviewer subagent pinned to Opus** (`Codex-opus-4-8`) reviews `git diff main...HEAD`; approve or request-changes. Findings route back to the *same* implementer agent.
+  - A **filer subagent pinned to the top available model** (currently Fable, `claude-fable-5`) creates new `NNNN.md` files on `main` — no branch, no review gate.
+  - An **implementer subagent pinned to Sonnet** (`claude-sonnet-5`) does the code work and verification on the branch.
+  - A **reviewer subagent pinned to Opus** (`claude-opus-4-8`) reviews `git diff main...HEAD`; approve or request-changes. Findings route back to the *same* implementer agent.
   - The **main session orchestrates only** — it dispatches the filer for new issues, creates branches, dispatches the implementer/reviewer subagents, records review/work-log commits, and squash-merges after approval. It does **not** file, implement, or review inline, even for small follow-ups; those go to the respective subagent.
   - `resolved` is set only after the reviewer approves. Metadata gets a `**Branch**` row (no `**Commit**` row); the issue file carries per-round `## Work log` cost rows.
 - Module names are listed in `issues/Issues.md` under "Module conventions for this project". Don't invent new ones ad-hoc.
