@@ -835,6 +835,12 @@ public final class WindowRuntime {
 
         let oldActiveTabTitle = oldTab.titleOverride ?? ""
 
+        // Same #0256 invariant as `jumpToBellEntry`: un-hide the pane before
+        // navigating to it, so `focusedPaneID` never references a hidden pane.
+        if pane.isHidden {
+            showPane(id: pane.id)
+        }
+
         selectedSessionID = session.id
         session.tree.focusedPaneID = pane.id
         pane.activeTabID = tabID
