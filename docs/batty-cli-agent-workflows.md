@@ -5,10 +5,14 @@ complete command reference, installation details, transports, and exit codes,
 see [`batty-cli-install.md`](batty-cli-install.md).
 
 **An agent working outside this repo** — no access to this doc, running in
-some unrelated project's Pane — should install the condensed Claude Code
-skill this doc is packaged into instead of reading this file directly:
+some unrelated project's Pane — should install the condensed agent skill
+this doc is packaged into instead of reading this file directly:
 [`.claude/skills/batty-cli/SKILL.md`](../.claude/skills/batty-cli/SKILL.md)
-(#0403). This doc stays the canonical, fuller reference — the skill is a
+(#0403). The skill folder's own `install.sh` (#0404) detects and installs
+for Claude Code, Cursor, OpenCode, and Codex — it is not Claude-only despite
+living under `.claude/`, which is simply the skill's original authoring
+location and the one path every consumer still fetches the tagged folder
+from. This doc stays the canonical, fuller reference — the skill is a
 subset for a reader with no repo access, not a replacement — and
 `batty capabilities`'s plain-text output prints the install command
 pre-filled with the running build's own version.

@@ -122,80 +122,35 @@ struct CapabilitiesCommandTests {
         let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
         #expect(lines == [
             "agent skill:",
-            "  Claude Code skill teaching agents to drive this CLI: .claude/skills/batty-cli",
-            "  Install/refresh it from this build's own tagged release (each failure",
-            "  point below is checked separately and leaves the existing copy untouched):",
+            "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",
+            "  Cursor, OpenCode, and Codex: .claude/skills/batty-cli",
+            "  Install/refresh for every detected agent host from this build's own tagged",
+            "  release — the skill folder carries its own installer, so nothing extra to",
+            "  download:",
             "    tmp=$(mktemp -d)",
             "    if ! git clone --quiet --depth 1 --branch v1.1.0 https://github.com/brennanMKE/Batty.git \"$tmp\"; then",
             "      echo \"clone of v1.1.0 failed (network error, or the tag doesn't exist) — existing copy left untouched\" >&2",
-            "    elif [ ! -d \"$tmp/.claude/skills/batty-cli\" ]; then",
-            "      echo \"tag v1.1.0 has no .claude/skills/batty-cli (predates #0403) — not installing, existing copy left untouched\" >&2",
+            "    elif [ ! -x \"$tmp/.claude/skills/batty-cli/install.sh\" ]; then",
+            "      echo \"tag v1.1.0 has no agent-skill installer (added in #0404) — existing copy left untouched\" >&2",
             "    else",
-            "      mkdir -p ~/.claude/skills",
-            "      rm -rf ~/.claude/skills/batty-cli.new",
-            "      if cp -R \"$tmp/.claude/skills/batty-cli\" ~/.claude/skills/batty-cli.new && [ -f ~/.claude/skills/batty-cli.new/SKILL.md ]; then",
-            "        rm -rf ~/.claude/skills/batty-cli",
-            "        mv ~/.claude/skills/batty-cli.new ~/.claude/skills/batty-cli",
-            "      else",
-            "        echo \"stage incomplete — existing copy left untouched\" >&2",
-            "        rm -rf ~/.claude/skills/batty-cli.new",
-            "      fi",
+            "      \"$tmp/.claude/skills/batty-cli/install.sh\"   # add --project DIR / --dry-run as needed",
             "    fi",
             "    rm -rf \"$tmp\"",
         ])
     }
 
-    // #0403 round-1 review B1: the destination is never removed before the
-    // staged copy is confirmed present under `.new`, and the swap always
-    // happens via `mv` from that staged path — never a bare `cp` over an
-    // existing install. A regression here (e.g. reordering `rm -rf` before
-    // the `if` guard) would delete a user's skill with nothing to replace it
-    // whenever a tag exists but predates the skill (`v1.1.0` does, today).
-    @Test func skillInstallLinesNeverRemoveTheExistingInstallBeforeStagingTheReplacement() throws {
-        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
-        let removeIndex = try #require(lines.firstIndex { $0.contains("rm -rf ~/.claude/skills/batty-cli") && !$0.contains(".new") })
-        let stageIndex = try #require(lines.firstIndex { $0.contains("cp -R") && $0.contains("batty-cli.new") })
-        let swapIndex = try #require(lines.firstIndex { $0.contains("mv ") && $0.contains("batty-cli.new") })
-        #expect(stageIndex < removeIndex)
-        #expect(removeIndex < swapIndex)
-    }
-
-    // #0403 round-2 review B2: verifying only the *source* tag had the
-    // skill (the `[ -d "$tmp/..." ]` check) was not enough — a failed or
-    // partial `cp -R` into the `.new` stage still let the destructive
-    // `rm -rf` proceed. The swap must be gated on the *staged copy* itself
-    // (`.new/SKILL.md` actually existing), joined to the `cp -R` by `&&` so
-    // a failed copy short-circuits before anything destructive runs.
-    @Test func skillInstallLinesGateTheSwapOnTheStagedCopyActuallyContainingSKILLMD() throws {
-        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
-        let guardLine = try #require(lines.first { $0.contains("cp -R") && $0.contains("batty-cli.new") })
-        #expect(guardLine.contains("&&"), "staging and verifying the stage must be one atomic condition")
-        #expect(guardLine.contains("batty-cli.new/SKILL.md"), "checking the source directory alone (round-2 B2) is not enough — must check the staged copy")
-    }
-
-    // #0403 round-2 review B2: BSD `cp -R src dest` copies *into* an
-    // existing `dest` directory rather than replacing it, so a `.new` left
-    // behind by a prior run interrupted between `cp` and `mv` must be
-    // cleared before staging into it again, or the result nests one level
-    // too deep (`batty-cli.new/batty-cli/SKILL.md`) and the swap installs a
-    // directory with no `SKILL.md` where Claude Code expects one.
-    @Test func skillInstallLinesClearAnyStaleStageBeforeCopyingIntoIt() throws {
-        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
-        let preClearIndex = try #require(lines.firstIndex { $0.contains("rm -rf") && $0.contains("batty-cli.new") })
-        let stageIndex = try #require(lines.firstIndex { $0.contains("cp -R") && $0.contains("batty-cli.new") })
-        #expect(preClearIndex < stageIndex)
-    }
-
-    // #0403 round-2 review B2/N6: a clone failure, a tag missing the skill,
-    // and a failed/partial stage are three distinct causes and must report
-    // distinct messages — a clone failure was previously misattributed to
-    // "predates #0403", which would mislead anyone debugging a network
-    // error or typo'd version as if the tag were simply old.
+    // #0404: this recipe no longer performs the stage/verify/swap itself —
+    // it clones the tag and hands off to that clone's own `install.sh`,
+    // which applies the discipline per destination (see
+    // AgentSkillInstallScriptTests for coverage of that script directly).
+    // What's left to pin here is that the hand-off itself stays
+    // non-destructive: a clone failure and a tag predating the installer
+    // are reported with distinct messages, and neither fabricates a
+    // `--branch vunknown` clone from an unverifiable version.
     @Test func skillInstallLinesReportEachFailureCauseWithADistinctMessage() {
         let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0").joined(separator: "\n")
         #expect(text.contains("clone of v1.1.0 failed (network error, or the tag doesn't exist)"))
-        #expect(text.contains("has no .claude/skills/batty-cli (predates #0403)"))
-        #expect(text.contains("stage incomplete"))
+        #expect(text.contains("has no agent-skill installer (added in #0404)"))
     }
 
     @Test func skillInstallLinesForAnUnknownVersionNeverFabricateATag() {
@@ -206,12 +161,15 @@ struct CapabilitiesCommandTests {
         let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "unknown")
         #expect(lines == [
             "agent skill:",
-            "  Claude Code skill teaching agents to drive this CLI: .claude/skills/batty-cli",
+            "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",
+            "  Cursor, OpenCode, and Codex: .claude/skills/batty-cli",
             "  Could not determine this build's version (\"unknown\") — this binary was",
             "  likely built standalone via `swift build`, outside an app bundle, so there",
             "  is no tag to install from automatically. Run `batty status --json` from an",
             "  installed, running Batty for its status.appVersion, then pick the matching tag:",
             "    https://github.com/brennanMKE/Batty.git (tags)",
+            "  Each tagged skill folder carries its own multi-host installer",
+            "  (.claude/skills/batty-cli/install.sh) — clone the tag and run it.",
         ])
         #expect(!lines.contains { $0.contains("--branch") })
         #expect(!lines.contains { $0.contains("vunknown") })

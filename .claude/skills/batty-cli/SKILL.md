@@ -77,13 +77,19 @@ subcommand and verify everything by hand.
 
 **Refreshing this skill**, from the exact tagged release the installed app
 shipped from (only if the human asks, or you hit the dangerous direction
-above and want the matching copy). Non-destructive: a clone failure (network,
-or a tag that doesn't exist), a source tag missing the skill (an old or
-unbumped tag may predate it — see Gotchas), or a partial/failed stage copy
-are each reported and handled separately, and none of them touches the
-existing install — the existing copy is removed only after the staged
-replacement is confirmed to actually contain `SKILL.md`. It never fabricates
-a tag from `"unknown"` either:
+above and want the matching copy). Every tagged copy of this skill folder
+carries its own installer, `install.sh`, next to this file — running it
+detects and updates **every** agent host present (Claude Code, Cursor,
+OpenCode, Codex), not just whichever host this particular copy happens to
+live in (#0404: a copy living in, say, OpenCode's skills directory must not
+follow instructions that refresh only Claude's — that leaves it stale, the
+exact #0383 skew self-inflicted). Non-destructive: a clone failure (network,
+or a tag that doesn't exist) or a tag that predates the installer entirely
+(any tag before #0404) is reported and left alone, and `install.sh` itself
+applies the same stage-to-`.new`/verify-`SKILL.md`/swap discipline
+per-destination that this recipe used to do inline for one hardcoded path
+(see the script's own header comment). It never fabricates a tag from
+`"unknown"` either:
 
 ```sh
 tmp=$(mktemp -d)
@@ -92,18 +98,10 @@ if [ "$CLI_VERSION" = "unknown" ]; then
   echo "  https://github.com/brennanMKE/Batty.git (tags)" >&2
 elif ! git clone --quiet --depth 1 --branch "v$CLI_VERSION" https://github.com/brennanMKE/Batty.git "$tmp"; then
   echo "clone of v$CLI_VERSION failed (network error, or the tag doesn't exist) — existing copy left untouched" >&2
-elif [ ! -d "$tmp/.claude/skills/batty-cli" ]; then
-  echo "tag v$CLI_VERSION has no .claude/skills/batty-cli (predates #0403) — not installing, existing copy left untouched" >&2
+elif [ ! -x "$tmp/.claude/skills/batty-cli/install.sh" ]; then
+  echo "tag v$CLI_VERSION has no agent-skill installer (added in #0404) — existing copy left untouched" >&2
 else
-  mkdir -p ~/.claude/skills
-  rm -rf ~/.claude/skills/batty-cli.new
-  if cp -R "$tmp/.claude/skills/batty-cli" ~/.claude/skills/batty-cli.new && [ -f ~/.claude/skills/batty-cli.new/SKILL.md ]; then
-    rm -rf ~/.claude/skills/batty-cli
-    mv ~/.claude/skills/batty-cli.new ~/.claude/skills/batty-cli
-  else
-    echo "stage incomplete — existing copy left untouched" >&2
-    rm -rf ~/.claude/skills/batty-cli.new
-  fi
+  "$tmp/.claude/skills/batty-cli/install.sh"   # add --project DIR and/or --dry-run as needed
 fi
 rm -rf "$tmp"
 ```
@@ -111,7 +109,8 @@ rm -rf "$tmp"
 (`$CLI_VERSION` is the `cliVersion` captured above. `batty capabilities`'s
 plain-text output prints the equivalent command pre-filled — see
 `docs/batty-cli-agent-workflows.md` and #0403 for why it doesn't appear in
-`--json`.)
+`--json`. Run `install.sh --help` for the full flag list, or read its header
+comment for which host lands in which directory and why.)
 
 ## 2. Finding ids
 

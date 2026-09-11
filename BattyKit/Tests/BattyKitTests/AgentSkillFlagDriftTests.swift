@@ -156,32 +156,34 @@ struct AgentSkillFlagDriftTests {
         return pairs
     }
 
-    // #0403 round-2 review N4: round-1's B1/B2 non-destructive-refresh
-    // invariant is asserted about `CapabilitiesCommand.skillInstallLines`,
-    // but SKILL.md carries its own, independently hand-written copy of the
-    // same refresh recipe for a human/agent refreshing the skill directly
-    // (rather than reading it off `batty capabilities`'s printed output) —
-    // and round 1's actual defect was exactly the two copies drifting apart
-    // with nothing to notice. This pins the same three invariants directly
-    // against SKILL.md's own fenced snippet: stale-stage cleared before
-    // staging into it again, the existing install removed only after the
-    // staged copy is confirmed (not just the source tag), and the swap
-    // following the removal.
-    @Test func refreshSnippetInSkillMarkdownStagesAndVerifiesBeforeRemovingTheExistingInstall() throws {
+    // #0404: SKILL.md's refresh snippet no longer inlines the stage/verify/
+    // swap discipline itself — round-1/round-2 review's B1/B2 findings on
+    // that inline recipe are now enforced once, in `install.sh`, which every
+    // destination shares (see AgentSkillInstallScriptTests). What SKILL.md's
+    // own snippet still owns, and what drifting apart from
+    // `CapabilitiesCommand.skillInstallLines`'s hand-off text would break,
+    // is the *hand-off* itself: a clone failure is reported before a tag
+    // that predates the installer is checked, which is reported before
+    // `install.sh` is ever invoked, and the "unknown" version guard never
+    // fabricates a `--branch vunknown` clone.
+    @Test func refreshSnippetInSkillMarkdownHandsOffToInstallShWithoutFabricatingATag() throws {
         let markdown = try Self.skillMarkdown()
         let lines = markdown.components(separatedBy: "\n")
 
-        let preClearIndex = try #require(lines.firstIndex { $0.contains("rm -rf") && $0.contains("batty-cli.new") })
-        let stageIndex = try #require(lines.firstIndex { $0.contains("cp -R") && $0.contains("batty-cli.new") })
-        let stageLine = try #require(lines.first { $0.contains("cp -R") && $0.contains("batty-cli.new") })
-        let removeIndex = try #require(lines.firstIndex { $0.contains("rm -rf") && $0.contains("~/.claude/skills/batty-cli") && !$0.contains(".new") })
-        let swapIndex = try #require(lines.firstIndex { $0.contains("mv ") && $0.contains("batty-cli.new") })
+        let cloneFailureIndex = try #require(lines.firstIndex { $0.contains("clone of") && $0.contains("failed") })
+        let predatesInstallerIndex = try #require(lines.firstIndex { $0.contains("has no agent-skill installer") })
+        let invokeIndex = try #require(lines.firstIndex { $0.contains("install.sh") && $0.contains("$tmp/.claude/skills/batty-cli") && !$0.contains("[ !") })
 
-        #expect(preClearIndex < stageIndex, "SKILL.md: a stale .new from an interrupted prior run must be cleared before staging into it again")
-        #expect(stageIndex < removeIndex, "SKILL.md: the existing install must not be removed before a replacement is staged")
-        #expect(removeIndex < swapIndex, "SKILL.md: the swap must follow the removal, not precede it")
-        #expect(stageLine.contains("&&"), "SKILL.md: staging and verifying the stage must be one atomic condition")
-        #expect(stageLine.contains("SKILL.md"), "SKILL.md: the swap must be gated on the staged copy actually containing SKILL.md, not just the source tag existing")
+        #expect(cloneFailureIndex < predatesInstallerIndex, "SKILL.md: a clone failure must be checked before a tag is judged to predate the installer")
+        #expect(predatesInstallerIndex < invokeIndex, "SKILL.md: install.sh must not be invoked before confirming the clone actually has it")
+        // Round-3 review N1: the previous version of this assertion
+        // (`executableGuardLine.contains("-x")`) was tautological — the
+        // `#require` that produced `executableGuardLine` already filtered
+        // on `"[ ! -x"`, so this could never fail. Pinned to the exact
+        // guard line instead, which actually exercises the specific
+        // executable-bit check rather than restating how it was found.
+        #expect(lines.contains(#"elif [ ! -x "$tmp/.claude/skills/batty-cli/install.sh" ]; then"#), "SKILL.md: the installer must be checked for its executable bit specifically, not merely that the path exists")
+        #expect(!markdown.contains("--branch vunknown"), "SKILL.md: \"unknown\" must never be fabricated into a --branch argument")
     }
 
     @Test func everyFlagTheSkillShowsExistsOnItsVerbInCapabilities() throws {

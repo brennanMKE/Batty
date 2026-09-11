@@ -244,40 +244,37 @@ struct CapabilitiesCommand: ParsableCommand {
     static let skillRepositoryURL = "https://github.com/brennanMKE/Batty.git"
     static let skillRepositoryRelativePath = ".claude/skills/batty-cli"
 
-    /// #0403: point a human/agent reading plain-text `capabilities` at the
-    /// installable skill and how to fetch the copy tagged from this exact
-    /// build — human-readable output only, never the `--json` path (#0384
-    /// pinned JSON-stdout purity for that path). `cliVersion == "unknown"`
-    /// (a bare SwiftPM-built binary, `SessionCommand.swift`'s
+    /// #0403/#0404: point a human/agent reading plain-text `capabilities` at
+    /// the installable skill and how to fetch the copy tagged from this
+    /// exact build — human-readable output only, never the `--json` path
+    /// (#0384 pinned JSON-stdout purity for that path). `cliVersion ==
+    /// "unknown"` (a bare SwiftPM-built binary, `SessionCommand.swift`'s
     /// `resolveAppVersion()`) is not a real release tag, so this
     /// deliberately does not fabricate a `--branch vunknown` clone that
     /// would fail — it points at the tag list instead.
     ///
-    /// **Non-destructive by construction (round-1 review B1, round-2 review
-    /// B2).** An existing tag can exist without containing the skill at all
-    /// — `v1.1.0` predates #0403 entirely (`issues/0403.md`'s Gotchas) — so
-    /// `rm -rf`-ing the existing install before confirming a replacement is
-    /// actually in hand would delete the user's working copy and replace it
-    /// with nothing. Three independent failure points are checked
-    /// separately, each leaving the existing install untouched: the `git
-    /// clone` itself can fail (network, or a tag that doesn't exist —
-    /// round-2 B2/N6, previously misattributed to "predates #0403"); the
-    /// cloned tag can lack `.claude/skills/batty-cli` entirely; and staging
-    /// (`cp -R` into a `.new` suffix) can fail or produce a partial tree —
-    /// checked by requiring `batty-cli.new/SKILL.md` to actually exist
-    /// before the swap, not just checking the *source* directory existed
-    /// (round-2 review B2: verifying only the source left a window where a
-    /// failed or partial `cp` still proceeded to `rm -rf` the working copy).
-    /// Any pre-existing `batty-cli.new` from an interrupted prior run is
-    /// cleared before staging, since BSD `cp -R` copies *into* an existing
-    /// destination directory rather than replacing it. The swap itself is
-    /// `mv`, never an overwrite in place, so there's never a moment with
-    /// neither copy on disk; `$tmp` is removed unconditionally at the end
-    /// regardless of which branch ran.
+    /// **#0404: this only clones and hands off, it does not install
+    /// anything itself.** The skill folder ships its own multi-host
+    /// installer (`install.sh`, next to `SKILL.md`) that detects Claude
+    /// Code, Cursor, OpenCode, and Codex and applies the stage-to-`.new`/
+    /// verify-`SKILL.md`/swap discipline (round-1 review B1, round-2 review
+    /// B2 on this file, before that discipline moved into the script) once
+    /// per destination — see `install.sh`'s own header comment for the full
+    /// per-host rationale and non-destructive guarantee. Before #0404 this
+    /// function embedded that whole recipe inline, hardcoded to
+    /// `~/.claude/skills` alone; every other host got nothing (#0404's
+    /// filing). Two failure points are still checked here, before handing
+    /// off: the `git clone` itself can fail (network, or a tag that doesn't
+    /// exist), and a tag can predate the installer entirely (any tag before
+    /// #0404, checked by requiring `install.sh` to exist and be executable
+    /// in the clone, not just the skill directory) — both leave the
+    /// existing install(s) untouched, exactly as `install.sh` itself does
+    /// for the destinations it manages.
     static func skillInstallLines(cliVersion: String) -> [String] {
         var lines = [
             "agent skill:",
-            "  Claude Code skill teaching agents to drive this CLI: \(Self.skillRepositoryRelativePath)",
+            "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",
+            "  Cursor, OpenCode, and Codex: \(Self.skillRepositoryRelativePath)",
         ]
         if cliVersion == "unknown" {
             lines.append("  Could not determine this build's version (\"unknown\") — this binary was")
@@ -285,24 +282,19 @@ struct CapabilitiesCommand: ParsableCommand {
             lines.append("  is no tag to install from automatically. Run `batty status --json` from an")
             lines.append("  installed, running Batty for its status.appVersion, then pick the matching tag:")
             lines.append("    \(Self.skillRepositoryURL) (tags)")
+            lines.append("  Each tagged skill folder carries its own multi-host installer")
+            lines.append("  (\(Self.skillRepositoryRelativePath)/install.sh) — clone the tag and run it.")
         } else {
-            lines.append("  Install/refresh it from this build's own tagged release (each failure")
-            lines.append("  point below is checked separately and leaves the existing copy untouched):")
+            lines.append("  Install/refresh for every detected agent host from this build's own tagged")
+            lines.append("  release — the skill folder carries its own installer, so nothing extra to")
+            lines.append("  download:")
             lines.append("    tmp=$(mktemp -d)")
             lines.append("    if ! git clone --quiet --depth 1 --branch v\(cliVersion) \(Self.skillRepositoryURL) \"$tmp\"; then")
             lines.append("      echo \"clone of v\(cliVersion) failed (network error, or the tag doesn't exist) — existing copy left untouched\" >&2")
-            lines.append("    elif [ ! -d \"$tmp/\(Self.skillRepositoryRelativePath)\" ]; then")
-            lines.append("      echo \"tag v\(cliVersion) has no \(Self.skillRepositoryRelativePath) (predates #0403) — not installing, existing copy left untouched\" >&2")
+            lines.append("    elif [ ! -x \"$tmp/\(Self.skillRepositoryRelativePath)/install.sh\" ]; then")
+            lines.append("      echo \"tag v\(cliVersion) has no agent-skill installer (added in #0404) — existing copy left untouched\" >&2")
             lines.append("    else")
-            lines.append("      mkdir -p ~/.claude/skills")
-            lines.append("      rm -rf ~/.claude/skills/batty-cli.new")
-            lines.append("      if cp -R \"$tmp/\(Self.skillRepositoryRelativePath)\" ~/.claude/skills/batty-cli.new && [ -f ~/.claude/skills/batty-cli.new/SKILL.md ]; then")
-            lines.append("        rm -rf ~/.claude/skills/batty-cli")
-            lines.append("        mv ~/.claude/skills/batty-cli.new ~/.claude/skills/batty-cli")
-            lines.append("      else")
-            lines.append("        echo \"stage incomplete — existing copy left untouched\" >&2")
-            lines.append("        rm -rf ~/.claude/skills/batty-cli.new")
-            lines.append("      fi")
+            lines.append("      \"$tmp/\(Self.skillRepositoryRelativePath)/install.sh\"   # add --project DIR / --dry-run as needed")
             lines.append("    fi")
             lines.append("    rm -rf \"$tmp\"")
         }
