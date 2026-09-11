@@ -191,6 +191,15 @@ extension AppStateStore {
             // default by omission — see the sibling comment in
             // `TabRuntime.swift` for why that's deliberate.
             builder.withCustom("shell-integration-features", "ssh-env")
+            // The `env PATH=…` override (#0364) is the one line from
+            // `TabRuntime`'s builder this one does *not* omit deliberately —
+            // `setTerminalConfiguration` replaces rather than merges (see
+            // above), so a Tab created before an appearance change but whose
+            // surface hasn't spawned yet would otherwise come back up with
+            // `Contents/MacOS` back on `PATH` the moment this builder's
+            // config lands. Must stay in sync with `TabRuntime`'s own
+            // `env PATH=…` line.
+            builder.withCustom("env", "PATH=\(TabRuntimeCLIPathSeam.injectedPath(basePath: ProcessInfo.processInfo.environment["PATH"], bundlePath: Bundle.main.bundlePath))")
             builder.withCustom("keybind", "super+left=text:\\x01")
             builder.withCustom("keybind", "super+right=text:\\x05")
             builder.withCustom("keybind", "super+backspace=text:\\x15")

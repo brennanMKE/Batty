@@ -252,6 +252,18 @@ public final class TabRuntime: Identifiable {
             } else if !shell.isEmpty {
                 builder.withCustom("command", shell)
             }
+            // CLI/PATH collision (#0364): libghostty appends its own
+            // executable directory (`Contents/MacOS`) to every spawned
+            // shell's `PATH` via `GHOSTTY_BIN_DIR`, which on a
+            // case-insensitive APFS volume collides with the app's own main
+            // executable there — `Contents/MacOS/batty` and
+            // `Contents/MacOS/Batty` name the same inode. Override `PATH`
+            // outright so it points at the CLI's real location
+            // (`Contents/Resources/bin`) instead, stripping the app's own
+            // directory defensively. See `TabRuntimeCLIPathSeam`'s doc for
+            // why an `env`-set `PATH` replaces rather than appends to
+            // whatever libghostty already computed.
+            builder.withCustom("env", "PATH=\(TabRuntimeCLIPathSeam.injectedPath(basePath: ProcessInfo.processInfo.environment["PATH"], bundlePath: Bundle.main.bundlePath))")
             // Agent context (#0257/#0281): libghostty's `env` config
             // directive sets the spawned process's environment directly —
             // unlike prepending `export …;` to a shell command line, it

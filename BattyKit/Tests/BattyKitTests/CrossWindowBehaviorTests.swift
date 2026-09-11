@@ -666,6 +666,30 @@ struct CrossWindowBehaviorTests {
         }
     }
 
+    /// #0364 review round 1 (B2): `applyAppearanceToAllSurfaces` builds its
+    /// own `TerminalConfiguration` from scratch and `setTerminalConfiguration`
+    /// replaces rather than merges (same hazard as the `ssh-env` test above),
+    /// so a Tab whose surface hasn't spawned yet loses the `env = PATH=…`
+    /// override the moment an appearance change lands — `Contents/MacOS`
+    /// would come right back onto that Tab's spawned `PATH`. This is a
+    /// regression test for that: it fails if this builder ever stops
+    /// emitting the line `TabRuntime`'s own builder emits.
+    @Test func applyAppearanceToAllSurfacesPreservesThePATHOverride() {
+        let store = AppStateStore()
+        for tab in store.windows[0].sessions.flatMap({ $0.tree.allPanes.flatMap(\.tabs) }) {
+            tab.terminal.controller.setTerminalConfiguration(.default)
+        }
+        store.applyAppearanceToAllSurfaces()
+        let expected = TabRuntimeCLIPathSeam.injectedPath(
+            basePath: ProcessInfo.processInfo.environment["PATH"],
+            bundlePath: Bundle.main.bundlePath
+        )
+        for tab in store.windows[0].sessions.flatMap({ $0.tree.allPanes.flatMap(\.tabs) }) {
+            let lines = tab.terminal.renderedConfig.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            #expect(lines.contains("env = PATH=\(expected)"))
+        }
+    }
+
     @Test func onAllSessionsClosedIsTriggeredWhenSessionsEmpty() {
         let store = AppStateStore()
         var closeCalled = false

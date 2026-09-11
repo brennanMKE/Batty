@@ -163,4 +163,28 @@ struct BattyContextInjectionTests {
         let lines = tab.terminal.renderedConfig.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         #expect(lines.contains("shell-integration-features = ssh-env"))
     }
+
+    // MARK: - CLI PATH override (#0364)
+
+    /// Proves `TabRuntime` actually wires `TabRuntimeCLIPathSeam`'s pure
+    /// output into the real libghostty config text, and that the real
+    /// bundled libghostty accepts an `env = PATH=…` directive without
+    /// reverting to the previous configuration (same failure mode
+    /// `attachContextProducesNoConfigurationIssue` guards for `BATTY_*`).
+    /// Computing the expected value via the same shared function the
+    /// production code calls — rather than a hardcoded string — is
+    /// necessary here (unlike the `ssh-env` test above) because the value
+    /// legitimately varies with the test process's own `PATH` and bundle
+    /// path; what this test actually proves is that `TabRuntime` passes
+    /// that computed value through to the real config unchanged.
+    @Test func freshTabCarriesThePATHOverride() {
+        let tab = TabRuntime()
+        let expected = TabRuntimeCLIPathSeam.injectedPath(
+            basePath: ProcessInfo.processInfo.environment["PATH"],
+            bundlePath: Bundle.main.bundlePath
+        )
+        let lines = tab.terminal.renderedConfig.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines.contains("env = PATH=\(expected)"))
+        #expect(tab.terminal.controller.lastConfigurationIssue == nil)
+    }
 }

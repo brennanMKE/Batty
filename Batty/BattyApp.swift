@@ -7,7 +7,11 @@ import SwiftUI
 
 private let logger = Logger(subsystem: Logging.subsystem, category: "BattyApp")
 
-@main
+// No `@main` here — `main.swift` owns the entry point so the #0364
+// argv[0] guard runs before any SwiftUI/AppKit machinery, not just before
+// this struct's `body`. `BattyApp.main()` (the `App` protocol's default
+// implementation) is still what `main.swift` calls into once the guard
+// passes.
 struct BattyApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: BattyAppDelegate
 
