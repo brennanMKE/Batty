@@ -208,8 +208,8 @@ it here first.
 | Shape | Use when | Example |
 |---|---|---|
 | Returned/exposed `Task` | Production starts a one-shot unit of async work | `AppStateStore.scheduleSummarization`'s summarization `Task` (#0433) |
-| Callback / continuation | Production already has a callback | `AppStateStore.terminateHandler`, `Process.terminationHandler` |
-| `AsyncStream` of events | A test awaits a *count* of repeated events | LM Studio line-applied/poll-applied, Git Status scan-handled (#0429/#0430) |
+| Callback / continuation | Production already has a callback, or a plain optional closure is the cheapest new seam | `AppStateStore.terminateHandler`, `Process.terminationHandler`, `GitStatusPaneContent.onScanResultHandledForTesting` (#0430) — fired once per `handleScanResult` call; the bounded wait for a specific count lives entirely in the test target (`ResumeOnce` + a cancellable `DispatchWorkItem`, matching `ChildProcessReadiness`), never in production |
+| `AsyncStream` of events | A test awaits a *count* of repeated events and no single-closure slot is enough (more than one concurrent subscriber, or the events must be replayed) | LM Studio line-applied/poll-applied (#0429) |
 | Injected clock/scheduler | The wait is purely time-based (a poll interval, a debounce, a sampling cadence) | §1 above |
 
 For every shape:

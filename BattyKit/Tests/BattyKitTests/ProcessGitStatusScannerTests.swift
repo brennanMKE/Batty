@@ -366,7 +366,8 @@ struct ProcessGitStatusScannerTests {
     /// signaling a process group.
     ///
     /// `echo ready` before the `exec`, with stdout on a pipe the caller
-    /// reads via `waitForReady(_:)`, closes a real race — without it, a
+    /// reads via `ChildProcessReadiness.waitForData(on:)`, closes a real
+    /// race — without it, a
     /// test could call `terminateAndWaitBriefly()` (sending `SIGTERM`)
     /// before `sh` finished installing `trap '' TERM`, in which case the
     /// child died normally on the signal like any other process and every
@@ -379,15 +380,6 @@ struct ProcessGitStatusScannerTests {
         process.standardOutput = readyPipe
         process.standardError = Pipe()
         return (process, readyPipe)
-    }
-
-    /// Blocks the calling thread until `makeStubbornProcess()`'s child
-    /// writes its readiness line — i.e. until `trap '' TERM` has actually
-    /// been installed, not merely until `Process.run()` has returned
-    /// (which only proves `fork`/`exec` was requested, not that the shell
-    /// has executed anything yet).
-    private static func waitForReady(_ pipe: Pipe) {
-        _ = pipe.fileHandleForReading.availableData
     }
 
     @Test func terminateAndWaitBrieflyReturnsImmediatelyEvenWhenTheProcessIgnoresSIGTERM() async throws {
@@ -403,7 +395,14 @@ struct ProcessGitStatusScannerTests {
         let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, reapGate: gate)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
-        #expect(await ChildProcessReadiness.waitForData(on: readyPipe), "child never signaled readiness")
+        guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
+            Issue.record("child never signaled readiness")
+            // No `defer` is registered yet at this point — release the
+            // child directly so an early return here can't orphan it.
+            kill(process.processIdentifier, SIGKILL)
+            process.waitUntilExit()
+            return
+        }
         let pid = process.processIdentifier
         defer {
             if process.isRunning { kill(pid, SIGKILL) }
@@ -433,14 +432,15 @@ struct ProcessGitStatusScannerTests {
         #expect(!process.isRunning, "the deferred reap must SIGKILL a process that ignored SIGTERM")
 
         // No orphan: confirm the OS has actually reaped the pid, not just
-        // that `Process.isRunning` (a Foundation-side flag) flipped.
-        var killResult: Int32 = 0
-        for _ in 0..<50 {
-            killResult = kill(pid, 0)
-            if killResult != 0 { break }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-        #expect(killResult != 0, "pid \(pid) must not still be signalable after reap — orphaned process")
+        // that `Process.isRunning` (a Foundation-side flag) flipped. A
+        // single check, no poll: `docs/async-test-seams.md` §5 Q3 found
+        // (10/10, a standalone experiment mirroring this exact reap loop)
+        // that once a `Process.isRunning`-polling reap loop like
+        // `reapAfterTerminate` returns, the child has already been
+        // `waitpid`-ed, so `kill(pid, 0)` fails immediately with no extra
+        // wait — `awaitPendingTeardownReapsForTesting()` above already
+        // awaited that reap.
+        #expect(kill(pid, 0) != 0, "pid \(pid) must not still be signalable after reap — orphaned process")
     }
 
     /// The quit-path variant: `waitForPendingTeardownSynchronously()` must
@@ -451,7 +451,12 @@ struct ProcessGitStatusScannerTests {
         let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.1)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
-        Self.waitForReady(readyPipe)
+        guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
+            Issue.record("child never signaled readiness")
+            kill(process.processIdentifier, SIGKILL)
+            process.waitUntilExit()
+            return
+        }
         let pid = process.processIdentifier
         defer {
             if process.isRunning { kill(pid, SIGKILL) }
@@ -476,12 +481,17 @@ struct ProcessGitStatusScannerTests {
     /// `PendingTeardownReapRegistry` (injected here, not `.shared`), so
     /// `drainSynchronously()` alone — with no `waitForPendingTeardownSynchronously()`
     /// call at all — still reaps the stubborn process.
-    @Test func registryDrainReapsAStubbornProcessWithNoWaitForPendingTeardownCall() throws {
+    @Test func registryDrainReapsAStubbornProcessWithNoWaitForPendingTeardownCall() async throws {
         let registry = PendingTeardownReapRegistry()
         let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, teardownReapRegistry: registry)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
-        Self.waitForReady(readyPipe)
+        guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
+            Issue.record("child never signaled readiness")
+            kill(process.processIdentifier, SIGKILL)
+            process.waitUntilExit()
+            return
+        }
         let pid = process.processIdentifier
         defer {
             if process.isRunning { kill(pid, SIGKILL) }

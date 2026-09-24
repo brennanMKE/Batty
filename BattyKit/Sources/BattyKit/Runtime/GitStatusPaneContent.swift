@@ -662,6 +662,14 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
     /// Injectable so `GitStatusPaneContentTests` can exercise real
     /// debounce-coalescing behavior without a real 400ms wait per test.
     private let debounceNanoseconds: UInt64
+    /// `#0428`/`#0430`: where the debounce (and any future deferred or
+    /// periodic work this type starts) gets its notion of time, so a test
+    /// can drive it explicitly instead of waiting on real time to pass
+    /// (`AGENTS.md` "Asynchronous tests"). Defaults to the real clock, the
+    /// same defaulted-real-value shape `scanner`/`watcherFactory` already
+    /// use — no production construction site overrides it (`PaneRuntime.swift`,
+    /// `SplitTree.swift` both construct with only `directoryPath:`).
+    private let clock: SchedulingClock
     private var watcher: (any GitStatusWatching)?
     private var debounceTask: Task<Void, Never>?
     private var scanTask: Task<Void, Never>?
@@ -671,14 +679,25 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
 
     /// Testability hook only (`internal`, reached via `@testable import` in
     /// `BattyKitTests`) — counts every `handleScanResult` call, including
-    /// ones the generation/phase guard below discards. Lets a test that
-    /// hides the pane mid-scan await the in-flight scan's actual
-    /// resolution deterministically (`await waitUntil { content
-    /// .handledScanResultCount >= 1 }`) instead of sleeping a fixed real
-    /// duration chosen to outlast the scanner double's injected delay,
-    /// which either over-waits on a fast machine or under-waits on a
-    /// loaded one.
+    /// ones the generation/phase guard below discards. Read alongside
+    /// `onScanResultHandledForTesting` below: the count is what a test
+    /// reads, the callback is what tells it *when* to read it.
     @ObservationIgnored private(set) var handledScanResultCount = 0
+
+    /// `#0430`: fired right at the top of `handleScanResult`, immediately
+    /// after `handledScanResultCount` increments and before the
+    /// generation/phase guard that can discard a stale result — the
+    /// production-side half of the scan-handled completion signal
+    /// (`docs/async-test-seams.md` §4's "callback / continuation" shape).
+    /// Production exposes only the event itself; the bounded wait for a
+    /// specific count lives entirely in `BattyKitTests` (a `ResumeOnce` +
+    /// cancellable `DispatchWorkItem`, mirroring `ChildProcessReadiness`),
+    /// not here — a production type has no business owning a `Task.sleep`
+    /// hang-guard for a test's own timeout. `internal`, not `private`, so
+    /// `GitStatusPaneContentTests` can install it via `@testable import`.
+    /// `nil` in production (nothing ever sets it there): reading a `nil`
+    /// callback changes no production behavior at all.
+    @ObservationIgnored var onScanResultHandledForTesting: ((Int) -> Void)?
 
     /// Bumped on every `activate`/`suspend`/`changeDirectory` so a
     /// debounce/scan `Task` scheduled before a phase change can recognize
@@ -691,12 +710,14 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
         watcherFactory: @escaping (String, @escaping @MainActor () -> Void) -> any GitStatusWatching = { path, onEvent in
             FSEventsGitStatusWatcher(path: path, onEvent: onEvent)
         },
-        debounceNanoseconds: UInt64 = 400_000_000
+        debounceNanoseconds: UInt64 = 400_000_000,
+        clock: SchedulingClock = SystemClock()
     ) {
         self.directoryPath = directoryPath
         self.scanner = scanner
         self.watcherFactory = watcherFactory
         self.debounceNanoseconds = debounceNanoseconds
+        self.clock = clock
     }
 
     // MARK: PaneContentLifecycle
@@ -768,9 +789,10 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
         guard lifecyclePhase == .active else { return }
         let requestGeneration = generation
         debounceTask?.cancel()
-        let nanoseconds = debounceNanoseconds
+        let duration = Duration.nanoseconds(Int64(debounceNanoseconds))
+        let clock = clock
         debounceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: nanoseconds)
+            await clock.sleep(for: duration)
             guard !Task.isCancelled else { return }
             self?.requestScanIfCurrent(generation: requestGeneration)
         }
@@ -799,6 +821,7 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
 
     private func handleScanResult(_ result: GitStatusScanResult?, generation resultGeneration: Int) {
         handledScanResultCount += 1
+        onScanResultHandledForTesting?(handledScanResultCount)
         guard resultGeneration == generation, lifecyclePhase == .active else { return }
         isScanning = false
         isRefreshing = false
@@ -843,6 +866,66 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
             requestScan()
         }
     }
+
+    // MARK: - Test support
+
+    /// Test-only (`internal`, via `@testable import`): true only when
+    /// nothing is currently scheduled or acquired — no watcher, no pending
+    /// debounce `Task`, no in-flight scan `Task`. A synchronous, structural
+    /// "did this call kick anything off" check, meant to be asserted
+    /// immediately after a call expected to be a total no-op.
+    ///
+    /// Only meaningful when nothing has run yet (fresh content) or
+    /// everything was already released (`suspend()` nils all three): once a
+    /// scan has ever completed, `scanTask` holds a finished-but-non-nil
+    /// `Task` forever (nothing nils it back to `nil` on success — only a
+    /// fresh `suspend()` does), so this reads `true` regardless of a
+    /// no-op's correctness in that case. `generationForTesting` below is
+    /// the check that still works then.
+    ///
+    /// **Scope limit (round 1/2/3 review):** this — and
+    /// `generationForTesting` — only catch a regression whose extra work is
+    /// *assigned to one of this type's own tracked properties* (`watcher`,
+    /// `debounceTask`, `scanTask`), synchronously, at the point the
+    /// property is set — regardless of whether the `Task`'s body has
+    /// actually started running yet. A companion `clock.pendingCount == 0`
+    /// check some tests also make is narrower still, not a superset of
+    /// this one: `TestClock` only registers a sleeper once a `Task`'s body
+    /// actually reaches `await clock.sleep(for:)`, so a `Task` that hasn't
+    /// been scheduled to run yet — tracked or not — has registered nothing
+    /// yet, and `pendingCount == 0` can't distinguish "correctly did
+    /// nothing" from "scheduled something that hasn't started." A raw,
+    /// untracked `Task { self.activate() }` — assigned to none of
+    /// `watcher`/`debounceTask`/`scanTask` — bypasses every seam entirely
+    /// and cannot be observed without waiting on real time, which
+    /// `AGENTS.md` forbids; that gap is accepted, not closed regardless of
+    /// whether it happens to route through `clock`. See `issues/0430.md`'s
+    /// round 2 notes for the mutation this issue's tests actually exercise
+    /// instead.
+    var hasNoScheduledOrAcquiredWorkForTesting: Bool {
+        watcher == nil && debounceTask == nil && scanTask == nil
+    }
+
+    /// Test-only (`internal`, via `@testable import`): whether a debounce
+    /// `Task` is currently pending, checked independently of `watcher`/
+    /// `scanTask` — a legitimate prior scan leaves `scanTask` non-nil
+    /// forever (see `hasNoScheduledOrAcquiredWorkForTesting`'s own doc
+    /// comment), which makes that combined check useless for a test that
+    /// needs to confirm *no new debounce* was scheduled by a later,
+    /// expected-no-op call (round 2 review, B7:
+    /// `redundantShowDoesNotDoubleAcquireOrDoubleRefresh`).
+    var hasPendingDebounceForTesting: Bool {
+        debounceTask != nil
+    }
+
+    /// Test-only (`internal`, via `@testable import`): the current
+    /// activation generation, bumped by every `activate()`/`suspend()`/
+    /// `changeDirectory(to:)` call. Lets a test pin that a call expected to
+    /// be a no-op (a redundant `setVisible(true)`) truly didn't
+    /// re-activate, synchronously — even once a prior scan has already
+    /// left `scanTask` non-nil, which is what makes
+    /// `hasNoScheduledOrAcquiredWorkForTesting` alone insufficient there.
+    var generationForTesting: Int { generation }
 
     /// The rare-case "force a re-scan" button (`docs/design/git-status-view.md`
     /// §2.1) — same coalescing path a debounced refresh uses.
