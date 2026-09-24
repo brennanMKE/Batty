@@ -421,6 +421,7 @@ Use these canonical module names so issues stay consistent and groupable in the 
 | `Settings` | Settings window, `UserDefaults`, font/cursor/notification preferences |
 | `Build` | Xcode project, signing, notarization, Sparkle, terminfo / shell-integration resource bundling |
 | `Localization` | User-facing string extraction, `.xcstrings` / `Localizable.strings` catalogs, per-locale resources, locale switching |
+| `Testing` | Unit and UI test suites, test infrastructure, the Tart VM UI-test runner (`Tests` is an accepted older spelling) |
 | `Docs` | `PRD.md`, `Concepts.md`, README, this file |
 | `Website` | `website/` — marketing pages, demo page, changelog, CSS, assets |
 
