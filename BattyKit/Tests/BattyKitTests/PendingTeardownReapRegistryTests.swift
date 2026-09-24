@@ -95,17 +95,9 @@ struct PendingTeardownReapRegistryTests {
 
         // No orphan: confirm the OS has actually reaped the pid, not just
         // that `Process.isRunning` (a Foundation-side flag) flipped. A
-        // single check, no poll: #0428's verify-question-3 experiment
-        // (`kill(pid, 0)` immediately after a `Process.isRunning`-polling
-        // reap loop like this one returns) found `isRunning` and
-        // `kill(pid, 0)` agreeing 10/10 with no extra wait — by the time
-        // `Process.isRunning` observes `false`, the kernel has already
-        // reaped the child. The original `Thread.sleep`-polled retry loop
-        // this replaces couldn't stay as written once this test became
-        // `async` for the readiness-helper migration above
-        // (`NS_SWIFT_UNAVAILABLE_FROM_ASYNC`) — so this single check lands
-        // here as a forced, minimal side effect, ahead of #0432, which owns
-        // this row in #0427's inventory and can treat it as already done.
+        // single check is sufficient: `Process.isRunning` only reports
+        // `false` after the kernel has reaped the child, so `kill(pid, 0)`
+        // agrees with no extra wait.
         #expect(kill(pid, 0) != 0, "pid \(pid) must not still be signalable after drainSynchronously() — orphaned process")
     }
 
