@@ -42,11 +42,12 @@ struct PendingTeardownReapRegistryTests {
 
     @Test func registerThenDeregisterLeavesNothingPending() throws {
         let registry = PendingTeardownReapRegistry()
+        let fixture = ChildProcessFixture()
+        defer { fixture.killAndReapAll() }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["60"]
-        try process.run()
-        defer { if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
+        try fixture.run(process)
 
         let token = registry.register(process: process, label: "test", bound: 5)
         #expect(registry.pendingCountForTesting == 1)
@@ -78,11 +79,15 @@ struct PendingTeardownReapRegistryTests {
     /// escalation `drainSynchronously()` runs internally does.
     @Test func drainSynchronouslyKillsAndReapsARegisteredSigtermIgnoringProcess() async throws {
         let registry = PendingTeardownReapRegistry()
+        let fixture = ChildProcessFixture()
+        defer { fixture.killAndReapAll() }
         let (process, readyPipe) = Self.makeStubbornProcess()
-        try process.run()
-        #expect(await ChildProcessReadiness.waitForData(on: readyPipe), "child never signaled readiness")
+        try fixture.run(process)
+        guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
+            Issue.record("child never signaled readiness")
+            return
+        }
         let pid = process.processIdentifier
-        defer { if process.isRunning { kill(pid, SIGKILL) } }
 
         process.terminate()
         #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
@@ -103,14 +108,17 @@ struct PendingTeardownReapRegistryTests {
 
     @Test func drainSynchronouslyReapsEveryRegisteredEntryIndependently() async throws {
         let registry = PendingTeardownReapRegistry()
+        let fixture = ChildProcessFixture()
+        defer { fixture.killAndReapAll() }
         let fixtures = [Self.makeStubbornProcess(), Self.makeStubbornProcess()]
         for (process, readyPipe) in fixtures {
-            try process.run()
-            #expect(await ChildProcessReadiness.waitForData(on: readyPipe), "child never signaled readiness")
-        }
-        defer {
-            for (process, _) in fixtures where process.isRunning {
-                kill(process.processIdentifier, SIGKILL)
+            // Tracked by `fixture` before `run()` — if a later fixture's
+            // `run()` throws, every earlier fixture already tracked here
+            // still gets killed and reaped by the `defer` above (#0441).
+            try fixture.run(process)
+            guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
+                Issue.record("child never signaled readiness")
+                return
             }
         }
 

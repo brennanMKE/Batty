@@ -410,19 +410,11 @@ struct LMStudioDashboardWiringTests {
     }
 }
 
-/// Sends `SIGKILL` to `process` if it's still running, then blocks until it
-/// has actually exited. A test's own failure-branch cleanup, not the normal
-/// path: `Process.waitUntilExit()` here is the allowed exception to
-/// "assert only once signalled" — `issues/0427.md:165`'s "not counted as
-/// violations" list includes `Process.waitUntilExit()` on children that
-/// exit by themselves — forcing the exit with `SIGKILL` first makes this
-/// that same case, not a wait on real time passing. Duplicated from
-/// `LMStudioDashboardPaneContentTests.swift` rather than shared, matching
-/// this file's own `makeSafeOfflineContent`/`makeWindow`-style convention
-/// of small, file-local test helpers.
+/// A test's own failure-branch cleanup, not the normal path. Forwards to
+/// `ChildProcessFixture.killAndReap(_:)` (#0441), which replaced this file's
+/// own copy (previously duplicated from `LMStudioDashboardPaneContentTests.swift`)
+/// — kept as a thin wrapper so call sites here don't need to change.
 @MainActor
 private func killAndReap(_ process: Process?) {
-    guard let process, process.isRunning else { return }
-    kill(process.processIdentifier, SIGKILL)
-    process.waitUntilExit()
+    ChildProcessFixture.killAndReap(process)
 }

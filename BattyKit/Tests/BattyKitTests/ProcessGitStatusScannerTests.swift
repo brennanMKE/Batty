@@ -332,11 +332,9 @@ struct ProcessGitStatusScannerTests {
         let processA = Self.makeSleepProcess()
         let processB = Self.makeSleepProcess()
         try processA.run()
+        defer { if processA.isRunning { processA.terminate() } }
         try processB.run()
-        defer {
-            if processA.isRunning { processA.terminate() }
-            if processB.isRunning { processB.terminate() }
-        }
+        defer { if processB.isRunning { processB.terminate() } }
 
         // Simulates the exact interleaving that overlaps scans: scan B's
         // `run()` registers its process while scan A's is still tracked too.
@@ -511,11 +509,9 @@ struct ProcessGitStatusScannerTests {
         let processA = Self.makeSleepProcess()
         let processB = Self.makeSleepProcess()
         try processA.run()
+        defer { if processA.isRunning { processA.terminate() } }
         try processB.run()
-        defer {
-            if processA.isRunning { processA.terminate() }
-            if processB.isRunning { processB.terminate() }
-        }
+        defer { if processB.isRunning { processB.terminate() } }
 
         scanner.addActiveProcess(processA)
         scanner.addActiveProcess(processB)
@@ -536,11 +532,9 @@ struct ProcessGitStatusScannerTests {
         let processA = Self.makeSleepProcess()
         let processB = Self.makeSleepProcess()
         try processA.run()
+        defer { if processA.isRunning { processA.terminate() } }
         try processB.run()
-        defer {
-            if processA.isRunning { processA.terminate() }
-            if processB.isRunning { processB.terminate() }
-        }
+        defer { if processB.isRunning { processB.terminate() } }
 
         scanner.addActiveProcess(processA)
         scanner.addActiveProcess(processB)
