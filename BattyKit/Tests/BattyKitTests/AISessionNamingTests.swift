@@ -53,7 +53,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/meeting notes 2026"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
 
         #expect(session.title == "Session 1")
         await awaitSuggestion(store, sessionID: session.id)
@@ -72,7 +74,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
 
         #expect(session.title == "Batty")
@@ -96,7 +100,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = projectDir.path
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
 
         #expect(session.title == "Demo")
@@ -126,13 +132,17 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/untitled folder 3"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
 
         #expect(session.title == "Session 1")
 
         // Repeat report of the same cwd: the NONE memo answers, no re-prompt.
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
 
         #expect(session.title == "Session 1")
@@ -149,7 +159,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/junk-folder"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
 
         #expect(session.title == "Session 1")
@@ -165,7 +177,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         let inflight = store.nameSuggestionTasks[session.id]
         #expect(inflight != nil)
 
@@ -184,7 +198,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         let inflight = store.nameSuggestionTasks[session.id]
 
         store.renameSession(id: session.id, to: "Frontend")
@@ -202,7 +218,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         let inflight = store.nameSuggestionTasks[session.id]
 
         session.tree.splitFocusedPane(direction: .horizontal)
@@ -219,8 +237,10 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
 
         #expect(session.title == "Cool Name")
@@ -236,17 +256,23 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
         #expect(session.title == "Cool Name")
 
         // Visit a cached project, then come back: memo answers synchronously.
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         #expect(session.title == "Batty")
 
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
 
         #expect(session.title == "Cool Name")
         #expect(suggester.requestedPaths.count == 1)
@@ -263,7 +289,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/meeting notes 2026"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
 
         #expect(session.title == "Meeting Notes")
@@ -280,7 +308,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/meeting notes 2026"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         await awaitSuggestion(store, sessionID: session.id)
         #expect(session.title == "Meeting Notes")
         store.nameCache.save()
@@ -294,7 +324,9 @@ struct AISessionNamingTests {
         let restoredSession = restoredStore.sessions[0]
         let restoredTab = restoredSession.tree.root.firstLeafPane.tabs[0]
         restoredTab.terminal.configuration.workingDirectory = "/Users/test/meeting notes 2026"
-        restoredStore.handleWorkingDirectoryChange(forTabID: restoredTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            restoredStore.handleWorkingDirectoryChange(forTabID: restoredTab.id)
+        }
 
         #expect(restoredSession.title == "Session 1")
     }
@@ -303,6 +335,16 @@ struct AISessionNamingTests {
 
     /// Keys stay non-default only inside the synchronous body so parallel
     /// main-actor tests can't observe them across a suspension point.
+    ///
+    /// That only closes the window within *this process* — every read and
+    /// write here runs on `MainActor`, which can't interleave another
+    /// test's own synchronous, non-suspending `withPreferences` scope into
+    /// the middle of this one. But `UserDefaults.standard` goes through
+    /// `cfprefsd`, shared by every process reading the same defaults
+    /// domain: another process using that domain (e.g. a concurrent unit
+    /// run in another worktree) can still write this key while this
+    /// scope is open. Pinning narrows that to one synchronous call; it
+    /// doesn't close it.
     private func withPreferences(_ values: [String: Bool], _ body: () -> Void) {
         let defaults = UserDefaults.standard
         for (key, value) in values { defaults.set(value, forKey: key) }
@@ -348,7 +390,10 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = projectDir.path
-        withPreferences([SettingsPreference.autoNameFromFilesKey: false]) {
+        withPreferences([
+            SettingsPreference.autoNameFromFilesKey: false,
+            SettingsPreference.autoNameWithAIKey: true,
+        ]) {
             store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
         }
         await awaitSuggestion(store, sessionID: session.id)
@@ -421,7 +466,9 @@ struct AISessionNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
         let inflight = store.nameSuggestionTasks[session.id]
         #expect(inflight != nil)
 

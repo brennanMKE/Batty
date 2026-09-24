@@ -216,13 +216,14 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// `Task` would have gone undetected.
     var isSamplingTaskAlive: Bool { samplingTask != nil }
 
-    /// Testability hook only (`internal`) — review round 2, N3: every test
-    /// that constructs a `ProcessStatusPaneContent` now injects a short
-    /// cadence (so the production `.seconds(1)` default itself is never
-    /// exercised timing-wise), so nothing previously pinned that default
-    /// directly. `ProcessStatusPaneContentTests` reads this once, on a
-    /// default-initialized instance, to catch a regression to the default
-    /// argument instantly rather than relying on any real wait to notice.
+    /// Testability hook only (`internal`) — every test that cares about the
+    /// periodic sampler's cadence injects its own value (short to observe a
+    /// tick quickly, or far longer than the test can run to guarantee no
+    /// tick lands during it), rather than exercising the production
+    /// `.seconds(1)` default timing-wise. `ProcessStatusPaneContentTests`
+    /// reads this once, on a default-initialized instance, to catch a
+    /// regression to the default argument instantly rather than relying on
+    /// any real wait to notice.
     var samplingIntervalForTesting: Duration { samplingInterval }
 
     /// Testability hook only (`internal`) — forces one `performSample()`

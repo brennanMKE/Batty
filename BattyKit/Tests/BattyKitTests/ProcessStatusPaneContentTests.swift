@@ -410,8 +410,26 @@ struct ProcessStatusPaneContentTests {
     /// not against a magnitude assumption about the host machine. A B1-
     /// class ~42x scaling bug fails this at any contention level; a
     /// merely-busy shared machine does not.
+    ///
+    /// The periodic sampler must not fire during this test's own
+    /// bracketing window. With the production default (1s), a tick landing
+    /// mid-burn (or during the main-actor resumption right after it) moves
+    /// `ProcessCPUDeltaTracker`'s baseline forward past this test's own
+    /// `beforeTime`, so production's window becomes a narrower, mostly-idle
+    /// slice of the one this test independently measures — exactly the
+    /// `> expectedPercent / 5` failure, reproducible without any code
+    /// defect by scheduling delay alone. An interval far longer than any
+    /// test run guarantees `startSampling()`'s only sample before
+    /// `sampleNowForTesting()` below is the immediate one taken inside
+    /// `setUp`, so the only baselines in play are the ones this test
+    /// itself controls.
     @Test func cpuPercentReflectsSubstantialRealCoreUsage() async throws {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            samplingInterval: .seconds(3600)
+        )
+        defer { content.tearDown() }
         content.setUp(visible: true) // establishes the CPU baseline; cpuPercent is nil on this first sample
 
         let beforeMetrics = try ProcessInspector.coreMetrics(pid: getpid()).get()

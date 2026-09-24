@@ -22,6 +22,15 @@ struct MultiWindowCWDNamingTests {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
     }
 
+    /// Same seam as `AISessionNamingTests.withPreferences` — see its doc
+    /// comment for the full synchronous-scope and cross-process caveat.
+    private func withPreferences(_ values: [String: Bool], _ body: () -> Void) {
+        let defaults = UserDefaults.standard
+        for (key, value) in values { defaults.set(value, forKey: key) }
+        defer { for key in values.keys { defaults.removeObject(forKey: key) } }
+        body()
+    }
+
     // MARK: - handleWorkingDirectoryChange across windows
 
     /// The trigger bug for #0248: a session in the second window must be
@@ -219,7 +228,9 @@ struct MultiWindowCWDNamingTests {
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         // A path that won't match any cache/rules entry → AI fallback fires.
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/unique-path-\(UUID())"
-        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        }
 
         // Await the in-flight task.
         if let inflight = store.nameSuggestionTasks[session.id] {
