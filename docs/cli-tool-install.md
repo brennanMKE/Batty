@@ -338,7 +338,7 @@ identical to supacode.
 > app-IPC client), which all live in BattyKit. A package `executableTarget` can
 > `import BattyKit` directly with zero duplication, and `swift run batty` keeps
 > the package self-contained (consistent with the "BattyKit must stand on its
-> own" convention in `CLAUDE.md`). A standalone Xcode CLI target would have to
+> own" convention in `AGENTS.md`). A standalone Xcode CLI target would have to
 > link BattyKit as a library to get the same thing — more wiring, less of the
 > code in the package.
 
@@ -403,7 +403,7 @@ Notes specific to a package executable:
   `swift run batty --help`) should produce and run the tool with no Xcode
   involved. This is the litmus test that the code is genuinely package-owned.
 - **The workspace must own the package** (per the BattyKit sole-owner rule in
-  `CLAUDE.md` / project memory) so the new executable product is visible to the
+  `AGENTS.md` / project memory) so the new executable product is visible to the
   app target. Don't re-add a bare `XCLocalSwiftPackageReference`.
 
 ### 4.2 Embed the built CLI into the app bundle
@@ -461,7 +461,7 @@ universal/Release archive path has not been exercised locally** — only the
 single-arch Debug build is verified; confirm the embedded binary's
 architectures with `lipo -info` when first cutting a release.
 
-Per Batty's `CLAUDE.md`, `scripts/` is a restricted area — the embed
+Per Batty's `AGENTS.md`, `scripts/` is a restricted area — the embed
 logic lives inline in the Run Script phase on the app target, not in a file
 under `scripts/`.
 

@@ -180,7 +180,7 @@ Issues are worked **one at a time, in ascending order**. Every branch is cut fro
 1. **Refresh the pricing cache if stale.** If `issues/model-pricing.json` is missing or its `fetched` date isn't today, fetch current model prices and rewrite it on `main` (once per day, not per issue). See "Token usage and cost tracking" below.
 2. List `issues/*.md` (skip `Issues.md`). Pick the lowest-numbered file whose status is `open`.
 3. **Create the issue branch** from a clean `main`: `git switch -c issue/NNNN main`. If the branch already exists from a previous bailed attempt, resume it instead: `git switch issue/NNNN` (read the bail Notes on the issue first). If it exists because the issue was already merged and has been reopened, don't reuse it — the old branch predates the squash; start fresh with a suffixed name (`issue/NNNN-2`).
-4. **Dispatch the implementer** — a fresh subagent with the model pinned to Sonnet, given the issue id and instructions to follow "Implementer subagent" below: read `issues/Issues.md` and `CLAUDE.md` first to absorb project conventions, then read `issues/NNNN.md` for the issue itself. It works on the issue branch and returns a summary of what changed, how it was verified, and what it committed.
+4. **Dispatch the implementer** — a fresh subagent with the model pinned to Sonnet, given the issue id and instructions to follow "Implementer subagent" below: read `issues/Issues.md` and `AGENTS.md` first to absorb project conventions, then read `issues/NNNN.md` for the issue itself. It works on the issue branch and returns a summary of what changed, how it was verified, and what it committed.
 5. **Record the implementer's usage** — append a `## Work log` row (see "Token usage and cost tracking") and commit it on the branch.
 6. **Dispatch the reviewer** — a fresh subagent with the model pinned to Opus, given the issue id and the implementer's summary, following "Reviewer subagent" below. A fresh reviewer per round; don't reuse a reviewer across issues.
 7. **Commit the review result on the branch.** The reviewer itself never commits, so the orchestrator records each round's outcome: commit message `#NNNN Review: <approve | request changes>` with the verdict's findings in the body, plus the reviewer's work-log row in the issue file. Every round leaves its own commit — the branch history shows what review asked for and what changed in response.
@@ -205,12 +205,12 @@ The implementer starts with fresh context, so its first job is loading the proje
 
 1. **Orient in the project.** Read these in order, every time:
    - **`issues/Issues.md`** (this file) — status vocabulary, module conventions, build/verify command, commit conventions, project-specific rules. **Authoritative for issue-tracking workflow.**
-   - **`CLAUDE.md`** at the repo root, if it exists — project-wide guidance, code conventions, restricted areas, build/test commands. **Treat its instructions as binding.**
+   - **`AGENTS.md`** at the repo root, if it exists — project-wide guidance, code conventions, restricted areas, build/test commands. **Treat its instructions as binding.**
    - **`PRD.md`** — the product requirements doc; the source of truth for what Batty is and isn't.
    - **`Concepts.md`** — canonical vocabulary (Window, Session, Pane, Tab, Terminal Session, Split, Theme, Bell Feed, Workspace, Surface registry, etc.). Use these terms exactly when describing fixes; don't invent synonyms.
    - **`issues/NNNN.md`** — the issue you're working on, in full, including attachments in `issues/NNNN/`.
 
-   If two project guides disagree, prefer `CLAUDE.md` for code/repo conventions and this file for issue-tracking specifics.
+   If two project guides disagree, prefer `AGENTS.md` for code/repo conventions and this file for issue-tracking specifics.
 
 2. **Set status to `in-progress`** in the markdown and commit it on the branch (`#NNNN Claim`). The Mac app picks it up immediately, signaling the issue is claimed.
 3. **Make the code changes** required by the issue, committing checkpoints on the branch as you go — messages prefixed `#NNNN`, granularity at your discretion (it all squashes into one commit on `main`).
@@ -222,7 +222,7 @@ The implementer starts with fresh context, so its first job is loading the proje
    - **If verification cannot be run in your environment** (hardware required, sandbox, missing credentials, machine locked by the UI suite), you have not verified the change. Do not hand it to review as verified — bail per "When the implementer can't finish" below, naming the verification step you couldn't run.
    - **If the build was already failing before you started**, note it on the issue and bail — don't fix unrelated breakage.
 
-5. **Commit your final state on the branch, but do not touch the issue markdown beyond the `in-progress` flip** — the resolution sections are the orchestrator's job, after review. Commit messages start with `#NNNN` and a short, declarative title — pick the verb that actually fits (`Fix`, `Add`, `Refactor`, `Update`, `Remove`, etc.); not every issue is a bug fix. If `CLAUDE.md` or recent `git log` defines a different convention, follow that instead.
+5. **Commit your final state on the branch, but do not touch the issue markdown beyond the `in-progress` flip** — the resolution sections are the orchestrator's job, after review. Commit messages start with `#NNNN` and a short, declarative title — pick the verb that actually fits (`Fix`, `Add`, `Refactor`, `Update`, `Remove`, etc.); not every issue is a bug fix. If `AGENTS.md` or recent `git log` defines a different convention, follow that instead.
 
 6. **Return to the orchestrator** with: what changed and why, the files touched, the exact verification command(s) run and what was observed, and anything the reviewer should scrutinize (trade-offs, workarounds, choices that constrain later issues).
 
@@ -230,7 +230,7 @@ When the orchestrator sends back review findings, address every item (or push ba
 
 ### Reviewer subagent (Opus): review the branch before it lands
 
-The reviewer also starts fresh: read `issues/Issues.md`, `CLAUDE.md`, `PRD.md`/`Concepts.md` as needed, and `issues/NNNN.md` with its attachments, then examine the branch with `git diff main...HEAD` — that is exactly the diff the squash merge will land on `main`. (`git log main..HEAD --oneline` shows the checkpoint history if the path the implementer took matters.)
+The reviewer also starts fresh: read `issues/Issues.md`, `AGENTS.md`, `PRD.md`/`Concepts.md` as needed, and `issues/NNNN.md` with its attachments, then examine the branch with `git diff main...HEAD` — that is exactly the diff the squash merge will land on `main`. (`git log main..HEAD --oneline` shows the checkpoint history if the path the implementer took matters.)
 
 Judge the diff against:
 
@@ -286,7 +286,7 @@ scripts/run-ui-tests.sh                              # all UI tests
 ./build.sh ui BattyUITests/TabRenameTests  # one class
 ```
 
-`./build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `./build.sh ui`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `./build.sh` invocation passes before committing; Xcode previews are not a build pass. See `CLAUDE.md` for the full test strategy.
+`./build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `./build.sh ui`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `./build.sh` invocation passes before committing; Xcode previews are not a build pass. See `AGENTS.md` for the full test strategy.
 
 ### When the implementer can't finish
 

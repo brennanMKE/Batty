@@ -370,7 +370,7 @@ no `Process()` call anywhere under `BattyKit/Sources/BattyKit`). Spawning
 the user's real `git` — resolved via `$PATH`, so it picks up whatever
 `git` the user has configured (custom builds, corporate wrappers,
 `git-lfs` filters, credential helpers) — is consistent with the project's
-existing trust model: `CLAUDE.md`'s architectural rules state the app is
+existing trust model: `AGENTS.md`'s architectural rules state the app is
 **unsandboxed** specifically because "Terminal apps run arbitrary user
 processes... and can't fit App Store sandbox rules." A view that shells
 out to the user's own `git` is a strictly smaller trust extension than

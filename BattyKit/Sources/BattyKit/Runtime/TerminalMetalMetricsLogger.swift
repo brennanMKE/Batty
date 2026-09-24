@@ -103,7 +103,7 @@ public enum TerminalMetalMetricsLogger {
     /// Routes only `.metrics` — never `.standard`/`.all`, which also
     /// cover `.input`/`.output` and would put keystrokes and shell output
     /// into the unified log — and replaces `TerminalDebugLog`'s default
-    /// sink (`Swift.print`, forbidden by `CLAUDE.md`) with this file's
+    /// sink (`Swift.print`, forbidden by `AGENTS.md`) with this file's
     /// `Logger`.
     private static func configureGhosttyMetricsLog() {
         TerminalDebugLog.sink = { message in

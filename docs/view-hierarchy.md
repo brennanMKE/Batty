@@ -69,7 +69,7 @@ The model layer is `@Observable` reference types (so SwiftUI can react
 to mutations without losing identity), wrapping value types
 (`SplitDirection`, `Pane`) that stay `Codable` and persistence-ready even
 though nothing serializes them today (see the note above the model
-hierarchy diagram). Per CLAUDE.md's architectural rule, the layout model
+hierarchy diagram). Per AGENTS.md's architectural rule, the layout model
 stays pure value types either way — view types and libghostty handles
 never enter it.
 
@@ -207,7 +207,7 @@ and kill the shell. The persistent-host design moves ownership of the
   `updatePlacements(_:forWindowID:)` so one window's preference
   emissions cannot affect another window's terminals (amendment 4 in §4).
 
-This mirrors the **Surface registry** rule in CLAUDE.md: SwiftUI only
+This mirrors the **Surface registry** rule in AGENTS.md: SwiftUI only
 ever stores `surfaceID: UUID`, never the C handle; view rebuilds must
 not destroy surfaces. Here the same idea is one level up — SwiftUI
 stores at most `tab.id`, the host store maps `tab.id` to the live

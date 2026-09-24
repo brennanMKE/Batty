@@ -163,7 +163,7 @@ Found flipped mid-session with no build having been intentionally run
 against Beta. Related: `Batty.xcodeproj/project.pbxproj` and the shared
 schemes drift dirty as residue and must be discarded, never committed.
 
-**Remedy (already in `CLAUDE.md`, restated because it kept happening):**
+**Remedy (already in `AGENTS.md`, restated because it kept happening):**
 check `Active.xcconfig` before and after every build; treat a dirty
 `project.pbxproj` as residue.
 
@@ -256,9 +256,9 @@ issue.
 
 ## 12. Guidance that contradicts itself
 
-`CLAUDE.md` summarises the filer subagent as pinned to "the top available
+`AGENTS.md` summarises the filer subagent as pinned to "the top available
 model." `issues/Issues.md:150` pins it to Opus 5 with an explicit standing
-user directive dated 2026-08-09: *"Do not use Fable."* `CLAUDE.md` states
+user directive dated 2026-08-09: *"Do not use Fable."* `AGENTS.md` states
 that `Issues.md` wins for issue-tracker workflow, so the summary is simply
 stale — but the summary is what gets read first.
 

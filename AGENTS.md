@@ -2,7 +2,7 @@
 
 A native macOS terminal multiplexer built on libghostty. Single-window default, session sidebar, splits and tabs, bell-driven notification feed. macOS 15.6+.
 
-This file is binding guidance for Codex sessions and subagents. **If something here contradicts a downstream skill, this file wins for code/repo conventions; `issues/Issues.md` wins for issue-tracker workflow.**
+This file is binding guidance for every agent session and subagent (Claude Code, Codex, and others). `CLAUDE.md` only imports this file; edit guidance here, not there. **If something here contradicts a downstream skill, this file wins for code/repo conventions; `issues/Issues.md` wins for issue-tracker workflow.**
 
 ## Read these first
 
@@ -60,7 +60,7 @@ release builds only.
 # Run BattyKit unit tests — fast, no UI, runs before every commit
 ./build.sh unit
 
-# Run UI tests (slow; locks the machine; run on the Mac mini for preflight)
+# Run UI tests -- ONLY inside the Tart VM, never on a host Mac (see below)
 ./build.sh ui                                     # all UI tests
 ./build.sh ui BattyUITests/TabRenameTests         # one class
 ./build.sh ui BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle
@@ -83,7 +83,7 @@ Any other action passes through to `xcodebuild` under the Beta scheme, so
 **Test strategy:**
 
 - **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only (skips UI tests). Fast (<30 s), no UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package, so BattyKitTests appear in the Test Navigator. Use the `Batty (Beta)` scheme there; `Batty (Prod)` also lists them, but Prod is for release builds only.
-- **UI tests** (`./build.sh ui`, which delegates to `scripts/run-ui-tests.sh`) — run the full `BattyUITests` suite (60 tests, ~10 min, locks the machine). Use only for release preflight and when explicitly adding or fixing a UI-level feature. Run on the Mac mini so the MacBook stays free. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
+- **UI tests** — run the full `BattyUITests` suite (60+ tests, ~10 min). **Only inside a disposable Tart VM** (see "UI test automation" below), never on a host Mac. Use for release preflight and when adding or fixing a UI-level feature. New UI features should be covered by new UI tests. Any regression found by UI tests must be fixed and tracked as a new issue.
 - **Release build** (`./build.sh release archive -archivePath dist/Batty.xcarchive -configuration Release`) — the only path that compiles at `-O`, and the only one that exercises the universal (arm64 + x86_64) slices. **Run it before cutting any release, and after any change to a type with non-trivial generics or deinit.** Debug and Beta builds do not cover it: `-O` reaches optimizer paths Debug never runs, and a Release-only compiler crash went undetected for months because nothing in the routine loop built at `-O` (#0391 — swift-frontend 6.3.3 crashed in the SIL `EarlyPerfInliner` on a generic class's implicit `deinit`, blocking the entire release pipeline).
 
 Always confirm the headless `./build.sh` invocation passes before committing — Xcode previews are not a build pass.
@@ -102,6 +102,28 @@ xcodebuild -project Batty.xcodeproj -scheme "Batty (Beta)" \
 ```
 
 Related: Prod and Beta share one target, so whichever scheme resolved last caches its product name into the tracked `Batty.xcodeproj/project.pbxproj` (`Batty.app` ↔ `Batty Beta.app`), and Xcode also rewrites `BuildableName` in the tracked `.xcscheme` files the same way. **A dirty `project.pbxproj` or `.xcscheme` after a build is expected residue — discard it (`git checkout --`), never commit it.**
+
+## UI test automation (binding)
+
+**UI tests never run on a host Mac — only inside a disposable Tart VM.** XCUITest's
+`testmanagerd` bootstraps `XCTAutomationSupport` into *every* running GUI app it
+enumerates through Accessibility, not just the app under test. On 2026-09-12 a UI test
+run from another project did exactly that to the user's running Prod Batty and crashed
+it (`EXC_BAD_ACCESS` in `-[XCTAutomationSession initWithAccessibilityFramework:dataSource:]`),
+killing every live Terminal Session (#0409). A Batty UI test run on the host is the same
+hazard aimed at the user's own terminals.
+
+- The VM setup, runner, and guards are documented in **`docs/ui-testing-vm.md`** (#0412);
+  the shared host-side setup (Tart, the golden images, memory coordination) is in
+  `~/Developer/Homelab/cameron/tart-ui-test-vm.md`.
+- Run UI tests only through the VM runner it describes. It exports a clean `git archive HEAD`
+  snapshot, so **commit first** — uncommitted edits are not tested.
+- Never run `xcodebuild ... test` against `BattyUITests`, `scripts/run-ui-tests.sh`, or any
+  `osascript`/System Events UI scripting on the host. Synthetic input goes to whatever app is
+  frontmost, which is usually the user's Batty.
+- Only one VM runs at a time on this host. Parallel subagents must not each start a VM run;
+  the orchestrator serializes them.
+- Unit tests (`./build.sh unit`) and builds stay on the host; they load nothing into other apps.
 
 ## Release / distribution
 

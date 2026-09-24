@@ -437,7 +437,7 @@ directionally right (no persistence exists) even though its "never
 planned" framing overstates the historical record — and, as of this
 writing, five of its per-concept `**Persisted:**` bullets still described
 that deleted persistence in detail; `#0324` corrected them separately.
-`CLAUDE.md` and `docs/view-hierarchy.md` are wrong** — both describe
+`AGENTS.md` and `docs/view-hierarchy.md` are wrong** — both describe
 `workspace.json` serialization and a `WorkspaceManager.swift` that `#0172`
 deleted three months before `docs/view-hierarchy.md`'s own "Document
 version: 4 — 2026-08-01" revision date, meaning the stale reference
@@ -454,7 +454,7 @@ the "serialized to `workspace.json`" sentence in the paragraph below the
 table is corrected to describe what's actually true — `Pane` is a Codable
 value type with no current serialization call site, kept ready for the
 day persistence is re-added.
-`CLAUDE.md`'s architectural-rules line ("This is what Workspace
+`AGENTS.md`'s architectural-rules line ("This is what Workspace
 persistence serializes") is corrected the same way, in the same commit,
 since it is the other doc `#0302` names as contradicting the code. Neither
 edit touches `Concepts.md` (its `## Workspace` section removal and "never
@@ -688,7 +688,7 @@ part of whichever issue implements it.
 **This issue ships no code — the manual terminal-pane checklist in
 `docs/terminal-pane-requirements.md` §6 does not need to be re-run for
 `#0302` itself.** Nothing in this document's deliverable (a markdown file
-plus a two-line correction to `docs/view-hierarchy.md` and `CLAUDE.md`)
+plus a two-line correction to `docs/view-hierarchy.md` and `AGENTS.md`)
 changes any Swift source, so there is no runtime behavior to regress. The
 "evidence" for this issue is the citation-by-citation verification
 recorded inline above (§§1-4) and the build/test run in §7 below,
@@ -742,7 +742,7 @@ it to specific structural changes:**
 
 **No Swift source changed.** This issue's deliverable is `docs/pane-kinds.md`
 (this file), a correction to `docs/view-hierarchy.md`, a correction to
-`CLAUDE.md`, and an entry in `docs/README.md`'s index. The build/test run
+`AGENTS.md`, and an entry in `docs/README.md`'s index. The build/test run
 below is a baseline check that the branch is known-green going in — it is
 not evidence of any new behavior, because none was added.
 
@@ -769,7 +769,7 @@ checks only, since this issue changes no Swift source at any point.
 | 1. Where does kind live? | `PaneRuntime`/`Pane`, not `TabRuntime`/`Tab`. Non-terminal panes have `tabs: []`, no Tab bar. | §1 |
 | 2. How does `PaneView` avoid mounting `TerminalPlaceholderView` for non-terminal panes? | Single `switch pane.kind` at the top of `body`; `TerminalPlaceholderView` only exists in the `.terminal` arm. | §2 |
 | 3. Terminal-host boundary — what extends to non-terminal panes? | `TerminalHostStore`'s *tracked data* (placements, subviews, lifecycle): terminal-only, full stop. The host *view*'s AppKit footprint spans the whole detail area regardless — pointer fall-through is safe (`hitTest` returns `nil` off-terminal) but Finder-file drag fall-through is **not** safe (`.fileURL` registration is host-wide; AppKit doesn't retry a declined drag against a SwiftUI sibling) and needs empirical verification + likely an AppKit-level fix before any non-terminal view ships file-drop. Only §4's overlay `.allowsHitTesting(false)` rule extends unconditionally. | §3 |
-| 4. Codable `Pane` field + `workspace.json` doc inconsistency | `kind: PaneContentKind = .terminal`, backward-compatible decode. No persistence exists today (`#0172` deleted it); `docs/view-hierarchy.md` and `CLAUDE.md` were stale and are corrected by this issue; `Concepts.md` had five stale `**Persisted:**` bullets `#0172` missed (corrected separately by `#0324`, not by this issue) and its Pane definition (`Concepts.md:63`) is also falsified by this design, needing a later child's rewrite. | §4 |
+| 4. Codable `Pane` field + `workspace.json` doc inconsistency | `kind: PaneContentKind = .terminal`, backward-compatible decode. No persistence exists today (`#0172` deleted it); `docs/view-hierarchy.md` and `AGENTS.md` were stale and are corrected by this issue; `Concepts.md` had five stale `**Persisted:**` bullets `#0172` missed (corrected separately by `#0324`, not by this issue) and its Pane definition (`Concepts.md:63`) is also falsified by this design, needing a later child's rewrite. | §4 |
 | 5. Composing with `#0257`/`#0315` CLI deltas | `pane close` needs one small kind-gated addition inside the existing cascade, not a new verb (confirmed by tracing the actual close path). `pane split`/`PaneSplitRequest`/`PaneCloseRequest`/`XPCVerb` unchanged by this design. Kind identifier = single string used identically in Codable, topology JSON, and CLI flag. `TopologyPanePayload.activeTabID` needs a hand-written always-present-key encoding, not a plain `Optional` — a real, visible wire-shape change, not an additive one. `PaneContentKind` carries a per-kind `isSingletonPerSession`-style flag; enforcing it is `#0315`'s. | §5 |
 | 6. Regression evidence plan | This issue: none needed (no code changed). Whoever lands §1/§2's structural changes: full manual checklist on terminal panes. Whoever lands the first non-terminal view: checklist on terminal panes in a *mixed-kind* session. | §6 |
 
@@ -785,7 +785,7 @@ never firing, not "safe by construction" as version 1 claimed; corrected
 real wire-shape change requiring an explicit always-present-key encoding;
 answered the model-level half of the singleton-per-scope question
 `#0315`/`issues/0315.md:47` asks of this issue; named `Concepts.md:63` as
-the specific line a later child must update; corrected `CLAUDE.md`'s
+the specific line a later child must update; corrected `AGENTS.md`'s
 remaining stale `Session`/`Tab`/`SplitNode` type list.*
 
 **Implementation note (2026-08-09, `#0315`, updated after review round

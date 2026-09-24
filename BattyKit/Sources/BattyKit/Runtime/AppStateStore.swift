@@ -238,7 +238,7 @@ public final class AppStateStore {
     /// same place, before this method is even called. Nothing about the
     /// store's observable state is deferred — only the imperative call to quit.
     ///
-    /// This is deliberately not the `Task`-hop CLAUDE.md and the #0229
+    /// This is deliberately not the `Task`-hop AGENTS.md and the #0229
     /// regression warn against. That bug deferred a *write* that a second
     /// writer was racing over the same fact (model → AppKit focus vs. AppKit
     /// → model echo). `windows`/`nsWindowMap` do have other writers besides

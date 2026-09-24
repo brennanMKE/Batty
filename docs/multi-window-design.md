@@ -405,7 +405,7 @@ riskiest paths in the app (#0072/#0074/#0075 terminal lifetime,
 | `#0239` cross-window behaviors | `makeKeyAndOrderFront` from a wrong context (observation rules); termination regressions (#0217 lineage); bell `isFocused` mis-keyed | [`swiftui-observation-rules.md`](swiftui-observation-rules.md); [`notifications.md`](notifications.md); quit/close UI tests |
 | `#0240` regression pass | Anything the per-phase runs missed; cross-window focus/IME/drop interactions | Full `BattyUITests` on the Mac mini; the manual [`terminal-pane-requirements.md`](terminal-pane-requirements.md) §6 checklist executed **in every window**; `docs/view-hierarchy.md` §6 log-signal audit per window |
 
-Standing global rules for every phase: CLAUDE.md's surface-registry rule
+Standing global rules for every phase: AGENTS.md's surface-registry rule
 (view rebuilds — now including window open/close/restore — must never
 destroy surfaces), and the two-commit issue workflow from
 `issues/Issues.md`.

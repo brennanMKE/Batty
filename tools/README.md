@@ -1,7 +1,7 @@
 # tools/
 
 Developer-only utilities. Not part of the app bundle, not built by Xcode.
-Unlike `scripts/` (release pipeline, restricted per `CLAUDE.md`), this
+Unlike `scripts/` (release pipeline, restricted per `AGENTS.md`), this
 directory holds ad-hoc developer tooling that doesn't need release-process
 review.
 

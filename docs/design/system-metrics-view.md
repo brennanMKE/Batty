@@ -77,7 +77,7 @@ Spike code ran as throwaway Swift scripts (`swift <file>.swift`, no Xcode
 project) in `/private/tmp/.../scratchpad/spike0314/`, outside the
 repository, not part of this commit, on: **macOS 26.5.1 (build 25F80),
 Swift 6.3.3 (swiftlang-6.3.3.1.3), arm64**, same unsandboxed, same-uid
-process class Batty itself runs as (`CLAUDE.md`: `ENABLE_APP_SANDBOX =
+process class Batty itself runs as (`AGENTS.md`: `ENABLE_APP_SANDBOX =
 NO`). This is verifiably the **same physical machine** `#0305`'s spike
 ran on, not just the same OS build: a whole-system libproc sweep run for
 this spike (§1.7) found Finder's `phys_footprint` at 758.4 MB, matching
@@ -853,7 +853,7 @@ because there is no cross-tick handle left to race against.
 version of this paragraph warned about "a racing `setVisible(false)`"
 interrupting a held connection mid-tick, phrased broadly enough to imply
 a data race. Batty's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
-(`CLAUDE.md`) means both the sampling loop's body and `setVisible(false)`
+(`AGENTS.md`) means both the sampling loop's body and `setVisible(false)`
 run on the main actor, so the loop can only be interrupted at an actual
 suspension point (`Task.sleep`, `await`), not preemptively mid-statement —
 the `Task.isCancelled` check before each sweep is correct and sufficient

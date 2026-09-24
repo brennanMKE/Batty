@@ -66,7 +66,7 @@ throwaway Swift scripts (`swift <file>.swift`, no Xcode project) in
 `/private/tmp/.../scratchpad/spike0305/` — outside the repository, not part
 of this commit — on this machine: **macOS 26.5.1 (build 25F80), Swift
 6.3.3 (swiftlang-6.3.3.1.3), arm64**, running as the same unsandboxed,
-same-uid process class Batty itself runs as (`CLAUDE.md`: `ENABLE_APP_SANDBOX
+same-uid process class Batty itself runs as (`AGENTS.md`: `ENABLE_APP_SANDBOX
 = NO`).
 
 ### 1.1 `task_for_pid` fails — confirmed, not assumed
