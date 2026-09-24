@@ -66,16 +66,6 @@
                ReferencedContainer = "container:Batty.xcodeproj">
             </BuildableReference>
          </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "26D543312FAEC4AD00BA9AF8"
-               BuildableName = "BattyUITests.xctest"
-               BlueprintName = "BattyUITests"
-               ReferencedContainer = "container:Batty.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

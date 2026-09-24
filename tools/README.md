@@ -5,6 +5,26 @@ Unlike `scripts/` (release pipeline, restricted per `AGENTS.md`), this
 directory holds ad-hoc developer tooling that doesn't need release-process
 review.
 
+## run-ui-tests-vm.sh
+
+Runs `BattyUITests` inside a disposable Tart VM (#0412). UI tests never run
+on this host — XCUITest's `testmanagerd` bootstraps `XCTAutomationSupport`
+into every running GUI app it enumerates through Accessibility, not just the
+app under test, and on 2026-09-12 that crashed the user's running Prod Batty
+and killed 38 live Terminal Sessions (#0409). `./build.sh ui` delegates here.
+See `docs/ui-testing-vm.md` for the golden image, the guest build steps, and
+the first verified run.
+
+```bash
+tools/run-ui-tests-vm.sh                              # full BattyUITests suite
+tools/run-ui-tests-vm.sh BattyUITests/TabRenameTests  # one class
+```
+
+It exports a clean `git archive HEAD` of both this repo and the sibling
+`../SlidingTabs` repo (a local path dependency of `BattyKit/Package.swift`)
+into a fresh temp directory — never the live working copy — so **commit
+first**. Results land in `build/ui-tests/<run-id>/`.
+
 ## memsample.sh
 
 A phys_footprint / graphics-region sampling harness for Batty (#0291, child

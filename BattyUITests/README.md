@@ -6,12 +6,25 @@ identifiers wired into the production views.
 
 ## Running locally
 
+**Never on the host.** This target has a build-phase guard ("Refuse to
+build on a host Mac") that fails unless `sysctl -n kern.hv_vmm_present` is
+`1` — true only inside a VM. XCUITest's `testmanagerd` bootstraps
+`XCTAutomationSupport` into any running GUI app it can see via
+Accessibility, not just the app under test, and on 2026-09-12 that crashed
+the user's running Prod Batty and killed 38 live Terminal Sessions (#0409).
+
 ```bash
-xcodebuild -scheme Batty -destination 'platform=macOS' test
+./build.sh ui                                          # all UI tests, in a Tart VM
+./build.sh ui BattyUITests/TabRenameTests               # one class
 ```
 
-The first run pulls SwiftPM dependencies and takes longer. Subsequent
-runs are fast — a single smoke test runs in well under a minute.
+`./build.sh ui` delegates to `tools/run-ui-tests-vm.sh` (#0412), which
+exports a clean `git archive HEAD` snapshot — commit first — and runs the
+suite inside a disposable clone of `batty-uitest-golden`. See
+`docs/ui-testing-vm.md` for the full setup, guest build steps, and the
+first verified run. The first run in a fresh clone pulls SwiftPM
+dependencies and takes longer; subsequent runs reuse nothing (every clone
+starts clean), so package resolution happens every time.
 
 ## What the launch flag does
 

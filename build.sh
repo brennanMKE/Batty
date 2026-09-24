@@ -11,7 +11,8 @@
 #   ./build.sh                     build (Beta)
 #   ./build.sh clean               clean (Beta)
 #   ./build.sh unit                BattyKitTests only — fast, no UI, no machine lock
-#   ./build.sh ui [target ...]     UI tests (delegates to scripts/run-ui-tests.sh)
+#   ./build.sh ui [target ...]     UI tests — ONLY inside a disposable Tart VM
+#                                  (delegates to tools/run-ui-tests-vm.sh, #0412)
 #   ./build.sh run                 build, then launch the built Batty Beta.app
 #   ./build.sh terminate           quit a running Batty Beta (never touches Prod)
 #   ./build.sh release [args]      build with the Prod scheme, for release only
@@ -77,11 +78,15 @@ select_variant() {
 
 case "$ACTION" in
     ui|test)
-        # run-ui-tests.sh owns the Gatekeeper re-signing dance and does its
-        # own Beta selection; don't second-guess it here.
+        # #0412: UI tests never run on this host -- XCTAutomationSupport
+        # loads into every running GUI app testmanagerd can see, not just
+        # the app under test, and that crashed the user's running Prod
+        # Batty on 2026-09-12 (#0409). tools/run-ui-tests-vm.sh runs the
+        # suite inside a disposable Tart VM instead; it owns Beta selection
+        # and ad hoc signing for the guest build.
         shift
-        print "==> UI tests (Beta) via scripts/run-ui-tests.sh"
-        exec "$REPO/scripts/run-ui-tests.sh" "$@"
+        print "==> UI tests (Beta, in a Tart VM) via tools/run-ui-tests-vm.sh"
+        exec "$REPO/tools/run-ui-tests-vm.sh" "$@"
         ;;
 
     package)

@@ -6,6 +6,13 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
 
 ## Available
 
+- [`ui-testing-vm.md`](ui-testing-vm.md) — why `BattyUITests` only ever runs
+  inside a disposable Tart VM (#0412, mitigating #0409's external-XCUITest
+  crash of the user's running Prod Batty), the golden image and its
+  hardening, the `tools/run-ui-tests-vm.sh` runner and the host build-phase
+  guard, how to run it, and the first verified run's results and gotchas.
+  Read this before running `./build.sh ui` or touching `BattyUITests`'
+  build settings.
 - [`issue-work-obstacles.md`](issue-work-obstacles.md) — a record of what
   has actually stopped, stalled, or reversed issue work: approval gates with
   no owner (the four `#0301` view kinds sat two weeks), scope that leaves a

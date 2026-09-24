@@ -173,6 +173,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 26D543422FAEC4AD00BA9AF8 /* Build configuration list for PBXNativeTarget "BattyUITests" */;
 			buildPhases = (
+				26B100050000000000000005 /* Refuse to build on a host Mac */,
 				26D5432E2FAEC4AD00BA9AF8 /* Sources */,
 				26D5432F2FAEC4AD00BA9AF8 /* Frameworks */,
 				26D543302FAEC4AD00BA9AF8 /* Resources */,
@@ -264,6 +265,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		26B100050000000000000005 /* Refuse to build on a host Mac */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Refuse to build on a host Mac";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "set -euo pipefail\n# #0412: XCTAutomationSupport loads into every running GUI app testmanagerd\n# can see via Accessibility, not just the app under test -- on 2026-09-12 this\n# crashed the user's running Prod Batty and killed 38 live Terminal Sessions\n# (#0409). BattyUITests must never build outside a disposable VM.\nif [ \"$(/usr/sbin/sysctl -n kern.hv_vmm_present 2>/dev/null || echo 0)\" != \"1\" ]; then\n    echo \"error: BattyUITests only builds inside a VM. Run tools/run-ui-tests-vm.sh (see docs/ui-testing-vm.md).\" >&2\n    exit 1\nfi\n";
+		};
 		26B100010000000000000001 /* Bundle Ghostty Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

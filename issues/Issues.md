@@ -279,14 +279,14 @@ To run the fast `BattyKit` unit tests (the pre-commit gate — <30s, no UI, no m
 ./build.sh unit
 ```
 
-The UI suite is slow (~10 min), locks the machine, and runs only for release preflight or when adding/fixing a UI-level feature — on the Mac mini, not the MacBook:
+The UI suite is slow (~10 min) and **only ever runs inside a disposable Tart VM** (#0412) — never on this host, since XCUITest's `testmanagerd` can bootstrap `XCTAutomationSupport` into any running GUI app it sees via Accessibility, not just the app under test, and that crashed the user's running Prod Batty on 2026-09-12 (#0409):
 
 ```bash
-scripts/run-ui-tests.sh                              # all UI tests
-./build.sh ui BattyUITests/TabRenameTests  # one class
+./build.sh ui                              # all UI tests, in the VM
+./build.sh ui BattyUITests/TabRenameTests  # one class, in the VM
 ```
 
-`./build.sh` wraps `xcodebuild` with the correct scheme (`Batty (Prod)`, not `Batty`) and destination. Run UI tests via `./build.sh ui`, not raw `xcodebuild test` — it re-signs the runner so Gatekeeper doesn't translocate it. Always confirm the headless `./build.sh` invocation passes before committing; Xcode previews are not a build pass. See `AGENTS.md` for the full test strategy.
+`./build.sh ui` delegates to `tools/run-ui-tests-vm.sh`, which exports a clean `git archive HEAD` snapshot (commit first — uncommitted edits are not tested), clones `batty-uitest-golden`, and runs the suite inside the clone. See `docs/ui-testing-vm.md` for the golden image, guest build steps, and verified results. `BattyUITests` also has a build-phase guard that refuses to build outside a VM, so even a stray `xcodebuild ... test` on this host stops immediately. Always confirm the headless `./build.sh` invocation passes before committing; Xcode previews are not a build pass. See `AGENTS.md` for the full test strategy.
 
 ### When the implementer can't finish
 
