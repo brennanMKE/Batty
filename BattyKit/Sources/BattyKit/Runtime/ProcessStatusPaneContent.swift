@@ -146,9 +146,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         performSample()
     }
 
+    /// `tabLookup` has no default: resolving a `.followingTab` target —
+    /// including one chosen later through ``retarget(to:)``, which reuses
+    /// this same closure rather than taking a fresh one — depends entirely
+    /// on it. A nil-returning lookup tombstones every such target as
+    /// `.sourceTabGone`, so every caller must supply a real one, even a
+    /// target that will never invoke it (`.pinned`/`nil`).
     public init(
         target: Target?,
-        tabLookup: @escaping (UUID) -> TabRuntime? = { _ in nil },
+        tabLookup: @escaping (UUID) -> TabRuntime?,
         samplingInterval: Duration = .seconds(1)
     ) {
         self.target = target

@@ -214,7 +214,7 @@ public final class SplitTree {
         ratio: Double = 0.5,
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane = Self.makePane(inheritingFrom: source)
+        let newPane = Self.makePane(inheritingFrom: source, tabLookup: Self.tabLookup(for: self))
         if let sessionID {
             newPane.attachToSession(sessionID)
         }
@@ -259,13 +259,25 @@ public final class SplitTree {
         ratio: Double = 0.5,
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane = Self.makePane(inheritingFrom: source)
+        let newPane = Self.makePane(inheritingFrom: source, tabLookup: Self.tabLookup(for: self))
         if let sessionID {
             newPane.attachToSession(sessionID)
         }
         root = .split(id: UUID(), direction: direction, ratio: ratio, left: root, right: .leaf(newPane))
         focusedPaneID = newPane.id
         return newPane
+    }
+
+    /// The real by-id Tab lookup a `.processStatus` pane's
+    /// `ProcessStatusPaneContent` holds for its whole life, regardless of
+    /// its current target — a `.pinned`/`nil` target simply never calls
+    /// it. `[weak tree]` because that held closure must not keep the tree
+    /// (or, transitively, every Pane/Tab it reaches) alive past the
+    /// tree's own lifetime.
+    private static func tabLookup(for tree: SplitTree) -> (UUID) -> TabRuntime? {
+        { [weak tree] tabID in
+            tree?.allPanes.flatMap(\.tabs).first(where: { $0.id == tabID })
+        }
     }
 
     /// `kind != .terminal` skips cwd inheritance and `command` entirely — a
@@ -310,6 +322,12 @@ public final class SplitTree {
     /// directory (the same cwd a terminal split would inherit), else
     /// `$HOME`. Ignored for `.terminal`, and ignored (not just unused —
     /// never read) whenever an explicit `contentFactory` is supplied.
+    ///
+    /// `tabLookup` is required (no default): a `.processStatus` pane's
+    /// `.followingTab` targets — including ones picked later via
+    /// retarget — resolve only through it, so every caller, terminal-kind
+    /// splits included, must supply a real by-id lookup even though only
+    /// the `.processStatus` branch below ever invokes it.
     private static func makePane(
         inheritingFrom source: PaneRuntime?,
         command: String? = nil,
@@ -317,7 +335,7 @@ public final class SplitTree {
         processStatusPid: Int32? = nil,
         path: String? = nil,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
-        tabLookup: @escaping (UUID) -> TabRuntime? = { _ in nil }
+        tabLookup: @escaping (UUID) -> TabRuntime?
     ) -> PaneRuntime {
         guard kind == .terminal else {
             let resolvedFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)?
@@ -396,9 +414,7 @@ public final class SplitTree {
             processStatusPid: processStatusPid,
             path: path,
             contentFactory: contentFactory,
-            tabLookup: { [weak self] tabID in
-                self?.allPanes.flatMap(\.tabs).first(where: { $0.id == tabID })
-            }
+            tabLookup: Self.tabLookup(for: self)
         )
         if let sessionID {
             newPane.attachToSession(sessionID)

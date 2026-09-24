@@ -141,6 +141,44 @@ struct AppStateStorePaneSplitTests {
         if let newPaneID { _ = store.closePane(id: newPaneID) }
     }
 
+    /// `#0359`: `ProcessStatusPaneContent`'s `tabLookup` closure is bound
+    /// once, at construction, and never replaced — `retarget(to:)` (the
+    /// exact call `ProcessStatusPaneView`'s "Follow a Terminal Pane…" menu
+    /// makes) only swaps `target`, so a content object built with a broken
+    /// or nil-returning lookup would tombstone the instant the user picked
+    /// a Tab from that menu, even though `.followingTab` was never the
+    /// target at construction time. Pins mode A at creation (so identity
+    /// resolution never depends on the thing under test) and then
+    /// retargets to a sibling terminal Pane's Tab through the real
+    /// production path — a nil-returning or wrong-tree lookup would
+    /// tombstone here.
+    @Test func retargetingToAFollowedTabAfterConstructionResolvesThroughTheProductionTabLookup() {
+        let store = AppStateStore()
+        let source = store.sessions[0].focusedPaneAnyKind
+        let sourceTabID = source.activeTabID
+
+        let newPaneID = store.splitPane(id: source.id, direction: .horizontal, kind: .processStatus, processStatusPid: 4242)
+        let newPane = store.sessions[0].tree.allPanes.first { $0.id == newPaneID }
+        let content = newPane?.content as? ProcessStatusPaneContent
+        #expect(content?.target == .pinned(4242))
+
+        content?.retarget(to: .followingTab(sourceTabID))
+
+        #expect(content?.target == .followingTab(sourceTabID))
+        // No AppKit surface in this headless test, so `foregroundPid` is
+        // nil and the tick reports "no selection" — this is asserting the
+        // tab *lookup* itself succeeded, not that a real pid was found.
+        #expect(content?.hasNoSelection == true)
+        guard case .running = content?.runState else {
+            Issue.record("expected .running (a successful, if empty, lookup), not a tombstone from a stale/absent tabLookup")
+            if let newPaneID { _ = store.closePane(id: newPaneID) }
+            return
+        }
+
+        // Deterministic cleanup — see the comment above.
+        if let newPaneID { _ = store.closePane(id: newPaneID) }
+    }
+
     // MARK: - Background-session mutation must not steal focus or switch
     // the active session (#0257, binding doubly for the first mutation)
 

@@ -70,14 +70,14 @@ struct ProcessStatusPaneContentTests {
     /// default. Pin it directly, instantly, on a default-initialized
     /// instance instead.
     @Test func defaultSamplingIntervalMatchesProductionDesign() {
-        let content = ProcessStatusPaneContent(target: nil)
+        let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil })
         #expect(content.samplingIntervalForTesting == .seconds(1))
     }
 
     // MARK: - No selection
 
     @Test func noTargetStartsAndStaysNoSelection() {
-        let content = ProcessStatusPaneContent(target: nil)
+        let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil })
         #expect(content.hasNoSelection)
         content.setUp(visible: true)
         #expect(content.hasNoSelection)
@@ -88,7 +88,7 @@ struct ProcessStatusPaneContentTests {
     // MARK: - Pinned mode: setUp/setVisible/tearDown transitions
 
     @Test func setUpVisibleSamplesImmediatelyForAPinnedTarget() {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
         content.setUp(visible: true)
         #expect(content.lifecyclePhase == .active)
         #expect(content.hasNoSelection == false)
@@ -100,14 +100,14 @@ struct ProcessStatusPaneContentTests {
     /// would immediately have to suspend" — created hidden goes straight
     /// to `.suspended` and performs no sample.
     @Test func setUpHiddenNeverSamples() {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
         content.setUp(visible: false)
         #expect(content.lifecyclePhase == .suspended)
         #expect(content.snapshot == nil)
     }
 
     @Test func showingASuspendedPaneSamplesImmediately() {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
         content.setUp(visible: false)
         content.setVisible(true)
         #expect(content.lifecyclePhase == .active)
@@ -115,7 +115,7 @@ struct ProcessStatusPaneContentTests {
     }
 
     @Test func tearDownIsIdempotentAndTerminal() {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
         content.setUp(visible: true)
         content.tearDown()
         #expect(content.lifecyclePhase == .tornDown)
@@ -136,7 +136,7 @@ struct ProcessStatusPaneContentTests {
     /// anything happen" window, not a token gesture), it just does so at
     /// 1/50th the real duration.
     @Test func samplingStopsWhileSuspendedAndResumesWhenShown() async throws {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()), samplingInterval: .milliseconds(20))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil }, samplingInterval: .milliseconds(20))
         content.setUp(visible: true)
         let firstCapture = try #require(content.snapshot?.capturedAt)
 
@@ -183,7 +183,7 @@ struct ProcessStatusPaneContentTests {
     // MARK: - Permission-denied state (§3.5)
 
     @Test func permissionDeniedShowsPathAndBasenameFallbackButNoMetricsOrCommandLine() {
-        let content = ProcessStatusPaneContent(target: .pinned(1)) // launchd
+        let content = ProcessStatusPaneContent(target: .pinned(1), tabLookup: { _ in nil }) // launchd
         content.setUp(visible: true)
         #expect(content.runState == .permissionDenied)
         #expect(content.snapshot?.executablePath != nil)
@@ -202,7 +202,7 @@ struct ProcessStatusPaneContentTests {
         let pid = process.processIdentifier
         process.waitUntilExit()
 
-        let content = ProcessStatusPaneContent(target: .pinned(pid))
+        let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
         content.setUp(visible: true)
         guard case .exited = content.runState else {
             Issue.record("expected .exited, got \(content.runState)")
@@ -250,7 +250,7 @@ struct ProcessStatusPaneContentTests {
     // MARK: - Retargeting (§2's "Choose Process…")
 
     @Test func retargetResetsStateAndSamplesTheNewTargetImmediatelyWhileActive() {
-        let content = ProcessStatusPaneContent(target: nil)
+        let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil })
         content.setUp(visible: true)
         #expect(content.hasNoSelection)
 
@@ -261,7 +261,7 @@ struct ProcessStatusPaneContentTests {
     }
 
     @Test func retargetWhileSuspendedDoesNotSampleUntilShown() {
-        let content = ProcessStatusPaneContent(target: nil)
+        let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil })
         content.setUp(visible: false)
         content.retarget(to: .pinned(getpid()))
         #expect(content.lifecyclePhase == .suspended)
@@ -269,7 +269,7 @@ struct ProcessStatusPaneContentTests {
     }
 
     @Test func watchInsteadPinsToTheGivenChildPid() {
-        let content = ProcessStatusPaneContent(target: .pinned(1))
+        let content = ProcessStatusPaneContent(target: .pinned(1), tabLookup: { _ in nil })
         content.setUp(visible: true)
         #expect(content.runState == .permissionDenied)
 
@@ -305,7 +305,7 @@ struct ProcessStatusPaneContentTests {
     /// class ~42x scaling bug fails this at any contention level; a
     /// merely-busy shared machine does not.
     @Test func cpuPercentReflectsSubstantialRealCoreUsage() async throws {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
         content.setUp(visible: true) // establishes the CPU baseline; cpuPercent is nil on this first sample
 
         let beforeMetrics = try ProcessInspector.coreMetrics(pid: getpid()).get()
@@ -371,7 +371,7 @@ struct ProcessStatusPaneContentTests {
     /// tested directly rather than only through mode B (which needs a
     /// live AppKit `foregroundPid` this headless target can't produce).
     @Test func cpuPercentResetsTheBaselineWhenThePidChanges() {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
 
         func sample(pid: pid_t, ticksUser: UInt64) -> ProcessSample {
             ProcessSample(
@@ -419,7 +419,7 @@ struct ProcessStatusPaneContentTests {
         let pid = process.processIdentifier
         process.waitUntilExit()
 
-        let content = ProcessStatusPaneContent(target: .pinned(pid))
+        let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
         content.setUp(visible: true)
         guard case .exited = content.runState else {
             Issue.record("expected .exited, got \(content.runState)")
@@ -439,7 +439,7 @@ struct ProcessStatusPaneContentTests {
         try process.run()
         let pid = process.processIdentifier
 
-        let content = ProcessStatusPaneContent(target: .pinned(pid))
+        let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
         content.setUp(visible: true) // the process is still alive here
         guard case .running = content.runState else {
             Issue.record("precondition failed: expected .running before the process exits")
@@ -477,7 +477,7 @@ struct ProcessStatusPaneContentTests {
     /// sampling again regardless. That gap is real, disclosed, and not
     /// what this test claims to cover.
     @Test func hidingReleasesTheSamplingTaskReferenceNotJustTheObservablePhase() {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
         content.setUp(visible: true)
         #expect(content.isSamplingTaskAlive)
 
@@ -486,7 +486,7 @@ struct ProcessStatusPaneContentTests {
     }
 
     @Test func tearDownReleasesTheSamplingTaskReference() {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()))
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
         content.setUp(visible: true)
         #expect(content.isSamplingTaskAlive)
 

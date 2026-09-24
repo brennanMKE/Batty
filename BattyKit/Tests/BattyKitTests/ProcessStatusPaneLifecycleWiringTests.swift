@@ -37,7 +37,7 @@ struct ProcessStatusPaneLifecycleWiringTests {
         let source = session.focusedPaneAnyKind
         var contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)?
         if let samplingInterval {
-            contentFactory = { _ in ProcessStatusPaneContent(target: .pinned(pid), samplingInterval: samplingInterval) }
+            contentFactory = { _ in ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil }, samplingInterval: samplingInterval) }
         }
         let newPaneID = store.splitPane(
             id: source.id,

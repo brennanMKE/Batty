@@ -121,4 +121,39 @@ struct WindowRuntimeCreatePaneTests {
         // deliberately constructed above.
         if let newPane { _ = store.closePane(id: newPane.id) }
     }
+
+    /// `#0359`: `createPane` is a second, independent production path into
+    /// `SplitTree`'s `.processStatus` construction branch (menus, the
+    /// keyboard-shortcut monitors, and — exercised directly here — the
+    /// Command Palette, none of which go through `AppStateStore.splitPane`
+    /// at all per `WindowRuntime.createPane`'s own doc comment). Confirms the real
+    /// conformer built through *this* path also gets a working `tabLookup`
+    /// — a `.followingTab` target resolves (doesn't tombstone) rather than
+    /// only `AppStateStorePaneSplitTests`'s XPC-path coverage proving it.
+    @Test func dispatchSplitHorizontalProcessStatusFollowsTheSourcePanesTabThroughTheRealLookup() {
+        let store = AppStateStore()
+        let window = store.windows[0]
+        let session = window.selectedSession!
+        let source = session.tree.focusedPane
+        let sourceTabID = source.activeTabID
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+
+        view.dispatch(.splitHorizontalProcessStatus)
+
+        let newPane = session.tree.allPanes.first { $0.kind == .processStatus }
+        let content = newPane?.content as? ProcessStatusPaneContent
+        #expect(content?.target == .followingTab(sourceTabID))
+        // No AppKit surface in this headless test, so `foregroundPid` is
+        // nil and the tick reports "no selection" — this asserts the tab
+        // *lookup* succeeded, not a tombstone from a broken/absent lookup.
+        #expect(content?.hasNoSelection == true)
+        guard case .running = content?.runState else {
+            Issue.record("expected .running (a successful, if empty, lookup), not a tombstone")
+            if let newPane { _ = store.closePane(id: newPane.id) }
+            return
+        }
+
+        // Deterministic cleanup — see the comment above.
+        if let newPane { _ = store.closePane(id: newPane.id) }
+    }
 }
