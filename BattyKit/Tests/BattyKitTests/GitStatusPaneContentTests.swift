@@ -114,7 +114,7 @@ private nonisolated final class ScanGate: @unchecked Sendable {
     /// §1): on expiry this resolves `false`, never how it's meant to
     /// succeed.
     @discardableResult
-    func waitForScanStarted(bound: TimeInterval = 15) async -> Bool {
+    func waitForScanStarted(bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
             let timeoutWorkItem = DispatchWorkItem { once.resume(false) }
@@ -283,7 +283,7 @@ private nonisolated final class ScanHandledSignal: @unchecked Sendable {
 private func awaitScanHandled(
     _ content: GitStatusPaneContent,
     atLeast count: Int,
-    bound: TimeInterval = 15,
+    bound: TimeInterval = TestBounds.hangGuard,
     sourceLocation: SourceLocation = #_sourceLocation
 ) async -> Bool {
     if content.handledScanResultCount >= count {

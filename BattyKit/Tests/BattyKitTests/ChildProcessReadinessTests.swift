@@ -16,7 +16,7 @@ struct ChildProcessReadinessTests {
         process.standardOutput = pipe
         try process.run()
 
-        let ready = await ChildProcessReadiness.waitForData(on: pipe, bound: 5)
+        let ready = await ChildProcessReadiness.waitForData(on: pipe)
 
         #expect(ready)
         process.waitUntilExit()
@@ -55,7 +55,7 @@ struct ChildProcessReadinessTests {
         process.arguments = ["-c", "echo ready > '\(fifoPath)'"]
         try process.run()
 
-        let ready = await ChildProcessReadiness.waitForFIFOReady(at: fifoPath, bound: 5)
+        let ready = await ChildProcessReadiness.waitForFIFOReady(at: fifoPath)
 
         #expect(ready)
         process.waitUntilExit()
@@ -76,7 +76,7 @@ struct ChildProcessReadinessTests {
     }
 
     @Test func waitForFIFOReadyResolvesFalseImmediatelyWhenThePathDoesNotExist() async {
-        let ready = await ChildProcessReadiness.waitForFIFOReady(at: "/nonexistent/batty-0428/no-such-fifo", bound: 5)
+        let ready = await ChildProcessReadiness.waitForFIFOReady(at: "/nonexistent/batty-0428/no-such-fifo")
         #expect(ready == false)
     }
 }

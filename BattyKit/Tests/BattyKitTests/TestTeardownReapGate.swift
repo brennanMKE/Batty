@@ -63,7 +63,7 @@ nonisolated final class TestTeardownReapGate: TeardownReapGate, @unchecked Senda
     /// `bound` expiring; the bound is a failure guard only, never the
     /// success path.
     @discardableResult
-    func waitForParkedWaiter(_ count: Int = 1, bound: TimeInterval = 30) async -> Bool {
+    func waitForParkedWaiter(_ count: Int = 1, bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
             let id = UUID()

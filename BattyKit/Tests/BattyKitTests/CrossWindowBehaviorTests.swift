@@ -439,12 +439,13 @@ struct CrossWindowBehaviorTests {
     /// has run by then — is the completion signal. `terminated` is still
     /// checked synchronously, immediately after `removeWindow` returns and
     /// before the continuation's `await`, to keep the "not synchronous"
-    /// half of the original assertion. The 5s `Task.sleep` here is a hang
-    /// guard only (`AGENTS.md` "Asynchronous tests"): it never fires in a
-    /// passing run — only if a regression means `terminateHandler` is never
-    /// called at all, so the test fails with a clear message instead of
-    /// hanging the suite. `resumeOnce`'s lock covers the genuine race
-    /// between that guard and the real callback.
+    /// half of the original assertion. The `Task.sleep` here, bounded by
+    /// the shared `TestBounds.hangGuard`, is a hang guard only (`AGENTS.md`
+    /// "Asynchronous tests"): it never fires in a passing run — only if a
+    /// regression means `terminateHandler` is never called at all, so the
+    /// test fails with a clear message instead of hanging the suite.
+    /// `resumeOnce`'s lock covers the genuine race between that guard and
+    /// the real callback.
     @Test func removeWindowOnLastWindowEventuallyTerminates() async {
         let store = AppStateStore()
         var terminated = false
@@ -468,13 +469,13 @@ struct CrossWindowBehaviorTests {
             store.removeWindow(id: onlyWindowID)
             #expect(terminated == false, "terminateHandler must not fire synchronously from inside removeWindow")
             hangGuardTask = Task {
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(TestBounds.hangGuard))
                 resumeOnce()
             }
         }
         // The real callback already won the race in the passing case —
         // cancel the hang guard rather than leaving it sleeping in the
-        // background for the rest of its 5s.
+        // background for the rest of its bound.
         hangGuardTask?.cancel()
 
         #expect(terminated == true,

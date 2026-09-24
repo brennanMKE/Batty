@@ -29,11 +29,11 @@ import Foundation
 /// race — data, EOF, or bound expiry — since the readability handler and
 /// the timeout fire from different queues.
 nonisolated enum ChildProcessReadiness {
-    static func waitForData(on pipe: Pipe, bound: TimeInterval = 5) async -> Bool {
+    static func waitForData(on pipe: Pipe, bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await waitForReadableData(on: pipe.fileHandleForReading, bound: bound)
     }
 
-    static func waitForFIFOReady(at path: String, bound: TimeInterval = 5) async -> Bool {
+    static func waitForFIFOReady(at path: String, bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         let fd = open(path, O_RDONLY | O_NONBLOCK)
         guard fd >= 0 else { return false }
         let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)

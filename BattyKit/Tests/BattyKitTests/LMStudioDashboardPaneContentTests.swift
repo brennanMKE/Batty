@@ -1013,12 +1013,13 @@ struct LMStudioDashboardPaneContentTests {
         // The oversized line never reaches the parser as a usable line (no
         // `lineAppliedEventsForTesting` event fires for bytes
         // `NDJSONLineBuffer` drops), so exactly one event — the normal
-        // line — is expected. A generous bound: this test pipes >256 KB of
-        // filler through `head`/`tr` before that line arrives, which can
-        // take noticeably longer than a tight bound under the full suite's
-        // parallel host load (the isolated `swift test --filter` run
-        // finishes in well under a second).
-        guard await lineApplied.awaitCount(1, bound: 30) else {
+        // line — is expected. This test pipes >256 KB of filler through
+        // `head`/`tr` before that line arrives, which can take noticeably
+        // longer than an isolated run under the full suite's parallel host
+        // load (the isolated `swift test --filter` run finishes in well
+        // under a second) — comfortably inside the shared
+        // `TestBounds.hangGuard` default this call relies on.
+        guard await lineApplied.awaitCount(1) else {
             Issue.record("normal-sized line was never applied")
             content.tearDown()
             await content.awaitPendingTeardownReapsForTesting()
@@ -1091,7 +1092,7 @@ struct LMStudioDashboardPaneContentTests {
         // produce a parsed line itself — its exit is only observable
         // through the termination-handled event, which is also what
         // schedules the respawn.
-        guard await terminationHandled.awaitCount(1, bound: 30) else {
+        guard await terminationHandled.awaitCount(1) else {
             Issue.record("first process's unexpected exit was never handled")
             content.tearDown()
             await content.awaitPendingTeardownReapsForTesting()
@@ -1120,7 +1121,7 @@ struct LMStudioDashboardPaneContentTests {
         #expect(fired == 1)
         // Only becomes non-empty once the *respawned* process's line is
         // parsed.
-        guard await lineApplied.awaitCount(1, bound: 30) else {
+        guard await lineApplied.awaitCount(1) else {
             Issue.record("respawned process's line was never applied")
             content.tearDown()
             await content.awaitPendingTeardownReapsForTesting()
@@ -1224,7 +1225,7 @@ nonisolated private final class EventCounter: @unchecked Sendable {
     /// that pressed on as if the events had arrived anyway is exactly the
     /// "never continue past a failed readiness wait" hazard that doc calls
     /// out.
-    func awaitCount(_ count: Int, bound: TimeInterval = 10) async -> Bool {
+    func awaitCount(_ count: Int, bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
             let id = UUID()

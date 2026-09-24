@@ -187,7 +187,7 @@ nonisolated final class TestClock: SchedulingClock, @unchecked Sendable {
     /// `bound` expiring; the bound is a failure guard only, never the
     /// success path.
     @discardableResult
-    func waitForSleepers(_ count: Int, bound: TimeInterval = 30) async -> Bool {
+    func waitForSleepers(_ count: Int, bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
             let id = UUID()

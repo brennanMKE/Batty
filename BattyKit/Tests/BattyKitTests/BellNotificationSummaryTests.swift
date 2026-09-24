@@ -179,7 +179,7 @@ struct AppStateStoreSummarizationTests {
     /// the Swift 6 runtime's isolation check (`swift_task_checkIsolatedSwift`)
     /// the instant the timeout fires. `nonisolated` removes the inferred
     /// isolation; nothing in this body touches MainActor-isolated state.
-    private nonisolated func awaitSummarizationTask(_ task: Task<Void, Never>, bound: TimeInterval = 5) async -> SummarizationAwaitResult {
+    private nonisolated func awaitSummarizationTask(_ task: Task<Void, Never>, bound: TimeInterval = TestBounds.hangGuard) async -> SummarizationAwaitResult {
         await withCheckedContinuation { (continuation: CheckedContinuation<SummarizationAwaitResult, Never>) in
             let once = ResumeOnce(continuation)
             let timeoutWorkItem = DispatchWorkItem {

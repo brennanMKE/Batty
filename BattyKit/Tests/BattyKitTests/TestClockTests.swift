@@ -22,7 +22,7 @@ nonisolated struct TestClockTests {
     /// awaited work completes normally.
     private func startStuckSleeperGuard(
         for clock: TestClock,
-        bound: TimeInterval = 30,
+        bound: TimeInterval = TestBounds.hangGuard,
         sourceLocation: SourceLocation = #_sourceLocation
     ) -> Task<Void, Never> {
         Task {

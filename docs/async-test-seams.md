@@ -119,12 +119,12 @@ Awaits a child's "ready" signal as an event instead of blocking on
 `availableData` with no bound, or polling a plain file with `Thread.sleep`:
 
 ```swift
-// The test owns the child's stdout:
-let ready = await ChildProcessReadiness.waitForData(on: pipe, bound: 5)
+// The test owns the child's stdout — `bound` defaults to `TestBounds.hangGuard`:
+let ready = await ChildProcessReadiness.waitForData(on: pipe)
 
 // The content's own factory owns stdout (a Pipe would race its handler):
 ChildProcessReadiness.makeFIFO(at: path)   // before spawning the child
-let ready = await ChildProcessReadiness.waitForFIFOReady(at: path, bound: 5)
+let ready = await ChildProcessReadiness.waitForFIFOReady(at: path)
 ```
 
 `bound` is a **hang guard only** — it resolves `false` on expiry, and that
@@ -235,6 +235,31 @@ For every shape:
   `bound` and `TestClock.waitForSleepers`'/`TestTeardownReapGate
   .waitForParkedWaiter`'s `bound` follow the same rule: the bound is
   failure-only, never the success path.
+
+  Every one of those defaults routes through one shared constant,
+  `TestBounds.hangGuard` (`BattyKit/Tests/BattyKitTests/TestBounds.swift`,
+  currently 60s) — not a per-helper literal (#0443). Because the bound is a
+  failure guard only (`AGENTS.md` "Asynchronous tests"), raising it costs a
+  passing run nothing: the pre-existing per-helper literals (5s/10s/15s/30s)
+  sat too close to real MainActor-queueing delays under host load, so one
+  generous shared value is strictly better than tuning each helper's
+  literal independently. Full evidence — the bulk failures that motivated
+  this, the deliberate-CPU-load diagnostic that characterized the delay,
+  and the loaded runs at `TestBounds.hangGuard` that back ruling out a lost
+  wakeup — is in `issues/0443.md` ("Evidence", "Work notes",
+  "Verification"), not repeated here. Raising the bound again is not a fix
+  for a *remaining* expiry: any
+  expiry that survives at `TestBounds.hangGuard` is a signal bug to
+  root-cause, not a reason to go higher.
+
+  Two categories are deliberately excluded from
+  `TestBounds.hangGuard` and must keep their own literal:
+  - The `0.2s` bounds in `ChildProcessReadinessTests` and
+    `TestTeardownReapGateTests` — negative tests that expect the wait to
+    expire and assert `false`; routing them through the 60s constant would
+    make each of those tests take the full 60s to *pass*, not fail.
+  - `PendingTeardownReapRegistry.register(process:label:bound:)`'s `bound`
+    — production reap behavior, not a test wait.
 - **Never continue past a failed readiness wait as if it had succeeded.**
   `#expect(await clock.waitForSleepers(1))` *records* a `false` result but
   still lets the test carry on — and the rest of the test was written

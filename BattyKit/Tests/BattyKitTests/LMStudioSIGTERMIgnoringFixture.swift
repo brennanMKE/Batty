@@ -51,7 +51,7 @@ enum LMStudioSIGTERMIgnoringFixture {
     /// installing its `SIGTERM` trap, as an event (`ChildProcessReadiness`)
     /// — the deterministic replacement for a fixed sleep, or a
     /// `Thread.sleep` existence poll, before the test sends `SIGTERM`.
-    static func waitForReadyFile(_ url: URL, bound: TimeInterval = 5) async -> Bool {
+    static func waitForReadyFile(_ url: URL, bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await ChildProcessReadiness.waitForFIFOReady(at: url.path, bound: bound)
     }
 
