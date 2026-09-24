@@ -599,4 +599,186 @@ struct ProcessStatusPaneContentTests {
         content.tearDown()
         #expect(content.isSamplingTaskAlive == false)
     }
+
+    // MARK: - Disclosure content honesty (#0357)
+    //
+    // `openFilesState`/`childProcessesState` must never collapse "never
+    // asked," "asked, kernel refused," and "asked, here is the real
+    // (possibly empty) answer" into a single measured-looking value — that
+    // collapse (`?? []` feeding a `DisclosureGroup`'s `(0)` label) was the
+    // bug this issue fixed. Each state below is driven the same way the
+    // rest of this file drives `runState` itself: real processes for
+    // `.running`/`.exited`/`.permissionDenied`, the injected
+    // `coreMetricsProvider` seam for `.unavailable` (no real process in
+    // this codebase has ever produced that errno).
+
+    @Test func runningBeforeFirstExpansionIsNotLoadedNotAZero() {
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
+        content.setUp(visible: true)
+        #expect(content.runState == .running)
+        #expect(content.openFilesState == .notLoaded)
+        #expect(content.childProcessesState == .notLoaded)
+    }
+
+    @Test func loadOpenFilesForARunningSameUserProcessYieldsLoadedNotUnavailable() {
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
+        content.setUp(visible: true)
+
+        content.loadOpenFiles()
+
+        guard case .loaded = content.openFilesState else {
+            Issue.record("expected .loaded for a same-uid running process, got \(content.openFilesState)")
+            return
+        }
+    }
+
+    @Test func loadChildProcessesForARunningProcessYieldsLoaded() {
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
+        content.setUp(visible: true)
+
+        content.loadChildProcesses()
+
+        guard case .loaded = content.childProcessesState else {
+            Issue.record("expected .loaded (even if the list is empty), got \(content.childProcessesState)")
+            return
+        }
+    }
+
+    /// The direct regression test for problem 1 in the issue: a dead pid's
+    /// `listOpenFileDescriptors` call returns `nil` (`ESRCH`) — that must
+    /// surface as `.unavailable`, never as `.loaded([])`, which would read
+    /// on screen as a confident, measured "Open Files (0)" for a process
+    /// that no longer exists to measure.
+    @Test func loadOpenFilesForAnExitedProcessIsUnavailableNeverALoadedZero() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["0.05"]
+        try process.run()
+        let pid = process.processIdentifier
+        process.waitUntilExit()
+
+        let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
+        content.setUp(visible: true)
+        guard case .exited = content.runState else {
+            Issue.record("expected .exited, got \(content.runState)")
+            return
+        }
+
+        content.loadOpenFiles()
+
+        #expect(content.openFilesState == .unavailable, "a dead pid's fd listing must be .unavailable, never a fabricated .loaded([])")
+    }
+
+    /// `.permissionDenied`'s `snapshot` still carries a real pid (§1.6 —
+    /// identity resolves even though metrics don't), so `loadOpenFiles()`
+    /// still attempts the real call — which fails `EPERM` for a
+    /// different-uid target, distinct from the exited case's `ESRCH`, but
+    /// the same honest `.unavailable` outcome.
+    @Test func loadOpenFilesForAPermissionDeniedProcessIsUnavailable() {
+        let content = ProcessStatusPaneContent(target: .pinned(1), tabLookup: { _ in nil }) // launchd
+        content.setUp(visible: true)
+        #expect(content.runState == .permissionDenied)
+
+        content.loadOpenFiles()
+
+        #expect(content.openFilesState == .unavailable)
+    }
+
+    /// Pins content-layer behavior only — `ProcessStatusPaneView` hides the
+    /// whole `disclosures` section outside `.running`, so this call path
+    /// never actually reaches the screen while `runState == .unavailable`.
+    /// What this test protects is `loadOpenFiles()`'s own contract: it must
+    /// key strictly off the real `ProcessInspector` call's own success or
+    /// failure, never off `runState`, because `.unavailable` (#0356's
+    /// unexpected-errno state) only means the *core metrics* sample
+    /// failed — `listOpenFileDescriptors` is a separate, unmocked
+    /// `ProcessInspector` call, so for a still-alive, still-readable pid it
+    /// can genuinely succeed even while `runState` reads `.unavailable`.
+    /// If a future change ever gates `loadOpenFiles()` on `runState`
+    /// directly (rather than the view gating whether the section is shown
+    /// at all), this test would catch that regression at the content layer
+    /// even though the view-level symptom would be invisible today.
+    @Test func loadOpenFilesStillWorksForALivePidWhoseCoreMetricsSampleIsUnavailable() {
+        var shouldFail = false
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { pid in
+                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+            }
+        )
+        content.setUp(visible: true) // establishes a real snapshot (with this live pid) first
+        #expect(content.runState == .running)
+
+        shouldFail = true
+        content.sampleNowForTesting()
+        #expect(content.runState == .unavailable)
+        #expect(content.snapshot?.pid == getpid(), "the last-known snapshot (and its pid) is kept, not cleared, on .unexpected")
+
+        content.loadOpenFiles()
+
+        guard case .loaded = content.openFilesState else {
+            Issue.record("expected .loaded for this still-alive, still-readable pid, got \(content.openFilesState)")
+            return
+        }
+    }
+
+    @Test func retargetResetsDisclosureStateToNotLoaded() {
+        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil })
+        content.setUp(visible: true)
+        content.loadOpenFiles()
+        content.loadChildProcesses()
+        guard case .loaded = content.openFilesState else {
+            Issue.record("precondition failed: expected .loaded before retargeting")
+            return
+        }
+
+        content.retarget(to: .pinned(1)) // launchd
+
+        #expect(content.openFilesState == .notLoaded, "a disclosure loaded for the old target must not linger and be shown as if it described the new one")
+        #expect(content.childProcessesState == .notLoaded)
+    }
+
+    /// The direct regression test for review round 1's B1: retargeting (or
+    /// its `watchInstead(pid:)` special case) while Child Processes is
+    /// still expanded must not leave the section stuck on `.notLoaded`
+    /// ("Loading…" forever, since nothing re-expands it to trigger another
+    /// load) — the content object must reload it immediately for the new
+    /// pid as part of the same retarget, because `watchInstead` is reached
+    /// from a button *inside* the expanded Child Processes body itself, so
+    /// this exact sequence happens on every real use of that affordance.
+    ///
+    /// Injects a `.success` sample for the watched pid (an arbitrary pid
+    /// nothing else in this process tree owns, so there is no ambiguity
+    /// about which branch produced the result) so the pane lands in
+    /// `.running` — the only state `ProcessStatusPaneView` shows
+    /// disclosures in, and the branch of `sample(pid:)` that resets and
+    /// reloads them.
+    @Test func watchInsteadWhileChildProcessesIsExpandedReloadsForTheNewPidRatherThanStickingOnNotLoaded() {
+        let watchedPid: pid_t = 424_242
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { pid in
+                pid == watchedPid
+                    ? .success(ProcessInspector.CoreMetrics(residentBytes: 0, physFootprintBytes: 0, threadCount: 1, openFileCount: 0, cpuTicksUser: 0, cpuTicksSystem: 0))
+                    : ProcessInspector.coreMetrics(pid: pid)
+            }
+        )
+        content.setUp(visible: true)
+        content.setChildProcessesExpanded(true)
+        guard case .loaded = content.childProcessesState else {
+            Issue.record("precondition failed: expected .loaded before watching a different pid")
+            return
+        }
+
+        content.watchInstead(pid: watchedPid)
+
+        #expect(content.runState == .running, "the injected provider must answer .success for the watched pid, landing sample(pid:) in the .success branch this test targets — not .permissionDenied/.exited")
+        #expect(content.isChildrenExpanded, "the section's own expansion state must survive the retarget")
+        guard case .loaded = content.childProcessesState else {
+            Issue.record("expected an immediate reload to .loaded for the watched pid, got \(content.childProcessesState) — an expanded section must not stick on .notLoaded until manually collapsed and re-expanded")
+            return
+        }
+    }
 }

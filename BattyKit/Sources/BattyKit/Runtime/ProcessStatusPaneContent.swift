@@ -89,6 +89,31 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         case sourceTabGone
     }
 
+    /// What an on-demand disclosure section (`openFilesState`/
+    /// `childProcessesState`) has to show. `#0357`: collapsing "never
+    /// asked," "asked, kernel refused," and "asked, here is the real
+    /// (possibly empty) answer" into a plain array via `?? []` is exactly
+    /// the honesty bug that issue fixed — a value this type never actually
+    /// measured must never render as a measured `0`. Not `Sendable`
+    /// (unlike this file's other nested types): `OpenFileDescriptor`/
+    /// `ChildProcess`'s `Equatable` conformances are synthesized under this
+    /// package's `MainActor` default isolation, and the compiler will not
+    /// let an isolated conformance satisfy a `Sendable`-constrained generic
+    /// parameter — moot anyway, since this state only ever lives on the
+    /// `@MainActor`-isolated `ProcessStatusPaneContent`.
+    public enum DisclosureContent<Value: Equatable>: Equatable {
+        /// Never requested — the collapsed `DisclosureGroup` hasn't been
+        /// expanded yet since this pid was last (re)targeted.
+        case notLoaded
+        /// Requested, and the underlying `ProcessInspector` call returned
+        /// `nil` — the pid is gone (`ESRCH`) or unreadable (`EPERM`), not a
+        /// genuine empty result.
+        case unavailable
+        /// Requested, and this is the real answer — `loaded([])` is a
+        /// legitimate "none" distinct from `.unavailable`.
+        case loaded(Value)
+    }
+
     public private(set) var target: Target?
     public private(set) var runState: RunState = .running
     /// The latest sample — kept, untouched, when `runState` moves to
@@ -107,6 +132,32 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// Distinct from `runState`, which describes a *resolved* target's
     /// condition.
     public private(set) var hasNoSelection: Bool
+    /// The Open Files disclosure's content (`#0357`). `.notLoaded` until
+    /// ``loadOpenFiles()`` runs at least once for the currently-sampled
+    /// pid; reset to `.notLoaded` on ``retarget(to:)`` and whenever a
+    /// successful sample reports a different pid than the previous one
+    /// (mode B's followed pid can change tick to tick — a cached listing
+    /// from the *previous* foreground process must not be shown as if it
+    /// belonged to the current one).
+    public private(set) var openFilesState: DisclosureContent<[ProcessInspector.OpenFileDescriptor]> = .notLoaded
+    /// The Child Processes disclosure's content (`#0357`) — same reset
+    /// rules as ``openFilesState``.
+    public private(set) var childProcessesState: DisclosureContent<[ProcessInspector.ChildProcess]> = .notLoaded
+    /// Whether the Open Files `DisclosureGroup` is expanded. Owned here,
+    /// not by the view's `@State` (review round 1, B1): the view binds to
+    /// this directly, so `sample(pid:)` can see it. When a sample detects
+    /// the pid changed — including the fresh sample `startSampling()` takes
+    /// immediately inside ``retarget(to:)`` while the pane is active —
+    /// `refreshDisclosuresForNewPid()` resets ``openFilesState`` to
+    /// `.notLoaded` and, if this is still `true`, reloads it right there
+    /// instead of leaving the `DisclosureGroup`'s body stuck on "Loading…"
+    /// until the user happens to collapse and re-expand it — an
+    /// `onChange(of:)` on a view-local `@State` bool only fires on a flip,
+    /// which a pid change underneath an already-expanded section never
+    /// produces.
+    public private(set) var isOpenFilesExpanded = false
+    /// Same ownership rule as ``isOpenFilesExpanded``.
+    public private(set) var isChildrenExpanded = false
 
     public var lifecyclePhase: PaneLifecyclePhase { controller.phase }
 
@@ -240,6 +291,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         hasNoSelection = newTarget == nil
         runState = .running
         snapshot = nil
+        // Reset directly, not via `refreshDisclosuresForNewPid()` — there is
+        // no `snapshot` yet to reload against (it was just cleared above),
+        // so an immediate reload attempt here would read `.unavailable`
+        // from `loadOpenFiles()`'s own nil-pid guard. The real reload (if a
+        // section is expanded) happens once `startSampling()` below
+        // produces a fresh snapshot and `sample(pid:)` detects the pid
+        // change itself.
+        openFilesState = .notLoaded
+        childProcessesState = .notLoaded
         guard lifecyclePhase == .active else { return }
         startSampling()
     }
@@ -323,6 +383,13 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             if runState == .unavailable {
                 logger.info("process-status: pid=\(pid, privacy: .public) recovered from unavailable")
             }
+            // Mode B's followed pid can change tick to tick (§2) — a
+            // disclosure loaded for the *previous* foreground process must
+            // not linger and be shown as if it described this one. Compared
+            // before `snapshot` below is overwritten; the actual reset (and,
+            // review round 1 B1, immediate reload if a section is expanded)
+            // happens after, once `snapshot` reflects the *new* pid.
+            let pidChanged = snapshot?.pid != pid
             runState = .running
             lastUnavailableErrno = nil
             let identity = ProcessInspector.identity(pid: pid)
@@ -350,6 +417,9 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 openFileCount: metrics.openFileCount,
                 capturedAt: Date()
             )
+            if pidChanged {
+                refreshDisclosuresForNewPid()
+            }
         case .failure(.processNotFound):
             // Deliberately does not touch `snapshot` — the last
             // successful sample (if any) stays put, and its
@@ -366,6 +436,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             // tier, so the name falls back to the path's basename rather
             // than a second guess, and `commandLine` (`KERN_PROCARGS2`,
             // the same tier as metrics) is never populated in this branch.
+            let pidChanged = snapshot?.pid != pid
             runState = .permissionDenied
             cpuTracker.reset()
             let identity = ProcessInspector.identity(pid: pid)
@@ -381,6 +452,9 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 openFileCount: nil,
                 capturedAt: Date()
             )
+            if pidChanged {
+                refreshDisclosuresForNewPid()
+            }
         case .failure(.unexpected(let code)):
             // #0356: an unrecognized errno is no longer log-only. It must
             // not leave `runState`/`snapshot` untouched — that was exactly
@@ -430,13 +504,79 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
 
     // MARK: - On-demand disclosures (§1.7/§3.4 — never per-tick)
 
-    public func openFiles() -> [ProcessInspector.OpenFileDescriptor] {
-        guard let pid = snapshot?.pid else { return [] }
-        return ProcessInspector.listOpenFileDescriptors(pid: pid) ?? []
+    /// The view binds its `DisclosureGroup(isExpanded:)` directly to
+    /// ``isOpenFilesExpanded`` through this setter (review round 1, B1) —
+    /// an event-origin write (the user's own disclosure toggle), the
+    /// routine case `docs/swiftui-observation-rules.md` describes — rather
+    /// than owning a local `@State` bool the model can't see. Owning the
+    /// flag here is what lets ``refreshDisclosuresForNewPid()`` reload an
+    /// already-expanded section the instant the underlying pid changes,
+    /// instead of only on the next manual collapse/re-expand.
+    public func setOpenFilesExpanded(_ expanded: Bool) {
+        guard isOpenFilesExpanded != expanded else { return }
+        isOpenFilesExpanded = expanded
+        guard expanded else { return }
+        loadOpenFiles()
     }
 
-    public func childProcesses() -> [ProcessInspector.ChildProcess] {
-        guard let pid = snapshot?.pid else { return [] }
-        return ProcessInspector.children(ofPid: pid)
+    /// Same shape as ``setOpenFilesExpanded(_:)``.
+    public func setChildProcessesExpanded(_ expanded: Bool) {
+        guard isChildrenExpanded != expanded else { return }
+        isChildrenExpanded = expanded
+        guard expanded else { return }
+        loadChildProcesses()
+    }
+
+    /// `#0357`: `nil` from `listOpenFileDescriptors` (a dead or unreadable
+    /// pid) becomes `.unavailable`, never a silently-masked empty array.
+    /// Called from ``setOpenFilesExpanded(_:)`` (a user event) and from
+    /// ``refreshDisclosuresForNewPid()`` (sampling-origin, itself only ever
+    /// invoked from `sample(pid:)`) — never from `body`/layout.
+    public func loadOpenFiles() {
+        guard let pid = snapshot?.pid else {
+            openFilesState = .unavailable
+            return
+        }
+        if let descriptors = ProcessInspector.listOpenFileDescriptors(pid: pid) {
+            openFilesState = .loaded(descriptors)
+        } else {
+            openFilesState = .unavailable
+        }
+    }
+
+    /// Same shape as ``loadOpenFiles()``. `children(ofPid:)` itself never
+    /// fails (it is a whole-system scan, not a call gated on the target
+    /// pid's own permissions — §1.3), so the only `.unavailable` case here
+    /// is "no pid to scan for at all."
+    public func loadChildProcesses() {
+        guard let pid = snapshot?.pid else {
+            childProcessesState = .unavailable
+            return
+        }
+        childProcessesState = .loaded(ProcessInspector.children(ofPid: pid))
+    }
+
+    /// Resets both disclosure sections for a pid that just replaced a
+    /// different one under an already-updated `snapshot` (review round 1,
+    /// B1) — called only from `sample(pid:)`'s `.success`/`.permissionDenied`
+    /// branches, after `snapshot` already reflects the new pid, so a
+    /// reload below reads the right target. If a section is currently
+    /// expanded, reloads it immediately instead of leaving its
+    /// `DisclosureGroup` body stuck on "Loading…" until the user happens to
+    /// collapse and re-expand it — `onChange(of:)` on a plain bool only
+    /// fires on a flip, which a pid change underneath an already-expanded
+    /// section never produces. Sampling-origin (this method's only two
+    /// callers both run inside `sample(pid:)`), not a `body`/layout write —
+    /// the routine case `docs/swiftui-observation-rules.md` describes; no
+    /// `Task` hop, so there is no ordering to lose.
+    private func refreshDisclosuresForNewPid() {
+        openFilesState = .notLoaded
+        childProcessesState = .notLoaded
+        if isOpenFilesExpanded {
+            loadOpenFiles()
+        }
+        if isChildrenExpanded {
+            loadChildProcesses()
+        }
     }
 }

@@ -20,10 +20,6 @@ struct ProcessStatusPaneView: View {
     @Bindable var content: ProcessStatusPaneContent
     @Bindable var tree: SplitTree
 
-    @State private var isOpenFilesExpanded = false
-    @State private var isChildrenExpanded = false
-    @State private var openFiles: [ProcessInspector.OpenFileDescriptor] = []
-    @State private var childProcesses: [ProcessInspector.ChildProcess] = []
     /// Populated only inside `pickRunningProcess()`'s `Button` action
     /// (review round 1, S4) — never computed inline inside a `Menu`'s
     /// content closure. `chooseProcessMenu` is a plain computed property
@@ -56,13 +52,11 @@ struct ProcessStatusPaneView: View {
                     case .exited:
                         exitedBanner
                         lastKnownMetricsRow
-                        disclosures
                     case .permissionDenied:
                         permissionDeniedBanner
                     case .unavailable:
                         unavailableBanner
                         lastKnownMetricsRow
-                        disclosures
                     }
                 }
             }
@@ -355,10 +349,82 @@ struct ProcessStatusPaneView: View {
 
     // MARK: - Disclosures (§3.4 — on-demand, never per-tick)
 
+    /// `#0357`: the collapsed count comes from real data whenever real data
+    /// exists — the already-per-tick-sampled `snapshot?.openFileCount`
+    /// before the section has ever been expanded, or the exact loaded
+    /// listing's own count after it has — and a neutral "…" only for the
+    /// narrow window where neither exists yet. Never a fabricated "0".
+    private var openFilesCountLabel: String {
+        switch content.openFilesState {
+        case .loaded(let descriptors):
+            return "\(descriptors.count)"
+        case .unavailable:
+            return "—"
+        case .notLoaded:
+            guard let count = content.snapshot?.openFileCount else { return "…" }
+            return "\(count)"
+        }
+    }
+
+    /// `#0357`: unlike Open Files, there is no cheap per-tick child count
+    /// (§1.3 — child discovery is O(system size), sampled only on demand),
+    /// so "not loaded yet" has no real number to fall back to and shows
+    /// "…" rather than "0".
+    private var childProcessesCountLabel: String {
+        switch content.childProcessesState {
+        case .loaded(let children):
+            return "\(children.count)"
+        case .unavailable:
+            return "—"
+        case .notLoaded:
+            return "…"
+        }
+    }
+
+    /// Bound straight to `content.isOpenFilesExpanded`/`isChildrenExpanded`
+    /// (review round 1, B1) rather than a view-local `@State` bool: the
+    /// content object owns the expansion flags so it can reload an
+    /// already-expanded section itself the instant the sampled pid changes
+    /// underneath it (`ProcessStatusPaneContent.refreshDisclosuresForNewPid()`)
+    /// — a view-local bool's `onChange` only fires on a flip, which a pid
+    /// change alone never produces, leaving the body stuck on "Loading…"
+    /// until manually collapsed and re-expanded. The `set` closures run as
+    /// part of `DisclosureGroup`'s own user-driven toggle, an event-origin
+    /// write per `docs/swiftui-observation-rules.md`.
     @ViewBuilder
     private var disclosures: some View {
-        DisclosureGroup("Open Files (\(openFiles.count))", isExpanded: $isOpenFilesExpanded) {
-            ForEach(openFiles) { fd in
+        DisclosureGroup("Open Files (\(openFilesCountLabel))", isExpanded: Binding(
+            get: { content.isOpenFilesExpanded },
+            set: { content.setOpenFilesExpanded($0) }
+        )) {
+            openFilesDisclosureBody
+        }
+
+        DisclosureGroup("Child Processes (\(childProcessesCountLabel))", isExpanded: Binding(
+            get: { content.isChildrenExpanded },
+            set: { content.setChildProcessesExpanded($0) }
+        )) {
+            childProcessesDisclosureBody
+        }
+    }
+
+    @ViewBuilder
+    private var openFilesDisclosureBody: some View {
+        switch content.openFilesState {
+        case .notLoaded:
+            Text("Loading…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .unavailable:
+            Text("Not available")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .loaded(let descriptors) where descriptors.isEmpty:
+            Text("No open files")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .loaded(let descriptors):
+            ForEach(descriptors) { fd in
                 HStack {
                     Text("fd \(fd.id)")
                         .font(.caption.monospacedDigit())
@@ -370,13 +436,25 @@ struct ProcessStatusPaneView: View {
                 }
             }
         }
-        .onChange(of: isOpenFilesExpanded) { _, expanded in
-            guard expanded else { return }
-            openFiles = content.openFiles()
-        }
+    }
 
-        DisclosureGroup("Child Processes (\(childProcesses.count))", isExpanded: $isChildrenExpanded) {
-            ForEach(childProcesses) { child in
+    @ViewBuilder
+    private var childProcessesDisclosureBody: some View {
+        switch content.childProcessesState {
+        case .notLoaded:
+            Text("Loading…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .unavailable:
+            Text("Not available")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .loaded(let children) where children.isEmpty:
+            Text("No child processes")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .loaded(let children):
+            ForEach(children) { child in
                 HStack {
                     Text(child.name)
                         .font(.caption.monospaced())
@@ -390,10 +468,6 @@ struct ProcessStatusPaneView: View {
                     .font(.caption)
                 }
             }
-        }
-        .onChange(of: isChildrenExpanded) { _, expanded in
-            guard expanded else { return }
-            childProcesses = content.childProcesses()
         }
     }
 }
