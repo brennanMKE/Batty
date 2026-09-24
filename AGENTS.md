@@ -103,6 +103,31 @@ xcodebuild -project Batty.xcodeproj -scheme "Batty (Beta)" \
 
 Related: Prod and Beta share one target, so whichever scheme resolved last caches its product name into the tracked `Batty.xcodeproj/project.pbxproj` (`Batty.app` ↔ `Batty Beta.app`), and Xcode also rewrites `BuildableName` in the tracked `.xcscheme` files the same way. **A dirty `project.pbxproj` or `.xcscheme` after a build is expected residue — discard it (`git checkout --`), never commit it.**
 
+## Asynchronous tests (binding)
+
+**Never make a unit test pass by waiting.** No `Task.sleep`, `Thread.sleep`, `usleep`,
+`DispatchQueue.asyncAfter`, or poll-until-deadline loops to "give async work time to finish",
+and no assertions on elapsed wall-clock time. They make tests slow and unreliable under load
+(#0423 is the record of what that costs).
+
+- Assert only once the code under test has **signalled** completion: `await` the async API
+  itself, await a `Task`/handle the code returns or exposes for testing, use a
+  continuation, `AsyncStream`, callback or event the production code emits, or
+  `confirmation(...)` in Swift Testing.
+- If the production code offers no completion signal, add one (a returned `Task`, a
+  completion callback, an event stream, an injected clock/scheduler) rather than waiting in
+  the test. A test-only seam must not change production behaviour.
+- Periodic work (samplers, pollers, backoff) is driven through an injected clock or
+  scheduler the test advances explicitly, not by letting real time pass.
+- External processes signal readiness through a pipe or file the test awaits as an event
+  (e.g. a `FileHandle` readability handler), not by sleeping until they're probably ready.
+- "Returns without blocking" is proven structurally — the work runs on a task or scheduler
+  the test controls — not by timing the call.
+- Every await in a test still has an upper bound so a regression fails instead of hanging,
+  but that bound is a failure guard, never the mechanism the test relies on.
+
+See `docs/isolate-userdefaults-in-tests.md` for the companion rule on `UserDefaults`.
+
 ## UI test automation (binding)
 
 **UI tests never run on a host Mac — only inside a disposable Tart VM.** XCUITest's
