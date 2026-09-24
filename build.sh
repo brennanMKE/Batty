@@ -13,6 +13,10 @@
 #   ./build.sh unit                BattyKitTests only — fast, no UI, no machine lock
 #   ./build.sh ui [target ...]     UI tests — ONLY inside a disposable Tart VM
 #                                  (delegates to tools/run-ui-tests-vm.sh, #0412)
+#   ./build.sh ui-typecheck        type-check BattyUITests on the host with
+#                                  `swiftc -typecheck` (#0442) — catches Swift 6
+#                                  strict-concurrency errors before a VM run;
+#                                  builds nothing, signs nothing, runs no xctest
 #   ./build.sh run                 build, then launch the built Batty Beta.app
 #   ./build.sh terminate           quit a running Batty Beta (never touches Prod)
 #   ./build.sh release [args]      build with the Prod scheme, for release only
@@ -45,6 +49,52 @@ PROD_SCHEME="Batty (Prod)"
 BETA_APP_NAME="Batty Beta"
 
 ACTION="${1:-build}"
+
+if [[ "$ACTION" == "ui-typecheck" ]]; then
+    # #0442: the BattyUITests target refuses to build outside a Tart VM
+    # (#0412's host-refusing build phase), so a Swift 6 strict-concurrency
+    # error in UI-test code previously surfaced only after a full VM
+    # export/clone/boot. `swiftc -typecheck` type-checks the same sources
+    # against the real XCTest module without building a bundle, signing
+    # anything, or running any test process. It mirrors BattyUITests'
+    # actual Swift settings (read via `xcodebuild -target BattyUITests
+    # -showBuildSettings`, not guessed) so it neither rejects code the VM
+    # would accept nor accepts code the VM would reject.
+    #
+    # Dispatched here, before the Active.xcconfig snapshot/restore block
+    # below, and not through the `case` statement further down: this action
+    # reads no xcconfig (swiftc never does) and must not write to
+    # Configuration/Active.xcconfig either. The snapshot/restore block's own
+    # EXIT trap unconditionally re-copies the file when one exists --
+    # falling through to that trap would rewrite Active.xcconfig's mtime on
+    # every run and could clobber a concurrent variant switch.
+    if ! command -v xcrun >/dev/null 2>&1; then
+        print -u2 "build.sh: xcrun not found -- install Xcode command line tools"
+        exit 1
+    fi
+    print "==> type-checking BattyUITests on the host (swiftc -typecheck)"
+    PLATFORM_PATH="$(xcrun --sdk macosx --show-sdk-platform-path)"
+    SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+    SOURCES=(BattyUITests/**/*.swift(N))
+    if (( ${#SOURCES} == 0 )); then
+        print -u2 "build.sh: no BattyUITests/**/*.swift sources found"
+        exit 1
+    fi
+    xcrun swiftc -typecheck \
+        -swift-version 6 \
+        -default-isolation MainActor \
+        -strict-concurrency=complete \
+        -enable-upcoming-feature MemberImportVisibility \
+        -D DEBUG \
+        -module-name BattyUITests \
+        -module-alias Testing=_Testing_Unavailable \
+        -target "$(uname -m)-apple-macos15.6" \
+        -sdk "$SDK_PATH" \
+        -F "$PLATFORM_PATH/Developer/Library/Frameworks" \
+        -I "$PLATFORM_PATH/Developer/usr/lib" \
+        "${SOURCES[@]}"
+    exit
+fi
 
 # Snapshot Active.xcconfig exactly as found (including "absent" -- a fresh
 # clone has none, and App.xcconfig's #include? tolerates that) and restore

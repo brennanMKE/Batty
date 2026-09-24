@@ -316,3 +316,79 @@ re-deriving them.
    own kill-poll — a forced, minimal side effect of that test becoming
    `async` for the readiness-helper migration (§2), which made its
    `Thread.sleep`-based retry loop illegal to keep as written.
+
+## 6. Gotcha: a `@MainActor` timeout closure traps, and its `nonisolated` fix opens a lost-wakeup race (#0442)
+
+Three #0427 children (#0429, #0430, #0433) independently hit the same pair of
+traps while building the hang-guard bound §4 recommends. Both apply whenever a
+completion-signal helper lives on a `@MainActor` test suite or type, which is
+the common case under this package's `.defaultIsolation(MainActor.self)`.
+
+**The trap: an inherited-isolation `DispatchWorkItem`.** A `DispatchWorkItem`
+timeout closure written directly inside a `@MainActor`-isolated test suite or
+method — exactly §4's `CheckedContinuation` + `DispatchWorkItem` hang-guard
+pattern — infers `@MainActor` isolation by lexical closure capture, even
+though nothing in the closure touches MainActor-isolated state.
+`asyncAfter(deadline:execute:)` then runs that closure on a
+`DispatchQueue.global` queue: a raw background thread with no Swift
+Task/executor hop and no MainActor affinity at all. The Swift 6 runtime's
+isolation check (`swift_task_checkIsolatedSwift`) catches the mismatch the
+instant the timeout actually fires and traps — `EXC_BREAKPOINT`/`SIGTRAP` in
+`dispatch_assert_queue_fail` — crashing the whole test process at the moment a
+hang-guard bound expires, instead of failing that one test cleanly. #0429 also
+saw this crash orphan live `sleep 60` children that were mid-test when it hit.
+**The fix:** mark the helper method, or the whole type when it carries no
+MainActor-isolated state of its own, `nonisolated`. That removes the inferred
+isolation, and the closure runs correctly on whatever queue `asyncAfter` chose.
+
+**The related lost wakeup.** The fix above routes the wait itself through a
+`nonisolated` async function, which really does hop off MainActor onto the
+global concurrent executor — that hop is a consequence of the same
+`nonisolated` change that fixes the trap above. But the hop opens a race: a
+MainActor-side `signal()` (called from the production
+callback the test is awaiting) can run — and find no waiter registered yet —
+before the wait has actually reached its own `withCheckedContinuation`
+registration. A `signal()` that wins that race is silently dropped, and the
+wait then only ever resolves via its hang-guard timeout, never from the real
+event. The fix is a lock-guarded boolean flag, checked **twice**: once before
+starting registration at all (the common case — already signaled, resolve
+immediately, no continuation needed), and again *inside* the continuation's
+registration closure, under the same lock `signal()` takes — so a `signal()`
+landing anywhere in the gap between those two checks is still observed rather
+than lost.
+
+**Applied in this codebase** (line numbers exact as of this file's current
+HEAD; a line number can drift as the cited file changes):
+
+- `BellNotificationSummaryTests.swift:165-182` — `awaitSummarizationTask`'s
+  doc comment states the trap directly: "`nonisolated` deliberately:
+  `AppStateStoreSummarizationTests` is `@MainActor`, and a `DispatchWorkItem`
+  closure formed inside a MainActor-isolated method infers MainActor
+  isolation by default — but `asyncAfter` runs it on `DispatchQueue.global`...
+  `nonisolated` removes the inferred isolation" (#0433). This one is
+  trap-only — nothing here waits on a production `signal()`, so there's no
+  matching lost-wakeup case to guard.
+- `LMStudioDashboardPaneContentTests.swift:1171-1178` — `EventCounter` is
+  `nonisolated` on the type itself, "not just its methods: ... without it
+  `awaitCount`'s hang-guard `DispatchWorkItem` ... would trip a
+  `dispatch_assert_queue` trap the instant a bound actually expired
+  (reproduced while mutation-checking #0429: a real regression's timeout
+  crashed the test process instead of failing it)". Its `awaitCount(_:bound:)`
+  (`:1227-1246`) folds the "already satisfied" check and the waiter
+  registration into one locked block instead of two separate checks, since
+  both happen under the same `NSLock` acquisition here.
+- `GitStatusPaneContentTests.swift:194-265` — `ScanHandledSignal` documents
+  both halves explicitly: the trap in its class doc comment (`:194-208`), and
+  the lost-wakeup fix in `isSignaled`'s doc comment (`:211-226`).
+  `wait(bound:)` checks `isSignaled` at `:247-248` (before registering) and
+  again at `:254` (inside the registration closure, under the same lock
+  `signal()` takes at `:234-239`) (#0430).
+
+**The XPC twin.** The identical inherited-isolation trap hits Objective-C
+callback closures passed to XPC APIs (`remoteObjectProxyWithErrorHandler`,
+`interruptionHandler`, `invalidationHandler`) for the same reason: a closure
+written inside a `@MainActor`-isolated scope infers that isolation, then gets
+invoked from a queue XPC controls, not a Swift executor. See
+`docs/xpc/swift-concurrency-and-xpc.md` §1 (`SIGTRAP`/
+`_swift_task_checkIsolatedSwift`, and the quick-reference table's matching
+row) and `docs/xpc/FINDINGS.md:122` — not repeated here.

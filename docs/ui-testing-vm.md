@@ -33,11 +33,33 @@ either.
 |---|---|
 | `./build.sh` (build only) | `./build.sh ui` (delegates here) |
 | `./build.sh unit` (`BattyKitTests`) | Anything that drives Batty's UI automatically |
-| Running Batty yourself | `xcodebuild ... test` against `BattyUITests` |
+| `./build.sh ui-typecheck` (`BattyUITests`, type-check only, #0442); running Batty yourself | `xcodebuild ... test` against `BattyUITests` |
 
 **No UI scripting on the host either.** `osascript` / System Events keystrokes go to
 whatever app is frontmost, not necessarily the one you meant to drive — never send
 synthetic input to the host to test Batty.
+
+**`./build.sh ui-typecheck` (#0442).** `BattyUITests`' host-refusing build phase (guard 1
+below) means a Swift 6 strict-concurrency error in UI-test code previously surfaced only
+after a full VM export/clone/boot — #0417 lost run 3
+(`20260924-004217-60112`) to exactly that: a `private static let` `NSPredicate` flagged as
+`#MutableGlobalVariable`, a compile error the VM caught but nothing on the host could. This
+action runs `xcrun swiftc -typecheck` over every `BattyUITests/**/*.swift` source (including
+`Support/`) against the real `XCTest` module (`-F`/`-I` under the platform path from
+`xcrun --sdk macosx --show-sdk-platform-path`), with flags mirroring the target's actual
+Swift settings — read from `xcodebuild -project Batty.xcodeproj -target BattyUITests
+-showBuildSettings`, not guessed: `-swift-version 6 -default-isolation MainActor
+-strict-concurrency=complete -enable-upcoming-feature MemberImportVisibility -D DEBUG
+-module-name BattyUITests -module-alias Testing=_Testing_Unavailable -target
+$(uname -m)-apple-macos15.6`. It only type-checks (`-typecheck`, never `-emit-*`/`-o`), so it
+produces no `.xctest` bundle, writes nothing to the tree, and starts no `xctest`/`testmanagerd`
+process. It's dispatched in `build.sh` before the `Configuration/Active.xcconfig`
+snapshot/restore block, not through the shared `case` statement below it — that block's own
+`EXIT` trap unconditionally re-copies `Active.xcconfig` whenever one exists, which would
+rewrite its mtime (and could race a concurrent variant switch) on every `ui-typecheck` run
+even though the action itself never touches the file. Run it before committing any
+`BattyUITests` change and before kicking off a VM run, so a compile error is caught in seconds
+on the host instead of after a ~14-minute clone-to-finish cycle.
 
 ## Guards
 
