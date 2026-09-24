@@ -139,6 +139,13 @@ cleanup() {
   # kills the process immediately).
   trap '' INT TERM HUP
   log "Cleaning up (exit $rc)"
+  # Give the Tart slot back before the slower teardown, so a waiting session
+  # starts sooner. Not fatal if missed: leases are pid-stamped and the next
+  # acquire prunes ours.
+  if [[ -n "${LEASE_ID:-}" ]]; then
+    tart-lease release --id "$LEASE_ID" 2>/dev/null || true
+    LEASE_ID=""
+  fi
   # The backgrounded `tart run` (below) is a background job, so the shell
   # set its SIGINT disposition to ignored when launching it. Ctrl-C can't be
   # relied on to stop it either way -- tart handles signals itself, and a
@@ -169,6 +176,7 @@ cleanup() {
   fi
   [[ -n "${EXPORT:-}" ]] && rm -rf "$EXPORT"
 }
+LEASE_ID=""
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -301,6 +309,18 @@ log "Exporting Batty HEAD to $EXPORT/batty.tar"
 git -C "$REPO" archive -o "$EXPORT/batty.tar" HEAD
 log "Exporting SlidingTabs HEAD to $EXPORT/slidingtabs.tar (BattyKit's local path dependency)"
 git -C "$SLIDINGTABS_REPO" archive -o "$EXPORT/slidingtabs.tar" HEAD
+
+# --- Wait for a Tart slot ----------------------------------------------------
+# One host, several repos and sessions. `tart-lease` admits at most two guests
+# and only grants the second when memory allows. Acquired after the
+# memory-signal work so it sees memory the observer just freed.
+# See Homelab protocols/tart-lease/PROTOCOL.md
+
+if command -v tart-lease >/dev/null; then
+  LEASE_ID=$(tart-lease acquire --label batty --pid $$)
+else
+  log "WARNING: tart-lease not on PATH — running without admission control"
+fi
 
 # --- Clone and boot ----------------------------------------------------------
 
