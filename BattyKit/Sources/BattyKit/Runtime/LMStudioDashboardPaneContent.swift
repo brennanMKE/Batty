@@ -53,6 +53,19 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     /// singleton; a test injects a fresh instance so it can't observe
     /// another test's pending reaps.
     public var teardownReapRegistry: PendingTeardownReapRegistry = .shared
+    /// Where the models poll, `lms ps` poll, respawn-delay loop, and the
+    /// stale-in-flight sweep's own notion of "now" all come from
+    /// (`docs/async-test-seams.md` §1, #0428) — defaults to the real clock.
+    /// Only `LMStudioDashboardPaneContentTests` overrides it, with
+    /// `TestClock`, to drive those loops deterministically instead of
+    /// waiting on real time (`AGENTS.md` "Asynchronous tests").
+    public var clock: SchedulingClock = SystemClock()
+    /// Gates `scheduleTeardownReap`'s detached wait/`SIGKILL` escalation
+    /// (`docs/async-test-seams.md` §3, #0428) — defaults to always-open in
+    /// production. A test holds this closed to prove `tearDown()` returns
+    /// without blocking on the reap, structurally, rather than by timing
+    /// the call.
+    public var reapGate: TeardownReapGate = OpenTeardownReapGate()
 
     // MARK: - Tunables
 
@@ -215,6 +228,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         guard case .applied = result else { return }
         logger.info("tearDown")
         stopActiveWork(discardHistory: true, boundedWait: true)
+        finishTestEventStreams()
     }
 
     /// Manual refresh (design doc §5's header "Retry"/refresh affordance):
@@ -268,13 +282,14 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
                 await self.pollModelsOnce()
                 guard !Task.isCancelled else { return }
                 let interval = self.httpReachable ? self.modelsPollInterval : self.reachabilityPollInterval
-                try? await Task.sleep(for: interval)
+                await self.clock.sleep(for: interval)
             }
         }
     }
 
     private func pollModelsOnce() async {
         guard controller.phase != .tornDown else { return }
+        defer { emitModelsPollApplied() }
         do {
             let response = try await fetchModels()
             let wasUnreachable = !httpReachable
@@ -346,7 +361,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
                 guard let self else { return }
                 await self.pollPsOnce()
                 guard !Task.isCancelled else { return }
-                try? await Task.sleep(for: self.psPollInterval)
+                await self.clock.sleep(for: self.psPollInterval)
             }
         }
     }
@@ -358,9 +373,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func pollPsOnce() async {
         guard let cliURL = cliExecutableURLProvider() else { return }
+        defer { emitPsPollApplied() }
         do {
             let entries = try await fetchPsEntries(cliURL)
-            let sampledAt = Date()
+            let sampledAt = clock.now
             // Review round 1, S1: `lms ps --json` is external, drifting
             // input — `uniqueKeysWithValues:` traps on a duplicate
             // `identifier`, which would crash the app on exactly the kind
@@ -501,6 +517,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func handleModelStreamLine(_ line: String) {
         guard let event = LMStudioLogLineParser.parse(line) else { return }
+        defer { emitLineApplied() }
         switch event.kind {
         case .predictionInput(let modelIdentifier, let rawText):
             recordInFlight(modelIdentifier: modelIdentifier, timestamp: event.timestamp, promptText: rawText)
@@ -588,7 +605,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     }
 
     private func evictStaleInFlight() {
-        let cutoff = Date().addingTimeInterval(-staleInFlightWindow)
+        let cutoff = clock.now.addingTimeInterval(-staleInFlightWindow)
         let staleIDs = Set(inFlight.filter { $0.startedAt < cutoff }.map(\.id))
         guard !staleIDs.isEmpty else { return }
         inFlight.removeAll { staleIDs.contains($0.id) }
@@ -597,6 +614,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func handleModelStreamTermination(status: Int32) {
         modelStreamProcess = nil
+        defer { emitStreamTerminationHandled() }
         guard !expectingModelStreamExit else {
             expectingModelStreamExit = false
             return
@@ -706,6 +724,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func handleRuntimeStreamTermination(status: Int32) {
         runtimeStreamProcess = nil
+        defer { emitStreamTerminationHandled() }
         guard !expectingRuntimeStreamExit else {
             expectingRuntimeStreamExit = false
             return
@@ -724,8 +743,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     private func scheduleRespawn(of kind: StreamKind) {
         guard controller.phase == .active, httpReachable else { return }
         isReconnectingStream = true
+        let delay = respawnDelay
+        let clock = clock
         Task { [weak self] in
-            try? await Task.sleep(for: self?.respawnDelay ?? .seconds(2))
+            await clock.sleep(for: delay)
             guard let self, self.controller.phase == .active, self.httpReachable else { return }
             guard let cliURL = self.cliExecutableURLProvider() else { return }
             switch kind {
@@ -757,7 +778,9 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         pendingTeardownReaps.append((process, label))
         let registry = teardownReapRegistry
         let token = registry.register(process: process, label: label, bound: bound)
+        let gate = reapGate
         let task = Task.detached(priority: .utility) {
+            await gate.waitUntilOpen()
             Self.reapAfterTerminate(process, bound: bound, label: label)
             registry.deregister(token)
         }
@@ -820,6 +843,134 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         for task in tasks {
             await task.value
         }
+    }
+
+    // MARK: - Test support (completion events; #0429)
+    //
+    // Four `AsyncStream<Void>` signals, one per unit of asynchronous work a
+    // test needs to await instead of sleeping (`docs/async-test-seams.md`
+    // §4's "AsyncStream of events" shape). Each yields once per completed
+    // occurrence of the work it names; a test counts the occurrences it
+    // cares about. `internal`, not `private`, so
+    // `LMStudioDashboardPaneContentTests` can subscribe via `@testable
+    // import`. Never subscribed to in production — creating one of these
+    // streams has no effect on when or whether the underlying work runs.
+
+    private var modelsPollAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    private var psPollAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    private var lineAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    private var streamTerminationHandledContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+
+    /// Yields once every time `pollModelsOnce()` completes an attempt,
+    /// success or failure.
+    func modelsPollAppliedEventsForTesting() -> AsyncStream<Void> {
+        makeTestEventStream(.modelsPollApplied)
+    }
+
+    /// Yields once every time `pollPsOnce()` completes an attempt, success
+    /// or failure.
+    func psPollAppliedEventsForTesting() -> AsyncStream<Void> {
+        makeTestEventStream(.psPollApplied)
+    }
+
+    /// Yields once every time a model-stream NDJSON line is parsed and
+    /// applied in `handleModelStreamLine` (`recordInFlight`/
+    /// `recordCompletion`, or a no-op `.runtimeLog`/`.other` case) — lets a
+    /// test await a specific count of lines the pipe has actually
+    /// processed, rather than guessing how long delivery takes.
+    func lineAppliedEventsForTesting() -> AsyncStream<Void> {
+        makeTestEventStream(.lineApplied)
+    }
+
+    /// Yields once every time `handleModelStreamTermination`/
+    /// `handleRuntimeStreamTermination` finishes handling an exit —
+    /// expected (this pane's own `terminate()`) or unexpected. An
+    /// unexpected exit only *schedules* a respawn when `scheduleRespawn`'s
+    /// own guard passes (`controller.phase == .active && httpReachable`);
+    /// this event fires either way, since it marks "the termination was
+    /// handled," not "a respawn was scheduled."
+    func streamTerminationHandledEventsForTesting() -> AsyncStream<Void> {
+        makeTestEventStream(.streamTerminationHandled)
+    }
+
+    /// Which of the four continuation dictionaries a `makeTestEventStream`
+    /// subscription belongs to. A plain, associated-value-free enum (and so
+    /// implicitly `Sendable`) rather than a `KeyPath`: `KeyPath` isn't
+    /// `Sendable`, so it can't be captured by `onTermination`'s `@Sendable`
+    /// closure below.
+    private enum TestEventKind {
+        case modelsPollApplied, psPollApplied, lineApplied, streamTerminationHandled
+    }
+
+    private func insertTestEventContinuation(_ kind: TestEventKind, id: UUID, _ continuation: AsyncStream<Void>.Continuation) {
+        switch kind {
+        case .modelsPollApplied: modelsPollAppliedContinuations[id] = continuation
+        case .psPollApplied: psPollAppliedContinuations[id] = continuation
+        case .lineApplied: lineAppliedContinuations[id] = continuation
+        case .streamTerminationHandled: streamTerminationHandledContinuations[id] = continuation
+        }
+    }
+
+    private func removeTestEventContinuation(_ kind: TestEventKind, id: UUID) {
+        switch kind {
+        case .modelsPollApplied: modelsPollAppliedContinuations.removeValue(forKey: id)
+        case .psPollApplied: psPollAppliedContinuations.removeValue(forKey: id)
+        case .lineApplied: lineAppliedContinuations.removeValue(forKey: id)
+        case .streamTerminationHandled: streamTerminationHandledContinuations.removeValue(forKey: id)
+        }
+    }
+
+    /// Builds one of the four test-only `AsyncStream<Void>` signals above,
+    /// keyed by a fresh `UUID` so `onTermination` can remove exactly this
+    /// subscription — e.g. when the test that created it goes out of scope
+    /// and its `AsyncStream` (and the `EventCounter` consuming it) is
+    /// deallocated — without disturbing any other test's still-live
+    /// subscription to the same signal. `tearDown()`'s `finishTestEventStreams()`
+    /// additionally `finish()`es every remaining subscription outright, so a
+    /// test's `for await` consumer loop (`EventCounter`'s `consumeTask`)
+    /// ends on its own once this pane tears down, rather than only ever
+    /// being force-cancelled by that consumer's own `deinit`.
+    private func makeTestEventStream(_ kind: TestEventKind) -> AsyncStream<Void> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            insertTestEventContinuation(kind, id: id, continuation)
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.removeTestEventContinuation(kind, id: id)
+                }
+            }
+        }
+    }
+
+    private func emitModelsPollApplied() {
+        for continuation in modelsPollAppliedContinuations.values { continuation.yield() }
+    }
+
+    private func emitPsPollApplied() {
+        for continuation in psPollAppliedContinuations.values { continuation.yield() }
+    }
+
+    private func emitLineApplied() {
+        for continuation in lineAppliedContinuations.values { continuation.yield() }
+    }
+
+    private func emitStreamTerminationHandled() {
+        for continuation in streamTerminationHandledContinuations.values { continuation.yield() }
+    }
+
+    /// Finishes and clears every pending test-event subscription — called
+    /// from `tearDown()` so a test's `for await` consumer (`EventCounter`)
+    /// ends cleanly once this pane tears down, instead of only ever being
+    /// force-cancelled by the consumer's own `deinit`.
+    private func finishTestEventStreams() {
+        for continuation in modelsPollAppliedContinuations.values { continuation.finish() }
+        modelsPollAppliedContinuations.removeAll()
+        for continuation in psPollAppliedContinuations.values { continuation.finish() }
+        psPollAppliedContinuations.removeAll()
+        for continuation in lineAppliedContinuations.values { continuation.finish() }
+        lineAppliedContinuations.removeAll()
+        for continuation in streamTerminationHandledContinuations.values { continuation.finish() }
+        streamTerminationHandledContinuations.removeAll()
     }
 }
 

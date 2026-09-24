@@ -185,8 +185,14 @@ struct LMStudioDashboardWiringTests {
             return process
         }
 
+        // `PaneRuntime.init` calls `content.setUp(visible:)` synchronously,
+        // and `setUp(visible: true)` spawns both streams synchronously too
+        // (`startActiveWork()`, called inline, not from a `Task`) — so both
+        // subprocesses are already running by the time `makeWindow` returns;
+        // no wait needed (`docs/async-test-seams.md` §5.1's `posix_spawn`
+        // finding: `Process.run()` itself returns only once the child image
+        // is live).
         let (window, _, _) = makeWindow(paneContent: content)
-        try await Task.sleep(for: .milliseconds(200))
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)
@@ -253,8 +259,26 @@ struct LMStudioDashboardWiringTests {
 
         let (window, _, _) = makeWindow(paneContent: content)
 
-        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
-        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
+        // A safety net for any exit from here on (a failed readiness guard,
+        // a throwing `#require`, falling off the end) — killing an
+        // already-dead process is a harmless no-op, so this runs safely
+        // even after the success path's own assertions already confirm
+        // both children are dead.
+        defer {
+            killAndReap(box.model)
+            killAndReap(box.runtime)
+        }
+
+        guard await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL) else {
+            Issue.record("model-stream never installed its SIGTERM trap")
+            content.tearDown()
+            return
+        }
+        guard await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL) else {
+            Issue.record("runtime-stream never installed its SIGTERM trap")
+            content.tearDown()
+            return
+        }
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)
@@ -338,15 +362,29 @@ struct LMStudioDashboardWiringTests {
         // tests.
         session.tree.splitFocusedPane(direction: .horizontal)
 
-        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
-        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
+        // A safety net for any exit from here on (a failed readiness guard,
+        // a throwing `#require`, falling off the end) — placed before the
+        // readiness guards below, unlike the success path's own later
+        // assertions, so it covers them too. Killing an already-dead
+        // process is a harmless no-op.
+        defer {
+            killAndReap(box.model)
+            killAndReap(box.runtime)
+        }
+
+        guard await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL) else {
+            Issue.record("model-stream never installed its SIGTERM trap")
+            content.tearDown()
+            return
+        }
+        guard await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL) else {
+            Issue.record("runtime-stream never installed its SIGTERM trap")
+            content.tearDown()
+            return
+        }
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)
-        defer {
-            if model.isRunning { kill(model.processIdentifier, SIGKILL) }
-            if runtime.isRunning { kill(runtime.processIdentifier, SIGKILL) }
-        }
         #expect(model.isRunning)
         #expect(runtime.isRunning)
 
@@ -370,4 +408,21 @@ struct LMStudioDashboardWiringTests {
         // observe on a terminal pane.
         #expect(store.sessions[0].tree.allPanes[0].content == nil)
     }
+}
+
+/// Sends `SIGKILL` to `process` if it's still running, then blocks until it
+/// has actually exited. A test's own failure-branch cleanup, not the normal
+/// path: `Process.waitUntilExit()` here is the allowed exception to
+/// "assert only once signalled" — `issues/0427.md:165`'s "not counted as
+/// violations" list includes `Process.waitUntilExit()` on children that
+/// exit by themselves — forcing the exit with `SIGKILL` first makes this
+/// that same case, not a wait on real time passing. Duplicated from
+/// `LMStudioDashboardPaneContentTests.swift` rather than shared, matching
+/// this file's own `makeSafeOfflineContent`/`makeWindow`-style convention
+/// of small, file-local test helpers.
+@MainActor
+private func killAndReap(_ process: Process?) {
+    guard let process, process.isRunning else { return }
+    kill(process.processIdentifier, SIGKILL)
+    process.waitUntilExit()
 }
