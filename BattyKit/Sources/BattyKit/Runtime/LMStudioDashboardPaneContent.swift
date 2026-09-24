@@ -74,6 +74,29 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     public static let completionCap = BellFeedStore.cap
     public static let inspectorCap = 5
     public static let engineErrorCap = 50
+    /// Hard cap on `inFlight`, independent of `staleInFlightWindow`'s
+    /// time-based sweep (issue #0355). Design doc §6 expects low single
+    /// digits in normal operation — bounded by each loaded instance's own
+    /// `parallel` config — so this cap only bites under a burst or a
+    /// pairing-heuristic failure (§1.4) that leaves entries stuck
+    /// unmatched. Sized generously above that expectation (`engineErrorCap`'s
+    /// order of magnitude, reused rather than inventing a new one). With
+    /// the Prompt Inspector on, each entry's `pendingPrompts` text is
+    /// itself bounded by `streamLineByteCap` (the whole NDJSON line it came
+    /// from), so `inFlightCap × streamLineByteCap` ≈ 12.5 MB is the true
+    /// worst-case ceiling on retained prompt text — the typical case, per
+    /// §1.5's tens-of-KB-per-prompt figures, is far smaller than that
+    /// ceiling, but the ceiling is the number that actually bounds memory.
+    public static let inFlightCap = 50
+    /// Hard byte cap per NDJSON line (issue #0355) — bounds both a single
+    /// enormous line (a `-s model` line carries the full prompt, §1.5) and
+    /// a malformed/adversarial stream that never emits `\n`. An order of
+    /// magnitude above the largest event size this document's own spike
+    /// actually measured live (18,257 bytes, §1.5 — the reference's ~28 KB
+    /// figure for a real OpenCode turn was carried forward there as
+    /// unverified at that magnitude, not independently confirmed), so it
+    /// never trips on real traffic.
+    public static let streamLineByteCap = 256 * 1024
 
     // MARK: - Observable state
 
@@ -125,8 +148,8 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private var modelStreamProcess: Process?
     private var runtimeStreamProcess: Process?
-    private var modelStreamBuffer = Data()
-    private var runtimeStreamBuffer = Data()
+    private var modelStreamBuffer = NDJSONLineBuffer()
+    private var runtimeStreamBuffer = NDJSONLineBuffer()
     private var expectingModelStreamExit = false
     private var expectingRuntimeStreamExit = false
 
@@ -380,6 +403,13 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func spawnModelStream(executableURL: URL) {
         guard modelStreamProcess == nil else { return }
+        // A prior process may have left `modelStreamBuffer` mid-drop (a
+        // never-terminated oversized line, `isDroppingOversizedLine ==
+        // true`) when it exited. That state belongs to the dead process's
+        // byte stream, not the new one's — left in place, the new
+        // process's first bytes would be read as "the rest of the old
+        // line" and silently dropped through its first `\n`.
+        modelStreamBuffer = NDJSONLineBuffer()
         let process = makeModelStreamProcess(executableURL)
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -449,9 +479,17 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     }
 
     private func ingestModelStreamData(_ data: Data) {
-        modelStreamBuffer.append(data)
-        consumeLines(from: &modelStreamBuffer) { [weak self] line in
-            self?.handleModelStreamLine(line)
+        let result = modelStreamBuffer.append(data, maxLineBytes: Self.streamLineByteCap)
+        // One log when a drop starts, one when it ends — never a log per
+        // pipe read for however many chunks a never-terminated line spans.
+        if result.beganDroppingOversizedLine {
+            logger.error("model-stream: line exceeds cap \(Self.streamLineByteCap, privacy: .public) bytes with no newline yet; dropping until next newline")
+        }
+        for byteCount in result.droppedLineByteCounts {
+            logger.error("model-stream: dropped oversized line, \(byteCount, privacy: .public) bytes, cap \(Self.streamLineByteCap, privacy: .public)")
+        }
+        for line in result.lines {
+            handleModelStreamLine(line)
         }
     }
 
@@ -478,6 +516,21 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
             pendingPrompts[entry.id] = promptText
         }
         evictStaleInFlight()
+        evictOverflowInFlight()
+    }
+
+    /// Hard cap independent of `evictStaleInFlight`'s time-based sweep
+    /// (issue #0355) — evicts the oldest entries once `inFlightCap` is
+    /// exceeded, e.g. under a pairing-heuristic failure (design doc §1.4)
+    /// that leaves entries permanently unmatched well before the 5-minute
+    /// staleness window would otherwise clear them.
+    private func evictOverflowInFlight() {
+        guard inFlight.count > Self.inFlightCap else { return }
+        let overflow = inFlight.suffix(from: Self.inFlightCap)
+        for evicted in overflow { pendingPrompts.removeValue(forKey: evicted.id) }
+        let evictedCount = overflow.count
+        inFlight.removeLast(evictedCount)
+        logger.notice("evictOverflowInFlight: inFlight exceeded cap (\(Self.inFlightCap, privacy: .public)); evicted \(evictedCount, privacy: .public) oldest entries")
     }
 
     /// Pairs by `modelIdentifier` in arrival order — the oldest unmatched
@@ -550,6 +603,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func spawnRuntimeStream(executableURL: URL) {
         guard runtimeStreamProcess == nil else { return }
+        // See `spawnModelStream`'s identical comment: a prior process may
+        // have left `runtimeStreamBuffer` mid-drop; that state does not
+        // belong to the new process's byte stream.
+        runtimeStreamBuffer = NDJSONLineBuffer()
         let process = makeRuntimeStreamProcess(executableURL)
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -610,9 +667,17 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     }
 
     private func ingestRuntimeStreamData(_ data: Data) {
-        runtimeStreamBuffer.append(data)
-        consumeLines(from: &runtimeStreamBuffer) { [weak self] line in
-            self?.handleRuntimeStreamLine(line)
+        let result = runtimeStreamBuffer.append(data, maxLineBytes: Self.streamLineByteCap)
+        // See `ingestModelStreamData`'s identical comment: one log when a
+        // drop starts, one when it ends, never one per pipe read.
+        if result.beganDroppingOversizedLine {
+            logger.error("runtime-stream: line exceeds cap \(Self.streamLineByteCap, privacy: .public) bytes with no newline yet; dropping until next newline")
+        }
+        for byteCount in result.droppedLineByteCounts {
+            logger.error("runtime-stream: dropped oversized line, \(byteCount, privacy: .public) bytes, cap \(Self.streamLineByteCap, privacy: .public)")
+        }
+        for line in result.lines {
+            handleRuntimeStreamLine(line)
         }
     }
 
@@ -666,17 +731,6 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     }
 
     // MARK: - Helpers
-
-    private func consumeLines(from buffer: inout Data, handler: (String) -> Void) {
-        let newline = UInt8(ascii: "\n")
-        while let range = buffer.firstRange(of: [newline]) {
-            let lineData = buffer[..<range.lowerBound]
-            if let line = String(data: lineData, encoding: .utf8) {
-                handler(line)
-            }
-            buffer.removeSubrange(..<range.upperBound)
-        }
-    }
 
     /// `SIGTERM` is already sent by the caller (`process.terminate()`) before
     /// this is reached. #0354: the bounded wait for the child to actually
@@ -798,5 +852,87 @@ extension LMStudioDashboardPaneContent: DeferredTeardownWaiting {
         for (process, label) in pending {
             Self.reapAfterTerminate(process, bound: teardownWaitBound, label: label)
         }
+    }
+}
+
+/// Incrementally reassembles `\n`-terminated NDJSON lines from a
+/// subprocess's stdout. Invariant: one forward scan over `data` per
+/// `append`, draining every complete line it finds with a single
+/// `removeSubrange` for the whole batch, never one `removeSubrange` per
+/// line. `internal`, not `private`, so `LMStudioDashboardPaneContentTests`
+/// can drive it directly with synthetic byte sequences.
+struct NDJSONLineBuffer {
+    struct AppendResult {
+        var lines: [String] = []
+        /// True exactly once — the call where a still-open line first
+        /// exceeds `maxLineBytes` with no terminator found yet. The
+        /// caller logs this once and does not log again while the same
+        /// drop continues across further `append` calls with no `\n` —
+        /// a never-terminated line must not log on every pipe read.
+        var beganDroppingOversizedLine = false
+        /// One entry per line dropped for exceeding `maxLineBytes`,
+        /// *completed* within this call — either found together with its
+        /// own terminator in one pass, or the tail end of a run that
+        /// began in an earlier call. Each value is that line's full size,
+        /// including any bytes dropped in earlier calls for the same line.
+        var droppedLineByteCounts: [Int] = []
+        var droppedLineCount: Int { droppedLineByteCounts.count }
+        var droppedByteCount: Int { droppedLineByteCounts.reduce(0, +) }
+    }
+
+    private var data = Data()
+    /// Set once the bytes since the last newline exceeded `maxLineBytes`
+    /// with no terminator yet found. While set, every subsequent `append`
+    /// discards its bytes outright (never re-accumulating past the cap)
+    /// until the next `\n` arrives, at which point the offending run is
+    /// dropped as a whole and normal line extraction resumes on whatever
+    /// follows — "resynchronizes at the next newline."
+    private var isDroppingOversizedLine = false
+    /// Cumulative size of the line currently being dropped, across
+    /// however many `append` calls it has spanned so far — reported as a
+    /// single total once its `\n` finally arrives, not per call.
+    private var droppingRunByteCount = 0
+
+    mutating func append(_ chunk: Data, maxLineBytes: Int) -> AppendResult {
+        data.append(chunk)
+        var result = AppendResult()
+        let newline = UInt8(ascii: "\n")
+
+        if isDroppingOversizedLine {
+            if let newlineIndex = data.firstIndex(of: newline) {
+                droppingRunByteCount += data.distance(from: data.startIndex, to: newlineIndex) + 1
+                result.droppedLineByteCounts.append(droppingRunByteCount)
+                data.removeSubrange(data.startIndex...newlineIndex)
+                isDroppingOversizedLine = false
+                droppingRunByteCount = 0
+            } else {
+                droppingRunByteCount += data.count
+                data.removeAll(keepingCapacity: true)
+                return result
+            }
+        }
+
+        var consumedUpTo = data.startIndex
+        while let newlineIndex = data[consumedUpTo...].firstIndex(of: newline) {
+            let lineRange = consumedUpTo..<newlineIndex
+            if lineRange.count > maxLineBytes {
+                result.droppedLineByteCounts.append(lineRange.count)
+            } else if let line = String(data: data[lineRange], encoding: .utf8) {
+                result.lines.append(line)
+            }
+            consumedUpTo = data.index(after: newlineIndex)
+        }
+        if consumedUpTo > data.startIndex {
+            data.removeSubrange(data.startIndex..<consumedUpTo)
+        }
+
+        if data.count > maxLineBytes {
+            droppingRunByteCount = data.count
+            data.removeAll(keepingCapacity: true)
+            isDroppingOversizedLine = true
+            result.beganDroppingOversizedLine = true
+        }
+
+        return result
     }
 }

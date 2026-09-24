@@ -436,6 +436,276 @@ struct LMStudioDashboardPaneContentTests {
         content.tearDown()
     }
 
+    // MARK: - #0355: NDJSONLineBuffer (pure, deterministic)
+
+    @Test func multipleCompleteLinesInOneChunkAreAllExtractedInOrder() {
+        var buffer = NDJSONLineBuffer()
+        let chunk = Data("one\ntwo\nthree\n".utf8)
+
+        let result = buffer.append(chunk, maxLineBytes: 1024)
+
+        #expect(result.lines == ["one", "two", "three"])
+        #expect(result.droppedLineCount == 0)
+        #expect(result.droppedByteCount == 0)
+    }
+
+    @Test func lineSplitAcrossTwoAppendsIsReassembled() {
+        var buffer = NDJSONLineBuffer()
+
+        let first = buffer.append(Data("ab".utf8), maxLineBytes: 1024)
+        #expect(first.lines.isEmpty)
+
+        let second = buffer.append(Data("c\ndef\n".utf8), maxLineBytes: 1024)
+        #expect(second.lines == ["abc", "def"])
+    }
+
+    @Test func completedLineOverCapIsDroppedAndNextLineIsUnaffected() {
+        var buffer = NDJSONLineBuffer()
+        let oversized = String(repeating: "x", count: 20)
+        let chunk = Data("\(oversized)\nshort\n".utf8)
+
+        let result = buffer.append(chunk, maxLineBytes: 10)
+
+        #expect(result.lines == ["short"])
+        #expect(result.beganDroppingOversizedLine == false)
+        #expect(result.droppedLineCount == 1)
+        #expect(result.droppedByteCount == 20)
+    }
+
+    /// The vector issue #0355 names explicitly: a stream that withholds
+    /// `\n` entirely must not let the buffer grow without bound, and must
+    /// not re-signal on every subsequent no-newline chunk — only once,
+    /// when the drop begins. Feeds the cap, then five
+    /// more no-newline chunks, then the terminator, checking at every step
+    /// that `beganDroppingOversizedLine` fires exactly once and that
+    /// nothing is reported as a *finished* drop until the `\n` arrives —
+    /// at which point the report carries the full cumulative size, proving
+    /// the bytes were tracked (not lost) while being silently discarded.
+    @Test func neverTerminatedLineSignalsOnceThenDropsSilentlyUntilItsNewlineArrives() {
+        var buffer = NDJSONLineBuffer()
+        let maxLineBytes = 100
+        let chunk = Data(String(repeating: "y", count: 40).utf8)
+
+        let first = buffer.append(chunk, maxLineBytes: maxLineBytes)
+        #expect(first.lines.isEmpty)
+        #expect(first.beganDroppingOversizedLine == false)
+        #expect(first.droppedLineByteCounts.isEmpty)
+
+        // 80 bytes pending, still under the 100-byte cap.
+        let second = buffer.append(chunk, maxLineBytes: maxLineBytes)
+        #expect(second.beganDroppingOversizedLine == false)
+        #expect(second.droppedLineByteCounts.isEmpty)
+
+        // 120 bytes pending — now over cap: signals exactly once that a
+        // drop has begun. Nothing is reported as *finished* yet, since the
+        // line hasn't reached its terminator.
+        let third = buffer.append(chunk, maxLineBytes: maxLineBytes)
+        #expect(third.lines.isEmpty)
+        #expect(third.beganDroppingOversizedLine == true)
+        #expect(third.droppedLineByteCounts.isEmpty)
+
+        // Already in dropping mode: five more chunks arrive, none of them
+        // signal again — a regression here would re-signal (or the caller
+        // would re-log) on every subsequent no-newline chunk instead.
+        for _ in 0..<5 {
+            let result = buffer.append(chunk, maxLineBytes: maxLineBytes)
+            #expect(result.lines.isEmpty)
+            #expect(result.beganDroppingOversizedLine == false)
+            #expect(result.droppedLineByteCounts.isEmpty)
+        }
+
+        // The terminator finally arrives: one finished-drop entry for the
+        // *entire* run (120 + 5×40 pending bytes, plus the newline byte
+        // itself), not just this last chunk's size.
+        let terminator = buffer.append(Data("\n".utf8), maxLineBytes: maxLineBytes)
+        #expect(terminator.beganDroppingOversizedLine == false)
+        #expect(terminator.droppedLineByteCounts == [120 + 5 * chunk.count + 1])
+    }
+
+    /// Recovery: once the terminating `\n` for a never-terminated run
+    /// finally arrives, the buffer resynchronizes and correctly parses
+    /// whatever comes after it — it doesn't stay wedged in dropping mode.
+    @Test func neverTerminatedLineResynchronizesAtNextNewlineAndRecovers() {
+        var buffer = NDJSONLineBuffer()
+        let maxLineBytes = 50
+        let garbage = Data(String(repeating: "z", count: 60).utf8)
+
+        let overflow = buffer.append(garbage, maxLineBytes: maxLineBytes)
+        #expect(overflow.lines.isEmpty)
+        #expect(overflow.beganDroppingOversizedLine == true)
+        #expect(overflow.droppedLineByteCounts.isEmpty)
+
+        // The lone newline that finally ends the garbage run — reports the
+        // full 60 garbage bytes plus the newline itself, as one entry.
+        let terminator = buffer.append(Data("\n".utf8), maxLineBytes: maxLineBytes)
+        #expect(terminator.lines.isEmpty)
+        #expect(terminator.beganDroppingOversizedLine == false)
+        #expect(terminator.droppedLineByteCounts == [61])
+
+        // Normal parsing resumes immediately after.
+        let recovered = buffer.append(Data("recovered\n".utf8), maxLineBytes: maxLineBytes)
+        #expect(recovered.lines == ["recovered"])
+        #expect(recovered.droppedLineCount == 0)
+    }
+
+    // MARK: - #0355: inFlight hard cap (through the full pipeline)
+
+    /// Exceeds `inFlightCap` with unmatched `input` events (no `output` is
+    /// ever sent, so nothing pairs off and every entry stays in-flight) and
+    /// confirms the oldest entries — not the newest — are the ones evicted.
+    @Test func inFlightExceedingCapEvictsOldestEntriesFirst() async throws {
+        let cap = LMStudioDashboardPaneContent.inFlightCap
+        let totalSent = cap + 10
+
+        let content = LMStudioDashboardPaneContent()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { self.emptyModelsResponse() }
+        // Long enough that the 5-minute-default staleness sweep can't be
+        // the thing thinning the list — this test is about the hard cap.
+        content.staleInFlightWindow = 24 * 60 * 60
+        content.makeRuntimeStreamProcess = makeSleepForeverProcess
+        content.makeModelStreamProcess = { _ in
+            let baseTimestamp = self.nowMillis()
+            let lines = (0..<totalSent).map { index in
+                self.predictionInputLine(modelIdentifier: "m-\(index)", timestamp: baseTimestamp + Int64(index))
+            }
+            let script = lines.map { "printf '%s\\n' '\($0)'" }.joined(separator: "; ")
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", "\(script); sleep 60"]
+            return process
+        }
+
+        content.setUp(visible: true)
+        // Wait for the *last* line sent, not just `inFlight.count == cap`
+        // — the count already reads `cap` partway through delivery (every
+        // insert past the cap evicts one), so counting alone can't tell
+        // "all lines arrived" from "the cap engaged early."
+        let lastIdentifier = "m-\(totalSent - 1)"
+        await waitUntil(timeoutNanoseconds: 30_000_000_000) {
+            content.inFlight.contains { $0.modelIdentifier == lastIdentifier }
+        }
+
+        #expect(content.inFlight.count == cap)
+        let retainedIdentifiers = Set(content.inFlight.map(\.modelIdentifier))
+        // The oldest 10 (m-0..<m-9) must be gone; the newest `cap` must remain.
+        for index in 0..<10 {
+            #expect(!retainedIdentifiers.contains("m-\(index)"))
+        }
+        for index in (totalSent - cap)..<totalSent {
+            #expect(retainedIdentifiers.contains("m-\(index)"))
+        }
+
+        content.tearDown()
+    }
+
+    // MARK: - #0355: oversized line through the full pipeline
+
+    /// A single NDJSON line far larger than `streamLineByteCap` (an
+    /// adversarial or runaway `-s model` line) must not wedge the parser —
+    /// the next, normal-sized line must still be parsed correctly.
+    @Test func oversizedLineThroughRealPipeIsDroppedAndPipelineRecovers() async throws {
+        let content = LMStudioDashboardPaneContent()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { self.emptyModelsResponse() }
+        content.makeRuntimeStreamProcess = makeSleepForeverProcess
+        content.makeModelStreamProcess = { _ in
+            // Larger than `streamLineByteCap` (256 KB) but well-formed
+            // enough to parse if it weren't dropped by the cap — proves
+            // the drop is size-driven, not a parse failure. The filler is
+            // generated at shell-runtime (`head`/`tr`), not embedded as a
+            // literal `Process.arguments` entry, to stay well under the
+            // OS's argument-length limit.
+            let fillerByteCount = LMStudioDashboardPaneContent.streamLineByteCap + 4096
+            let prefix = #"{"timestamp":\#(self.nowMillis()),"data":{"type":"llm.prediction.input","input":""#
+            let suffix = #"","modelIdentifier":"big"}}"#
+            let normalLine = self.predictionInputLine(modelIdentifier: "normal", timestamp: self.nowMillis())
+            let script = """
+            printf '%s' '\(prefix)'
+            head -c \(fillerByteCount) /dev/zero | tr '\\0' 'p'
+            printf '%s\\n' '\(suffix)'
+            printf '%s\\n' '\(normalLine)'
+            sleep 60
+            """
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", script]
+            return process
+        }
+
+        content.setUp(visible: true)
+        // A generous bound: this test pipes >256 KB of filler through
+        // `head`/`tr` before the real assertion-relevant bytes arrive,
+        // which can take noticeably longer than the default 15s bound
+        // under the full suite's parallel host load (the isolated
+        // `swift test --filter` run finishes in well under a second).
+        await waitUntil(timeoutNanoseconds: 30_000_000_000) { !content.inFlight.isEmpty }
+
+        // Only the normal-sized line survived; the oversized one never
+        // reached the parser as a usable line.
+        #expect(content.inFlight.count == 1)
+        #expect(content.inFlight.first?.modelIdentifier == "normal")
+
+        content.tearDown()
+    }
+
+    // MARK: - #0355: buffer reset on respawn
+
+    /// If a process exits while `modelStreamBuffer` is mid-drop (a
+    /// never-terminated oversized line left `isDroppingOversizedLine ==
+    /// true`), that state belongs to the
+    /// dead process's byte stream, not the respawned one's. Without
+    /// resetting the buffer on spawn, the respawned process's first
+    /// (short, valid) line would be read as "the rest of the old line"
+    /// and silently dropped through its own first `\n` — this test fails
+    /// with `inFlight` empty if that reset is removed.
+    @Test func bufferResetsOnRespawnSoPendingDropDoesNotSwallowNewProcessFirstLine() async throws {
+        final class SpawnCount {
+            var value = 0
+        }
+        let spawnCount = SpawnCount()
+
+        let content = LMStudioDashboardPaneContent()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { self.emptyModelsResponse() }
+        content.makeRuntimeStreamProcess = makeSleepForeverProcess
+        content.respawnDelay = .milliseconds(20)
+        content.makeModelStreamProcess = { _ in
+            spawnCount.value += 1
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            if spawnCount.value == 1 {
+                // First process: emits a never-terminated line larger than
+                // `streamLineByteCap`, then exits on its own (no `sleep`
+                // tail) — leaves `modelStreamBuffer` mid-drop when
+                // `handleModelStreamTermination` sees the unexpected exit
+                // and schedules a respawn.
+                let fillerByteCount = LMStudioDashboardPaneContent.streamLineByteCap + 4096
+                process.arguments = ["-c", "head -c \(fillerByteCount) /dev/zero | tr '\\0' 'p'"]
+            } else {
+                // Respawned process: one normal, complete line.
+                let normalLine = self.predictionInputLine(modelIdentifier: "after-respawn", timestamp: self.nowMillis())
+                process.arguments = ["-c", "printf '%s\\n' '\(normalLine)'; sleep 60"]
+            }
+            return process
+        }
+
+        content.setUp(visible: true)
+        // Only becomes non-empty once the *respawned* process's line is
+        // parsed — the first process's output never contains a `\n`, so it
+        // can never produce a parsed line itself. Generous bound for the
+        // same reason as `oversizedLineThroughRealPipeIsDroppedAndPipelineRecovers`:
+        // >256 KB of filler plus a respawn round-trip, under full-suite
+        // parallel host load.
+        await waitUntil(timeoutNanoseconds: 30_000_000_000) { !content.inFlight.isEmpty }
+
+        #expect(content.inFlight.count == 1)
+        #expect(content.inFlight.first?.modelIdentifier == "after-respawn")
+        #expect(spawnCount.value == 2)
+
+        content.tearDown()
+    }
+
     // MARK: - Not-set-up safety
 
     @Test func freshlyConstructedContentIsNotSetUpAndDoesNothing() {
@@ -454,5 +724,30 @@ struct LMStudioDashboardPaneContentTests {
         #expect(content.lifecyclePhase == .tornDown)
         content.tearDown()
         #expect(content.lifecyclePhase == .tornDown)
+    }
+}
+
+/// Same shape as `GitStatusPaneContentTests.swift`'s private `waitUntil` —
+/// duplicated here rather than shared because that one is file-private and
+/// this suite's `#0355` pipeline tests need the same "poll instead of a
+/// fixed sleep" pattern: a fixed wait either pads every run with dead time
+/// or, if trimmed too far, flakes under host load.
+@MainActor
+private func waitUntil(
+    timeoutNanoseconds: UInt64 = 15_000_000_000,
+    sourceLocation: SourceLocation = #_sourceLocation,
+    _ condition: () -> Bool
+) async {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .nanoseconds(Int64(timeoutNanoseconds)))
+    while !condition(), clock.now < deadline {
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    if !condition() {
+        Issue.record(
+            "waitUntil timed out after \(timeoutNanoseconds / 1_000_000)ms without the condition becoming true",
+            sourceLocation: sourceLocation
+        )
     }
 }
