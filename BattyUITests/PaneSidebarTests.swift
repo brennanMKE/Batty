@@ -30,6 +30,12 @@ nonisolated final class PaneSidebarTests: XCTestCase {
         return app.descendants(matching: .disclosureTriangle).firstMatch
     }
 
+    /// Matches each `PaneRow`'s own AX container element. `SessionSidebarView`
+    /// marks `PaneRow` `.accessibilityElement(children: .contain)` before
+    /// applying this identifier — without it, SwiftUI on macOS folds the row
+    /// into a single leaf and the identifier spreads to every child,
+    /// including the eye toggle's own `pane-eye-toggle.<uuid>` below (same
+    /// mechanism as the tab bar's `tab-chip.<title>`, `PaneView.swift:219-225`).
     @MainActor
     private func paneRowCount(in app: XCUIApplication) -> Int {
         app.descendants(matching: .any).matching(

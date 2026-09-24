@@ -51,9 +51,25 @@ public struct SessionSidebarView: View {
                             selectionTint: nil,
                             isSelected: false
                         ))
+                        // Without `.contain`, SwiftUI on macOS folds PaneRow's
+                        // HStack into a single accessibility leaf and this
+                        // identifier spreads to every child — including the
+                        // eye toggle's own `pane-eye-toggle.<uuid>` below,
+                        // which the outer identifier here would otherwise
+                        // silently win over. Same mechanism, same fix, as
+                        // the tab bar's `tab-chip.<title>` vs. its children
+                        // (`PaneView.swift:219-225`).
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
                     }
                 } label: {
+                    // SessionRow has no child that needs its own identifier
+                    // (no Button, nothing else already carries one), so the
+                    // fold-into-a-leaf behavior this identifier would
+                    // otherwise trigger is harmless here — `.contain` isn't
+                    // needed. Applied on the label content, not on the whole
+                    // DisclosureGroup, purely so it doesn't also describe the
+                    // disclosed pane rows below it.
                     SessionRow(
                         session: session,
                         store: store,
@@ -70,9 +86,9 @@ public struct SessionSidebarView: View {
                             coloringSessionID = session.id
                         }
                     )
+                    .accessibilityIdentifier("session-row.\(session.title)")
                 }
                 .tag(session.id as UUID?)
-                .accessibilityIdentifier("session-row.\(session.title)")
                 .modifier(SidebarRowBackground(
                     sidebarBackground: themeChrome?.chromeBackground,
                     selectionTint: themeChrome?.sidebarSelectionTint,

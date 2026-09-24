@@ -475,3 +475,8 @@ script (e.g. `tart stop ... || true`).
 - Every guest clone starts with no SwiftPM package cache, so dependency resolution happens
   on every run (`libghostty-spm`, Sparkle, `textual`, `swift-argument-parser`, and their
   transitive dependencies, all from GitHub over the guest's NAT).
+- **A query predicate that throws on a non-string AX value SIGABRTs the guest app** — an
+  `NSPredicate(format: "value MATCHES …")` over `.descendants(matching: .any)` crashed the
+  app under test via an uncaught exception in XCTest's own automation session when it hit a
+  `DisclosureTriangle`'s numeric `value` (run `20260924-005144-71495`, `#0417`); scope such
+  predicates to a string-valued element type (e.g. `.staticTexts`) instead.
