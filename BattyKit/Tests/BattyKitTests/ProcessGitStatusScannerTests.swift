@@ -329,12 +329,12 @@ struct ProcessGitStatusScannerTests {
 
     @Test func terminateAndWaitBrieflyTerminatesEveryOverlappingTrackedProcess() async throws {
         let scanner = ProcessGitStatusScanner()
+        let fixture = ChildProcessFixture()
+        defer { fixture.killAndReapAll() }
         let processA = Self.makeSleepProcess()
         let processB = Self.makeSleepProcess()
-        try processA.run()
-        defer { if processA.isRunning { processA.terminate() } }
-        try processB.run()
-        defer { if processB.isRunning { processB.terminate() } }
+        try fixture.run(processA)
+        try fixture.run(processB)
 
         // Simulates the exact interleaving that overlaps scans: scan B's
         // `run()` registers its process while scan A's is still tracked too.
@@ -397,14 +397,11 @@ struct ProcessGitStatusScannerTests {
             Issue.record("child never signaled readiness")
             // No `defer` is registered yet at this point — release the
             // child directly so an early return here can't orphan it.
-            kill(process.processIdentifier, SIGKILL)
-            process.waitUntilExit()
+            ChildProcessFixture.killAndReap(process)
             return
         }
         let pid = process.processIdentifier
-        defer {
-            if process.isRunning { kill(pid, SIGKILL) }
-        }
+        defer { ChildProcessFixture.killAndReap(process) }
         scanner.addActiveProcess(process)
 
         scanner.terminateAndWaitBriefly()
@@ -416,6 +413,12 @@ struct ProcessGitStatusScannerTests {
         // `terminateAndWaitBriefly()` returns.
         guard await gate.waitForParkedWaiter() else {
             Issue.record("waitForParkedWaiter() never reached its threshold")
+            // Whether or not the detached reap task actually parked,
+            // opening the gate and awaiting it here ensures it finishes
+            // before the test returns — the child itself is still this
+            // function's own `defer` above to release.
+            gate.open()
+            await scanner.awaitPendingTeardownReapsForTesting()
             return
         }
 
@@ -451,14 +454,10 @@ struct ProcessGitStatusScannerTests {
         try process.run()
         guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
             Issue.record("child never signaled readiness")
-            kill(process.processIdentifier, SIGKILL)
-            process.waitUntilExit()
+            ChildProcessFixture.killAndReap(process)
             return
         }
-        let pid = process.processIdentifier
-        defer {
-            if process.isRunning { kill(pid, SIGKILL) }
-        }
+        defer { ChildProcessFixture.killAndReap(process) }
         scanner.addActiveProcess(process)
 
         scanner.terminateAndWaitBriefly()
@@ -479,39 +478,75 @@ struct ProcessGitStatusScannerTests {
     /// `PendingTeardownReapRegistry` (injected here, not `.shared`), so
     /// `drainSynchronously()` alone — with no `waitForPendingTeardownSynchronously()`
     /// call at all — still reaps the stubborn process.
+    ///
+    /// #0440: with the default, always-open `OpenTeardownReapGate`, the
+    /// scanner's own detached reap task raced `drainSynchronously()` for the
+    /// `SIGKILL` — whichever fired first made the assertion below pass, so
+    /// the test proved nothing about the drain's own `SIGKILL`. A closed
+    /// `TestTeardownReapGate` parks that detached task before it can reach
+    /// `reapAfterTerminate` at all (confirmed via `waitForParkedWaiter()`,
+    /// per `docs/async-test-seams.md` §3 — a closed gate proves nothing
+    /// unless something is actually parked on it), so only
+    /// `drainSynchronously()` can kill the child here.
     @Test func registryDrainReapsAStubbornProcessWithNoWaitForPendingTeardownCall() async throws {
         let registry = PendingTeardownReapRegistry()
-        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, teardownReapRegistry: registry)
+        let gate = TestTeardownReapGate()
+        defer { gate.open() } // safety net: never leave a parked waiter behind, even if an assertion above fails first
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, teardownReapRegistry: registry, reapGate: gate)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
         guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
             Issue.record("child never signaled readiness")
-            kill(process.processIdentifier, SIGKILL)
-            process.waitUntilExit()
+            // No `defer` is registered yet at this point — release the
+            // child directly so an early return here can't orphan it.
+            ChildProcessFixture.killAndReap(process)
             return
         }
         let pid = process.processIdentifier
-        defer {
-            if process.isRunning { kill(pid, SIGKILL) }
-        }
+        defer { ChildProcessFixture.killAndReap(process) }
         scanner.addActiveProcess(process)
 
         scanner.terminateAndWaitBriefly()
+
+        // The gate's closed state is only load-bearing proof if something
+        // is actually parked on it — see `terminateAndWaitBrieflyReturnsImmediatelyEvenWhenTheProcessIgnoresSIGTERM`.
+        guard await gate.waitForParkedWaiter() else {
+            Issue.record("waitForParkedWaiter() never reached its threshold")
+            // The child itself is released by this function's own
+            // `defer { ChildProcessFixture.killAndReap(process) }` above —
+            // opening the gate and awaiting the scanner's own reap here
+            // ensures its detached task (parked or not) finishes before
+            // the test returns, so it can't outlive the test.
+            gate.open()
+            await scanner.awaitPendingTeardownReapsForTesting()
+            return
+        }
+
         #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
 
         registry.drainSynchronously()
 
         #expect(!process.isRunning, "drainSynchronously() must reap a process this scanner scheduled, even with no waitForPendingTeardownSynchronously() call")
+        // No orphan: confirm the OS has actually reaped the pid, not just
+        // that `Process.isRunning` (a Foundation-side flag) flipped. A
+        // single check, no poll — `docs/async-test-seams.md` §5 Q3.
+        #expect(kill(pid, 0) != 0, "pid \(pid) must not still be signalable after reap — orphaned process")
+
+        // Open the gate and let the scanner's own parked detached task run
+        // to completion — it will find the child already gone. This way no
+        // task outlives the test.
+        gate.open()
+        await scanner.awaitPendingTeardownReapsForTesting()
     }
 
     @Test func terminateIfRunningSignalsEveryOverlappingTrackedProcess() throws {
         let scanner = ProcessGitStatusScanner()
+        let fixture = ChildProcessFixture()
+        defer { fixture.killAndReapAll() }
         let processA = Self.makeSleepProcess()
         let processB = Self.makeSleepProcess()
-        try processA.run()
-        defer { if processA.isRunning { processA.terminate() } }
-        try processB.run()
-        defer { if processB.isRunning { processB.terminate() } }
+        try fixture.run(processA)
+        try fixture.run(processB)
 
         scanner.addActiveProcess(processA)
         scanner.addActiveProcess(processB)
@@ -522,6 +557,12 @@ struct ProcessGitStatusScannerTests {
 
         #expect(!processA.isRunning)
         #expect(!processB.isRunning)
+        // `sleep` has no handler for `SIGTERM`, so a process that exited
+        // for any other reason (e.g. a production regression that stopped
+        // signaling it, and it merely ran to completion or was never
+        // started) must not pass here just because it's no longer running.
+        #expect(processA.terminationReason == .uncaughtSignal, "processA must have exited because it was signaled, not for some other reason")
+        #expect(processB.terminationReason == .uncaughtSignal, "processB must have exited because it was signaled, not for some other reason")
     }
 
     /// The root-cause scenario, pinned directly: a scan that finishes and
@@ -529,12 +570,12 @@ struct ProcessGitStatusScannerTests {
     /// `defer`) must not clobber a different, still-running scan's entry.
     @Test func aCompletedScansCleanupDoesNotClobberAnotherStillRunningScan() throws {
         let scanner = ProcessGitStatusScanner()
+        let fixture = ChildProcessFixture()
+        defer { fixture.killAndReapAll() }
         let processA = Self.makeSleepProcess()
         let processB = Self.makeSleepProcess()
-        try processA.run()
-        defer { if processA.isRunning { processA.terminate() } }
-        try processB.run()
-        defer { if processB.isRunning { processB.terminate() } }
+        try fixture.run(processA)
+        try fixture.run(processB)
 
         scanner.addActiveProcess(processA)
         scanner.addActiveProcess(processB)
@@ -547,5 +588,8 @@ struct ProcessGitStatusScannerTests {
 
         #expect(!processB.isRunning, "the still-tracked process must still be signaled")
         #expect(processA.isRunning, "the untracked (already-cleared) process must be untouched by terminate calls")
+        // As above: confirm processB actually died from the signal, not
+        // some other exit path a production regression could substitute.
+        #expect(processB.terminationReason == .uncaughtSignal, "processB must have exited because it was signaled, not for some other reason")
     }
 }
