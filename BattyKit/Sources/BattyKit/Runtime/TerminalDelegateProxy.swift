@@ -26,13 +26,21 @@ final class TerminalDelegateProxy: NSObject,
 
     private(set) var hoveredURL: String?
 
-    /// Fires on every working-directory change libghostty reports, after the
-    /// new path has been written to `state`. The host wires this to drive
-    /// session auto-naming directly, rather than relying on a SwiftUI
-    /// `.onChange` over `state.workingDirectory` — that property is a Combine
-    /// `@Published` on an `ObservableObject`, which the `@Observable` model
-    /// layer does not track, so the view-driven path fired only opportunistically
-    /// and left names stuck on the initial directory (#0226-adjacent; see #0227).
+    /// Fires on every working-directory change libghostty reports, with the
+    /// newly-reported path. **Not** after that path has landed on `state`:
+    /// `state.terminalDidChangeWorkingDirectory(path)` defers its write to
+    /// the next main-queue turn (`publishSoon`, libghostty-spm), so at the
+    /// point this closure runs, `state.workingDirectory` (and its mirrors,
+    /// e.g. `TabRuntime.workingDirectory`) still hold the *previous* path.
+    /// Consumers must use the `path` argument directly rather than reading
+    /// `state`/`terminal.workingDirectory` back synchronously (#0436 — a
+    /// prior version of this comment claimed the opposite ordering).
+    /// The host wires this to drive session auto-naming directly, rather
+    /// than relying on a SwiftUI `.onChange` over `state.workingDirectory` —
+    /// that property is a Combine `@Published` on an `ObservableObject`,
+    /// which the `@Observable` model layer does not track, so the
+    /// view-driven path fired only opportunistically and left names stuck
+    /// on the initial directory (#0226-adjacent; see #0227).
     var onWorkingDirectoryChange: ((String) -> Void)?
 
     /// Fires when a terminal program in this tab's Session needs the user's

@@ -360,4 +360,33 @@ struct TabAutoNamingTests {
         let label = PaneRow.label(position: "1/1", firstTab: nil)
         #expect(label == "1/1")
     }
+
+    // MARK: - #0436: AI tab naming through the pwd callback
+
+    /// Round-1 review finding: `updateTabAutoName`'s reported-path behavior
+    /// had no test — a mutation that made it ignore the reported path and
+    /// fall back to the (stale, at callback time) live property still
+    /// passed every test. This drives the real production path —
+    /// `AppStateStore.wireWorkingDirectoryReporting(for:)` installed on the
+    /// real `TerminalDelegateProxy`, then `terminalDidChangeWorkingDirectory`
+    /// — and asserts the suggester was asked about the *reported* path, not
+    /// whatever `terminal.configuration.workingDirectory` held before the
+    /// report.
+    @Test func aiNameAppliesFromTheReportedPathThroughThePwdCallback() async {
+        let suggester = RecordingTabSuggester(result: "Meeting Notes")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+
+        let tab = TabRuntime()
+        tab.terminal.configuration.workingDirectory = "/Users/test/home"
+        store.wireWorkingDirectoryReporting(for: tab)
+
+        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
+            tab.terminalDelegate.terminalDidChangeWorkingDirectory("/Users/test/meeting notes 2026")
+        }
+        await awaitSuggestion(store, tabID: tab.id)
+
+        #expect(suggester.requestedPaths == ["/Users/test/meeting notes 2026"])
+        #expect(tab.aiSuggestedName == "Meeting Notes")
+    }
 }

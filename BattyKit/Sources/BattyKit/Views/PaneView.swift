@@ -281,16 +281,16 @@ public struct PaneView: View {
                             // signal, not a SwiftUI .onChange over the Combine-backed
                             // workingDirectory — that fired only on incidental
                             // re-renders and left names stuck on the initial cwd (#0227).
-                            // syncWorkingDirectoryFromTerminal() bridges the same
-                            // signal into tab.workingDirectory, the Observation-tracked
+                            // wireWorkingDirectoryReporting bridges the same signal
+                            // into tab.workingDirectory, the Observation-tracked
                             // mirror TabTitleFormatter reads, so the chip (and, via the
                             // pane's first tab, the sidebar pane row) re-render too
                             // (#0260 — the tab-chip half of the #0227 staleness class).
-                            tab.terminalDelegate.onWorkingDirectoryChange = { [weak appStore] _ in
-                                tab.syncWorkingDirectoryFromTerminal()
-                                appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
-                                appStore?.updateTabAutoName(for: tab)
-                            }
+                            // Lives on AppStateStore, not as a closure here, so the
+                            // production callback is exercised directly by a unit test
+                            // rather than by a test-local stand-in that could silently
+                            // diverge from it (#0436).
+                            appStore?.wireWorkingDirectoryReporting(for: tab)
                             // #0390: route a clipboard-read confirmation
                             // (OSC 52 / Kitty clipboard protocol) to this
                             // tab's owning Session, which applies the

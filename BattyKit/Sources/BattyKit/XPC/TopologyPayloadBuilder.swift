@@ -37,10 +37,11 @@ extension WindowRuntime {
 extension SessionRuntime {
     /// Uses `tab.workingDirectory` (the Observation-tracked mirror), not
     /// `tab.terminal.workingDirectory` (the raw Combine value). Both are
-    /// "correct" here per `TabRuntime`'s own doc comment — non-view code is
-    /// explicitly allowed to read the live Combine value — but the mirror
-    /// is the better choice for a different reason than convention: it is
-    /// wired in `.task(id:)` and never unwired on disappear, so it keeps
+    /// "correct" here per `TabRuntime`'s own doc comment — this is an
+    /// on-demand CLI query, not the pwd delegate callback itself, so the
+    /// live Combine value isn't stale here (#0436) — but the mirror is the
+    /// better choice for a different reason than staleness: it is wired in
+    /// `.task(id:)` and never unwired on disappear, so it keeps
     /// tracking cwd changes for background sessions and hidden panes even
     /// while their SwiftUI view isn't mounted — exactly the panes `list`
     /// and `session info` exist to report on.

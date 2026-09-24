@@ -41,9 +41,17 @@ public final class TabRuntime: Identifiable {
     /// fixed the same way in #0227). View-reachable code (``TabTitleFormatter``)
     /// must read this mirror, never `terminal.workingDirectory` directly;
     /// non-view event-handler code (``AppStateStore``) may still read the
-    /// live Combine value since it isn't gated by Observation there.
-    /// Written only via ``syncWorkingDirectoryFromTerminal()``, called from
-    /// the pwd delegate callback (event-origin, not view-update code).
+    /// live Combine value on its own on-demand call paths (a rename commit,
+    /// a new split/tab inheriting cwd, the initial resolve) — but **not**
+    /// synchronously inside the pwd delegate callback itself, where the
+    /// live property is still the *previous* directory because
+    /// `TerminalViewState`'s write is deferred to the next main-queue turn
+    /// (`publishSoon`, libghostty-spm). That callback goes through
+    /// ``applyReportedWorkingDirectory(_:)`` instead (#0436).
+    /// Written via ``applyReportedWorkingDirectory(_:)`` (the pwd delegate
+    /// callback, with the reported path) and
+    /// ``syncWorkingDirectoryFromTerminal()`` (the on-demand path, reading
+    /// the live property) — both event-origin, not view-update code.
     public internal(set) var workingDirectory: String?
 
     /// Per-cwd name suggested by the on-device model (mirrors the session
@@ -306,16 +314,40 @@ public final class TabRuntime: Identifiable {
         needsConfirmCloseOverride ?? terminal.needsConfirmClose
     }
 
-    /// Bridges libghostty's authoritative pwd signal into ``workingDirectory``.
+    /// Bridges libghostty's authoritative pwd signal into ``workingDirectory``
+    /// by re-reading the live `terminal.workingDirectory` property.
     /// Idempotent (an equal-value write is skipped, matching the
     /// store-mutator convention in `docs/swiftui-observation-rules.md`) so
     /// repeat calls for a cwd that hasn't moved don't re-notify Observation.
-    /// Call from event-driven contexts only: the pwd delegate callback, and
-    /// the one-time initial-resolve check for a cwd libghostty may have
-    /// already reported before the callback was wired.
+    ///
+    /// On-demand path only — call for the one-time initial-resolve check for
+    /// a cwd libghostty may have already reported before the pwd delegate
+    /// callback was wired. Do **not** call this from that callback itself:
+    /// `TerminalViewState.workingDirectory`'s write is deferred to the next
+    /// main-queue turn (`publishSoon`, libghostty-spm), so reading it back
+    /// synchronously inside the callback that reported the change still
+    /// observes the previous directory (#0436). The callback path uses
+    /// ``applyReportedWorkingDirectory(_:)`` instead, which takes the
+    /// reported path directly rather than re-reading the property.
     @discardableResult
     public func syncWorkingDirectoryFromTerminal() -> Bool {
         let resolved = terminal.workingDirectory ?? terminal.configuration.workingDirectory
+        return applyWorkingDirectory(resolved)
+    }
+
+    /// Bridges the pwd delegate callback's reported path into
+    /// ``workingDirectory`` directly, without re-reading
+    /// `terminal.workingDirectory` — see
+    /// ``syncWorkingDirectoryFromTerminal()``'s doc comment for why that
+    /// property is unsafe to read back synchronously in that callback
+    /// (#0436). Same idempotence as `syncWorkingDirectoryFromTerminal()`.
+    @discardableResult
+    public func applyReportedWorkingDirectory(_ path: String) -> Bool {
+        applyWorkingDirectory(path)
+    }
+
+    @discardableResult
+    private func applyWorkingDirectory(_ resolved: String?) -> Bool {
         guard resolved != workingDirectory else { return false }
         workingDirectory = resolved
         return true

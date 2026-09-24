@@ -1681,6 +1681,45 @@ public final class AppStateStore {
         return nil
     }
 
+    // MARK: - pwd delegate wiring (#0436)
+
+    /// Installs the pwd delegate callback for `tab`: libghostty's
+    /// authoritative pwd report drives session and tab auto-naming through
+    /// ``applyReportedWorkingDirectory(_:to:)``. Call once per tab from a
+    /// `.task`, matching every other `tab.terminalDelegate` wiring in
+    /// `PaneView` — not from `body`/`onChange`/`onAppear` (installing a
+    /// closure is not itself an observed-state write, but keeping the
+    /// wiring out of view-driven code avoids any question of it becoming
+    /// one later; see `docs/swiftui-observation-rules.md`).
+    ///
+    /// Living in `AppStateStore` rather than as a closure literal in
+    /// `PaneView` means the production callback path is exercised by
+    /// calling this method directly from a unit test, through the real
+    /// `TerminalDelegateProxy`/`TerminalViewState` — round-1 review found
+    /// that a closure duplicated ad hoc in a test could silently diverge
+    /// from what `PaneView` actually installs (e.g. keep the stale
+    /// `terminal.workingDirectory` re-read `PaneView` no longer performs)
+    /// without any test catching it.
+    public func wireWorkingDirectoryReporting(for tab: TabRuntime) {
+        tab.terminalDelegate.onWorkingDirectoryChange = { [weak self, weak tab] path in
+            guard let self, let tab else { return }
+            self.applyReportedWorkingDirectory(path, to: tab)
+        }
+    }
+
+    /// The pwd delegate callback's single entry point. `path` is
+    /// non-optional by design: the round-1 review found that an
+    /// optional-with-`nil`-default `reportedPath` parameter on the naming
+    /// methods let a caller silently reintroduce the stale read this issue
+    /// fixes (passing `nil`, or a call site that dropped the argument,
+    /// compiled and passed every existing test). Making the reported path
+    /// required here means that mistake fails to compile instead.
+    public func applyReportedWorkingDirectory(_ path: String, to tab: TabRuntime) {
+        tab.applyReportedWorkingDirectory(path)
+        applySessionAutoNaming(forTabID: tab.id, cwdOverride: path)
+        applyTabAutoNaming(for: tab, cwdOverride: path)
+    }
+
     // MARK: - CWD-driven auto-naming (global — AI machinery stays process-wide)
 
     /// When the anchor tab (first leaf pane's first tab) of a session moves
@@ -1696,7 +1735,27 @@ public final class AppStateStore {
     /// project rule match). Multi-pane sessions are skipped entirely —
     /// each pane has its own CWD and picking one would be arbitrary
     /// (`#0213`).
+    ///
+    /// On-demand path only: resolves the cwd from the live
+    /// `terminal.workingDirectory`/`configuration.workingDirectory`. Do
+    /// **not** call this from the pwd delegate callback — at that point
+    /// `terminal.workingDirectory` is still the *previous* directory,
+    /// because `TerminalViewState`'s write is deferred to the next
+    /// main-queue turn (`publishSoon`, libghostty-spm). The callback path
+    /// goes through ``applyReportedWorkingDirectory(_:to:)`` instead, which
+    /// takes the reported path directly (#0436).
     public func handleWorkingDirectoryChange(forTabID tabID: UUID) {
+        applySessionAutoNaming(forTabID: tabID, cwdOverride: nil)
+    }
+
+    /// Shared core of ``handleWorkingDirectoryChange(forTabID:)`` and
+    /// ``applyReportedWorkingDirectory(_:to:)``. `cwdOverride`, when given,
+    /// is used as-is instead of re-reading `terminal.workingDirectory`;
+    /// `nil` falls back to the live property for the on-demand callers.
+    /// Kept `private` and defaulted only internally — the public surface
+    /// has no optional-path entry point a caller could silently pass `nil`
+    /// to and reintroduce the stale read (round-1 review finding).
+    private func applySessionAutoNaming(forTabID tabID: UUID, cwdOverride: String?) {
         // Search across ALL windows — the `sessions` shim resolves to
         // windows[0] only, so using it here would silently skip sessions in
         // every other window (#0248 trigger bug).
@@ -1706,7 +1765,8 @@ public final class AppStateStore {
                 guard anchorTab.id == tabID else { continue }
                 guard !session.titleOverride else { return }
                 guard session.tree.allPanes.count == 1 else { return }
-                let cwd = anchorTab.terminal.workingDirectory
+                let cwd = cwdOverride
+                    ?? anchorTab.terminal.workingDirectory
                     ?? anchorTab.terminal.configuration.workingDirectory
                 guard let cwd, !cwd.isEmpty else { return }
                 var resolved = Self.resolveAutoTitle(
@@ -1845,7 +1905,23 @@ public final class AppStateStore {
     ///
     /// Never overwrites `tab.titleOverride` — an explicit rename pins the
     /// chip until the user resets it, mirroring the session pin.
+    ///
+    /// On-demand path only: resolves the cwd from the live
+    /// `terminal.workingDirectory`/`configuration.workingDirectory`. Do
+    /// **not** call this from the pwd delegate callback — see
+    /// ``handleWorkingDirectoryChange(forTabID:)``'s doc comment for why;
+    /// the callback path goes through
+    /// ``applyReportedWorkingDirectory(_:to:)`` instead (#0436).
     public func updateTabAutoName(for tab: TabRuntime) {
+        applyTabAutoNaming(for: tab, cwdOverride: nil)
+    }
+
+    /// Shared core of ``updateTabAutoName(for:)`` and
+    /// ``applyReportedWorkingDirectory(_:to:)``. See
+    /// ``applySessionAutoNaming(forTabID:cwdOverride:)`` for why this stays
+    /// `private` with an internally-defaulted override rather than exposing
+    /// an optional-path parameter publicly.
+    private func applyTabAutoNaming(for tab: TabRuntime, cwdOverride: String?) {
         guard tab.titleOverride == nil else {
             cancelTabNameSuggestion(forTabID: tab.id)
             return
@@ -1854,7 +1930,7 @@ public final class AppStateStore {
             cancelTabNameSuggestion(forTabID: tab.id)
             return
         }
-        let cwd = tab.terminal.workingDirectory ?? tab.terminal.configuration.workingDirectory
+        let cwd = cwdOverride ?? tab.terminal.workingDirectory ?? tab.terminal.configuration.workingDirectory
         guard let cwd, !cwd.isEmpty else {
             cancelTabNameSuggestion(forTabID: tab.id)
             if tab.aiSuggestedName != nil {

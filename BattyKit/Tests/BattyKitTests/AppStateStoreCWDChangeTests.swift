@@ -269,4 +269,89 @@ struct AppStateStoreCWDChangeTests {
 
         #expect(title == "Session 3")
     }
+
+    // MARK: - #0436: pwd-callback ordering
+
+    /// Documents the underlying platform hazard, using the real
+    /// `TerminalDelegateProxy`/`TerminalViewState` types (not fakes, and not
+    /// going through any Batty wiring): at the pinned libghostty-spm
+    /// revision (`a2565ccf`), `TerminalViewState.terminalDidChangeWorkingDirectory`
+    /// wraps its write in `publishSoon`, which resolves to
+    /// `terminalRunOnMainNextTurn` — an unconditional `DispatchQueue.main.async`
+    /// (its own doc comment: "never inline, even when the caller is already
+    /// on the main thread") — so a consumer that re-reads
+    /// `terminal.workingDirectory` synchronously inside
+    /// `onWorkingDirectoryChange` still observes the previous directory, not
+    /// the one just reported. This is why the production installer below
+    /// uses the callback's `path` argument instead of re-reading the
+    /// property.
+    @Test func pwdCallbackFiresBeforeTheDeferredTerminalPropertyWriteLands() {
+        let (store, url) = makeStore()
+        defer { cleanup(url) }
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+
+        var callbackFired = false
+        var observedDuringCallback: String?
+        anchorTab.terminalDelegate.onWorkingDirectoryChange = { _ in
+            callbackFired = true
+            observedDuringCallback = anchorTab.terminal.workingDirectory
+        }
+
+        anchorTab.terminalDelegate.terminalDidChangeWorkingDirectory("/Users/test/BattyCdProbe")
+
+        #expect(callbackFired)
+        #expect(observedDuringCallback == nil, "the deferred write hasn't landed yet when the callback fires")
+    }
+
+    /// Drives the actual production entry points `PaneView` installs —
+    /// `AppStateStore.wireWorkingDirectoryReporting(for:)` (the installer)
+    /// and, through it, `applyReportedWorkingDirectory(_:to:)` — rather than
+    /// a test-local closure that could silently diverge from what `PaneView`
+    /// really wires (the round-1 review finding: a hand-rolled test closure
+    /// let every mutation of the production wiring pass). The first `cd`
+    /// into a project directory must rename the session on that same
+    /// report, not one report later. `SessionCwdRenameTests` in the Tart VM
+    /// covers this end-to-end; this is the host-side unit coverage.
+    @Test func cdRenamesSessionOnTheSameReportNotOneReportLater() {
+        let (store, url) = makeStore()
+        defer { cleanup(url) }
+        store.nameCache.record(path: "/Users/test/BattyCdProbe", name: "BattyCdProbe")
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/home"
+
+        store.wireWorkingDirectoryReporting(for: anchorTab)
+        anchorTab.terminalDelegate.terminalDidChangeWorkingDirectory("/Users/test/BattyCdProbe")
+
+        #expect(
+            session.title == "BattyCdProbe",
+            "the first cd should rename the session on the same report, not one report later"
+        )
+        #expect(anchorTab.workingDirectory == "/Users/test/BattyCdProbe")
+    }
+
+    /// A resolvable-but-different anchor tab (a second session, e.g.) must
+    /// not be renamed by another tab's pwd report — the installer wires
+    /// each tab's own callback to that tab's own id, and
+    /// `applyReportedWorkingDirectory(_:to:)` acts on the `tab` it's given,
+    /// never on whichever tab happens to be first.
+    @Test func wiredCallbackOnlyRenamesItsOwnSession() {
+        let (store, url) = makeStore()
+        defer { cleanup(url) }
+        store.nameCache.record(path: "/Users/test/BattyCdProbe", name: "BattyCdProbe")
+
+        let sessionA = store.sessions[0]
+        let anchorA = sessionA.tree.root.firstLeafPane.tabs[0]
+        let sessionB = store.addSession()!
+        let anchorB = sessionB.tree.root.firstLeafPane.tabs[0]
+
+        store.wireWorkingDirectoryReporting(for: anchorA)
+        store.wireWorkingDirectoryReporting(for: anchorB)
+        anchorA.terminalDelegate.terminalDidChangeWorkingDirectory("/Users/test/BattyCdProbe")
+
+        #expect(sessionA.title == "BattyCdProbe")
+        #expect(sessionB.title != "BattyCdProbe")
+    }
 }
