@@ -10,9 +10,10 @@ import Testing
 /// no-XPC functions by design (the pinned decision this issue records — no
 /// app round trip, must work even when Batty is not running), so calling
 /// them here exercises the real production code path without ever touching
-/// a live app or broker connection, unlike every other command in this
-/// target (`AppConnectDance`, `StatusCommand`, ...), which is why those stay
-/// unreachable from this test target per #0365.
+/// a live app or broker connection, unlike most other commands in this
+/// target — `StatusCommand.run()` itself takes no injectable parameters, so
+/// it still isn't unit-testable directly (see `AppConnectDanceTests` for the
+/// wiring it delegates to, which #0365 made testable).
 struct CapabilitiesCommandTests {
 
     // MARK: - Verb roster

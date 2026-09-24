@@ -12,7 +12,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// back the endpoint for the caller to connect to directly. The broker is
 /// out of the path after this returns.
 nonisolated enum AppConnectDance {
-    enum Failure: Error {
+    enum Failure: Error, Equatable {
         /// The broker's own Mach service didn't answer — agent not
         /// registered, or `SMAppService`'s `requiresApproval` state.
         case brokerUnreachable
@@ -52,16 +52,24 @@ nonisolated enum AppConnectDance {
     /// not the ~5 s a reading of `pollMaxAttempts * pollInterval` alone
     /// would suggest. Still bounded, which is the property that matters:
     /// the CLI exits `3` rather than hanging forever.
+    ///
+    /// `fetchEndpoint` and `sleep` are injection seams alongside
+    /// `resolveAppBundle`/`launch`/`isAppRunning` (#0361): without them, no
+    /// test can drive this past the initial broker round trip without a
+    /// live `BattyBroker` Mach service, or without actually sleeping out
+    /// the poll bound (#0365).
     static func resolveEndpoint(
         brokerTimeout: TimeInterval = 3.0,
         pollTimeout: TimeInterval = 1.0,
         pollMaxAttempts: Int = 20,
         pollInterval: TimeInterval = 0.25,
+        fetchEndpoint: (TimeInterval) -> BrokerAppEndpointClient.Result = { BrokerAppEndpointClient.fetchEndpoint(timeout: $0) },
         resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() },
         launch: (URL) -> Bool = { AppLauncher.launch(bundleURL: $0) },
-        isAppRunning: (URL) -> Bool = { RunningAppChecker.isRunning(atBundleURL: $0) }
+        isAppRunning: (URL) -> Bool = { RunningAppChecker.isRunning(atBundleURL: $0) },
+        sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
     ) -> Swift.Result<NSXPCListenerEndpoint, Failure> {
-        switch BrokerAppEndpointClient.fetchEndpoint(timeout: brokerTimeout) {
+        switch fetchEndpoint(brokerTimeout) {
         case .unreachable:
             logger.notice("resolveEndpoint -> broker unreachable")
             return .failure(.brokerUnreachable)
@@ -116,10 +124,10 @@ nonisolated enum AppConnectDance {
                 logger.error("resolveEndpoint -> launch failed, not polling")
                 return .failure(.appUnavailable)
             }
-            return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appUnavailable)
+            return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appUnavailable, fetchEndpoint: fetchEndpoint, sleep: sleep)
         case .waitForReregistration:
             logger.notice("resolveEndpoint: app already running at \(bundleURL.path, privacy: .public) but not registered with the broker — waiting for it to re-register instead of launching a duplicate")
-            return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appRunningUnregistered)
+            return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appRunningUnregistered, fetchEndpoint: fetchEndpoint, sleep: sleep)
         }
     }
 
@@ -131,12 +139,14 @@ nonisolated enum AppConnectDance {
         maxAttempts: Int,
         interval: TimeInterval,
         pollTimeout: TimeInterval,
-        notRegisteredFailure: Failure
+        notRegisteredFailure: Failure,
+        fetchEndpoint: (TimeInterval) -> BrokerAppEndpointClient.Result,
+        sleep: (TimeInterval) -> Void
     ) -> Swift.Result<NSXPCListenerEndpoint, Failure> {
         var attempt = 0
-        let endpoint = BoundedPoll.poll(maxAttempts: maxAttempts, interval: interval) { () -> NSXPCListenerEndpoint? in
+        let endpoint = BoundedPoll.poll(maxAttempts: maxAttempts, interval: interval, sleep: sleep) { () -> NSXPCListenerEndpoint? in
             attempt += 1
-            if case .endpoint(.some(let endpoint)) = BrokerAppEndpointClient.fetchEndpoint(timeout: pollTimeout) {
+            if case .endpoint(.some(let endpoint)) = fetchEndpoint(pollTimeout) {
                 logger.info("resolveEndpoint: poll attempt \(attempt, privacy: .public) -> endpoint registered")
                 return endpoint
             }

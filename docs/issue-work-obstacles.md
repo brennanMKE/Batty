@@ -252,6 +252,28 @@ This is a target-layout decision masquerading as a test-coverage gap, and it
 is worth naming as such so it is fixed once rather than worked around per
 issue.
 
+**Update, #0365 resolution:** the premise above was already stale by the
+time #0365 was picked up. `#0384` (27385d3, "Add status --json and a
+capabilities verb" — landed after this entry was written) added `"batty"`
+to `BattyKitTests`' dependencies in `BattyKit/Package.swift` for its own
+`CapabilitiesCommandTests`; `#0380`'s later `NewSessionCommandTests` just
+reused that same dependency, it didn't add it. SwiftPM supports a test
+target `@testable import`-ing an executable target directly, and by the
+time #0365 was picked up four test files were already doing exactly that.
+So `AppConnectDance`, `AppBundleLocator`, `RunningAppChecker`, and
+`SessionCommand` were all reachable from `BattyKitTests`; no target move
+was needed. The real remaining blocker was narrower:
+`AppConnectDance.resolveEndpoint` called `BrokerAppEndpointClient.fetchEndpoint`
+with no injection seam, so reaching its branches still required a live
+broker. #0365 added that one seam (plus a `sleep` seam for the poll loop)
+instead of moving any target. The generalizable lesson stands (a
+target-layout decision can masquerade as a test-coverage gap) but the
+specific diagnosis here didn't survive contact with the next issue that
+touched the same code — a concrete instance of this same file's own §4
+("Documentation that is confidently wrong"). (Round 1 review of #0365 itself
+caught this update's own first draft mis-attributing the dependency to
+#0380 — the same lesson, one level deeper.)
+
 ---
 
 ## 12. Guidance that contradicts itself

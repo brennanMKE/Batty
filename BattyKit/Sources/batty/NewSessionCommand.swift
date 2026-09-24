@@ -387,10 +387,12 @@ struct NewSessionCommand: ParsableCommand {
     /// intercepts before any real call would happen) to exercise every
     /// branch below — including the `matches.count > 1` ambiguity branch,
     /// which round 3 review shipped with no test because reaching it
-    /// looked like it required a real endpoint. It doesn't: only
-    /// `fetchPreDispatchState` still reaches the genuinely non-injectable
-    /// `BrokerAppEndpointClient.fetchEndpoint` (`issues/0365.md`'s gap
-    /// still applies there, just not here).
+    /// looked like it required a real endpoint. It doesn't: `run()` itself
+    /// still calls `BrokerAppEndpointClient.fetchEndpoint` directly and
+    /// non-injectably in two places — `fetchPreDispatchState`, and the
+    /// `.notRunningYet` case's `resolveEndpoint:` closure passed to
+    /// `pollForNewSession` above — the same shape of gap #0365 closed for
+    /// `AppConnectDance.resolveEndpoint`, still open in both of these.
     static func pollForNewSession(
         path: String,
         snapshot: TopologyPayload,
