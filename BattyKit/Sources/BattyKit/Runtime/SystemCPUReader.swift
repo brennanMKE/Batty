@@ -57,10 +57,26 @@ public nonisolated enum SystemCPUReader {
             )
         }
 
+        let rawTicks = Array(UnsafeBufferPointer(start: cpuInfo, count: Int(numCpuInfo)))
+        return parseCoreTicks(numCpus: Int(numCpus), rawTicks: rawTicks) ?? []
+    }
+
+    /// Turns the raw `host_processor_info` output into `CoreTicks`, kept
+    /// separate from `currentTicks()` so tests can feed malformed
+    /// `(numCpus, rawTicks)` pairs without a syscall seam. `numCpus` and
+    /// `rawTicks.count` are independent kernel-reported values (#0352) —
+    /// `nil` on a non-positive `numCpus` or a `rawTicks` shorter than
+    /// `numCpus * CPU_STATE_MAX` guards the indexing below against an
+    /// out-of-bounds read; the caller treats `nil` the same as the existing
+    /// non-`KERN_SUCCESS` failure path.
+    static func parseCoreTicks(numCpus: Int, rawTicks: [Int32]) -> [CoreTicks]? {
+        guard numCpus > 0 else { return nil }
         let stride = Int(CPU_STATE_MAX)
+        guard rawTicks.count >= numCpus * stride else { return nil }
+
         var cores: [CoreTicks] = []
-        cores.reserveCapacity(Int(numCpus))
-        for index in 0..<Int(numCpus) {
+        cores.reserveCapacity(numCpus)
+        for index in 0..<numCpus {
             let base = index * stride
             // Review round 1 (#0314): `processor_info_array_t` is
             // `integer_t *` — SIGNED Int32. A plain `UInt32(_:)` init traps
@@ -74,10 +90,10 @@ public nonisolated enum SystemCPUReader {
             // quantities, so the bit pattern is the only thing that matters.
             cores.append(
                 CoreTicks(
-                    user: UInt32(bitPattern: cpuInfo[base + Int(CPU_STATE_USER)]),
-                    system: UInt32(bitPattern: cpuInfo[base + Int(CPU_STATE_SYSTEM)]),
-                    idle: UInt32(bitPattern: cpuInfo[base + Int(CPU_STATE_IDLE)]),
-                    nice: UInt32(bitPattern: cpuInfo[base + Int(CPU_STATE_NICE)])
+                    user: UInt32(bitPattern: rawTicks[base + Int(CPU_STATE_USER)]),
+                    system: UInt32(bitPattern: rawTicks[base + Int(CPU_STATE_SYSTEM)]),
+                    idle: UInt32(bitPattern: rawTicks[base + Int(CPU_STATE_IDLE)]),
+                    nice: UInt32(bitPattern: rawTicks[base + Int(CPU_STATE_NICE)])
                 )
             )
         }

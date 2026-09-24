@@ -28,6 +28,41 @@ struct SystemCPUReaderTests {
         let percentages = try #require(SystemCPUReader.percentages(from: ticks, to: ticks))
         #expect(percentages == [0.0])
     }
+
+    @Test func parseCoreTicksParsesAWellFormedBuffer() throws {
+        // CPU_STATE_MAX is 4, ordered USER, SYSTEM, IDLE, NICE.
+        let rawTicks: [Int32] = [
+            10, 20, 30, 40,
+            1, 2, 3, 4,
+        ]
+        let cores = try #require(SystemCPUReader.parseCoreTicks(numCpus: 2, rawTicks: rawTicks))
+        #expect(cores == [
+            CoreTicks(user: 10, system: 20, idle: 30, nice: 40),
+            CoreTicks(user: 1, system: 2, idle: 3, nice: 4),
+        ])
+    }
+
+    @Test func parseCoreTicksFailsWhenBufferIsShorterThanNumCpusTimesStateMax() {
+        // Claims 2 cores but only supplies enough integers for one
+        // (#0352 — the kernel-reported counts can disagree).
+        let rawTicks: [Int32] = [10, 20, 30, 40]
+        #expect(SystemCPUReader.parseCoreTicks(numCpus: 2, rawTicks: rawTicks) == nil)
+    }
+
+    @Test func parseCoreTicksFailsWhenNumCpusIsZero() {
+        #expect(SystemCPUReader.parseCoreTicks(numCpus: 0, rawTicks: []) == nil)
+    }
+
+    @Test func parseCoreTicksFailsWhenNumCpusIsNegative() {
+        let rawTicks: [Int32] = [10, 20, 30, 40]
+        #expect(SystemCPUReader.parseCoreTicks(numCpus: -1, rawTicks: rawTicks) == nil)
+    }
+
+    @Test func parseCoreTicksAcceptsAnExactlySizedBuffer() throws {
+        let rawTicks: [Int32] = [1, 2, 3, 4]
+        let cores = try #require(SystemCPUReader.parseCoreTicks(numCpus: 1, rawTicks: rawTicks))
+        #expect(cores == [CoreTicks(user: 1, system: 2, idle: 3, nice: 4)])
+    }
 }
 
 struct CoreCPUDeltaTrackerTests {
