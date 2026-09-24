@@ -1,5 +1,6 @@
 // LMStudioDashboardWiringTests.swift
 
+import Darwin
 import Foundation
 import Testing
 @testable import BattyKit
@@ -259,6 +260,106 @@ struct LMStudioDashboardWiringTests {
         #expect(model.isRunning == false)
         #expect(runtime.isRunning == false)
         #expect(content.lifecyclePhase == .tornDown)
+    }
+
+    // MARK: - #0425: a reap left by a pane already gone from the model
+
+    /// The quit-path test above proves `DeferredTeardownWaiting`'s walk
+    /// reaches a pane still in this window's `sessions` tree. That walk
+    /// cannot reach a pane closed moments before quit — `closePane` removes
+    /// it from the tree before any later walk could find it — so a
+    /// `SIGTERM`-ignoring child's reap in that case is reachable only
+    /// through `PendingTeardownReapRegistry`, independent of the model
+    /// entirely (#0425). This pins that: close the pane (tearing down and
+    /// removing it from the model), then drain the same registry
+    /// `applicationWillTerminate` drains. It does not prove
+    /// `drainSynchronously()` is the one that sends the killing `SIGKILL` —
+    /// `tearDown()`'s own detached task starts with the same bound and may
+    /// get there first. What it proves is that `drainSynchronously()`
+    /// doesn't return until both children are actually dead: the assertions
+    /// run immediately after it returns, with no `await` or extra wait of
+    /// their own, so passing requires `drainSynchronously()`'s own blocking
+    /// wait to have covered the outcome — the detached task alone, left to
+    /// run on its own schedule, cannot guarantee that within this
+    /// assertion window.
+    ///
+    /// A temp-file readiness handshake, not a stdout `Pipe` (#0424's
+    /// caveat): `spawnModelStream`/`spawnRuntimeStream` replace the
+    /// process's own `standardOutput`/`standardError` with pipes and
+    /// readability handlers they own, so a test-owned pipe on the same
+    /// process would race the content's own handler for the same bytes.
+    @Test func registryDrainReapsATermIgnoringSubprocessLeftByAClosedPane() throws {
+        final class ProcessBox {
+            var model: Process?
+            var runtime: Process?
+        }
+        let box = ProcessBox()
+        let registry = PendingTeardownReapRegistry()
+
+        let readyDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-0425-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: readyDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: readyDirectory) }
+        let modelReadyURL = readyDirectory.appendingPathComponent("model-ready")
+        let runtimeReadyURL = readyDirectory.appendingPathComponent("runtime-ready")
+
+        func makeIgnoringSIGTERMProcess(readyFileURL: URL) -> Process {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", "trap '' TERM; echo ready > '\(readyFileURL.path)'; exec sleep 60"]
+            return process
+        }
+
+        func waitForReadyFile(_ url: URL, timeout: TimeInterval = 5) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            while !FileManager.default.fileExists(atPath: url.path), Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+
+        let content = LMStudioDashboardPaneContent()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { LMStudioModelsResponse(models: []) }
+        content.teardownWaitBound = 0.2
+        content.teardownReapRegistry = registry
+        content.makeModelStreamProcess = { _ in
+            let process = makeIgnoringSIGTERMProcess(readyFileURL: modelReadyURL)
+            box.model = process
+            return process
+        }
+        content.makeRuntimeStreamProcess = { _ in
+            let process = makeIgnoringSIGTERMProcess(readyFileURL: runtimeReadyURL)
+            box.runtime = process
+            return process
+        }
+
+        let (window, session, pane) = makeWindow(paneContent: content)
+        // A sibling pane so `closePane` doesn't refuse for being the
+        // window's last one, exactly like this suite's other `closePane`
+        // tests.
+        session.tree.splitFocusedPane(direction: .horizontal)
+
+        #expect(waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
+        #expect(waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
+
+        let model = try #require(box.model)
+        let runtime = try #require(box.runtime)
+        defer {
+            if model.isRunning { kill(model.processIdentifier, SIGKILL) }
+            if runtime.isRunning { kill(runtime.processIdentifier, SIGKILL) }
+        }
+        #expect(model.isRunning)
+        #expect(runtime.isRunning)
+
+        let outcome = window.closePane(id: pane.id, refuseIfAppsLastPane: false)
+        #expect(outcome == .closed)
+        #expect(!session.tree.allPanes.contains { $0.id == pane.id }, "sanity check: the pane must actually be gone from the model, or this isn't exercising the #0425 gap")
+
+        registry.drainSynchronously()
+
+        #expect(model.isRunning == false)
+        #expect(runtime.isRunning == false)
     }
 
     @Test func terminalPanesAreUnaffectedByTearDownAllPaneContent() {

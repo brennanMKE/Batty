@@ -47,6 +47,12 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     public var makeRuntimeStreamProcess: (URL) -> Process = { url in
         LMStudioCLI.makeLogStreamProcess(executableURL: url, source: "runtime", includeStats: false)
     }
+    /// Where `scheduleTeardownReap` registers a pending reap so
+    /// `applicationWillTerminate` can drain it even after this pane has
+    /// left `AppStateStore.windows` (#0425). Defaults to the process-wide
+    /// singleton; a test injects a fresh instance so it can't observe
+    /// another test's pending reaps.
+    public var teardownReapRegistry: PendingTeardownReapRegistry = .shared
 
     // MARK: - Tunables
 
@@ -749,8 +755,11 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     private func scheduleTeardownReap(for process: Process, label: String) {
         let bound = teardownWaitBound
         pendingTeardownReaps.append((process, label))
+        let registry = teardownReapRegistry
+        let token = registry.register(process: process, label: label, bound: bound)
         let task = Task.detached(priority: .utility) {
             Self.reapAfterTerminate(process, bound: bound, label: label)
+            registry.deregister(token)
         }
         pendingTeardownReapTasks.append(task)
     }
@@ -828,6 +837,12 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 /// conformance on the quit path only and blocks briefly instead, which is
 /// an acceptable trade there (the app is exiting anyway) and nowhere else
 /// in the lifecycle.
+///
+/// This walk only reaches a reap whose owning pane is still reachable from
+/// `AppStateStore.windows` at quit time. `PendingTeardownReapRegistry`
+/// (#0425) covers what this walk cannot: a reap left behind by a pane, tab,
+/// session, or window closed (and already removed from the model) moments
+/// before quit. Both conformers register there too, in `scheduleTeardownReap`.
 protocol DeferredTeardownWaiting: AnyObject {
     /// Blocks the calling thread until every reap `tearDown()` scheduled has
     /// actually completed (escalating to `SIGKILL` exactly as `tearDown()`

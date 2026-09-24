@@ -249,8 +249,16 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     /// sleep.
     private var pendingReapTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
 
-    public init(teardownWaitBound: TimeInterval = 0.3) {
+    /// Where `scheduleTeardownReap` registers a pending reap so
+    /// `applicationWillTerminate` can drain it even after this scanner's
+    /// pane has left `AppStateStore.windows` (#0425). Defaults to the
+    /// process-wide singleton; a test injects a fresh instance so it can't
+    /// observe another test's pending reaps.
+    private let teardownReapRegistry: PendingTeardownReapRegistry
+
+    public init(teardownWaitBound: TimeInterval = 0.3, teardownReapRegistry: PendingTeardownReapRegistry = .shared) {
         self.teardownWaitBound = teardownWaitBound
+        self.teardownReapRegistry = teardownReapRegistry
     }
 
     public func scan(atPath path: String) async -> GitStatusScanResult {
@@ -348,10 +356,13 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     private func scheduleTeardownReap(for process: Process, label: String) {
         let bound = teardownWaitBound
         let id = ObjectIdentifier(process)
+        let registry = teardownReapRegistry
+        let token = registry.register(process: process, label: label, bound: bound)
         lock.lock()
         pendingReaps[id] = (process, label)
         let task = Task.detached(priority: .utility) { [weak self] in
             Self.reapAfterTerminate(process, bound: bound, label: label)
+            registry.deregister(token)
             // Entries are pruned here, on the reap's own completion, rather
             // than only at the two snapshot-and-clear call sites below — a
             // scanner that outlives more than one `terminateAndWaitBriefly()`

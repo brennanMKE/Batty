@@ -453,6 +453,38 @@ struct ProcessGitStatusScannerTests {
         #expect(!process.isRunning, "waitForPendingTeardownSynchronously() must not return before the process is reaped")
     }
 
+    // MARK: - #0425: the scanner registers into the shared reap registry too
+
+    /// `waitForPendingTeardownSynchronously()` above only helps a caller
+    /// that still holds a reference to this `GitStatusPaneContent`/scanner
+    /// — reachable only while the owning pane is still in
+    /// `AppStateStore.windows`. #0425's actual gap is a pane, tab, session,
+    /// or window closed moments before quit, which has already left that
+    /// tree; nothing is left to call `waitForPendingTeardownSynchronously()`
+    /// on. This proves `scheduleTeardownReap` also registers with
+    /// `PendingTeardownReapRegistry` (injected here, not `.shared`), so
+    /// `drainSynchronously()` alone — with no `waitForPendingTeardownSynchronously()`
+    /// call at all — still reaps the stubborn process.
+    @Test func registryDrainReapsAStubbornProcessWithNoWaitForPendingTeardownCall() throws {
+        let registry = PendingTeardownReapRegistry()
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, teardownReapRegistry: registry)
+        let (process, readyPipe) = Self.makeStubbornProcess()
+        try process.run()
+        Self.waitForReady(readyPipe)
+        let pid = process.processIdentifier
+        defer {
+            if process.isRunning { kill(pid, SIGKILL) }
+        }
+        scanner.addActiveProcess(process)
+
+        scanner.terminateAndWaitBriefly()
+        #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
+
+        registry.drainSynchronously()
+
+        #expect(!process.isRunning, "drainSynchronously() must reap a process this scanner scheduled, even with no waitForPendingTeardownSynchronously() call")
+    }
+
     @Test func terminateIfRunningSignalsEveryOverlappingTrackedProcess() throws {
         let scanner = ProcessGitStatusScanner()
         let processA = Self.makeSleepProcess()

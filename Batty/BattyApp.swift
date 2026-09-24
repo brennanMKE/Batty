@@ -136,6 +136,14 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         for window in AppStateStore.shared.windows {
             window.tearDownAllPaneContentSynchronouslyForQuit()
         }
+        // #0425: the walk above only reaches a reap whose owning pane is
+        // still in `AppStateStore.windows` at this point. A pane, tab,
+        // session, or window closed moments before quit already left that
+        // tree, so its `SIGTERM`-ignoring child's reap was reachable only by
+        // racing process exit against the detached task `tearDown()`
+        // scheduled for it. `PendingTeardownReapRegistry` is independent of
+        // the model tree — draining it here catches that reap regardless.
+        PendingTeardownReapRegistry.shared.drainSynchronously()
     }
 }
 
