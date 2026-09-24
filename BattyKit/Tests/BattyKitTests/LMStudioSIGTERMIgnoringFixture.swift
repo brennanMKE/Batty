@@ -15,13 +15,15 @@ import Foundation
 /// child on the default disposition — the `SIGKILL` branch never runs, and
 /// the test passes whether or not escalation actually works (#0422 hit this
 /// for real: 20/20 kills on `SIGTERM` with no delay). `makeProcess` instead
-/// has the fixture write a ready file right after the `trap` builtin
-/// returns; `waitForReadyFile` polls for it. A stdout `Pipe` won't do this
-/// safely for the LM Studio content: `spawnModelStream`/`spawnRuntimeStream`
-/// replace the process's own `standardOutput`/`standardError` with pipes and
-/// readability handlers they own, so a test-owned pipe on the same process
-/// would race the content's own handler for the same bytes — a separate
-/// file avoids that entirely.
+/// has the fixture write into a FIFO right after the `trap` builtin
+/// returns; `waitForReadyFile` awaits that write as an event, through
+/// `ChildProcessReadiness`'s FIFO variant. A stdout `Pipe` won't do this
+/// safely for the LM Studio content: `spawnModelStream`/
+/// `spawnRuntimeStream` replace the process's own `standardOutput`/
+/// `standardError` with pipes and readability handlers they own, so a
+/// test-owned pipe on the same process would race the content's own
+/// handler for the same bytes — a FIFO node the child writes into
+/// separately from its stdout avoids that entirely.
 ///
 /// `exec` (not a bare `sleep 60`) replaces the shell's own process image
 /// with `sleep` instead of forking it; `SIG_IGN` survives `exec`, so the
@@ -33,25 +35,24 @@ import Foundation
 /// grandchild for up to its own 60s lifetime.
 enum LMStudioSIGTERMIgnoringFixture {
     /// A process that installs a `SIGTERM` trap, signals readiness by
-    /// writing to `readyFileURL`, then execs into `sleep 60`. Callers must
-    /// wait on `waitForReadyFile(_:)` before treating the process's
-    /// disposition as installed.
+    /// writing into the FIFO at `readyFileURL` (created by
+    /// `makeReadyDirectory`/this function — see below), then execs into
+    /// `sleep 60`. Callers must wait on `waitForReadyFile(_:)` before
+    /// treating the process's disposition as installed.
     static func makeProcess(readyFileURL: URL) -> Process {
+        ChildProcessReadiness.makeFIFO(at: readyFileURL.path)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", "trap '' TERM; echo ready > '\(readyFileURL.path)'; exec sleep 60"]
         return process
     }
 
-    /// Polls the filesystem for the ready file `makeProcess`'s fixture
-    /// writes right after installing its `SIGTERM` trap — the deterministic
-    /// replacement for a fixed sleep before the test sends `SIGTERM`.
-    static func waitForReadyFile(_ url: URL, timeout: TimeInterval = 5) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !FileManager.default.fileExists(atPath: url.path), Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-        return FileManager.default.fileExists(atPath: url.path)
+    /// Awaits the FIFO write `makeProcess`'s fixture makes right after
+    /// installing its `SIGTERM` trap, as an event (`ChildProcessReadiness`)
+    /// — the deterministic replacement for a fixed sleep, or a
+    /// `Thread.sleep` existence poll, before the test sends `SIGTERM`.
+    static func waitForReadyFile(_ url: URL, bound: TimeInterval = 5) async -> Bool {
+        await ChildProcessReadiness.waitForFIFOReady(at: url.path, bound: bound)
     }
 
     /// A fresh temp directory for one test's ready file(s), plus a matching

@@ -262,6 +262,19 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   remove `Batty Beta.app`, the `batty-beta` CLI symlink, and Beta's
   Application Support directory. `./build.sh package --teardown` prints
   the same steps.
+- [`async-test-seams.md`](async-test-seams.md) — the shared pieces #0428
+  built so BattyKit's async tests can stop waiting on real time: the
+  injected `SchedulingClock`/`TestClock`, the `ChildProcessReadiness`
+  pipe/FIFO helper, the `TeardownReapGate` for proving "returns without
+  blocking" structurally, and the four completion-signal shapes (returned
+  `Task`, callback/continuation, `AsyncStream`, injected clock) with the
+  who-creates-it/test-only/hang-guard/no-production-change rules for each.
+  Also records the answers to #0427's three "verify" questions
+  (`posix_spawn` argv readability, `CLOCK_UPTIME_RAW`, when
+  `Process.isRunning` flips after a reap) with their evidence. Read this
+  before writing or rewriting any BattyKit unit test that waits on
+  periodic work, a subprocess, or a deferred callback — see also
+  `AGENTS.md` "Asynchronous tests (binding)".
 - [`xpc/`](xpc/README.md) — vendored reference docs from the RemoteControl
   XPC prototype (`xpc-cli-architecture.md`, `cli-embedding-and-install.md`,
   `swift-concurrency-and-xpc.md`, `build-and-release.md`, `README.md`,

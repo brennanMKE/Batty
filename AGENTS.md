@@ -127,6 +127,7 @@ and no assertions on elapsed wall-clock time. They make tests slow and unreliabl
   but that bound is a failure guard, never the mechanism the test relies on.
 
 See `docs/isolate-userdefaults-in-tests.md` for the companion rule on `UserDefaults`.
+See `docs/async-test-seams.md` for the shared injected clock, child-readiness helper, reap gate, and completion-signal conventions (`#0428`) that BattyKit's async tests route through instead of each inventing their own.
 
 ## UI test automation (binding)
 

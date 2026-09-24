@@ -255,10 +255,20 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     /// process-wide singleton; a test injects a fresh instance so it can't
     /// observe another test's pending reaps.
     private let teardownReapRegistry: PendingTeardownReapRegistry
+    /// `#0428`: lets a test hold the deferred reap closed so
+    /// `terminateAndWaitBriefly()` returning while the child is still alive
+    /// and the gate is still closed proves the wait was really moved off
+    /// the caller, structurally — not by timing the call
+    /// (`ProcessGitStatusScannerTests
+    /// .terminateAndWaitBrieflyReturnsImmediatelyEvenWhenTheProcessIgnoresSIGTERM`).
+    /// Defaults to the always-open production gate, the same
+    /// defaulted-real-value shape `teardownReapRegistry` already uses.
+    private let reapGate: TeardownReapGate
 
-    public init(teardownWaitBound: TimeInterval = 0.3, teardownReapRegistry: PendingTeardownReapRegistry = .shared) {
+    public init(teardownWaitBound: TimeInterval = 0.3, teardownReapRegistry: PendingTeardownReapRegistry = .shared, reapGate: TeardownReapGate = OpenTeardownReapGate()) {
         self.teardownWaitBound = teardownWaitBound
         self.teardownReapRegistry = teardownReapRegistry
+        self.reapGate = reapGate
     }
 
     public func scan(atPath path: String) async -> GitStatusScanResult {
@@ -357,10 +367,12 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         let bound = teardownWaitBound
         let id = ObjectIdentifier(process)
         let registry = teardownReapRegistry
+        let gate = reapGate
         let token = registry.register(process: process, label: label, bound: bound)
         lock.lock()
         pendingReaps[id] = (process, label)
         let task = Task.detached(priority: .utility) { [weak self] in
+            await gate.waitUntilOpen()
             Self.reapAfterTerminate(process, bound: bound, label: label)
             registry.deregister(token)
             // Entries are pruned here, on the reap's own completion, rather

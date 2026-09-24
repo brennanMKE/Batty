@@ -372,8 +372,8 @@ struct LMStudioDashboardPaneContentTests {
 
         content.setUp(visible: true)
 
-        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
-        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
+        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
+        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)

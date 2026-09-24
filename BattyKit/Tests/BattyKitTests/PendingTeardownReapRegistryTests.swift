@@ -38,13 +38,6 @@ struct PendingTeardownReapRegistryTests {
         return (process, readyPipe)
     }
 
-    /// Blocks until the child's readiness line arrives — i.e. until
-    /// `trap '' TERM` has actually run, not merely until `Process.run()`
-    /// returned (which only proves `fork`/`exec` was requested).
-    private static func waitForReady(_ pipe: Pipe) {
-        _ = pipe.fileHandleForReading.availableData
-    }
-
     // MARK: - register / deregister
 
     @Test func registerThenDeregisterLeavesNothingPending() throws {
@@ -83,11 +76,11 @@ struct PendingTeardownReapRegistryTests {
     /// removed from the registry, once `drainSynchronously()` returns —
     /// `SIGTERM` alone does not kill this fixture; only the `SIGKILL`
     /// escalation `drainSynchronously()` runs internally does.
-    @Test func drainSynchronouslyKillsAndReapsARegisteredSigtermIgnoringProcess() throws {
+    @Test func drainSynchronouslyKillsAndReapsARegisteredSigtermIgnoringProcess() async throws {
         let registry = PendingTeardownReapRegistry()
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
-        Self.waitForReady(readyPipe)
+        #expect(await ChildProcessReadiness.waitForData(on: readyPipe), "child never signaled readiness")
         let pid = process.processIdentifier
         defer { if process.isRunning { kill(pid, SIGKILL) } }
 
@@ -101,22 +94,27 @@ struct PendingTeardownReapRegistryTests {
         #expect(registry.pendingCountForTesting == 0)
 
         // No orphan: confirm the OS has actually reaped the pid, not just
-        // that `Process.isRunning` (a Foundation-side flag) flipped.
-        var killResult: Int32 = 0
-        for _ in 0..<50 {
-            killResult = kill(pid, 0)
-            if killResult != 0 { break }
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        #expect(killResult != 0, "pid \(pid) must not still be signalable after drainSynchronously() — orphaned process")
+        // that `Process.isRunning` (a Foundation-side flag) flipped. A
+        // single check, no poll: #0428's verify-question-3 experiment
+        // (`kill(pid, 0)` immediately after a `Process.isRunning`-polling
+        // reap loop like this one returns) found `isRunning` and
+        // `kill(pid, 0)` agreeing 10/10 with no extra wait — by the time
+        // `Process.isRunning` observes `false`, the kernel has already
+        // reaped the child. The original `Thread.sleep`-polled retry loop
+        // this replaces couldn't stay as written once this test became
+        // `async` for the readiness-helper migration above
+        // (`NS_SWIFT_UNAVAILABLE_FROM_ASYNC`) — so this single check lands
+        // here as a forced, minimal side effect, ahead of #0432, which owns
+        // this row in #0427's inventory and can treat it as already done.
+        #expect(kill(pid, 0) != 0, "pid \(pid) must not still be signalable after drainSynchronously() — orphaned process")
     }
 
-    @Test func drainSynchronouslyReapsEveryRegisteredEntryIndependently() throws {
+    @Test func drainSynchronouslyReapsEveryRegisteredEntryIndependently() async throws {
         let registry = PendingTeardownReapRegistry()
         let fixtures = [Self.makeStubbornProcess(), Self.makeStubbornProcess()]
         for (process, readyPipe) in fixtures {
             try process.run()
-            Self.waitForReady(readyPipe)
+            #expect(await ChildProcessReadiness.waitForData(on: readyPipe), "child never signaled readiness")
         }
         defer {
             for (process, _) in fixtures where process.isRunning {

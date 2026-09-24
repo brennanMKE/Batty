@@ -391,29 +391,40 @@ struct ProcessGitStatusScannerTests {
     }
 
     @Test func terminateAndWaitBrieflyReturnsImmediatelyEvenWhenTheProcessIgnoresSIGTERM() async throws {
-        // Lowered only to keep the test fast; the assertion on the call's
-        // own elapsed time is what matters, not the specific bound — same
-        // shape as `LMStudioDashboardPaneContentTests
-        // .tearDownReturnsPromptlyEvenWhenBothChildrenIgnoreSIGTERM()`
-        // (#0354), including its 0.2s bound / 50ms-elapsed margin.
-        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2)
+        // #0428's reap gate: held closed, the deferred reap's
+        // `Task.detached` can't even start `reapAfterTerminate`, so the
+        // child being alive right after `terminateAndWaitBriefly()`
+        // returns is a *structural* proof the call didn't wait on the
+        // reap — not a timing guess like the `elapsed < .milliseconds(50)`
+        // this replaces, which could pass on a fast machine even if the
+        // call secretly blocked a little.
+        let gate = TestTeardownReapGate()
+        defer { gate.open() } // safety net: never leave a parked waiter behind, even if an assertion above fails first
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, reapGate: gate)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
-        Self.waitForReady(readyPipe)
+        #expect(await ChildProcessReadiness.waitForData(on: readyPipe), "child never signaled readiness")
         let pid = process.processIdentifier
         defer {
             if process.isRunning { kill(pid, SIGKILL) }
         }
         scanner.addActiveProcess(process)
 
-        let start = ContinuousClock.now
         scanner.terminateAndWaitBriefly()
-        let elapsed = start.duration(to: .now)
 
-        // Nowhere near `teardownWaitBound` (0.2s) — proves the call didn't
-        // block waiting for the SIGTERM-ignoring child to exit.
-        #expect(elapsed < .milliseconds(50), "terminateAndWaitBriefly() blocked the caller for \(elapsed)")
+        // The gate's closed state is only load-bearing proof if something
+        // is actually parked on it — awaiting this confirms a caller has
+        // actually reached `waitUntilOpen()`, rather than assuming the
+        // detached reap task got there the instant
+        // `terminateAndWaitBriefly()` returns.
+        guard await gate.waitForParkedWaiter() else {
+            Issue.record("waitForParkedWaiter() never reached its threshold")
+            return
+        }
+
         #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
+
+        gate.open()
 
         // The deferred reap must still actually kill it (SIGKILL
         // escalation) — teardown's "verifiably reaps its subprocesses"

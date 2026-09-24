@@ -178,6 +178,14 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// following the same protocol/closure-with-a-real-default seam
     /// `GitStatusPaneContent` already uses for `scanner`/`watcherFactory`.
     private let coreMetricsProvider: @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure>
+    /// `#0428`: the sampler's own notion of time. Injectable so
+    /// `ProcessStatusPaneLifecycleWiringTests` can drive the periodic
+    /// sampling loop with a `TestClock` — advancing it explicitly instead
+    /// of waiting on a real interval — without touching `samplingInterval`
+    /// itself. Defaults to the real `SystemClock`, following the same
+    /// defaulted-real-value shape `samplingInterval`/`coreMetricsProvider`
+    /// already use on this type.
+    private let clock: SchedulingClock
     private var samplingTask: Task<Void, Never>?
     /// `#0314` merge: the pid-keyed CPU-delta baseline (review round 1,
     /// B2 — mode B's followed pid changes tick to tick, and delta-ing
@@ -245,13 +253,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         target: Target?,
         tabLookup: @escaping (UUID) -> TabRuntime?,
         samplingInterval: Duration = .seconds(1),
-        coreMetricsProvider: @escaping @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure> = ProcessInspector.coreMetrics
+        coreMetricsProvider: @escaping @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure> = ProcessInspector.coreMetrics,
+        clock: SchedulingClock = SystemClock()
     ) {
         self.target = target
         self.hasNoSelection = target == nil
         self.tabLookup = tabLookup
         self.samplingInterval = samplingInterval
         self.coreMetricsProvider = coreMetricsProvider
+        self.clock = clock
     }
 
     // MARK: - PaneContentLifecycle
@@ -332,9 +342,10 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         performSample()
         if case .exited = runState { return }
         let interval = samplingInterval
+        let clock = clock
         samplingTask = Task { [weak self] in
             while true {
-                try? await Task.sleep(for: interval)
+                await clock.sleep(for: interval)
                 guard let self else { return }
                 if Task.isCancelled { return }
                 guard self.lifecyclePhase == .active else { return }

@@ -215,7 +215,7 @@ struct LMStudioDashboardWiringTests {
     /// variant blocks synchronously until a `SIGTERM`-ignoring subprocess is
     /// actually dead, with no separate `await` needed afterward — unlike
     /// `tearDownAllPaneContentActuallyKillsRealSubprocesses` above.
-    @Test func tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess() throws {
+    @Test func tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess() async throws {
         final class ProcessBox {
             var model: Process?
             var runtime: Process?
@@ -253,8 +253,8 @@ struct LMStudioDashboardWiringTests {
 
         let (window, _, _) = makeWindow(paneContent: content)
 
-        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
-        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
+        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
+        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)
@@ -301,7 +301,7 @@ struct LMStudioDashboardWiringTests {
     /// `tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess`
     /// above and by `LMStudioDashboardPaneContentTests`, so the three can't
     /// drift back into three different (and possibly racy) copies.
-    @Test func registryDrainReapsATermIgnoringSubprocessLeftByAClosedPane() throws {
+    @Test func registryDrainReapsATermIgnoringSubprocessLeftByAClosedPane() async throws {
         final class ProcessBox {
             var model: Process?
             var runtime: Process?
@@ -338,8 +338,8 @@ struct LMStudioDashboardWiringTests {
         // tests.
         session.tree.splitFocusedPane(direction: .horizontal)
 
-        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
-        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
+        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
+        #expect(await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)

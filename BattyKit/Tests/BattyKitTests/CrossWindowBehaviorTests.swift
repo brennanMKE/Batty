@@ -433,17 +433,49 @@ struct CrossWindowBehaviorTests {
     /// Complements the synchronous-safety test above: the deferred
     /// termination must still actually happen on a later run-loop turn, not
     /// be silently dropped.
+    /// #0428: `terminateHandler` is already a callback, so a
+    /// `CheckedContinuation` resumed from it — rather than a fixed
+    /// `Task.sleep` hoping the `DispatchQueue.main.async`-deferred check
+    /// has run by then — is the completion signal. `terminated` is still
+    /// checked synchronously, immediately after `removeWindow` returns and
+    /// before the continuation's `await`, to keep the "not synchronous"
+    /// half of the original assertion. The 5s `Task.sleep` here is a hang
+    /// guard only (`AGENTS.md` "Asynchronous tests"): it never fires in a
+    /// passing run — only if a regression means `terminateHandler` is never
+    /// called at all, so the test fails with a clear message instead of
+    /// hanging the suite. `resumeOnce`'s lock covers the genuine race
+    /// between that guard and the real callback.
     @Test func removeWindowOnLastWindowEventuallyTerminates() async {
         let store = AppStateStore()
         var terminated = false
-        store.terminateHandler = { terminated = true }
         let onlyWindowID = store.windows[0].id
+        let resumeLock = NSLock()
+        var didResume = false
+        var hangGuardTask: Task<Void, Never>?
 
-        store.removeWindow(id: onlyWindowID)
-        #expect(terminated == false)
-
-        // Let the DispatchQueue.main.async-deferred check run.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            func resumeOnce() {
+                resumeLock.lock()
+                defer { resumeLock.unlock() }
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume()
+            }
+            store.terminateHandler = {
+                terminated = true
+                resumeOnce()
+            }
+            store.removeWindow(id: onlyWindowID)
+            #expect(terminated == false, "terminateHandler must not fire synchronously from inside removeWindow")
+            hangGuardTask = Task {
+                try? await Task.sleep(for: .seconds(5))
+                resumeOnce()
+            }
+        }
+        // The real callback already won the race in the passing case —
+        // cancel the hang guard rather than leaving it sleeping in the
+        // background for the rest of its 5s.
+        hangGuardTask?.cancel()
 
         #expect(terminated == true,
                 "the deferred terminate check must still terminate once the run loop turns over")
