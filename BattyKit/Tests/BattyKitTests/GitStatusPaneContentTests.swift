@@ -20,7 +20,7 @@ import Testing
 // control (`GitStatusPaneContent`'s own methods, which call into these
 // doubles, are themselves MainActor-isolated); a real conformer needs its
 // own thread-safety for genuine background-thread work, which
-// `ProcessGitStatusScanner`'s lock-guarded `activeProcess` provides.
+// `ProcessGitStatusScanner`'s lock-guarded `activeProcesses` provides.
 
 private nonisolated final class RecordingWatcher: GitStatusWatching, @unchecked Sendable {
     private(set) var startCount = 0

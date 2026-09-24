@@ -299,4 +299,101 @@ struct ProcessGitStatusScannerTests {
         _ = await scanner.scan(atPath: dir)
         scanner.terminateIfRunning() // the process has already exited — must not crash
     }
+
+    // MARK: - Overlapping scans
+    //
+    // `changeDirectory(to:)` suspends the current scan without waiting for
+    // its subprocess to exit (fire-and-forget `terminateIfRunning()`) and
+    // immediately starts a new one, so two `run()` calls can genuinely be
+    // in flight on the same `ProcessGitStatusScanner` at once. These tests
+    // register real, independently-spawned `/bin/sleep` processes through
+    // the `addActiveProcess`/`removeActiveProcess` testability hooks —
+    // exactly the calls `run()` itself makes around a real `git`
+    // subprocess — so the tracking behavior is exercised deterministically
+    // instead of racing an actual git subprocess's short, nondeterministic
+    // duration.
+
+    /// A process that runs long enough to still be alive when the test
+    /// asserts on it, but that dies immediately on `SIGTERM`: `sleep` has
+    /// no handler for it, so the default disposition (terminate) applies
+    /// — so assertions check final state, not timing.
+    private static func makeSleepProcess(seconds: Int = 30) -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = [String(seconds)]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        return process
+    }
+
+    @Test func terminateAndWaitBrieflyTerminatesEveryOverlappingTrackedProcess() throws {
+        let scanner = ProcessGitStatusScanner()
+        let processA = Self.makeSleepProcess()
+        let processB = Self.makeSleepProcess()
+        try processA.run()
+        try processB.run()
+        defer {
+            if processA.isRunning { processA.terminate() }
+            if processB.isRunning { processB.terminate() }
+        }
+
+        // Simulates the exact interleaving that overlaps scans: scan B's
+        // `run()` registers its process while scan A's is still tracked too.
+        scanner.addActiveProcess(processA)
+        scanner.addActiveProcess(processB)
+
+        scanner.terminateAndWaitBriefly()
+
+        #expect(!processA.isRunning, "an older scan's process must not survive teardown")
+        #expect(!processB.isRunning, "a newer, overlapping scan's process must not survive teardown")
+    }
+
+    @Test func terminateIfRunningSignalsEveryOverlappingTrackedProcess() throws {
+        let scanner = ProcessGitStatusScanner()
+        let processA = Self.makeSleepProcess()
+        let processB = Self.makeSleepProcess()
+        try processA.run()
+        try processB.run()
+        defer {
+            if processA.isRunning { processA.terminate() }
+            if processB.isRunning { processB.terminate() }
+        }
+
+        scanner.addActiveProcess(processA)
+        scanner.addActiveProcess(processB)
+
+        scanner.terminateIfRunning()
+        processA.waitUntilExit()
+        processB.waitUntilExit()
+
+        #expect(!processA.isRunning)
+        #expect(!processB.isRunning)
+    }
+
+    /// The root-cause scenario, pinned directly: a scan that finishes and
+    /// clears its own slot (`removeActiveProcess`, mirroring `run()`'s own
+    /// `defer`) must not clobber a different, still-running scan's entry.
+    @Test func aCompletedScansCleanupDoesNotClobberAnotherStillRunningScan() throws {
+        let scanner = ProcessGitStatusScanner()
+        let processA = Self.makeSleepProcess()
+        let processB = Self.makeSleepProcess()
+        try processA.run()
+        try processB.run()
+        defer {
+            if processA.isRunning { processA.terminate() }
+            if processB.isRunning { processB.terminate() }
+        }
+
+        scanner.addActiveProcess(processA)
+        scanner.addActiveProcess(processB)
+
+        // Scan A "finishes" and its own `run()` clears only its own entry.
+        scanner.removeActiveProcess(processA)
+
+        scanner.terminateIfRunning()
+        processB.waitUntilExit()
+
+        #expect(!processB.isRunning, "the still-tracked process must still be signaled")
+        #expect(processA.isRunning, "the untracked (already-cleared) process must be untouched by terminate calls")
+    }
 }

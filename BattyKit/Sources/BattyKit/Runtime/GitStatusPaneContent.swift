@@ -78,14 +78,16 @@ public protocol GitStatusScanning: Sendable {
     /// --cached` for staged) — the inline diff peek
     /// (`docs/design/git-status-view.md` §2.4). `nil` on any failure.
     nonisolated func diff(atPath path: String, relativeFilePath: String, staged: Bool) async -> String?
-    /// Sends `SIGTERM` to an in-flight scan, if any, without waiting for it
-    /// to exit. Used by `setVisible(false)` — hiding carries no synchronous
-    /// teardown requirement (`docs/pane-view-lifecycle.md` §5).
+    /// Sends `SIGTERM` to every subprocess currently in flight (a scan, a
+    /// diff, or both at once — `diff(atPath:)` can run alongside a scan),
+    /// without waiting for any of them to exit. Used by `setVisible(false)`
+    /// — hiding carries no synchronous teardown requirement
+    /// (`docs/pane-view-lifecycle.md` §5).
     nonisolated func terminateIfRunning()
-    /// Sends `SIGTERM`, then waits with a short, fixed bound (not an
-    /// unbounded `waitUntilExit()`) for the process to actually exit. Used
-    /// by `tearDown()` only — the one call site that carries the
-    /// synchronous-teardown obligation
+    /// Sends `SIGTERM` to every subprocess currently in flight, then waits
+    /// with a short, fixed bound (not an unbounded `waitUntilExit()`) for
+    /// all of them to actually exit. Used by `tearDown()` only — the one
+    /// call site that carries the synchronous-teardown obligation
     /// (`docs/pane-view-lifecycle.md` §5's "bounded, deliberately, not
     /// unbounded" reasoning).
     nonisolated func terminateAndWaitBriefly()
@@ -187,8 +189,16 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         var stderr: String
     }
 
+    /// Keyed by identity, not a single slot: `changeDirectory(to:)` can
+    /// suspend one scan (fire-and-forget `terminate()`, no wait) and start
+    /// a new one before the old subprocess has actually exited, and
+    /// `diff(atPath:)` can run alongside a scan (or alongside another
+    /// diff, on a quick hide/show), so more than one `run()` call can be
+    /// in flight on this scanner at once. Each `run()` removes only its
+    /// own entry on exit, so an older call's completion can never clobber
+    /// a still-running one's entry.
     private let lock = NSLock()
-    private var activeProcess: Process?
+    private var activeProcesses: [ObjectIdentifier: Process] = [:]
 
     public init() {}
 
@@ -219,18 +229,22 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     }
 
     public func terminateIfRunning() {
-        guard let process = currentProcess(), process.isRunning else { return }
-        process.terminate()
+        for process in snapshotActiveProcesses() where process.isRunning {
+            process.terminate()
+        }
     }
 
     public func terminateAndWaitBriefly() {
-        guard let process = currentProcess(), process.isRunning else { return }
-        process.terminate()
+        let processes = snapshotActiveProcesses().filter { $0.isRunning }
+        guard !processes.isEmpty else { return }
+        for process in processes {
+            process.terminate()
+        }
         let deadline = Date().addingTimeInterval(0.3)
-        while process.isRunning, Date() < deadline {
+        while processes.contains(where: { $0.isRunning }), Date() < deadline {
             Thread.sleep(forTimeInterval: 0.01)
         }
-        if process.isRunning {
+        if processes.contains(where: { $0.isRunning }) {
             logger.warning("teardown: git subprocess did not exit within the bounded wait; abandoning wait rather than blocking indefinitely")
         }
     }
@@ -360,8 +374,8 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        setCurrentProcess(process)
-        defer { setCurrentProcess(nil) }
+        addActiveProcess(process)
+        defer { removeActiveProcess(process) }
 
         do {
             try process.run()
@@ -387,16 +401,29 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         )
     }
 
-    private func currentProcess() -> Process? {
+    /// Testability hook only (`internal`, reached via `@testable import` in
+    /// `BattyKitTests`) — lets a test register a real, independently-spawned
+    /// `Process` (e.g. `/bin/sleep`) as if it were mid-`run()`, so overlap
+    /// and compare-and-clear behavior can be exercised deterministically
+    /// without racing an actual `git` subprocess's short, nondeterministic
+    /// duration.
+    func addActiveProcess(_ process: Process) {
         lock.lock()
-        defer { lock.unlock() }
-        return activeProcess
+        activeProcesses[ObjectIdentifier(process)] = process
+        lock.unlock()
     }
 
-    private func setCurrentProcess(_ process: Process?) {
+    /// Testability hook only — see `addActiveProcess(_:)`.
+    func removeActiveProcess(_ process: Process) {
         lock.lock()
-        activeProcess = process
+        activeProcesses.removeValue(forKey: ObjectIdentifier(process))
         lock.unlock()
+    }
+
+    private func snapshotActiveProcesses() -> [Process] {
+        lock.lock()
+        defer { lock.unlock() }
+        return Array(activeProcesses.values)
     }
 }
 
