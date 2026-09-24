@@ -10,7 +10,7 @@ import IOKit
 /// SMC key names are model-specific (§1.4's second open caveat), so a key
 /// resolving on one Mac and not another is an expected, not exceptional,
 /// outcome this type must represent honestly.
-public struct SMCThermalReading: Equatable, Sendable {
+public nonisolated struct SMCThermalReading: Equatable, Sendable {
     public let cpuTemperatureCelsius: Double?
     public let cpuTemperatureKey: String?
     public let fanCount: Int?
@@ -54,7 +54,12 @@ public struct SMCThermalReading: Equatable, Sendable {
 /// named as real, unresolved future work in the design doc and are not
 /// built here, consistent with this issue's "get it working, iterate"
 /// mandate.
-public enum SMCThermalReader {
+///
+/// `nonisolated` — see `SystemCPUReader`'s doc comment for why every
+/// stateless reader in this file group needs this against BattyKit's
+/// package-wide default `MainActor` isolation; `SystemMetricsSampler` calls
+/// this from its own actor executor, not the main actor.
+public nonisolated enum SMCThermalReader {
     private static let handleYPCEventSelector: UInt32 = 2
     private static let readKeyInfoSelector: UInt8 = 9
     private static let readBytesSelector: UInt8 = 5

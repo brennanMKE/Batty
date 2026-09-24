@@ -15,7 +15,7 @@ import Foundation
 /// single-core-pegging process's CPU% by roughly 42x (2.39% instead of
 /// 99.46%, per the reviewer's measurement). #0305 adopted this type
 /// instead of fixing its own copy of the same bug twice.
-public enum MachTimebase {
+public nonisolated enum MachTimebase {
     public static let nanosecondsPerTick: Double = {
         var info = mach_timebase_info_data_t()
         mach_timebase_info(&info)
@@ -42,7 +42,13 @@ public enum MachTimebase {
 /// `MachTimebase`'s doc comment above) — #0305 deletes that copy and
 /// instantiates this type instead, owning its own instance the same way
 /// this issue's `SystemMetricsSampler` does.
-public struct ProcessCPUDeltaTracker {
+///
+/// `nonisolated` because BattyKit's package-wide default actor isolation is
+/// `MainActor` — `SystemMetricsSampler` mutates its own instance of this
+/// tracker off the main actor, and `ProcessStatusPaneContent` mutates a
+/// separate instance on the main actor; `nonisolated` only widens who may
+/// call it, so the latter caller is unaffected.
+public nonisolated struct ProcessCPUDeltaTracker {
     private struct Baseline {
         let ticks: UInt64
         let at: Date

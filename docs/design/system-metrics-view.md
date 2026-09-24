@@ -840,38 +840,85 @@ cancellation flag the next time it resumes from `Task.sleep`, a later
 turn of the run loop, not something `tearDown()` can observe having
 already happened) is therefore not a leak risk here the way it would be
 for a held connection: a cancellation that lands mid-loop, before the next
-sweep's `IOServiceOpen`, simply means that sweep never runs; a
-cancellation that lands after a sweep's own `IOServiceClose` has already
-returned finds nothing open to leak either way. The sampling loop must
-still check `Task.isCancelled` before performing each tick's sweep, the
-same "don't run one extra pass after teardown was asked to stop it"
-reason `#0305`'s §4 names — this is a correctness/tidiness guard against
-doing avoidable work after cancellation, not a resource-leak guard,
-because there is no cross-tick handle left to race against.
+sweep starts, simply means that sweep never starts; a cancellation that
+lands after a sweep's own `IOServiceClose` has already returned finds
+nothing open to leak either way. The sampling loop must still check
+`Task.isCancelled` before *starting* each tick's sweep, the same "don't
+run one extra pass after teardown was asked to stop it" reason `#0305`'s
+§4 names — this is a correctness/tidiness guard against starting
+avoidable work after cancellation, not a resource-leak guard, because
+there is no cross-tick handle left to race against. **What it does not
+cover — see `#0350`'s correction directly below — is a sweep that has
+already started**: `Task.cancel()` cannot interrupt one already in
+flight.
 
-**One narrowing on the concurrency reasoning, not a defect**: an earlier
-version of this paragraph warned about "a racing `setVisible(false)`"
-interrupting a held connection mid-tick, phrased broadly enough to imply
-a data race. Batty's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
-(`AGENTS.md`) means both the sampling loop's body and `setVisible(false)`
-run on the main actor, so the loop can only be interrupted at an actual
-suspension point (`Task.sleep`, `await`), not preemptively mid-statement —
-the `Task.isCancelled` check before each sweep is correct and sufficient
-on its own; there was never a narrower race than that to guard against,
-and the per-tick open/close design removes even the resource this
-paragraph was originally worried about racing.
+**One narrowing on the concurrency reasoning, corrected by `#0350`, not
+merely narrowed further:** this paragraph originally claimed that because
+both the sampling loop's body and `setVisible(false)` ran on the main
+actor (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, `AGENTS.md`), the loop
+could only be interrupted at an actual suspension point, so `Task
+.isCancelled` was "correct and sufficient on its own." **`#0350` moved the
+sweep itself off the main actor** (`SystemMetricsSampler` is now an
+`actor`; `SystemMetricsPaneContent.performTick()` `await`s it and hops
+back to the main actor only to assign the result) precisely because that
+premise — the full ~6.5ms sweep running synchronously on the main
+actor — was the bug the issue fixed. The concurrency picture this
+paragraph must describe now: `setVisible(false)`/`tearDown()` run on the
+main actor and can execute to completion *while* a sweep is in flight on
+the sampler's own actor — `Task.cancel()` does not, and cannot, stop that
+in-flight sweep, because the sampler actor is a separate isolation domain
+with no cancellation checks inside `sampleOnce()` itself. **Every
+`performTick()` call that already holds a sampler reference when
+`setVisible(false)`/`tearDown()` runs keeps executing to completion, each
+bounded by up to one sweep's duration (§3's ~6.5ms figure)**, continuing
+to completion on the sampler actor — its own self-contained SMC
+open/read/close cycle included, so nothing about the "opens nothing,
+holds nothing open between calls" property above changes. This is not
+bounded to a single outstanding sweep: calls sharing one sampler actor
+(e.g. the refresh button tapped twice in quick succession) serialize on
+that actor's executor and each still runs to completion once dispatched,
+and a quick hide→show→hide cycle builds a fresh sampler per
+`startActive()`, so a stale sampler's in-flight sweep can keep running
+concurrently with the new sampler's own sweep — two independent,
+self-contained SMC open/close cycles on two separate actors. What stops
+every late sweep's result from being applied is not `Task.isCancelled`
+(which the loop only re-checks *between* ticks) but a `generation`
+counter on `SystemMetricsPaneContent`, bumped by every
+`startActive()`/`stopActive()` call: `performTick()` captures `generation`
+before awaiting the sweep and discards the result if `generation` has
+moved by the time it returns — whether because the pane suspended/tore
+down, or because it was hidden and shown again with a fresh sampler
+before the stale one's sweep returned. No new `performTick()` can reach a
+sampler once `stopActive()` has run: `sampler` is `nil` at that point, and
+the guard at the top of `performTick()` returns before awaiting anything.
+See `docs/pane-view-lifecycle.md` §4's note on this as an accepted
+deviation from "suspended costs zero work instantaneously."
 
-**What "suspended" costs**: zero periodic work and zero open kernel
-handles — no `Task`, no delta map, no cached sample, and (now, simply
-because none is ever held for longer than one tick) no open `AppleSMC`
-connection. A hidden `system-metrics` pane costs nothing beyond its own
-model object's few bytes, the same conclusion both prior non-terminal-view
-design documents reach for the same structural reason
-(`docs/pane-view-lifecycle.md` §1: a non-terminal kind has no
-GPU-swap-chain equivalent forcing a "stop rendering but keep the resource"
-compromise) — and, per the correction above, this document's own SMC
-connection turned out not to need the exception to that reasoning an
-earlier version carved out for it.
+**What "suspended" costs**: zero periodic work, and zero *retained* state
+— no `Task` reference, no delta map, no cached sample, no `AppleSMC`
+connection held between ticks. **Corrected by `#0350`**: this was
+previously stated as "zero open kernel handles," full stop, on the
+reasoning above (the loop and `setVisible(false)` could only interleave
+at a suspension point). With the sweep itself running on the sampler's
+own actor, every already-in-flight `performTick()` call — including
+whatever kernel handle its own self-contained SMC open/read/close cycle
+is mid-cycle on — keeps running for up to one sweep's duration (~6.5ms)
+after `setVisible(false)`/`tearDown()` returns, per the correction above.
+More than one such call can be in flight: refresh-button taps already
+queued on the same sampler actor serialize there and each still runs to
+completion, and a stale sampler left over from a quick hide→show→hide
+cycle runs independently of the fresh sampler the latest `startActive()`
+built. The generation guard ensures every one of their results is
+discarded, and nothing survives past each sweep's own completion (the SMC
+read still closes its connection itself, exactly as before). Once that bounded
+tail completes, the steady-state guarantee holds as originally stated: no
+`Task`, no delta map, no cached sample, no open `AppleSMC` connection. A
+hidden `system-metrics` pane still costs nothing beyond its own model
+object's few bytes once that brief tail has run out, the same conclusion
+both prior non-terminal-view design documents reach for the same
+structural reason (`docs/pane-view-lifecycle.md` §1: a non-terminal kind
+has no GPU-swap-chain equivalent forcing a "stop rendering but keep the
+resource" compromise).
 
 **Where the calls come from**: unresolved by this document, the same way
 `#0304`/`#0305` both leave it — `docs/pane-view-lifecycle.md` §5's open
@@ -1085,3 +1132,24 @@ document, its summary table, and `docs/README.md` — an earlier version
 carried a stray "~812" that didn't trace to anything in this document's
 own body. Removed now-dead `.metric-tile.unavailable` CSS from the
 mockup.*
+
+*Version 4 (`#0350`, phase-2 follow-up): corrected §6's concurrency
+reasoning, which this document's own version 3 narrowed on the premise
+that the sampling loop's body ran on the main actor. `#0350` found the
+premise itself was the bug — the full sweep (§3's ~6.5ms figure) was
+running synchronously on the main actor every tick — and fixed it by
+turning `SystemMetricsSampler` into an `actor`; `performTick()` now
+`await`s it and hops back to the main actor only to assign the result.
+§6's `Task.cancel()` paragraph, the "one narrowing" paragraph, and "What
+'suspended' costs" are rewritten to state what's true of the new design:
+`setVisible(false)`/`tearDown()` can run to completion on the main actor
+while one or more sweeps are in flight on sampler actors; every
+already-in-flight `performTick()` call (with its own self-contained SMC
+open/read/close cycle) runs to completion, each bounded by up to one
+sweep's duration, whether serialized on a single sampler actor (queued
+refresh-button taps) or overlapping across a stale and a fresh sampler
+from a quick hide→show→hide cycle; a `generation` counter, not
+`Task.isCancelled`, is what discards each such sweep's result rather than
+applying it. See `docs/pane-view-lifecycle.md` §4/§5 for the
+general "bounded, uncancellable off-actor unit of work whose result is
+discarded" pattern this is now named as an instance of.*

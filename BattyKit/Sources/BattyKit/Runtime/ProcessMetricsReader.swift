@@ -17,7 +17,7 @@ import Foundation
 /// that" (a live `EPERM`), never a fabricated zero — a `0` would
 /// misrepresent "denied" as "measured," which is exactly the distinction
 /// the design's process-list rows are required to preserve.
-public struct ProcessSample: Sendable, Equatable {
+public nonisolated struct ProcessSample: Sendable, Equatable {
     public let pid: pid_t
     /// Never blank: `proc_name`, falling back to the executable path's
     /// basename, falling back a third time to a hardcoded `"kernel_task"`
@@ -69,7 +69,11 @@ public struct ProcessSample: Sendable, Equatable {
 /// an independent snapshot read, no handle held between calls
 /// (`docs/design/system-metrics-view.md` §1.1/§1.7, inherited from
 /// `docs/design/process-status-view.md` §1.1-§1.3's own per-pid findings).
-public enum ProcessMetricsReader {
+///
+/// `nonisolated` — see `SystemCPUReader`'s doc comment for why every
+/// stateless reader in this file group needs this against BattyKit's
+/// package-wide default `MainActor` isolation.
+public nonisolated enum ProcessMetricsReader {
     /// One pid's current sample, or `nil` if the process no longer exists
     /// (`ESRCH`) — distinguished from a permission denial (`EPERM`), which
     /// returns a sample with `nil` task-info/footprint fields instead.

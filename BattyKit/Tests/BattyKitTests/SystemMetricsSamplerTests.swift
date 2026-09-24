@@ -9,9 +9,9 @@ import Testing
 /// as a plausible measurement on a busy machine.
 struct SystemMetricsSamplerCPUAvailabilityTests {
 
-    @Test func firstSampleHasNoCPUAggregateYetButReportsARealCoreCount() {
+    @Test func firstSampleHasNoCPUAggregateYetButReportsARealCoreCount() async {
         let sampler = SystemMetricsSampler()
-        let first = sampler.sampleOnce()
+        let first = await sampler.sampleOnce()
 
         #expect(first.cpu.aggregatePercent == nil)
         #expect(first.cpu.perCorePercent == nil)
@@ -22,19 +22,19 @@ struct SystemMetricsSamplerCPUAvailabilityTests {
         #expect(first.cpu.coreCount > 0)
     }
 
-    @Test func secondSampleHasARealCPUAggregate() {
+    @Test func secondSampleHasARealCPUAggregate() async {
         let sampler = SystemMetricsSampler()
-        _ = sampler.sampleOnce()
-        let second = sampler.sampleOnce()
+        _ = await sampler.sampleOnce()
+        let second = await sampler.sampleOnce()
 
         #expect(second.cpu.aggregatePercent != nil)
         #expect(second.cpu.perCorePercent != nil)
         #expect(second.cpu.perCorePercent?.count == second.cpu.coreCount)
     }
 
-    @Test func everySampleReportsANonNilSampledAt() {
+    @Test func everySampleReportsANonNilSampledAt() async {
         let sampler = SystemMetricsSampler()
-        let snapshot = sampler.sampleOnce()
+        let snapshot = await sampler.sampleOnce()
         #expect(snapshot.sampledAt != nil)
     }
 }

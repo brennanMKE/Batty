@@ -83,7 +83,7 @@ public struct SystemMetricsPaneView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             Button {
-                content.refreshNow()
+                Task { await content.refreshNow() }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }

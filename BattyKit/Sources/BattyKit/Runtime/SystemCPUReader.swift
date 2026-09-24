@@ -6,7 +6,7 @@ import Foundation
 /// One core's cumulative tick counters from `host_processor_info`. Raw
 /// counters, not a percentage — `SystemCPUReader.percentages(from:to:)`
 /// turns two consecutive reads into a per-core utilization percentage.
-public struct CoreTicks: Equatable, Sendable {
+public nonisolated struct CoreTicks: Equatable, Sendable {
     public let user: UInt32
     public let system: UInt32
     public let idle: UInt32
@@ -28,7 +28,12 @@ public struct CoreTicks: Equatable, Sendable {
 /// 12 cores on the spike's Mac mini M4). Stateless: each call is an
 /// independent snapshot; the caller (`CoreCPUDeltaTracker`) holds the prior
 /// snapshot needed to compute a percentage.
-public enum SystemCPUReader {
+///
+/// `nonisolated` because BattyKit's package-wide default actor isolation is
+/// `MainActor` — without this, every call here would silently require the
+/// main actor, defeating `SystemMetricsSampler`'s whole point of running
+/// this sweep on its own executor.
+public nonisolated enum SystemCPUReader {
     public static func currentTicks() -> [CoreTicks] {
         var cpuInfo: processor_info_array_t!
         var numCpuInfo: mach_msg_type_number_t = 0
@@ -97,7 +102,7 @@ public enum SystemCPUReader {
 /// Caller-side previous-tick baseline for `SystemCPUReader`, discarded on
 /// hide the same way `ProcessCPUDeltaTracker`'s per-pid map is
 /// (`docs/design/system-metrics-view.md` §4).
-public struct CoreCPUDeltaTracker {
+public nonisolated struct CoreCPUDeltaTracker {
     private var previous: [CoreTicks]?
 
     public init() {}

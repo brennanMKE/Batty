@@ -6,8 +6,21 @@ import Foundation
 /// tests can inject a fake that doesn't make real syscalls every tick
 /// (mirrors `FootprintMonitor`'s own `footprintBytesProvider` testability
 /// pattern, `BattyKit/Sources/BattyKit/Runtime/FootprintMonitor.swift`).
-public protocol SystemMetricsSampling: AnyObject {
-    func sampleOnce() -> SystemMetricsSnapshot
+///
+/// `async`, not `() -> SystemMetricsSnapshot`, so a conformer can be an
+/// `actor` (as `SystemMetricsSampler` is) and run the sweep on its own
+/// executor rather than the caller's — `SystemMetricsPaneContent.performTick()`
+/// is the only caller, and it `await`s this from the main actor, hopping
+/// off it for the call and back only to assign the result (#0350).
+///
+/// `nonisolated` on the protocol itself, not just the requirement: without
+/// it, a cross-module conformer (any `BattyKitTests` fake) is inferred
+/// `@MainActor` from BattyKit's package-wide default isolation baked into
+/// the compiled interface, and an `actor` conformer then fails to compile
+/// ("actor cannot conform to global-actor-isolated protocol") even though
+/// same-module conformers like `SystemMetricsSampler` are unaffected.
+public nonisolated protocol SystemMetricsSampling: AnyObject, Sendable {
+    func sampleOnce() async -> SystemMetricsSnapshot
 }
 
 /// One full tick: thermal state, the SMC temperature/fan read, per-core +
@@ -22,13 +35,21 @@ public protocol SystemMetricsSampling: AnyObject {
 /// on the next `active`-entry, rather than by resetting fields in place,
 /// so "nothing kept across a hide" is a property of object lifetime, not
 /// of remembering to clear every field.
-public final class SystemMetricsSampler: SystemMetricsSampling {
+///
+/// An `actor`, not a `@MainActor` class: this is what actually moves the
+/// ~6.5ms sweep off the main actor (#0350) — `sampleOnce()` runs on this
+/// actor's own executor, so `SystemMetricsPaneContent.performTick()`
+/// awaiting it hops off the main actor for the call and back only to
+/// assign the resulting snapshot. The trackers below are this actor's own
+/// isolated state, safe to mutate without a lock because only this actor's
+/// executor ever touches them.
+public actor SystemMetricsSampler: SystemMetricsSampling {
     private var coreCPUTracker = CoreCPUDeltaTracker()
     private var processCPUTracker = ProcessCPUDeltaTracker()
 
     public init() {}
 
-    public func sampleOnce() -> SystemMetricsSnapshot {
+    public func sampleOnce() async -> SystemMetricsSnapshot {
         let thermalState = ProcessInfo.processInfo.thermalState
         let smc = SMCThermalReader.read()
 

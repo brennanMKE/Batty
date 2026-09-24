@@ -266,6 +266,29 @@ that the transition is the place to do it, exactly once per
 call (`PaneContentLifecycleTests.redundantShowDoesNotDoubleAcquireOrDoubleRefresh`
 pins this).
 
+**Accepted deviation: a bounded, uncancellable off-actor unit of work
+whose result is discarded is not "periodic work" this section forbids.**
+`#0350` moved `SystemMetricsPaneContent`'s per-tick sampling sweep onto
+its own `actor` so it stops blocking the main actor; the tradeoff is that
+`setVisible(false)`/`tearDown()`'s `Task.cancel()` cannot interrupt a
+sweep already in flight on that actor — every `performTick()` call that
+already holds a sampler reference when the pane is nominally suspended or
+torn down keeps running to completion, each bounded by up to one sweep's
+duration. This is not limited to one outstanding call: calls sharing a
+single sampler actor (e.g. refresh-button taps queued in quick
+succession) serialize on that actor's executor and each still finishes,
+and a quick hide→show→hide cycle leaves a stale sampler's in-flight sweep
+running concurrently with the fresh sampler the next `startActive()`
+builds. This is acceptable specifically because each sweep holds nothing
+across the boundary (its own resources, if any, are opened and closed
+within that one sweep) and a `generation` counter guarantees every one of
+their results is never applied once stale — "suspended costs zero
+*periodic* work" is preserved (nothing new starts), even though "zero
+work in flight at the instant `setVisible(false)` returns" is not. A
+future conformer that adopts this pattern needs both halves: a
+same-generation-or-discard guard, and self-contained (open-and-close-
+within-one-call) resource use inside the unit of work itself.
+
 ---
 
 ## 5. What teardown must guarantee
@@ -334,6 +357,30 @@ subprocess (`bound + min(bound, 0.5)`, ≈1.0s at `LMStudioDashboardPaneContent`
 0.5s default), waited sequentially per subprocess a conformer owns (≈2.0s
 worst case across its two log-stream subprocesses) — not a shared deadline
 across the whole quit path.
+
+**A second, distinct exception, bounded and specific to off-actor sampling
+sweeps (#0350).** Same shape as #0354's above — the *state-machine
+transition* stays synchronous, and what may run after `tearDown()` returns
+is bounded and independently verifiable-as-inert, not a general license to
+defer release — but a different resource class and a different mechanism.
+`SystemMetricsPaneContent`'s per-tick sampling sweep runs on its own
+`actor` (see §4's "accepted deviation" note) so it stops blocking the main
+actor; `tearDown()` still returns immediately, having released every
+resource *it* holds (the `Task` reference, the sampler, the delta state),
+but any sweep already running on a sampler actor keeps executing for up to
+one sweep's duration afterward — serially with any other call sharing that
+same sampler actor, or concurrently with a fresh sampler's own sweep when
+a quick hide→show→hide cycle left a stale sampler mid-sweep. Unlike
+#0354's subprocess wait, there
+is nothing here to reap or escalate: the sweep is self-contained (any
+kernel handle it opens, it closes within that same sweep) and a
+`generation` counter guarantees its result is discarded rather than
+applied once stale, so the independent verification this section requires
+is a discard proof, not a completion proof (`SystemMetricsPaneContentTests
+.sampleCompletingAfterTearDownIsDiscarded`, `...AfterHideIsDiscarded`).
+Quitting the app needs no equivalent to `DeferredTeardownWaiting` here —
+there is no subprocess to guarantee-reap before exit, only a sweep whose
+result is already guaranteed inert.
 
 ### Where the calls come from, and who owns the conformer
 

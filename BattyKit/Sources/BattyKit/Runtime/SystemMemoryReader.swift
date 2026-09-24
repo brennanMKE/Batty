@@ -10,7 +10,7 @@ import Foundation
 /// active + wired + compressed; compressed is also surfaced on its own
 /// because it is exactly the figure that rule exists to keep visible, not
 /// fold silently into "used" and hide.
-public struct MemoryReading: Equatable, Sendable {
+public nonisolated struct MemoryReading: Equatable, Sendable {
     public enum PressureLevel: Int32, Equatable, Sendable {
         case normal = 1
         case warn = 2
@@ -62,7 +62,11 @@ public struct MemoryReading: Equatable, Sendable {
 /// Reads `host_statistics64(HOST_VM_INFO64)` + `hw.memsize` +
 /// `kern.memorystatus_vm_pressure_level` — all free, sub-millisecond
 /// (`docs/design/system-metrics-view.md` §1.6).
-public enum SystemMemoryReader {
+///
+/// `nonisolated` — see `SystemCPUReader`'s doc comment for why every
+/// stateless reader in this file group needs this against BattyKit's
+/// package-wide default `MainActor` isolation.
+public nonisolated enum SystemMemoryReader {
     public static func current() -> MemoryReading? {
         var stats = vm_statistics64_data_t()
         var count = mach_msg_type_number_t(

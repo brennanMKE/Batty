@@ -4,7 +4,7 @@ import Darwin
 import Foundation
 
 /// 1/5/15-minute load average (`docs/design/system-metrics-view.md` §1.6).
-public struct LoadAverage: Equatable, Sendable {
+public nonisolated struct LoadAverage: Equatable, Sendable {
     public let oneMinute: Double
     public let fiveMinute: Double
     public let fifteenMinute: Double
@@ -21,7 +21,11 @@ public struct LoadAverage: Equatable, Sendable {
 /// Reads `getloadavg(3)` — the documented libc wrapper the design settled
 /// on over the raw `sysctlbyname("vm.loadavg")` equivalent
 /// (`docs/design/system-metrics-view.md` §1.6). Free, sub-millisecond.
-public enum SystemLoadReader {
+///
+/// `nonisolated` — see `SystemCPUReader`'s doc comment for why every
+/// stateless reader in this file group needs this against BattyKit's
+/// package-wide default `MainActor` isolation.
+public nonisolated enum SystemLoadReader {
     public static func current() -> LoadAverage {
         var loads = [Double](repeating: 0, count: 3)
         let result = getloadavg(&loads, 3)

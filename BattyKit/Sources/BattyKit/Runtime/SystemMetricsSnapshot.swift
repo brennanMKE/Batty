@@ -15,7 +15,7 @@ import Foundation
 /// no percentage exists yet — it is not derived from
 /// `perCorePercent?.count`, which would report `0` cores on that same
 /// tick and be just as wrong as the fabricated percentage was.
-public struct CPUReading: Equatable, Sendable {
+public nonisolated struct CPUReading: Equatable, Sendable {
     public let aggregatePercent: Double?
     public let perCorePercent: [Double]?
     public let coreCount: Int
@@ -33,7 +33,7 @@ public struct CPUReading: Equatable, Sendable {
 /// `docs/design/system-metrics-view.md` §2/§7's three-tier name fallback
 /// and "denied is '—', never 0" rule are applied by the time this type
 /// exists; the view renders it, it doesn't re-derive it.
-public struct ProcessRow: Identifiable, Equatable, Sendable {
+public nonisolated struct ProcessRow: Identifiable, Equatable, Sendable {
     public var id: pid_t { pid }
     public let pid: pid_t
     public let name: String
@@ -57,7 +57,11 @@ public struct ProcessRow: Identifiable, Equatable, Sendable {
 /// (`docs/design/system-metrics-view.md` §3: thermal state, the five
 /// system-wide numbers, the process sweep, and the SMC read, all taken
 /// together as one tick's worth of data).
-public struct SystemMetricsSnapshot: Equatable, Sendable {
+///
+/// `nonisolated`, like `CPUReading`/`ProcessRow` above: `SystemMetricsSampler`
+/// constructs these off the main actor, so their initializers must not
+/// inherit BattyKit's package-wide default `MainActor` isolation.
+public nonisolated struct SystemMetricsSnapshot: Equatable, Sendable {
     public let thermalState: ProcessInfo.ThermalState
     public let smc: SMCThermalReading
     public let cpu: CPUReading
