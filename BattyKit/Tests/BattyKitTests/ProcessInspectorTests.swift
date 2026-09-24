@@ -134,13 +134,6 @@ struct ProcessInspectorTests {
         #expect(processes.contains { $0.id == getpid() })
     }
 
-    // MARK: - Liveness
-
-    @Test func isAliveDistinguishesARealPidFromABogusOne() {
-        #expect(ProcessInspector.isAlive(pid: getpid()))
-        #expect(!ProcessInspector.isAlive(pid: 999_999))
-    }
-
     // MARK: - CPU time unit conversion (review round 1, B1)
 
     /// `rusage_info_v4.ri_user_time`/`ri_system_time` are mach-absolute-

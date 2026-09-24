@@ -348,12 +348,6 @@ public enum ProcessInspector {
         }
     }
 
-    /// A same-uid liveness check (`PROC_PIDTBSDINFO` succeeds/fails)
-    /// without pulling the fuller metrics `coreMetrics` does.
-    public static func isAlive(pid: pid_t) -> Bool {
-        bsdInfo(pid: pid) != nil
-    }
-
     // MARK: - Shared low-level helpers
 
     private static func allPids() -> [pid_t] {
