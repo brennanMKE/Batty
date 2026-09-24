@@ -82,7 +82,11 @@ struct NewSessionCommand: ParsableCommand {
     /// pollInterval` — with these defaults, 50 * 1.0 + 49 * 0.1 ≈ 54.9 s.
     private static let pollMaxAttempts = 50
     private static let pollInterval: TimeInterval = 0.1
-    private static let pollRequestTimeout: TimeInterval = 1.0
+    /// Not `private`, unlike its siblings here: `ColdLaunchEndpointResolverTests`
+    /// (#0415) asserts `ColdLaunchEndpointResolver.init`'s default `timeout`
+    /// against this by name, so the test pins that the default actually
+    /// tracks production rather than merely matching it by coincidence.
+    static let pollRequestTimeout: TimeInterval = 1.0
 
     /// Cold-launch budget: #0380 round 1 review found the warm budget above never
     /// gets exercised for the most common agent case (first `batty new`
@@ -96,8 +100,8 @@ struct NewSessionCommand: ParsableCommand {
     /// revisit if it proves too tight (cold launches still time out) or too
     /// slow (agents wait needlessly on a launch failure) in practice.
     ///
-    /// `run()` caches the endpoint the first time `resolveEndpoint` finds
-    /// one (`cachedEndpoint`), so at most *one* attempt ever pays both round
+    /// `ColdLaunchEndpointResolver` caches the endpoint the first time it
+    /// resolves one, so at most *one* attempt ever pays both round
     /// trips — the broker fetch that first resolves the endpoint, plus the
     /// `list` call made with it that same attempt. Every attempt before
     /// that only pays the (bounded by `pollRequestTimeout`) broker fetch,
@@ -140,8 +144,9 @@ struct NewSessionCommand: ParsableCommand {
         // Round-3 review (B1) also uses this, so it's declared before the
         // `switch state` rather than inside the `.notRunningYet` arm: only
         // that arm ever sets it away from `false`, since only its
-        // `resolveEndpoint` ever calls `BrokerAppEndpointClient.fetchEndpoint`
-        // directly (the `.ready` arm's endpoint is already known).
+        // `ColdLaunchEndpointResolver` ever calls
+        // `BrokerAppEndpointClient.fetchEndpoint` directly (the `.ready`
+        // arm's endpoint is already known).
         var lastFetchWasBrokerUnreachable = false
 
         let outcome: PollOutcome
@@ -190,49 +195,20 @@ struct NewSessionCommand: ParsableCommand {
             //
             // `resolveEndpoint` re-fetches (still non-launching) every
             // attempt until an endpoint appears; each `nil` just means
-            // "still launching/registering," not a failure. Once an
-            // endpoint is found it's cached in `cachedEndpoint`
-            // (`AppConnectDance.pollForEndpoint`'s closure-capture idiom,
-            // `BoundedPoll.poll`'s `fetch` being non-escaping is what makes
-            // this safe) so later attempts skip the broker round trip
-            // entirely — see the `coldLaunchPollMaxAttempts` doc comment
-            // above for the resulting worst-case budget. Caching is not
-            // invalidated on a later `list` failure: if Batty crashes and
-            // relaunches mid-poll under a new endpoint, a stale cached
-            // endpoint yields `list -> .unreachable` (an immediate
-            // `.failure`, not a retry) instead of the fresh
-            // `fetchEndpoint` call that would have found the new one —
-            // accepted as a narrow, rare window (#0380 round 3 review, N3)
-            // rather than added complexity for it.
-            var cachedEndpoint: NSXPCListenerEndpoint?
+            // "still launching/registering," not a failure.
+            // `ColdLaunchEndpointResolver` owns the caching and the
+            // broker-unreachable flag (see its doc comment) — extracted out
+            // of this closure (#0415) so both can be pinned by a test
+            // without a live broker connection.
+            let coldLaunchResolver = ColdLaunchEndpointResolver()
             outcome = Self.pollForNewSession(
                 path: resolved,
                 snapshot: TopologyPayload(pid: 0, windows: []),
                 maxAttempts: Self.coldLaunchPollMaxAttempts,
                 interval: Self.coldLaunchPollInterval,
-                resolveEndpoint: {
-                    if let cachedEndpoint {
-                        return cachedEndpoint
-                    }
-                    switch BrokerAppEndpointClient.fetchEndpoint(timeout: Self.pollRequestTimeout) {
-                    case .endpoint(.some(let endpoint)):
-                        lastFetchWasBrokerUnreachable = false
-                        cachedEndpoint = endpoint
-                        return endpoint
-                    case .endpoint(.none):
-                        lastFetchWasBrokerUnreachable = false
-                        return nil
-                    case .unreachable:
-                        // #0380 round 3 review (N8): tracked so a
-                        // persistent timeout can report exit `2` (broker
-                        // unreachable) instead of exit `3` (app
-                        // unavailable) when the broker itself, not just
-                        // app registration, is what never came up.
-                        lastFetchWasBrokerUnreachable = true
-                        return nil
-                    }
-                }
+                resolveEndpoint: coldLaunchResolver.resolve
             )
+            lastFetchWasBrokerUnreachable = coldLaunchResolver.lastFetchWasBrokerUnreachable
         }
 
         switch outcome {
@@ -265,18 +241,20 @@ struct NewSessionCommand: ParsableCommand {
             // problem is telling which one is new, not whether one exists.
             //
             // #0380 round 3 review (N8): a `!endpointEverSeen` timeout where
-            // the broker itself never answered (as opposed to answering
-            // "no endpoint yet") is exit `2`, matching every other verb's
-            // vocabulary for "the broker is the thing that's unreachable."
+            // the poll's last broker fetch was unreachable (as opposed to
+            // the broker answering "no endpoint yet") is exit `2`, matching
+            // every other verb's vocabulary for "the broker is the thing
+            // that's unreachable."
             if !endpointEverSeen {
-                if lastFetchWasBrokerUnreachable {
-                    logger.error("run: poll timed out — broker never answered")
+                let code = Self.notFoundExitCode(lastFetchWasBrokerUnreachable: lastFetchWasBrokerUnreachable)
+                if code == XPCExitCode.brokerUnreachable {
+                    logger.error("run: poll timed out — broker unreachable on the last fetch")
                     fputs("batty: broker unreachable\n", stderr)
-                    throw ExitCode(XPCExitCode.brokerUnreachable)
+                } else {
+                    logger.error("run: poll timed out without ever seeing an app endpoint — app unavailable")
+                    fputs("batty: app unavailable\n", stderr)
                 }
-                logger.error("run: poll timed out without ever seeing an app endpoint — app unavailable")
-                fputs("batty: app unavailable\n", stderr)
-                throw ExitCode(XPCExitCode.appUnavailable)
+                throw ExitCode(code)
             } else if sawAmbiguousMatch {
                 logger.error("run: poll timed out with more than one session matching \(resolved, privacy: .public) — cannot safely pick one")
                 fputs("batty: multiple sessions matched \(resolved); could not determine which one is new — this can happen on a cold launch (a default Session can share this path) or when another agent dispatched batty new against the same path concurrently (see docs/batty-cli-agent-workflows.md); refresh topology manually\n", stderr)
@@ -308,15 +286,25 @@ struct NewSessionCommand: ParsableCommand {
         case degraded
     }
 
+    /// `fetchEndpoint` and `fetchTopology` are injection seams (#0415)
+    /// mirroring the `fetchEndpoint`/`sleep` pair #0365 gave
+    /// `AppConnectDance.resolveEndpoint` — both default to the real XPC
+    /// calls, so the one production call site (`run()`, no arguments
+    /// passed) is unaffected; a test overrides one or both to exercise
+    /// every branch with no live broker or app connection.
     static func fetchPreDispatchState(
+        fetchEndpoint: (TimeInterval) -> BrokerAppEndpointClient.Result = { BrokerAppEndpointClient.fetchEndpoint(timeout: $0) },
         resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() },
-        isAppRunning: (URL) -> Bool = { RunningAppChecker.isRunning(atBundleURL: $0) }
+        isAppRunning: (URL) -> Bool = { RunningAppChecker.isRunning(atBundleURL: $0) },
+        fetchTopology: (NSXPCListenerEndpoint) -> AppServiceClient.Outcome<TopologyPayload> = {
+            AppServiceClient.list(endpoint: $0, includeDimensions: false, timeout: snapshotTimeout)
+        }
     ) -> PreDispatchState {
-        switch BrokerAppEndpointClient.fetchEndpoint(timeout: snapshotTimeout) {
+        switch fetchEndpoint(snapshotTimeout) {
         case .unreachable:
             return .degraded
         case .endpoint(.some(let endpoint)):
-            guard case .success(let payload) = AppServiceClient.list(endpoint: endpoint, includeDimensions: false, timeout: snapshotTimeout) else {
+            guard case .success(let payload) = fetchTopology(endpoint) else {
                 return .degraded
             }
             return .ready(endpoint: endpoint, snapshot: payload)
@@ -336,6 +324,70 @@ struct NewSessionCommand: ParsableCommand {
                 return .degraded
             }
         }
+    }
+
+    /// Backs the cold-launch `resolveEndpoint` closure `run()` passes to
+    /// `pollForNewSession` (#0415, replacing an inline closure): `resolve()`
+    /// re-fetches, non-launching, every call until an endpoint appears, then
+    /// caches it so later calls skip the broker round trip entirely — see
+    /// `coldLaunchPollMaxAttempts`'s doc comment for the resulting
+    /// worst-case budget. Caching is not invalidated on a later `list`
+    /// failure: if Batty crashes and relaunches mid-poll under a new
+    /// endpoint, a stale cached endpoint yields `list -> .unreachable` (an
+    /// immediate `.failure`, not a retry) instead of the fresh
+    /// `fetchEndpoint` call that would have found the new one — accepted as
+    /// a narrow, rare window (#0380 round 3 review, N3) rather than added
+    /// complexity for it.
+    ///
+    /// `lastFetchWasBrokerUnreachable` tracks only the most recent fetch —
+    /// an `.unreachable` fetch followed by an `.endpoint(.none)` fetch
+    /// clears it back to `false` — so it answers "was the broker itself
+    /// unreachable on the fetch that ended the poll," not "was the broker
+    /// ever unreachable during the poll." `notFoundExitCode` uses exactly
+    /// that last-fetch reading (#0380 round 3 review, N8).
+    final class ColdLaunchEndpointResolver {
+        private(set) var lastFetchWasBrokerUnreachable = false
+        private var cachedEndpoint: NSXPCListenerEndpoint?
+        private let timeout: TimeInterval
+        private let fetchEndpoint: (TimeInterval) -> BrokerAppEndpointClient.Result
+
+        init(
+            timeout: TimeInterval = NewSessionCommand.pollRequestTimeout,
+            fetchEndpoint: @escaping (TimeInterval) -> BrokerAppEndpointClient.Result = { BrokerAppEndpointClient.fetchEndpoint(timeout: $0) }
+        ) {
+            self.timeout = timeout
+            self.fetchEndpoint = fetchEndpoint
+        }
+
+        func resolve() -> NSXPCListenerEndpoint? {
+            if let cachedEndpoint {
+                return cachedEndpoint
+            }
+            switch fetchEndpoint(timeout) {
+            case .endpoint(.some(let endpoint)):
+                lastFetchWasBrokerUnreachable = false
+                cachedEndpoint = endpoint
+                return endpoint
+            case .endpoint(.none):
+                lastFetchWasBrokerUnreachable = false
+                return nil
+            case .unreachable:
+                lastFetchWasBrokerUnreachable = true
+                return nil
+            }
+        }
+    }
+
+    /// #0380 round 3 review (N8), extracted from `run()` (#0415) so the
+    /// choice is testable on its own: exit `2` when the poll's last broker
+    /// fetch was unreachable; exit `3` when the broker was answering but
+    /// never returned a registered endpoint. `lastFetchWasBrokerUnreachable`
+    /// is `ColdLaunchEndpointResolver`'s last-fetch-only reading (see its
+    /// doc comment), not "was the broker ever unreachable during the poll."
+    /// Only meaningful for a `!endpointEverSeen` timeout — see
+    /// `PollOutcome.timedOut`.
+    static func notFoundExitCode(lastFetchWasBrokerUnreachable: Bool) -> Int32 {
+        lastFetchWasBrokerUnreachable ? XPCExitCode.brokerUnreachable : XPCExitCode.appUnavailable
     }
 
     enum PollOutcome {
@@ -387,12 +439,15 @@ struct NewSessionCommand: ParsableCommand {
     /// intercepts before any real call would happen) to exercise every
     /// branch below — including the `matches.count > 1` ambiguity branch,
     /// which round 3 review shipped with no test because reaching it
-    /// looked like it required a real endpoint. It doesn't: `run()` itself
-    /// still calls `BrokerAppEndpointClient.fetchEndpoint` directly and
-    /// non-injectably in two places — `fetchPreDispatchState`, and the
-    /// `.notRunningYet` case's `resolveEndpoint:` closure passed to
-    /// `pollForNewSession` above — the same shape of gap #0365 closed for
-    /// `AppConnectDance.resolveEndpoint`, still open in both of these.
+    /// looked like it required a real endpoint. It doesn't: this function's
+    /// own `resolveEndpoint`/`fetchTopology` parameters are the only seams
+    /// it needs. Neither caller's `resolveEndpoint` argument calls
+    /// `BrokerAppEndpointClient.fetchEndpoint` without its own seam: the
+    /// warm case's is a fixed, already-resolved endpoint (from
+    /// `fetchPreDispatchState`'s `fetchEndpoint` seam, a separate one-shot
+    /// call), and the `.notRunningYet` cold launch case's is
+    /// `ColdLaunchEndpointResolver.resolve` — the same seam style #0365
+    /// gave `AppConnectDance.resolveEndpoint` (#0415).
     static func pollForNewSession(
         path: String,
         snapshot: TopologyPayload,

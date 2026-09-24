@@ -18,15 +18,13 @@ import Testing
 /// round 3 review (N2) shipped with no test for on the mistaken belief that
 /// reaching it required a real endpoint.
 ///
-/// Two call sites in `NewSessionCommand.run()` are still *not* covered
-/// here: `fetchPreDispatchState`, and the `.notRunningYet` case's
-/// `resolveEndpoint:` closure passed to `pollForNewSession`. Both call
-/// `BrokerAppEndpointClient.fetchEndpoint` directly, which is not itself
-/// injectable, so either one opens a real XPC connection attempt to the
-/// broker's Mach service — the same shape of gap #0365 closed for
-/// `AppConnectDance.resolveEndpoint` (see `AppConnectDanceTests`) still
-/// applies to both, just not to `pollForNewSession` itself, which only
-/// ever sees `resolveEndpoint` as an already-injected closure.
+/// Two other places in `NewSessionCommand` reach `BrokerAppEndpointClient
+/// .fetchEndpoint`, each through its own seam, in the same style #0365 gave
+/// `AppConnectDance.resolveEndpoint` (see `AppConnectDanceTests`):
+/// `fetchPreDispatchState`'s own `fetchEndpoint`/`fetchTopology` parameters
+/// (`FetchPreDispatchStateTests`), and `ColdLaunchEndpointResolver`, which
+/// the `.notRunningYet` case's cold-launch `resolveEndpoint:` closure
+/// delegates to (`ColdLaunchEndpointResolverTests`).
 struct NewSessionCommandTests {
 
     private static let samplePath = "/tmp/NewSessionCommandTests"
