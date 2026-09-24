@@ -1,6 +1,7 @@
 // GitStatusPaneContent.swift
 
 import CoreServices
+import Darwin
 import Foundation
 import Observation
 import OSLog
@@ -84,13 +85,30 @@ public protocol GitStatusScanning: Sendable {
     /// — hiding carries no synchronous teardown requirement
     /// (`docs/pane-view-lifecycle.md` §5).
     nonisolated func terminateIfRunning()
-    /// Sends `SIGTERM` to every subprocess currently in flight, then waits
-    /// with a short, fixed bound (not an unbounded `waitUntilExit()`) for
-    /// all of them to actually exit. Used by `tearDown()` only — the one
-    /// call site that carries the synchronous-teardown obligation
-    /// (`docs/pane-view-lifecycle.md` §5's "bounded, deliberately, not
-    /// unbounded" reasoning).
+    /// Sends `SIGTERM` to every subprocess currently in flight, then hands
+    /// the bounded wait for them to actually exit — and the `SIGKILL`
+    /// escalation if the bound is hit — to a background task rather than
+    /// blocking the caller (#0422). The caller (`tearDown()`) still lands
+    /// its own state-machine transition and returns immediately after
+    /// `SIGTERM` is sent; the deferred task is what proves the bounded
+    /// wait actually happened, verifiable via the `ProcessGitStatusScanner`
+    /// internal test seam, not a log line
+    /// (`docs/pane-view-lifecycle.md` §5's exception for exactly this
+    /// case). Mirrors `LMStudioDashboardPaneContent.scheduleTeardownReap`
+    /// (#0354) — same shape, applied to this kind's own subprocess.
     nonisolated func terminateAndWaitBriefly()
+    /// Blocks the calling thread until every reap `terminateAndWaitBriefly()`
+    /// has deferred so far has actually completed, escalating to `SIGKILL`
+    /// exactly as the deferred task would on the same bound. Only
+    /// `GitStatusPaneContent`'s `DeferredTeardownWaiting` conformance calls
+    /// this, and only from the app-quit path
+    /// (`WindowRuntime.tearDownAllPaneContentSynchronouslyForQuit()`) —
+    /// see that protocol's doc comment for why quitting can't rely on the
+    /// detached task alone. A required requirement, not a defaulted no-op:
+    /// a scanner double with no deferred work (`RecordingScanner`) still
+    /// implements it (as a counted no-op) so a test can pin that the quit
+    /// path actually reaches this call.
+    nonisolated func waitForPendingTeardownSynchronously()
 }
 
 // MARK: - Production watcher
@@ -200,7 +218,40 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     private let lock = NSLock()
     private var activeProcesses: [ObjectIdentifier: Process] = [:]
 
-    public init() {}
+    /// Bound on how long `terminateAndWaitBriefly()`'s deferred reap (or
+    /// `waitForPendingTeardownSynchronously()`, on the quit path) waits for
+    /// a signaled subprocess to actually exit before escalating to
+    /// `SIGKILL` (#0422). Fixed at construction — injectable via `init` so
+    /// a test can drive the escalation path deterministically without a
+    /// real ~0.3s wait, but not mutable afterward (nothing needs to change
+    /// it mid-lifetime, and a `let` rules that out at compile time). Matches
+    /// `LMStudioDashboardPaneContent.teardownWaitBound`'s role (#0354).
+    public let teardownWaitBound: TimeInterval
+
+    /// `(process, label)` pairs backing `pendingReapTasks`, keyed by the
+    /// process's identity — kept separately so
+    /// `waitForPendingTeardownSynchronously()` can re-run the same bounded
+    /// wait/`SIGKILL` synchronously on the calling thread for the quit
+    /// path, which cannot rely on the detached tasks below ever getting
+    /// scheduled before the whole app process exits. Each entry is removed
+    /// by its own reap task on completion (`scheduleTeardownReap`) as well
+    /// as by the two snapshot-and-clear call sites below, so this does not
+    /// grow unbounded across a scanner's lifetime even though `tearDown()`
+    /// itself is normally called once. Guarded by `lock`, same as
+    /// `activeProcesses` — `terminateAndWaitBriefly()` can be called from
+    /// more than one thread's worth of overlapping teardown in principle,
+    /// even though production call sites are all main-actor.
+    private var pendingReaps: [ObjectIdentifier: (process: Process, label: String)] = [:]
+    /// Detached reap tasks `terminateAndWaitBriefly()` has scheduled, keyed
+    /// the same way as `pendingReaps` — kept so
+    /// `awaitPendingTeardownReapsForTesting()` can await them
+    /// deterministically instead of polling `Process.isRunning` on a fixed
+    /// sleep.
+    private var pendingReapTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+
+    public init(teardownWaitBound: TimeInterval = 0.3) {
+        self.teardownWaitBound = teardownWaitBound
+    }
 
     public func scan(atPath path: String) async -> GitStatusScanResult {
         await withCheckedContinuation { continuation in
@@ -240,13 +291,129 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         for process in processes {
             process.terminate()
         }
-        let deadline = Date().addingTimeInterval(0.3)
-        while processes.contains(where: { $0.isRunning }), Date() < deadline {
+        // #0422: `SIGTERM` above is synchronous; the bounded wait for it to
+        // actually take effect (and the `SIGKILL` escalation if it
+        // doesn't) is not — each process gets its own detached reap task
+        // rather than blocking this call's caller (the main actor, via
+        // `GitStatusPaneContent.tearDown()`) for up to 0.3s, once, no
+        // matter how many subprocesses were in flight (the prior shared-
+        // deadline behavior). One task per process also means an unrelated
+        // slow process no longer extends how long a fast one is waited on
+        // — there is no shared deadline left to extend.
+        for process in processes {
+            scheduleTeardownReap(for: process, label: "git")
+        }
+    }
+
+    public func waitForPendingTeardownSynchronously() {
+        for (process, label) in snapshotAndClearPendingReaps() {
+            Self.reapAfterTerminate(process, bound: teardownWaitBound, label: label)
+        }
+    }
+
+    /// `SIGTERM` is already sent by the caller (`terminateAndWaitBriefly()`)
+    /// before this is scheduled. Runs entirely off the main actor — this
+    /// function has no actor affinity, so `waitForPendingTeardownSynchronously()`
+    /// can also call it directly, synchronously, on whatever thread calls
+    /// that (the quit path). Polls `Process.isRunning` for at most `bound`
+    /// — `Process` has no async "did it exit" API — then sends `SIGKILL` if
+    /// the child is still alive, so the "actually reaped" guarantee
+    /// (`docs/pane-view-lifecycle.md` §5) does not depend on the child's
+    /// own cooperation with `SIGTERM`. A second bounded poll after
+    /// `SIGKILL` closes the gap between "signal sent" and "child actually
+    /// exited" — mirrors `LMStudioDashboardPaneContent.reapAfterTerminate`
+    /// (#0354) exactly.
+    nonisolated private static func reapAfterTerminate(_ process: Process, bound: TimeInterval, label: String) {
+        let deadline = Date().addingTimeInterval(bound)
+        while process.isRunning, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.01)
         }
-        if processes.contains(where: { $0.isRunning }) {
-            logger.warning("teardown: git subprocess did not exit within the bounded wait; abandoning wait rather than blocking indefinitely")
+        guard process.isRunning else {
+            logger.info("teardown: \(label, privacy: .public) exited within bound")
+            return
         }
+        logger.warning("teardown: \(label, privacy: .public) did not exit within \(bound, privacy: .public)s bound; sending SIGKILL")
+        kill(process.processIdentifier, SIGKILL)
+        let killDeadline = Date().addingTimeInterval(min(bound, 0.5))
+        while process.isRunning, Date() < killDeadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        if process.isRunning {
+            logger.error("teardown: \(label, privacy: .public) still running after SIGKILL")
+        } else {
+            logger.info("teardown: \(label, privacy: .public) exited after SIGKILL")
+        }
+    }
+
+    private func scheduleTeardownReap(for process: Process, label: String) {
+        let bound = teardownWaitBound
+        let id = ObjectIdentifier(process)
+        lock.lock()
+        pendingReaps[id] = (process, label)
+        let task = Task.detached(priority: .utility) { [weak self] in
+            Self.reapAfterTerminate(process, bound: bound, label: label)
+            // Entries are pruned here, on the reap's own completion, rather
+            // than only at the two snapshot-and-clear call sites below — a
+            // scanner that outlives more than one `terminateAndWaitBriefly()`
+            // call (a pane whose `tearDown()` somehow ran more than once, or
+            // a future caller this method doesn't have today) would
+            // otherwise grow these dictionaries without bound. Harmless if
+            // `self` is already gone (nothing left to clean) or the entry
+            // was already removed by a snapshot-and-clear call that raced
+            // this completion.
+            self?.removePendingReap(id: id)
+        }
+        pendingReapTasks[id] = task
+        lock.unlock()
+    }
+
+    private func removePendingReap(id: ObjectIdentifier) {
+        lock.lock()
+        pendingReaps.removeValue(forKey: id)
+        pendingReapTasks.removeValue(forKey: id)
+        lock.unlock()
+    }
+
+    // MARK: - Test support
+
+    /// Awaits every reap task scheduled by `terminateAndWaitBriefly()` so
+    /// far, then clears the pending dictionaries. `internal`, not
+    /// `private`, so `ProcessGitStatusScannerTests` can observe the
+    /// "eventually killed/reaped" half of #0422's fix deterministically
+    /// instead of polling `Process.isRunning` on a fixed sleep. Mirrors
+    /// `LMStudioDashboardPaneContent.awaitPendingTeardownReapsForTesting()`
+    /// (#0354). Never called from production code.
+    func awaitPendingTeardownReapsForTesting() async {
+        for task in snapshotAndClearPendingReapTasks() {
+            await task.value
+        }
+    }
+
+    /// `NSLock.lock()`/`unlock()` are unavailable from `async` contexts
+    /// (compiler-enforced, to keep a suspension point from ever landing
+    /// mid-critical-section) — this synchronous helper is the seam that
+    /// lets `awaitPendingTeardownReapsForTesting()` (`async`) share the
+    /// same snapshot-and-clear logic without violating that rule.
+    private func snapshotAndClearPendingReapTasks() -> [Task<Void, Never>] {
+        lock.lock()
+        defer { lock.unlock() }
+        let tasks = Array(pendingReapTasks.values)
+        pendingReapTasks.removeAll()
+        pendingReaps.removeAll()
+        return tasks
+    }
+
+    /// Same snapshot-and-clear shape as `snapshotAndClearPendingReapTasks()`
+    /// but returning the `(process, label)` pairs instead of the tasks —
+    /// what `waitForPendingTeardownSynchronously()` (not `async`, so it has
+    /// no need to route through the `async`-only helper above) needs.
+    private func snapshotAndClearPendingReaps() -> [(process: Process, label: String)] {
+        lock.lock()
+        defer { lock.unlock() }
+        let reaps = Array(pendingReaps.values)
+        pendingReaps.removeAll()
+        pendingReapTasks.removeAll()
+        return reaps
     }
 
     // MARK: - Off-main-thread scan implementation
@@ -732,5 +899,20 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
         if wasActive {
             activate()
         }
+    }
+}
+
+/// `DeferredTeardownWaiting` is defined in `LMStudioDashboardPaneContent.swift`
+/// (#0354) — `GitStatusPaneContent` is its second adopter, for the
+/// identical reason: `tearDown()`'s SIGTERM is synchronous, but the bounded
+/// wait for it to take effect (and the SIGKILL escalation if it doesn't) is
+/// deferred to a background task (`ProcessGitStatusScanner`'s reap, #0422),
+/// so `tearDown()` returning is not, by itself, proof that wait has
+/// finished. That's fine for every ordinary caller — the whole point is not
+/// blocking them on it — except quitting the app, where the process can
+/// exit before a detached task ever runs; see that protocol's doc comment.
+extension GitStatusPaneContent: DeferredTeardownWaiting {
+    func waitForDeferredTeardown() {
+        scanner.waitForPendingTeardownSynchronously()
     }
 }

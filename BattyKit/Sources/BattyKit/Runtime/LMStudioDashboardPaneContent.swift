@@ -761,27 +761,32 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 }
 
 /// Adopted by a `PaneContentLifecycle` conformer whose `tearDown()` defers
-/// part of its release work to a background task — `LMStudioDashboardPaneContent`
-/// only, today (#0354's detached subprocess reap). `tearDown()` returning
-/// is not, by itself, proof that work has finished, and for most callers
-/// that's fine (the whole point is not blocking them on it). The one
-/// exception is quitting the app: `BattyAppDelegate.applicationWillTerminate`
-/// runs synchronously and the process exits shortly after it returns, so a
-/// detached reap task scheduled inside it may never get to run at all —
-/// silently orphaning a subprocess `SIGTERM` failed to kill. `WindowRuntime`
-/// checks for this conformance on the quit path only and blocks briefly
-/// instead, which is an acceptable trade there (the app is exiting anyway)
-/// and nowhere else in the lifecycle.
+/// part of its release work to a background task —
+/// `LMStudioDashboardPaneContent` (#0354's detached subprocess reap) and
+/// `GitStatusPaneContent` (#0422's, via `ProcessGitStatusScanner`) both
+/// adopt it. `tearDown()` returning is not, by itself, proof that work has
+/// finished, and for most callers that's fine (the whole point is not
+/// blocking them on it). The one exception is quitting the app:
+/// `BattyAppDelegate.applicationWillTerminate` runs synchronously and the
+/// process exits shortly after it returns, so a detached reap task
+/// scheduled inside it may never get to run at all — silently orphaning a
+/// subprocess `SIGTERM` failed to kill. `WindowRuntime` checks for this
+/// conformance on the quit path only and blocks briefly instead, which is
+/// an acceptable trade there (the app is exiting anyway) and nowhere else
+/// in the lifecycle.
 protocol DeferredTeardownWaiting: AnyObject {
     /// Blocks the calling thread until every reap `tearDown()` scheduled has
     /// actually completed (escalating to `SIGKILL` exactly as `tearDown()`
     /// itself would, on the same bound). Idempotent: a conformer with
     /// nothing pending returns immediately. Every `SIGTERM` was already
     /// sent before `tearDown()` returned, so a cooperative child adds
-    /// nothing here; the worst case is one `SIGTERM`-ignoring stream taking
-    /// up to `bound + min(bound, 0.5)` (≈1.0s at the 0.5s default), waited
-    /// sequentially per stream this conformer owns (two, for
-    /// `LMStudioDashboardPaneContent` — ≈2.0s worst case).
+    /// nothing here; the worst case is one `SIGTERM`-ignoring subprocess
+    /// taking up to `bound + min(bound, 0.5)`, waited sequentially per
+    /// subprocess this conformer owns: ≈1.0s per stream (≈2.0s worst case
+    /// across its two streams) at `LMStudioDashboardPaneContent`'s 0.5s
+    /// default; ≈0.6s per tracked `git` subprocess at
+    /// `ProcessGitStatusScanner`'s 0.3s default (`GitStatusPaneContent` —
+    /// usually one, but a scan and a `diff` can overlap).
     func waitForDeferredTeardown()
 }
 

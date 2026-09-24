@@ -1,5 +1,6 @@
 // ProcessGitStatusScannerTests.swift
 
+import Darwin
 import Foundation
 import Testing
 @testable import BattyKit
@@ -326,7 +327,7 @@ struct ProcessGitStatusScannerTests {
         return process
     }
 
-    @Test func terminateAndWaitBrieflyTerminatesEveryOverlappingTrackedProcess() throws {
+    @Test func terminateAndWaitBrieflyTerminatesEveryOverlappingTrackedProcess() async throws {
         let scanner = ProcessGitStatusScanner()
         let processA = Self.makeSleepProcess()
         let processB = Self.makeSleepProcess()
@@ -343,9 +344,113 @@ struct ProcessGitStatusScannerTests {
         scanner.addActiveProcess(processB)
 
         scanner.terminateAndWaitBriefly()
+        // #0422: the bounded wait no longer happens synchronously inside
+        // `terminateAndWaitBriefly()` — it's deferred to a background task
+        // per process, so this test awaits that task deterministically
+        // instead of asserting immediately after the call returns.
+        await scanner.awaitPendingTeardownReapsForTesting()
 
         #expect(!processA.isRunning, "an older scan's process must not survive teardown")
         #expect(!processB.isRunning, "a newer, overlapping scan's process must not survive teardown")
+    }
+
+    // MARK: - #0422: teardown must not block the caller
+
+    /// The regression this issue is about, pinned directly: a process that
+    /// ignores `SIGTERM` entirely (`trap '' TERM`) used to keep
+    /// `terminateAndWaitBriefly()` blocking its caller for the full 0.3s
+    /// bound — and, pre-#0360, could silently escape signaling altogether.
+    /// A single process, no grandchild (`exec` replaces the shell rather
+    /// than leaving it as a parent of `sleep`), so there is exactly one PID
+    /// for this test to track and reap — no orphan-detection subtlety about
+    /// signaling a process group.
+    ///
+    /// `echo ready` before the `exec`, with stdout on a pipe the caller
+    /// reads via `waitForReady(_:)`, closes a real race — without it, a
+    /// test could call `terminateAndWaitBriefly()` (sending `SIGTERM`)
+    /// before `sh` finished installing `trap '' TERM`, in which case the
+    /// child died normally on the signal like any other process and every
+    /// assertion in these tests about ignoring `SIGTERM` passed vacuously.
+    private static func makeStubbornProcess() -> (process: Process, readyPipe: Pipe) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "trap '' TERM; echo ready; exec sleep 60"]
+        let readyPipe = Pipe()
+        process.standardOutput = readyPipe
+        process.standardError = Pipe()
+        return (process, readyPipe)
+    }
+
+    /// Blocks the calling thread until `makeStubbornProcess()`'s child
+    /// writes its readiness line — i.e. until `trap '' TERM` has actually
+    /// been installed, not merely until `Process.run()` has returned
+    /// (which only proves `fork`/`exec` was requested, not that the shell
+    /// has executed anything yet).
+    private static func waitForReady(_ pipe: Pipe) {
+        _ = pipe.fileHandleForReading.availableData
+    }
+
+    @Test func terminateAndWaitBrieflyReturnsImmediatelyEvenWhenTheProcessIgnoresSIGTERM() async throws {
+        // Lowered only to keep the test fast; the assertion on the call's
+        // own elapsed time is what matters, not the specific bound — same
+        // shape as `LMStudioDashboardPaneContentTests
+        // .tearDownReturnsPromptlyEvenWhenBothChildrenIgnoreSIGTERM()`
+        // (#0354), including its 0.2s bound / 50ms-elapsed margin.
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2)
+        let (process, readyPipe) = Self.makeStubbornProcess()
+        try process.run()
+        Self.waitForReady(readyPipe)
+        let pid = process.processIdentifier
+        defer {
+            if process.isRunning { kill(pid, SIGKILL) }
+        }
+        scanner.addActiveProcess(process)
+
+        let start = ContinuousClock.now
+        scanner.terminateAndWaitBriefly()
+        let elapsed = start.duration(to: .now)
+
+        // Nowhere near `teardownWaitBound` (0.2s) — proves the call didn't
+        // block waiting for the SIGTERM-ignoring child to exit.
+        #expect(elapsed < .milliseconds(50), "terminateAndWaitBriefly() blocked the caller for \(elapsed)")
+        #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
+
+        // The deferred reap must still actually kill it (SIGKILL
+        // escalation) — teardown's "verifiably reaps its subprocesses"
+        // guarantee must not be weakened by moving the wait off-main.
+        await scanner.awaitPendingTeardownReapsForTesting()
+        #expect(!process.isRunning, "the deferred reap must SIGKILL a process that ignored SIGTERM")
+
+        // No orphan: confirm the OS has actually reaped the pid, not just
+        // that `Process.isRunning` (a Foundation-side flag) flipped.
+        var killResult: Int32 = 0
+        for _ in 0..<50 {
+            killResult = kill(pid, 0)
+            if killResult != 0 { break }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(killResult != 0, "pid \(pid) must not still be signalable after reap — orphaned process")
+    }
+
+    /// The quit-path variant: `waitForPendingTeardownSynchronously()` must
+    /// itself block until the stubborn process is actually reaped (an
+    /// acceptable brief block only because the app is quitting) rather than
+    /// returning while the child is still alive.
+    @Test func waitForPendingTeardownSynchronouslyBlocksUntilAStubbornProcessIsReaped() async throws {
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.1)
+        let (process, readyPipe) = Self.makeStubbornProcess()
+        try process.run()
+        Self.waitForReady(readyPipe)
+        let pid = process.processIdentifier
+        defer {
+            if process.isRunning { kill(pid, SIGKILL) }
+        }
+        scanner.addActiveProcess(process)
+
+        scanner.terminateAndWaitBriefly()
+        scanner.waitForPendingTeardownSynchronously()
+
+        #expect(!process.isRunning, "waitForPendingTeardownSynchronously() must not return before the process is reaped")
     }
 
     @Test func terminateIfRunningSignalsEveryOverlappingTrackedProcess() throws {

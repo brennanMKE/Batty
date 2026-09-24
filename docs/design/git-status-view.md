@@ -523,7 +523,7 @@ confirmed current) via a `PaneLifecycleController`
 | `setUp(visible: Bool)` (`PaneContentLifecycle.swift:123`) | Resolves the directory (§1), runs the one-time `git rev-parse` shape checks (§1's submodule/worktree detection). If `visible == true`: creates the `FSEventStream`, runs the first `git status`. If `visible == false`: resolves the directory and does the one-time checks (so the header has something to show the instant it's revealed) but does **not** create the FSEvents stream or spawn `git status` — per `docs/pane-view-lifecycle.md` §4, "setup must not create work it would immediately have to suspend." |
 | `setVisible(true)` (a `suspended → active` transition, `PaneContentLifecycle.swift:130`) | Creates the `FSEventStream` (it doesn't exist yet — suspended means fully torn down, not paused, per §4 below) and performs exactly one immediate `git status` refresh, matching the "showing resumes and refreshes" rule (`docs/pane-view-lifecycle.md` §4) — the repo may have changed while the pane was hidden and the debounce/watcher were both stopped. |
 | `setVisible(false)` (an `active → suspended` transition) | `FSEventStreamStop` + `FSEventStreamInvalidate` + `FSEventStreamRelease` — the stream is fully torn down, not merely paused, so a hidden `git-status` pane costs zero FSEvents overhead and holds no open stream handle. Cancels the debounce timer. If a `git status` subprocess is in flight, sends `SIGTERM` (`Process.terminate()`) but does **not** wait for it to exit — hiding carries no synchronous-teardown requirement from `docs/pane-view-lifecycle.md` (only `tearDown()` does, per its §5), so a quick hide (a fast session switch) stays cheap. Discards whatever the subprocess produces, whether it's killed or finishes on its own, rather than updating UI for a pane that's no longer visible, and does not schedule the "run once more" follow-up from § above. |
-| `tearDown()` (`PaneContentLifecycle.swift:137`) | Same release sequence as `setVisible(false)` (idempotent whether called from `.active` or `.suspended`, per the state machine's `.applied(from: _, to: .tornDown)` transitions at `PaneContentLifecycle.swift:77-80`), plus `Process.terminate()` on any in-flight `git status` subprocess **followed by a bounded wait** — see the paragraph below the table for why this can't be an unbounded `waitUntilExit()` and what "bounded" means concretely. |
+| `tearDown()` (`PaneContentLifecycle.swift:137`) | Same release sequence as `setVisible(false)` (idempotent whether called from `.active` or `.suspended`, per the state machine's `.applied(from: _, to: .tornDown)` transitions at `PaneContentLifecycle.swift:77-80`), plus `Process.terminate()` on any in-flight `git status`/`git diff` subprocess **followed by a bounded wait**, escalating to `SIGKILL` if the bound is hit — see the paragraph below the table for why this can't be an unbounded `waitUntilExit()` and what "bounded" means concretely. **#0422 revised where that wait runs**, after the original synchronous `Thread.sleep` poll in `ProcessGitStatusScanner.terminateAndWaitBriefly()` was found blocking the main actor for up to 0.3s per `tearDown()` call — one shared deadline covering every `git` subprocess tracked at that moment (a scan and a `diff` can overlap), not per subprocess — on an ordinary pane close: `tearDown()` still sends `SIGTERM` to every in-flight subprocess synchronously and still lands the lifecycle state machine on `.tornDown` before returning, but the bounded wait + `SIGKILL` escalation itself now runs on its own detached background task per subprocess (≈0.6s worst case each — `0.3s bound + min(0.3s, 0.5s)` escalation — rather than one shared deadline), verifiable via the internal `awaitPendingTeardownReapsForTesting()` test seam rather than a log line (`docs/pane-view-lifecycle.md` §5's exception for exactly this case). The one place that detached task isn't good enough is quitting the whole app — the process can exit before it ever runs — so `WindowRuntime`'s quit-path caller (`tearDownAllPaneContentSynchronouslyForQuit()`) re-runs the same wait/escalation synchronously instead, via the `DeferredTeardownWaiting` conformance `GitStatusPaneContent` adopts (mirroring `LMStudioDashboardPaneContent`, #0354). |
 
 **The `tearDown()` wait is bounded, deliberately, not unbounded — naming
 the trade-off `docs/pane-view-lifecycle.md` §5 forces.** That document's
@@ -568,6 +568,20 @@ already tracked for §4's second debounce layer — `Process.terminate()`
 raises `NSInvalidArgumentException` if called against a `Process` that
 was never launched, so "is a subprocess currently running" has to be
 known precisely, not assumed from "a refresh was requested."
+
+**Correction (#0422): "blocks the calling thread" above described where
+`waitUntilExit()` would block, not where the actual bounded-poll
+implementation ended up running.** The original `ProcessGitStatusScanner
+.terminateAndWaitBriefly()` did poll `Process.isRunning` on the calling
+thread — the main actor — which is exactly the "0.3s beach-ball on close"
+regression #0422 was filed against, not a hypothetical this paragraph was
+merely warning about. The bound itself, and the reasoning for why it must
+be bounded rather than unbounded, are unchanged; what changed is that the
+poll (and a new `SIGKILL` escalation if the bound is hit) now runs on a
+detached background task per subprocess, so `tearDown()` itself returns as
+soon as `SIGTERM` is sent rather than after the poll resolves. See the
+`tearDown()` table row above and `docs/pane-view-lifecycle.md` §5's
+subprocess-teardown exception for the mechanism.
 
 **What "suspended" costs**, per `docs/pane-view-lifecycle.md` §4's "zero
 periodic work" requirement: literally zero — no open `FSEventStream`, no

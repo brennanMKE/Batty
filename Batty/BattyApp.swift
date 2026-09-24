@@ -125,13 +125,14 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         // observable teardown is exactly what
         // `docs/pane-view-lifecycle.md` §5 argues against.
         // `...SynchronouslyForQuit` (not the plain `tearDownAllPaneContent()`
-        // other callers use): #0354 moved subprocess-teardown's bounded wait
-        // off the main actor onto a detached task so an ordinary pane close
-        // stays responsive, but a detached task scheduled here may never run
-        // — the app process exits shortly after this method returns. This
-        // variant waits synchronously for any conformer that needs it
-        // (`DeferredTeardownWaiting`), which is an acceptable brief block
-        // only because the app is already quitting.
+        // other callers use): #0354/#0422 moved subprocess-teardown's
+        // bounded wait off the main actor onto a detached task so an
+        // ordinary pane close stays responsive, but a detached task
+        // scheduled here may never run — the app process exits shortly
+        // after this method returns. This variant waits synchronously for
+        // any conformer that needs it (`DeferredTeardownWaiting`), which is
+        // an acceptable brief block only because the app is already
+        // quitting.
         for window in AppStateStore.shared.windows {
             window.tearDownAllPaneContentSynchronouslyForQuit()
         }

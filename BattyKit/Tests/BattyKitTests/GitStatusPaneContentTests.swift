@@ -64,6 +64,13 @@ private nonisolated final class RecordingScanner: GitStatusScanning, @unchecked 
     private(set) var scanCount = 0
     private(set) var terminateIfRunningCount = 0
     private(set) var terminateAndWaitBrieflyCount = 0
+    /// Counts calls to the quit-path-only requirement
+    /// (`GitStatusPaneContent.waitForDeferredTeardown()` →
+    /// `GitStatusScanning.waitForPendingTeardownSynchronously()`) — this
+    /// double has no real deferred work to wait for, but a required
+    /// protocol requirement (not a defaulted no-op) means this count is
+    /// what proves the quit path actually reaches the scanner at all.
+    private(set) var waitForPendingTeardownSynchronouslyCount = 0
 
     /// What the *next* `scan(atPath:)` call returns. Settable from a test
     /// before triggering a scan.
@@ -89,6 +96,7 @@ private nonisolated final class RecordingScanner: GitStatusScanning, @unchecked 
 
     func terminateIfRunning() { terminateIfRunningCount += 1 }
     func terminateAndWaitBriefly() { terminateAndWaitBrieflyCount += 1 }
+    func waitForPendingTeardownSynchronously() { waitForPendingTeardownSynchronouslyCount += 1 }
 }
 
 @MainActor
@@ -319,6 +327,25 @@ struct GitStatusPaneContentTests {
         content.tearDown()
         #expect(box.current?.stopCount == 1)
         #expect(scanner.terminateAndWaitBrieflyCount == 1)
+    }
+
+    /// Pins the quit-path wiring `WindowRuntime.tearDownAllPaneContentSynchronouslyForQuit()`
+    /// (#0354, #0422) depends on: `GitStatusPaneContent` must actually be
+    /// reachable as `DeferredTeardownWaiting`, and its
+    /// `waitForDeferredTeardown()` must actually reach the scanner's
+    /// `waitForPendingTeardownSynchronously()` — not just compile-time
+    /// conformance, but the real call happening.
+    @Test func tearDownAsDeferredTeardownWaitingReachesTheScanner() async throws {
+        let scanner = RecordingScanner()
+        let (content, _) = makeContent(scanner: scanner)
+        content.setUp(visible: true)
+        await waitUntil { content.state != .loading }
+        content.tearDown()
+
+        let deferredTeardownWaiting = try #require(content as? DeferredTeardownWaiting)
+        deferredTeardownWaiting.waitForDeferredTeardown()
+
+        #expect(scanner.waitForPendingTeardownSynchronouslyCount == 1)
     }
 
     @Test func setVisibleAfterTearDownIsRejectedAndDoesNothing() async {
