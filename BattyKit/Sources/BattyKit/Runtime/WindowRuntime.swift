@@ -739,6 +739,33 @@ public final class WindowRuntime {
         }
     }
 
+    /// Quit-path variant of `tearDownAllPaneContent()` —
+    /// `BattyAppDelegate.applicationWillTerminate` calls this one instead.
+    /// A conformer may defer part of its release work to a background task
+    /// (`LMStudioDashboardPaneContent`'s subprocess reap, #0354) so that
+    /// `tearDown()` itself doesn't block whatever called it; that's the
+    /// right trade for every other caller of `tearDownAllPaneContent()`
+    /// (window close), but not for quitting, where the app process exits
+    /// shortly after this returns and a still-pending background task may
+    /// never run at all. `DeferredTeardownWaiting` is the opt-in a
+    /// conformer uses to say "wait for me synchronously here instead" — a
+    /// brief block during quit is harmless; a silently orphaned subprocess
+    /// is not. Every conformer's `SIGTERM`s were already sent before
+    /// `tearDown()` returned (per pane, per session, above), so cooperative
+    /// children cost nothing extra here; the worst case is bounded per
+    /// conformer (`LMStudioDashboardPaneContent`: ≈2s across its two
+    /// streams if both ignore `SIGTERM`, see `DeferredTeardownWaiting`'s own
+    /// doc comment) and this loop pays that cost once per pane, sequentially
+    /// — not a shared deadline across every pane in the window.
+    public func tearDownAllPaneContentSynchronouslyForQuit() {
+        tearDownAllPaneContent()
+        for session in sessions {
+            for pane in session.tree.allPanes {
+                (pane.content as? DeferredTeardownWaiting)?.waitForDeferredTeardown()
+            }
+        }
+    }
+
     // MARK: - Pane focus
 
     /// Marks the pane with `id` as the focused pane in its owning session.

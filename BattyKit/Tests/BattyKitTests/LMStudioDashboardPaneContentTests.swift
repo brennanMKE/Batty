@@ -87,6 +87,12 @@ struct LMStudioDashboardPaneContentTests {
         #expect(content.connectionState == .unreachable)
 
         content.tearDown()
+        // Real subprocesses (`makeSleepForeverProcess`) — awaiting the reap
+        // here, as every test that spawns one now must, is what keeps this
+        // suite from leaking a live `sleep` process past the test's own
+        // lifetime (#0354's detached reap doesn't run synchronously inside
+        // `tearDown()` any more).
+        await content.awaitPendingTeardownReapsForTesting()
     }
 
     /// Once reachable, a `.notInstalled` machine should never silently
@@ -129,6 +135,9 @@ struct LMStudioDashboardPaneContentTests {
         #expect(content.connectionState == .reconnecting)
 
         content.tearDown()
+        // Real runtime-stream subprocess — await the reap so it doesn't
+        // outlive this test (#0354).
+        await content.awaitPendingTeardownReapsForTesting()
     }
 
     // MARK: - Live stream parsing (real pipe, fake `lms`)
@@ -156,6 +165,9 @@ struct LMStudioDashboardPaneContentTests {
         #expect(content.recentCompletions.first?.stats?.stopReason == "eosFound")
 
         content.tearDown()
+        // Real subprocesses — await the reap so neither outlives this test
+        // (#0354).
+        await content.awaitPendingTeardownReapsForTesting()
     }
 
     @Test func unmatchedInputStaysInFlight() async throws {
@@ -178,6 +190,9 @@ struct LMStudioDashboardPaneContentTests {
         #expect(content.inFlight.first?.modelIdentifier == "m")
 
         content.tearDown()
+        // Real subprocesses — await the reap so neither outlives this test
+        // (#0354).
+        await content.awaitPendingTeardownReapsForTesting()
     }
 
     // MARK: - `lms ps` cross-check gating (pure function)
@@ -252,9 +267,28 @@ struct LMStudioDashboardPaneContentTests {
         #expect(content.inFlight.isEmpty)
 
         content.tearDown()
+        // Real subprocesses — await the reap so neither outlives this test
+        // (#0354).
+        await content.awaitPendingTeardownReapsForTesting()
     }
 
-    // MARK: - Subprocess teardown (review round 1, B3)
+    // MARK: - Subprocess teardown (review round 1, B3; #0354)
+
+    /// A process that ignores `SIGTERM` outright (unlike a plain `sleep`,
+    /// which dies on the default disposition) — used to exercise #0354's
+    /// `SIGKILL` escalation path. `exec` replaces the shell's own process
+    /// image with `sleep` in place rather than forking it, and `SIG_IGN`
+    /// survives `exec`, so the ignored disposition the `trap` set carries
+    /// over to `sleep` directly: exactly one process exists at any point,
+    /// so `SIGKILL` on that single pid leaves nothing behind. Without
+    /// `exec`, `sleep` runs as the shell's forked child and `SIGKILL` on
+    /// the shell's own pid orphans it instead.
+    private func makeIgnoringSIGTERMProcess(_ url: URL) -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "trap '' TERM; exec sleep 60"]
+        return process
+    }
 
     /// The contract `issues/0313.md` binds — "log evidence, a counter, a
     /// footprint delta — not an assertion" — is not satisfied by checking
@@ -264,7 +298,10 @@ struct LMStudioDashboardPaneContentTests {
     /// out and asserts `isRunning == false` on them after `tearDown()` —
     /// commenting out `terminateModelStream`'s/`terminateRuntimeStream`'s
     /// `process.terminate()` call makes this test fail, which
-    /// `lifecyclePhase`-only assertions did not.
+    /// `lifecyclePhase`-only assertions did not. `tearDown()` no longer
+    /// blocks the main actor until the subprocess exits (#0354), so this
+    /// awaits the scheduled reap task before checking `isRunning` rather
+    /// than asserting immediately.
     @Test func tearDownActuallyTerminatesBothSubprocesses() async throws {
         final class ProcessBox {
             var model: Process?
@@ -295,7 +332,69 @@ struct LMStudioDashboardPaneContentTests {
         #expect(runtime.isRunning)
 
         content.tearDown()
+        await content.awaitPendingTeardownReapsForTesting()
 
+        #expect(model.isRunning == false)
+        #expect(runtime.isRunning == false)
+    }
+
+    /// #0354's core claim: `tearDown()` must return promptly on the main
+    /// actor even when both subprocesses ignore `SIGTERM` — the previous
+    /// implementation blocked the calling thread (the main actor, since
+    /// this class is `@MainActor`) in a `Thread.sleep` poll for up to
+    /// `teardownWaitBound` per stream. `teardownWaitBound` is lowered here
+    /// only to keep the test fast; the assertion on `tearDown()`'s own
+    /// elapsed time is what matters, not the specific bound.
+    @Test func tearDownReturnsPromptlyEvenWhenBothChildrenIgnoreSIGTERM() async throws {
+        final class ProcessBox {
+            var model: Process?
+            var runtime: Process?
+        }
+        let box = ProcessBox()
+
+        let content = LMStudioDashboardPaneContent()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { self.emptyModelsResponse() }
+        content.teardownWaitBound = 0.2
+        content.makeModelStreamProcess = { url in
+            let process = self.makeIgnoringSIGTERMProcess(url)
+            box.model = process
+            return process
+        }
+        content.makeRuntimeStreamProcess = { url in
+            let process = self.makeIgnoringSIGTERMProcess(url)
+            box.runtime = process
+            return process
+        }
+
+        content.setUp(visible: true)
+        try await Task.sleep(for: .milliseconds(200))
+
+        let model = try #require(box.model)
+        let runtime = try #require(box.runtime)
+        #expect(model.isRunning)
+        #expect(runtime.isRunning)
+
+        let start = ContinuousClock.now
+        content.tearDown()
+        let elapsed = start.duration(to: .now)
+
+        // The state machine transitions synchronously — that guarantee is
+        // unchanged by #0354's fix.
+        #expect(content.lifecyclePhase == .tornDown)
+        // Nowhere near `teardownWaitBound` (0.2s here): `tearDown()` must
+        // not have blocked waiting for either child to exit.
+        #expect(elapsed < .milliseconds(50))
+        // Immediately after `tearDown()` returns, both children are still
+        // alive (they ignore SIGTERM) — proving the wait really was moved
+        // off the main actor, not just made faster.
+        #expect(model.isRunning)
+        #expect(runtime.isRunning)
+
+        await content.awaitPendingTeardownReapsForTesting()
+
+        // Eventually killed/reaped via the SIGKILL escalation, even though
+        // neither child ever cooperated with SIGTERM.
         #expect(model.isRunning == false)
         #expect(runtime.isRunning == false)
     }

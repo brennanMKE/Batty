@@ -189,7 +189,73 @@ struct LMStudioDashboardWiringTests {
         #expect(runtime.isRunning)
 
         window.tearDownAllPaneContent()
+        // #0354: `tearDown()` no longer blocks the main actor until the
+        // subprocess exits — the wait/SIGKILL-escalation happens on a
+        // detached task. Await it before checking `isRunning`.
+        await content.awaitPendingTeardownReapsForTesting()
 
+        #expect(model.isRunning == false)
+        #expect(runtime.isRunning == false)
+        #expect(content.lifecyclePhase == .tornDown)
+    }
+
+    // MARK: - Quit path: synchronous wait for deferred teardown (#0354 review round 1)
+
+    /// `BattyAppDelegate.applicationWillTerminate` calls this variant
+    /// instead of `tearDownAllPaneContent()`: `tearDown()`'s own subprocess
+    /// reap is a detached task (#0354), which keeps an ordinary window
+    /// close responsive, but is wrong for quitting — the app process exits
+    /// shortly after `applicationWillTerminate` returns, so a detached task
+    /// scheduled inside it may never run at all. This proves the quit
+    /// variant blocks synchronously until a `SIGTERM`-ignoring subprocess is
+    /// actually dead, with no separate `await` needed afterward — unlike
+    /// `tearDownAllPaneContentActuallyKillsRealSubprocesses` above.
+    @Test func tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess() async throws {
+        final class ProcessBox {
+            var model: Process?
+            var runtime: Process?
+        }
+        let box = ProcessBox()
+
+        // `exec` replaces the shell's own process image with `sleep` rather
+        // than forking it; `SIG_IGN` survives `exec`, so the ignored
+        // disposition `trap` set carries over to `sleep` directly — exactly
+        // one process exists at any point, so `SIGKILL` on that single pid
+        // leaves nothing behind.
+        func makeIgnoringSIGTERMProcess(_ url: URL) -> Process {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", "trap '' TERM; exec sleep 60"]
+            return process
+        }
+
+        let content = LMStudioDashboardPaneContent()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { LMStudioModelsResponse(models: []) }
+        content.teardownWaitBound = 0.2
+        content.makeModelStreamProcess = { url in
+            let process = makeIgnoringSIGTERMProcess(url)
+            box.model = process
+            return process
+        }
+        content.makeRuntimeStreamProcess = { url in
+            let process = makeIgnoringSIGTERMProcess(url)
+            box.runtime = process
+            return process
+        }
+
+        let (window, _, _) = makeWindow(paneContent: content)
+        try await Task.sleep(for: .milliseconds(200))
+
+        let model = try #require(box.model)
+        let runtime = try #require(box.runtime)
+        #expect(model.isRunning)
+        #expect(runtime.isRunning)
+
+        window.tearDownAllPaneContentSynchronouslyForQuit()
+
+        // No `await` at all here — the quit variant has already blocked
+        // until both children are confirmed dead by the time it returns.
         #expect(model.isRunning == false)
         #expect(runtime.isRunning == false)
         #expect(content.lifecyclePhase == .tornDown)

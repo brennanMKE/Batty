@@ -303,6 +303,38 @@ zero cannot distinguish one correct release from an erroneous second one
 that happened to land on an already-empty ledger, which is precisely the
 bug this test exists to catch.
 
+**Exception, bounded and specific to subprocess teardown (#0354).** The
+*signal* and the *state-machine transition* stay synchronous — `tearDown()`
+still sends `SIGTERM` (or equivalent) to any owned subprocess and lands the
+state machine on `.tornDown` before returning, exactly like every other
+resource above. What may run after `tearDown()` returns is only the
+*bounded wait for that signal to actually take effect* and the *`SIGKILL`
+escalation* if it doesn't — moved off the calling thread specifically
+because `LMStudioDashboardPaneContent`'s version of that wait was found
+blocking the main actor for up to a second on an ordinary pane close (the
+former synchronous poll, #0354's filing). This is not a general license to defer
+release to a `Task`: a conformer's other resources (watchers, caches) still
+release synchronously in `tearDown()`'s own body, unconditionally. It is
+scoped to the one case where the release step is itself a wait for an
+external process's cooperation, bounded by a fixed timeout, with the wait's
+eventual completion independently verifiable — not by a log line (this
+section's standing rule, unchanged), but by an internal test seam
+(`LMStudioDashboardPaneContentTests` awaits it via
+`awaitPendingTeardownReapsForTesting()`). Quitting the whole app is the one
+path where even this deferred wait isn't safe to rely on: the process can
+exit before the detached task ever runs. `WindowRuntime`'s quit-path caller
+(`tearDownAllPaneContentSynchronouslyForQuit()`) does the same wait
+synchronously instead, via a small opt-in protocol
+(`DeferredTeardownWaiting`) a conformer adopts only if it has this kind of
+deferred work — accepting a brief block there because the app is about to
+exit anyway, which is not true of any other `tearDown()` caller. Every
+`SIGTERM` is sent before any wait begins, so a cooperative child costs
+nothing extra at quit; the worst case is bounded per `SIGTERM`-ignoring
+subprocess (`bound + min(bound, 0.5)`, ≈1.0s at `LMStudioDashboardPaneContent`'s
+0.5s default), waited sequentially per subprocess a conformer owns (≈2.0s
+worst case across its two log-stream subprocesses) — not a shared deadline
+across the whole quit path.
+
 ### Where the calls come from, and who owns the conformer
 
 This document fixes the *shape* of setup/show-hide/teardown; naming the

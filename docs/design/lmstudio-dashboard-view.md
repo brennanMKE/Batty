@@ -762,11 +762,16 @@ never stops polling. Fixed:
   unreachable — a lone dropped request or a momentary hiccup shouldn't
   flicker Connected → No server → Connected.
 - **On declaring unreachable**: both `lms log stream` subprocesses are
-  terminated (the same bounded-wait `SIGTERM` sequence §7's `tearDown()`
-  row uses, since there is nothing for them to stream from a server that
-  isn't answering, and leaving them running would mean two subprocesses
-  independently retry-looping against a dead endpoint at a rate this
-  design doesn't control), and the `lms ps` poll stops entirely — no
+  terminated (the same `SIGTERM`-only path §7's `setVisible(false)` row
+  uses — **not** the bounded wait, corrected here from an earlier version
+  of this section that claimed otherwise: `pollModelsOnce`'s unreachable
+  branch calls `terminateModelStream`/`terminateRuntimeStream` with
+  `boundedWait: false`, matching hiding's "stay cheap" reasoning rather
+  than tearing down with a wait — since there is nothing for them to
+  stream from a server that isn't answering, and leaving them running
+  would mean two subprocesses independently retry-looping against a dead
+  endpoint at a rate this design doesn't control), and the `lms ps` poll
+  stops entirely — no
   157 ms/call CLI invocations fired against a server known to be down.
   The `/api/v1/models` poll **does not stop** — it backs off from 1 s to a
   fixed **5 s reachability-only cadence**, the lightest available probe
@@ -903,7 +908,7 @@ commits to:
 | `setUp(visible: Bool)` (`PaneContentLifecycle.swift:123`) | Runs one `/api/v1/models` poll immediately (§1.6, ~11 ms) so the Loaded Models panel has something to show the instant the pane exists. If `visible == true`: additionally spawns both `lms log stream` subprocesses (§5), starts the 1 s models-poll `Task` and the 3 s `lms ps` poll `Task`. If `visible == false`: stops there — no subprocess spawned, no poll `Task` started, matching the direct `notSetUp → suspended` edge `docs/pane-view-lifecycle.md` §3's state diagram requires — "setup must not create work it would immediately have to suspend" (§4 of that document). |
 | `setVisible(true)` (`suspended → active`, `PaneContentLifecycle.swift:130`) | (Re)spawns both subprocesses (they don't exist yet — suspended means fully torn down, not paused, matching `docs/design/git-status-view.md`'s own FSEventStream precedent) and restarts both poll `Task`s, performing one immediate refresh of each, matching "showing resumes and refreshes" (`docs/pane-view-lifecycle.md` §4). Per §6, the Recent Completions ring and any Prompt Inspector text start empty — this is the concrete mechanism behind §6's "discard, not keep" decision, not a separate implementation detail. |
 | `setVisible(false)` (`active → suspended`) | Sends `SIGTERM` to both `lms log stream` subprocesses (`Process.terminate()`) and cancels both poll `Task`s. Per §6, also clears the Recent Completions ring buffer and any Prompt Inspector text immediately — hiding is where the discard happens, not a separate step. No bounded wait here (matching `docs/design/process-status-view.md`'s distinction between `setVisible(false)` and `tearDown()`) — hiding needs to stay cheap for a fast session switch; only `tearDown()` carries the synchronous-release obligation, per the next row. |
-| `tearDown()` (`PaneContentLifecycle.swift:137`) | Same subprocess termination and poll cancellation as `setVisible(false)`, plus a **bounded wait** on both subprocesses actually exiting — the same trade-off `docs/design/git-status-view.md` §4 names for its own `git status` subprocess: `Process.terminate()` alone only sends `SIGTERM` and returns immediately, which is not evidence of release (the `#0289` lesson, generalized by `docs/pane-view-lifecycle.md` §5); an unbounded `waitUntilExit()` risks hanging the main actor if a subprocess is ever wedged. `tearDown()` sends `SIGTERM` to both, then polls `Process.isRunning` with a short, fixed bound (a few hundred milliseconds — `lms` is a normal CLI process that should die promptly on `SIGTERM`, not a case expected to need the bound in practice), logging a warning and returning anyway if the bound is hit rather than blocking indefinitely. Idempotent, per the state machine's `.noOp` handling of a repeated `tearDown` (`docs/pane-view-lifecycle.md` §3). |
+| `tearDown()` (`PaneContentLifecycle.swift:137`) | Same subprocess termination and poll cancellation as `setVisible(false)`, plus a **bounded wait** on both subprocesses actually exiting, escalating to `SIGKILL` if the bound is hit — the same trade-off `docs/design/git-status-view.md` §4 names for its own `git status` subprocess: `Process.terminate()` alone only sends `SIGTERM` and returns immediately, which is not evidence of release (the `#0289` lesson, generalized by `docs/pane-view-lifecycle.md` §5); an unbounded `waitUntilExit()` risks hanging the main actor if a subprocess is ever wedged. **#0354 (review round 1) revised where that wait runs**, after the original synchronous `Thread.sleep` poll here was found blocking the main actor for up to ~1s across both streams on an ordinary pane close: `tearDown()` still sends `SIGTERM` to both synchronously and still lands the lifecycle state machine on `.tornDown` before returning, but the bounded wait + `SIGKILL` escalation itself now runs on a detached background task, verifiable via the internal `awaitPendingTeardownReapsForTesting()` test seam rather than a log line (`docs/pane-view-lifecycle.md` §5's own updated exception for exactly this case). The one place that detached task isn't good enough is quitting the whole app — the process can exit before it ever runs — so `WindowRuntime`'s quit-path caller (`tearDownAllPaneContentSynchronouslyForQuit()`) re-runs the same wait/escalation synchronously instead, via the `DeferredTeardownWaiting` conformance this type adopts. Idempotent, per the state machine's `.noOp` handling of a repeated `tearDown` (`docs/pane-view-lifecycle.md` §3). |
 
 **What "suspended" costs**, per `docs/pane-view-lifecycle.md` §4's "zero
 periodic work" requirement: zero — no running subprocess, no scheduled

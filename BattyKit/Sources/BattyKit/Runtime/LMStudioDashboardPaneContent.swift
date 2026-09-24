@@ -1,5 +1,6 @@
 // LMStudioDashboardPaneContent.swift
 
+import Darwin
 import Foundation
 import Observation
 import OSLog
@@ -62,10 +63,12 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     /// Delay before respawning a log-stream subprocess that exited
     /// unexpectedly while the pane is active and the server is reachable.
     public var respawnDelay: Duration = .seconds(2)
-    /// Bound on how long `tearDown()`/hide-with-bounded-wait polls
-    /// `Process.isRunning` after `SIGTERM`, per design doc §7's
-    /// "a few hundred milliseconds" — matching `#0289`'s lesson that a log
-    /// line is not evidence of release, generalized to subprocess exit.
+    /// Bound on how long `tearDown()` waits, off the main actor, for a
+    /// subprocess to exit after `SIGTERM` before escalating to `SIGKILL`
+    /// (#0354), per design doc §7's "a few hundred milliseconds" — matching
+    /// `#0289`'s lesson that a log line is not evidence of release,
+    /// generalized to subprocess exit. `setVisible(false)` (hiding) sends
+    /// `SIGTERM` only and does not wait at all, per design doc §7's table.
     public var teardownWaitBound: TimeInterval = 0.5
 
     public static let completionCap = BellFeedStore.cap
@@ -129,6 +132,15 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private var modelsPollTask: Task<Void, Never>?
     private var psPollTask: Task<Void, Never>?
+    /// Detached reap tasks `tearDown()` has scheduled (#0354) — kept so
+    /// `awaitPendingTeardownReapsForTesting()` can await them deterministically.
+    private var pendingTeardownReapTasks: [Task<Void, Never>] = []
+    /// The `(process, label)` pairs backing `pendingTeardownReapTasks`,
+    /// tracked separately so `waitForDeferredTeardown()` (`DeferredTeardownWaiting`,
+    /// below) can re-run the same bounded wait/`SIGKILL` synchronously on
+    /// the calling thread for the quit path, which cannot rely on the
+    /// detached tasks above ever getting scheduled before the process exits.
+    private var pendingTeardownReaps: [(process: Process, label: String)] = []
 
     private var contextLengthByModelIdentifier: [String: Int] = [:]
     /// Raw prompt text for an in-flight request, keyed by that request's
@@ -431,7 +443,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         process.standardError.map { ($0 as? Pipe)?.fileHandleForReading.readabilityHandler = nil }
         process.terminate()
         if boundedWait {
-            waitBounded(for: process, label: "model-stream")
+            scheduleTeardownReap(for: process, label: "model-stream")
         }
         modelStreamProcess = nil
     }
@@ -592,7 +604,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         process.standardError.map { ($0 as? Pipe)?.fileHandleForReading.readabilityHandler = nil }
         process.terminate()
         if boundedWait {
-            waitBounded(for: process, label: "runtime-stream")
+            scheduleTeardownReap(for: process, label: "runtime-stream")
         }
         runtimeStreamProcess = nil
     }
@@ -666,24 +678,120 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         }
     }
 
-    /// Sends `SIGTERM` (already done by the caller via `process.terminate()`)
-    /// and blocks the calling thread — the main actor, since this class is
-    /// `@MainActor` — for at most `teardownWaitBound`, polling
-    /// `Process.isRunning`. Design doc §7: `Process.terminate()` alone only
-    /// sends the signal and returns immediately, which is not evidence of
-    /// release (`#0289`'s lesson); an unbounded `waitUntilExit()` risks
-    /// hanging the main actor if a subprocess is ever wedged. `lms` is a
-    /// normal CLI process expected to die promptly on `SIGTERM` — this
-    /// bound should not be hit in practice.
-    private func waitBounded(for process: Process, label: String) {
-        let deadline = Date().addingTimeInterval(teardownWaitBound)
+    /// `SIGTERM` is already sent by the caller (`process.terminate()`) before
+    /// this is reached. #0354: the bounded wait for the child to actually
+    /// exit — and the `SIGKILL` escalation if it doesn't — used to run as a
+    /// `Thread.sleep` poll on the calling thread, which was always the main
+    /// actor (this class is `@MainActor`), blocking the UI for up to
+    /// `teardownWaitBound` per stream (up to ~1s total across both streams
+    /// on close). This schedules that same wait-then-escalate work on a
+    /// detached `Task` instead, so `tearDown()` itself returns immediately
+    /// after sending `SIGTERM` while the reap still completes — verifiable
+    /// via `awaitPendingTeardownReapsForTesting()` (async, for tests) or
+    /// `waitForDeferredTeardown()` (sync, for the quit path — both below).
+    /// The detached task alone is not a complete guarantee: if the whole
+    /// app process exits before the task is scheduled, it never runs at
+    /// all, which is exactly why the quit path doesn't rely on it.
+    private func scheduleTeardownReap(for process: Process, label: String) {
+        let bound = teardownWaitBound
+        pendingTeardownReaps.append((process, label))
+        let task = Task.detached(priority: .utility) {
+            Self.reapAfterTerminate(process, bound: bound, label: label)
+        }
+        pendingTeardownReapTasks.append(task)
+    }
+
+    /// Runs entirely off the main actor (or, via `waitForDeferredTeardown()`,
+    /// synchronously on whatever thread calls it — this function itself has
+    /// no actor affinity). Polls `Process.isRunning` for at most `bound` —
+    /// `Process` has no async "did it exit" API — then sends `SIGKILL` if
+    /// the child is still alive, so the "actually reaped" guarantee
+    /// (`docs/pane-view-lifecycle.md` §5) does not depend on the child's
+    /// own cooperation with `SIGTERM`. `lms` is a normal CLI process
+    /// expected to die promptly on `SIGTERM` — the escalation is for the
+    /// case where it doesn't, not the expected path.
+    ///
+    /// Returns only after the child is observed exited, not just signaled:
+    /// `SIGKILL` only requests the exit, and `Process.isRunning` flips only
+    /// once Foundation's own exit-monitoring source observes it (`waitpid`
+    /// internally — never called directly here, Foundation owns that). The
+    /// second bounded poll after `SIGKILL` below is what makes that true;
+    /// without it, a caller finishing on this function (or the `Task`
+    /// wrapping it) could observe completion before the child had actually
+    /// exited.
+    nonisolated private static func reapAfterTerminate(_ process: Process, bound: TimeInterval, label: String) {
+        let deadline = Date().addingTimeInterval(bound)
         while process.isRunning, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.02)
         }
-        if process.isRunning {
-            logger.error("teardown: \(label, privacy: .public) did not exit within \(self.teardownWaitBound, privacy: .public)s bound")
-        } else {
+        guard process.isRunning else {
             logger.info("teardown: \(label, privacy: .public) exited within bound")
+            return
+        }
+        logger.error("teardown: \(label, privacy: .public) did not exit within \(bound, privacy: .public)s bound; sending SIGKILL")
+        kill(process.processIdentifier, SIGKILL)
+        let killDeadline = Date().addingTimeInterval(min(bound, 0.5))
+        while process.isRunning, Date() < killDeadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if process.isRunning {
+            logger.error("teardown: \(label, privacy: .public) still running after SIGKILL")
+        } else {
+            logger.info("teardown: \(label, privacy: .public) exited after SIGKILL")
+        }
+    }
+
+    // MARK: - Test support
+
+    /// Awaits every reap task scheduled by `tearDown()` so far, then clears
+    /// the list. `internal`, not `private`, so `LMStudioDashboardPaneContentTests`
+    /// can observe the "eventually killed/reaped" half of #0354's fix
+    /// deterministically instead of polling `Process.isRunning` on a fixed
+    /// sleep — the same "internal for testability" reasoning
+    /// `shouldEvictInFlight` above documents for itself. Never called from
+    /// production code.
+    func awaitPendingTeardownReapsForTesting() async {
+        let tasks = pendingTeardownReapTasks
+        pendingTeardownReapTasks.removeAll()
+        pendingTeardownReaps.removeAll()
+        for task in tasks {
+            await task.value
+        }
+    }
+}
+
+/// Adopted by a `PaneContentLifecycle` conformer whose `tearDown()` defers
+/// part of its release work to a background task — `LMStudioDashboardPaneContent`
+/// only, today (#0354's detached subprocess reap). `tearDown()` returning
+/// is not, by itself, proof that work has finished, and for most callers
+/// that's fine (the whole point is not blocking them on it). The one
+/// exception is quitting the app: `BattyAppDelegate.applicationWillTerminate`
+/// runs synchronously and the process exits shortly after it returns, so a
+/// detached reap task scheduled inside it may never get to run at all —
+/// silently orphaning a subprocess `SIGTERM` failed to kill. `WindowRuntime`
+/// checks for this conformance on the quit path only and blocks briefly
+/// instead, which is an acceptable trade there (the app is exiting anyway)
+/// and nowhere else in the lifecycle.
+protocol DeferredTeardownWaiting: AnyObject {
+    /// Blocks the calling thread until every reap `tearDown()` scheduled has
+    /// actually completed (escalating to `SIGKILL` exactly as `tearDown()`
+    /// itself would, on the same bound). Idempotent: a conformer with
+    /// nothing pending returns immediately. Every `SIGTERM` was already
+    /// sent before `tearDown()` returned, so a cooperative child adds
+    /// nothing here; the worst case is one `SIGTERM`-ignoring stream taking
+    /// up to `bound + min(bound, 0.5)` (≈1.0s at the 0.5s default), waited
+    /// sequentially per stream this conformer owns (two, for
+    /// `LMStudioDashboardPaneContent` — ≈2.0s worst case).
+    func waitForDeferredTeardown()
+}
+
+extension LMStudioDashboardPaneContent: DeferredTeardownWaiting {
+    func waitForDeferredTeardown() {
+        let pending = pendingTeardownReaps
+        pendingTeardownReaps.removeAll()
+        pendingTeardownReapTasks.removeAll()
+        for (process, label) in pending {
+            Self.reapAfterTerminate(process, bound: teardownWaitBound, label: label)
         }
     }
 }
