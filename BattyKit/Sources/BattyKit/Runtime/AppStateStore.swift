@@ -56,6 +56,9 @@ public final class AppStateStore {
     /// AI notification summarizer (#0246). Nil disables summarization. The
     /// app delegate wires `FoundationModelsNotificationSummarizer.makeIfAvailable()`.
     @ObservationIgnored public var notificationSummarizer: NotificationSummarizing?
+    /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
+    /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
+    @ObservationIgnored private var summarizationTasksForTesting: [UUID: Task<Void, Never>] = [:]
     /// Called by `BattyShortcuts` (the NSEvent-monitor path) to open a new
     /// content window. The app delegate wires this to SwiftUI's captured
     /// `OpenWindowAction` — same wiring style as `onAllSessionsClosed`. Nil
@@ -2162,6 +2165,26 @@ public final class AppStateStore {
     /// The entry appears in the feed immediately with today's fallback text;
     /// the summary is written back when the model responds. A nil summarizer,
     /// disabled toggle, or model error leaves the entry unchanged.
+    ///
+    /// The scheduled `Task` is kept in `summarizationTasksForTesting`, keyed
+    /// by entry id, purely so tests can await the real completion signal
+    /// (`docs/async-test-seams.md` §4, "returned/exposed Task") instead of
+    /// polling with `Task.yield()`. A summarizer that's nil or a toggle
+    /// that's off means no `Task` is ever created, which is exactly the
+    /// "skipped" signal those tests need — nothing to await, not a
+    /// fabricated empty wait.
+    ///
+    /// Entries are pruned here, before adding the new one, for every id no
+    /// longer present in `bellFeed.entries` — `BellFeedStore` already caps
+    /// how many entries it retains, so this bounds the dictionary the same
+    /// way instead of growing it for the life of the app. This is
+    /// deliberately not a `defer` inside the `Task` itself: a summarizer
+    /// with no real `await` inside it can let the `Task` run to completion
+    /// (and remove its own entry) before the caller that just scheduled it
+    /// gets a chance to look the entry up, which would make "was one
+    /// scheduled" indistinguishable from "already finished". Pruning by
+    /// feed membership instead can never remove the entry this call is
+    /// about to add — it was just recorded into `bellFeed` by the caller.
     private func scheduleSummarization(for entry: BellFeedEntry, tabTitle: String, sessionTitle: String) {
         guard let summarizer = notificationSummarizer else { return }
         guard SettingsPreference.resolvedSummarizeNotificationsWithAI() else { return }
@@ -2169,7 +2192,7 @@ public final class AppStateStore {
         let message = entry.message
         let tabTitleCopy = tabTitle
         let sessionTitleCopy = sessionTitle
-        Task { [weak self] in
+        let task = Task { [weak self] in
             let raw = await summarizer.summarize(
                 message: message,
                 tabTitle: tabTitleCopy.isEmpty ? nil : tabTitleCopy,
@@ -2179,5 +2202,20 @@ public final class AppStateStore {
             guard let summary = raw.flatMap(NotificationSummary.sanitize) else { return }
             self.bellFeed.updateSummary(summary, forEntryID: entryID)
         }
+        let liveIDs = Set(bellFeed.entries.map(\.id))
+        summarizationTasksForTesting = summarizationTasksForTesting.filter { liveIDs.contains($0.key) }
+        summarizationTasksForTesting[entryID] = task
+    }
+
+    /// Test-only. The summarization `Task` `scheduleSummarization` started
+    /// for `entryID`, if it started one at all. `nil` means a nil summarizer
+    /// or a disabled toggle made `scheduleSummarization` return before ever
+    /// creating a `Task` — a synchronous "was this skipped" answer, not "not
+    /// found yet". A plain read accessor rather than an awaited helper: the
+    /// bounded await belongs in the test target, on the shared `ResumeOnce`
+    /// (`BattyKit/Tests/BattyKitTests/ResumeOnce.swift`), not duplicated here
+    /// in production source.
+    func summarizationTaskForTesting(entryID: UUID) -> Task<Void, Never>? {
+        summarizationTasksForTesting[entryID]
     }
 }

@@ -68,17 +68,17 @@ struct SidebarRestorationTests {
 
     @Test func toggleSidebarViaNotificationIsReceivable() async throws {
         await confirmation("battyToggleSidebar notification should be deliverable") { received in
+            // queue: nil delivers synchronously on the posting thread, so
+            // `received()` runs inside `post(...)` below — no turn to wait for.
             let observer = NotificationCenter.default.addObserver(
                 forName: .battyToggleSidebar,
                 object: nil,
-                queue: .main
+                queue: nil
             ) { _ in
                 received()
             }
             defer { NotificationCenter.default.removeObserver(observer) }
             NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
-            // Give the main queue a turn to deliver.
-            await Task.yield()
         }
     }
 }

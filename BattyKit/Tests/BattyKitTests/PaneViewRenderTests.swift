@@ -57,16 +57,38 @@ struct PaneViewRenderTests {
         return (window, hostingView)
     }
 
-    private func pump(_ view: NSView, until condition: () -> Bool, timeout: TimeInterval = 2) {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() && Date() < deadline {
-            view.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
-        }
+    /// Drives `NSHostingView`'s layout synchronously, then — since SwiftUI's
+    /// preference-reduction publish to `onPreferenceChange` can land a turn
+    /// after the layout pass that produced it — awaits one real main-queue
+    /// turn per retry, re-running `layoutSubtreeIfNeeded()` and re-checking
+    /// `condition` after every turn, the same turn-bounded hop
+    /// `awaitTerminalStatePublish` uses (`TerminalStatePublishing.swift`).
+    /// `maxTurns` is a hang-guard, not the mechanism the test relies on.
+    private func pump(
+        _ view: NSView,
+        until condition: () -> Bool,
+        maxTurns: Int = 200,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async {
         view.layoutSubtreeIfNeeded()
+        for _ in 0..<maxTurns {
+            if condition() { return }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async {
+                    continuation.resume()
+                }
+            }
+            view.layoutSubtreeIfNeeded()
+        }
+        if !condition() {
+            Issue.record(
+                "Timed out after \(maxTurns) main-queue turns waiting for PaneFramePreferenceKey to publish",
+                sourceLocation: sourceLocation
+            )
+        }
     }
 
-    @Test func splitRerendersTheHostedTreeWithAllottedNonDegenerateGeometry() throws {
+    @Test func splitRerendersTheHostedTreeWithAllottedNonDegenerateGeometry() async throws {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
@@ -93,7 +115,7 @@ struct PaneViewRenderTests {
             _ = window
         }
 
-        pump(hostingView, until: { frames[terminalPane.id] != nil })
+        await pump(hostingView, until: { frames[terminalPane.id] != nil })
         let soloFrame = try #require(frames[terminalPane.id])
         #expect(soloFrame.width > windowWidth * 0.9)
 
@@ -110,7 +132,7 @@ struct PaneViewRenderTests {
         let splitResult = store.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
         let newPaneID = try #require(splitResult)
 
-        pump(hostingView, until: { frames[terminalPane.id] != nil && frames[newPaneID] != nil })
+        await pump(hostingView, until: { frames[terminalPane.id] != nil && frames[newPaneID] != nil })
         let terminalFrame = try #require(frames[terminalPane.id])
         let typedFrame = try #require(frames[newPaneID])
 

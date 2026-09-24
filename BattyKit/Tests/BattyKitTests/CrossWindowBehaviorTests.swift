@@ -494,7 +494,15 @@ struct CrossWindowBehaviorTests {
         // A new window appears before the deferred block runs (e.g. New Window).
         _ = store.windowRuntime(for: WindowID())
 
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // removeWindow's DispatchQueue.main.async-deferred check
+        // (AppStateStore.terminateIfLastContentWindowGone) was enqueued
+        // above, before this one; the main queue is FIFO, so waiting on this
+        // hop proves the deferred check has already run.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
 
         #expect(terminated == false,
                 "a window that appeared before the deferred check ran must abort termination")

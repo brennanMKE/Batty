@@ -126,6 +126,23 @@ and no assertions on elapsed wall-clock time. They make tests slow and unreliabl
 - Every await in a test still has an upper bound so a regression fails instead of hanging,
   but that bound is a failure guard, never the mechanism the test relies on.
 
+**Exception, decided (#0433 audit): `awaitTerminalStatePublish`.** `TerminalStatePublishing.swift`
+polls a predicate for up to `maxTurns` real `DispatchQueue.main.async` hops, checking the
+predicate after every hop and returning the instant it's true. It stays as-is rather than
+becoming an awaited event, because the thing it waits for — `TerminalViewState`'s `publishSoon`
+wrapping every `@Published` write made from a delegate callback in `terminalRunOnMainNextTurn`,
+an unconditional `DispatchQueue.main.async` — lives in the upstream `Lakr233/libghostty-spm`
+package vendored via SPM (not a fork; see `BattyKit/Package.swift`), at
+`BattyKit/.build/checkouts/libghostty-spm/Sources/GhosttyTerminal/State/TerminalViewState+Delegate.swift`,
+not in BattyKit's own sources, and exposes no publish-completion callback to await instead. This
+is not a fixed-window wait: the main dispatch queue is FIFO, so a `publishSoon` write already
+scheduled runs before this helper's own turn does, the predicate is rechecked after every real
+turn (never assumed true after N), and `maxTurns` is a hang-guard on a regression, not the
+number of turns the test relies on. This is the pattern other turn-bounded main-queue hops in
+this codebase should copy when no completion event can be added (e.g. `PaneViewRenderTests.pump`)
+— it is deliberately distinct from a `Task.sleep`/`RunLoop.main.run(until:)` wait, which blocks
+for a duration regardless of whether the awaited write already landed.
+
 See `docs/isolate-userdefaults-in-tests.md` for the companion rule on `UserDefaults`.
 See `docs/async-test-seams.md` for the shared injected clock, child-readiness helper, reap gate, and completion-signal conventions (`#0428`) that BattyKit's async tests route through instead of each inventing their own.
 

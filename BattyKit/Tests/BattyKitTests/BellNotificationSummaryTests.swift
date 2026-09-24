@@ -151,10 +151,47 @@ struct AppStateStoreSummarizationTests {
         return store
     }
 
-    private func awaitSummaryTask(_ store: AppStateStore, entryID: UUID) async {
-        // Give async tasks a chance to settle on the main actor.
-        await Task.yield()
-        await Task.yield()
+    /// Outcome of `awaitSummarizationTask(_:bound:)` — kept distinct from a
+    /// plain `Bool` because "the `Task` was never scheduled" (checked
+    /// synchronously via `AppStateStore.summarizationTaskForTesting`, see
+    /// the skip tests below) and "the `Task` was scheduled but never
+    /// completed" are different failures with different causes; conflating
+    /// them into one `false` hides which one actually happened.
+    private enum SummarizationAwaitResult: Equatable {
+        case completed
+        case timedOut
+    }
+
+    /// Awaits `task`'s completion, bounded by `bound` as a hang-guard only
+    /// (`docs/async-test-seams.md` §4): a genuine regression where the
+    /// `Task` never completes reports `.timedOut` instead of hanging the
+    /// suite. Same `ResumeOnce` + timeout-race shape as
+    /// `ChildProcessReadiness.waitForReadableData` (`ChildProcessReadiness.swift`)
+    /// — kept in the test target rather than production source, since it's
+    /// pure test bookkeeping with no reason to live alongside the type it
+    /// tests.
+    ///
+    /// `nonisolated` deliberately: `AppStateStoreSummarizationTests` is
+    /// `@MainActor`, and a `DispatchWorkItem` closure formed inside a
+    /// MainActor-isolated method infers MainActor isolation by default —
+    /// but `asyncAfter` runs it on `DispatchQueue.global`, a real thread
+    /// with no MainActor affinity. The mismatch is caught, and trapped, by
+    /// the Swift 6 runtime's isolation check (`swift_task_checkIsolatedSwift`)
+    /// the instant the timeout fires. `nonisolated` removes the inferred
+    /// isolation; nothing in this body touches MainActor-isolated state.
+    private nonisolated func awaitSummarizationTask(_ task: Task<Void, Never>, bound: TimeInterval = 5) async -> SummarizationAwaitResult {
+        await withCheckedContinuation { (continuation: CheckedContinuation<SummarizationAwaitResult, Never>) in
+            let once = ResumeOnce(continuation)
+            let timeoutWorkItem = DispatchWorkItem {
+                once.resume(.timedOut)
+            }
+            once.setOnResumed { timeoutWorkItem.cancel() }
+            Task {
+                await task.value
+                once.resume(.completed)
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeoutWorkItem)
+        }
     }
 
     @Test func resolvedTreatsAbsentKeyAsTrue() {
@@ -200,16 +237,17 @@ struct AppStateStoreSummarizationTests {
         UserDefaults.standard.set(false, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
         store.recordDesktopNotification(forTabID: tab.id)
+        let entryID = store.bellFeed.entries.first!.id
 
-        await Task.yield()
-        await Task.yield()
+        // "Skipped" is a synchronous fact — scheduleSummarization returned
+        // before ever creating a Task — not something to await.
+        #expect(store.summarizationTaskForTesting(entryID: entryID) == nil,
+                "toggle off must skip scheduling a summarization Task entirely")
 
         #expect(store.bellFeed.entries.first != nil)
-        #expect(summarizer.calls.isEmpty)
-        #expect(store.bellFeed.entries.first?.summary == nil)
     }
 
-    @Test func summarizationRunsWhenToggleOn() async {
+    @Test func summarizationRunsWhenToggleOn() async throws {
         let summarizer = RecordingSummarizer(result: "tests passed")
         let store = makeStore(summarizer: summarizer)
         store.selectedSessionID = nil
@@ -224,20 +262,18 @@ struct AppStateStoreSummarizationTests {
         store.recordDesktopNotification(forTabID: tab.id)
         let entryID = store.bellFeed.entries.first!.id
 
-        // Wait for the async summarization task to complete.
-        for _ in 0..<10 {
-            await Task.yield()
-            if store.bellFeed.entries.first?.summary != nil { break }
-        }
+        let task = try #require(store.summarizationTaskForTesting(entryID: entryID),
+                                 "toggle on with a summarizer must schedule a summarization Task")
+        let result = await awaitSummarizationTask(task)
+        #expect(result == .completed, "summarization Task did not complete within the hang-guard bound")
 
         #expect(summarizer.calls.count == 1)
         #expect(store.bellFeed.entries.first?.summary == "tests passed")
         let call = summarizer.calls[0]
         #expect(call.message?.contains("CI") == true || call.message?.contains("passed") == true)
-        _ = entryID
     }
 
-    @Test func nilSummaryFromSummarizerLeavesEntryUnchanged() async {
+    @Test func nilSummaryFromSummarizerLeavesEntryUnchanged() async throws {
         let summarizer = RecordingSummarizer(result: nil)
         let store = makeStore(summarizer: summarizer)
         store.selectedSessionID = nil
@@ -250,18 +286,19 @@ struct AppStateStoreSummarizationTests {
         UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
         store.recordDesktopNotification(forTabID: tab.id)
+        let entryID = store.bellFeed.entries.first!.id
 
-        for _ in 0..<10 {
-            await Task.yield()
-            if !summarizer.calls.isEmpty { break }
-        }
+        let task = try #require(store.summarizationTaskForTesting(entryID: entryID),
+                                 "toggle on with a summarizer must schedule a summarization Task")
+        let result = await awaitSummarizationTask(task)
+        #expect(result == .completed, "summarization Task did not complete within the hang-guard bound")
 
         #expect(store.bellFeed.entries.first != nil)
         #expect(summarizer.calls.count == 1)
         #expect(store.bellFeed.entries.first?.summary == nil)
     }
 
-    @Test func junkSummaryFromSummarizerIsDropped() async {
+    @Test func junkSummaryFromSummarizerIsDropped() async throws {
         let junk = String(repeating: "x", count: NotificationSummary.maxLength + 1)
         let summarizer = RecordingSummarizer(result: junk)
         let store = makeStore(summarizer: summarizer)
@@ -275,18 +312,19 @@ struct AppStateStoreSummarizationTests {
         UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
         store.recordDesktopNotification(forTabID: tab.id)
+        let entryID = store.bellFeed.entries.first!.id
 
-        for _ in 0..<10 {
-            await Task.yield()
-            if !summarizer.calls.isEmpty { break }
-        }
+        let task = try #require(store.summarizationTaskForTesting(entryID: entryID),
+                                 "toggle on with a summarizer must schedule a summarization Task")
+        let result = await awaitSummarizationTask(task)
+        #expect(result == .completed, "summarization Task did not complete within the hang-guard bound")
 
         #expect(store.bellFeed.entries.first != nil)
         #expect(summarizer.calls.count == 1)
         #expect(store.bellFeed.entries.first?.summary == nil)
     }
 
-    @Test func summaryUpdatesCorrectEntry() async {
+    @Test func summaryUpdatesCorrectEntry() async throws {
         // Use a message-keyed summarizer so the two concurrent tasks return
         // distinct values regardless of completion order.
         final class MessageKeyedSummarizer: NotificationSummarizing {
@@ -319,12 +357,18 @@ struct AppStateStoreSummarizationTests {
         tab1.terminal.terminalDidRequestDesktopNotification(title: "Tests", body: "tests-failed")
         await awaitTerminalStatePublish { tab1.terminal.lastDesktopNotificationAt != nil }
         store.recordDesktopNotification(forTabID: tab1.id)
+        let secondEntryID = store.bellFeed.entries.first(where: { $0.id != firstEntryID })!.id
 
-        for _ in 0..<30 {
-            await Task.yield()
-            if store.bellFeed.entries.count >= 2,
-               store.bellFeed.entries.allSatisfy({ $0.summary != nil }) { break }
-        }
+        let firstTask = try #require(store.summarizationTaskForTesting(entryID: firstEntryID),
+                                      "toggle on with a summarizer must schedule a summarization Task per entry")
+        let secondTask = try #require(store.summarizationTaskForTesting(entryID: secondEntryID),
+                                       "toggle on with a summarizer must schedule a summarization Task per entry")
+        // Both tasks are already running concurrently; awaiting one's
+        // completion signal doesn't block the other's progress.
+        let firstResult = await awaitSummarizationTask(firstTask)
+        let secondResult = await awaitSummarizationTask(secondTask)
+        #expect(firstResult == .completed && secondResult == .completed,
+                "summarization Tasks did not complete within the hang-guard bound")
 
         #expect(store.bellFeed.entries.count == 2)
         let entry0 = store.bellFeed.entries.first(where: { $0.id == firstEntryID })
@@ -333,7 +377,7 @@ struct AppStateStoreSummarizationTests {
         #expect(entry1?.summary == "tests failed")
     }
 
-    @Test func bellTickSummarizationAlsoRuns() async {
+    @Test func bellTickSummarizationAlsoRuns() async throws {
         let summarizer = RecordingSummarizer(result: "bell rang")
         let store = makeStore(summarizer: summarizer)
         store.selectedSessionID = nil
@@ -346,11 +390,12 @@ struct AppStateStoreSummarizationTests {
         UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
         store.recordBellTick(forTabID: tab.id)
+        let entryID = store.bellFeed.entries.first!.id
 
-        for _ in 0..<10 {
-            await Task.yield()
-            if store.bellFeed.entries.first?.summary != nil { break }
-        }
+        let task = try #require(store.summarizationTaskForTesting(entryID: entryID),
+                                 "toggle on with a summarizer must schedule a summarization Task")
+        let result = await awaitSummarizationTask(task)
+        #expect(result == .completed, "summarization Task did not complete within the hang-guard bound")
 
         #expect(store.bellFeed.entries.first != nil)
         #expect(store.bellFeed.entries.first?.summary == "bell rang")

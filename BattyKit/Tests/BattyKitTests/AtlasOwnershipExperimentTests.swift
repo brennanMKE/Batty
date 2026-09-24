@@ -65,20 +65,36 @@ struct AtlasOwnershipExperimentTests {
     }
 
     /// Builds a real, attached, in-memory-backed surface on `controller` and
-    /// pumps the main run loop briefly so the async-scheduled first tick
-    /// (`TerminalSurfaceCoordinator.scheduleTickIfNeeded` dispatches via
-    /// `DispatchQueue.main.async`) actually runs and reaches
-    /// `surface.draw()` before the caller samples region counts. Mirrors the
-    /// production spawn order in `TerminalHostStore.terminalView(for:windowID:)`:
-    /// configuration and controller are set before the view has a window, so
-    /// the real surface creation happens in `viewDidMoveToWindow`, not the
-    /// property setters.
+    /// pumps the main run loop briefly so the first tick actually runs and
+    /// reaches `surface.draw()` before the caller samples region counts. The
+    /// first tick is driven by a real display link, not a one-shot dispatch:
+    /// attach/layout calls `requestImmediateTick()`, which calls
+    /// `ensureDisplayLink()`, whose vsync callback calls `tick(context:)`,
+    /// which calls `surface.draw()` (vendored `libghostty-spm`,
+    /// `TerminalSurfaceCoordinator.swift`). Mirrors the production spawn
+    /// order in `TerminalHostStore.terminalView(for:windowID:)`: configuration
+    /// and controller are set before the view has a window, so the real
+    /// surface creation happens in `viewDidMoveToWindow`, not the property
+    /// setters.
     /// `AppTerminalView.surface` is package-internal, so attachment success
     /// is observed the same way production code observes it: through
     /// `TerminalSurfaceLifecycleDelegate.terminalDidAttachSurface`, which
     /// `TerminalViewState` (the public, published-property state container)
     /// already implements — `viewState.surface` goes non-nil exactly when
     /// the delegate callback fires.
+    /// **Flagged, not migrated to an awaited event.** `AGENTS.md`'s
+    /// "Asynchronous tests" rule wants a completion signal here instead of a
+    /// spin. The only signal already exposed — `TerminalViewState.surface`
+    /// going non-nil via `terminalDidAttachSurface` — fires when the surface
+    /// *attaches*, before glyph-atlas allocation, which only happens inside
+    /// the display-link-driven `tick(context:)` above — a genuine vsync
+    /// callback, not a `DispatchQueue.main.async` hop, so it can't be driven
+    /// deterministically by awaiting main-queue turns the way
+    /// `awaitTerminalStatePublish` does. libghostty-spm exposes no "first
+    /// frame drawn" / atlas-allocated callback to await instead, and it's a
+    /// vendored dependency, not BattyKit's own source — adding one is out of
+    /// this issue's scope. Spinning the run loop briefly is the only way to
+    /// let a real vsync fire before sampling; tracked in #0435.
     private func attachSurface(controller: TerminalController) -> (window: NSWindow, view: AppTerminalView, state: TerminalViewState) {
         let frame = NSRect(x: 0, y: 0, width: 400, height: 300)
         let view = AppTerminalView(frame: frame)
