@@ -704,9 +704,39 @@ delta map alive across suspend, which would be exactly the kind of
 paused-but-still-allocated state §1 of `docs/pane-view-lifecycle.md`
 argues against.
 
+**Corrected by `#0351`**: `SMCThermalReader`'s per-tick candidate-key walk
+(§1.4/§6) turned out to need caching too — not a data sample, but metadata
+about which of the five candidate keys answers on this Mac (or that none
+do). `SystemMetricsSampler` now holds that resolution (`SMCTemperatureKeyCache`)
+in the same per-active-lifetime slot as the CPU-delta map above: retained
+across ticks while the pane is `active`, discarded when the sampler itself
+is discarded on hide, and rebuilt by one fresh walk on the next show. That
+is a deliberate, narrower departure from #0351's original "remembered for
+the process lifetime" framing — because #0350 already rebuilds the whole
+sampler per show, one walk per pane show (not one walk ever, and
+certainly not one walk per tick, which is the bug #0351 fixed) is the
+accepted cost. A walk that hits a transient SMC/IOKit failure — as
+opposed to a candidate key SMC reports as definitively absent — is never
+cached as a miss on its own; a resolved key that then fails several ticks
+in a row triggers one fresh re-walk rather than reporting "no reading"
+forever. **Corrected again by `#0351`**: that retry is
+bounded, not unconditional — a candidate permanently misclassified as
+transient (a key that always decodes out of range, or always answers a
+non-`0x84` error code) would otherwise re-walk all five keys every tick
+forever, exactly the cost this cache exists to remove. After three
+consecutive walks end with no value at all, the cache settles on
+`.unavailable` for the rest of the show, same as if every candidate had
+come back definitively absent from the start (`SMCTemperatureKeyCache
+.consecutiveInconclusiveWalksBeforeUnavailable`). None of this is "keeping
+history" in this section's sense — a key resolution is not a sample of
+the machine's state, has no series to discard, and (unlike the delta map)
+requires no "first tick after show reads unavailable" caveat, since the
+very first tick's own walk resolves it before that tick's reading is
+built.
+
 **What "suspended" costs, concretely, per `docs/pane-view-lifecycle.md`
 §4:** literally zero — no running `Task`, no timer, no retained sample
-buffer, no delta map. Identical in shape to `#0305`'s own answer
+buffer, no delta map, no cached temperature-key resolution. Identical in shape to `#0305`'s own answer
 (`docs/design/process-status-view.md` §4, "no `FileDescriptor`, subprocess,
 or kernel-level handle survives between one sampling call and the next"),
 because this view spawns nothing external either (§1 found no subprocess
@@ -799,8 +829,8 @@ commit to:
 |---|---|
 | `setUp(visible: Bool)` (`PaneContentLifecycle.swift:123`) | Takes one `thermalState` read and one system-wide-metrics read immediately (§1.2/§1.6 — both sub-millisecond, so the header/tiles have something to show the instant the pane exists, per `docs/pane-view-lifecycle.md` §4's "setup must not create work it would immediately have to suspend" — a single non-repeating read is not periodic work, the same reasoning `#0305`'s own `setUp` table applies to its one-time identity lookup). If `visible == true`: additionally runs the first full process-list sweep (§1.7) and the first SMC read (§1.4 — its own self-contained open/read/close cycle, below) and starts the 1s periodic `Task` (§3). If `visible == false`: stops there — no `Task`, no process sweep, no SMC connection opened at all, matching the direct `notSetUp → suspended` edge `docs/pane-view-lifecycle.md` §3's state diagram requires. |
 | `setVisible(true)` (`suspended → active`, `PaneContentLifecycle.swift:130`) | (Re)starts the 1s periodic `Task` and performs one immediate full sample across all four categories (§3), per §4's "discard, then refresh on show" decision — the CPU-delta map starts empty, so the first tick's CPU% column reads "—" for every row as §4 describes. |
-| `setVisible(false)` (`active → suspended`) | `Task.cancel()`, drop the reference, drop the CPU-delta map (§4 — nothing kept). No subprocess exists anywhere in this design (§1 found none needed, mirroring `#0305`'s own finding), and — per the correction below — no persistent SMC connection either, so there is nothing else to release; no bounded wait needed, unlike `#0304`'s `git status` subprocess teardown. |
-| `tearDown()` (`PaneContentLifecycle.swift:137`) | Same cancellation as `setVisible(false)`, idempotent per the state machine's `.noOp` handling of a repeated tear down (`docs/pane-view-lifecycle.md` §3). Nothing else to release — no watcher, no cache beyond the discarded delta map, no subprocess, no held connection. |
+| `setVisible(false)` (`active → suspended`) | `Task.cancel()`, drop the reference, drop the whole `SystemMetricsSampler` — the CPU-delta map and the SMC temperature-key resolution (`#0351`) both go with it (§4 — nothing kept). No subprocess exists anywhere in this design (§1 found none needed, mirroring `#0305`'s own finding), and — per the correction below — no persistent SMC connection either, so there is nothing else to release; no bounded wait needed, unlike `#0304`'s `git status` subprocess teardown. |
+| `tearDown()` (`PaneContentLifecycle.swift:137`) | Same cancellation as `setVisible(false)`, idempotent per the state machine's `.noOp` handling of a repeated tear down (`docs/pane-view-lifecycle.md` §3). Nothing else to release — no watcher, no cache beyond the discarded delta map and temperature-key resolution, no subprocess, no held connection. |
 
 **SMC access is per-tick open/read/close, not a persistent connection —
 corrected after review round 2 found the persistent-connection design was
@@ -895,8 +925,11 @@ See `docs/pane-view-lifecycle.md` §4's note on this as an accepted
 deviation from "suspended costs zero work instantaneously."
 
 **What "suspended" costs**: zero periodic work, and zero *retained* state
-— no `Task` reference, no delta map, no cached sample, no `AppleSMC`
-connection held between ticks. **Corrected by `#0350`**: this was
+— no `Task` reference, no delta map, no cached sample, no cached
+temperature-key resolution (`#0351` — metadata about which SMC key
+answers, not a sample of the machine's state, but retained the same way
+the delta map is while active, so it belongs in this list too), no
+`AppleSMC` connection held between ticks. **Corrected by `#0350`**: this was
 previously stated as "zero open kernel handles," full stop, on the
 reasoning above (the loop and `setVisible(false)` could only interleave
 at a suspension point). With the sweep itself running on the sampler's
@@ -912,7 +945,8 @@ built. The generation guard ensures every one of their results is
 discarded, and nothing survives past each sweep's own completion (the SMC
 read still closes its connection itself, exactly as before). Once that bounded
 tail completes, the steady-state guarantee holds as originally stated: no
-`Task`, no delta map, no cached sample, no open `AppleSMC` connection. A
+`Task`, no delta map, no cached sample, no cached temperature-key
+resolution, no open `AppleSMC` connection. A
 hidden `system-metrics` pane still costs nothing beyond its own model
 object's few bytes once that brief tail has run out, the same conclusion
 both prior non-terminal-view design documents reach for the same
@@ -1017,7 +1051,7 @@ above).
 | Feasibility — non-thermal system + whole-process-list cost | Load average, per-core CPU, memory breakdown (compressed-aware), physical total: all free, sub-millisecond. Full-system libproc sweep (~802-805 pids on this machine, two separate spike runs — process count fluctuates run to run, not a discrepancy): 2-3 ms total, cross-checked against `footprint`/`ps`. **Corrected after review round 1:** `proc_pidpath` fails for exactly one pid (0, `kernel_task`) rather than zero; `proc_name` fails for 280 pids spanning 213 distinct root-owned system daemons (`/usr/bin/login` is the largest single bucket at 26, not the only one at 280) — the boundary is process ownership generally, not a narrow pty-specific pattern. | §1.6/§1.7 |
 | 1. Which metrics, at what fidelity? | **Corrected after review round 1:** numeric CPU temperature and fan RPM/count tiles, sourced from SMC keys (§1.4), shown alongside — not instead of — the coarse 4-state thermal chip, with both open caveats stated in the UI (mockup state 4). Per-core + aggregate CPU. Compressed-aware system memory breakdown + pressure chip. Full (not top-N) sortable process list, `phys_footprint` per row, "—" not `0` for permission-denied rows, three-tier name fallback (`proc_name` → `proc_pidpath` basename → hardcoded `"kernel_task"` for pid 0). | §2 |
 | 2. Sampling interval? | Fixed 1 second, matching Activity Monitor and `#0305`'s own default — a UX choice, not a cost constraint, since even the full per-tick cost across all four categories (process list + SMC + system-wide + thermal) is under 1% of the interval budget. Adaptive and configurable both explicitly rejected as unjustified complexity. | §3 |
-| 3. Hidden-pane history? | Discard. A hidden pane keeps nothing (no ring buffer, no delta map); `setVisible(true)` re-samples everything fresh in a few milliseconds, an imperceptible cost that makes "keep for continuity" not worth its complexity. The SMC connection is never held across ticks in the first place (§6 — opened, read, and closed once per tick, cheaper than a single key read), so there is nothing hide-specific to release there either. One documented consequence: CPU% reads "—" for one tick after every show, since the delta baseline restarts. | §4 |
+| 3. Hidden-pane history? | Discard. A hidden pane keeps nothing (no ring buffer, no delta map, no cached SMC temperature-key resolution — `#0351`); `setVisible(true)` re-samples everything fresh in a few milliseconds, an imperceptible cost that makes "keep for continuity" not worth its complexity. The SMC connection is never held across ticks in the first place (§6 — opened, read, and closed once per tick, cheaper than a single key read), so there is nothing hide-specific to release there either. One documented consequence: CPU% reads "—" for one tick after every show, since the delta baseline restarts; the SMC candidate walk has no equivalent gap, since it resolves within the very tick that needs it. | §4 |
 | Shared infrastructure with `#0305`? | A per-pid libproc sampling primitive (task info, rusage, name/path with the same fallback tier, argv) is genuinely shared; whole-machine metrics (thermal, CPU, memory, load average, and — now — SMC temperature/fan) are `#0314`-only. Named, not built: a `ProcessMetricsReader`-shaped type with `sample(pid:)` and `sampleAll()`. | §5 |
 
 ---

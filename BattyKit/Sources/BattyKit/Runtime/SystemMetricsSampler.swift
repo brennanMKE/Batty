@@ -34,7 +34,10 @@ public nonisolated protocol SystemMetricsSampling: AnyObject, Sendable {
 /// the whole `SystemMetricsSampler` instance and constructing a fresh one
 /// on the next `active`-entry, rather than by resetting fields in place,
 /// so "nothing kept across a hide" is a property of object lifetime, not
-/// of remembering to clear every field.
+/// of remembering to clear every field. Also owns the SMC temperature-key
+/// cache (#0351) on the same terms: discarded on hide like the trackers,
+/// which just means the candidate walk repeats once per show rather than
+/// never — the problem #0351 fixes is the walk repeating every tick.
 ///
 /// An `actor`, not a `@MainActor` class: this is what actually moves the
 /// ~6.5ms sweep off the main actor (#0350) — `sampleOnce()` runs on this
@@ -46,12 +49,13 @@ public nonisolated protocol SystemMetricsSampling: AnyObject, Sendable {
 public actor SystemMetricsSampler: SystemMetricsSampling {
     private var coreCPUTracker = CoreCPUDeltaTracker()
     private var processCPUTracker = ProcessCPUDeltaTracker()
+    private var temperatureKeyCache = SMCTemperatureKeyCache()
 
     public init() {}
 
     public func sampleOnce() async -> SystemMetricsSnapshot {
         let thermalState = ProcessInfo.processInfo.thermalState
-        let smc = SMCThermalReader.read()
+        let smc = SMCThermalReader.read(temperatureKeyCache: &temperatureKeyCache)
 
         let coreTicks = SystemCPUReader.currentTicks()
         let corePercentages = coreCPUTracker.percentages(for: coreTicks)
