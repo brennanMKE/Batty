@@ -72,7 +72,15 @@ nonisolated func resolvePath(_ input: String) throws -> String {
 /// an unqualified `open <url>` or an ambiguous `-b <id>` can.
 nonisolated func openURL(
     _ url: URL,
-    resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() }
+    resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() },
+    runProcess: (URL, [String]) throws -> Int32 = { executableURL, arguments in
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
 ) throws {
     let bundleURL: URL
     switch resolveAppBundle() {
@@ -82,18 +90,18 @@ nonisolated func openURL(
     case .success(let resolved):
         bundleURL = resolved
     }
-    let process = Process()
-    process.executableURL = URL(filePath: "/usr/bin/open")
-    process.arguments = ["-a", bundleURL.path(percentEncoded: false), url.absoluteString]
+    let terminationStatus: Int32
     do {
-        try process.run()
-        process.waitUntilExit()
+        terminationStatus = try runProcess(
+            URL(filePath: "/usr/bin/open"),
+            ["-a", bundleURL.path(percentEncoded: false), url.absoluteString]
+        )
     } catch {
         fputs("batty: failed to open URL: \(error.localizedDescription)\n", stderr)
         throw ExitCode.failure
     }
-    guard process.terminationStatus == 0 else {
-        fputs("batty: open exited with status \(process.terminationStatus)\n", stderr)
+    guard terminationStatus == 0 else {
+        fputs("batty: open exited with status \(terminationStatus)\n", stderr)
         throw ExitCode.failure
     }
 }
