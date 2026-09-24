@@ -27,11 +27,16 @@ nonisolated final class SessionCwdRenameTests: XCTestCase {
         continueAfterFailure = false
         BattyUITestHarness.sweepSentinels()
 
-        // Live under /tmp (not NSTemporaryDirectory) so the unsandboxed app
-        // process resolves the same absolute paths the terminal cd's into.
+        // Live under NSTemporaryDirectory(), not a hard-coded /tmp path: the
+        // XCUITest runner is sandboxed and can't write directly into /tmp,
+        // so its own temp directory is a location both it and the
+        // unsandboxed app under test can reach. The typed `cd` command
+        // carries the literal absolute path, so the app process never needs
+        // to resolve NSTemporaryDirectory() itself.
         let unique = UUID().uuidString.prefix(8)
-        projectDir = "/tmp/batty-uitest-proj-\(unique)"
-        plainDir = "/tmp/batty-uitest-plain-\(unique)"
+        let tmp = NSTemporaryDirectory()
+        projectDir = (tmp as NSString).appendingPathComponent("batty-uitest-proj-\(unique)")
+        plainDir = (tmp as NSString).appendingPathComponent("batty-uitest-plain-\(unique)")
         let fm = FileManager.default
         try fm.createDirectory(atPath: projectDir, withIntermediateDirectories: true)
         try fm.createDirectory(atPath: plainDir, withIntermediateDirectories: true)
@@ -77,12 +82,38 @@ nonisolated final class SessionCwdRenameTests: XCTestCase {
         pause(0.5)
 
         // cd INTO the project dir: the session should rename to the project name.
-        app.typeText("cd \(projectDir)\n")
+        // The command also reports $HOST (zsh's value, captured at shell
+        // startup) alongside a live `hostname` call, via a sentinel file —
+        // shell-integration's OSC 7 report embeds $HOST, and libghostty
+        // rejects the pwd update outright if that host doesn't match a
+        // live hostname lookup at report time (`internal_os.hostname.isLocal`
+        // in ghostty-upstream's `termio/stream_handler.zig`). The sentinel
+        // also independently proves the shell actually reached the
+        // directory (the `&&` only fires on a successful `cd`), separating
+        // a fixture-reachability regression from a rename-pipeline one.
+        let hostCheckSentinel = BattyUITestHarness.sentinelPath(named: "cd-host-check")
+        app.typeText("cd \(projectDir) && printf 'HOST=%s LIVEHOST=%s\\n' \"$HOST\" \"$(hostname)\" > \(hostCheckSentinel)\n")
         XCTAssertTrue(
-            waitFor({ BattyUITestHarness.sessionRow(named: projectName, in: app).exists },
-                    timeout: 10),
-            "Session should rename to '\(projectName)' after cd into the project dir"
+            BattyUITestHarness.waitForFile(at: hostCheckSentinel, timeout: 5),
+            "Shell did not finish cd into the project dir"
         )
+        let hostCheckReport = (try? String(contentsOfFile: hostCheckSentinel, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "<sentinel unreadable>"
+        let renamed = waitFor({ BattyUITestHarness.sessionRow(named: projectName, in: app).exists },
+                               timeout: 10)
+        if !renamed {
+            // On failure only, so a passing run's log stays quiet: the
+            // window title mirrors `session.title` through a wholly
+            // separate SwiftUI binding (`SessionDetailView.navigationTitle`)
+            // than the sidebar row's accessibility identifier this test
+            // polls — a mismatch between the two tells a model-level miss
+            // apart from a sidebar-rendering-only one.
+            let windowTitle = app.windows.firstMatch.title
+            XCTFail(
+                "Session should rename to '\(projectName)' after cd into the project dir " +
+                "(shell reported: \(hostCheckReport); window title: '\(windowTitle)')"
+            )
+        }
 
         // cd OUT to a plain dir: the name must drop the project name and reset.
         app.typeText("cd \(plainDir)\n")
