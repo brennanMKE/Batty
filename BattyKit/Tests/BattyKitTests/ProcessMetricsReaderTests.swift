@@ -39,7 +39,8 @@ struct ProcessMetricsReaderTests {
     }
 
     @Test func sampleAllIncludesTheCurrentProcess() {
-        let samples = ProcessMetricsReader.sampleAll()
+        var failureGate = FailureLogGate<ProcessListFailure>()
+        let samples = ProcessMetricsReader.sampleAll(failureGate: &failureGate)
         #expect(!samples.isEmpty)
         #expect(samples.contains { $0.pid == getpid() })
     }
@@ -65,7 +66,8 @@ struct ProcessMetricsReaderTests {
             return
         }
 
-        let sampledCount = ProcessMetricsReader.sampleAll().count
+        var failureGate = FailureLogGate<ProcessListFailure>()
+        let sampledCount = ProcessMetricsReader.sampleAll(failureGate: &failureGate).count
 
         // Generous slack for process churn between the two enumeration
         // calls (a process can exit or spawn in between) — 20% is far

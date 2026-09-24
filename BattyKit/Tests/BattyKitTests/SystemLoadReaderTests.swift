@@ -6,7 +6,8 @@ import Testing
 struct SystemLoadReaderTests {
 
     @Test func currentReturnsNonNegativeValues() {
-        let load = SystemLoadReader.current()
+        var failureGate = FailureLogGate<LoadReadFailure>()
+        let load = SystemLoadReader.current(failureGate: &failureGate)
         #expect(load.oneMinute >= 0)
         #expect(load.fiveMinute >= 0)
         #expect(load.fifteenMinute >= 0)

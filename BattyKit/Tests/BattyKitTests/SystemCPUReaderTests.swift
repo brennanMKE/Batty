@@ -6,7 +6,8 @@ import Testing
 struct SystemCPUReaderTests {
 
     @Test func currentTicksReturnsAtLeastOneCore() {
-        let cores = SystemCPUReader.currentTicks()
+        var failureGate = FailureLogGate<CPUReadFailure>()
+        let cores = SystemCPUReader.currentTicks(failureGate: &failureGate)
         #expect(!cores.isEmpty)
     }
 

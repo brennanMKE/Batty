@@ -10,7 +10,7 @@ import Foundation
 /// correct "no baseline" `nil` into a fabricated `0.0%`, which read as a
 /// real (and wrong) measurement on the pane's first tick and after every
 /// hide→show, on a machine that was actually busy. `coreCount` is tracked
-/// separately, from the raw tick read (`SystemCPUReader.currentTicks()`),
+/// separately, from the raw tick read (`SystemCPUReader.currentTicks(failureGate:)`),
 /// so the core-count sub-label stays correct even on the one tick where
 /// no percentage exists yet — it is not derived from
 /// `perCorePercent?.count`, which would report `0` cores on that same

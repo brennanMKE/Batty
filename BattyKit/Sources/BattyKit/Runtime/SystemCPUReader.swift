@@ -2,6 +2,9 @@
 
 import Darwin
 import Foundation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "SystemCPUReader")
 
 /// One core's cumulative tick counters from `host_processor_info`. Raw
 /// counters, not a percentage — `SystemCPUReader.percentages(from:to:)`
@@ -23,6 +26,17 @@ public nonisolated struct CoreTicks: Equatable, Sendable {
     var busy: UInt64 { UInt64(user) + UInt64(system) + UInt64(nice) }
 }
 
+/// A `host_processor_info` call failing outright is a different cause than
+/// it succeeding but handing back a shape `parseCoreTicks` can't index
+/// safely (#0352 — the two kernel-reported counts disagreeing) — kept as
+/// distinct cases so `FailureLogGate<CPUReadFailure>` treats switching
+/// between them as a *changed* failure, not a silent continuation of the
+/// same one.
+public nonisolated enum CPUReadFailure: Equatable, Sendable {
+    case hostProcessorInfoFailed(kern_return_t)
+    case unparseableShape(numCpus: Int, rawTicksCount: Int)
+}
+
 /// Reads per-core CPU ticks via `host_processor_info(PROCESSOR_CPU_LOAD_INFO)`
 /// (`docs/design/system-metrics-view.md` §1.6/§2 — free, sub-millisecond,
 /// 12 cores on the spike's Mac mini M4). Stateless: each call is an
@@ -34,7 +48,7 @@ public nonisolated struct CoreTicks: Equatable, Sendable {
 /// main actor, defeating `SystemMetricsSampler`'s whole point of running
 /// this sweep on its own executor.
 public nonisolated enum SystemCPUReader {
-    public static func currentTicks() -> [CoreTicks] {
+    public static func currentTicks(failureGate: inout FailureLogGate<CPUReadFailure>) -> [CoreTicks] {
         var cpuInfo: processor_info_array_t!
         var numCpuInfo: mach_msg_type_number_t = 0
         var numCpus: natural_t = 0
@@ -48,7 +62,10 @@ public nonisolated enum SystemCPUReader {
         // but a monitoring pane leaking Mach ports is worth the one line.
         defer { mach_port_deallocate(mach_task_self_, hostPort) }
         let result = host_processor_info(hostPort, PROCESSOR_CPU_LOAD_INFO, &numCpus, &cpuInfo, &numCpuInfo)
-        guard result == KERN_SUCCESS, let cpuInfo else { return [] }
+        guard result == KERN_SUCCESS, let cpuInfo else {
+            logFailure(failureGate.record(failureCode: .hostProcessorInfoFailed(result)), description: "host_processor_info failed, kr=\(result)")
+            return []
+        }
         defer {
             vm_deallocate(
                 mach_task_self_,
@@ -58,11 +75,32 @@ public nonisolated enum SystemCPUReader {
         }
 
         let rawTicks = Array(UnsafeBufferPointer(start: cpuInfo, count: Int(numCpuInfo)))
-        return parseCoreTicks(numCpus: Int(numCpus), rawTicks: rawTicks) ?? []
+        guard let cores = parseCoreTicks(numCpus: Int(numCpus), rawTicks: rawTicks) else {
+            logFailure(
+                failureGate.record(failureCode: .unparseableShape(numCpus: Int(numCpus), rawTicksCount: rawTicks.count)),
+                description: "unparseable core-tick shape, numCpus=\(numCpus), rawTicks.count=\(rawTicks.count)"
+            )
+            return []
+        }
+        logFailure(failureGate.record(failureCode: nil), description: "")
+        return cores
+    }
+
+    private static func logFailure(_ disposition: FailureLogGate<CPUReadFailure>.Disposition, description: String) {
+        switch disposition {
+        case .stillOK:
+            return
+        case .firstFailure, .changedFailure:
+            logger.error("cpu: \(description, privacy: .public)")
+        case .repeatedFailure:
+            logger.debug("cpu: still failing — \(description, privacy: .public)")
+        case .recovered:
+            logger.info("cpu: recovered")
+        }
     }
 
     /// Turns the raw `host_processor_info` output into `CoreTicks`, kept
-    /// separate from `currentTicks()` so tests can feed malformed
+    /// separate from `currentTicks(failureGate:)` so tests can feed malformed
     /// `(numCpus, rawTicks)` pairs without a syscall seam. `numCpus` and
     /// `rawTicks.count` are independent kernel-reported values (#0352) —
     /// `nil` on a non-positive `numCpus` or a `rawTicks` shorter than

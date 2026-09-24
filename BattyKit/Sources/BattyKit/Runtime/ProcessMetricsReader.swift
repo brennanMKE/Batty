@@ -2,6 +2,17 @@
 
 import Darwin
 import Foundation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProcessMetricsReader")
+
+/// `proc_listallpids` is called twice — once to size the buffer, once to
+/// fill it (`listAllPIDs(failureGate:)` below) — and either call can fail
+/// independently, so they're kept as distinct causes (#0353).
+public nonisolated enum ProcessListFailure: Equatable, Sendable {
+    case probeFailed(count: Int32)
+    case fillFailed(count: Int32)
+}
 
 /// One process's sampled state — the libproc reads both #0314
 /// (whole-system) and #0305 (single selected process) need, factored here
@@ -122,8 +133,8 @@ public nonisolated enum ProcessMetricsReader {
     /// ~800 pids on the spike's Mac mini M4). A pid that exits between
     /// enumeration and sampling is silently dropped rather than
     /// represented as a phantom row.
-    public static func sampleAll() -> [ProcessSample] {
-        listAllPIDs().compactMap { sample(pid: $0) }
+    public static func sampleAll(failureGate: inout FailureLogGate<ProcessListFailure>) -> [ProcessSample] {
+        listAllPIDs(failureGate: &failureGate).compactMap { sample(pid: $0) }
     }
 
     // MARK: - Enumeration
@@ -141,20 +152,40 @@ public nonisolated enum ProcessMetricsReader {
     /// the corrected version below matches the actual pid count with pid
     /// 0 and this process's own pid both present). Neither return value
     /// is ever divided by anything now.
-    private static func listAllPIDs() -> [pid_t] {
+    private static func listAllPIDs(failureGate: inout FailureLogGate<ProcessListFailure>) -> [pid_t] {
         let probeCount = proc_listallpids(nil, 0)
-        guard probeCount > 0 else { return [] }
+        guard probeCount > 0 else {
+            logFailure(failureGate.record(failureCode: .probeFailed(count: probeCount)), description: "proc_listallpids probe returned \(probeCount)")
+            return []
+        }
         // Padded for processes started between the probe and the fill call
         // — a benign, expected race under any concurrent workload.
         var pids = [pid_t](repeating: 0, count: Int(probeCount) + 64)
         let capacityBytes = Int32(pids.count * MemoryLayout<pid_t>.stride)
         let actualCount = proc_listallpids(&pids, capacityBytes)
-        guard actualCount > 0 else { return [] }
+        guard actualCount > 0 else {
+            logFailure(failureGate.record(failureCode: .fillFailed(count: actualCount)), description: "proc_listallpids fill returned \(actualCount)")
+            return []
+        }
+        logFailure(failureGate.record(failureCode: nil), description: "")
         // Unlike a caller that only wants ordinary processes, pid 0 is
         // kept, not filtered — `sample(pid:)`'s hardcoded `"kernel_task"`
         // fallback (`docs/design/system-metrics-view.md` §1.7) depends on
         // pid 0 surviving enumeration.
         return Array(pids.prefix(Int(actualCount)))
+    }
+
+    private static func logFailure(_ disposition: FailureLogGate<ProcessListFailure>.Disposition, description: String) {
+        switch disposition {
+        case .stillOK:
+            return
+        case .firstFailure, .changedFailure:
+            logger.error("process-list: \(description, privacy: .public)")
+        case .repeatedFailure:
+            logger.debug("process-list: still failing — \(description, privacy: .public)")
+        case .recovered:
+            logger.info("process-list: recovered")
+        }
     }
 
     // MARK: - Individual reads

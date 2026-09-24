@@ -16,8 +16,9 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// **Resource budget, stated per `issues/0314.md`'s own requirement**: one
 /// `Task` while `.active`, ticking at `Self.sampleInterval` (1s,
 /// `docs/design/system-metrics-view.md` §3); zero kernel handles held
-/// between ticks (`SMCThermalReader.read(temperatureKeyCache:)` opens and closes its own
-/// `AppleSMC` connection within a single call); zero retained history
+/// between ticks (`SMCThermalReader.read(temperatureKeyCache:connectionFailureGate:fanCountFailureGate:)`
+/// opens and closes its own `AppleSMC` connection within a single call);
+/// zero retained history
 /// (`snapshot` is replaced wholesale each tick, never appended to); the
 /// per-pid and per-core CPU delta baselines live inside the
 /// `SystemMetricsSampler` this type owns, and that whole object is

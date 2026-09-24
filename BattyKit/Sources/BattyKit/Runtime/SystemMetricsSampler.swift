@@ -51,13 +51,33 @@ public actor SystemMetricsSampler: SystemMetricsSampling {
     private var processCPUTracker = ProcessCPUDeltaTracker()
     private var temperatureKeyCache = SMCTemperatureKeyCache()
 
+    /// Rate-limiting state for each reader's own failure logging (#0353),
+    /// one gate per distinct failure category — owned here, alongside the
+    /// delta trackers and the temperature-key cache above, because this
+    /// actor already is the "discarded on hide, rebuilt fresh on next
+    /// show" lifetime boundary every other piece of caller-owned reader
+    /// state in this file uses. A fresh show re-logs the first failure of
+    /// each kind rather than carrying quiet-since-last-time state across a
+    /// hide, matching how `temperatureKeyCache`'s own resolution is
+    /// discarded on hide.
+    private var smcConnectionFailureGate = FailureLogGate<SMCConnectionFailure>()
+    private var smcFanCountFailureGate = FailureLogGate<SMCProbeFailure>()
+    private var cpuFailureGate = FailureLogGate<CPUReadFailure>()
+    private var memoryFailureGate = FailureLogGate<MemoryReadFailure>()
+    private var loadFailureGate = FailureLogGate<LoadReadFailure>()
+    private var processListFailureGate = FailureLogGate<ProcessListFailure>()
+
     public init() {}
 
     public func sampleOnce() async -> SystemMetricsSnapshot {
         let thermalState = ProcessInfo.processInfo.thermalState
-        let smc = SMCThermalReader.read(temperatureKeyCache: &temperatureKeyCache)
+        let smc = SMCThermalReader.read(
+            temperatureKeyCache: &temperatureKeyCache,
+            connectionFailureGate: &smcConnectionFailureGate,
+            fanCountFailureGate: &smcFanCountFailureGate
+        )
 
-        let coreTicks = SystemCPUReader.currentTicks()
+        let coreTicks = SystemCPUReader.currentTicks(failureGate: &cpuFailureGate)
         let corePercentages = coreCPUTracker.percentages(for: coreTicks)
         // Review round 1 (#0314): `nil` (no baseline yet — the first tick
         // after creation or after every hide->show) must stay `nil` here,
@@ -70,10 +90,10 @@ public actor SystemMetricsSampler: SystemMetricsSampling {
         }
         let cpu = CPUReading(aggregatePercent: aggregate, perCorePercent: corePercentages, coreCount: coreTicks.count)
 
-        let memory = SystemMemoryReader.current() ?? .unavailable
-        let loadAverage = SystemLoadReader.current()
+        let memory = SystemMemoryReader.current(failureGate: &memoryFailureGate) ?? .unavailable
+        let loadAverage = SystemLoadReader.current(failureGate: &loadFailureGate)
 
-        let samples = ProcessMetricsReader.sampleAll()
+        let samples = ProcessMetricsReader.sampleAll(failureGate: &processListFailureGate)
         let cpuPercentages = processCPUTracker.percentages(for: samples)
         let processes = samples.map { sample in
             ProcessRow(

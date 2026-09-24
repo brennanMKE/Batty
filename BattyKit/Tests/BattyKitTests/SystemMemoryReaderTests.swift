@@ -6,7 +6,8 @@ import Testing
 struct SystemMemoryReaderTests {
 
     @Test func currentReturnsAPlausibleTotalAndUsedComputedFromTheThreeCategories() {
-        guard let reading = SystemMemoryReader.current() else {
+        var failureGate = FailureLogGate<MemoryReadFailure>()
+        guard let reading = SystemMemoryReader.current(failureGate: &failureGate) else {
             Issue.record("Expected a non-nil memory reading on a real Mac")
             return
         }

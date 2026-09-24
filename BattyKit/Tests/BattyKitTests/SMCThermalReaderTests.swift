@@ -1,10 +1,11 @@
 // SMCThermalReaderTests.swift
 
+import Darwin
 import Testing
 @testable import BattyKit
 
-/// `SMCThermalReader.read(temperatureKeyCache:)` depends on real hardware (the `AppleSMC`
-/// IOKit service) and model-specific key names
+/// `SMCThermalReader.read(temperatureKeyCache:connectionFailureGate:fanCountFailureGate:)`
+/// depends on real hardware (the `AppleSMC` IOKit service) and model-specific key names
 /// (`docs/design/system-metrics-view.md` §1.4) — this test asserts the
 /// contract that holds on *any* Mac, not a specific reading: it never
 /// crashes, and whatever it returns is internally consistent (a
@@ -14,7 +15,13 @@ struct SMCThermalReaderTests {
 
     @Test func readIsInternallyConsistentOnWhicheverMachineRunsThis() {
         var cache = SMCTemperatureKeyCache()
-        let reading = SMCThermalReader.read(temperatureKeyCache: &cache)
+        var connectionFailureGate = FailureLogGate<SMCConnectionFailure>()
+        var fanCountFailureGate = FailureLogGate<SMCProbeFailure>()
+        let reading = SMCThermalReader.read(
+            temperatureKeyCache: &cache,
+            connectionFailureGate: &connectionFailureGate,
+            fanCountFailureGate: &fanCountFailureGate
+        )
 
         if let temperature = reading.cpuTemperatureCelsius {
             #expect(reading.cpuTemperatureKey != nil)
@@ -48,6 +55,90 @@ struct SMCThermalReaderTests {
     }
 }
 
+/// `SMCThermalReader.resolutionTransition(from:to:)` (#0353) is the pure
+/// decision behind rate-limiting the "cpu temperature key resolved / gave
+/// up / re-walking" logging — it only fires on an actual change in
+/// `SMCTemperatureKeyCache.resolution`, so a Mac stuck at `.unavailable` (a
+/// dash every tick, forever) logs that once, not once per second.
+struct SMCResolutionTransitionTests {
+
+    @Test func noChangeLogsNothing() {
+        #expect(SMCThermalReader.resolutionTransition(from: .unresolved, to: .unresolved) == .none)
+        #expect(SMCThermalReader.resolutionTransition(from: .unavailable, to: .unavailable) == .none)
+        #expect(SMCThermalReader.resolutionTransition(from: .resolved(key: "A"), to: .resolved(key: "A")) == .none)
+    }
+
+    @Test func resolvingFromUnresolvedReportsTheKey() {
+        #expect(SMCThermalReader.resolutionTransition(from: .unresolved, to: .resolved(key: "Tp09")) == .resolved(key: "Tp09"))
+    }
+
+    @Test func settlingOnUnavailableIsReportedOnce() {
+        #expect(SMCThermalReader.resolutionTransition(from: .unresolved, to: .unavailable) == .unavailable)
+    }
+
+    @Test func droppingBackToUnresolvedIsAReWalk() {
+        #expect(SMCThermalReader.resolutionTransition(from: .resolved(key: "Tp09"), to: .unresolved) == .reWalking)
+    }
+
+    @Test func reResolvingADifferentKeyIsReportedAsTheNewKey() {
+        #expect(SMCThermalReader.resolutionTransition(from: .resolved(key: "Tp09"), to: .resolved(key: "TC0P")) == .resolved(key: "TC0P"))
+    }
+
+    /// #0351's own doc comment names a fail-3/succeed-1 pattern that
+    /// re-walks the candidate list every 4th tick indefinitely without ever
+    /// settling into a steady state — but every tick in that pattern
+    /// re-finds the *same* key, so `resolution` itself never actually
+    /// changes value across the cycle. This pins that `resolutionTransition`
+    /// stays `.none` the whole way through, i.e. this indefinite re-walk
+    /// pattern must never log anything.
+    ///
+    /// The failing probe of "B" is queued (`queueFailures`), not left
+    /// standing (`setTransientFailure`): a standing failure would still be
+    /// in place when the re-walk's own probe of "B" runs mid-tick, so "B"
+    /// would fail there too and the cache would fall to `.unresolved`
+    /// instead of re-resolving — which would hide a broken re-walk behind a
+    /// `.none` transition just as easily as a working one. Queuing exactly
+    /// `threshold` failures means the queue empties precisely at the
+    /// re-walk's own probe, so that probe lands on the persisted `.value`
+    /// and this test can assert the walk actually ran: "B" is probed
+    /// `threshold + 1` times this cycle (not `threshold`), and "A" is
+    /// probed once.
+    @Test func repeatedReResolveToTheSameKeyNeverReportsATransition() {
+        let candidates = ["A", "B"]
+        let probe = FakeSMCProbe(values: ["B": 10.0])
+        probe.setDefinitivelyAbsent("A")
+        var cache = SMCTemperatureKeyCache()
+
+        var previous = cache.resolution
+        _ = cache.temperature(candidates: candidates, probe: probe.callback())
+        #expect(SMCThermalReader.resolutionTransition(from: previous, to: cache.resolution) == .resolved(key: "B"))
+
+        let threshold = SMCTemperatureKeyCache.consecutiveFailuresBeforeReresolve
+        for _ in 0..<3 {
+            previous = cache.resolution
+            let bCountBefore = probe.callCounts["B"] ?? 0
+            let aCountBefore = probe.callCounts["A"] ?? 0
+            probe.queueFailures(threshold, for: "B")
+
+            for _ in 0..<(threshold - 1) {
+                _ = cache.temperature(candidates: candidates, probe: probe.callback())
+                #expect(SMCThermalReader.resolutionTransition(from: previous, to: cache.resolution) == .none)
+            }
+            // The threshold-th call consumes the last queued failure on
+            // "B" (inside the `.resolved` branch), which triggers a fresh
+            // walk in the same call — that walk re-probes "A" (still
+            // definitively absent) then "B", whose queue is now empty, so
+            // it falls through to the persisted `.value(10.0)` and
+            // re-resolves to "B".
+            _ = cache.temperature(candidates: candidates, probe: probe.callback())
+            #expect(cache.resolution == .resolved(key: "B"))
+            #expect(SMCThermalReader.resolutionTransition(from: previous, to: cache.resolution) == .none)
+            #expect((probe.callCounts["B"] ?? 0) - bCountBefore == threshold + 1)
+            #expect((probe.callCounts["A"] ?? 0) - aCountBefore == 1)
+        }
+    }
+}
+
 /// A fake SMC probe — a `[String: SMCKeyProbeOutcome]` of what each candidate
 /// key currently reports, mutable mid-test to simulate a key's outcome
 /// changing between calls, plus a running count of how many times each key
@@ -59,6 +150,7 @@ struct SMCThermalReaderTests {
 /// a candidate that plain doesn't exist on this Mac.
 private final class FakeSMCProbe {
     private var outcomes: [String: SMCKeyProbeOutcome]
+    private var queuedOutcomes: [String: [SMCKeyProbeOutcome]] = [:]
     private(set) var callCounts: [String: Int] = [:]
 
     init(values: [String: Double] = [:]) {
@@ -69,18 +161,41 @@ private final class FakeSMCProbe {
         outcomes[key] = .value(value)
     }
 
-    func setDefinitivelyAbsent(_ key: String) {
-        outcomes[key] = .definitivelyAbsent
+    /// `smcResult` defaults to the real "key not found" code
+    /// (`0x84`/`smcKeyNotFoundResult`) so a test that doesn't care about the
+    /// diagnostic payload still gets a realistic one.
+    func setDefinitivelyAbsent(_ key: String, smcResult: UInt8 = 0x84) {
+        outcomes[key] = .definitivelyAbsent(.keyNotFound(smcResult: smcResult))
     }
 
-    func setTransientFailure(_ key: String) {
-        outcomes[key] = .transientFailure
+    /// `kr` defaults to a placeholder non-`KERN_SUCCESS` code — a test that
+    /// doesn't care which underlying `SMCProbeFailure` triggered this still
+    /// gets *some* diagnostic payload, matching how the real `probeFloat`
+    /// never returns `.transientFailure` without one.
+    func setTransientFailure(_ key: String, kr: kern_return_t = -1) {
+        outcomes[key] = .transientFailure(.callFailed(kr))
+    }
+
+    /// Queues `count` transient failures to be handed out, one per probe of
+    /// `key`, ahead of whatever `outcomes[key]` reports — lets a test make a
+    /// key fail a fixed number of times and then succeed *within* a single
+    /// probe callback, which is what proving a re-walk actually re-probed a
+    /// key (rather than just reusing a stale cached outcome) requires: the
+    /// re-walk's own probe of `key`, mid-tick, needs to land on a different
+    /// outcome than the calls immediately before it.
+    func queueFailures(_ count: Int, for key: String, kr: kern_return_t = -1) {
+        queuedOutcomes[key, default: []].append(contentsOf: Array(repeating: .transientFailure(.callFailed(kr)), count: count))
     }
 
     func callback() -> (String) -> SMCKeyProbeOutcome {
         { key in
             self.callCounts[key, default: 0] += 1
-            return self.outcomes[key] ?? .definitivelyAbsent
+            if var queue = self.queuedOutcomes[key], !queue.isEmpty {
+                let outcome = queue.removeFirst()
+                self.queuedOutcomes[key] = queue
+                return outcome
+            }
+            return self.outcomes[key] ?? .definitivelyAbsent(.keyNotFound(smcResult: 0x84))
         }
     }
 }

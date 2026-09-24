@@ -2,6 +2,9 @@
 
 import Darwin
 import Foundation
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "SystemMemoryReader")
 
 /// System-wide memory breakdown, compressed-aware — the system-level
 /// counterpart to `FootprintReader`'s own-process `phys_footprint` rule
@@ -59,6 +62,16 @@ public nonisolated struct MemoryReading: Equatable, Sendable {
     )
 }
 
+/// The three independent syscalls `SystemMemoryReader.current(failureGate:)`
+/// can fail on, kept distinct so switching from one cause to another counts
+/// as a *changed* failure rather than a silent continuation of the same one
+/// (#0353).
+public nonisolated enum MemoryReadFailure: Equatable, Sendable {
+    case hostStatisticsFailed(kern_return_t)
+    case pageSizeUnavailable
+    case memSizeSysctlFailed(errno: Int32)
+}
+
 /// Reads `host_statistics64(HOST_VM_INFO64)` + `hw.memsize` +
 /// `kern.memorystatus_vm_pressure_level` — all free, sub-millisecond
 /// (`docs/design/system-metrics-view.md` §1.6).
@@ -67,14 +80,14 @@ public nonisolated struct MemoryReading: Equatable, Sendable {
 /// stateless reader in this file group needs this against BattyKit's
 /// package-wide default `MainActor` isolation.
 public nonisolated enum SystemMemoryReader {
-    public static func current() -> MemoryReading? {
+    public static func current(failureGate: inout FailureLogGate<MemoryReadFailure>) -> MemoryReading? {
         var stats = vm_statistics64_data_t()
         var count = mach_msg_type_number_t(
             MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size
         )
         let hostPort = mach_host_self()
         // Review round 1 (#0314): mach_host_self() is an owned send right,
-        // same as SystemCPUReader.currentTicks()'s own leak fix — released
+        // same as SystemCPUReader.currentTicks(failureGate:)'s own leak fix — released
         // once this function is done with it rather than accumulating one
         // leaked reference per tick.
         defer { mach_port_deallocate(mach_task_self_, hostPort) }
@@ -83,11 +96,17 @@ public nonisolated enum SystemMemoryReader {
                 host_statistics64(hostPort, HOST_VM_INFO64, $0, &count)
             }
         }
-        guard result == KERN_SUCCESS else { return nil }
+        guard result == KERN_SUCCESS else {
+            logFailure(failureGate.record(failureCode: .hostStatisticsFailed(result)), description: "host_statistics64 failed, kr=\(result)")
+            return nil
+        }
 
         var pageSize: vm_size_t = 0
         host_page_size(hostPort, &pageSize)
-        guard pageSize > 0 else { return nil }
+        guard pageSize > 0 else {
+            logFailure(failureGate.record(failureCode: .pageSizeUnavailable), description: "host_page_size returned 0")
+            return nil
+        }
         let pageBytes = UInt64(pageSize)
 
         var totalBytes: UInt64 = 0
@@ -97,14 +116,20 @@ public nonisolated enum SystemMemoryReader {
         // rendered as a fabricated "of 0.00 GB" denominator (the same
         // zero-as-measurement defect #6 flags elsewhere) rather than the
         // honest "no reading" `nil` this guard now produces.
-        guard sysctlbyname("hw.memsize", &totalBytes, &totalSize, nil, 0) == 0 else { return nil }
+        guard sysctlbyname("hw.memsize", &totalBytes, &totalSize, nil, 0) == 0 else {
+            logFailure(failureGate.record(failureCode: .memSizeSysctlFailed(errno: errno)), description: "sysctlbyname(hw.memsize) failed, errno=\(errno)")
+            return nil
+        }
 
         var pressureRaw: Int32 = 0
         var pressureSize = MemoryLayout<Int32>.size
         // A failure here leaves `pressureRaw == 0`, which
         // `MemoryReading.PressureLevel.init(rawValue:)` already maps to
         // `.unknown` (no kernel pressure level is defined as 0) — the
-        // honest fallback, not a fabricated "Normal."
+        // honest fallback, not a fabricated "Normal." Not gated through
+        // `failureGate`: this sysctl is best-effort dashboard detail, not
+        // one of the three reads whose failure sends the whole reading to
+        // `nil`.
         sysctlbyname("kern.memorystatus_vm_pressure_level", &pressureRaw, &pressureSize, nil, 0)
 
         let free = UInt64(stats.free_count) * pageBytes
@@ -112,6 +137,7 @@ public nonisolated enum SystemMemoryReader {
         let wired = UInt64(stats.wire_count) * pageBytes
         let compressed = UInt64(stats.compressor_page_count) * pageBytes
 
+        logFailure(failureGate.record(failureCode: nil), description: "")
         return MemoryReading(
             totalBytes: totalBytes,
             usedBytes: active + wired + compressed,
@@ -121,5 +147,18 @@ public nonisolated enum SystemMemoryReader {
             compressedBytes: compressed,
             pressureLevel: .init(rawValue: pressureRaw)
         )
+    }
+
+    private static func logFailure(_ disposition: FailureLogGate<MemoryReadFailure>.Disposition, description: String) {
+        switch disposition {
+        case .stillOK:
+            return
+        case .firstFailure, .changedFailure:
+            logger.error("memory: \(description, privacy: .public)")
+        case .repeatedFailure:
+            logger.debug("memory: still failing — \(description, privacy: .public)")
+        case .recovered:
+            logger.info("memory: recovered")
+        }
     }
 }
