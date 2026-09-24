@@ -169,14 +169,18 @@ struct LMStudioDashboardWiringTests {
         content.makeModelStreamProcess = { _ in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "sleep 60"]
+            // `exec` (not a bare `sleep 60`) keeps this a single process, so
+            // `terminate()`'s `SIGTERM` reaches `sleep` directly instead of
+            // only `sh`, which would otherwise die and orphan `sleep` for up
+            // to its own 60s lifetime.
+            process.arguments = ["-c", "exec sleep 60"]
             box.model = process
             return process
         }
         content.makeRuntimeStreamProcess = { _ in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "sleep 60"]
+            process.arguments = ["-c", "exec sleep 60"]
             box.runtime = process
             return process
         }
@@ -211,42 +215,46 @@ struct LMStudioDashboardWiringTests {
     /// variant blocks synchronously until a `SIGTERM`-ignoring subprocess is
     /// actually dead, with no separate `await` needed afterward — unlike
     /// `tearDownAllPaneContentActuallyKillsRealSubprocesses` above.
-    @Test func tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess() async throws {
+    @Test func tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess() throws {
         final class ProcessBox {
             var model: Process?
             var runtime: Process?
         }
         let box = ProcessBox()
 
-        // `exec` replaces the shell's own process image with `sleep` rather
-        // than forking it; `SIG_IGN` survives `exec`, so the ignored
-        // disposition `trap` set carries over to `sleep` directly — exactly
-        // one process exists at any point, so `SIGKILL` on that single pid
-        // leaves nothing behind.
-        func makeIgnoringSIGTERMProcess(_ url: URL) -> Process {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "trap '' TERM; exec sleep 60"]
-            return process
-        }
+        // #0424: a fixed sleep after spawn can't prove the trap is
+        // installed before `tearDownAllPaneContentSynchronouslyForQuit()`
+        // sends `SIGTERM` — under host load `sh` might not have parsed
+        // `trap '' TERM` yet, which would kill the child on the default
+        // disposition and let this test pass without ever reaching the
+        // `SIGKILL` escalation it means to prove. Wait on the shared
+        // fixture's ready-file handshake instead.
+        let (readyDirectory, cleanupReadyDirectory) = try LMStudioSIGTERMIgnoringFixture.makeReadyDirectory(
+            callerTag: "quit-kills-term-ignoring"
+        )
+        defer { cleanupReadyDirectory() }
+        let modelReadyURL = readyDirectory.appendingPathComponent("model-ready")
+        let runtimeReadyURL = readyDirectory.appendingPathComponent("runtime-ready")
 
         let content = LMStudioDashboardPaneContent()
         content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
         content.fetchModels = { LMStudioModelsResponse(models: []) }
         content.teardownWaitBound = 0.2
-        content.makeModelStreamProcess = { url in
-            let process = makeIgnoringSIGTERMProcess(url)
+        content.makeModelStreamProcess = { _ in
+            let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: modelReadyURL)
             box.model = process
             return process
         }
-        content.makeRuntimeStreamProcess = { url in
-            let process = makeIgnoringSIGTERMProcess(url)
+        content.makeRuntimeStreamProcess = { _ in
+            let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: runtimeReadyURL)
             box.runtime = process
             return process
         }
 
         let (window, _, _) = makeWindow(paneContent: content)
-        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
+        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)
@@ -288,6 +296,11 @@ struct LMStudioDashboardWiringTests {
     /// process's own `standardOutput`/`standardError` with pipes and
     /// readability handlers they own, so a test-owned pipe on the same
     /// process would race the content's own handler for the same bytes.
+    /// `LMStudioSIGTERMIgnoringFixture` (#0424) is the shared implementation
+    /// of that handshake — also used by
+    /// `tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess`
+    /// above and by `LMStudioDashboardPaneContentTests`, so the three can't
+    /// drift back into three different (and possibly racy) copies.
     @Test func registryDrainReapsATermIgnoringSubprocessLeftByAClosedPane() throws {
         final class ProcessBox {
             var model: Process?
@@ -296,27 +309,12 @@ struct LMStudioDashboardWiringTests {
         let box = ProcessBox()
         let registry = PendingTeardownReapRegistry()
 
-        let readyDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("batty-0425-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: readyDirectory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: readyDirectory) }
+        let (readyDirectory, cleanupReadyDirectory) = try LMStudioSIGTERMIgnoringFixture.makeReadyDirectory(
+            callerTag: "registry-drain"
+        )
+        defer { cleanupReadyDirectory() }
         let modelReadyURL = readyDirectory.appendingPathComponent("model-ready")
         let runtimeReadyURL = readyDirectory.appendingPathComponent("runtime-ready")
-
-        func makeIgnoringSIGTERMProcess(readyFileURL: URL) -> Process {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "trap '' TERM; echo ready > '\(readyFileURL.path)'; exec sleep 60"]
-            return process
-        }
-
-        func waitForReadyFile(_ url: URL, timeout: TimeInterval = 5) -> Bool {
-            let deadline = Date().addingTimeInterval(timeout)
-            while !FileManager.default.fileExists(atPath: url.path), Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.01)
-            }
-            return FileManager.default.fileExists(atPath: url.path)
-        }
 
         let content = LMStudioDashboardPaneContent()
         content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
@@ -324,12 +322,12 @@ struct LMStudioDashboardWiringTests {
         content.teardownWaitBound = 0.2
         content.teardownReapRegistry = registry
         content.makeModelStreamProcess = { _ in
-            let process = makeIgnoringSIGTERMProcess(readyFileURL: modelReadyURL)
+            let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: modelReadyURL)
             box.model = process
             return process
         }
         content.makeRuntimeStreamProcess = { _ in
-            let process = makeIgnoringSIGTERMProcess(readyFileURL: runtimeReadyURL)
+            let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: runtimeReadyURL)
             box.runtime = process
             return process
         }
@@ -340,8 +338,8 @@ struct LMStudioDashboardWiringTests {
         // tests.
         session.tree.splitFocusedPane(direction: .horizontal)
 
-        #expect(waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
-        #expect(waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
+        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
+        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)

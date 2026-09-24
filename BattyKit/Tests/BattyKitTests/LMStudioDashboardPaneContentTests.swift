@@ -15,10 +15,15 @@ import Testing
 @MainActor
 struct LMStudioDashboardPaneContentTests {
 
+    /// `exec` (not a bare `sleep 60`) keeps this a single process: without
+    /// it, `sleep` runs as `sh`'s forked child, and `terminate()`'s
+    /// `SIGTERM` — which only reaches `sh`'s pid — kills `sh` without
+    /// forwarding the signal, orphaning `sleep` for up to its own 60s
+    /// lifetime.
     private func makeSleepForeverProcess(_ url: URL) -> Process {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "sleep 60"]
+        process.arguments = ["-c", "exec sleep 60"]
         return process
     }
 
@@ -152,7 +157,7 @@ struct LMStudioDashboardPaneContentTests {
             let outputLine = self.predictionOutputLine(modelIdentifier: "m", timestamp: self.nowMillis())
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "printf '%s\\n' 'Streaming logs from LM Studio' '' '\(inputLine)' '\(outputLine)'; sleep 60"]
+            process.arguments = ["-c", "printf '%s\\n' 'Streaming logs from LM Studio' '' '\(inputLine)' '\(outputLine)'; exec sleep 60"]
             return process
         }
 
@@ -179,7 +184,7 @@ struct LMStudioDashboardPaneContentTests {
             let inputLine = self.predictionInputLine(modelIdentifier: "m", timestamp: self.nowMillis())
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; sleep 60"]
+            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; exec sleep 60"]
             return process
         }
 
@@ -252,7 +257,7 @@ struct LMStudioDashboardPaneContentTests {
             let inputLine = self.predictionInputLine(modelIdentifier: "m", timestamp: self.nowMillis())
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; sleep 60"]
+            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; exec sleep 60"]
             return process
         }
 
@@ -273,22 +278,6 @@ struct LMStudioDashboardPaneContentTests {
     }
 
     // MARK: - Subprocess teardown (review round 1, B3; #0354)
-
-    /// A process that ignores `SIGTERM` outright (unlike a plain `sleep`,
-    /// which dies on the default disposition) — used to exercise #0354's
-    /// `SIGKILL` escalation path. `exec` replaces the shell's own process
-    /// image with `sleep` in place rather than forking it, and `SIG_IGN`
-    /// survives `exec`, so the ignored disposition the `trap` set carries
-    /// over to `sleep` directly: exactly one process exists at any point,
-    /// so `SIGKILL` on that single pid leaves nothing behind. Without
-    /// `exec`, `sleep` runs as the shell's forked child and `SIGKILL` on
-    /// the shell's own pid orphans it instead.
-    private func makeIgnoringSIGTERMProcess(_ url: URL) -> Process {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "trap '' TERM; exec sleep 60"]
-        return process
-    }
 
     /// The contract `issues/0313.md` binds — "log evidence, a counter, a
     /// footprint delta — not an assertion" — is not satisfied by checking
@@ -345,6 +334,13 @@ struct LMStudioDashboardPaneContentTests {
     /// `teardownWaitBound` per stream. `teardownWaitBound` is lowered here
     /// only to keep the test fast; the assertion on `tearDown()`'s own
     /// elapsed time is what matters, not the specific bound.
+    ///
+    /// #0424: waits on `LMStudioSIGTERMIgnoringFixture`'s ready-file
+    /// handshake, not a fixed sleep, before capturing `start` — a fixed
+    /// sleep can't prove `sh` has parsed `trap '' TERM` yet, so under host
+    /// load `tearDown()`'s `SIGTERM` could kill the child on the default
+    /// disposition before the trap installs, and this test would pass
+    /// without ever reaching the `SIGKILL` escalation it means to prove.
     @Test func tearDownReturnsPromptlyEvenWhenBothChildrenIgnoreSIGTERM() async throws {
         final class ProcessBox {
             var model: Process?
@@ -352,23 +348,32 @@ struct LMStudioDashboardPaneContentTests {
         }
         let box = ProcessBox()
 
+        let (readyDirectory, cleanupReadyDirectory) = try LMStudioSIGTERMIgnoringFixture.makeReadyDirectory(
+            callerTag: "returns-promptly"
+        )
+        defer { cleanupReadyDirectory() }
+        let modelReadyURL = readyDirectory.appendingPathComponent("model-ready")
+        let runtimeReadyURL = readyDirectory.appendingPathComponent("runtime-ready")
+
         let content = LMStudioDashboardPaneContent()
         content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
         content.fetchModels = { self.emptyModelsResponse() }
         content.teardownWaitBound = 0.2
-        content.makeModelStreamProcess = { url in
-            let process = self.makeIgnoringSIGTERMProcess(url)
+        content.makeModelStreamProcess = { _ in
+            let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: modelReadyURL)
             box.model = process
             return process
         }
-        content.makeRuntimeStreamProcess = { url in
-            let process = self.makeIgnoringSIGTERMProcess(url)
+        content.makeRuntimeStreamProcess = { _ in
+            let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: runtimeReadyURL)
             box.runtime = process
             return process
         }
 
         content.setUp(visible: true)
-        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL), "model-stream never installed its SIGTERM trap")
+        #expect(LMStudioSIGTERMIgnoringFixture.waitForReadyFile(runtimeReadyURL), "runtime-stream never installed its SIGTERM trap")
 
         let model = try #require(box.model)
         let runtime = try #require(box.runtime)
@@ -402,7 +407,7 @@ struct LMStudioDashboardPaneContentTests {
     /// Same proof for the `setVisible(false)` (hide) path, which tears
     /// down subprocesses without the bounded wait `tearDown()` uses — this
     /// checks that `SIGTERM` alone (no explicit poll) is still enough to
-    /// kill a normal `/bin/sh -c "sleep 60"` promptly.
+    /// kill a normal `/bin/sh -c "exec sleep 60"` promptly.
     @Test func hidingActuallyTerminatesBothSubprocesses() async throws {
         final class ProcessBox {
             var model: Process?
@@ -572,7 +577,7 @@ struct LMStudioDashboardPaneContentTests {
             let script = lines.map { "printf '%s\\n' '\($0)'" }.joined(separator: "; ")
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "\(script); sleep 60"]
+            process.arguments = ["-c", "\(script); exec sleep 60"]
             return process
         }
 
@@ -625,7 +630,7 @@ struct LMStudioDashboardPaneContentTests {
             head -c \(fillerByteCount) /dev/zero | tr '\\0' 'p'
             printf '%s\\n' '\(suffix)'
             printf '%s\\n' '\(normalLine)'
-            sleep 60
+            exec sleep 60
             """
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -685,7 +690,7 @@ struct LMStudioDashboardPaneContentTests {
             } else {
                 // Respawned process: one normal, complete line.
                 let normalLine = self.predictionInputLine(modelIdentifier: "after-respawn", timestamp: self.nowMillis())
-                process.arguments = ["-c", "printf '%s\\n' '\(normalLine)'; sleep 60"]
+                process.arguments = ["-c", "printf '%s\\n' '\(normalLine)'; exec sleep 60"]
             }
             return process
         }
