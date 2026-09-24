@@ -70,6 +70,23 @@ public final class AppStateStore {
     /// `@ObservationIgnored` — populated from AppKit callbacks, not from
     /// SwiftUI-update code (the #0229 hazard class).
     @ObservationIgnored private var nsWindowMap: [ObjectIdentifier: WindowID] = [:]
+    /// Content windows in the order they most recently became key, oldest
+    /// first, most recent last (#0439) — an array, not a single `WindowID?`,
+    /// so closing the most-recently-key window falls back to the window key
+    /// before it, not straight to the oldest. Fed by
+    /// `noteContentWindowBecameKey(_:)`. `@ObservationIgnored` for the same
+    /// reason as `nsWindowMap`: populated from AppKit callbacks, not
+    /// SwiftUI-update code.
+    @ObservationIgnored private var recentlyKeyWindowIDs: [WindowID] = []
+    /// Token for the app-wide `NSWindow.didBecomeKeyNotification` observer
+    /// that feeds `recentlyKeyWindowIDs`. Removed in `deinit` so a store
+    /// discarded in a test doesn't leave a dangling observer on the shared
+    /// `NotificationCenter`. `nonisolated(unsafe)`: a nonisolated `deinit`
+    /// can't otherwise read a main-actor-isolated property whose type (`any
+    /// NSObjectProtocol`) the compiler won't infer `Sendable` — safe because
+    /// this property is only ever mutated on the main thread and only read
+    /// in `deinit`, after every other reference is already gone.
+    @ObservationIgnored private nonisolated(unsafe) var keyWindowObservation: NSObjectProtocol?
     /// Actuates app termination once `terminateIfLastContentWindowGone`
     /// decides no content windows remain (#0311). Defaults to the real
     /// `NSApp.terminate(nil)`. Tests override this so `removeWindow`/
@@ -180,8 +197,13 @@ public final class AppStateStore {
 
     /// Removes the `WindowRuntime` with the given `id` from `windows`.
     /// Called from the window-close teardown path after all tabs in the
-    /// window have been released. Safe to call with an unknown id.
+    /// window have been released. Safe to call with an unknown id. Also
+    /// prunes `id` from the most-recently-key order (#0439) — belt-and-
+    /// braces alongside `unregisterNSWindow`'s own pruning, since
+    /// `WindowDelegate.windowWillClose` calls both in the same teardown and
+    /// a test may call this one alone.
     public func removeWindow(id windowID: WindowID) {
+        pruneRecentlyKeyWindowID(windowID)
         windows.removeAll { $0.id == windowID }
         logger.info("removeWindow windowID=\(windowID.value, privacy: .public); remaining windows=\(self.windows.count, privacy: .public)")
         // If no registered content windows remain and there was more than
@@ -356,13 +378,14 @@ public final class AppStateStore {
     ///
     /// `sessionID` resolves an explicit target across *all* windows (not
     /// just the key window) so a caller in a background session can ask
-    /// about itself. `sessionID == nil` falls back to the focused session
-    /// — today that means the key window's selected session, or the first
-    /// window's selected/first session when no window is key (headless CLI
-    /// callers, unit tests). This is the seam #0257's `BATTY_SESSION_ID`
-    /// env-var fallback slots into later: the eventual order is `--session`
-    /// flag → `BATTY_SESSION_ID` → focused session, of which only the first
-    /// and last exist today — the middle branch is #0257's to add, and it
+    /// about itself. `sessionID == nil` falls back to the focused session —
+    /// resolved through `defaultTargetWindow()`'s single policy (#0439: the
+    /// key content window, then the most recently key one, then the newest
+    /// registered one, then `windows.first`), then that window's selected or
+    /// first session. This is the seam #0257's `BATTY_SESSION_ID` env-var
+    /// fallback slots into later: the eventual order is `--session` flag →
+    /// `BATTY_SESSION_ID` → focused session, of which only the first and
+    /// last exist today — the middle branch is #0257's to add, and it
     /// inserts here without changing this method's signature or the reply
     /// schema.
     ///
@@ -371,7 +394,7 @@ public final class AppStateStore {
     /// (no windows, or a window with an empty session list — both
     /// unreachable in practice since every window seeds one session, but
     /// handled rather than force-unwrapped).
-    
+
 
 
 
@@ -384,7 +407,7 @@ public final class AppStateStore {
             }
             return nil
         }
-        guard let window = keyWindowRuntime() ?? windows.first,
+        guard let window = defaultTargetWindow(),
               let session = window.selectedSession ?? window.sessions.first
         else {
             return nil
@@ -399,12 +422,13 @@ public final class AppStateStore {
     /// receives no explicit `--session` id and no `BATTY_SESSION_ID` env —
     /// the same "focused element" fallback `sessionInfoPayload(sessionID:
     /// nil)` and `focusedPaneIDFallback()` use, one tier up from the pane
-    /// fallback (the session itself, not its focused pane). `nil` only
+    /// fallback (the session itself, not its focused pane). Window
+    /// resolution goes through `defaultTargetWindow()` (#0439). `nil` only
     /// when there is no window/session to fall back to (unreachable in
     /// practice — every window seeds one session — but handled rather than
     /// force-unwrapped).
     public func focusedSessionIDFallback() -> UUID? {
-        guard let window = keyWindowRuntime() ?? windows.first,
+        guard let window = defaultTargetWindow(),
               let session = window.selectedSession ?? window.sessions.first
         else { return nil }
         return session.id
@@ -416,11 +440,12 @@ public final class AppStateStore {
     /// later `pane close` #0283) receives no explicit pane id — the same
     /// "focused element" fallback `sessionInfoPayload(sessionID: nil)` uses
     /// one level up, resolved to the target *session*'s `focusedPaneID`
-    /// rather than the session itself. `nil` only when there is no
+    /// rather than the session itself. Window resolution goes through
+    /// `defaultTargetWindow()` (#0439). `nil` only when there is no
     /// window/session to fall back to (unreachable in practice — every
     /// window seeds one session — but handled rather than force-unwrapped).
     public func focusedPaneIDFallback() -> UUID? {
-        guard let window = keyWindowRuntime() ?? windows.first,
+        guard let window = defaultTargetWindow(),
               let session = window.selectedSession ?? window.sessions.first
         else { return nil }
         return session.tree.focusedPaneID
@@ -443,7 +468,7 @@ public final class AppStateStore {
     /// silently accepting a tab that can never be seen or cleared.
     public func focusedTabIDFallback() -> UUID? {
         guard let paneID = focusedPaneIDFallback(),
-              let window = keyWindowRuntime() ?? windows.first
+              let window = defaultTargetWindow()
         else { return nil }
         for session in window.sessions {
             if let pane = session.tree.allPanes.first(where: { $0.id == paneID }) {
@@ -730,19 +755,36 @@ public final class AppStateStore {
     /// backing view) synchronously, as soon as the view is attached to its
     /// window — not deferred off the update pass (#0437). Safe to call
     /// multiple times — idempotent per window.
+    ///
+    /// **Backstop for #0439.** If `nsWindow` is already key at registration
+    /// time — `viewDidMoveToWindow` can run after AppKit has already made the
+    /// window key, e.g. a window shown and activated in the same run-loop
+    /// turn — this also records it in `recentlyKeyWindowIDs` directly,
+    /// rather than waiting for a `didBecomeKeyNotification` that already
+    /// fired before the window was registered and so was filtered out by
+    /// `handleWindowDidBecomeKey`'s `nsWindowMap` lookup.
     public func registerNSWindow(_ nsWindow: NSWindow, for windowID: WindowID) {
         let wasNew = nsWindowMap[ObjectIdentifier(nsWindow)] == nil
         nsWindowMap[ObjectIdentifier(nsWindow)] = windowID
         if wasNew {
             logger.debug("registerNSWindow: windowID=\(windowID.value, privacy: .public) registeredContentWindows=\(self.nsWindowMap.count, privacy: .public)")
         }
+        if nsWindow.isKeyWindow {
+            noteContentWindowBecameKey(windowID)
+        }
     }
 
     /// Removes a closed window from the registry. Called from the window's
     /// NSWindowDelegate `windowWillClose` path after teardown (releasing
     /// tabs, host). Triggers app termination when the last content window
-    /// has been closed.
+    /// has been closed. Also prunes the closed window from
+    /// `recentlyKeyWindowIDs` (#0439) — resolved via `nsWindowMap` before
+    /// that entry is removed, since a `WindowID` doesn't derive from the
+    /// `NSWindow` any other way.
     public func unregisterNSWindow(_ nsWindow: NSWindow) {
+        if let windowID = nsWindowMap[ObjectIdentifier(nsWindow)] {
+            pruneRecentlyKeyWindowID(windowID)
+        }
         nsWindowMap.removeValue(forKey: ObjectIdentifier(nsWindow))
         logger.info("unregisterNSWindow: registered content windows remaining=\(self.nsWindowMap.count, privacy: .public)")
         terminateIfLastContentWindowGone()
@@ -765,22 +807,91 @@ public final class AppStateStore {
         return windows.first { $0.id == windowID }
     }
 
-    /// The `WindowRuntime` that `BattyCommands.keyWindow` targets: the key
-    /// content window if any, otherwise the first entry in `windows` — not
-    /// filtered through `nsWindowMap` the way `anyContentWindowRuntime()` is,
-    /// so it also resolves in preview/unit-test contexts where no `NSWindow`
-    /// is registered yet.
+    /// Records that `id`'s content window just became key — the single
+    /// write path for `recentlyKeyWindowIDs` (#0439). Moves `id` to the most
+    /// recent position rather than appending a duplicate. Pure and total —
+    /// no `NSWindow`/`NSApp` reads — so tests drive it directly, since
+    /// `NSApp.keyWindow` can't be controlled headlessly (`CrossWindowBehaviorTests`'
+    /// documented finding). Called from `handleWindowDidBecomeKey(_:)` and,
+    /// as a backstop, from `registerNSWindow` when the window is already key
+    /// at registration.
+    func noteContentWindowBecameKey(_ id: WindowID) {
+        recentlyKeyWindowIDs.removeAll { $0 == id }
+        recentlyKeyWindowIDs.append(id)
+    }
+
+    /// Test seam (#0439): lets `DefaultTargetWindowTests` assert pruning
+    /// actually shrinks `recentlyKeyWindowIDs`, since `defaultTargetWindow()`'s
+    /// own registered-id filter already makes a stale, unpruned entry
+    /// harmless to *resolution* — a resolution-only test can't tell "pruned"
+    /// from "merely filtered out at read time" apart.
+    var recentlyKeyWindowIDsCountForTesting: Int { recentlyKeyWindowIDs.count }
+
+    /// Removes `id` from the most-recently-key order, e.g. once its window
+    /// has closed. No-op if `id` isn't tracked. Private: the only callers are
+    /// `unregisterNSWindow` and `removeWindow(id:)`, which both run on real
+    /// window-close paths; tests exercise pruning through those, not this
+    /// helper directly, so the removal behavior is verified against the
+    /// production call sites rather than a copy of it.
+    private func pruneRecentlyKeyWindowID(_ id: WindowID) {
+        recentlyKeyWindowIDs.removeAll { $0 == id }
+    }
+
+    /// `NSWindow.didBecomeKeyNotification` handler, installed app-wide
+    /// (`object: nil`) in `init`. Filters through `nsWindowMap` so only
+    /// content windows feed `recentlyKeyWindowIDs` — Settings, Help, and
+    /// panels becoming key must not perturb the order (#0439).
+    private func handleWindowDidBecomeKey(_ nsWindow: NSWindow) {
+        guard let windowID = nsWindowMap[ObjectIdentifier(nsWindow)] else { return }
+        noteContentWindowBecameKey(windowID)
+    }
+
+    /// Single policy resolver for every no-target Window fallback (#0439):
+    /// the window a menu command, CLI verb, command-palette action, or
+    /// `batty <path>` URL should act on when the request names no explicit
+    /// Window/Session/Pane/Tab. Documented order:
     ///
-    /// Extracted out of `BattyCommands` (#0311 review round 1) so the
-    /// fallback logic has a real unit test exercising the exact production
-    /// expression, not a copy of it re-typed into a test — `Commands` bodies
-    /// themselves can't be unit-tested directly (`docs/swiftui-observation
-    /// -rules.md`'s Commands-body caution), so this is the closest testable
-    /// seam to it. Returns `nil`, never traps, when `windows` is empty —
-    /// see `terminateIfLastContentWindowGone`'s doc comment for why that can
-    /// happen and for how long.
+    /// 1. The currently key content window (`keyWindowRuntime()`).
+    /// 2. The most recently key registered content window
+    ///    (`recentlyKeyWindowIDs`, filtered to windows still registered).
+    /// 3. The newest registered content window (`windows`' append order,
+    ///    filtered to registered ids) — the "most recently created"
+    ///    tie-breaker #0437 introduced, now reached only when no window has
+    ///    ever been key.
+    /// 4. `windows.first` — the headless/unit-test last resort, where no
+    ///    `NSWindow` has registered at all.
+    ///
+    /// `keyWindowOrFirstRegistered()`, `sessionInfoPayload(sessionID: nil)`,
+    /// `focusedSessionIDFallback()`, `focusedPaneIDFallback()`,
+    /// `focusedTabIDFallback()`, and `addSession` all call this directly, so
+    /// the policy exists in exactly one expression instead of each of those
+    /// independently choosing a fallback (the #0439 defect: three different
+    /// fallbacks disagreed on which window "no target" meant).
+    public func defaultTargetWindow() -> WindowRuntime? {
+        if let key = keyWindowRuntime() { return key }
+        let registeredIDs = Set(nsWindowMap.values)
+        if let recentID = recentlyKeyWindowIDs.last(where: { registeredIDs.contains($0) }),
+           let recent = windows.first(where: { $0.id == recentID }) {
+            return recent
+        }
+        if let newest = windows.last(where: { registeredIDs.contains($0.id) }) {
+            return newest
+        }
+        return windows.first
+    }
+
+    /// The `WindowRuntime` that `BattyCommands.keyWindow` targets. Delegates
+    /// to `defaultTargetWindow()` (#0439) — kept as its own named entry point
+    /// because `BattyCommands`, `CommandPaletteView`, and the `AppStateStore`
+    /// action shims below already refer to it by this name, and because
+    /// `Commands` bodies can't be unit-tested directly
+    /// (`docs/swiftui-observation-rules.md`'s Commands-body caution), so this
+    /// remains the closest testable seam to `BattyCommands.keyWindow` without
+    /// re-typing its expression into a test. Despite the name, this no
+    /// longer means "first registered" specifically — see
+    /// `defaultTargetWindow()`'s doc comment for the full order.
     public func keyWindowOrFirstRegistered() -> WindowRuntime? {
-        keyWindowRuntime() ?? windows.first
+        defaultTargetWindow()
     }
 
     /// The Terminal Session tab safe to target for tab-scoped Terminal
@@ -802,31 +913,6 @@ public final class AppStateStore {
     /// true rather than merely stated.
     public var focusedTerminalTab: TabRuntime? {
         keyWindowOrFirstRegistered()?.selectedSession?.focusedTerminalPane?.activeTab
-    }
-
-    /// The `WindowRuntime` for any registered content window. Used as a
-    /// fallback when `keyWindowRuntime()` is nil but the app-level URL handler
-    /// needs to target a visible window — most commonly `batty <path>` when
-    /// Batty isn't the frontmost app, so no window is key even though one or
-    /// more content windows are open. Returns the key-window runtime when
-    /// available; otherwise the most recently created registered window, not
-    /// an arbitrary one.
-    ///
-    /// **Why "most recently created" (#0437).** `nsWindowMap` is a
-    /// `Dictionary`, so `nsWindowMap.values.first` (the previous
-    /// implementation) picked whichever entry the hash table happened to
-    /// enumerate first — order-undefined and could return a window the user
-    /// closed conceptually long ago over one just opened. `windows` is
-    /// append-ordered (`windowRuntime(for:)` only ever appends), so its last
-    /// element whose id is still registered is the newest surviving content
-    /// window — the one a CLI invocation with no explicit target is most
-    /// likely meant to reach. Returns nil when no window is registered
-    /// (unit-test context or before the first content window appears in the
-    /// view hierarchy).
-    public func anyContentWindowRuntime() -> WindowRuntime? {
-        if let key = keyWindowRuntime() { return key }
-        let registeredIDs = Set(nsWindowMap.values)
-        return windows.last { registeredIDs.contains($0.id) }
     }
 
     // MARK: - Init
@@ -858,6 +944,33 @@ public final class AppStateStore {
         self.seedWindowID = window.id
         footprintMonitor.onWarn = { [weak self] footprintBytes, step in
             self?.recordFootprintWarning(footprintBytes: footprintBytes, step: step)
+        }
+        // #0439: app-wide (object: nil) rather than per-window, so a single
+        // observer covers every content window regardless of how many exist
+        // or when they're created. `handleWindowDidBecomeKey` filters
+        // non-content windows (Settings, Help, panels) via `nsWindowMap`.
+        // `queue: .main` guarantees the closure runs on the main thread, but
+        // NotificationCenter's `using` closure type isn't itself
+        // actor-annotated, so `MainActor.assumeIsolated` bridges into this
+        // main-actor-isolated instance method the same way
+        // `AppearanceObserver`'s KVO callback and `AppXPCCoordinator
+        // .scheduleBackoffRetry`'s `DispatchWorkItem` do for their own
+        // main-thread-guaranteed, non-isolated callbacks.
+        keyWindowObservation = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let window = notification.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                self?.handleWindowDidBecomeKey(window)
+            }
+        }
+    }
+
+    deinit {
+        if let keyWindowObservation {
+            NotificationCenter.default.removeObserver(keyWindowObservation)
         }
     }
 
@@ -911,13 +1024,13 @@ public final class AppStateStore {
     /// change observable behavior outside that one-runloop-turn race.
     @discardableResult
     public func addSession(title: String? = nil, workingDirectory: String? = nil) -> SessionRuntime? {
-        // anyContentWindowRuntime() tries keyWindowRuntime() first (the normal
-        // in-app path), then any registered content window (the URL-handler
-        // path when the key window hasn't been registered yet, e.g. batty <path>
-        // delivered before WindowIDRegistrar fires — #0251). Falls back to
-        // windows.first only in unit-test contexts where no NSWindow is
-        // registered and windows[0] is the canonical single runtime.
-        guard let target = anyContentWindowRuntime() ?? windows.first else {
+        // defaultTargetWindow() (#0439): key window first (the normal in-app
+        // path), then the most recently key registered window, then the
+        // newest registered one (the URL-handler path when the key window
+        // hasn't been registered yet, e.g. batty <path> delivered before
+        // WindowIDRegistrar fires — #0251), then windows.first in unit-test
+        // contexts where no NSWindow is registered at all.
+        guard let target = defaultTargetWindow() else {
             logger.error("addSession: no window available (windows empty); dropping request workingDirectory=\(workingDirectory ?? "<nil>", privacy: .public)")
             return nil
         }

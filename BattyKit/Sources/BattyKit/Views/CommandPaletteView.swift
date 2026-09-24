@@ -195,11 +195,12 @@ struct CommandPaletteView: View {
     func dispatch(_ action: ShortcutAction) {
         logger.info("command palette dispatching \(action.rawValue, privacy: .public)")
         // Target the key window's runtime for per-window actions (#0239:
-        // carried over from #0237). Falls back to windows.first without a
-        // key window (previews, tests). No-ops (#0316) rather than trapping
-        // when windows is empty — this palette can only be showing over a
-        // real content window in practice, so that state is not expected to
-        // be reachable here, but guarding is cheap and the alternative is a
+        // carried over from #0237). Falls back through
+        // `defaultTargetWindow()`'s full policy (#0439) without a key window
+        // (previews, tests). No-ops (#0316) rather than trapping when
+        // windows is empty — this palette can only be showing over a real
+        // content window in practice, so that state is not expected to be
+        // reachable here, but guarding is cheap and the alternative is a
         // trap.
         guard let window = store.keyWindowOrFirstRegistered() else {
             logger.notice("command palette dispatch: no window available; ignoring \(action.rawValue, privacy: .public)")

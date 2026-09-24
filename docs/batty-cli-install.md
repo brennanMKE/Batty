@@ -1082,9 +1082,10 @@ Unit tests (Swift Testing, `BattyKit/Tests/BattyKitTests/`):
   distinct `Batty Beta` directory for the Beta bundle identifier.
 - **`BattyURLHandlerRoutingTests.swift`** — the `#0251` regression suite:
   `initialWindowID` matches `windows[0]`'s id and is stable after
-  additional `WindowRuntime`s are created; `anyContentWindowRuntime()` is
-  `nil` with no registered `NSWindow` and resolves correctly once one is
-  registered; `addSession(workingDirectory:)` lands in the correct
+  additional `WindowRuntime`s are created; `defaultTargetWindow()`
+  (`#0439`) resolves `windows[0]` with no registered `NSWindow` and
+  resolves the registered `WindowRuntime` once one is registered;
+  `addSession(workingDirectory:)` lands in the correct
   runtime (not a phantom), selects the new session, and threads the
   working directory through to the new session's first tab's
   `terminal.configuration.workingDirectory`; an empty working directory is

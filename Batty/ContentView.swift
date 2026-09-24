@@ -11,7 +11,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        RootWindowView(windowID: windowID)
+        RootWindowView(windowID: windowID, store: .shared)
     }
 }
 

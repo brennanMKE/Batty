@@ -23,9 +23,14 @@ public struct RootWindowView: View {
     /// so existing single-window users keep their hidden/shown state.
     @AppStorage(SidebarPreference.migratedKey) private var sidebarMigrationDone: Bool = false
 
-    public init(windowID: WindowID, store: AppStateStore? = nil) {
+    /// `store` is required, not a `.shared`-defaulting optional (#0359's "no
+    /// silent default" rule, already applied to `WindowIDRegistrar` in
+    /// #0437) — `ContentView` passes `AppStateStore.shared` explicitly, so a
+    /// test (or a future multi-store caller) can inject its own store
+    /// instead of always touching the process-wide singleton.
+    public init(windowID: WindowID, store: AppStateStore) {
         self.windowID = windowID
-        _store = State(initialValue: store ?? AppStateStore.shared)
+        _store = State(initialValue: store)
     }
 
     public var body: some View {
@@ -59,7 +64,11 @@ public struct RootWindowView: View {
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleSidebar)) { _ in
             // Only the key content window responds — each RootWindowView
             // receives this notification, but only the key window should act.
-            guard AppStateStore.shared.keyWindowRuntime()?.id == windowID else { return }
+            // Reads the injected `store`, not `.shared` (#0437 Gotchas) — this
+            // deliberately stays on `keyWindowRuntime()`, not the #0439
+            // no-target fallback: a keystroke/menu toggle can only mean the
+            // window the user is actually looking at right now.
+            guard store.keyWindowRuntime()?.id == windowID else { return }
             withAnimation(.easeInOut(duration: 0.2)) {
                 sidebarHidden.toggle()
             }

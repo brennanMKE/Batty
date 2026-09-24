@@ -34,27 +34,34 @@ struct BattyURLHandlerRoutingTests {
         #expect(store.windows.count == 2)
     }
 
-    // MARK: - anyContentWindowRuntime (#0251 URL-handler fallback)
+    // MARK: - defaultTargetWindow (#0251 URL-handler fallback)
 
-    /// With no NSWindow registered, `anyContentWindowRuntime()` returns nil —
-    /// the unit-test context where `addSession` falls back to `windows[0]`.
-    @Test func anyContentWindowRuntimeIsNilWithoutRegisteredNSWindow() {
+    /// With no NSWindow registered, `defaultTargetWindow()` still resolves
+    /// `windows[0]` (its tier-4 last resort) — the unit-test context
+    /// `addSession` (which calls `defaultTargetWindow()` directly, #0439)
+    /// relies on.
+    @Test func defaultTargetWindowResolvesWindowsZeroWithoutRegisteredNSWindow() {
         let store = AppStateStore()
         // No registerNSWindow call — unit-test context.
-        #expect(store.anyContentWindowRuntime() == nil)
+        #expect(store.defaultTargetWindow()?.id == store.windows[0].id)
     }
 
-    /// With exactly one registered NSWindow, `anyContentWindowRuntime()` returns
+    /// With exactly one registered NSWindow, `defaultTargetWindow()` returns
     /// the runtime for that window. This simulates the URL-handler path when a
     /// window is live but the NSApplication key-window state is unavailable.
-    @Test func anyContentWindowRuntimeReturnsRegisteredWindowRuntime() {
+    /// `windows[0]` is deliberately left unregistered and a second, newer
+    /// window is the one registered — registering `windows[0]` itself would
+    /// make this pass vacuously, since `windows[0]` is also the tier-4
+    /// (`windows.first`) fallback answer.
+    @Test func defaultTargetWindowReturnsRegisteredWindowRuntime() {
         let store = AppStateStore()
-        let windowID = store.windows[0].id
+        let newer = store.windowRuntime(for: WindowID())
         let nsWindow = NSWindow()
-        store.registerNSWindow(nsWindow, for: windowID)
+        store.registerNSWindow(nsWindow, for: newer.id)
         defer { store.unregisterNSWindow(nsWindow) }
-        let resolved = store.anyContentWindowRuntime()
-        #expect(resolved?.id == windowID)
+        let resolved = store.defaultTargetWindow()
+        #expect(resolved?.id == newer.id,
+                "must resolve the registered window, not windows[0] (which is unregistered here)")
     }
 
     // MARK: - addSession(workingDirectory:) targets windows[0] in unit-test context

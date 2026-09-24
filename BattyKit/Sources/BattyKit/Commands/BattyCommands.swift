@@ -33,8 +33,10 @@ public struct BattyCommands: Commands {
     private var shortcuts: ShortcutsStore { ShortcutsStore.shared }
     /// The key content window's runtime, if any. Menu commands that operate
     /// on sessions, panes, or tabs target this runtime instead of windows[0]
-    /// (#0239: carried over from #0237). Falls back to the first registered
-    /// window so previews/tests without a key window still resolve one.
+    /// (#0239: carried over from #0237). Falls back through
+    /// `defaultTargetWindow()`'s full policy (#0439) — most recently key,
+    /// then newest registered, then `windows.first` — so previews/tests
+    /// without a key window still resolve one.
     ///
     /// Deliberately optional, not `store.windows[0]` (#0311): this `Commands`
     /// body can be re-evaluated by SwiftUI while `windows` is briefly empty —

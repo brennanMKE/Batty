@@ -430,9 +430,18 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             logger.info("watch subscription started id=\(subID, privacy: .public)")
 
             if subscriptionRequest.sendTopoSnapshot {
-                let snapshot = AppStateStore.shared.topologyPayload(includeDimensions: false)
+                let store = AppStateStore.shared
+                let snapshot = store.topologyPayload(includeDimensions: false)
+                // #0439: label the snapshot with the same window
+                // `defaultTargetWindow()` would act on, not always
+                // `windows.first` — falls back to `.first` only if that
+                // window somehow isn't in the snapshot (unreachable in
+                // practice: the snapshot is built from the same `windows`
+                // array `defaultTargetWindow()` reads).
+                let targetWindowID = store.defaultTargetWindow()?.id.value
+                let targetWindow = snapshot.windows.first { $0.id == targetWindowID } ?? snapshot.windows.first
 
-                guard let firstSession = snapshot.windows.first?.sessions.first else {
+                guard let firstSession = targetWindow?.sessions.first else {
                     return
                 }
 

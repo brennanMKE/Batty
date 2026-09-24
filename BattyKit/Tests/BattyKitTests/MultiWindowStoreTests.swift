@@ -83,14 +83,17 @@ struct MultiWindowStoreTests {
         store.unregisterNSWindow(nsWindow)
     }
 
-    // MARK: - anyContentWindowRuntime fallback ordering (#0437)
+    // MARK: - defaultTargetWindow fallback ordering (#0437/#0439)
 
     /// `keyWindowRuntime()` reads `NSApplication.shared.keyWindow`, which
     /// (per `CrossWindowBehaviorTests`' documented finding) can't be
-    /// controlled from this unit-test host, so `anyContentWindowRuntime()`
+    /// controlled from this unit-test host, so `defaultTargetWindow()`
     /// always falls through to its registered-window fallback here — the
     /// same path a `batty <path>` invocation takes whenever Batty isn't the
-    /// frontmost app and so has no key window at all.
+    /// frontmost app and so has no key window at all. No window is ever
+    /// noted key in this test, so this exercises tier 3 (newest registered),
+    /// same as it did for `anyContentWindowRuntime()` before that method was
+    /// folded into `defaultTargetWindow()` (#0439).
     /// Round 1 review found the 2-window version of this test vacuous: with
     /// only two entries, `Dictionary`'s (unspecified) iteration order
     /// happened to match insertion order on every host run observed, so a
@@ -99,7 +102,7 @@ struct MultiWindowStoreTests {
     /// stores, makes an accidental match astronomically unlikely — the old
     /// code would have to keep landing on the exact newest-of-many entry by
     /// chance, repeatedly, across every trial.
-    @Test func anyContentWindowRuntimePrefersMostRecentlyCreatedRegisteredWindow() {
+    @Test func defaultTargetWindowPrefersMostRecentlyCreatedRegisteredWindow() {
         let windowCount = 24
         for trial in 0..<5 {
             let store = AppStateStore()
@@ -112,7 +115,7 @@ struct MultiWindowStoreTests {
             }
 
             let newest = entries[entries.count - 1]
-            #expect(store.anyContentWindowRuntime() === newest.runtime,
+            #expect(store.defaultTargetWindow() === newest.runtime,
                     "trial \(trial): should resolve the most recently created of \(windowCount) registered windows, not whichever entry nsWindowMap (a Dictionary) happens to enumerate first")
 
             // After unregistering the newest, the *next*-newest still-registered
@@ -120,7 +123,7 @@ struct MultiWindowStoreTests {
             // newly-unregistered one still lingering in `windows`.
             store.unregisterNSWindow(newest.nsWindow)
             let nextNewest = entries[entries.count - 2]
-            #expect(store.anyContentWindowRuntime() === nextNewest.runtime,
+            #expect(store.defaultTargetWindow() === nextNewest.runtime,
                     "trial \(trial): after unregistering the newest window, the next-newest still-registered window should be resolved")
 
             for entry in entries where entry.nsWindow !== newest.nsWindow {
@@ -129,7 +132,7 @@ struct MultiWindowStoreTests {
         }
     }
 
-    @Test func anyContentWindowRuntimeSkipsUnregisteredNewerWindow() {
+    @Test func defaultTargetWindowSkipsUnregisteredNewerWindow() {
         let store = AppStateStore()
         let w1 = store.windows[0]
         let nsWindow1 = NSWindow()
@@ -140,7 +143,7 @@ struct MultiWindowStoreTests {
         // registered w1 just because it's newer.
         _ = store.windowRuntime(for: WindowID())
 
-        let resolved = store.anyContentWindowRuntime()
+        let resolved = store.defaultTargetWindow()
         #expect(resolved === w1,
                 "an unregistered newer window must not be preferred over an older but registered one")
 
