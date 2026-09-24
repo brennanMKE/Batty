@@ -179,7 +179,7 @@ public nonisolated indirect enum TopologySplitNodePayload: Codable, Sendable, Eq
     case split(id: UUID, direction: TopologySplitDirection, ratio: Double, left: TopologySplitNodePayload, right: TopologySplitNodePayload)
 }
 
-extension TopologySplitNodePayload {
+nonisolated extension TopologySplitNodePayload {
     /// All leaf panes in this subtree, depth-first — mirrors
     /// `SplitTreeNode.allLeafPanes`. Used by the CLI's plain-text renderers
     /// (`batty list panes`/`batty list tabs`) to flatten the tree without
@@ -217,7 +217,7 @@ public nonisolated struct TopologySessionPayload: Codable, Sendable, Equatable {
     }
 }
 
-extension TopologySessionPayload {
+nonisolated extension TopologySessionPayload {
     public var allPanes: [TopologyPanePayload] { root.allPanes }
     public var allTabs: [TopologyTabPayload] { root.allPanes.flatMap(\.tabs) }
 }
