@@ -65,4 +65,60 @@ struct SingleSlotRetrySchedulerTests {
         scheduler.clear()
         #expect(cancelledCount == 1)
     }
+
+    // MARK: - #0367: the slot must clear when the handle fires, not just
+    // when it is cancelled or replaced.
+
+    @Test func markFiredClearsHasPendingWithoutCancelling() {
+        var cancelled: [Int] = []
+        let scheduler = SingleSlotRetryScheduler<Int> { cancelled.append($0) }
+        scheduler.replace(with: 1)
+        scheduler.markFired()
+        #expect(cancelled.isEmpty)
+        #expect(!scheduler.hasPending)
+    }
+
+    @Test func clearAfterMarkFiredDoesNotCancelTheAlreadyFiredHandle() {
+        var cancelled: [Int] = []
+        let scheduler = SingleSlotRetryScheduler<Int> { cancelled.append($0) }
+        scheduler.replace(with: 1)
+        scheduler.markFired()
+        scheduler.clear()
+        #expect(cancelled.isEmpty)
+        #expect(!scheduler.hasPending)
+    }
+
+    @Test func replaceAfterMarkFiredDoesNotCancelTheAlreadyFiredHandle() {
+        var cancelled: [Int] = []
+        let scheduler = SingleSlotRetryScheduler<Int> { cancelled.append($0) }
+        scheduler.replace(with: 1)
+        scheduler.markFired()
+        scheduler.replace(with: 2)
+        #expect(cancelled.isEmpty)
+        #expect(scheduler.hasPending)
+    }
+
+    @Test func replaceBeforeMarkFiredStillCancelsTheOldHandle() {
+        // Pins the third #0367 requirement: markFired only forgives a
+        // handle that actually ran — a handle superseded by replace(with:)
+        // before it fires is still cancelled normally.
+        var cancelled: [Int] = []
+        let scheduler = SingleSlotRetryScheduler<Int> { cancelled.append($0) }
+        scheduler.replace(with: 1)
+        scheduler.replace(with: 2)
+        scheduler.markFired()
+        #expect(cancelled == [1])
+        #expect(!scheduler.hasPending)
+    }
+
+    // MARK: - #0391: deinit must stay empty.
+
+    @Test func deallocatingTheSchedulerWithAPendingHandleNeverCancelsIt() {
+        var cancelledCount = 0
+        do {
+            let scheduler = SingleSlotRetryScheduler<Int> { _ in cancelledCount += 1 }
+            scheduler.replace(with: 1)
+        }
+        #expect(cancelledCount == 0)
+    }
 }

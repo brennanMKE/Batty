@@ -34,11 +34,13 @@ public final class SingleSlotRetryScheduler<Handle> {
     /// -configuration Release` still succeeds.
     ///
     /// The body MUST stay empty. Calling `clear()` here would cancel the
-    /// pending handle on deallocation — a real behavior change, not a
-    /// compiler workaround — and that change belongs to #0367, not here.
+    /// pending handle on deallocation — a real behavior change rather than
+    /// a compiler workaround; it must be its own decision.
     deinit {}
 
-    /// `true` while a handle is pending.
+    /// `true` while an action is genuinely still going to happen — cleared
+    /// both by `clear()`/`replace(with:)` cancelling the handle and by
+    /// `markFired()` reporting that it already ran.
     public var hasPending: Bool { pending != nil }
 
     /// Cancels any previously pending handle, then stores `handle` as the
@@ -55,6 +57,18 @@ public final class SingleSlotRetryScheduler<Handle> {
         if let pending {
             cancel(pending)
         }
+        pending = nil
+    }
+
+    /// Reports that the pending handle has already run, clearing the slot
+    /// without calling `cancel` on it. Callers invoke this from the handle's
+    /// own execution, before doing anything else, so `hasPending` never
+    /// reports a stale `true` for a handle that already fired, and a later
+    /// `clear()`/`replace(with:)` doesn't attempt to cancel it. No identity
+    /// check against `pending` is needed: a handle superseded by
+    /// `replace(with:)` is always cancelled before it can run, since both
+    /// happen on the same main serial queue.
+    public func markFired() {
         pending = nil
     }
 }

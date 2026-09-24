@@ -360,6 +360,7 @@ public final class AppXPCCoordinator {
     }
 
     private func retryAfterBackoff() {
+        backoffRetryScheduler.markFired()
         guard let endpoint = listenerEndpoint else { return }
         logger.notice("retryAfterBackoff: attempting reconnect")
         reconnectBudget.reset()
