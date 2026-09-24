@@ -124,7 +124,7 @@ struct AppStateStoreNotifyTests {
         // `contentFactory: { _ in nil }` (#0313's seam) keeps this split
         // from starting `.gitStatus`'s real conformer (a real
         // `FSEventStream`) as a side effect.
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil }, isSessionSelected: true)
         #expect(nonTerminalPane?.content == nil)
         #expect(session.focusedPaneAnyKind.kind == .gitStatus, "test setup: the split must move focus to the non-terminal pane")
 

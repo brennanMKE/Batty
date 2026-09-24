@@ -63,7 +63,7 @@ struct ExitDispatcherTests {
         // a conformer-less kind just moves the hazard onto whichever kind
         // lands next, rather than actually using the injection point
         // built for this).
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil }, isSessionSelected: true)
         // Permanent regression check, not just a comment's promise: if a
         // future edit drops the `contentFactory` argument above, this
         // fails loudly instead of silently starting a real FSEventStream

@@ -214,7 +214,7 @@ public final class SplitTree {
         ratio: Double = 0.5,
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane = Self.makePane(inheritingFrom: source, tabLookup: Self.tabLookup(for: self))
+        let newPane = Self.makePane(inheritingFrom: source, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
         if let sessionID {
             newPane.attachToSession(sessionID)
         }
@@ -259,7 +259,7 @@ public final class SplitTree {
         ratio: Double = 0.5,
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane = Self.makePane(inheritingFrom: source, tabLookup: Self.tabLookup(for: self))
+        let newPane = Self.makePane(inheritingFrom: source, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
         if let sessionID {
             newPane.attachToSession(sessionID)
         }
@@ -335,6 +335,7 @@ public final class SplitTree {
         processStatusPid: Int32? = nil,
         path: String? = nil,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
+        isSessionSelected: Bool,
         tabLookup: @escaping (UUID) -> TabRuntime?
     ) -> PaneRuntime {
         guard kind == .terminal else {
@@ -363,7 +364,7 @@ public final class SplitTree {
             } else {
                 resolvedFactory = PaneRuntime.makeContent
             }
-            return PaneRuntime(kind: kind, contentFactory: resolvedFactory)
+            return PaneRuntime(kind: kind, isSessionSelected: isSessionSelected, contentFactory: resolvedFactory)
         }
         guard let sourceTab = source?.activeTab else {
             return command == nil ? PaneRuntime() : PaneRuntime(tabs: [TabRuntime(command: command)])
@@ -395,6 +396,24 @@ public final class SplitTree {
     /// asked to look at. This is symmetric for foreground and background
     /// targets — same rule either way, no special-casing on which session
     /// is selected.
+    /// `isSessionSelected` (#0349) is the caller's answer to "is the Session
+    /// this tree belongs to the one currently selected" — `SplitTree` has
+    /// no notion of Sessions or window selection itself, so it can't derive
+    /// the fact; it only carries it down to `PaneRuntime.init`'s
+    /// `setUp(visible:)` so a non-terminal Pane created into a background
+    /// Session (`AppStateStore.splitPane(id:...)`'s XPC `pane split` verb
+    /// is the production path that does this — see that method's own
+    /// "never touches `selectedSessionID`" doc note) starts `.suspended`
+    /// instead of incorrectly starting `.active`. **No default** —
+    /// both production callers (`AppStateStore.splitPane`, computing
+    /// `window.selectedSessionID == session.id`; `WindowRuntime.createPane`,
+    /// passing a literal `true` because it only ever splits the selected
+    /// Session's own tree) already compute and pass a real value, so a
+    /// silently-inserted `true` at every other call site could paper over
+    /// a caller that should have computed the real fact and didn't. (For a
+    /// related but different reason, `#0359` removed the `{ _ in nil }`
+    /// default from the private `makePane`'s `tabLookup` parameter: a nil
+    /// lookup silently tombstoned every `.followingTab` target.)
     @discardableResult
     public func splitPane(
         id targetPaneID: UUID,
@@ -404,7 +423,8 @@ public final class SplitTree {
         kind: PaneContentKind = .terminal,
         processStatusPid: Int32? = nil,
         path: String? = nil,
-        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
+        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
+        isSessionSelected: Bool
     ) -> PaneRuntime? {
         guard let targetPane = root.findPane(id: targetPaneID) else { return nil }
         let newPane = Self.makePane(
@@ -414,6 +434,7 @@ public final class SplitTree {
             processStatusPid: processStatusPid,
             path: path,
             contentFactory: contentFactory,
+            isSessionSelected: isSessionSelected,
             tabLookup: Self.tabLookup(for: self)
         )
         if let sessionID {

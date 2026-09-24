@@ -170,7 +170,7 @@ struct AppStateStoreTopologyPayloadTests {
         let session = store.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil }, isSessionSelected: true)!
         // Permanent regression check, not just a comment's promise: if a
         // future edit drops the `contentFactory` argument above, this
         // fails loudly instead of silently starting a real FSEventStream
@@ -195,7 +195,7 @@ struct AppStateStoreTopologyPayloadTests {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
-        let gitStatusPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
+        let gitStatusPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil }, isSessionSelected: true)!
 
         let payload = store.topologyPayload()
         let panes = payload.windows[0].sessions[0].allPanes

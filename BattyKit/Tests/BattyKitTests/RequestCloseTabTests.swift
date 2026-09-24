@@ -94,7 +94,7 @@ struct RequestCloseTabTests {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)!
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)!
         #expect(session.tree.focusedPaneID == nonTerminalPane.id)
         let paneCountBefore = session.tree.allPanes.count
 
@@ -110,7 +110,7 @@ struct RequestCloseTabTests {
         let session = store.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` avoids constructing a real `GitStatusPaneContent` (and its real `FSEventStream`) as a side effect of this test's setup -- any non-terminal kind would do, and #0313's injectable-factory seam is the correct way to keep one inert, not swapping to a conformer-less kind (review round 3: that just moves the hazard onto whichever kind is picked next).
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil }, isSessionSelected: true)!
         // Permanent regression check, not just a comment's promise: if a
         // future edit drops the `contentFactory` argument above, this
         // fails loudly instead of silently starting a real FSEventStream
@@ -139,7 +139,7 @@ struct RequestCloseTabTests {
         // sibling's tabs being unaffected by closing a non-terminal pane,
         // not .processStatus's own behavior (review round 3,
         // post-#0313-rebase).
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil })!
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil }, isSessionSelected: true)!
         // Permanent regression check — see CommandPaletteViewActionTests's
         // comment on the same pattern.
         #expect(nonTerminalPane.content == nil)
@@ -169,7 +169,7 @@ struct RequestCloseTabTests {
         // closes the pane afterward; without the override,
         // `.lmStudioDashboard`'s real conformer would `setUp()` a real
         // subprocess/HTTP poll that outlives this test.
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .lmStudioDashboard, contentFactory: { _ in nil })!
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .lmStudioDashboard, contentFactory: { _ in nil }, isSessionSelected: true)!
         #expect(session.tree.focusedPaneID == nonTerminalPane.id)
 
         #expect(store.windows[0].closeFocusedItemTitle == "Close Pane")

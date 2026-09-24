@@ -59,7 +59,7 @@ struct AppStateStoreStatusPayloadTests {
         // contentFactory: { _ in nil } -- this test is about tabCount excluding
         // a non-terminal pane's structural tab, not .processStatus's own
         // behavior (review round 3, post-#0313-rebase).
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil })
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil }, isSessionSelected: true)
         // Permanent regression check — see CommandPaletteViewActionTests's
         // comment on the same pattern.
         #expect(nonTerminalPane?.content == nil)

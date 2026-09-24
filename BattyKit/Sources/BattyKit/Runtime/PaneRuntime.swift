@@ -96,6 +96,7 @@ public final class PaneRuntime: Identifiable {
         unseenBellCount: Int = 0,
         isHidden: Bool = false,
         kind: PaneContentKind = .terminal,
+        isSessionSelected: Bool = true,
         contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
     ) {
         self.id = id
@@ -117,13 +118,27 @@ public final class PaneRuntime: Identifiable {
         // behavior (`PaneRuntime.makeContent`).
         let content = contentFactory(kind)
         self.content = content
-        // The non-selected-Session visibility fact has no model-level
-        // function to source from yet (`docs/pane-view-lifecycle.md` §5's
-        // own open item) — `isHidden` is the only fact available at
-        // construction time, so a pane created in a background session
-        // starts `.active` rather than `.suspended`. Documented, not
-        // silently assumed away (see #0314's Gotchas).
-        content?.setUp(visible: !isHidden)
+        // The non-selected-Session visibility fact is delivered post-
+        // construction by `WindowRuntime.selectedSessionID`'s `didSet` →
+        // `applySelectionVisibility` (#0349) for every *later* selection
+        // change, but a Pane can be *created* directly into a background
+        // (non-selected) Session — `AppStateStore.splitPane(id:...)`'s XPC
+        // `pane split` verb never touches `selectedSessionID` (#0257: a
+        // mutation aimed at a background target must not switch the active
+        // session), so construction time is the one moment that sweep can't
+        // reach. `isSessionSelected` is how the caller supplies that fact
+        // up front, so a Pane created hidden *or* created into a background
+        // Session goes straight to `.suspended` without ever passing through
+        // `.active` — `docs/pane-view-lifecycle.md` §3's `notSetUp →
+        // suspended` edge. Defaults to `true` here — unlike
+        // `SplitTree.makePane`'s own `isSessionSelected` parameter, which
+        // has no default (`#0359` applied the same rule to that function's
+        // `tabLookup`) — because every production non-terminal Pane goes
+        // through `makePane`, which already requires the flag; this
+        // default only covers direct `PaneRuntime(kind:...)` construction,
+        // overwhelmingly test code with no notion of "which Session is
+        // selected" to supply.
+        content?.setUp(visible: !isHidden && isSessionSelected)
         self.kind = kind
     }
 

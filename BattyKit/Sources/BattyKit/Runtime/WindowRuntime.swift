@@ -45,7 +45,30 @@ public enum PaneCloseOutcome: Equatable, Sendable {
 public final class WindowRuntime {
     public let id: WindowID
     public private(set) var sessions: [SessionRuntime]
-    public var selectedSessionID: UUID?
+    /// The model-level choke point for the non-selected-Session visibility
+    /// fact `docs/pane-view-lifecycle.md` §5 left as an open wiring question
+    /// (#0349): every write — `setSelectedSession(id:)` (sidebar click, and
+    /// the CLI focus verbs), `selectSession(at:)` (Cmd-1..9),
+    /// `addSession`/`removeSession`/`duplicateSession`, and
+    /// `jumpToTab`/`jumpToBellEntry` — funnels through this one property,
+    /// so `didSet` is the single place that delivers `setVisible` to the
+    /// two Sessions a selection change crosses, rather than each call site
+    /// re-deriving it. Not fired for the initial assignment inside `init`
+    /// (Swift suppresses observers for a property's first set within its
+    /// own type's initializer) — harmless, since `PaneRuntime.init` already
+    /// starts a freshly-constructed Session's panes in the right phase
+    /// for the single-Session-at-construction-time production paths
+    /// (`addSession`, a new window's first Session). The multi-Session
+    /// `init(sessions:)` overload has no production call site (every
+    /// production `WindowRuntime` is created with `sessions: []`); test
+    /// code that constructs one directly with several non-empty Sessions
+    /// does not get this sweep for Sessions beyond the first.
+    public var selectedSessionID: UUID? {
+        didSet {
+            guard oldValue != selectedSessionID else { return }
+            applySelectionVisibility(deselecting: oldValue, selecting: selectedSessionID)
+        }
+    }
     public var pendingCloseRequest: PendingCloseRequest?
     /// Called when `removeSession` empties `sessions`. Set by `AppStateStore`
     /// on new runtimes to close the owning window; `RootWindowView` replaces
@@ -568,7 +591,12 @@ public final class WindowRuntime {
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
     ) -> PaneRuntime? {
         guard let tree = selectedSession?.tree else { return nil }
-        return tree.splitPane(id: tree.focusedPaneID, direction: direction, kind: kind, contentFactory: contentFactory)
+        // `isSessionSelected: true` unconditionally — this always splits
+        // `selectedSession`'s own tree (the guard above), so the Session is
+        // the selected one by construction, unlike `AppStateStore
+        // .splitPane(id:...)`'s XPC path, which can target any Session
+        // (#0349).
+        return tree.splitPane(id: tree.focusedPaneID, direction: direction, kind: kind, contentFactory: contentFactory, isSessionSelected: true)
     }
 
     // MARK: - Pane close (#0283)
@@ -749,6 +777,41 @@ public final class WindowRuntime {
         }
     }
 
+    // MARK: - Session selection visibility
+
+    /// Delivers the non-selected-Session visibility fact (#0349) to every
+    /// non-terminal Pane content in the (at most) two Sessions a
+    /// `selectedSessionID` write crosses. Called only from that property's
+    /// `didSet`, never from a view.
+    ///
+    /// Looks each id up in `sessions` rather than trusting a caller-held
+    /// reference, so a Session already removed from `sessions` (e.g.
+    /// `removeSession` removes it, then reassigns `selectedSessionID`
+    /// away from it) is silently skipped — its panes' content was already
+    /// torn down by `removeSession`, and a `setVisible` call after
+    /// `tearDown()` would be a `.rejected` transition
+    /// (`PaneLifecycleStateMachine`), not a harmless no-op.
+    ///
+    /// Only sweeps `!pane.isHidden` panes both directions: a Pane already
+    /// hidden via `hidePane` must stay suspended regardless of which
+    /// Session is selected (its content was already suspended when it was
+    /// hidden, and `showPane` — not this sweep — is what resumes it, and
+    /// only when its Session is selected). `setVisible` is idempotent by
+    /// contract, so this composes safely with `hidePane`/`showPane` even
+    /// where the two paths could otherwise overlap.
+    private func applySelectionVisibility(deselecting previousID: UUID?, selecting newID: UUID?) {
+        if let previousID, let previous = sessions.first(where: { $0.id == previousID }) {
+            for pane in previous.tree.allPanes where !pane.isHidden {
+                pane.content?.setVisible(false)
+            }
+        }
+        if let newID, let selected = sessions.first(where: { $0.id == newID }) {
+            for pane in selected.tree.allPanes where !pane.isHidden {
+                pane.content?.setVisible(true)
+            }
+        }
+    }
+
     // MARK: - Pane hide / show
 
     /// Hides the pane with `id`. No-op when the pane is already hidden or when
@@ -819,7 +882,14 @@ public final class WindowRuntime {
             // remount to lean on since it isn't torn down and rebuilt by
             // SwiftUI churn — so this call site drives it explicitly rather
             // than leaving it to a view lifecycle event that may not fire.
-            pane.content?.setVisible(true)
+            // Gated on session selection (#0349): un-hiding a Pane that
+            // lives in a non-selected Session must not resume it — only
+            // `applySelectionVisibility` (via `selectedSessionID`'s
+            // `didSet`) resumes it, once its Session actually becomes
+            // selected.
+            if session.id == selectedSessionID {
+                pane.content?.setVisible(true)
+            }
             return
         }
     }

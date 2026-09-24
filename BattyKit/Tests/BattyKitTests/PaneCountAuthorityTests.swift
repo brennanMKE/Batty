@@ -38,7 +38,8 @@ struct PaneCountAuthorityTests {
             id: terminalHidden.id,
             direction: .vertical,
             kind: .gitStatus,
-            contentFactory: { _ in nil }
+            contentFactory: { _ in nil },
+            isSessionSelected: true
         )!
         #expect(nonTerminal.content == nil)
         return (terminalA, terminalHidden, nonTerminal)

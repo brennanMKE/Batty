@@ -89,7 +89,7 @@ three call sites, verified against the current tree:
 
 | Fact | Where it's computed | Citation |
 |---|---|---|
-| **Pane in a non-selected Session** | `SessionDetailView` sets an environment value comparing the session's id to the window's selected session id; `PaneView` reads it as `isSessionSelected`. | `BattyKit/Sources/BattyKit/Views/SessionDetailView.swift:203` (`.environment(\.isSelectedSession, session.id == windowRuntime.selectedSessionID)`); env key declared at `BattyKit/Sources/BattyKit/Commands/FocusedValues.swift:32`; read at `BattyKit/Sources/BattyKit/Views/PaneView.swift:15` |
+| **Pane in a non-selected Session** | `SessionDetailView` sets an environment value comparing the session's id to the window's selected session id; `PaneView` reads it as `isSessionSelected` — this is the *view-layer* copy of the fact, for rendering. The *model-level* delivery to a `PaneContentLifecycle` conformer (`#0349`) is separate: `WindowRuntime.selectedSessionID`'s `didSet` calls `applySelectionVisibility(deselecting:selecting:)`, which sweeps the deselected Session's unhidden Panes with `setVisible(false)` and the newly selected Session's with `setVisible(true)` — see §5's "Where the calls come from" for the full account, now updated. | `BattyKit/Sources/BattyKit/Views/SessionDetailView.swift:203` (`.environment(\.isSelectedSession, session.id == windowRuntime.selectedSessionID)`); env key declared at `BattyKit/Sources/BattyKit/Commands/FocusedValues.swift:32`; read at `BattyKit/Sources/BattyKit/Views/PaneView.swift:15`; model-level delivery at `BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift` (`selectedSessionID`'s `didSet` and `applySelectionVisibility(deselecting:selecting:)`) |
 | **Inactive Tab (within a Pane)** | `PaneView.body` compares each tab's id to `pane.activeTabID` when constructing its `TerminalPlaceholderView`. | `BattyKit/Sources/BattyKit/Views/PaneView.swift:126` — `isVisible: tab.id == pane.activeTabID && isSessionSelected` |
 | **Hidden Pane** | `WindowRuntime.hidePane(id:)` is the single trigger for **both** halves of hiding, in the same function. It flips `pane.isHidden`, which is what makes `SplitContainerView`'s `SplitNodeView` stop constructing `PaneView` for that leaf (the SwiftUI unmount) — but that unmount is not what hides the terminal. In the same call, `hidePane` also drives `TerminalHostStore.setPlacement(_:forTabID:)` directly, once per tab, with an explicit `isVisible: false` placement. The in-code comment at the call site says why: the placeholder is about to unmount, so its own `onGeometryChange` will never fire to report a hidden placement itself — driving the store directly is how `#0256` fixed exactly this gap (that issue's round-1 blocker: the terminal stayed floating on screen because nothing but the unmount had been wired; `TerminalHostStore.updatePlacements(_:forWindowID:)` — a full-window sweep that *would* have caught this — has no production caller at all, then or now, only test callers). **A non-terminal conformer already has the identical shape provided for it, not something to invent** — see §5's "Where the calls come from" for the direct consequence: `hidePane` is where a conformer's `setVisible(false)` belongs, called the same explicit way. | `BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift:405-431` (the per-tab `setPlacement` loop at `:427-431`); `TerminalHostStore.setPlacement(_:forTabID:)` at `BattyKit/Sources/BattyKit/Runtime/TerminalHostStore.swift:419-434`; `SplitContainerView`'s unmount check at `BattyKit/Sources/BattyKit/Views/SplitContainerView.swift:59-62` |
 | **(Terminal-only today) Window occlusion** | `TerminalHostStore.effectiveSurfaceVisible(placementVisible:windowVisible:)` folds a fourth fact — whether the *window* is occluded/minimized — into the terminal path's effective visibility. | `BattyKit/Sources/BattyKit/Runtime/TerminalHostStore.swift:370-371` |
@@ -377,31 +377,102 @@ remounting it is cheap and side-effect-free — it doesn't restart a PTY,
 only re-reports geometry for a surface that never stopped existing.
 
 **Resolved by #0314, adopted as the shape every non-terminal kind
-wires: `showPane` gets an explicit, unconditional
-`pane.content?.setVisible(true)` call, matching `hidePane`'s more robust
-shape rather than the terminal path's own asymmetric one.** The two
-candidates this document originally left open were an explicit call
-(this one) versus riding a future non-terminal pane body's own
-`onAppear`/remount, mirroring `TerminalPlaceholderView`'s pattern. The
-remount-based option is rejected, not left open any longer: it would make
-a non-terminal pane's resumed sampling/watching depend on that specific
-kind's own view being cheap and side-effect-free to remount — true of
-the terminal placeholder by design, not something every future kind can
-be assumed to inherit — and it would need re-deriving per kind, the same
-duplication problem the teardown correction above exists to avoid.
-`hidePane`'s call is unconditional the same way: both call sites read
-`pane.content?.setVisible(...)`, a no-op for `.terminal` panes (`content
-== nil`) and for any non-terminal kind without a conformer yet, so a
-future kind inherits both halves of show/hide for free rather than
-adding its own kind-gated branch to either function.
+wires: `showPane` gets an explicit `pane.content?.setVisible(true)` call,
+matching `hidePane`'s more robust shape rather than the terminal path's
+own asymmetric one.** The two candidates this document originally left
+open were an explicit call (this one) versus riding a future
+non-terminal pane body's own `onAppear`/remount, mirroring
+`TerminalPlaceholderView`'s pattern. The remount-based option is
+rejected, not left open any longer: it would make a non-terminal pane's
+resumed sampling/watching depend on that specific kind's own view being
+cheap and side-effect-free to remount — true of the terminal placeholder
+by design, not something every future kind can be assumed to inherit —
+and it would need re-deriving per kind, the same duplication problem the
+teardown correction above exists to avoid. `hidePane`'s call has no such
+gate — hiding always suspends, regardless of which Session is selected,
+and `setVisible(false)` is idempotent when the Pane's content is already
+suspended. Both call sites read `pane.content?.setVisible(...)`, a no-op
+for `.terminal` panes (`content == nil`) and for any non-terminal kind
+without a conformer yet, so a future kind inherits both halves of
+show/hide for free rather than adding its own kind-gated branch to
+either function.
 
-The non-selected-Session fact (§2) has no equivalent model-level function
-today — `SessionDetailView`'s environment write (`SessionDetailView.swift:203`)
-is the only place `isSessionSelected` changes, and it is a pure SwiftUI
-environment value, not a call into `WindowRuntime` or `AppStateStore` —
-so that fact's delivery to a non-terminal conformer remains an open
-wiring question this document flags rather than answers, since no
-model-level function exists yet to name for it.
+**Correction (`#0349`): `showPane`'s call is not unconditional — it is
+gated on the Pane's owning Session being the currently selected one.**
+The paragraph above, in earlier versions of this document, described
+`showPane`'s `setVisible(true)` call as unconditional, matching
+`hidePane`'s shape exactly. That was already wrong when written, not
+merely outdated by a later addition: the Sidebar's per-pane eye-icon
+toggle (`SessionSidebarView.swift`'s `toggleVisibility()`, `#0256`,
+predating `#0314`) calls `windowRuntime.showPane(id: pane.id)` for any
+Session's Pane row — including a background Session's, since the
+Sidebar's pane lists are not scoped to the selected Session — without
+selecting that Session first, and `#0382`'s CLI `pane show` verb
+(`AppStateStore.showPaneForXPC(id:)`) reaches the identical unconditional
+call. `#0349` found the resulting gap directly: un-hiding a Pane whose
+Session is not selected must not resume its content — only
+`applySelectionVisibility` (below) resumes it, once the Session is
+actually selected — so `showPane` now reads
+`if session.id == selectedSessionID { pane.content?.setVisible(true) }`.
+
+**The non-selected-Session fact (§2) now has a model-level function:
+`WindowRuntime.selectedSessionID`'s `didSet` (`#0349`).** Every write to
+`selectedSessionID` — `setSelectedSession(id:)` (the sidebar's selection
+entry point, and the CLI focus verbs' shared entry point:
+`focusSessionForXPC`/`focusPaneForXPC`/`focusTabForXPC` all call it),
+`selectSession(at:)` (Cmd-1..9), `addSession`/`removeSession`/
+`duplicateSession`, and `jumpToTab`/`jumpToBellEntry` — funnels through
+this one property, so its `didSet` is a single choke point rather than a
+call at each site. It calls a private `applySelectionVisibility
+(deselecting:selecting:)`, which sweeps the deselected Session's
+`!isHidden` Panes with `setVisible(false)` and the newly selected
+Session's `!isHidden` Panes with `setVisible(true)` — a Pane already
+hidden via `hidePane` is excluded from both sweeps, so it stays
+suspended regardless of which Session is selected, exactly the
+composition §4's "what suspended is allowed to cost" and this section's
+`hidePane`/`showPane` contract require. `SessionDetailView`'s environment
+write (`SessionDetailView.swift:203`) is unchanged and still the
+view-layer copy of the same fact, used for rendering, not for lifecycle
+delivery — the two are deliberately kept separate (see §2's updated
+"Pane in a non-selected Session" row).
+
+A related gap `#0349` also closed, not merely flagged: **a Pane created
+directly into a background Session needs its *initial* effective
+visibility threaded through explicitly**, since `selectedSessionID`
+doesn't change when a Pane is created (only when a Session is selected)
+— `applySelectionVisibility` never fires for a brand-new Pane in an
+already-non-selected Session, so `PaneRuntime.init`'s prior code —
+`content?.setUp(visible: !isHidden)` — would still start a background
+Session's freshly-created Pane `.active`. `PaneRuntime.init` gained an
+`isSessionSelected: Bool = true` parameter for exactly this, threaded
+from `AppStateStore.splitPane(id:...)` (the
+XPC `pane split` verb — the one production path that can create a Pane
+in a Session other than the caller's own selected one, per this
+function's own "never touches `selectedSessionID`" contract above;
+computed there as `window.selectedSessionID == session.id`) through
+`SplitTree.splitPane`'s own `isSessionSelected` parameter to
+`SplitTree.makePane` to `PaneRuntime.init`'s `content?.setUp(visible:
+!isHidden && isSessionSelected)`. `WindowRuntime.createPane` (the
+GUI/menu path) always splits `selectedSession`'s own tree, so it passes
+`isSessionSelected: true` unconditionally rather than computing it.
+`SplitTree.makePane` (private, three callers) and the public
+`SplitTree.splitPane(id:...)` both take `isSessionSelected` with **no
+default** — both production callers already compute and pass a real
+value, so a defaulted `true` at every other call site (including any
+future one) could silently paper over a caller that should have computed
+the real fact and didn't. `splitPane(id:)` never had a `tabLookup`
+parameter; `#0359` removed the `{ _ in nil }` default from the private
+`makePane`'s `tabLookup` parameter instead, for a related but different
+reason: a silent default for that required dependency was a trap, since a
+nil-returning lookup tombstoned every `.followingTab` target.
+`splitFocusedPane`/`splitFullDimension` (terminal-only — neither takes a
+`kind` parameter) pass `true` explicitly at their own two call sites into
+`makePane`, since a `.terminal` Pane's `content` is always `nil` and the
+flag has no effect either way. `PaneRuntime.init` keeps its own
+`isSessionSelected: Bool = true` default, since production non-terminal
+construction goes only through `makePane` (which has none), and the
+large majority of test construction has no notion of Session selection
+to supply.
 
 **The conformer is model-owned, not view-owned — hung off `PaneRuntime`,
 addressable by pane id, the same relationship `TabRuntime.terminal:
@@ -624,3 +695,18 @@ injectable `contentFactory` parameter (default: an exhaustive,
 no-`default:` `PaneRuntime.makeContent(for:)`) so test code can supply an
 inert conformer instead of triggering a real one's real side effects —
 `setUp` itself still runs synchronously inside `init`, unchanged.*
+
+*Version 5 (`#0349`): closed the open wiring question §5 (then §2's
+"Pane in a non-selected Session" row) left unanswered — the
+non-selected-Session fact now has a model-level delivery,
+`WindowRuntime.selectedSessionID`'s `didSet` calling
+`applySelectionVisibility(deselecting:selecting:)`. Also corrected
+Version 4's own "`showPane` gets an explicit, unconditional
+`setVisible(true)` call" claim: `#0349` found that unconditional call
+resumed a Pane's content even when its Session was not the selected one,
+so `showPane` now gates the call on `session.id == selectedSessionID`.
+Added `PaneRuntime.init`'s `isSessionSelected` parameter (threaded from
+`AppStateStore.splitPane(id:...)` through `SplitTree.splitPane`/
+`makePane`) so a Pane created directly into a background Session — the
+one case `applySelectionVisibility` can't reach, since selection doesn't
+change on pane creation — also starts suspended rather than active.*

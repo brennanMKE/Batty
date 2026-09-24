@@ -94,7 +94,7 @@ struct SplitTreeFocusHistoryTests {
         let tree = SplitTree()
         let main = tree.focusedPane
         let focused = tree.splitFocusedPane(direction: .horizontal)
-        let hiddenSurvivor = tree.splitPane(id: main.id, direction: .vertical)!
+        let hiddenSurvivor = tree.splitPane(id: main.id, direction: .vertical, isSessionSelected: true)!
         // Click into hiddenSurvivor, then back to focused, so history reads
         // [focused, hiddenSurvivor] — hiddenSurvivor is a real, ranked
         // history entry, not merely absent from it.

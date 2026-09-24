@@ -34,7 +34,7 @@ struct SplitTreeTargetedSplitTests {
         // Target paneA explicitly instead.
         tree.focusedPaneID = paneB.id
 
-        let newPane = tree.splitPane(id: paneA.id, direction: .vertical)!
+        let newPane = tree.splitPane(id: paneA.id, direction: .vertical, isSessionSelected: true)!
 
         // `newPane != nil` / `allPanes.count == 3` / `root.contains(...)`
         // would all pass identically if the split had wrongly landed on
@@ -56,7 +56,7 @@ struct SplitTreeTargetedSplitTests {
         let paneB = tree.splitFocusedPane(direction: .horizontal)
         tree.focusedPaneID = paneB.id
 
-        let newPane = tree.splitPane(id: paneA.id, direction: .vertical)
+        let newPane = tree.splitPane(id: paneA.id, direction: .vertical, isSessionSelected: true)
 
         // paneA was targeted (not focused); the tree's focus must remain on
         // paneB exactly as it was before the split.
@@ -69,7 +69,7 @@ struct SplitTreeTargetedSplitTests {
         let paneA = tree.focusedPane
         #expect(tree.focusedPaneID == paneA.id)
 
-        let newPane = tree.splitPane(id: paneA.id, direction: .horizontal)
+        let newPane = tree.splitPane(id: paneA.id, direction: .horizontal, isSessionSelected: true)
 
         #expect(newPane != nil)
         #expect(tree.focusedPaneID == newPane!.id)
@@ -83,7 +83,7 @@ struct SplitTreeTargetedSplitTests {
         let paneB = tree.splitFocusedPane(direction: .horizontal)
         tree.focusedPaneID = paneB.id // move focus away from paneA
 
-        let paneC = tree.splitPane(id: paneA.id, direction: .horizontal)!
+        let paneC = tree.splitPane(id: paneA.id, direction: .horizontal, isSessionSelected: true)!
 
         // Splitting paneB instead (a mis-target) would rebalance to thirds
         // identically, so the fractions alone can't prove *which* pane was
@@ -106,7 +106,7 @@ struct SplitTreeTargetedSplitTests {
         let before = tree.root
         let focusedBefore = tree.focusedPaneID
 
-        let result = tree.splitPane(id: UUID(), direction: .horizontal)
+        let result = tree.splitPane(id: UUID(), direction: .horizontal, isSessionSelected: true)
 
         #expect(result == nil)
         #expect(tree.allPanes.count == 1, "an unknown target must not insert a pane")
@@ -124,7 +124,7 @@ struct SplitTreeTargetedSplitTests {
         let tree = SplitTree()
         let target = tree.focusedPane
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal, command: "htop")!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, command: "htop", isSessionSelected: true)!
 
         #expect(newPane.tabs[0].terminal.renderedConfig.contains("command = htop"))
     }
@@ -133,7 +133,7 @@ struct SplitTreeTargetedSplitTests {
         let tree = SplitTree()
         let target = tree.focusedPane
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal)!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, isSessionSelected: true)!
 
         // Asserting only the *absence* of "command = htop" would pass even
         // if the command line were dropped entirely — assert the shell
@@ -164,7 +164,7 @@ struct SplitTreeTargetedSplitTests {
         let tree = SplitTree()
         let target = tree.focusedPane
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal, command: "htop")!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, command: "htop", isSessionSelected: true)!
 
         #expect(newPane.tabs[0].terminal.renderedConfig.contains("wait-after-command = true"))
     }
@@ -176,7 +176,7 @@ struct SplitTreeTargetedSplitTests {
         let tree = SplitTree()
         let target = tree.focusedPane
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal)!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, isSessionSelected: true)!
 
         #expect(!newPane.tabs[0].terminal.renderedConfig.contains("wait-after-command"))
     }
@@ -186,7 +186,7 @@ struct SplitTreeTargetedSplitTests {
         let target = tree.focusedPane
         target.activeTab!.terminal.configuration.workingDirectory = "/tmp/example"
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal)!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, isSessionSelected: true)!
 
         #expect(newPane.tabs[0].terminal.configuration.workingDirectory == "/tmp/example")
     }
@@ -197,7 +197,7 @@ struct SplitTreeTargetedSplitTests {
         let tree = SplitTree()
         let target = tree.focusedPane
 
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal)!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, isSessionSelected: true)!
 
         #expect(newPane.kind == .terminal)
     }
@@ -211,7 +211,7 @@ struct SplitTreeTargetedSplitTests {
         // `FSEventStream`) as a side effect (review round 3: swapping to
         // a conformer-less kind just moves the hazard onto whichever kind
         // lands next).
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil }, isSessionSelected: true)!
 
         #expect(newPane.kind == .gitStatus)
         // Permanent regression check, not just a comment's promise: if a
@@ -234,7 +234,7 @@ struct SplitTreeTargetedSplitTests {
         // contentFactory: { _ in nil } -- this test is about cwd-inheritance
         // being skipped for a non-terminal kind, not .processStatus's own
         // behavior (review round 3, post-#0313-rebase).
-        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil })!
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, kind: .processStatus, contentFactory: { _ in nil }, isSessionSelected: true)!
         // Permanent regression check — see CommandPaletteViewActionTests's
         // comment on the same pattern.
         #expect(newPane.content == nil)
@@ -248,7 +248,7 @@ struct SplitTreeTargetedSplitTests {
         let session = SessionRuntime()
         let target = session.tree.root.firstLeafPane
 
-        let newPane = session.tree.splitPane(id: target.id, direction: .vertical)!
+        let newPane = session.tree.splitPane(id: target.id, direction: .vertical, isSessionSelected: true)!
 
         #expect(newPane.sessionID == session.id)
         #expect(newPane.tabs[0].paneID == newPane.id)

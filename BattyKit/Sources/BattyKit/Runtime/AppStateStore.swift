@@ -474,6 +474,15 @@ public final class AppStateStore {
     /// way down to the layer that can resolve a `.gitStatus` pane's
     /// directory, so an explicit test override isn't silently shadowed by
     /// path resolution.
+    ///
+    /// This verb is exactly the case #0349 named: it can target a Pane in a
+    /// *background* Session (never touches `selectedSessionID`, per the
+    /// paragraph above), so a non-terminal Pane created here must not start
+    /// its watcher/poller/subprocess if `session` isn't the owning window's
+    /// selected one — computed here, once, since this is the layer that
+    /// actually has both `window.selectedSessionID` and `session.id` in
+    /// hand, and threaded down through `SplitTree.splitPane`'s own
+    /// `isSessionSelected` parameter to `PaneRuntime.init`'s `setUp(visible:)`.
     @discardableResult
     public func splitPane(
         id paneID: UUID,
@@ -486,7 +495,8 @@ public final class AppStateStore {
     ) -> UUID? {
         for window in windows {
             if let session = window.sessions.first(where: { $0.tree.root.contains(paneID: paneID) }) {
-                if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind, processStatusPid: processStatusPid, path: path, contentFactory: contentFactory) {
+                let isSessionSelected = window.selectedSessionID == session.id
+                if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind, processStatusPid: processStatusPid, path: path, contentFactory: contentFactory, isSessionSelected: isSessionSelected) {
                     let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: newPane.id)
                     AppEventWatcher.shared.send(eventType: event.type, payload: event)
 

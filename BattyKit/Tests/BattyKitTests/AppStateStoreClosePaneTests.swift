@@ -202,7 +202,7 @@ struct AppStateStoreClosePaneTests {
         let session = store.sessions[0]
         let main = session.tree.allPanes[0]
         let focused = session.tree.splitFocusedPane(direction: .horizontal)
-        let other = session.tree.splitPane(id: main.id, direction: .vertical)!
+        let other = session.tree.splitPane(id: main.id, direction: .vertical, isSessionSelected: true)!
         #expect(session.tree.focusedPaneID == focused.id, "precondition: splitPane(id: main) must not steal focus from Focused")
 
         session.tree.focusedPaneID = other.id
@@ -300,7 +300,7 @@ struct AppStateStoreClosePaneTests {
         let session = store.sessions[0]
         let paneA = session.tree.allPanes[0]
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
-        let paneC = session.tree.splitPane(id: paneB.id, direction: .vertical)!
+        let paneC = session.tree.splitPane(id: paneB.id, direction: .vertical, isSessionSelected: true)!
         store.windows[0].hidePane(id: paneA.id)
         session.tree.focusedPaneID = paneB.id
         #expect(paneA.isHidden)
@@ -336,8 +336,8 @@ struct AppStateStoreClosePaneTests {
         let session = store.sessions[0]
         let main = session.tree.allPanes[0]
         let focused = session.tree.splitFocusedPane(direction: .horizontal)
-        let recentVisibleSurvivor = session.tree.splitPane(id: main.id, direction: .vertical)!
-        let recentHiddenSurvivor = session.tree.splitPane(id: recentVisibleSurvivor.id, direction: .vertical)!
+        let recentVisibleSurvivor = session.tree.splitPane(id: main.id, direction: .vertical, isSessionSelected: true)!
+        let recentHiddenSurvivor = session.tree.splitPane(id: recentVisibleSurvivor.id, direction: .vertical, isSessionSelected: true)!
         session.tree.focusedPaneID = recentVisibleSurvivor.id
         session.tree.focusedPaneID = recentHiddenSurvivor.id
         session.tree.focusedPaneID = focused.id
@@ -358,7 +358,7 @@ struct AppStateStoreClosePaneTests {
         // A third pane, C, stays visible and focused after A closes, so
         // nothing needs to un-hide B — the invariant (≥1 visible pane, focus
         // not on a hidden pane) already holds without touching B.
-        let paneC = session.tree.splitPane(id: paneB.id, direction: .vertical)!
+        let paneC = session.tree.splitPane(id: paneB.id, direction: .vertical, isSessionSelected: true)!
         store.windows[0].hidePane(id: paneB.id)
         session.tree.focusedPaneID = paneC.id
         #expect(paneB.isHidden)

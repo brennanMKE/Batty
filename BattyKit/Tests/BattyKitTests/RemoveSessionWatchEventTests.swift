@@ -101,7 +101,7 @@ struct RemoveSessionWatchEventTests {
     private func addNonTerminalOnlySession(to store: AppStateStore, title: String) -> (session: SessionRuntime, paneID: UUID) {
         let session = store.addSession(title: title)!
         let terminalPaneID = session.tree.allPanes[0].id
-        let nonTerminalPane = session.tree.splitPane(id: terminalPaneID, direction: .horizontal, kind: .systemMetrics)!
+        let nonTerminalPane = session.tree.splitPane(id: terminalPaneID, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)!
         session.tree.removePane(id: terminalPaneID)
         return (session, nonTerminalPane.id)
     }
@@ -372,7 +372,7 @@ struct RemoveSessionWatchEventTests {
         let store = AppStateStore()
         let session = store.sessions[0]
         let terminalPaneID = session.tree.allPanes[0].id
-        let paneID = session.tree.splitPane(id: terminalPaneID, direction: .horizontal, kind: .systemMetrics)!.id
+        let paneID = session.tree.splitPane(id: terminalPaneID, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)!.id
         session.tree.removePane(id: terminalPaneID)
         #expect(store.sessions.reduce(0) { $0 + $1.tree.allPanes.count } == 1, "precondition: this is the app's only pane")
         #expect(session.tree.allPanes[0].kind == .systemMetrics, "precondition: that pane is non-terminal")

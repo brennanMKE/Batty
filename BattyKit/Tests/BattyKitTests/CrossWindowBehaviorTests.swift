@@ -277,7 +277,7 @@ struct CrossWindowBehaviorTests {
         let terminalPane = session.focusedPaneAnyKind
         let before = QuitConfirmation.openTerminalTabCount(store: store)
 
-        _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)
+        _ = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)
 
         #expect(QuitConfirmation.openTerminalTabCount(store: store) == before)
     }
@@ -329,7 +329,7 @@ struct CrossWindowBehaviorTests {
             let window = store.windows[0]
             let session = window.sessions[0]
             let terminalPane = session.focusedPaneAnyKind
-            let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)!
+            let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)!
             nonTerminalPane.tabs[0].needsConfirmCloseOverride = true
 
             #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == false)

@@ -58,7 +58,7 @@ struct WindowDelegateBusyTabCountTests {
         let window = store.windows[0]
         let session = window.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
-        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics)!
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)!
         nonTerminalPane.tabs[0].needsConfirmCloseOverride = true
 
         #expect(WindowDelegate.busyTabCount(in: window) == 1)

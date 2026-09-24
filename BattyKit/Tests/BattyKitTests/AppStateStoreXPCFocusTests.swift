@@ -318,14 +318,14 @@ struct AppStateStoreXPCFocusTests {
         let session = store.sessions[0]
         let main = session.tree.allPanes[0]
         let x = session.tree.splitFocusedPane(direction: .horizontal)
-        let y = session.tree.splitPane(id: main.id, direction: .vertical)!
+        let y = session.tree.splitPane(id: main.id, direction: .vertical, isSessionSelected: true)!
         #expect(session.tree.focusedPaneID == x.id, "precondition: splitPane(id: main) must not steal focus from x")
         session.tree.focusedPaneID = main.id
 
         let outcome = store.focusPaneForXPC(id: y.id)
         #expect(outcome == .focused)
 
-        let z = session.tree.splitPane(id: x.id, direction: .vertical)!
+        let z = session.tree.splitPane(id: x.id, direction: .vertical, isSessionSelected: true)!
         #expect(session.tree.focusedPaneID == y.id, "precondition: splitPane(id: x) must not steal focus from y")
         session.tree.focusedPaneID = z.id
 
