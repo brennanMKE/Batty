@@ -338,8 +338,15 @@ public final class AppXPCCoordinator {
         let interval = BrokerReconnectBackoff.interval(forAttempt: backoffAttempt)
         backoffAttempt += 1
         logger.notice("scheduleBackoffRetry: retrying broker connection in \(interval, privacy: .public)s (attempt \(self.backoffAttempt, privacy: .public))")
+        // `DispatchQueue.main.asyncAfter` below already guarantees this
+        // body runs on the main thread, so `MainActor.assumeIsolated`
+        // bridges into main-actor isolation synchronously instead of
+        // hopping through `Task { @MainActor }` — a hop would re-enqueue
+        // the retry a second time once the work item fires, so
+        // `cancelPendingBackoffRetry()`'s `DispatchWorkItem.cancel()`
+        // could no longer stop it in the window between the two (#0366).
         let workItem = DispatchWorkItem { @Sendable [weak self] in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.retryAfterBackoff()
             }
         }
