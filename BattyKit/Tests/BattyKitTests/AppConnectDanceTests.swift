@@ -114,8 +114,8 @@ struct AppConnectDanceTests {
         var launchCalls = 0
 
         let result = AppConnectDance.resolveEndpoint(
-            pollMaxAttempts: 2,
-            pollInterval: 0,
+            reregistrationPollMaxAttempts: 2,
+            reregistrationPollInterval: 0,
             fetchEndpoint: { _ in .endpoint(nil) },
             resolveAppBundle: { .success(fakeBundleURL) },
             launch: { _ in
@@ -136,8 +136,8 @@ struct AppConnectDanceTests {
         let endpoint = Self.fakeEndpoint()
 
         let result = AppConnectDance.resolveEndpoint(
-            pollMaxAttempts: 5,
-            pollInterval: 0,
+            reregistrationPollMaxAttempts: 5,
+            reregistrationPollInterval: 0,
             fetchEndpoint: { _ in
                 fetchCallCount += 1
                 // First call is the initial "is anything registered" check
@@ -249,5 +249,120 @@ struct AppConnectDanceTests {
 
         #expect(fetchCallCount == 1)
         expectFailure(result, .appUnavailable)
+    }
+
+    // MARK: - Worst-case simulated elapsed time (#0369)
+
+    /// Pins `.launchAndPoll`'s worst case against a broker that accepts
+    /// connections but never replies: the sum of every `pollTimeout`
+    /// handed to `fetchEndpoint` during the poll loop, plus every `sleep`
+    /// interval, matches the ~24.8 s the doc comment on `resolveEndpoint`
+    /// derives from its defaults (`pollMaxAttempts: 20, pollTimeout: 1.0,
+    /// pollInterval: 0.25`). No real time passes — `fetchEndpoint` and
+    /// `sleep` are faked — so this is the time a live run would take if
+    /// every attempt actually consumed its full timeout.
+    @Test func launchAndPollWorstCaseSimulatedElapsedTimeMatchesDocumentedBound() {
+        var timeoutsSeen: [TimeInterval] = []
+        var sleepsSeen: [TimeInterval] = []
+
+        let result = AppConnectDance.resolveEndpoint(
+            fetchEndpoint: { timeout in
+                timeoutsSeen.append(timeout)
+                return .endpoint(nil)
+            },
+            resolveAppBundle: { .success(fakeBundleURL) },
+            launch: { _ in true },
+            isAppRunning: { _ in false },
+            sleep: { sleepsSeen.append($0) }
+        )
+
+        expectFailure(result, .appUnavailable)
+
+        // The first fetch is the initial "is anything registered" check
+        // (brokerTimeout, default 3.0); the rest are the 20 poll attempts
+        // (pollTimeout, default 1.0 each).
+        #expect(timeoutsSeen.count == 21)
+        #expect(timeoutsSeen.first == 3.0)
+        let pollTimeouts = Array(timeoutsSeen.dropFirst())
+        #expect(pollTimeouts == Array(repeating: 1.0, count: 20))
+        #expect(sleepsSeen == Array(repeating: 0.25, count: 19))
+
+        let simulatedPollElapsed = pollTimeouts.reduce(0, +) + sleepsSeen.reduce(0, +)
+        #expect(abs(simulatedPollElapsed - 24.75) < 0.0001)
+    }
+
+    /// Pins `.waitForReregistration`'s worst case at a shorter bound than
+    /// `.launchAndPoll`'s: with the `reregistrationPoll*` defaults
+    /// (`reregistrationPollMaxAttempts: 13, reregistrationPollTimeout: 0.5,
+    /// reregistrationPollInterval: 0.5`), the simulated elapsed time is
+    /// ~12.5 s — roughly half of `.launchAndPoll`'s ~24.8 s, not the few
+    /// seconds the common (healthy-broker) case reaches in practice. A
+    /// regression back to sharing `pollMaxAttempts`/`pollTimeout`/`pollInterval`
+    /// between both arms would push this to 24.75 and fail the assertion.
+    @Test func waitForReregistrationWorstCaseSimulatedElapsedTimeIsMuchShorterThanLaunchAndPoll() {
+        var timeoutsSeen: [TimeInterval] = []
+        var sleepsSeen: [TimeInterval] = []
+        var launchCalls = 0
+
+        let result = AppConnectDance.resolveEndpoint(
+            fetchEndpoint: { timeout in
+                timeoutsSeen.append(timeout)
+                return .endpoint(nil)
+            },
+            resolveAppBundle: { .success(fakeBundleURL) },
+            launch: { _ in
+                launchCalls += 1
+                return true
+            },
+            isAppRunning: { _ in true },
+            sleep: { sleepsSeen.append($0) }
+        )
+
+        expectFailure(result, .appRunningUnregistered)
+        #expect(launchCalls == 0)
+
+        // The first fetch is the initial "is anything registered" check
+        // (brokerTimeout, default 3.0); the rest are the 13 reregistration
+        // poll attempts (reregistrationPollTimeout, default 0.5 each).
+        #expect(timeoutsSeen.count == 14)
+        #expect(timeoutsSeen.first == 3.0)
+        let pollTimeouts = Array(timeoutsSeen.dropFirst())
+        #expect(pollTimeouts == Array(repeating: 0.5, count: 13))
+        #expect(sleepsSeen == Array(repeating: 0.5, count: 12))
+
+        let simulatedPollElapsed = pollTimeouts.reduce(0, +) + sleepsSeen.reduce(0, +)
+        #expect(abs(simulatedPollElapsed - 12.5) < 0.0001)
+        #expect(simulatedPollElapsed < 24.75, "expected shorter than .launchAndPoll's ~24.8 s bound")
+    }
+
+    /// Pins the behavioral claim `reregistrationPoll*`'s defaults rest on:
+    /// an app that re-registers shortly after `AppXPCCoordinator`'s first
+    /// `BrokerReconnectBackoff` retry (5 s after `BrokerReconnectBudget`'s
+    /// immediate-retry burst is exhausted) is caught as a success, not
+    /// exhausted into exit `6`. Simulates registration landing on the 12th
+    /// poll attempt, whose preceding sleeps sum to 11 * 0.5 = 5.5 s — past
+    /// the 5 s mark — and asserts `resolveEndpoint` returns the endpoint
+    /// rather than exhausting the bound.
+    @Test func waitForReregistrationSucceedsIfTheAppReregistersDuringTheFirstBackoffRetryWindow() {
+        var fetchCallCount = 0
+        let endpoint = Self.fakeEndpoint()
+
+        let result = AppConnectDance.resolveEndpoint(
+            fetchEndpoint: { _ in
+                fetchCallCount += 1
+                // Call 1 is the initial check; calls 2-12 are poll attempts
+                // 1-11 (still unregistered); call 13 is poll attempt 12,
+                // landing at 5.5 s of simulated sleeps — just past the 5 s
+                // first backoff retry — where the app has re-registered.
+                return fetchCallCount < 13 ? .endpoint(nil) : .endpoint(endpoint)
+            },
+            resolveAppBundle: { .success(fakeBundleURL) },
+            launch: { _ in true },
+            isAppRunning: { _ in true },
+            sleep: { _ in }
+        )
+
+        expectSuccess(result, isIdenticalTo: endpoint)
+        #expect(fetchCallCount == 13)
     }
 }

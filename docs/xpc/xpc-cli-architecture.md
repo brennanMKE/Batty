@@ -366,8 +366,10 @@ Give each failure mode its own exit code so scripts can tell them apart:
 > this source document's original baseline, not Batty's current exit-code
 > vocabulary.** Batty's actual codes 2–5 match this table, but it added two
 > more: `6` `appRunningUnregistered` — the app is running at the resolved
-> bundle path but hasn't re-registered with the broker within the poll
-> bound, reported instead of launching a duplicate process — and `7`
+> bundle path but hasn't re-registered with the broker within its own,
+> tighter poll bound (about 12 s worst case, not the ~25 s
+> `.launchAndPoll`'s cold-launch headroom allows — `#0369`), reported
+> instead of launching a duplicate process — and `7`
 > `appBundleUnresolved` — couldn't determine, deterministically, which
 > on-disk bundle to target, reported instead of an ambiguous
 > bundle-identifier lookup. See

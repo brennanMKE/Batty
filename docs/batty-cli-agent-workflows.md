@@ -356,7 +356,7 @@ work" rule): `tab new`, `tab close`, `session rename`, `tab rename`, and
 | `3` | App unavailable | Retry once; then report that Batty could not launch or register. |
 | `4` | App rejected the request | Report stderr; refresh topology before retrying a stale target. |
 | `5` | App terminated during the request | Stop or restart the complete workflow from a fresh topology snapshot. |
-| `6` | App is running but hasn't responded to the broker within the poll bound | Do not retry blindly — a retry cannot launch a duplicate, but the app may need a manual relaunch. Report stderr and ask the user to check/relaunch Batty. |
+| `6` | App is running but hasn't responded to the broker within the poll bound (about 12 s worst case — #0369 gave this arm its own, tighter bound than exit `3`'s ~25 s cold-launch poll) | Do not retry blindly — a retry cannot launch a duplicate, but the app may need a manual relaunch. Report stderr and ask the user to check/relaunch Batty. |
 | `7` | Couldn't determine which on-disk app bundle to target | Stop; this is a local install problem (moved/missing `Batty.app`, or multiple bundles claiming the same identifier), not something a retry fixes. Report stderr, which names the expected path and any other claimant bundles. |
 | `64` | Invalid CLI syntax | Correct the invocation; do not retry unchanged. |
 

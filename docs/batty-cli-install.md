@@ -380,7 +380,10 @@ Key points, verified against this source:
   the app rejects a request; `5` when the app terminates during a request;
   `6` when the app is running at the resolved bundle path but hasn't
   re-registered with the broker within the poll bound, so the CLI reports
-  this instead of launching a duplicate process (`#0361`); `7` when the CLI
+  this instead of launching a duplicate process (`#0361`) — this arm's poll
+  bound is tighter than the one behind exit `3`'s cold-launch wait (about
+  12 s worst case, not ~25 s; `#0369`, `AppConnectDance.swift`);
+  `7` when the CLI
   could not determine, deterministically, which on-disk app bundle to
   target, so it reports this instead of falling back to an ambiguous
   bundle-identifier lookup (`#0361`); and ArgumentParser's `64` for invalid

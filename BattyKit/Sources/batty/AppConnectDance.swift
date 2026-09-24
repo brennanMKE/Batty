@@ -41,17 +41,71 @@ nonisolated enum AppConnectDance {
         case appBundleUnresolved(String)
     }
 
-    /// Poll defaults follow the measured reference point in the issue
-    /// (`docs/xpc/xpc-cli-architecture.md`'s cited cold start: 0.284 s
-    /// total, one 250 ms poll): 250 ms between attempts, bounded at 20
-    /// attempts. Each attempt is itself a round trip bounded by
-    /// `pollTimeout`, so the true worst case against a broker that accepts
-    /// connections but never replies (wedged, not merely absent) is
+    /// Poll defaults for `.launchAndPoll` follow the measured reference
+    /// point in the issue (`docs/xpc/xpc-cli-architecture.md`'s cited cold
+    /// start: 0.284 s total, one 250 ms poll): 250 ms between attempts,
+    /// bounded at 20 attempts. Each attempt is itself a round trip bounded
+    /// by `pollTimeout`, so the true worst case against a broker that
+    /// accepts connections but never replies (wedged, not merely absent) is
     /// `pollMaxAttempts * pollTimeout + (pollMaxAttempts - 1) *
     /// pollInterval` — with these defaults, 20 * 1.0 + 19 * 0.25 ≈ 24.8 s,
     /// not the ~5 s a reading of `pollMaxAttempts * pollInterval` alone
-    /// would suggest. Still bounded, which is the property that matters:
-    /// the CLI exits `3` rather than hanging forever.
+    /// would suggest. That headroom is deliberate: a cold `NSApplication`
+    /// launch genuinely can take seconds.
+    ///
+    /// `.waitForReregistration` (#0361) waits on a *different* thing: a
+    /// process that is already running but unregistered — there is no
+    /// cold-launch case to give it headroom for, so it gets its own, much
+    /// tighter bound via `reregistrationPoll*`.
+    ///
+    /// `AppXPCCoordinator` (`BattyKit/Sources/BattyKit/XPC/AppXPCCoordinator.swift`)
+    /// is what this arm is actually waiting on, and its recovery is
+    /// two-phased, not a single "notices quickly or never" event:
+    /// `handleBrokerSignal` retries immediately (no delay) for as long as
+    /// `BrokerReconnectBudget` has attempts left (5 by default) — that burst
+    /// has no artificial delay built in, only whatever the real connection
+    /// and registration round trips cost. Once the burst is exhausted,
+    /// recovery becomes a *scheduled* retry via
+    /// `BrokerReconnectBackoff.interval(forAttempt:)`: 5 s, then 10, 20, 40,
+    /// capped at 60. Only the *first* of those gaps is a flat 5 s — later
+    /// ones grow, and `attemptRepairIfNeeded` schedules no backoff retry at
+    /// all when `SMAppService` isn't `.enabled` (the user hasn't opted in).
+    /// This arm is sized only for the first case — a burst-exhausted app
+    /// whose very next attempt is 5 s away; an app stuck behind a longer
+    /// backoff gap, or one with no scheduled retry at all, is exactly what
+    /// exit `6`'s "check or relaunch Batty" messaging is for.
+    ///
+    /// `reregistrationPoll*`'s defaults (13 attempts, 0.5 s apart) deliberately
+    /// span past that first 5 s gap: assuming each round trip completes near
+    /// instantly (the common, healthy-broker case), the 13th (last) attempt
+    /// fires at `(reregistrationPollMaxAttempts - 1) *
+    /// reregistrationPollInterval` = 12 * 0.5 = 6.0 s — a 1 s margin past
+    /// the retry — so an app that re-registers there is caught as a success
+    /// instead of exhausting the bound into exit `6`.
+    ///
+    /// `reregistrationPollTimeout` (0.5 s) is deliberately **not** shortened
+    /// to match the tight interval: each poll attempt opens a fresh
+    /// `NSXPCConnection(machServiceName:)` — a Mach service lookup,
+    /// `OutgoingCodeSigningEnforcement`'s requirement check, and the broker
+    /// listener's own peer check — not just a message send, and the
+    /// broker's `LaunchAgent` plist sets no `ProcessType`, so
+    /// it isn't exempted from macOS's normal scheduling throttling under
+    /// load. The `docs/xpc/xpc-cli-architecture.md` "0.3 ms" figure is a
+    /// vendored reference from a different project's request/reply
+    /// benchmark, not a measurement of connection setup on this path — it is
+    /// not a safe basis for a sub-100 ms timeout here. `reregistrationPollTimeout`
+    /// is kept equal to `.launchAndPoll`'s connection-setup budget divided in
+    /// half (`pollTimeout` is 1.0) rather than cut further, so a slow-but-healthy
+    /// broker under load is not misread as unregistered. That leaves this
+    /// arm's absolute worst case (every attempt actually consuming its full
+    /// timeout) at `reregistrationPollMaxAttempts * reregistrationPollTimeout
+    /// + (reregistrationPollMaxAttempts - 1) * reregistrationPollInterval` —
+    /// with these defaults, 13 * 0.5 + 12 * 0.5 ≈ 12.5 s: roughly half of
+    /// `.launchAndPoll`'s ~24.8 s, not the few seconds the common-case
+    /// arithmetic above suggests. There is no measured reference point for
+    /// how long a live app takes to re-register beyond the backoff schedule
+    /// itself, so covering exactly the first retry (rather than some other
+    /// number) is the judgment call this bound rests on.
     ///
     /// `fetchEndpoint` and `sleep` are injection seams alongside
     /// `resolveAppBundle`/`launch`/`isAppRunning` (#0361): without them, no
@@ -63,6 +117,9 @@ nonisolated enum AppConnectDance {
         pollTimeout: TimeInterval = 1.0,
         pollMaxAttempts: Int = 20,
         pollInterval: TimeInterval = 0.25,
+        reregistrationPollTimeout: TimeInterval = 0.5,
+        reregistrationPollMaxAttempts: Int = 13,
+        reregistrationPollInterval: TimeInterval = 0.5,
         fetchEndpoint: (TimeInterval) -> BrokerAppEndpointClient.Result = { BrokerAppEndpointClient.fetchEndpoint(timeout: $0) },
         resolveAppBundle: () -> Swift.Result<URL, AppBundleLocator.Failure> = { AppBundleLocator.resolve() },
         launch: (URL) -> Bool = { AppLauncher.launch(bundleURL: $0) },
@@ -127,7 +184,7 @@ nonisolated enum AppConnectDance {
             return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appUnavailable, fetchEndpoint: fetchEndpoint, sleep: sleep)
         case .waitForReregistration:
             logger.notice("resolveEndpoint: app already running at \(bundleURL.path, privacy: .public) but not registered with the broker — waiting for it to re-register instead of launching a duplicate")
-            return pollForEndpoint(maxAttempts: pollMaxAttempts, interval: pollInterval, pollTimeout: pollTimeout, notRegisteredFailure: .appRunningUnregistered, fetchEndpoint: fetchEndpoint, sleep: sleep)
+            return pollForEndpoint(maxAttempts: reregistrationPollMaxAttempts, interval: reregistrationPollInterval, pollTimeout: reregistrationPollTimeout, notRegisteredFailure: .appRunningUnregistered, fetchEndpoint: fetchEndpoint, sleep: sleep)
         }
     }
 
