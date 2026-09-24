@@ -6,8 +6,8 @@ import SwiftUI
 /// provisional placeholder `#0315` shipped. Renders exactly what
 /// `docs/design/process-status-view.md`'s feasibility spike proved
 /// obtainable via libproc for a same-uid target — nothing more. Every
-/// state (`.running`, `.exited`, `.permissionDenied`, "no selection") is a
-/// first-class banner keyed off a real kernel signal
+/// state (`.running`, `.exited`, `.permissionDenied`, `.unavailable`, "no
+/// selection") is a first-class banner keyed off a real kernel signal
 /// (`ProcessStatusPaneContent.RunState`/`hasNoSelection`), never an
 /// inferred guess — the phase-1 review's own defect (a mockup showing
 /// argv data the spike had proved unobtainable behind `EPERM`) is the
@@ -59,6 +59,10 @@ struct ProcessStatusPaneView: View {
                         disclosures
                     case .permissionDenied:
                         permissionDeniedBanner
+                    case .unavailable:
+                        unavailableBanner
+                        lastKnownMetricsRow
+                        disclosures
                     }
                 }
             }
@@ -153,6 +157,8 @@ struct ProcessStatusPaneView: View {
                 chip("Exited", color: .secondary)
             case .permissionDenied:
                 chip("Permission Unavailable", color: .orange)
+            case .unavailable:
+                chip("Unavailable", color: .red)
             }
         }
     }
@@ -310,6 +316,28 @@ struct ProcessStatusPaneView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// #0356: an unrecognized-errno sample failure, distinct from
+    /// `.exited`/`.permissionDenied` — the process may still be alive and
+    /// sampling may recover on its own next tick, so this reads as "stale,
+    /// not confirmed gone," never "Running." Same "last seen" phrasing as
+    /// `exitedBanner`, sourced from the same `snapshot?.capturedAt`.
+    private var unavailableBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            if let capturedAt = content.snapshot?.capturedAt {
+                Text("Sampling unavailable — last seen \(capturedAt.formatted(date: .omitted, time: .standard))")
+                    .font(.callout)
+            } else {
+                Text("Sampling unavailable")
+                    .font(.callout)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private var noSelectionState: some View {

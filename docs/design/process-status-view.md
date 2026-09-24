@@ -413,7 +413,9 @@ Bounded by §1.7. Layout (see the HTML mockup for the concrete visual):
 
 1. **Header row** — process name and pid, a mode indicator ("Pinned" with
    a pin glyph, or "Following <Tab title>" with a link glyph), and a state
-   chip (Running / Exited / Permission Unavailable). Right-aligned "Choose
+   chip (Running / Exited / Permission Unavailable / Unavailable — the last
+   added by `#0356` for a sample failure on an errno this document's spike
+   never encountered). Right-aligned "Choose
    Process…" button, **plus the same pane-level drag handle and hide (eye)
    button every terminal Pane and the Git Status pane already have** — the
    identical relocation `docs/design/git-status-view.md` §2 already

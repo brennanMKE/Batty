@@ -47,10 +47,23 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// it was sampled, there is no successful sample to date at all.
     /// Carrying `Date()` here (as an earlier draft did) asserted a fact
     /// (`"Process exited at <time>"`) this type never actually observed.
+    ///
+    /// `.unavailable` (#0356) is the third real kernel signal
+    /// `ProcessInspector.SampleFailure` can hand back —
+    /// `.unexpected(errno:)`, an errno the design's spike never
+    /// encountered and so never assigned a first-class state to. Flipped
+    /// on the very first such failure, exactly like `.exited`/
+    /// `.permissionDenied` above: the periodic sampling `Task` keeps
+    /// retrying every tick regardless (nothing here cancels it — same as
+    /// `.permissionDenied`), so a transient errno self-heals back to
+    /// `.running` on the next successful sample, and a persistent one
+    /// stays visibly `.unavailable` rather than freezing under a chip that
+    /// keeps claiming `.running` over data that stopped moving.
     public enum RunState: Equatable, Sendable {
         case running
         case exited
         case permissionDenied
+        case unavailable
     }
 
     /// One tick's worth of core metrics plus the identity fields
@@ -78,12 +91,16 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
 
     public private(set) var target: Target?
     public private(set) var runState: RunState = .running
-    /// The latest sample — kept even after `runState` moves to
-    /// `.exited`/`.permissionDenied` so the view can show "what it was,"
-    /// not a blank space (design §3.5/§3.6's tombstone/permission
-    /// banners), and so `.exited`'s displayed time
-    /// (`snapshot?.capturedAt`) is the real last-successful-sample instant
-    /// rather than a fabricated one (review round 1, B5).
+    /// The latest sample — kept, untouched, when `runState` moves to
+    /// `.exited` or `.unavailable` (#0356), so the view can show "what it
+    /// was," not a blank space (design §3.5's tombstone banner; #0356's
+    /// unavailable banner reuses the same shape). `.exited`'s displayed
+    /// time (`snapshot?.capturedAt`) is therefore the real
+    /// last-successful-sample instant, never a fabricated one (review
+    /// round 1, B5). **`.permissionDenied` is different**: that branch in
+    /// `sample(pid:)` *replaces* `snapshot` with a freshly-resolved,
+    /// identity-only `Snapshot` (all metrics `nil`) rather than leaving
+    /// the prior one in place.
     public private(set) var snapshot: Snapshot?
     /// `true` when no target resolves at all — no pinned pid, no
     /// followable terminal Tab (§2's "No process selected" state).
@@ -103,6 +120,13 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// injectable-cadence seam `GitStatusPaneContent.debounceNanoseconds`
     /// already uses for its own timer.
     private let samplingInterval: Duration
+    /// Injectable so `ProcessStatusPaneContentTests` can drive
+    /// `.failure(.unexpected(errno:))` deterministically (#0356) — no live
+    /// process reliably produces that errno, so tests inject it instead of
+    /// hunting for one. Defaults to the real `ProcessInspector.coreMetrics`,
+    /// following the same protocol/closure-with-a-real-default seam
+    /// `GitStatusPaneContent` already uses for `scanner`/`watcherFactory`.
+    private let coreMetricsProvider: @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure>
     private var samplingTask: Task<Void, Never>?
     /// `#0314` merge: the pid-keyed CPU-delta baseline (review round 1,
     /// B2 — mode B's followed pid changes tick to tick, and delta-ing
@@ -116,6 +140,19 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// "reset on pid change" for a single-sample-per-tick caller like
     /// this one.
     private var cpuTracker = ProcessCPUDeltaTracker()
+    /// The errno last logged at `.error` for the current `.unavailable`
+    /// run — lets `sample(pid:)` tell "just became unavailable" and "the
+    /// failure reason itself changed" (both worth an `.error` line) apart
+    /// from "same failure, same tick as before" (logged at `.debug`
+    /// instead, so a stuck pane doesn't spam Console.app once per second).
+    /// Only cleared on recovery (the `.success` branch), not on every other
+    /// way out of `.unavailable` — that's sufficient because every other
+    /// exit (`retarget(to:)` back to `.running`, or a later sample landing
+    /// on `.exited`/`.permissionDenied`) already changes `runState` away
+    /// from `.unavailable`, so the `.unexpected` branch's own
+    /// `runState != .unavailable` check logs at `.error` on the next
+    /// failure regardless of whatever errno is left over in this property.
+    private var lastUnavailableErrno: Int32?
 
     /// Testability hook only (`internal`, reached via `@testable import`
     /// in `BattyKitTests`) — lets a test assert the sampling `Task` is
@@ -155,12 +192,14 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     public init(
         target: Target?,
         tabLookup: @escaping (UUID) -> TabRuntime?,
-        samplingInterval: Duration = .seconds(1)
+        samplingInterval: Duration = .seconds(1),
+        coreMetricsProvider: @escaping @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure> = ProcessInspector.coreMetrics
     ) {
         self.target = target
         self.hasNoSelection = target == nil
         self.tabLookup = tabLookup
         self.samplingInterval = samplingInterval
+        self.coreMetricsProvider = coreMetricsProvider
     }
 
     // MARK: - PaneContentLifecycle
@@ -279,9 +318,13 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     }
 
     private func sample(pid: pid_t) {
-        switch ProcessInspector.coreMetrics(pid: pid) {
+        switch coreMetricsProvider(pid) {
         case .success(let metrics):
+            if runState == .unavailable {
+                logger.info("process-status: pid=\(pid, privacy: .public) recovered from unavailable")
+            }
             runState = .running
+            lastUnavailableErrno = nil
             let identity = ProcessInspector.identity(pid: pid)
             let commandLine = try? ProcessInspector.commandLine(pid: pid).get()
             let name = identity.name ?? basename(of: identity.executablePath) ?? "pid \(pid)"
@@ -339,7 +382,32 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 capturedAt: Date()
             )
         case .failure(.unexpected(let code)):
-            logger.error("process-status: unexpected sample failure pid=\(pid, privacy: .public) errno=\(code, privacy: .public)")
+            // #0356: an unrecognized errno is no longer log-only. It must
+            // not leave `runState`/`snapshot` untouched — that was exactly
+            // the bug (the chip kept claiming `.running` over a frozen
+            // sample with no evidence sampling was still working). The
+            // last-known `snapshot` is deliberately left in place (not
+            // cleared), matching `.exited` above: "what it was," not a
+            // blank space. `cpuTracker` is reset so a later recovery
+            // doesn't delta CPU time across an arbitrarily long gap of
+            // skipped samples. The periodic sampling `Task` is left
+            // running (no `cancel()` here, unlike the `.processNotFound`
+            // branch) so a transient errno self-heals to `.running` on its
+            // own next successful tick.
+            //
+            // Logged at `.error` only on the transition into `.unavailable`
+            // (or when a persistent failure's errno itself changes) —
+            // every tick of an already-`.unavailable` pane hitting the same
+            // errno logs at `.debug` instead, so a stuck pane doesn't spam
+            // Console.app once per second for as long as it stays broken.
+            if runState != .unavailable || lastUnavailableErrno != code {
+                logger.error("process-status: pid=\(pid, privacy: .public) unavailable — unexpected errno=\(code, privacy: .public)")
+            } else {
+                logger.debug("process-status: pid=\(pid, privacy: .public) still unavailable — errno=\(code, privacy: .public)")
+            }
+            lastUnavailableErrno = code
+            runState = .unavailable
+            cpuTracker.reset()
         }
     }
 

@@ -192,6 +192,112 @@ struct ProcessStatusPaneContentTests {
         #expect(content.snapshot?.cpuPercent == nil)
     }
 
+    // MARK: - Unavailable state on an unexpected errno (#0356)
+
+    /// #0356's core regression: `.failure(.unexpected(errno:))` used to be
+    /// log-only, leaving `runState` at whatever it was before (`.running`
+    /// on a pane that had already sampled successfully at least once) —
+    /// the chip kept claiming "Running" over a snapshot that had stopped
+    /// updating. There is no live process this codebase has ever observed
+    /// producing a real `.unexpected` errno (every real failure is
+    /// `ESRCH`/`EPERM`), so this drives it through the injected
+    /// `coreMetricsProvider` seam rather than hunting for one.
+    @Test func unexpectedSampleFailureFlipsToUnavailableAndKeepsTheLastKnownSnapshot() {
+        var shouldFail = false
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { pid in
+                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+            }
+        )
+        content.setUp(visible: true)
+        #expect(content.runState == .running)
+        let lastGoodSnapshot = content.snapshot
+        #expect(lastGoodSnapshot != nil)
+
+        shouldFail = true
+        content.sampleNowForTesting()
+
+        #expect(content.runState == .unavailable)
+        // The last successful sample is kept, not cleared — "what it was,"
+        // matching `.exited`'s own tombstone shape (`.permissionDenied` is
+        // different: it replaces `snapshot` with a fresh identity-only one
+        // rather than keeping the prior one — see that branch's own test).
+        #expect(content.snapshot == lastGoodSnapshot)
+    }
+
+    /// S1: `.unexpected` must reset the CPU baseline (`cpuTracker.reset()`)
+    /// so a later recovery doesn't delta the recovery sample's CPU ticks
+    /// against a baseline taken before the gap — deleting that
+    /// `cpuTracker.reset()` call passes every other test in this file, so
+    /// this drives the reset through observable behavior directly: the
+    /// first sample after recovering has no prior baseline, exactly like
+    /// the very first sample of a fresh `ProcessStatusPaneContent`.
+    @Test func unavailableResetsTheCPUBaselineSoRecoveryHasNoStaleDelta() {
+        var shouldFail = false
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { pid in
+                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+            }
+        )
+        content.setUp(visible: true)
+        #expect(content.snapshot?.cpuPercent == nil, "no prior baseline yet on the very first sample")
+
+        shouldFail = true
+        content.sampleNowForTesting()
+        #expect(content.runState == .unavailable)
+
+        shouldFail = false
+        content.sampleNowForTesting()
+
+        #expect(content.runState == .running)
+        #expect(content.snapshot?.cpuPercent == nil, "cpuTracker.reset() in the .unexpected branch means the recovery sample has no prior baseline either — without it, this would delta against the pre-failure baseline instead")
+    }
+
+    /// A transient errno must self-heal: the periodic sampling `Task` is
+    /// never cancelled on `.unexpected` (unlike `.processNotFound`), so a
+    /// later successful sample flips `runState` straight back to
+    /// `.running` with a fresh snapshot — no distinct "recovery" action
+    /// needed.
+    @Test func unavailableRecoversToRunningOnTheNextSuccessfulSample() {
+        var shouldFail = true
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { pid in
+                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+            }
+        )
+        content.setUp(visible: true)
+        #expect(content.runState == .unavailable)
+        #expect(content.snapshot == nil, "never sampled successfully yet — nothing to have shown before the failure")
+
+        shouldFail = false
+        content.sampleNowForTesting()
+
+        #expect(content.runState == .running)
+        #expect(content.snapshot?.pid == getpid())
+    }
+
+    /// The periodic sampling `Task` must still be alive after an
+    /// `.unexpected` failure — the design decision this issue makes is
+    /// retry (not tombstone): sampling keeps ticking so a persistent
+    /// failure keeps showing `.unavailable` freshly rather than freezing,
+    /// and a transient one can recover on its own.
+    @Test func unavailableDoesNotCancelThePeriodicSamplingTask() {
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { _ in .failure(.unexpected(errno: 99)) }
+        )
+        content.setUp(visible: true)
+        #expect(content.runState == .unavailable)
+        #expect(content.isSamplingTaskAlive, "an unexpected errno must keep retrying, unlike a confirmed .processNotFound exit")
+    }
+
     // MARK: - Exited / tombstone state (§3.6), pinned mode
 
     @Test func pinnedTargetTombstonesOnExitAndStopsSampling() throws {
