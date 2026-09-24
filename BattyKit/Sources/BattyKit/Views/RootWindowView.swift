@@ -38,7 +38,7 @@ public struct RootWindowView: View {
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)
         .background(WindowChromeApplier(palette: store.themeChrome.palette))
-        .background(WindowIDRegistrar(windowID: windowID))
+        .background(WindowIDRegistrar(windowID: windowID, store: store))
         .background(WindowLifecycleController(windowID: windowID, store: store))
         .task { setUpNotifier() }
         .task { UITestDriver.runIfNeeded(store: store) }
@@ -102,10 +102,13 @@ public struct RootWindowView: View {
 ///
 /// Placed in the SwiftUI tree as an invisible `NSViewRepresentable` so it
 /// has access to the hosting `NSWindow` via `updateNSView`. Follows the
-/// same deferred pattern as `WindowChromeApplier` and `WindowIDRegistrar`:
-/// all AppKit side-effects are dispatched off the update pass to avoid
-/// running inside the layout pass (`docs/swiftui-observation-rules.md`
-/// AppKit interop section).
+/// same deferred pattern as `WindowChromeApplier`: all AppKit side-effects
+/// are dispatched off the update pass to avoid running inside the layout
+/// pass (`docs/swiftui-observation-rules.md` AppKit interop section).
+/// `WindowIDRegistrar` no longer follows this pattern (#0437) — it
+/// registers synchronously from `viewDidMoveToWindow` instead, because a
+/// deferred registration left a gap where a window could become key before
+/// it was registered.
 private struct WindowLifecycleController: NSViewRepresentable {
     let windowID: WindowID
     let store: AppStateStore

@@ -723,9 +723,10 @@ public final class AppStateStore {
     }
 
     /// Registers the association between an `NSWindow` and its `WindowID`.
-    /// Called from `WindowIDRegistrar` in each window's SwiftUI tree once
-    /// the hosting NSWindow is known (from `updateNSView`, deferred off the
-    /// update pass). Safe to call multiple times — idempotent per window.
+    /// Called from `RegistrarNSView.viewDidMoveToWindow` (`WindowIDRegistrar`'s
+    /// backing view) synchronously, as soon as the view is attached to its
+    /// window — not deferred off the update pass (#0437). Safe to call
+    /// multiple times — idempotent per window.
     public func registerNSWindow(_ nsWindow: NSWindow, for windowID: WindowID) {
         let wasNew = nsWindowMap[ObjectIdentifier(nsWindow)] == nil
         nsWindowMap[ObjectIdentifier(nsWindow)] = windowID
@@ -802,16 +803,27 @@ public final class AppStateStore {
 
     /// The `WindowRuntime` for any registered content window. Used as a
     /// fallback when `keyWindowRuntime()` is nil but the app-level URL handler
-    /// needs to target a visible window (e.g. `batty <path>` during the brief
-    /// interval between window creation and NSWindow registration). Returns the
-    /// key-window runtime when available; falls back to the first registered
-    /// window. Returns nil when no window is registered (unit-test context or
-    /// before the first content window appears in the view hierarchy).
+    /// needs to target a visible window — most commonly `batty <path>` when
+    /// Batty isn't the frontmost app, so no window is key even though one or
+    /// more content windows are open. Returns the key-window runtime when
+    /// available; otherwise the most recently created registered window, not
+    /// an arbitrary one.
+    ///
+    /// **Why "most recently created" (#0437).** `nsWindowMap` is a
+    /// `Dictionary`, so `nsWindowMap.values.first` (the previous
+    /// implementation) picked whichever entry the hash table happened to
+    /// enumerate first — order-undefined and could return a window the user
+    /// closed conceptually long ago over one just opened. `windows` is
+    /// append-ordered (`windowRuntime(for:)` only ever appends), so its last
+    /// element whose id is still registered is the newest surviving content
+    /// window — the one a CLI invocation with no explicit target is most
+    /// likely meant to reach. Returns nil when no window is registered
+    /// (unit-test context or before the first content window appears in the
+    /// view hierarchy).
     public func anyContentWindowRuntime() -> WindowRuntime? {
         if let key = keyWindowRuntime() { return key }
-        // Find any registered content window and return its runtime.
-        guard let windowID = nsWindowMap.values.first else { return nil }
-        return windows.first { $0.id == windowID }
+        let registeredIDs = Set(nsWindowMap.values)
+        return windows.last { registeredIDs.contains($0.id) }
     }
 
     // MARK: - Init
