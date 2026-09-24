@@ -197,46 +197,46 @@ struct ProcessInspectorTests {
     ///
     /// This is the non-circular pin: `mach_absolute_time()` is exactly
     /// the counter `mach_timebase_info` (and so `nanosecondsPerTick`)
-    /// converts — the same doc comment on `MachTimebase` says so — and
-    /// `ri_user_time`/`ri_system_time` (`CoreMetrics.cpuTicksUser`/
-    /// `cpuTicksSystem`) are ticks in that identical unit. Bracketing a
-    /// real sleep with both `mach_absolute_time()` and an independently-
-    /// implemented clock (`ContinuousClock`) gives two measurements of
-    /// the same real interval that do not share `nanosecondsPerTick`
-    /// anywhere in their computation — so a corrupted constant makes them
-    /// disagree, by exactly its error factor, regardless of CPU
-    /// contention: both clocks advance at a fixed hardware rate whether
-    /// or not this process is actually scheduled, unlike CPU-time ticks
-    /// (which is exactly why `cpuPercentReflectsSubstantialRealCoreUsage`
-    /// could not use this same trick to check *its* subject, CPU share,
-    /// but can be used here to check the *conversion constant*).
-    @Test func machTimebaseNanosecondsPerTickAgreesWithAnIndependentClock() async {
-        let ticksBefore = mach_absolute_time()
-        let clockBefore = ContinuousClock.now
+    /// converts — the same doc comment on `MachTimebase` says so.
+    ///
+    /// `#0431`: no interval needed at all, per `docs/async-test-seams.md`
+    /// §5 Q2 — `clock_gettime_nsec_np(CLOCK_UPTIME_RAW)` is documented
+    /// (`clock_gettime(3)`) to be `mach_absolute_time()` "after the
+    /// appropriate `mach_timebase` conversion is applied," i.e. already in
+    /// nanoseconds. So instead of bracketing a real sleep with two
+    /// independently-implemented clocks and comparing elapsed intervals,
+    /// this takes one `mach_absolute_time()` reading and one
+    /// `CLOCK_UPTIME_RAW` reading back-to-back and compares
+    /// `Double(mach_absolute_time()) * MachTimebase.nanosecondsPerTick`
+    /// (this codebase's own conversion) directly against the raw
+    /// `CLOCK_UPTIME_RAW` nanosecond value the kernel already converted —
+    /// both are absolute values since boot, not a bracketed delta, so a
+    /// corrupted constant (this issue's ~42x, or an inverted conversion)
+    /// produces a huge disagreement between them with no wait required.
+    @Test func machTimebaseNanosecondsPerTickAgreesWithAnIndependentClock() {
+        let ticks = mach_absolute_time()
+        let independentNanoseconds = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
 
-        try? await Task.sleep(for: .milliseconds(200))
+        let computedNanoseconds = Double(ticks) * MachTimebase.nanosecondsPerTick
 
-        let ticksAfter = mach_absolute_time()
-        let clockAfter = ContinuousClock.now
-
-        let deltaTicks = ticksAfter - ticksBefore
-        let computedNanoseconds = Double(deltaTicks) * MachTimebase.nanosecondsPerTick
-
-        let elapsed = clockAfter - clockBefore
-        let components = elapsed.components
-        let independentNanoseconds = Double(components.seconds) * 1_000_000_000
-            + Double(components.attoseconds) / 1_000_000_000
-
-        #expect(independentNanoseconds > 0, "expected the bracketing sleep to take measurable time")
-        let ratio = computedNanoseconds / independentNanoseconds
-        // A 2x band: real scheduling jitter between two back-to-back
-        // clock reads is microseconds against a 200ms interval, nowhere
-        // near enough to approach this band, while a corrupted constant
-        // (this issue's ~42x, or the more paranoid case of an inverted
-        // conversion) lands far outside it either direction.
+        #expect(independentNanoseconds > 0, "expected CLOCK_UPTIME_RAW to report nonzero time since boot")
+        let ratio = computedNanoseconds / Double(independentNanoseconds)
+        // #0431 round 2, B1: a 2x band is far too loose — a reviewer
+        // multiplied `nanosecondsPerTick` by 2, 1.5, and 1.9, and all three
+        // still passed it. Back-to-back reads of these two absolute
+        // since-boot clocks agree to within about 166ns out of well over
+        // 1e11 (measured on this host), so a ~1e-3 relative tolerance
+        // still comfortably absorbs that gap while a corrupted constant —
+        // this issue's ~42x, or a smaller 1.5x/1.9x/2x tamper — misses by
+        // orders of magnitude more than that. The two reads are not
+        // guaranteed to be nanoseconds apart: a preempted thread can be
+        // descheduled between them for milliseconds under load, but that
+        // gap is still negligible against a since-boot value that's
+        // ordinarily minutes to hours (many orders of magnitude larger),
+        // which is what keeps the ratio inside this tighter band.
         #expect(
-            ratio > 0.5 && ratio < 2.0,
-            "MachTimebase.nanosecondsPerTick (\(MachTimebase.nanosecondsPerTick)) converts a real mach-tick interval to \(computedNanoseconds)ns, but an independent clock (ContinuousClock) measured the same bracketed interval as \(independentNanoseconds)ns — the conversion constant itself looks wrong"
+            abs(ratio - 1) < 1e-3,
+            "MachTimebase.nanosecondsPerTick (\(MachTimebase.nanosecondsPerTick)) converts mach_absolute_time() (\(ticks)) to \(computedNanoseconds)ns, but CLOCK_UPTIME_RAW independently reports \(independentNanoseconds)ns since boot — the conversion constant itself looks wrong"
         )
     }
 
@@ -323,12 +323,12 @@ struct ProcessInspectorTests {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
         }
-        // Give the kernel a moment to install the new process's argv/env
-        // before reading it back — posix_spawn returning success only
-        // guarantees the child was created, not that KERN_PROCARGS2 is
-        // immediately queryable the same instant.
-        usleep(50_000)
-
+        // No wait needed here (`#0431`, `docs/async-test-seams.md` §5 Q1):
+        // XNU's exec path lays out argv/envp on the new image's stack
+        // (`exec_copyout_strings`, the same data `KERN_PROCARGS2` reads
+        // back) synchronously as part of bringing up the new image, before
+        // `posix_spawn` returns to userspace — so `KERN_PROCARGS2` is
+        // already queryable the instant `posix_spawn` succeeds.
         guard case .success(let commandLine) = ProcessInspector.commandLine(pid: pid) else {
             Issue.record("expected commandLine to succeed for a same-uid child process")
             return

@@ -26,42 +26,6 @@ import Testing
 @MainActor
 struct ProcessStatusPaneContentTests {
 
-    /// Polls instead of trusting a single fixed sleep — this suite runs
-    /// alongside ~1100 other tests, several of which spawn real
-    /// subprocesses and block synchronously (`Process.waitUntilExit()`),
-    /// which can starve the cooperative thread pool and delay a `Task`'s
-    /// resumption well past its nominal `Task.sleep` duration. A generous
-    /// polling budget tolerates that scheduling jitter without weakening
-    /// what's actually being asserted (a real state change did happen).
-    /// 15s, back down from round 2's 30s (review round 3, N1) — see
-    /// `GitStatusPaneContentTests`'s matching `waitUntil` doc comment for
-    /// the full reasoning: 30s was compensating for *misattribution*,
-    /// which loud `Issue.record` on timeout (below) now fixes directly,
-    /// and for starvation this suite's own `.serialized` (above) now
-    /// measurably removes. A smaller ceiling costs a passing run nothing
-    /// and a genuine hang less time to report.
-    /// Records a loud `Issue` on timeout rather than silently returning,
-    /// so a caller with a downstream `#expect` fails at the wait, not on
-    /// an unrelated expectation that misattributes starvation as a
-    /// behavioral regression.
-    private func waitUntil(
-        timeout: Duration = .seconds(15),
-        sourceLocation: SourceLocation = #_sourceLocation,
-        _ condition: () -> Bool
-    ) async {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            if condition() { return }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        if !condition() {
-            Issue.record(
-                "waitUntil timed out after \(timeout) without the condition becoming true",
-                sourceLocation: sourceLocation
-            )
-        }
-    }
-
     // MARK: - Default sampling cadence (review round 2, N3)
 
     /// Every other test in this file injects a short `samplingInterval` so
@@ -127,55 +91,72 @@ struct ProcessStatusPaneContentTests {
     }
 
     /// The real evidence #0289's lesson demands: sampling actually stops
-    /// after hide, and actually resumes after show — checked by letting
-    /// wall-clock time pass across a real cadence rather than trusting
-    /// that `setVisible` was called. Uses an injected 20ms cadence (the
-    /// production default is 1s) so this stays a real-timing test without
-    /// paying production's cadence in wall clock — the negative-assertion
-    /// wait below still spans several full cadences (a genuine "did
-    /// anything happen" window, not a token gesture), it just does so at
-    /// 1/50th the real duration.
+    /// after hide, and actually resumes after show. `#0431`: driven through
+    /// an injected `TestClock` (`#0428`) instead of a real wall-clock
+    /// cadence — `advance(by:)` fires the periodic sampler's due tick, and
+    /// `waitForSleepers(1)` afterward is the real "this tick's
+    /// `performSample()` already ran and the loop is back asleep" signal
+    /// (`docs/async-test-seams.md` §1's "once per tick" pattern), not a
+    /// guess at scheduling order or a fixed sleep. The injected 20ms
+    /// interval (non-default; production is 1s) only has to be small
+    /// enough that "50 more intervals" below is a cheap virtual-time
+    /// advance — it costs no real wall clock either way.
     @Test func samplingStopsWhileSuspendedAndResumesWhenShown() async throws {
-        let content = ProcessStatusPaneContent(target: .pinned(getpid()), tabLookup: { _ in nil }, samplingInterval: .milliseconds(20))
+        let clock = TestClock()
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            samplingInterval: .milliseconds(20),
+            clock: clock
+        )
+        // #0431 round 2, B3: without this, an early `return` from either
+        // `waitForSleepers` guard below (or just reaching the end of the
+        // test with sampling resumed) leaves a `Task` parked on `clock`
+        // forever — `TestClock` never lets time pass on its own, so
+        // nothing else would ever wake or cancel it.
+        defer { content.tearDown() }
         content.setUp(visible: true)
         let firstCapture = try #require(content.snapshot?.capturedAt)
 
-        await waitUntil { (content.snapshot?.capturedAt ?? firstCapture) > firstCapture }
+        guard await clock.waitForSleepers(1) else {
+            Issue.record("waitForSleepers(1) never reached its threshold before the first tick")
+            return
+        }
+        await clock.advance(by: .milliseconds(20))
+        guard await clock.waitForSleepers(1) else {
+            Issue.record("waitForSleepers(1) never reached its threshold after the first tick")
+            return
+        }
         let secondCapture = try #require(content.snapshot?.capturedAt)
         #expect(secondCapture > firstCapture)
 
         content.setVisible(false)
+        // Hiding cancels the pending sleep synchronously — `TestClock
+        // .sleep(for:)` wraps its continuation in
+        // `withTaskCancellationHandler`, so the sleeper is removed and
+        // resumed as part of this same `Task.cancel()` call, before
+        // `setVisible` even returns (`docs/async-test-seams.md` §1).
+        #expect(clock.pendingCount == 0, "hiding must cancel the pending sleep synchronously, not just eventually")
         let capturedAtHideTime = content.snapshot?.capturedAt
 
-        // A real wait, comfortably longer (10x) than the injected 20ms
-        // cadence. Review round 2, B5 correction: this is *not* protecting
-        // against a regression that merely forgot to call `.cancel()`
-        // before dropping the `Task` reference — mutation-tested (M6) and
-        // confirmed that specific bug passes with or without this wait,
-        // and with or without the structural `isSamplingTaskAlive` check
-        // `hidingReleasesTheSamplingTaskReferenceNotJustTheObservablePhase`
-        // makes below, because the periodic loop's own
-        // `guard lifecyclePhase == .active` already returns on its next
-        // tick regardless of cancellation. What this wait *does* catch
-        // (mutation-tested, M5-equivalent) is the more literal regression
-        // `docs/pane-view-lifecycle.md` §4 names — hiding not actually
-        // stopping periodic sampling at all (both the phase guard and the
-        // cancellation gone) — which no structural check can see, since a
-        // leaked loop isn't held in `samplingTask` either way. Kept real
-        // (not converted to a pure structural check) for that reason; kept
-        // cheap by riding the same injected-interval seam (200ms spans 10
-        // cadences here, where the original 1.5s spanned 1.5 production
-        // cadences). Not re-asserting `isSamplingTaskAlive` here (review
-        // round 2, N6) — that dedicated test already covers it.
-        try await Task.sleep(for: .milliseconds(200))
+        // Advance many sampling intervals while hidden (review round 2,
+        // B5's "nothing sampled while hidden" guarantee — comment
+        // preserved from the pre-#0431 version: this is not merely
+        // proving `.cancel()` was called; the periodic loop's own
+        // `guard lifecyclePhase == .active` would already stop a *leaked*
+        // Task on its next tick regardless of cancellation, and mutation
+        // M5 removes both guards together). Unlike a fixed wall-clock
+        // window, this can't miss a leaked loop: every loop goes through
+        // this same scheduler, so a leaked `Task` would still be parked on
+        // `clock.sleep(for:)` and this advance would fire it.
+        _ = await clock.advance(by: .milliseconds(20 * 50))
         #expect(content.snapshot?.capturedAt == capturedAtHideTime)
+        #expect(clock.pendingCount == 0, "advancing while hidden must not schedule anything new")
 
         content.setVisible(true)
         // The resume-and-refresh sample runs synchronously inside
         // `setVisible` itself (`startSampling` calls `performSample()`
-        // before scheduling the next tick) — `waitUntil` here is
-        // defensive headroom, not a requirement for correctness.
-        await waitUntil { (content.snapshot?.capturedAt ?? capturedAtHideTime!) > capturedAtHideTime! }
+        // before scheduling the next tick) — no wait needed.
         let resumedCapture = try #require(content.snapshot?.capturedAt)
         #expect(resumedCapture > capturedAtHideTime!)
     }
@@ -391,11 +372,10 @@ struct ProcessStatusPaneContentTests {
     /// The direct regression test for B1: `ri_user_time`/`ri_system_time`
     /// are mach-absolute-time ticks, not nanoseconds, and treating them as
     /// nanoseconds under-reported CPU% by ~42x (2.4% measured vs. the
-    /// correct ~99.97% for a process pegging one core). This busy-loops
-    /// real CPU for real wall-clock time between two samples and asserts
-    /// the *value*, not merely that `cpuPercent` is non-nil — a test that
-    /// only checked "is a Double present" is exactly the shape of test
-    /// that let B1 ship in round 1.
+    /// correct ~99.97% for a process pegging one core). This burns real
+    /// CPU between two samples and asserts the *value*, not merely that
+    /// `cpuPercent` is non-nil — a test that only checked "is a Double
+    /// present" is exactly the shape of test that let B1 ship in round 1.
     ///
     /// Review round 2, B4: a fixed floor on `cpuPercent` (originally
     /// `> 10`) is a claim about how much of a *shared* core this process
@@ -403,84 +383,113 @@ struct ProcessStatusPaneContentTests {
     /// drive below any fixed floor without `ProcessCPUDeltaTracker` being
     /// wrong at all (measured 9.55%/8.56% under ~30-process contention
     /// during that review, both genuine, both below the old floor). This
-    /// version instead independently re-derives the expected percentage
-    /// from the same raw kernel ticks (`ProcessInspector.coreMetrics`,
-    /// bracketing the busy loop the same way `ProcessCPUDeltaTracker`
-    /// does internally) and checks production's answer against *that*,
-    /// not against a magnitude assumption about the host machine. A B1-
-    /// class ~42x scaling bug fails this at any contention level; a
-    /// merely-busy shared machine does not.
+    /// version instead recomputes the expected percentage from the same
+    /// raw kernel ticks production itself saw, and checks production's
+    /// answer against *that*, not against a magnitude assumption about the
+    /// host machine. A B1-class ~42x scaling bug fails this at any
+    /// contention level; a merely-busy shared machine does not.
     ///
-    /// The periodic sampler must not fire during this test's own
-    /// bracketing window. With the production default (1s), a tick landing
-    /// mid-burn (or during the main-actor resumption right after it) moves
-    /// `ProcessCPUDeltaTracker`'s baseline forward past this test's own
-    /// `beforeTime`, so production's window becomes a narrower, mostly-idle
-    /// slice of the one this test independently measures — exactly the
-    /// `> expectedPercent / 5` failure, reproducible without any code
-    /// defect by scheduling delay alone. An interval far longer than any
-    /// test run guarantees `startSampling()`'s only sample before
-    /// `sampleNowForTesting()` below is the immediate one taken inside
-    /// `setUp`, so the only baselines in play are the ones this test
-    /// itself controls.
+    /// `#0431`: rewritten to remove every wall-clock dependency the
+    /// original had. The workload is a *fixed amount of work* (a constant
+    /// iteration count), not a `while Date() < deadline` time span, and the
+    /// interval the percentage is computed over is an explicit
+    /// `TestClock.advance(by:)` amount rather than a `Date()` bracket —
+    /// feeding `ProcessCPUDeltaTracker` its `at:` timestamps from the
+    /// injected clock (`#0428`).
+    ///
+    /// #0431 round 2, B2: an earlier version of this rewrite called
+    /// ``cpuPercent(for:)`` directly with hand-built `ProcessSample`s,
+    /// bypassing `sample(pid:)` entirely — which let two real mutations
+    /// pass: `cpuPercent` hardcoded to `nil` in `sample(pid:)`'s `.success`
+    /// branch, and `cpuTicksUser` dropped when that branch builds its
+    /// `ProcessSample`. Neither mutation sits on the path a direct
+    /// `cpuPercent(for:)` call exercises. This version goes through the
+    /// real path instead — `setUp`/`sampleNowForTesting`, which call
+    /// `sample(pid:)`, which calls `cpuPercent(for:)` internally — with a
+    /// recording `coreMetricsProvider` that still calls the real
+    /// `ProcessInspector.coreMetrics` but records each result. So this test
+    /// pins production's own tracker math and clock wiring against the
+    /// exact ticks `sample(pid:)` itself read, rather than an independent
+    /// second `ProcessInspector.coreMetrics` call of its own (which is what
+    /// let the two mutations above hide: a *second*, separate read can't
+    /// see what production's own call returned).
+    ///
+    /// `samplingInterval` is set far longer than the 1-second `advance(by:)`
+    /// below, deliberately: production's own periodic sampling `Task` is
+    /// also parked on this same `TestClock`, and if its interval matched
+    /// the advance exactly, that advance would fire *two* samples (the
+    /// periodic tick and this test's own `sampleNowForTesting()`) in an
+    /// order this test doesn't control, corrupting which two recorded
+    /// metrics are "before" and "after" the burn.
     @Test func cpuPercentReflectsSubstantialRealCoreUsage() async throws {
+        let clock = TestClock()
+        var recordedMetrics: [ProcessInspector.CoreMetrics] = []
         let content = ProcessStatusPaneContent(
             target: .pinned(getpid()),
             tabLookup: { _ in nil },
-            samplingInterval: .seconds(3600)
+            samplingInterval: .seconds(60),
+            coreMetricsProvider: { pid in
+                let result = ProcessInspector.coreMetrics(pid: pid)
+                if case .success(let metrics) = result {
+                    recordedMetrics.append(metrics)
+                }
+                return result
+            },
+            clock: clock
         )
         defer { content.tearDown() }
         content.setUp(visible: true) // establishes the CPU baseline; cpuPercent is nil on this first sample
+        #expect(content.snapshot?.cpuPercent == nil, "no prior baseline yet on the very first sample")
 
-        let beforeMetrics = try ProcessInspector.coreMetrics(pid: getpid()).get()
-        let beforeTime = Date()
-
-        // Burn real CPU on a *detached* task, off this package's MainActor
-        // — this suite runs alongside ~1100 other tests, several of which
-        // are themselves MainActor-isolated, and MainActor is one serial
-        // queue: a tight synchronous loop running *on* it would starve
-        // every other MainActor-isolated test in the same parallel batch
-        // for its whole duration (this was observed directly: adding this
-        // test as originally written, spinning inline, made the
-        // unrelated `samplingStopsWhileSuspendedAndResumesWhenShown`
-        // timing test flake under `./build.sh unit`'s xcodebuild
-        // harness even though it had been stable for three consecutive
-        // full-suite `swift test` runs beforehand). The CPU time still
-        // accrues to this same process (`getpid()`) regardless of which
-        // thread burns it, so the measurement is unaffected.
+        // Burn a fixed amount of real CPU — a constant iteration count,
+        // not a time span (#0431), and cheap per-iteration arithmetic
+        // rather than `Double.random` (#0431 round 2) — on a *detached*
+        // task, off this package's MainActor: this suite runs alongside
+        // ~1100 other tests, several of which are themselves
+        // MainActor-isolated, and MainActor is one serial queue, so a
+        // tight synchronous loop running *on* it would starve every other
+        // MainActor-isolated test in the same parallel batch for its whole
+        // duration (observed directly when an earlier version of this test
+        // spun inline). The CPU time still accrues to this same process
+        // (`getpid()`) regardless of which thread burns it, so the
+        // measurement is unaffected.
         await Task.detached(priority: .userInitiated) {
-            let deadline = Date().addingTimeInterval(1.2)
             var sink: Double = 0
-            while Date() < deadline {
-                sink += Foundation.sqrt(Double.random(in: 1...100))
+            for i in 0..<1_000_000 {
+                sink += Foundation.sqrt(Double(i % 97) + 1)
             }
             _ = sink
         }.value
 
-        let afterTime = Date()
-        let afterMetrics = try ProcessInspector.coreMetrics(pid: getpid()).get()
+        // An arbitrary but explicit interval — not measured from wall
+        // clock — that both production's own tracker and this test's
+        // recomputation divide by.
+        _ = await clock.advance(by: .seconds(1))
         content.sampleNowForTesting()
 
         let cpuPercent = try #require(content.snapshot?.cpuPercent)
 
-        let deltaTicks = (afterMetrics.cpuTicksUser &+ afterMetrics.cpuTicksSystem)
-            &- (beforeMetrics.cpuTicksUser &+ beforeMetrics.cpuTicksSystem)
-        let deltaSeconds = Double(deltaTicks) * MachTimebase.nanosecondsPerTick / 1_000_000_000
-        let wallSeconds = afterTime.timeIntervalSince(beforeTime)
-        let expectedPercent = (deltaSeconds / wallSeconds) * 100
+        guard recordedMetrics.count >= 2 else {
+            Issue.record("expected at least 2 recorded coreMetrics calls (baseline + post-burn sample), got \(recordedMetrics.count)")
+            return
+        }
+        let before = recordedMetrics[recordedMetrics.count - 2]
+        let after = recordedMetrics[recordedMetrics.count - 1]
+        let deltaTicks = (after.cpuTicksUser &+ after.cpuTicksSystem)
+            &- (before.cpuTicksUser &+ before.cpuTicksSystem)
+        try #require(deltaTicks > 0, "the fixed CPU burn above must have produced measurable ticks")
 
-        // A 5x band around an independently-computed expectation — wide
-        // enough to absorb the small timing skew between these bracketing
-        // reads and `ProcessStatusPaneContent`'s own internal sample
-        // points, at any contention level, while still catching a ~42x
-        // scaling defect outright.
+        let deltaSeconds = Double(deltaTicks) * MachTimebase.nanosecondsPerTick / 1_000_000_000
+        let expectedPercent = deltaSeconds * 100 // interval == 1 second
+
+        // A tight tolerance, not the old 5x band — both sides now share
+        // the exact same recorded ticks and the exact same interval, so
+        // the only remaining slack is floating-point rounding, not
+        // scheduling or bracketing skew. A B1-class ~42x scaling bug fails
+        // this by orders of magnitude either way.
         #expect(
-            cpuPercent > expectedPercent / 5,
-            "production cpuPercent (\(cpuPercent)) is far below the independently-measured expectation (\(expectedPercent)) from the same raw ticks — looks like a B1-class ticks-as-nanoseconds regression"
-        )
-        #expect(
-            cpuPercent < expectedPercent * 5,
-            "production cpuPercent (\(cpuPercent)) is far above the independently-measured expectation (\(expectedPercent)) from the same raw ticks"
+            abs(cpuPercent - expectedPercent) < 0.001,
+            "production cpuPercent (\(cpuPercent)) diverges from the recomputed expectation (\(expectedPercent)) from the same recorded ticks over the same interval — looks like a B1-class ticks-as-nanoseconds regression"
         )
     }
 

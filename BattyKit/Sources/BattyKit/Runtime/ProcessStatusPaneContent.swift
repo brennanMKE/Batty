@@ -184,7 +184,10 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// of waiting on a real interval — without touching `samplingInterval`
     /// itself. Defaults to the real `SystemClock`, following the same
     /// defaulted-real-value shape `samplingInterval`/`coreMetricsProvider`
-    /// already use on this type.
+    /// already use on this type. `#0431`: also the timestamp
+    /// ``cpuPercent(for:)`` feeds `ProcessCPUDeltaTracker` as `at:`, so
+    /// `ProcessStatusPaneContentTests`' CPU% tests can control that
+    /// interval explicitly too, instead of bracketing it with `Date()`.
     private let clock: SchedulingClock
     private var samplingTask: Task<Void, Never>?
     /// `#0314` merge: the pid-keyed CPU-delta baseline (review round 1,
@@ -506,7 +509,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// which needs a live AppKit `foregroundPid` this headless test
     /// target can't produce.
     func cpuPercent(for sample: ProcessSample) -> Double? {
-        cpuTracker.percentages(for: [sample])[sample.pid]
+        cpuTracker.percentages(for: [sample], at: clock.now)[sample.pid]
     }
 
     private func basename(of path: String?) -> String? {
