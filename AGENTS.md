@@ -168,6 +168,31 @@ hazard aimed at the user's own terminals.
   the orchestrator serializes them.
 - Unit tests (`./build.sh unit`) and builds stay on the host; they load nothing into other apps.
 
+**Standing authorization (user, 2026-10-05): agents run UI tests in the VM without asking.**
+The user has pre-approved every agent session and subagent working in this repo to run
+`tools/run-ui-tests-vm.sh` (with or without a test filter) whenever a change needs UI-level
+verification. Don't stop to ask first, and don't treat it as interfering with the host's workloads. Everything the runner does on the host is part of
+this approval:
+
+- Clones, boots, and deletes `batty-uitest-<run-id>` VMs from the `batty-uitest-golden` image,
+  and sweeps stale `batty-uitest-*` clones left by a killed run.
+- Takes and releases a `tart-lease` slot. It waits when both slots on the host are in use.
+- Requests memory through the memory-signal protocol when the host is short. The host's
+  observer may unload LM Studio models to fulfill it; that is the sanctioned mechanism (see
+  `~/Developer/Homelab/cameron/lm-studio-memory.md`), not interference.
+- Writes results to the gitignored `build/ui-tests/<run-id>/`.
+
+The approval covers only that runner and read-only `tart list` / `tart-lease status` checks.
+It does **not** cover:
+
+- running UI tests or UI scripting on the host;
+- touching the golden image or other projects' VMs;
+- unloading models or killing processes by hand;
+- starting a second concurrent Batty VM.
+
+If the runner fails on a host precondition (disk, memory request not fulfilled, no lease slot),
+report it rather than working around it.
+
 ## Release / distribution
 
 Release scripts live in `scripts/`:

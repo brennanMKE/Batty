@@ -1,0 +1,9 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(tools/run-ui-tests-vm.sh:*)",
+            "Bash(./tools/run-ui-tests-vm.sh:*)",
+            "Bash(./build.sh ui-typecheck)"
+        ]
+    }
+}
