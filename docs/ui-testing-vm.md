@@ -145,9 +145,12 @@ tools/run-ui-tests-vm.sh                                # same thing, called dir
 ```
 
 Run it in the foreground of a terminal — a dropped session costs a clone, not a work
-session. Results land in `build/ui-tests/<run-id>/`: `xcodebuild.log`, `UITests.xcresult`,
-`app-warnings.log`, `crashes/` (any Batty crash reports from the guest), and `tart-run.log`
-(the host-side `tart run` output).
+session. Results land in `build/ui-tests/<run-id>/`: `xcodebuild-build.log` (the
+`build-for-testing` step) and `xcodebuild.log` (the test step), `UITests.xcresult`,
+`broker-bootstrap.out` and `broker-diagnostics.log` (the broker step, #0419),
+`app-warnings.log`, `sandbox-denials.log`, `crashes/` (any Batty crash reports from the
+guest), and `tart-run.log` (the host-side `tart run` output). A build failure leaves no
+`xcodebuild.log`; the runner's summary then reads `xcodebuild-build.log`.
 
 ### What the runner does, step by step
 
@@ -194,16 +197,27 @@ session. Results land in `build/ui-tests/<run-id>/`: `xcodebuild.log`, `UITests.
    the *next* `xcodebuild` invocation (#0280), too late for the guest's one build. Confirmed
    working: the guest's log shows `co.sstools.Batty.beta` and `Batty Beta` throughout (open
    question 3, answered — see "First run").
-6. **Run `xcodebuild -workspace Batty.xcworkspace -scheme "Batty UI Tests"
-   -only-testing:BattyUITests test CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual
-   DEVELOPMENT_TEAM=`.** The guest has no certificates, so the build is ad hoc signed — per
-   #0412's open question 5, this was tried *without* `scripts/run-ui-tests.sh`'s Gatekeeper
-   re-sign dance first, and it wasn't needed (open question 5, answered).
-7. **Results back.** `tart exec ... tar` streams `xcodebuild.log`, `UITests.xcresult`, an
-   `app-warnings.log` (errors/faults/SwiftUI/AttributeGraph messages from the guest's unified
-   log), and any `Batty*.ips` crash reports into `build/ui-tests/<run-id>/`, which already
-   holds `tart-run.log` (the host-side `tart run` output, written there directly since boot,
-   not under the temp export that cleanup deletes).
+6. **Three bounded guest steps** (#0419), each a separate `tart exec` with a guest-side
+   `alarm` bound and a host-side poll-and-kill bound, so a hang fails fast. The guest has no
+   certificates, so the build is ad hoc signed (`CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual
+   DEVELOPMENT_TEAM=`) — per #0412's open question 5, this was tried *without*
+   `scripts/run-ui-tests.sh`'s Gatekeeper re-sign dance first, and it wasn't needed (open
+   question 5, answered).
+   1. `xcodebuild -workspace Batty.xcworkspace -scheme "Batty UI Tests" -derivedDataPath
+      <guest>/DerivedData build-for-testing`.
+   2. `tools/vm-guest-broker.sh`: starts the built app's embedded broker and the loopback CLI
+      relay (see "Broker and CLI-driven tests (#0419)" below).
+   3. `xcodebuild ... test-without-building` with `-only-testing:BattyUITests` (or the
+      specs given on the command line).
+7. **Results back.** `tart exec ... tar` streams the results directory into
+   `build/ui-tests/<run-id>/`, which already holds `tart-run.log` (the host-side `tart run`
+   output, written there directly since boot, not under the temp export that cleanup
+   deletes). It is pulled after the build step and after the broker step as well as at the
+   end, so a later hang or timeout still returns the earlier output. Contents:
+   `xcodebuild-build.log`, `xcodebuild.log`, `UITests.xcresult`, `broker-bootstrap.out`,
+   `broker-diagnostics.log`, an `app-warnings.log` (errors/faults/SwiftUI/AttributeGraph and
+   `AppXPCCoordinator`/`BrokerAgentController` messages from the guest's unified log), a
+   `sandbox-denials.log`, and any `Batty*.ips` crash reports.
 8. **Cleanup** on `EXIT`, and on `INT`/`TERM`/`HUP` too — zsh does not run an `EXIT` trap when
    killed by an uncaught fatal signal, so each of those three is trapped explicitly and turned
    into `exit <code>`, which does trigger it. Order: bounded-kill the local `tart exec` test
@@ -292,7 +306,9 @@ includes chasing that down; **not fixed here. Filed together as #0417** by the o
   reconnect-backoff loop for the whole run. This matches #0401's finding that an
   unsigned/ad-hoc-signed broker fails `SMAppService` registration — answers #0412's open
   question 4 for the ad hoc-signed case, and is a real limit on what #0413's CLI-driven UI
-  tests can exercise in this VM until it's addressed. Filed as **#0419**.
+  tests can exercise in this VM until it's addressed. Filed as **#0419**, which has since
+  addressed it for the VM: the cause was an unregistered broker (not signing), and the
+  runner now starts it (see "Broker and CLI-driven tests (#0419)" below).
 - **`[com.apple.SwiftUI:Invalid Configuration] Geometry action is cycling between duplicate
   values`** fired 93 times over the run — once per app launch, roughly. This is a real,
   recurring SwiftUI Fault-level log line, not VM noise; whether it's new or has always been
@@ -502,3 +518,24 @@ script (e.g. `tart stop ... || true`).
   app under test via an uncaught exception in XCTest's own automation session when it hit a
   `DisclosureTriangle`'s numeric `value` (run `20260924-005144-71495`, `#0417`); scope such
   predicates to a string-valued element type (e.g. `.staticTexts`) instead.
+
+## Broker and CLI-driven tests (#0419)
+
+A fresh guest has never opted in to the broker LaunchAgent (registration is a Settings action,
+#0270), so the app's XPC connections are invalidated and `batty` verbs exit 2. The runner builds
+with `build-for-testing`, runs `tools/vm-guest-broker.sh` in the guest to bootstrap the built app's
+embedded `BattyBroker` into the user's `gui/<uid>` launchd domain, then runs
+`test-without-building`. The guest build is ad-hoc signed with no Team ID, so the XPC peer
+requirement is skipped (`PeerCodeSigningRequirement`), as for any unsigned local build.
+`broker-diagnostics.log` in the results directory records `codesign`,
+`launchctl print` and `batty ping`. The shipped app is unchanged and the opt-in rule is intact.
+
+The UI-test runner (`BattyUITests-Runner.app`) is App Sandboxed (`com.apple.security.app-sandbox`,
+with a fixed `mach-lookup` allow-list) and a `Process` it spawns inherits that sandbox, so a CLI
+launched from a test cannot reach the broker even though the broker is up (#0419, run
+`20261006-014328-4547`/`20261006-020341-13690`). `tools/vm-guest-broker.sh` therefore also installs a
+guest-only launchd agent that listens on `127.0.0.1:47911` (inetd style) and runs the embedded CLI
+through `tools/vm-guest-cli-relay.sh`, outside the sandbox. Tests send one line of
+tab-separated arguments with `nc` and read back the output plus a final `__EXIT__ <status>`
+line. The loopback listener exists
+only in the disposable guest.

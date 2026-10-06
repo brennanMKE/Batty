@@ -39,14 +39,22 @@
 #   4. In the guest: extract both tar files locally, write
 #      Configuration/Active.xcconfig to select Beta (it's gitignored, so
 #      git archive never carries it, and the scheme's own pre-action only
-#      takes effect on the *next* xcodebuild invocation, #0280), and run
-#      `xcodebuild -workspace Batty.xcworkspace -scheme "Batty UI Tests"
-#      -only-testing:BattyUITests test`, ad hoc signed (the guest has no
-#      certificates).
-#   5. Stream results back to build/ui-tests/<run-id>/: xcodebuild.log,
-#      UITests.xcresult, the app's own warnings/crash reports from the
-#      guest, and the host-side tart-run.log (written directly to this
-#      results dir, created before boot, so it survives cleanup).
+#      takes effect on the *next* xcodebuild invocation, #0280), then run
+#      three bounded guest steps, ad hoc signed (the guest has no
+#      certificates): `xcodebuild -workspace Batty.xcworkspace -scheme
+#      "Batty UI Tests" build-for-testing`; tools/vm-guest-broker.sh, which
+#      starts the built app's embedded broker and a loopback CLI relay
+#      (#0419, a fresh guest has never opted in to the broker and the
+#      sandboxed UI-test runner cannot run the CLI itself); and
+#      `test-without-building` with -only-testing:BattyUITests (or the
+#      given specs).
+#   5. Stream results back to build/ui-tests/<run-id>/: xcodebuild-build.log
+#      and xcodebuild.log (the test step), UITests.xcresult,
+#      broker-bootstrap.out and broker-diagnostics.log, app-warnings.log,
+#      sandbox-denials.log, crashes/, and the host-side tart-run.log
+#      (written directly to this results dir, created before boot, so it
+#      survives cleanup). Results are also pulled after the build and
+#      bootstrap steps, so a later hang or timeout still returns them.
 #   6. Cleanup on EXIT (trap): bounded-kill the local `tart exec` test
 #      process if still running, `tart stop --timeout 30` the clone (tart's
 #      own bound on graceful-then-forceful termination), bounded-kill the
@@ -385,19 +393,90 @@ log "Running UI tests in the guest (this runs XCUITest inside the VM only)"
 # external command exits on its own -- verified with a scratch script --
 # so a plain foreground `tart exec ... test` would make Ctrl-C during the
 # ~10-minute test phase wait for it to finish before cleanup ran. `wait`
-# on an explicit background PID does not have that problem.
+# on an explicit background PID does not have that problem. run_guest_step
+# below goes one step further: it polls the background PID with `kill -0`
+# and `sleep 2` rather than `wait`ing on it outright, so a wedged
+# `tart exec` can be killed at a host-side bound.
+# Build first, start the app's embedded broker (#0419), then test without
+# rebuilding: the broker's absolute path only exists once the app is built, and
+# a fresh guest has never opted in through Settings, so without this step every
+# XPC verb fails (see tools/vm-guest-broker.sh). -derivedDataPath pins where the
+# built app lands. A failed bootstrap is logged to broker-diagnostics.log and
+# does not stop the run.
+GUEST_DD="$GUEST_ROOT/DerivedData"
+GUEST_APP="$GUEST_DD/Build/Products/Debug/Batty Beta.app"
+# Guest-side hard bound: SIGALRM survives exec, so nothing run through this can
+# outlive its limit even if the guest command blocks on a prompt.
+GUEST_TMO='/usr/bin/perl -e "alarm shift; exec @ARGV" --'
+
+# Wait up to $1 seconds for the background job in TEST_PID, killing it at the
+# bound. Sets step_rc (124 when the host-side bound hit).
+wait_bounded() {
+  local secs="$1" label="$2" waited=0
+  while kill -0 "$TEST_PID" 2>/dev/null && (( waited < secs )); do
+    sleep 2
+    (( waited += 2 ))
+  done
+  if kill -0 "$TEST_PID" 2>/dev/null; then
+    log "$label exceeded ${secs}s on the host side — killing it"
+    bounded_kill "$TEST_PID" "$label"
+    step_rc=124
+  else
+    step_rc=0
+    wait "$TEST_PID" || step_rc=$?
+  fi
+  unset TEST_PID
+}
+
+# Run one guest command string, backgrounded and bounded on the host too (the
+# `tart exec` itself can wedge). Sets step_rc.
+run_guest_step() {
+  local secs="$1" cmd="$2"
+  tart exec "$CLONE" /bin/zsh -lc "$cmd" &
+  TEST_PID=$!
+  wait_bounded "$secs" "guest step"
+}
+
+# Best-effort, bounded pull of whatever the guest has so far, so a later hang
+# or timeout still returns the earlier steps' output.
+pull_results() {
+  local tarball="$EXPORT/pull.tar"
+  tart exec "$CLONE" /bin/zsh -lc "$GUEST_TMO 90 tar -C $GUEST_RESULTS -cf - ." > "$tarball" 2>/dev/null &
+  TEST_PID=$!
+  wait_bounded 120 "result pull"
+  tar -x -C "$RESULTS_DIR" -f "$tarball" 2>/dev/null || log "Failed to pull some results back from the guest"
+  rm -f "$tarball"
+}
+
 set +e
-tart exec "$CLONE" /bin/zsh -lc "
-  cd $GUEST_BATTY && xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
-    -destination 'platform=macOS' -resultBundlePath $GUEST_RESULTS/UITests.xcresult \
-    ${TEST_FILTER_ARGS[*]} \
+run_guest_step 1500 "
+  cd $GUEST_BATTY
+  $GUEST_TMO 1200 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
+    -destination 'platform=macOS' -derivedDataPath $GUEST_DD \
     CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
-    test 2>&1 | tee $GUEST_RESULTS/xcodebuild.log
-  exit \${pipestatus[1]}" &
-TEST_PID=$!
-wait "$TEST_PID"
-test_rc=$?
-unset TEST_PID
+    build-for-testing 2>&1 | tee $GUEST_RESULTS/xcodebuild-build.log
+  exit \${pipestatus[1]}"
+build_rc=$step_rc
+pull_results
+if (( build_rc != 0 )); then
+  test_rc=$build_rc
+else
+  run_guest_step 150 "
+    ls -la '$GUEST_APP' > $GUEST_RESULTS/broker-bootstrap.out 2>&1
+    $GUEST_TMO 90 /bin/zsh $GUEST_BATTY/tools/vm-guest-broker.sh '$GUEST_APP' $GUEST_RESULTS/broker-diagnostics.log < /dev/null >> $GUEST_RESULTS/broker-bootstrap.out 2>&1
+    print -r -- \"bootstrap script rc=\$?\" >> $GUEST_RESULTS/broker-bootstrap.out"
+  pull_results
+  run_guest_step 2700 "
+    cd $GUEST_BATTY
+    $GUEST_TMO 2400 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
+      -destination 'platform=macOS' -derivedDataPath $GUEST_DD \
+      -resultBundlePath $GUEST_RESULTS/UITests.xcresult \
+      ${TEST_FILTER_ARGS[*]} \
+      CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+      test-without-building 2>&1 | tee $GUEST_RESULTS/xcodebuild.log
+    exit \${pipestatus[1]}"
+  test_rc=$step_rc
+fi
 set -e
 
 # --- The app's own warnings and crashes --------------------------------------
@@ -405,12 +484,15 @@ set -e
 # AttributeGraph cycles) surface only in the log, and a crash only in a
 # crash report. Keep both with the results.
 
-tart exec "$CLONE" /bin/zsh -lc "
-  /usr/bin/log show --last 30m --style compact \
-    --predicate 'process CONTAINS \"Batty\" AND (messageType == error OR messageType == fault OR subsystem BEGINSWITH \"com.apple.SwiftUI\" OR subsystem == \"com.apple.AttributeGraph\")' \
+run_guest_step 300 "
+  $GUEST_TMO 120 /usr/bin/log show --last 30m --info --style compact \
+    --predicate 'process CONTAINS \"Batty\" AND (messageType == error OR messageType == fault OR category == \"AppXPCCoordinator\" OR category == \"BrokerAgentController\" OR subsystem BEGINSWITH \"com.apple.SwiftUI\" OR subsystem == \"com.apple.AttributeGraph\")' \
     > $GUEST_RESULTS/app-warnings.log 2>&1
+  $GUEST_TMO 120 /usr/bin/log show --last 30m --info --style compact \
+    --predicate 'eventMessage CONTAINS \"deny(\" OR subsystem == \"com.apple.sandbox.reporting\"' \
+    > $GUEST_RESULTS/sandbox-denials.log 2>&1
   mkdir -p $GUEST_RESULTS/crashes
-  cp ~/Library/Logs/DiagnosticReports/Batty*.ips $GUEST_RESULTS/crashes/ 2>/dev/null || true" || true
+  cp ~/Library/Logs/DiagnosticReports/Batty*.ips $GUEST_RESULTS/crashes/ 2>/dev/null || true"
 
 # --- Results back -------------------------------------------------------------
 # $RESULTS_DIR already exists (created before boot, see "Clone and boot"
@@ -418,15 +500,10 @@ tart exec "$CLONE" /bin/zsh -lc "
 # alongside it.
 
 log "Pulling results into $RESULTS_DIR"
-# Best-effort: under pipefail, a failure on either side of this pipe is a
-# standalone command whose nonzero status would otherwise exit the script
-# right here (via set -e) with tar's status instead of the test's -- losing
-# the pass/fail summary below and reporting the wrong exit code for a test
-# run that actually finished. The test's own result is already known
-# ($test_rc, above) and must be what this script exits with regardless of
+# Best-effort and bounded (see pull_results): the test's own result is already
+# known ($test_rc, above) and must be what this script exits with regardless of
 # whether the result bundle made it back.
-tart exec "$CLONE" /bin/zsh -lc "tar -C $GUEST_RESULTS -cf - ." | tar -x -C "$RESULTS_DIR" \
-  || log "Failed to pull some results back from the guest (see above)"
+pull_results
 
 print ""
 if (( test_rc == 0 )); then
@@ -434,7 +511,9 @@ if (( test_rc == 0 )); then
 else
   log "RESULT: TEST FAILED (exit $test_rc)"
 fi
-grep -E "Test case .* (passed|failed|skipped)|Executed|TEST (SUCCEEDED|FAILED)" "$RESULTS_DIR/xcodebuild.log" | tail -20 || true
+summary_log="$RESULTS_DIR/xcodebuild.log"
+[[ -f "$summary_log" ]] || summary_log="$RESULTS_DIR/xcodebuild-build.log"
+grep -E "Test case .* (passed|failed|skipped)|Executed|TEST (SUCCEEDED|FAILED)|TEST (BUILD|EXECUTE) (SUCCEEDED|FAILED)|error:" "$summary_log" | tail -20 || true
 crashes=( "$RESULTS_DIR"/crashes/*.ips(N) )
 (( ${#crashes} )) && log "CRASH REPORTS: ${#crashes} in $RESULTS_DIR/crashes/"
 warnings="$(grep -c -i -E "modifying state during view update|multiple times per frame|attributegraph: cycle|publishing changes from within view updates|geometry action is cycling|constraint|exception" "$RESULTS_DIR/app-warnings.log" 2>/dev/null || true)"
@@ -442,6 +521,6 @@ log "SwiftUI/AppKit warnings in the app's log: ${warnings:-0} (see app-warnings.
 
 print ""
 log "Result bundle: $RESULTS_DIR/UITests.xcresult"
-log "Full log:      $RESULTS_DIR/xcodebuild.log"
+log "Full log:      $summary_log"
 
 exit "$test_rc"
