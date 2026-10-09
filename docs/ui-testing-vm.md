@@ -152,6 +152,41 @@ session. Results land in `build/ui-tests/<run-id>/`: `xcodebuild-build.log` (the
 guest), and `tart-run.log` (the host-side `tart run` output). A build failure leaves no
 `xcodebuild.log`; the runner's summary then reads `xcodebuild-build.log`.
 
+### Keeping screen recordings of passing tests (#0448)
+
+XCTest records every UI test in the guest, but stores each recording with the scheme's
+default attachment lifetime, `deleteOnSuccess`, so only failing tests leave one: an
+all-green run produces a `UITests.xcresult` with zero attachments. To capture footage of
+the features the passing suite proves, opt in:
+
+```sh
+BATTY_UI_KEEP_RECORDINGS=1 tools/run-ui-tests-vm.sh BattyUITests/CLIViewPaneTests BattyUITests/CLIRemoteControlTests
+tools/export-ui-recordings.sh build/ui-tests/<run-id>/UITests.xcresult   # -> <run-id>/recordings/
+```
+
+- **Where the setting lives.** The switch edits the guest's own extracted copy of the
+  `Batty UI Tests` scheme, adding `systemAttachmentLifetime = "keepAlways"` and
+  `userAttachmentLifetime = "keepAlways"` to its `<TestAction>`. The tracked scheme is never
+  modified and there is no test plan, so a run without the switch is the same invocation as
+  before and still produces failure-only bundles. The attribute names were taken from Xcode
+  27's own `IDEFoundation` strings and the `xcodebuild.xctestrun(5)` man page
+  (`SystemAttachmentLifetime`/`UserAttachmentLifetime`, values `keepAlways`,
+  `deleteOnSuccess`, `keepNever`), and the scheme attribute form was confirmed on the host
+  with a scratch SwiftPM test whose passing test adds an `XCTAttachment`: with the scheme
+  attribute the attachment is exported from the passing test; without it, none.
+- **Size.** A failing-only run of 25 recordings was 152 MB, so a kept-recordings run of the
+  full suite is in the hundreds of MB. Bundles stay under the gitignored, never-pruned
+  `build/ui-tests/<run-id>/`; delete old ones. With the switch on, the runner raises the
+  guest `tar` bound for `pull_results` from 90 s to 600 s (host-side 120 s to 660 s) so a
+  large bundle still comes back over `tart exec`.
+- **Export.** `tools/export-ui-recordings.sh <xcresult> [out-dir]` runs
+  `xcresulttool export attachments --filter '*.mp4'` and renames the UUID-named files from
+  the manifest to `<Class>.<testMethod>.mp4`, with a `<Class>.<testMethod>.poster.png` from
+  `qlmanage -t` beside each (a test with several recordings gets `.2`, `.3` suffixes).
+  Stock macOS tools only (plus `/usr/bin/python3` for the manifest). The kept attachments
+  also include UI hierarchy snapshots and debug-description text; the helper exports only
+  the clips.
+
 ### What the runner does, step by step
 
 1. **Preflight.** Tart and the golden image exist. **Stale `batty-uitest-<run-id>` clones

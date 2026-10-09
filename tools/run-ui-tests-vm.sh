@@ -74,6 +74,8 @@
 #   tools/run-ui-tests-vm.sh BattyUITests/TabRenameTests   # one class
 #   tools/run-ui-tests-vm.sh BattyUITests/TabRenameTests/testRenameActiveTabUpdatesChipTitle
 #
+#   BATTY_UI_KEEP_RECORDINGS=1 tools/run-ui-tests-vm.sh ...   # keep recordings of passing tests (#0448)
+#
 # Run it in the foreground of a shell: a dropped session costs a clone,
 # not a work session.
 
@@ -366,6 +368,23 @@ tart exec "$CLONE" /bin/zsh -lc "
   print -r -- '#include \"Beta.xcconfig\"' > $GUEST_BATTY/Configuration/Active.xcconfig
 "
 
+# XCTest records every UI test but stores the recording with the scheme's
+# default attachment lifetime, deleteOnSuccess, so a passing test leaves none
+# (#0448). BATTY_UI_KEEP_RECORDINGS=1 sets both lifetimes to keepAlways on the
+# guest's own copy of the scheme -- the tracked scheme is never touched, and a
+# run without the switch is unchanged. Bundles grow to hundreds of MB; see
+# pull_results for the matching bound.
+KEEP_RECORDINGS=0
+if [[ "${BATTY_UI_KEEP_RECORDINGS:-}" == "1" ]]; then
+  KEEP_RECORDINGS=1
+  log "BATTY_UI_KEEP_RECORDINGS=1: keeping screen recordings for passing tests too"
+  tart exec "$CLONE" /bin/zsh -lc "
+    f='$GUEST_BATTY/Batty.xcodeproj/xcshareddata/xcschemes/Batty UI Tests.xcscheme'
+    /usr/bin/sed -i '' 's|<TestAction\$|<TestAction systemAttachmentLifetime = \"keepAlways\" userAttachmentLifetime = \"keepAlways\"|' \"\$f\"
+    [[ \$(/usr/bin/grep -c 'systemAttachmentLifetime = \"keepAlways\"' \"\$f\") == 1 ]]" \
+    || { log "Could not enable recording retention in the guest scheme"; exit 1; }
+fi
+
 # Build the -only-testing args. Default to the UI target only, so this
 # run doesn't re-run BattyKitTests/BattyTests (already covered on the host
 # by ./build.sh unit). Positional args replace the default, matching
@@ -441,9 +460,11 @@ run_guest_step() {
 # or timeout still returns the earlier steps' output.
 pull_results() {
   local tarball="$EXPORT/pull.tar"
-  tart exec "$CLONE" /bin/zsh -lc "$GUEST_TMO 90 tar -C $GUEST_RESULTS -cf - ." > "$tarball" 2>/dev/null &
+  local guest_secs=90 host_secs=120
+  (( KEEP_RECORDINGS )) && { guest_secs=600; host_secs=660 }
+  tart exec "$CLONE" /bin/zsh -lc "$GUEST_TMO $guest_secs tar -C $GUEST_RESULTS -cf - ." > "$tarball" 2>/dev/null &
   TEST_PID=$!
-  wait_bounded 120 "result pull"
+  wait_bounded $host_secs "result pull"
   tar -x -C "$RESULTS_DIR" -f "$tarball" 2>/dev/null || log "Failed to pull some results back from the guest"
   rm -f "$tarball"
 }

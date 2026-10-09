@@ -25,6 +25,20 @@ It exports a clean `git archive HEAD` of both this repo and the sibling
 into a fresh temp directory — never the live working copy — so **commit
 first**. Results land in `build/ui-tests/<run-id>/`.
 
+### Keeping recordings (#0448)
+
+XCTest records every UI test but deletes the recording when the test passes.
+`BATTY_UI_KEEP_RECORDINGS=1 tools/run-ui-tests-vm.sh ...` keeps them for passing
+tests too (off by default; bundles grow to hundreds of MB), then
+`export-ui-recordings.sh` turns the bundle into clips:
+
+```bash
+tools/export-ui-recordings.sh build/ui-tests/<run-id>/UITests.xcresult [out-dir]
+# -> <Class>.<testMethod>.mp4 + <Class>.<testMethod>.poster.png per test
+```
+
+See `docs/ui-testing-vm.md` for how the switch works.
+
 ## memsample.sh
 
 A phys_footprint / graphics-region sampling harness for Batty (#0291, child
