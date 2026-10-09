@@ -1227,8 +1227,14 @@ Grounded directly in the code above, not aspirational:
   bypasses that shell (and any shell-integration behavior it provides,
   notably OSC 7 cwd reporting) entirely. `-c` panes also set libghostty's
   `wait-after-command = true` for that one pane, so the pane survives its
-  command exiting instead of closing immediately — output stays readable
-  until the pane is closed deliberately. This is scoped to `-c` panes
+  command exiting instead of closing immediately — output stays readable,
+  followed by libghostty's "Process exited. Press any key to close the
+  terminal." line, until a keypress closes the pane (libghostty's
+  close request reaches the same `onClose` path as any other tab close).
+  They also set `abnormal-command-exit-runtime = 0`: on macOS libghostty
+  treats any exit within 250 ms as a failed launch whatever its exit
+  code, which would show a red "Ghostty failed to launch the requested
+  command" banner for a command that succeeded (#0450). This is scoped to `-c` panes
   only: a pane with no command override keeps today's behavior (closes
   when its shell exits), so Cmd-D and every existing tab are unaffected.
   `wait-after-command` was verified against the pinned libghostty

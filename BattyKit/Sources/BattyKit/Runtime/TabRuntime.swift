@@ -270,6 +270,17 @@ public final class TabRuntime: Identifiable {
                 // misspelled key produces `diagnostics=1 "unknown field"`
                 // as the control proving that check is real.
                 builder.withCustom("wait-after-command", "true")
+                // libghostty's macOS exit heuristic (`Surface.childExited`,
+                // upstream c4e16970a, the pinned ref) treats any exit with
+                // runtime <= `abnormal-command-exit-runtime` (default 250)
+                // as a failed launch regardless of exit code, and renders
+                // the red "failed to launch the requested command" banner
+                // instead of the plain "Process exited." line. A short
+                // `-c` command is the normal case here, so `0` turns the
+                // check off (the `login` wrapper makes a 0 ms runtime
+                // implausible); `wait-after-command` still holds the pane
+                // open. Shell panes keep the default.
+                builder.withCustom("abnormal-command-exit-runtime", "0")
             } else if !shell.isEmpty {
                 builder.withCustom("command", shell)
             }

@@ -181,6 +181,30 @@ struct SplitTreeTargetedSplitTests {
         #expect(!newPane.tabs[0].terminal.renderedConfig.contains("wait-after-command"))
     }
 
+    /// A quick successful `-c` command must not trip libghostty's macOS
+    /// abnormal-exit banner (#0450); `renderedConfig` only carries lines the
+    /// real `ghostty_config_*` diagnostics accepted, so presence also proves
+    /// the key is valid in the pinned build.
+    @Test func commandOverridePaneDisablesTheAbnormalExitCheck() {
+        let tree = SplitTree()
+        let target = tree.focusedPane
+
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, command: "true", isSessionSelected: true)!
+        let config = newPane.tabs[0].terminal.renderedConfig
+
+        #expect(config.contains("abnormal-command-exit-runtime = 0"))
+        #expect(config.contains("wait-after-command = true"))
+    }
+
+    @Test func nilCommandPaneKeepsTheDefaultAbnormalExitCheck() {
+        let tree = SplitTree()
+        let target = tree.focusedPane
+
+        let newPane = tree.splitPane(id: target.id, direction: .horizontal, isSessionSelected: true)!
+
+        #expect(!newPane.tabs[0].terminal.renderedConfig.contains("abnormal-command-exit-runtime"))
+    }
+
     @Test func newPaneFromTargetedSplitInheritsSourceCWD() {
         let tree = SplitTree()
         let target = tree.focusedPane
