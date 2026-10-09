@@ -208,6 +208,23 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   and tab-close cleanup. Read this before touching `BellFeedStore`,
   `BellNotifier`, the bell routing in `AppStateStore`, or the
   Settings → Notifications pane.
+- [`foundation-models.md`](foundation-models.md) — how Batty uses Apple's
+  on-device Foundation Models: AI Session and Tab auto-naming (tool calling
+  with an allow-listed `readFile`) and bell summaries in the Bell Feed.
+  Covers the availability layers (SDK, macOS 26, model state, Settings
+  toggles), the deterministic chains the model only supplements, output
+  sanitization, the per-directory cache, discarding stale results, and the
+  rules for adding a new model-backed feature. Read this before touching
+  `SessionNameSuggester`, `NotificationSummarizer`, or the AI naming and
+  summarization code in `AppStateStore`.
+- [`code-signing.md`](code-signing.md) — how Batty is code signed: the
+  Developer ID Application identity (team `XV8BAAVZ6V`) that signs releases
+  versus the Apple Development / ad-hoc / unsigned paths each `build.sh`
+  action takes, what `release.sh` signs and in what order, hardened runtime
+  and entitlements, why the embedded `batty` and `BattyBroker` binaries are
+  signed explicitly, XPC peer validation, how to check a Mac's keys, and the
+  rules that keep the account's certificates from being revoked. Read this
+  before touching signing settings, release scripts, or entitlements.
 - [`source-layout.md`](source-layout.md) — how `BattyKit/Sources/BattyKit/`
   is grouped into folders by concern (`Views/`, `Runtime/`, `Model/`,
   `Commands/`, `Theme/`, `Settings/`, `Updater/`, `Util/`). Read this
