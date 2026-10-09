@@ -203,6 +203,8 @@ Release scripts live in `scripts/`:
 
 **Do not run `scripts/release.sh` autonomously.** Notarization submits the binary to Apple, which counts as modifying a shared system. Get explicit go-ahead each time.
 
+Distribution is dual (user directive, 2026-10-09): each release's notarized, stapled DMG is copied into `website/downloads/Batty-<X.Y.Z>.dmg` (the Sparkle appcast enclosure keeps pointing there) **and** attached as an asset to the GitHub release for its tag (`gh release create`/`upload`, see `scripts/RELEASE.md` step 10). Creating the GitHub release is a shared-state action: user-run or explicitly approved, never autonomous.
+
 ## Project layout
 
 ```

@@ -68,4 +68,5 @@ reflect the v1 feature set:
 - Smoke-test on a clean Mac.
 - Confirm every row above is green.
 - Tag and push.
+- Attach the DMG to the GitHub release for the tag (user-run; `scripts/RELEASE.md` step 10).
 - Write release notes citing closed issues for the milestone.

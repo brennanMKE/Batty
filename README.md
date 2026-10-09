@@ -1,6 +1,6 @@
 # Batty
 
-See **[Batty](https://batty.sstools.co)** website for the free download.
+See **[Batty](https://batty.sstools.co)** website for the free download. The same notarized DMG is also attached to each [GitHub release](https://github.com/brennanMKE/Batty/releases).
 
 Batty is a native macOS terminal multiplexer built on [libghostty](https://github.com/ghostty-org/ghostty). Sessions in a sidebar, splits and tabs, a bell-driven notification feed, and Ghostty-quality rendering — without tmux's complexity.
 

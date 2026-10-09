@@ -19,6 +19,10 @@
            length="..." attributes. Paste those values into the
            __EDDSA_SIGNATURE__ and __LENGTH_BYTES__ placeholders below.
         4. Manually upload website/ to batty.sstools.co.
+        5. Also attach the same DMG to the GitHub release for the tag
+           as Batty-<X.Y.Z>.dmg (user-run: gh release create/upload,
+           see scripts/RELEASE.md step 10). The enclosure URL below
+           stays on the website copy.
 
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->

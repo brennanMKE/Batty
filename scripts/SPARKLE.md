@@ -104,6 +104,11 @@ Push the updated `appcast.xml` to your hosting destination. Sparkle clients
 poll the feed and prompt the user on next launch (or via "Check for
 Updates…" from the app menu).
 
+The appcast `<enclosure>` URL stays on the website copy
+(`https://batty.sstools.co/downloads/Batty-<X.Y.Z>.dmg`). The same DMG is
+also attached to the GitHub release for the tag as a user-run step; see
+`scripts/RELEASE.md` step 10. Sparkle never reads the GitHub asset.
+
 ## Verification
 
 - With `SUFeedURL` empty: the menu item is disabled.

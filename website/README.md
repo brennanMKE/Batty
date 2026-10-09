@@ -5,7 +5,9 @@ Serves three purposes:
 
 1. Landing page (`index.html`) — what Batty is + download link.
 2. Sparkle appcast endpoint (`appcast.xml`).
-3. Direct DMG download (`downloads/`).
+3. Direct DMG download (`downloads/`). The same DMG is also attached to
+   the matching [GitHub release](https://github.com/brennanMKE/Batty/releases);
+   users can download from either location.
 
 No build step. Plain HTML + a single hand-written stylesheet.
 
@@ -50,6 +52,10 @@ When `scripts/release.sh` produces `dist/Batty-<sha>.dmg`:
    changes. Use the same id (`v0-1-0` etc.) the appcast's
    `<sparkle:releaseNotesLink>` references.
 4. Push to the hosting destination.
+5. Attach the same DMG, as `Batty-<version>.dmg`, to the GitHub release
+   for the tag (`gh release create` / `gh release upload`; user-run or
+   explicitly approved, see `scripts/RELEASE.md` step 10). The appcast
+   enclosure keeps pointing at the website URL, not the GitHub asset.
 
 Sparkle picks up the new entry on the next poll. Most users see the
 update prompt within a few hours.

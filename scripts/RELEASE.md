@@ -190,6 +190,62 @@ private key) in one pair of commands, non-destructively.
    - Note any known regressions or Gotchas the user should be aware of.
    - Mirror these notes in `website/changelog.html` so the public site
      and the git tag stay in sync.
+   - Save the same text as a Markdown file (for example
+     `dist/release-notes-<X.Y.Z>.md`) for the next step. Existing
+     GitHub releases use the version as the title (`1.1.0`) and the
+     user-visible notes as the body.
+
+10. **Publish the GitHub release and attach the DMG**
+
+    Every release's notarized, stapled DMG is attached as an asset to the
+    GitHub release for its tag (repo `brennanMKE/Batty`), in addition to
+    being served from `website/downloads/`. Users can download from
+    either place. The website copy and the Sparkle appcast are unchanged:
+    the appcast `<enclosure>` keeps pointing at the
+    `https://batty.sstools.co/downloads/Batty-<X.Y.Z>.dmg` URL.
+
+    **User-run step. Agents must not run this autonomously** (creating a
+    GitHub release is a shared-state action, like `git push` and
+    `release.sh`); run it yourself or give an agent explicit go-ahead.
+    The tag must already be pushed (step 8). Upload the website copy
+    (`website/downloads/Batty-<X.Y.Z>.dmg`, copied and renamed in step 6) so
+    both locations serve the identical file under the same name.
+    Don't upload `dist/Batty-<sha>.dmg` with a `#Batty-X.Y.Z.dmg` suffix:
+    in `gh` that suffix only sets the display label, and the asset keeps
+    the `Batty-<sha>.dmg` filename.
+
+    ```bash
+    gh release create vX.Y.Z website/downloads/Batty-X.Y.Z.dmg \
+        --repo brennanMKE/Batty \
+        --verify-tag \
+        --title "X.Y.Z" \
+        --notes-file dist/release-notes-X.Y.Z.md
+    ```
+
+    If the release for the tag already exists (for example it was
+    created earlier without the asset), attach the DMG instead:
+
+    ```bash
+    gh release upload vX.Y.Z website/downloads/Batty-X.Y.Z.dmg \
+        --repo brennanMKE/Batty
+    # add --clobber to replace an asset of the same name
+    ```
+
+    **Verify the uploaded asset.** Download it into a fresh empty
+    directory and check it matches the website copy and passes
+    Gatekeeper checks:
+
+    ```bash
+    mkdir -p /tmp/batty-asset-check && cd /tmp/batty-asset-check
+    gh release download vX.Y.Z --repo brennanMKE/Batty \
+        --pattern "Batty-X.Y.Z.dmg"
+    shasum -a 256 Batty-X.Y.Z.dmg \
+        "$OLDPWD/website/downloads/Batty-X.Y.Z.dmg"   # hashes must match
+    cd "$OLDPWD" && scripts/verify-dmg.sh /tmp/batty-asset-check/Batty-X.Y.Z.dmg
+    ```
+
+    Releases up to and including `v1.1.0` have notes only and no DMG
+    asset; attach theirs with `gh release upload` if wanted.
 
 ## Troubleshooting
 
