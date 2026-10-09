@@ -34,7 +34,7 @@ A standard macOS `NSWindow` rendered by SwiftUI.
 - **Multi-window:** planned, not yet implemented (#0234; design in `docs/multi-window-design.md`) — for users with multiple displays. Will open with Shift-Cmd-N (Cmd-N creates a new Session, per #0063). Each Window is independent — its own Sidebar list of Sessions, its own selected Session.
 - **Contains:** a collapsible left **Sidebar** plus a **Detail Area** that shows the currently selected Session.
 - **Lifecycle:** lives until the user closes it (Cmd-W on the window chrome) or quits the app. Closing the last window does not quit the app on macOS by default.
-- **Persisted:** no layout — no ordered Window list, no per-Window selected Session, no frame/zoom state is saved by Batty. Two things do survive relaunch, both riding the system's own scene-restoration machinery rather than anything Batty writes itself: the Sidebar's collapsed state, stored per Window via `@SceneStorage` (see Sidebar), and window frame, which macOS's own state restoration may restore. Both are subject to System Settings → Desktop & Dock → "Close windows when quitting an application"; Batty sets no frame autosave name or `isRestorable` of its own.
+- **Persisted:** no layout — no ordered Window list, no per-Window selected Session, no frame/zoom state is saved by Batty. Batty opts out of window restoration (`.restorationBehavior(.disabled)`, #0444), so every launch opens one Window with a fresh Session 1, and the Sidebar's collapsed state (per-Window `@SceneStorage`, see Sidebar) lasts only for the life of the process. Whether the Window's frame is remembered across relaunches is unverified: Batty sets no frame autosave name of its own, and AppKit's `NSWindow Frame ...` defaults entry may or may not be read back.
 
 ---
 
@@ -141,7 +141,7 @@ The left-side region of a Window that lists the Window's Sessions.
   - Header / toolbar with a "+" button to create a Session.
   - A `List` of Session rows, each showing title, total live Tab count, and an unseen-bell badge if any descendant has unseen bells.
   - Drag-to-reorder.
-- **Collapsibility:** the user can hide and show the Sidebar (View → Hide Sidebar, Cmd-B, or the standard NavigationSplitView toggle button in the toolbar). Collapsed state is persisted per Window.
+- **Collapsibility:** the user can hide and show the Sidebar (View → Hide Sidebar, Cmd-B, or the standard NavigationSplitView toggle button in the toolbar). Collapsed state is kept per Window for the life of the process (`@SceneStorage`); it is not restored across relaunches because window restoration is disabled (#0444).
 - **Selection:** exactly one Session is selected at a time per Window; clicking a row selects it.
 
 ---

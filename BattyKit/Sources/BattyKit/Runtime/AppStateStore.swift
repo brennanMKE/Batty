@@ -191,9 +191,30 @@ public final class AppStateStore {
         windows.first?.id ?? seedWindowID
     }
 
+    /// The `WindowID` a New Window action must present. While no content
+    /// window is registered it is `initialWindowID` — the runtime `init`
+    /// already seeded — so opening the first window reuses it instead of
+    /// creating a phantom second runtime (#0251). Once a content window is
+    /// registered every call gets a fresh id. `openWindow(value:)` focuses an
+    /// existing window presenting the same value rather than opening another,
+    /// so presenting `initialWindowID` for a window that already shows it focuses
+    /// that window. `LaunchWindowGuard` additionally checks for an existing
+    /// SwiftUI content window before calling this (#0444).
+    public func windowIDForNewWindow() -> WindowID {
+        registeredContentWindowCount == 0 ? initialWindowID : WindowID()
+    }
+
+    /// True when a launch has finished with no content window registered, so
+    /// the app must open one itself. AppKit can mark a launch as "state
+    /// restored" and make SwiftUI skip its default window, leaving a menu bar
+    /// and nothing else (#0444).
+    public var launchNeedsContentWindow: Bool {
+        registeredContentWindowCount == 0
+    }
+
     /// Returns the `WindowRuntime` for `windowID`, creating one lazily if
     /// it does not yet exist. This is the single path for launch, New Window,
-    /// and restoration — all converge here so a new scene and a new runtime
+    /// and restoration (currently disabled) — all converge here so a new scene and a new runtime
     /// are always created together. The initial window seeded in `init` uses
     /// a known `WindowID`; subsequent windows create a fresh runtime with a
     /// fresh `Session 1` in `$HOME` (no cross-window CWD inheritance).

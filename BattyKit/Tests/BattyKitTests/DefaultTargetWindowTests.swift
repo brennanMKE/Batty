@@ -32,6 +32,7 @@ struct DefaultTargetWindowTests {
     /// answer, so this can't pass by falling back to either.
     @Test func defaultTargetWindowPrefersMostRecentlyKeyOverNewestRegistered() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let c = store.windowRuntime(for: WindowID())
@@ -62,6 +63,7 @@ struct DefaultTargetWindowTests {
     /// the oldest.
     @Test func defaultTargetWindowFallsBackToNewestRegisteredWhenNoWindowHasEverBeenKey() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let c = store.windowRuntime(for: WindowID())
@@ -85,6 +87,7 @@ struct DefaultTargetWindowTests {
     /// resort `addSession` relies on directly.
     @Test func defaultTargetWindowFallsBackToWindowsFirstWhenNothingRegistered() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         _ = store.windowRuntime(for: WindowID())
 
@@ -102,6 +105,7 @@ struct DefaultTargetWindowTests {
     /// registration would return) and not to A (the oldest).
     @Test func closingTheMostRecentlyKeyWindowFallsBackToThePreviousMostRecentlyKeyWindow() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let c = store.windowRuntime(for: WindowID())
@@ -145,6 +149,7 @@ struct DefaultTargetWindowTests {
     /// session that keeps opening and closing windows.
     @Test func unregisterNSWindowAndRemoveWindowBothPruneTheTrackedOrder() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let c = store.windowRuntime(for: WindowID())
@@ -180,6 +185,7 @@ struct DefaultTargetWindowTests {
     /// happened to sort first for some unrelated reason.
     @Test func noteContentWindowBecameKeyMovesAnExistingIDToMostRecentRatherThanDuplicating() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let nsA = NSWindow()
@@ -213,6 +219,7 @@ struct DefaultTargetWindowTests {
     /// to A or B, making the distinction observable.
     @Test func didBecomeKeyNotificationUpdatesTheMostRecentlyKeyOrder() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let c = store.windowRuntime(for: WindowID())
@@ -244,6 +251,7 @@ struct DefaultTargetWindowTests {
     /// — `handleWindowDidBecomeKey` filters through `nsWindowMap`.
     @Test func didBecomeKeyNotificationForAnUnregisteredWindowIsIgnored() {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let nsA = NSWindow()
@@ -277,6 +285,7 @@ struct DefaultTargetWindowTests {
     /// fallback resolved whichever window was newest-by-construction).
     @Test func everyNoTargetHelperResolvesTheMostRecentlyKeyWindow() throws {
         let store = AppStateStore()
+        store.terminateHandler = {}
         let a = store.windows[0]
         let b = store.windowRuntime(for: WindowID())
         let c = store.windowRuntime(for: WindowID())

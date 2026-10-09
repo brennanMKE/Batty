@@ -38,7 +38,7 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   for multi-window support (#0234 umbrella): partitioned session ownership,
   one `TerminalHostView` per window, the `WindowGroup(for: WindowID.self)`
   scene, the `WindowRuntime` per-window state container, window-set
-  restoration, the Shift-Cmd-N New Window action, termination semantics,
+  restoration (now disabled, #0444), the Shift-Cmd-N New Window action, termination semantics,
   and the per-phase regression-risk register. Read this before working any
   of the #0235–#0240 children.
 - [`view-hierarchy.md`](view-hierarchy.md) — how the model hierarchy

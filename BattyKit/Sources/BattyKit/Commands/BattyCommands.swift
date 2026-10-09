@@ -10,7 +10,7 @@ private struct NewWindowButton: View {
 
     var body: some View {
         Button("New Window") {
-            openWindow(value: WindowID())
+            openWindow(value: AppStateStore.shared.windowIDForNewWindow())
         }
         .keyboardShortcut(shortcuts.keyboardShortcut(for: .newWindow))
     }
@@ -19,6 +19,15 @@ private struct NewWindowButton: View {
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BattyCommands")
 
 public struct BattyCommands: Commands {
+    /// The menu item's title as shown, in the running locale. Looked up when
+    /// the app opens its first window itself because SwiftUI did not (#0444);
+    /// the menu item is the only path to the scene's `openWindow` action while
+    /// no window exists. `NewWindowButton`'s `Button("New Window")` and
+    /// `ShortcutAction.newWindow.displayName` resolve the same "New Window"
+    /// key in the same bundle, so the title stays localizable and the match
+    /// stays language-independent.
+    public static var newWindowMenuTitle: String { ShortcutAction.newWindow.displayName }
+
     @AppStorage(ThemePreference.darkDefaultsKey) private var darkThemeName: String = ""
     @AppStorage(ThemePreference.lightDefaultsKey) private var lightThemeName: String = ""
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget

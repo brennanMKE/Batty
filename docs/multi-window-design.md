@@ -54,11 +54,11 @@ workspace persistence entirely** — `Workspace.swift`,
 `WorkspaceStore.swift` are gone, and #0172 records the decision as
 "never a planned feature and will never be one." Today nothing persists
 sessions, panes, or tabs: every launch constructs a fresh `Session 1` in
-`AppStateStore.init`, and window frame restoration is whatever the system
-provides for the `Window` scene. Phase 5 (`#0238`) is therefore scoped to
+`AppStateStore.init`, and window frame persistence is whatever the system
+provides for the window, which is unverified (§6). Phase 5 (`#0238`) was scoped to
 **window-set restoration** (how many windows, where, with what per-window UI
-state), not workspace files. There are no single-window workspace files in
-the field to migrate.
+state), not workspace files; that restoration is now switched off (§6, #0444).
+There are no single-window workspace files in the field to migrate.
 
 ---
 
@@ -174,8 +174,9 @@ stable per-window identity value; the singular `Window(id: "main")` scene
 Why `WindowGroup` and not programmatic `Window` scenes: SwiftUI `Window`
 scenes are static — one declared scene is one window, and N windows would
 need N declarations known at compile time. Only `WindowGroup` instantiates
-an open-ended number of windows, gives each its own scene storage, and
-participates in macOS state restoration for the whole set.
+an open-ended number of windows and gives each its own scene storage. It
+can also participate in macOS state restoration for the whole set, which
+Batty currently disables (§6).
 
 Binding scene identity to state:
 
@@ -185,19 +186,29 @@ Binding scene identity to state:
   another `openWindow(value:)` call site).
 - The presented value **is** the stable window ID: it links the scene to
   its `WindowRuntime` (§5), to the per-window host (§3), and to scene
-  restoration (§6). `AppStateStore.windowRuntime(for:)` creates the runtime
-  lazily on first sight of an ID, so launch, New Window, and restoration
-  all converge on one code path.
+  restoration (§6, currently disabled). `AppStateStore.windowRuntime(for:)`
+  creates the runtime lazily on first sight of an ID, so launch, New Window,
+  and (when enabled) restoration all converge on one code path.
 - The default (first-launch) window uses the `defaultValue:` variant so a
   cold start presents exactly one window — preserving today's behavior.
-- New Window mints a fresh `UUID` and calls `openWindow(value:)`; reusing
-  an existing value would surface the existing window instead (this is the
-  `WindowGroup(for:)` contract, and it is the behavior we want for
-  bell-feed jumps, §8).
+- New Window presents `AppStateStore.windowIDForNewWindow()` and calls
+  `openWindow(value:)`. While no content window is registered that is the
+  seeded `initialWindowID` (so the first window reuses the runtime `init`
+  created instead of a phantom one, #0251); otherwise it is a fresh
+  `WindowID()`. Reusing an existing value would surface the existing window
+  instead (the `WindowGroup(for:)` contract, and the behavior we want for
+  bell-feed jumps, §8). `LaunchWindowGuard` (#0444) performs the New Window
+  menu item at first run-loop quiescence if no content window exists, which
+  is the seeded-id case.
 - `Window("Batty Help", id: "help")` and the `Settings` scene are
   unchanged.
 
-Restoration of N windows on multiple displays: `WindowGroup` encodes each
+> **Currently disabled (#0444).** The content scene and Help window carry
+> `.restorationBehavior(.disabled)`, so none of the following happens today:
+> Batty does not restore its window set (user decision 2026-10-09).
+
+Restoration of N windows on multiple displays (design intent, not current
+behavior): `WindowGroup` encodes each
 window's presented value and frame into the system's window-restoration
 state. On relaunch macOS reopens every window, on its original display
 when that display is present, re-presenting each `WindowID` — which
@@ -278,15 +289,33 @@ layout-path hop, and never a `Task` "fix."
 
 ## 6. Persistence and restoration (`#0238` scope)
 
+> **Status: window-set restoration is switched off (#0444, user decision
+> 2026-10-09).** `Batty/BattyApp.swift` sets `.restorationBehavior(.disabled)`
+> on the content `WindowGroup` (and, as an unverified precaution, on the Help
+> window), so every launch opens exactly one window with a fresh `Session 1`.
+> This gives up the window count, display and `@SceneStorage`
+> restoration below. Whether the first window's frame is still remembered
+> (AppKit's own `NSWindow Frame ...` autosave) is unverified: the Tart guest
+> `defaults.txt` of run `20261009-144846-86583` has one stable key, which
+> suggests it may work, but no relaunch check was made. It is kept off so a restored window carrying a stale
+> `WindowID` cannot appear beside the runtime `AppStateStore.init` seeded; it
+> is not what fixes #0444 — `LaunchWindowGuard` is. `@SceneStorage` in
+> `RootWindowView` still works as per-window state for the life of the
+> process; it simply is not persisted across launches. The text below is the
+> original #0238 design and describes what restoration would do if re-enabled.
+> Whether it ever worked in the field is doubtful: the saved window identifier
+> embedded a per-launch address (see `issues/0444.md`).
+
 There is no workspace file (§1), and this design does not reintroduce one.
 "Persistence" for multi-window means restoring the **window set**, matching
 what a fresh launch would build per window:
 
-- **Window count, frames, displays, zoom:** delegated entirely to macOS
+- **Window count, frames, displays, zoom (design intent; restoration is off,
+  frame persistence unverified):** delegated entirely to macOS
   window restoration via the `WindowGroup` scene (§4). No Batty code stores
   frames. When a restored window's display is gone, macOS places the window
   on a remaining display — system behavior, deliberately not overridden.
-- **Per-window UI state that survives relaunch:** sidebar visibility moves
+- **Per-window UI state (would survive relaunch only if restoration were re-enabled):** sidebar visibility moves
   from the single `SidebarPreference.hiddenKey` default to per-scene
   storage (`@SceneStorage`, which the system saves and restores with the
   window). Migration: the first window seeds its initial value from the
@@ -299,8 +328,9 @@ what a fresh launch would build per window:
   may still auto-name it once a shell reports a known cwd). Sessions,
   panes, tabs, and shells are *not* restored; that is the standing #0172
   decision, unchanged by multi-window.
-- **Single-window users:** behavior is identical to today — one window
-  reopens at its old frame with a fresh `Session 1`. There are no
+- **Single-window users:** with restoration on, one window would reopen at
+  its old frame with a fresh `Session 1`; today it opens with a fresh
+  `Session 1` and an unverified frame. There are no
   single-window workspace files to migrate (none exist; #0172).
 
 Termination interplay: quitting saves nothing beyond what the system

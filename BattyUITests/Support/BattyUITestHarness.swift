@@ -12,6 +12,12 @@ nonisolated enum BattyUITestHarness {
     /// modal so without this the run hangs at teardown.
     static let testModeEnvVar = "BATTY_UI_TEST_MODE"
 
+    /// Launch arguments that keep AppKit's persisted window state from one
+    /// launch from reaching the next within a run (#0444). The product
+    /// guarantees a window regardless (`LaunchWindowGuard`); this stops the
+    /// suite from depending on that.
+    static let stateIsolationArguments = ["-ApplePersistenceIgnoreState", "YES"]
+
     /// Build a configured `XCUIApplication`, set the bypass flag, and
     /// launch it. Callers receive a launched app ready to assert against.
     @MainActor
@@ -19,6 +25,7 @@ nonisolated enum BattyUITestHarness {
         let app = XCUIApplication()
         app.launchEnvironment[testModeEnvVar] = "1"
         app.launchEnvironment["BATTY_UI_TEST_TEMP_HOME"] = NSTemporaryDirectory()
+        app.launchArguments += Self.stateIsolationArguments
         app.launch()
         return app
     }
@@ -36,6 +43,7 @@ nonisolated enum BattyUITestHarness {
         let app = XCUIApplication()
         app.launchEnvironment[testModeEnvVar] = "1"
         app.launchEnvironment["BATTY_UI_TEST_TEMP_HOME"] = NSTemporaryDirectory()
+        app.launchArguments += Self.stateIsolationArguments
         app.launchEnvironment["BATTY_UI_TEST_SCRIPT"] = json
         app.launch()
         return app

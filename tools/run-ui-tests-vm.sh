@@ -449,6 +449,15 @@ pull_results() {
 }
 
 set +e
+# SwiftPM's repository cache occasionally fails on a fresh clone (exit 74); one
+# bounded retry. A persistent failure still surfaces in the build step below.
+run_guest_step 700 "
+  cd $GUEST_BATTY
+  for attempt in 1 2; do
+    $GUEST_TMO 300 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' -resolvePackageDependencies && break
+    print -r -- \"package resolution attempt \$attempt failed\"
+  done
+  exit 0"
 run_guest_step 1500 "
   cd $GUEST_BATTY
   $GUEST_TMO 1200 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
@@ -493,6 +502,35 @@ run_guest_step 300 "
     > $GUEST_RESULTS/sandbox-denials.log 2>&1
   mkdir -p $GUEST_RESULTS/crashes
   cp ~/Library/Logs/DiagnosticReports/Batty*.ips $GUEST_RESULTS/crashes/ 2>/dev/null || true"
+
+# --- The app's carried-over guest state (#0444) -------------------------------
+# Everything the app persists in the guest survives from one launch to the
+# next for the whole run, so a launch-time failure cascade has to be read
+# against the state it inherited. Captured as it stands at the end of the run,
+# plus the app's own info-level log (the filtered log above keeps only
+# errors/faults). Small by design: defaults, the saved-state and Application
+# Support listings, the name cache, and the app subsystem's log.
+
+run_guest_step 200 "
+  mkdir -p $GUEST_RESULTS/guest-state
+  $GUEST_TMO 30 /usr/bin/defaults read co.sstools.Batty.beta > $GUEST_RESULTS/guest-state/defaults.txt 2>&1
+  ls -laR ~/Library/Saved\\ Application\\ State/co.sstools.Batty.beta.savedState > $GUEST_RESULTS/guest-state/saved-state-listing.txt 2>&1
+  ls -laR ~/Library/Application\\ Support/Batty\\ Beta > $GUEST_RESULTS/guest-state/app-support-listing.txt 2>&1
+  cp ~/Library/Application\\ Support/Batty\\ Beta/session-name-cache.json $GUEST_RESULTS/guest-state/ 2>/dev/null
+  $GUEST_TMO 120 /usr/bin/log show --last 30m --info --debug --style compact \
+    --predicate 'subsystem BEGINSWITH \"co.sstools.Batty\"' \
+    > $GUEST_RESULTS/guest-state/app-info.log 2>&1"
+
+# AppKit/SwiftUI's own decisions (state restoration, scene creation) log under
+# system subsystems, not the app's. That log is hundreds of thousands of lines,
+# so it is opt-in: BATTY_UI_FULL_APP_LOG=1 tools/run-ui-tests-vm.sh ... (#0444
+# found its root cause there).
+if [[ "${BATTY_UI_FULL_APP_LOG:-}" == "1" ]]; then
+  run_guest_step 400 "
+    $GUEST_TMO 300 /usr/bin/log show --last 30m --info --debug --style compact \
+      --predicate 'process == \"Batty Beta\"' \
+      > $GUEST_RESULTS/guest-state/app-all-processes.log 2>&1"
+fi
 
 # --- Results back -------------------------------------------------------------
 # $RESULTS_DIR already exists (created before boot, see "Clone and boot"

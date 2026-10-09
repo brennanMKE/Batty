@@ -14,9 +14,11 @@ public struct RootWindowView: View {
     @State private var store: AppStateStore
     private let windowID: WindowID
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    /// Per-window sidebar visibility, persisted by the system with the scene
-    /// (restored across relaunches for each window individually). Replaces the
-    /// single app-wide `SidebarPreference.hiddenKey` `@AppStorage` property.
+    /// Per-window sidebar visibility. Window restoration is disabled
+    /// (`.restorationBehavior(.disabled)` in `BattyApp`), so the value lives
+    /// for the life of the process and is not restored across relaunches.
+    /// Replaces the single app-wide `SidebarPreference.hiddenKey`
+    /// `@AppStorage` property.
     @SceneStorage(SidebarPreference.sceneStorageKey) private var sidebarHidden: Bool = false
     /// One-time migration flag: on first launch after the move to
     /// `@SceneStorage`, seed the per-window value from the legacy global key
@@ -272,7 +274,8 @@ public enum SidebarPreference {
     /// in `RootWindowView.applyLegacySidebarMigrationIfNeeded`.
     public static let hiddenKey = "co.sstools.Batty.sidebarHidden"
     /// `@SceneStorage` key for per-window sidebar visibility. Each window
-    /// independently stores and restores its sidebar state.
+    /// keeps its own value; with window restoration disabled it is not
+    /// carried across relaunches.
     public static let sceneStorageKey = "sidebarHidden"
     /// `@AppStorage` flag that marks the one-time migration from the legacy
     /// global key to per-window `@SceneStorage`.
@@ -285,8 +288,8 @@ public enum SidebarPreference {
         migrationDone: Bool,
         legacyValue: Bool
     ) -> Bool? {
-        // When migration is already done, the caller keeps whatever
-        // @SceneStorage restored — nil signals "no override needed."
+        // When migration is already done, the caller keeps its current
+        // @SceneStorage value — nil signals "no override needed."
         guard !migrationDone else { return nil }
         return legacyValue
     }

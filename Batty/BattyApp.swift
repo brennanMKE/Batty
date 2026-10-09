@@ -38,6 +38,15 @@ struct BattyApp: App {
         // internal SwiftUI actions and are unaffected by handlesExternalEvents
         // — only OS-delivered URL opens are suppressed. (#0251 second root cause)
         .handlesExternalEvents(matching: Set())
+        // Batty deliberately does not restore its window set (user decision
+        // 2026-10-09). That gives up #0238's window-count, display and
+        // @SceneStorage restoration; whether the first window's frame is still
+        // remembered by AppKit's own autosave is unverified. It is kept off so that a restored window
+        // carrying a stale WindowID cannot appear next to the runtime
+        // AppStateStore.init seeded, now that the saved identifier no longer
+        // changes every launch. It is NOT what fixes #0444: the missing launch
+        // window is guaranteed by LaunchWindowGuard.
+        .restorationBehavior(.disabled)
         .commandsRemoved()
         .commands {
             BattyCommands()
@@ -54,6 +63,9 @@ struct BattyApp: App {
         // stray window (content or Help) appears. Opening Help via the menu uses
         // the internal openWindow(id: "help") action, which is unaffected. (#0251)
         .handlesExternalEvents(matching: Set())
+        // Precaution, not verified to matter: keeps the Help window out of
+        // restored state for the same reason as the content scene above.
+        .restorationBehavior(.disabled)
 
         Settings {
             SettingsView()
@@ -84,6 +96,9 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         // is unregistered (AppStateStore.unregisterNSWindow →
         // terminateIfLastContentWindowGone). No app-level terminate hook here.
         xpcCoordinator.start()
+        LaunchWindowGuard.installAtFirstQuiescence {
+            LaunchWindowGuard.openContentWindowIfMissing(store: AppStateStore.shared)
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -151,7 +166,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
 /// NSEvent-monitor path (`BattyShortcuts`) can open new windows without an
 /// `@Environment` reference. Placed in the content scene's view tree so the
 /// action is always live while any content window exists.
-private struct OpenWindowHookInstaller: View {
+struct OpenWindowHookInstaller: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -159,7 +174,7 @@ private struct OpenWindowHookInstaller: View {
             .onAppear {
                 AppStateStore.shared.openWindowAction = {
                     logger.info("openWindowAction: opening new content window")
-                    openWindow(value: WindowID())
+                    openWindow(value: AppStateStore.shared.windowIDForNewWindow())
                 }
             }
     }

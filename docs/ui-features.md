@@ -444,8 +444,9 @@ approach.
 The Sidebar (the `NavigationSplitView` leading column) is collapsible. The
 default shortcut is `Cmd-B` (per `[0129]`); there is also a View menu entry
 and the standard `NavigationSplitView` chevron button in the toolbar. Collapsed
-state is persisted in `UserDefaults` (`SidebarPreference.hiddenKey`) and
-survives relaunches.
+state is per-window `@SceneStorage` (the legacy `SidebarPreference.hiddenKey`
+only seeds it once) and lasts for the life of the process; window restoration
+is disabled (#0444), so it does not survive relaunches.
 
 The `+` button for creating a new Session lives in the Sidebar header. Its
 visibility and hit-testability when the sidebar is collapsed must be explicitly
@@ -456,7 +457,7 @@ specified and tested — `[0065]` called this out as bug-prone.
 - `Cmd-B` must toggle the sidebar between collapsed and expanded states.
 - Toggling twice (collapse, expand) must return the sidebar to its prior width
   within a reasonable tolerance.
-- The sidebar's collapsed state must persist across relaunches.
+- The sidebar's collapsed state is per-window and in-process only; it is not restored across relaunches (window restoration is disabled, #0444).
 - The `session-sidebar.chevron` must remain at a consistent position across
   toggle cycles. A large positional shift is a visual regression.
 - Whether the `+` button is visible in the collapsed state is an explicit design

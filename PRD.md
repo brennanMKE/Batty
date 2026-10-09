@@ -91,7 +91,7 @@ Me, primarily. Generalizing: a senior developer on macOS who:
 | 14 | Close a tab with Cmd-W (and the pane collapses if it was the last tab) | Closing doesn't leave dead UI behind |
 | 15 | See a notification feed of every terminal bell | I notice when a background build finishes or a long task fails |
 | 16 | Click a notification to jump to the originating terminal | I don't waste time hunting for the right pane |
-| 17 | Quit and relaunch and have my full layout back | I don't lose context between sessions |
+| 17 | Quit and relaunch and have my full layout back | I don't lose context between sessions (not delivered: no layout is persisted, #0172, and window restoration is off, #0444) |
 | 18 | Drag a screenshot from Finder onto a terminal and have its path inserted | I can share files with Claude Code without typing paths |
 | 19 | Pick a theme from a menu | My terminal looks the way I like |
 | 20 | Copy/paste with Cmd-C / Cmd-V like every other Mac app | I don't need to learn special keys |
