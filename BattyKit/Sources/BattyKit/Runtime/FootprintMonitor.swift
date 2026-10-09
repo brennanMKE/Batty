@@ -89,13 +89,15 @@ public final class FootprintMonitor {
     /// callers that only need the byte count can ignore it.
     public var onWarn: ((UInt64, Int) -> Void)?
 
-    /// Where the soft limit comes from. Defaults to the real preference;
-    /// tests override this instead of touching `UserDefaults`, which keeps
-    /// `sampleOnce()` runnable in isolation without racing other tests that
-    /// read/write the same shared key (`UserDefaults.standard` is global
-    /// process state, and Swift Testing runs test functions concurrently by
-    /// default).
-    public var limitBytesProvider: () -> UInt64 = { SettingsPreference.resolvedFootprintSoftLimitBytes() }
+    /// Where the soft limit comes from. Defaults to reading `init`'s
+    /// injected `defaults` (production: `.standard`, via `AppStateStore`'s
+    /// own defaulted `preferences` parameter, #0426); tests override this
+    /// closure outright instead of touching `UserDefaults` directly, which
+    /// keeps `sampleOnce()` runnable in isolation without racing other tests
+    /// that read/write the same shared key (`UserDefaults.standard` is
+    /// global process state, and Swift Testing runs test functions
+    /// concurrently by default).
+    public var limitBytesProvider: () -> UInt64
 
     /// Where the footprint sample comes from. Defaults to a real
     /// `task_info` read; tests override this to drive `sampleOnce()` with
@@ -108,7 +110,9 @@ public final class FootprintMonitor {
     private var warningState = FootprintWarningState()
     private var samplingTask: Task<Void, Never>?
 
-    public init() {}
+    public init(defaults: UserDefaults = .standard) {
+        limitBytesProvider = { SettingsPreference.resolvedFootprintSoftLimitBytes(defaults: defaults) }
+    }
 
     public func start() {
         guard samplingTask == nil else { return }

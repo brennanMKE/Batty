@@ -84,6 +84,26 @@ struct AppStateStoreBellDecisionHistoryTests {
         #expect(store.bellDecisionHistory.records[0].outcome == .suppressed(.nilNotifier))
     }
 
+    /// #0426: `makeBellDecisionRecord` must read `systemNotificationsEnabled`
+    /// from `store.preferences`, not `.standard` — non-default fixture
+    /// (`defaultSystemNotifications` is `true`) so a fallback to `.standard`
+    /// (empty in a test process) would read `true` and this would pass
+    /// vacuously.
+    @Test func capturesSystemNotificationsEnabledFromStorePreferencesNotStandard() {
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(false, forKey: SettingsPreference.systemNotificationsKey)
+        let notifier = SpyBellNotifier()
+        let store = AppStateStore(notifier: notifier, preferences: testDefaults.defaults)
+        let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
+
+        store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
+
+        #expect(store.bellDecisionHistory.records.count == 1)
+        #expect(store.bellDecisionHistory.records[0].systemNotificationsEnabled == false)
+        #expect(store.bellDecisionHistory.records[0].outcome == .suppressed(.systemNotificationsDisabled))
+    }
+
     /// Round-2 review's B2: the raw fields must be bounded at capture time,
     /// not just at format time, so the ring buffer can't retain unbounded
     /// text ×`BellDecisionHistory.capacity` for the process lifetime.

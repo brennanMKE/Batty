@@ -284,39 +284,24 @@ struct CrossWindowBehaviorTests {
 
     // MARK: - QuitConfirmation.windowNeedsConfirmClose (#0398)
 
-    /// Forces `confirmQuit` to its default-`true` value explicitly (rather
-    /// than assuming an untouched `UserDefaults`) so this doesn't depend on
-    /// test execution order against the shared `UserDefaults.standard`.
-    private func withConfirmQuitEnabled(_ body: () -> Void) {
-        let saved = UserDefaults.standard.object(forKey: SettingsPreference.confirmQuitKey)
-        UserDefaults.standard.set(true, forKey: SettingsPreference.confirmQuitKey)
-        defer {
-            if let saved {
-                UserDefaults.standard.set(saved, forKey: SettingsPreference.confirmQuitKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: SettingsPreference.confirmQuitKey)
-            }
-        }
-        body()
-    }
-
     /// Previously unreachable in any environment — the polyfill hard-codes
     /// `needsConfirmClose` to `false`. `TabRuntime.needsConfirmCloseOverride`
     /// (#0398) drives this true without a live surface. Non-default
     /// fixture: the tab starts idle (the type's default) and is flipped
     /// busy explicitly.
     @Test func windowNeedsConfirmCloseIsTrueWhenATerminalTabIsBusy() {
-        withConfirmQuitEnabled {
-            let store = AppStateStore()
-            let window = store.windows[0]
-            let pane = window.sessions[0].tree.allPanes[0]
-            #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == false,
-                    "precondition: idle window must not need confirmation")
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(true, forKey: SettingsPreference.confirmQuitKey)
+        let store = AppStateStore(preferences: testDefaults.defaults)
+        let window = store.windows[0]
+        let pane = window.sessions[0].tree.allPanes[0]
+        #expect(QuitConfirmation.windowNeedsConfirmClose(window: window, defaults: testDefaults.defaults) == false,
+                "precondition: idle window must not need confirmation")
 
-            pane.tabs[0].needsConfirmCloseOverride = true
+        pane.tabs[0].needsConfirmCloseOverride = true
 
-            #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == true)
-        }
+        #expect(QuitConfirmation.windowNeedsConfirmClose(window: window, defaults: testDefaults.defaults) == true)
     }
 
     @Test func windowNeedsConfirmCloseIgnoresABusyTabInANonTerminalPane() {
@@ -324,33 +309,28 @@ struct CrossWindowBehaviorTests {
         // non-terminal pane's placeholder TabRuntime has no live Terminal
         // Session behind it, so even a forced-busy override on it must not
         // trip the window-close confirmation.
-        withConfirmQuitEnabled {
-            let store = AppStateStore()
-            let window = store.windows[0]
-            let session = window.sessions[0]
-            let terminalPane = session.focusedPaneAnyKind
-            let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)!
-            nonTerminalPane.tabs[0].needsConfirmCloseOverride = true
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(true, forKey: SettingsPreference.confirmQuitKey)
+        let store = AppStateStore(preferences: testDefaults.defaults)
+        let window = store.windows[0]
+        let session = window.sessions[0]
+        let terminalPane = session.focusedPaneAnyKind
+        let nonTerminalPane = session.tree.splitPane(id: terminalPane.id, direction: .horizontal, kind: .systemMetrics, isSessionSelected: true)!
+        nonTerminalPane.tabs[0].needsConfirmCloseOverride = true
 
-            #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == false)
-        }
+        #expect(QuitConfirmation.windowNeedsConfirmClose(window: window, defaults: testDefaults.defaults) == false)
     }
 
     @Test func windowNeedsConfirmCloseIsFalseWhenConfirmQuitIsDisabled() {
-        let saved = UserDefaults.standard.object(forKey: SettingsPreference.confirmQuitKey)
-        UserDefaults.standard.set(false, forKey: SettingsPreference.confirmQuitKey)
-        defer {
-            if let saved {
-                UserDefaults.standard.set(saved, forKey: SettingsPreference.confirmQuitKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: SettingsPreference.confirmQuitKey)
-            }
-        }
-        let store = AppStateStore()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(false, forKey: SettingsPreference.confirmQuitKey)
+        let store = AppStateStore(preferences: testDefaults.defaults)
         let window = store.windows[0]
         window.sessions[0].tree.allPanes[0].tabs[0].needsConfirmCloseOverride = true
 
-        #expect(QuitConfirmation.windowNeedsConfirmClose(window: window) == false,
+        #expect(QuitConfirmation.windowNeedsConfirmClose(window: window, defaults: testDefaults.defaults) == false,
                 "the setting gate must be checked before the busy-tab sweep")
     }
 
@@ -660,8 +640,20 @@ struct CrossWindowBehaviorTests {
 
     // MARK: - Global appearance application across windows (#0248)
 
+    /// Non-default fixture (`feedback_nondefault_test_fixtures`): pins
+    /// cursor style/blink/font size on a private `TestDefaults` suite to
+    /// values that differ from `SettingsPreference`'s own defaults, then
+    /// asserts the rendered config carries those exact values — not just
+    /// "differs from `.default`", which would pass even if
+    /// `applyAppearanceToAllSurfaces` silently fell back to `.standard`
+    /// instead of reading `store.preferences` (#0426).
     @Test func applyAppearanceToAllSurfacesUpdatesEveryWindow() {
-        let store = AppStateStore()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set("bar", forKey: SettingsPreference.cursorStyleKey)
+        testDefaults.defaults.set(false, forKey: SettingsPreference.cursorBlinkKey)
+        testDefaults.defaults.set(20.0, forKey: SettingsPreference.fontSizeKey)
+        let store = AppStateStore(preferences: testDefaults.defaults)
         let w2 = store.windowRuntime(for: WindowID())
 
         func allTabs(_ w: WindowRuntime) -> [TabRuntime] {
@@ -679,11 +671,20 @@ struct CrossWindowBehaviorTests {
         // Apply settings-derived appearance to all surfaces.
         store.applyAppearanceToAllSurfaces()
 
-        let after = allTabs(w2)[0].terminal.controller.terminalConfiguration
+        let afterTab = allTabs(w2)[0]
+        let after = afterTab.terminal.controller.terminalConfiguration
         // The #0248 regression: the old loop used the `sessions` shim (→ windows[0])
         // so w2's tabs were never updated.  The fix iterates windows.flatMap.
         #expect(after != before,
                 "applyAppearanceToAllSurfaces must update surfaces in every window, not only windows[0] (#0248)")
+
+        let lines = afterTab.terminal.renderedConfig.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines.contains("cursor-style = bar"),
+                "must read cursor style from store.preferences, not .standard")
+        #expect(lines.contains("cursor-style-blink = false"),
+                "must read cursor blink from store.preferences, not .standard")
+        #expect(lines.contains("font-size = 20"),
+                "must read font size from store.preferences, not .standard")
     }
 
     /// #0392: `applyAppearanceToAllSurfaces` must emit the same

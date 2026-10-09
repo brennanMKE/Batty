@@ -182,6 +182,19 @@ public final class TabRuntime: Identifiable {
         Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride)
     }
 
+    /// Left on the zero-arg, `.standard`-only `resolved…()` readers (#0426):
+    /// unlike `AppStateStore`, `TabRuntime` has no owning store reference at
+    /// either call site — `init` runs before any `PaneRuntime`/`SessionRuntime`
+    /// exists to hold one, and `attachContext` only receives ids (see its doc
+    /// comment on why). Threading a `UserDefaults` through here would mean
+    /// widening `TabRuntime.init`, `PaneRuntime.init`, `SessionRuntime.init`,
+    /// and every `SplitTree` construction path. No unit test writes
+    /// `cursorStyleKey`/`cursorBlinkKey`/`fontSizeKey`/`defaultShellKey` on
+    /// `.standard`, so there is nothing here for a concurrent test run to
+    /// race — `SplitTreeTargetedSplitTests` does read `resolvedShell()` in an
+    /// assertion, but only to compare production's rendered `command = …`
+    /// line against a second same-process read of the same never-written
+    /// key, which stays self-consistent regardless of what that key holds.
     private static func applyShellAndAppearancePreferences(
         to terminal: TerminalViewState,
         tabID: UUID,

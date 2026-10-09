@@ -180,7 +180,7 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
     /// Returns `true` to allow the close; `false` to cancel it.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         let runtime = store.windowRuntime(for: windowID)
-        guard QuitConfirmation.windowNeedsConfirmClose(window: runtime) else {
+        guard QuitConfirmation.windowNeedsConfirmClose(window: runtime, defaults: store.preferences) else {
             return true
         }
         let busyCount = Self.busyTabCount(in: runtime)

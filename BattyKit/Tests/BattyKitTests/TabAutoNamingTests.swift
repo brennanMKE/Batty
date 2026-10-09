@@ -23,15 +23,22 @@ private final class RecordingTabSuggester: SessionNameSuggesting {
 }
 
 @MainActor
-struct TabAutoNamingTests {
+final class TabAutoNamingTests {
+    /// A `UserDefaults` suite private to one test invocation, isolated from
+    /// `.standard` — every concurrent `./build.sh unit` run on the machine
+    /// shares `.standard` through one `cfprefsd` (#0426).
+    private let testDefaults = TestDefaults()
+
+    @MainActor deinit { testDefaults.tearDown() }
 
     private func makeStore(suggester: SessionNameSuggesting?) -> (AppStateStore, URL) {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-tab-ai-naming-\(UUID().uuidString)")
             .appendingPathComponent("session-name-cache.json")
         let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero)
-        let store = AppStateStore(nameCache: cache)
+        let store = AppStateStore(nameCache: cache, preferences: testDefaults.defaults)
         store.nameSuggester = suggester
+        store.preferences.set(true, forKey: SettingsPreference.autoNameWithAIKey)
         return (store, cacheURL)
     }
 
@@ -45,13 +52,6 @@ struct TabAutoNamingTests {
         }
     }
 
-    private func withPreferences(_ values: [String: Bool], _ body: () -> Void) {
-        let defaults = UserDefaults.standard
-        for (key, value) in values { defaults.set(value, forKey: key) }
-        defer { for key in values.keys { defaults.removeObject(forKey: key) } }
-        body()
-    }
-
     // MARK: - Gating: AI setting
 
     @Test func aiNameAppliesWhenSettingOnAndSuggesterReturnsAName() async {
@@ -61,9 +61,7 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime()
         tab.terminal.configuration.workingDirectory = "/Users/test/meeting notes 2026"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
         await awaitSuggestion(store, tabID: tab.id)
 
         #expect(tab.aiSuggestedName == "Meeting Notes")
@@ -77,9 +75,8 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime()
         tab.terminal.configuration.workingDirectory = "/Users/test/no-project-here"
-        withPreferences([SettingsPreference.autoNameWithAIKey: false]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.preferences.set(false, forKey: SettingsPreference.autoNameWithAIKey)
+        store.updateTabAutoName(for: tab)
 
         #expect(tab.aiSuggestedName == nil)
         #expect(store.tabNameSuggestionTasks[tab.id] == nil)
@@ -92,9 +89,7 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime()
         tab.terminal.configuration.workingDirectory = "/Users/test/no-suggester"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
 
         #expect(tab.aiSuggestedName == nil)
         #expect(store.tabNameSuggestionTasks[tab.id] == nil)
@@ -109,9 +104,7 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime(titleOverride: "My Tab")
         tab.terminal.configuration.workingDirectory = "/Users/test/some-project"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
 
         #expect(tab.aiSuggestedName == nil)
         #expect(store.tabNameSuggestionTasks[tab.id] == nil)
@@ -125,9 +118,7 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime()
         tab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
         let inflight = store.tabNameSuggestionTasks[tab.id]
         #expect(inflight != nil)
 
@@ -145,9 +136,7 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime(titleOverride: "My Tab")
         tab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
         #expect(tab.aiSuggestedName == nil)
         #expect(suggester.requestedPaths.isEmpty)
 
@@ -155,9 +144,7 @@ struct TabAutoNamingTests {
         // callers immediately re-invoke updateTabAutoName (PaneView does this
         // from both the context-menu Reset Title action and an empty commit).
         tab.titleOverride = nil
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
         await awaitSuggestion(store, tabID: tab.id)
 
         #expect(tab.aiSuggestedName == "Cool Name")
@@ -172,9 +159,7 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime()
         tab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
         let inflight = store.tabNameSuggestionTasks[tab.id]
         #expect(inflight != nil)
 
@@ -196,9 +181,7 @@ struct TabAutoNamingTests {
         let session = store.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/shared-folder"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
-        }
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
         if let inflight = store.nameSuggestionTasks[session.id] {
             await inflight.task.value
         }
@@ -208,9 +191,7 @@ struct TabAutoNamingTests {
         // not the model again.
         let otherTab = TabRuntime()
         otherTab.terminal.configuration.workingDirectory = "/Users/test/shared-folder"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: otherTab)
-        }
+        store.updateTabAutoName(for: otherTab)
 
         #expect(otherTab.aiSuggestedName == "Cool Name")
         #expect(suggester.requestedPaths.count == 1)
@@ -224,10 +205,8 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime()
         tab.terminal.configuration.workingDirectory = "/Users/test/folder-a"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
+        store.updateTabAutoName(for: tab)
         await awaitSuggestion(store, tabID: tab.id)
 
         #expect(tab.aiSuggestedName == "Cool Name")
@@ -243,16 +222,12 @@ struct TabAutoNamingTests {
 
         let tab = TabRuntime()
         tab.terminal.configuration.workingDirectory = "/Users/test/untitled folder 3"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
         await awaitSuggestion(store, tabID: tab.id)
 
         #expect(tab.aiSuggestedName == nil)
 
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.updateTabAutoName(for: tab)
-        }
+        store.updateTabAutoName(for: tab)
         await awaitSuggestion(store, tabID: tab.id)
 
         #expect(suggester.requestedPaths.count == 1)
@@ -381,9 +356,7 @@ struct TabAutoNamingTests {
         tab.terminal.configuration.workingDirectory = "/Users/test/home"
         store.wireWorkingDirectoryReporting(for: tab)
 
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            tab.terminalDelegate.terminalDidChangeWorkingDirectory("/Users/test/meeting notes 2026")
-        }
+        tab.terminalDelegate.terminalDidChangeWorkingDirectory("/Users/test/meeting notes 2026")
         await awaitSuggestion(store, tabID: tab.id)
 
         #expect(suggester.requestedPaths == ["/Users/test/meeting notes 2026"])

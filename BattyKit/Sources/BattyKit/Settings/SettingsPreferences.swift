@@ -54,20 +54,32 @@ public enum SettingsPreference {
     }
 
     public static func resolvedFontSize() -> Float {
-        let stored = UserDefaults.standard.double(forKey: fontSizeKey)
+        resolvedFontSize(defaults: .standard)
+    }
+
+    static func resolvedFontSize(defaults: UserDefaults) -> Float {
+        let stored = defaults.double(forKey: fontSizeKey)
         return stored > 0 ? Float(stored) : Float(defaultFontSize)
     }
 
     public static func resolvedCursorStyle() -> String {
-        let stored = UserDefaults.standard.string(forKey: cursorStyleKey) ?? ""
+        resolvedCursorStyle(defaults: .standard)
+    }
+
+    static func resolvedCursorStyle(defaults: UserDefaults) -> String {
+        let stored = defaults.string(forKey: cursorStyleKey) ?? ""
         return stored.isEmpty ? defaultCursorStyle : stored
     }
 
     public static func resolvedCursorBlink() -> Bool {
-        if UserDefaults.standard.object(forKey: cursorBlinkKey) == nil {
+        resolvedCursorBlink(defaults: .standard)
+    }
+
+    static func resolvedCursorBlink(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: cursorBlinkKey) == nil {
             return defaultCursorBlink
         }
-        return UserDefaults.standard.bool(forKey: cursorBlinkKey)
+        return defaults.bool(forKey: cursorBlinkKey)
     }
 
     public static func resolvedBellSound() -> Bool {
@@ -78,52 +90,68 @@ public enum SettingsPreference {
     }
 
     public static func resolvedSystemNotifications() -> Bool {
-        if UserDefaults.standard.object(forKey: systemNotificationsKey) == nil {
-            return defaultSystemNotifications
-        }
-        return UserDefaults.standard.bool(forKey: systemNotificationsKey)
+        resolvedSystemNotifications(defaults: .standard)
     }
 
-    public static func resolvedPasteStrictness() -> PasteStrictness {
-        let raw = UserDefaults.standard.string(forKey: pasteStrictnessKey) ?? defaultPasteStrictness
+    static func resolvedSystemNotifications(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: systemNotificationsKey) == nil {
+            return defaultSystemNotifications
+        }
+        return defaults.bool(forKey: systemNotificationsKey)
+    }
+
+    static func resolvedPasteStrictness(defaults: UserDefaults) -> PasteStrictness {
+        let raw = defaults.string(forKey: pasteStrictnessKey) ?? defaultPasteStrictness
         return PasteStrictness(rawValue: raw) ?? .never
     }
 
-    public static func resolvedConfirmQuit() -> Bool {
-        if UserDefaults.standard.object(forKey: confirmQuitKey) == nil {
+    /// The only `resolvedConfirmQuit` — no `.standard`-only zero-arg version
+    /// exists (deleted, #0426: it had no caller). Production reaches this
+    /// through two call sites, both of which pass a store's `preferences`
+    /// (`.standard` unless a test injected something else):
+    /// `QuitConfirmation.shouldQuitOrPrompt(store:)` and
+    /// `QuitConfirmation.windowNeedsConfirmClose(window:defaults:)` (whose
+    /// only caller, `WindowDelegate` in `Views/RootWindowView.swift`, passes
+    /// the owning store's `preferences`).
+    static func resolvedConfirmQuit(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: confirmQuitKey) == nil {
             return defaultConfirmQuit
         }
-        return UserDefaults.standard.bool(forKey: confirmQuitKey)
+        return defaults.bool(forKey: confirmQuitKey)
     }
 
-    public static func resolvedAutoNameFromFiles() -> Bool {
-        if UserDefaults.standard.object(forKey: autoNameFromFilesKey) == nil {
+    static func resolvedAutoNameFromFiles(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: autoNameFromFilesKey) == nil {
             return defaultAutoNameFromFiles
         }
-        return UserDefaults.standard.bool(forKey: autoNameFromFilesKey)
+        return defaults.bool(forKey: autoNameFromFilesKey)
     }
 
-    public static func resolvedAutoNameWithAI() -> Bool {
-        if UserDefaults.standard.object(forKey: autoNameWithAIKey) == nil {
+    static func resolvedAutoNameWithAI(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: autoNameWithAIKey) == nil {
             return defaultAutoNameWithAI
         }
-        return UserDefaults.standard.bool(forKey: autoNameWithAIKey)
+        return defaults.bool(forKey: autoNameWithAIKey)
     }
 
-    public static func resolvedSummarizeNotificationsWithAI() -> Bool {
-        if UserDefaults.standard.object(forKey: summarizeNotificationsWithAIKey) == nil {
+    static func resolvedSummarizeNotificationsWithAI(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: summarizeNotificationsWithAIKey) == nil {
             return defaultSummarizeNotificationsWithAI
         }
-        return UserDefaults.standard.bool(forKey: summarizeNotificationsWithAIKey)
+        return defaults.bool(forKey: summarizeNotificationsWithAIKey)
     }
 
-    public static func resolvedFootprintSoftLimitGB() -> Double {
-        let stored = UserDefaults.standard.double(forKey: footprintSoftLimitGBKey)
+    static func resolvedFootprintSoftLimitGB(defaults: UserDefaults) -> Double {
+        let stored = defaults.double(forKey: footprintSoftLimitGBKey)
         return stored > 0 ? stored : defaultFootprintSoftLimitGB
     }
 
     public static func resolvedFootprintSoftLimitBytes() -> UInt64 {
-        UInt64((resolvedFootprintSoftLimitGB() * 1_073_741_824).rounded())
+        resolvedFootprintSoftLimitBytes(defaults: .standard)
+    }
+
+    static func resolvedFootprintSoftLimitBytes(defaults: UserDefaults) -> UInt64 {
+        UInt64((resolvedFootprintSoftLimitGB(defaults: defaults) * 1_073_741_824).rounded())
     }
 }
 
@@ -168,9 +196,9 @@ public enum CmdNumberTarget: String, CaseIterable, Sendable {
 
 extension AppStateStore {
     public func applyAppearanceToAllSurfaces() {
-        let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle()) ?? .block
-        let blink = SettingsPreference.resolvedCursorBlink()
-        let fontSize = SettingsPreference.resolvedFontSize()
+        let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle(defaults: preferences)) ?? .block
+        let blink = SettingsPreference.resolvedCursorBlink(defaults: preferences)
+        let fontSize = SettingsPreference.resolvedFontSize(defaults: preferences)
         let configuration = TerminalConfiguration { builder in
             builder.withFontSize(fontSize)
             builder.withCursorStyle(cursor)

@@ -227,8 +227,8 @@ struct FootprintMonitorTests {
 
     /// `limitBytesProvider` and `footprintBytesProvider` injection (rather
     /// than `UserDefaults` or the live process's real, constantly-if-slowly
-    /// changing footprint) keeps these self-contained and deterministic.
-    /// `UserDefaults.standard` is global process state, and Swift Testing
+    /// changing footprint) keeps these self-contained and deterministic. The
+    /// shared `.standard` domain is global process state, and Swift Testing
     /// runs test functions concurrently by default, so racing to set/remove
     /// the same preference key is flaky; the real footprint changing
     /// between two back-to-back `sampleOnce()` calls is exactly the kind of

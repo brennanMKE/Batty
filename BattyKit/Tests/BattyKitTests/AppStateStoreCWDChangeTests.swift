@@ -5,14 +5,23 @@ import Testing
 @testable import BattyKit
 
 @MainActor
-struct AppStateStoreCWDChangeTests {
+final class AppStateStoreCWDChangeTests {
+    /// A `UserDefaults` suite private to one test invocation, isolated from
+    /// `.standard` — every concurrent `./build.sh unit` run on the machine
+    /// shares `.standard` through one `cfprefsd` (#0426). These tests never
+    /// pin the naming toggles, so they rely on the untouched-suite default
+    /// matching `.standard`'s untouched default: both read the keys absent
+    /// and fall through to `true`.
+    private let testDefaults = TestDefaults()
+
+    @MainActor deinit { testDefaults.tearDown() }
 
     private func makeStore() -> (AppStateStore, URL) {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-cwd-change-\(UUID().uuidString)")
             .appendingPathComponent("session-name-cache.json")
         let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero)
-        let store = AppStateStore(nameCache: cache)
+        let store = AppStateStore(nameCache: cache, preferences: testDefaults.defaults)
         return (store, cacheURL)
     }
 

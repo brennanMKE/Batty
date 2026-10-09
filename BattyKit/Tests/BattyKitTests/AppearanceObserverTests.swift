@@ -13,18 +13,16 @@ import Testing
 /// this test proves the callback still reaches the store correctly and,
 /// just as important, would fail loudly (a trap, not a silent skip) if that
 /// assumption were ever wrong.
-// `.serialized` because this suite mutates two process-global values —
-// `NSApp.appearance` and three `UserDefaults.standard` keys — and Swift
-// Testing parallelises suites by default. No sibling suite reads
-// `NSApp.effectiveAppearance` today; this keeps that from becoming a
-// silent flake the day one does.
-//
-// `UserDefaults.standard` rather than an isolated suite (the convention in
-// `ThemePreferenceTests`) because the production path under test —
-// `applyGlobalThemeForCurrentAppearance` -> `ThemePreference.activeTheme(isDark:)`
-// — hardcodes `.standard`; the injectable overload is unreachable from
-// production. The test host is bare `xctest`, so this is the tool's
-// defaults domain, never the developer's installed Batty.
+// `.serialized` because this suite mutates the process-global
+// `NSApp.appearance`, and Swift Testing parallelises suites by default.
+// Every `AppStateStore` construction reads `NSApp.effectiveAppearance` via
+// `ThemePreference.activeTheme(isDark:defaults:)` to seed `themeChrome` —
+// regardless of which `preferences` it's given — so a sibling suite's own
+// `AppStateStore()` could observe this test's appearance flip mid-init if
+// the two ran concurrently. The theme keys this test pins live on a
+// private `TestDefaults` suite (#0426), which keeps this test's own key
+// reads/writes private, but that is a separate concern from the
+// `NSApp.appearance` race `.serialized` guards against.
 @Suite(.serialized)
 @MainActor
 struct AppearanceObserverTests {
@@ -37,20 +35,14 @@ struct AppearanceObserverTests {
         // force-unwraps a nil global.
         _ = NSApplication.shared
 
-        let defaults = UserDefaults.standard
-        let originalDark = defaults.string(forKey: ThemePreference.darkDefaultsKey)
-        let originalLight = defaults.string(forKey: ThemePreference.lightDefaultsKey)
-        let originalMigrated = defaults.object(forKey: ThemePreference.migrationDoneKey)
-        defer {
-            setOrRemove(originalDark, forKey: ThemePreference.darkDefaultsKey, in: defaults)
-            setOrRemove(originalLight, forKey: ThemePreference.lightDefaultsKey, in: defaults)
-            setOrRemove(originalMigrated, forKey: ThemePreference.migrationDoneKey, in: defaults)
-        }
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(ThemePreference.defaultLightThemeName, forKey: ThemePreference.lightDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
-        let store = AppStateStore()
+        let store = AppStateStore(preferences: defaults)
         let observer = AppearanceObserver(store: store)
 
         let originalAppearance = NSApp.appearance
@@ -61,7 +53,7 @@ struct AppearanceObserverTests {
 
         NSApp.appearance = NSAppearance(named: wasDark ? .aqua : .darkAqua)
 
-        let expectedTheme = ThemePreference.activeTheme(isDark: !wasDark)
+        let expectedTheme = ThemePreference.activeTheme(isDark: !wasDark, defaults: defaults)
         let after = store.themeChrome.palette
 
         // Distinct dark/light defaults guarantee `before != expected`, so
@@ -71,13 +63,5 @@ struct AppearanceObserverTests {
         #expect(after == ChromePalette(theme: expectedTheme))
 
         withExtendedLifetime(observer) {}
-    }
-
-    private func setOrRemove(_ value: Any?, forKey key: String, in defaults: UserDefaults) {
-        if let value {
-            defaults.set(value, forKey: key)
-        } else {
-            defaults.removeObject(forKey: key)
-        }
     }
 }

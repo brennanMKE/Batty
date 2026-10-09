@@ -19,11 +19,11 @@ import Testing
 /// through does.
 ///
 /// `PasteConfirmationNonTerminalPaneTests` below mutates real process-global
-/// state (`NSPasteboard.general`, `SettingsPreference`'s `UserDefaults` key)
-/// to reproduce #0332's silent-no-op bug end to end, so it lives in its own
-/// `.serialized` suite (the pattern `SettingsPreferenceFootprintTests` and
-/// `AppearanceObserverTests` already use for the same reason) and saves/
-/// restores both around itself.
+/// state (`NSPasteboard.general`) to reproduce #0332's silent-no-op bug end
+/// to end and restores it in a `defer`. The paste-strictness setting it
+/// needs goes through the test's own store's `preferences` — a private
+/// `UserDefaults` suite, not `.standard` (#0426) — so it needs no save/
+/// restore of its own.
 @MainActor
 struct PasteConfirmationTests {
 
@@ -46,7 +46,6 @@ struct PasteConfirmationTests {
 }
 
 @MainActor
-@Suite(.serialized)
 struct PasteConfirmationNonTerminalPaneTests {
 
     /// #0332: with a non-terminal pane focused, `PasteDispatcher
@@ -60,7 +59,10 @@ struct PasteConfirmationNonTerminalPaneTests {
     /// `AppStateStore.focusedTerminalTab`, the guard at the top of
     /// `handlePasteRequest` fails fast and no confirmation is ever posted.
     @Test func handlePasteRequestDoesNotPostAConfirmationWhenANonTerminalPaneIsFocused() {
-        let store = AppStateStore()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+
+        let store = AppStateStore(preferences: testDefaults.defaults)
         let session = store.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
         // `contentFactory: { _ in nil }` (#0313's seam) avoids starting
@@ -71,7 +73,6 @@ struct PasteConfirmationNonTerminalPaneTests {
         #expect(session.focusedPaneAnyKind.kind == .gitStatus, "test setup: the split must move focus to the non-terminal pane")
 
         let savedPasteboard = NSPasteboard.general.string(forType: .string)
-        let savedStrictness = UserDefaults.standard.string(forKey: SettingsPreference.pasteStrictnessKey)
         let savedForwardStandardPaste = PasteDispatcher.forwardStandardPaste
         defer {
             if let savedPasteboard {
@@ -80,14 +81,9 @@ struct PasteConfirmationNonTerminalPaneTests {
             } else {
                 NSPasteboard.general.clearContents()
             }
-            if let savedStrictness {
-                UserDefaults.standard.set(savedStrictness, forKey: SettingsPreference.pasteStrictnessKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: SettingsPreference.pasteStrictnessKey)
-            }
             PasteDispatcher.forwardStandardPaste = savedForwardStandardPaste
         }
-        UserDefaults.standard.set(PasteStrictness.alwaysOnMultiline.rawValue, forKey: SettingsPreference.pasteStrictnessKey)
+        testDefaults.defaults.set(PasteStrictness.alwaysOnMultiline.rawValue, forKey: SettingsPreference.pasteStrictnessKey)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("line one\nline two\n", forType: .string)
 

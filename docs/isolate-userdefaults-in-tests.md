@@ -56,14 +56,27 @@ Create `Tests/<TestTarget>/Support/TestDefaults.swift` (match the project's exis
 import Foundation
 
 /// A UserDefaults instance backed by a unique, disposable suite.
-/// Call `tearDown()` when the test finishes to delete the plist from disk.
+/// Call `tearDown()` when the test finishes to remove its on-disk state.
 final class TestDefaults {
     let suiteName: String
     let defaults: UserDefaults
 
+    /// One directory per test process, under the system temp directory —
+    /// never `~/Library/Preferences`. Shared by every `TestDefaults`
+    /// instance in this process.
+    private static let runDirectory: URL = {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("batty-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }()
+
     init(function: String = #function) {
         let safeName = function.filter { $0.isLetter || $0.isNumber }
-        suiteName = "tests.\(safeName).\(UUID().uuidString)"
+        suiteName = Self.runDirectory
+            .appendingPathComponent("tests.\(safeName).\(UUID().uuidString)")
+            .path
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             fatalError("Could not create UserDefaults suite \(suiteName)")
         }
@@ -72,9 +85,24 @@ final class TestDefaults {
 
     func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(atPath: suiteName + ".plist")
     }
 }
 ```
+
+The suite name must be an **absolute path under a per-run temp directory**,
+not a reverse-DNS-style string like `"tests.foo.<UUID>"`. That distinction
+was verified empirically, 20/20: with a reverse-DNS suite name, `cfprefsd`
+re-creates an empty plist under `~/Library/Preferences` for that suite
+within seconds of teardown, regardless of teardown ordering — the daemon has
+its own write-behind queue and reflushes a domain client-side APIs already
+asked it to forget, a race no ordering of `removePersistentDomain`/
+`synchronize`/direct-delete calls in this process can close. An absolute
+path under the temp directory doesn't have that problem: `cfprefsd` backs it
+with a plist at that exact path instead of under `~/Library/Preferences`,
+two instances created with the same path still share one backing store (so
+isolation still comes from the unique path, not from a fresh `UserDefaults`
+instance), and nothing leaks into `.standard`.
 
 Never use the app's bundle identifier or `NSGlobalDomain` as a suite name; `UserDefaults(suiteName:)` rejects them.
 
@@ -136,7 +164,15 @@ Remove any existing test code that clears keys on `UserDefaults.standard` in set
 - `grep -rn "UserDefaults.standard" <TestTarget>` returns nothing.
 - Run the full test suite with parallel execution enabled (`swift test --parallel`, or enable "Execute in parallel" in the scheme's test plan) at least three times. All runs pass.
 - Run tests in random order if the test plan supports it. All runs pass.
-- After a run, no `tests.*.plist` files remain in the test host's Preferences directory.
+- After a run, check both locations: every test's `tearDown()` removes its
+  own per-suite plist, so the per-run temp directory
+  (`NSTemporaryDirectory()/batty-tests/<run-uuid>/`) should be empty —
+  only the (now-empty) directory itself lingers, which the OS reclaims on
+  its own schedule; nothing here needs manual cleanup. What must **not**
+  happen is any new `tests.*` plist appearing under
+  `~/Library/Preferences` — count
+  `ls ~/Library/Preferences | grep -c '^tests\.'` before and after a run; the
+  count must not grow.
 
 ## Out of scope
 

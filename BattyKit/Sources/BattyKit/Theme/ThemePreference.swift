@@ -211,7 +211,7 @@ extension AppStateStore {
         let isDark = NSApp?.effectiveAppearance.isDark ?? true
         let globalKey = ThemePreference.defaultsKey(isDark: isDark)
         let themeName = session.localThemeName
-            ?? UserDefaults.standard.string(forKey: globalKey)
+            ?? preferences.string(forKey: globalKey)
         if let name = themeName, !name.isEmpty,
            let theme = BattyThemeCatalog.theme(named: name) {
             let source = session.localThemeName != nil ? "local" : "global(\(isDark ? "dark" : "light"))"
@@ -230,7 +230,7 @@ extension AppStateStore {
     public func applyGlobalThemeForCurrentAppearance() {
         let isDark = NSApp?.effectiveAppearance.isDark ?? true
         logger.info("applyGlobalThemeForCurrentAppearance: isDark=\(isDark, privacy: .public)")
-        if let theme = ThemePreference.activeTheme(isDark: isDark) {
+        if let theme = ThemePreference.activeTheme(isDark: isDark, defaults: preferences) {
             applyThemeToAllSurfaces(theme)
         } else {
             // No global theme stored for this appearance — reset chrome only

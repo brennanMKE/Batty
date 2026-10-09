@@ -18,8 +18,12 @@ public enum QuitConfirmation {
 
     public static func shouldQuitOrPrompt(store: AppStateStore?) -> Bool {
         if isInUITestMode { return true }
-        guard SettingsPreference.resolvedConfirmQuit() else { return true }
+        // `store` must be resolved before the setting can be read, since the
+        // setting comes from `store.preferences`, not `.standard` — a nil
+        // store falls through to `true` either way, matching the fallback
+        // below for a store with no open tabs.
         guard let store else { return true }
+        guard SettingsPreference.resolvedConfirmQuit(defaults: store.preferences) else { return true }
         let openTabs = openTerminalTabCount(store: store)
         guard openTabs > 0 else { return true }
 
@@ -56,9 +60,13 @@ public enum QuitConfirmation {
     /// Whether any tab across all windows of `store` has a running process
     /// that needs confirmation before close. Used by the window-close path
     /// to decide whether to prompt before tearing down a single window.
-    public static func windowNeedsConfirmClose(window: WindowRuntime) -> Bool {
+    /// `defaults` should be the owning `WindowDelegate`'s store's
+    /// `preferences` — `RootWindowView.swift` passes it explicitly rather
+    /// than through a zero-arg, `.standard`-only overload, so a test can't
+    /// reach this without deciding what source it means (#0426).
+    static func windowNeedsConfirmClose(window: WindowRuntime, defaults: UserDefaults) -> Bool {
         if isInUITestMode { return false }
-        guard SettingsPreference.resolvedConfirmQuit() else { return false }
+        guard SettingsPreference.resolvedConfirmQuit(defaults: defaults) else { return false }
         return window.sessions.contains { session in
             session.tree.allPanes.contains { pane in
                 pane.kind == .terminal && pane.tabs.contains { $0.needsConfirmClose }

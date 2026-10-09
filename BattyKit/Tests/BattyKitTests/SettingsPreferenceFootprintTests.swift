@@ -4,31 +4,27 @@ import Foundation
 import Testing
 @testable import BattyKit
 
-// UserDefaults.standard is global process state and Swift Testing runs test
-// functions concurrently by default; these tests share one preference key
-// with distinguishable-by-magnitude values, so .serialized keeps them from
-// racing each other.
-@Suite(.serialized)
 struct SettingsPreferenceFootprintTests {
 
     @Test func resolvedFootprintSoftLimitGBFallsBackToTheDefault() {
-        UserDefaults.standard.removeObject(forKey: SettingsPreference.footprintSoftLimitGBKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.footprintSoftLimitGBKey) }
-
-        #expect(SettingsPreference.resolvedFootprintSoftLimitGB() == SettingsPreference.defaultFootprintSoftLimitGB)
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        #expect(SettingsPreference.resolvedFootprintSoftLimitGB(defaults: testDefaults.defaults) == SettingsPreference.defaultFootprintSoftLimitGB)
     }
 
     @Test func resolvedFootprintSoftLimitGBHonorsAStoredValue() {
-        UserDefaults.standard.set(8.0, forKey: SettingsPreference.footprintSoftLimitGBKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.footprintSoftLimitGBKey) }
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(8.0, forKey: SettingsPreference.footprintSoftLimitGBKey)
 
-        #expect(SettingsPreference.resolvedFootprintSoftLimitGB() == 8.0)
+        #expect(SettingsPreference.resolvedFootprintSoftLimitGB(defaults: testDefaults.defaults) == 8.0)
     }
 
     @Test func resolvedFootprintSoftLimitBytesConvertsGBToBytes() {
-        UserDefaults.standard.set(2.0, forKey: SettingsPreference.footprintSoftLimitGBKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.footprintSoftLimitGBKey) }
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(2.0, forKey: SettingsPreference.footprintSoftLimitGBKey)
 
-        #expect(SettingsPreference.resolvedFootprintSoftLimitBytes() == 2 * 1_073_741_824)
+        #expect(SettingsPreference.resolvedFootprintSoftLimitBytes(defaults: testDefaults.defaults) == 2 * 1_073_741_824)
     }
 }

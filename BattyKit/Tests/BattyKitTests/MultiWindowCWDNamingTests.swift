@@ -7,28 +7,25 @@ import Testing
 /// Unit tests for #0248: CWD-driven auto-naming and action shims must target
 /// the correct window across all registered windows, not just windows[0].
 @MainActor
-struct MultiWindowCWDNamingTests {
+final class MultiWindowCWDNamingTests {
+    /// A `UserDefaults` suite private to one test invocation, isolated from
+    /// `.standard` — every concurrent `./build.sh unit` run on the machine
+    /// shares `.standard` through one `cfprefsd` (#0426).
+    private let testDefaults = TestDefaults()
+
+    @MainActor deinit { testDefaults.tearDown() }
 
     private func makeStore() -> (AppStateStore, URL) {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-mw-naming-\(UUID().uuidString)")
             .appendingPathComponent("session-name-cache.json")
         let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero)
-        let store = AppStateStore(nameCache: cache)
+        let store = AppStateStore(nameCache: cache, preferences: testDefaults.defaults)
         return (store, cacheURL)
     }
 
     private func cleanup(_ url: URL) {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-    }
-
-    /// Same seam as `AISessionNamingTests.withPreferences` — see its doc
-    /// comment for the full synchronous-scope and cross-process caveat.
-    private func withPreferences(_ values: [String: Bool], _ body: () -> Void) {
-        let defaults = UserDefaults.standard
-        for (key, value) in values { defaults.set(value, forKey: key) }
-        defer { for key in values.keys { defaults.removeObject(forKey: key) } }
-        body()
     }
 
     // MARK: - handleWorkingDirectoryChange across windows
@@ -208,7 +205,7 @@ struct MultiWindowCWDNamingTests {
             .appendingPathComponent("batty-mw-ai-\(UUID().uuidString)")
             .appendingPathComponent("session-name-cache.json")
         let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero)
-        let store = AppStateStore(nameCache: cache)
+        let store = AppStateStore(nameCache: cache, preferences: testDefaults.defaults)
         defer { try? FileManager.default.removeItem(at: cacheURL.deletingLastPathComponent()) }
 
         final class FixedSuggester: SessionNameSuggesting {
@@ -228,9 +225,8 @@ struct MultiWindowCWDNamingTests {
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         // A path that won't match any cache/rules entry → AI fallback fires.
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/unique-path-\(UUID())"
-        withPreferences([SettingsPreference.autoNameWithAIKey: true]) {
-            store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
-        }
+        store.preferences.set(true, forKey: SettingsPreference.autoNameWithAIKey)
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
 
         // Await the in-flight task.
         if let inflight = store.nameSuggestionTasks[session.id] {

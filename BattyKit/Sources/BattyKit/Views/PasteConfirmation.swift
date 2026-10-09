@@ -88,7 +88,7 @@ public enum PasteDispatcher {
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
             return
         }
-        let strictness = SettingsPreference.resolvedPasteStrictness()
+        let strictness = SettingsPreference.resolvedPasteStrictness(defaults: store.preferences)
         if strictness.shouldConfirm(text) {
             let pending = PendingPaste(text: text)
             NotificationCenter.default.post(

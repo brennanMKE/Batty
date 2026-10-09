@@ -126,27 +126,17 @@ struct BellFeedEntryCodableTests {
 
 // MARK: - Summarization wiring in AppStateStore
 
-// UserDefaults.standard is global process state and Swift Testing runs test
-// functions concurrently by default. `.serialized` only serializes tests
-// *within this suite* (#0383 round-2) — it does nothing about a concurrent
-// test in some other suite touching the same key. So every test anywhere in
-// the process that reads or writes
-// SettingsPreference.summarizeNotificationsWithAIKey must live in this one
-// serialized suite; `resolvedTreatsAbsentKeyAsTrue` /
-// `resolvedRespectsExplicitFalse` below were moved in from
-// SummarizeNotificationsSettingsTests for exactly this reason. Within the
-// suite, each test also keeps zero suspension points between its
-// `UserDefaults.standard.set`/`removeObject` and the synchronous
-// `recordDesktopNotification`/`recordBellTick` call that reads the toggle
-// (`scheduleSummarization`'s guard runs synchronously inside that call) —
-// matching the atomicity that held on the old pin, where there was no
-// await to interleave against in the first place.
 @MainActor
-@Suite(.serialized)
-struct AppStateStoreSummarizationTests {
+final class AppStateStoreSummarizationTests {
+    /// A `UserDefaults` suite private to one test invocation, isolated from
+    /// `.standard` — every concurrent `./build.sh unit` run on the machine
+    /// shares `.standard` through one `cfprefsd` (#0426).
+    private let testDefaults = TestDefaults()
+
+    @MainActor deinit { testDefaults.tearDown() }
 
     private func makeStore(summarizer: NotificationSummarizing?) -> AppStateStore {
-        let store = AppStateStore()
+        let store = AppStateStore(preferences: testDefaults.defaults)
         store.notificationSummarizer = summarizer
         return store
     }
@@ -195,15 +185,12 @@ struct AppStateStoreSummarizationTests {
     }
 
     @Test func resolvedTreatsAbsentKeyAsTrue() {
-        UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
-        #expect(SettingsPreference.resolvedSummarizeNotificationsWithAI() == true)
+        #expect(SettingsPreference.resolvedSummarizeNotificationsWithAI(defaults: testDefaults.defaults) == true)
     }
 
     @Test func resolvedRespectsExplicitFalse() {
-        UserDefaults.standard.set(false, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
-        #expect(SettingsPreference.resolvedSummarizeNotificationsWithAI() == false)
+        testDefaults.defaults.set(false, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
+        #expect(SettingsPreference.resolvedSummarizeNotificationsWithAI(defaults: testDefaults.defaults) == false)
     }
 
     @Test func summarizationSkippedWhenSummarizerIsNil() async {
@@ -230,12 +217,7 @@ struct AppStateStoreSummarizationTests {
         tab.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "passed")
         await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
-        // No suspension point between the toggle write and the synchronous
-        // recordDesktopNotification call below — scheduleSummarization's
-        // gate read must be atomic with this write, matching the old pin's
-        // behavior (there was no await to interleave against there either).
-        UserDefaults.standard.set(false, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
+        store.preferences.set(false, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         store.recordDesktopNotification(forTabID: tab.id)
         let entryID = store.bellFeed.entries.first!.id
 
@@ -257,8 +239,7 @@ struct AppStateStoreSummarizationTests {
         tab.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "passed")
         await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
-        UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
+        store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         store.recordDesktopNotification(forTabID: tab.id)
         let entryID = store.bellFeed.entries.first!.id
 
@@ -283,8 +264,7 @@ struct AppStateStoreSummarizationTests {
         tab.terminal.terminalDidRequestDesktopNotification(title: "Bell", body: "")
         await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
-        UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
+        store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         store.recordDesktopNotification(forTabID: tab.id)
         let entryID = store.bellFeed.entries.first!.id
 
@@ -309,8 +289,7 @@ struct AppStateStoreSummarizationTests {
         tab.terminal.terminalDidRequestDesktopNotification(title: "Junk", body: "response")
         await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
-        UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
+        store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         store.recordDesktopNotification(forTabID: tab.id)
         let entryID = store.bellFeed.entries.first!.id
 
@@ -336,7 +315,7 @@ struct AppStateStoreSummarizationTests {
             }
         }
         let summarizer = MessageKeyedSummarizer()
-        let store = AppStateStore()
+        let store = AppStateStore(preferences: testDefaults.defaults)
         store.notificationSummarizer = summarizer
         store.selectedSessionID = nil
 
@@ -349,8 +328,7 @@ struct AppStateStoreSummarizationTests {
         tab0.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "ci-passed")
         await awaitTerminalStatePublish { tab0.terminal.lastDesktopNotificationAt != nil }
 
-        UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
+        store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         store.recordDesktopNotification(forTabID: tab0.id)
         let firstEntryID = store.bellFeed.entries.first!.id
 
@@ -387,8 +365,7 @@ struct AppStateStoreSummarizationTests {
         tab.terminal.terminalDidRingBell()
         await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
 
-        UserDefaults.standard.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        defer { UserDefaults.standard.removeObject(forKey: SettingsPreference.summarizeNotificationsWithAIKey) }
+        store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
         store.recordBellTick(forTabID: tab.id)
         let entryID = store.bellFeed.entries.first!.id
 

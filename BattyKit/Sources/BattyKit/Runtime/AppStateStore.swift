@@ -24,11 +24,11 @@ public final class AppStateStore {
     let bellDecisionHistory = BellDecisionHistory()
     public let nameCache: SessionNameCache
     public let themeChrome: ThemeChrome
-    /// Owns the footprint sampling timer (#0290). Constructed here but never
-    /// started by `init` — `start()` is production-only wiring
-    /// (`BattyAppDelegate`), so constructing an `AppStateStore` on its own
-    /// never spins up a background sampling loop.
-    @ObservationIgnored public let footprintMonitor = FootprintMonitor()
+    /// Owns the footprint sampling timer (#0290). Constructed in `init` from
+    /// this store's `preferences` — never started here, though: `start()` is
+    /// production-only wiring (`BattyAppDelegate`), so constructing an
+    /// `AppStateStore` on its own never spins up a background sampling loop.
+    @ObservationIgnored public let footprintMonitor: FootprintMonitor
     /// Set once, at construction. `AppStateStore.shared` is created on the
     /// first access early in app startup (`BattyApp`'s `WindowGroup`
     /// `defaultValue`), so this closely approximates process launch time —
@@ -56,6 +56,35 @@ public final class AppStateStore {
     /// AI notification summarizer (#0246). Nil disables summarization. The
     /// app delegate wires `FoundationModelsNotificationSummarizer.makeIfAvailable()`.
     @ObservationIgnored public var notificationSummarizer: NotificationSummarizing?
+    /// Where this store's settings-gated code paths read their toggles
+    /// from: session/tab auto-naming (`handleWorkingDirectoryChange`,
+    /// `updateTabAutoName`), notification summarization
+    /// (`scheduleSummarization`), the system-notifications gate recorded by
+    /// `makeBellDecisionRecord`, cursor/blink/font-size appearance applied by
+    /// `applyAppearanceToAllSurfaces`, the footprint soft limit `init` hands
+    /// to `footprintMonitor` (`FootprintMonitor(defaults:)`, read on each
+    /// sample via `resolvedFootprintSoftLimitBytes(defaults:)`), and the
+    /// theme resolution this `init` seeds `themeChrome` from
+    /// (`ThemePreference.activeTheme(isDark:defaults:)`) and that
+    /// `applyGlobalThemeForCurrentAppearance`/`applyActiveSessionTheme`
+    /// re-resolve on appearance/session changes.
+    /// `PasteDispatcher.handlePasteRequest` and `QuitConfirmation
+    /// .shouldQuitOrPrompt(store:)` (called from `Batty/BattyApp.swift`)
+    /// both take a store and read its `preferences` internally.
+    /// `QuitConfirmation.windowNeedsConfirmClose(window:defaults:)` instead
+    /// takes a raw `UserDefaults`; its only caller, `WindowDelegate` in
+    /// `Views/RootWindowView.swift`, passes the owning store's `preferences`.
+    /// This list is not guaranteed exhaustive against future additions.
+    ///
+    /// Defaults to `.standard` — an init parameter, not a settable property,
+    /// so nothing after construction can swap a store's preferences source
+    /// out from under the paths above. Production never passes anything
+    /// else. Unit tests that exercise a settings-gated path pass their own
+    /// `TestDefaults().defaults` (`Support/TestDefaults.swift`) instead,
+    /// since every concurrent `./build.sh unit` run on the machine shares
+    /// `.standard` through one `cfprefsd` (#0426).
+    @ObservationIgnored public let preferences: UserDefaults
+
     /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
     /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
     @ObservationIgnored private var summarizationTasksForTesting: [UUID: Task<Void, Never>] = [:]
@@ -921,12 +950,18 @@ public final class AppStateStore {
         sessions: [SessionRuntime] = [],
         bellFeed: BellFeedStore = BellFeedStore(),
         nameCache: SessionNameCache = SessionNameCache(),
-        notifier: BellNotifying? = nil
+        notifier: BellNotifying? = nil,
+        preferences: UserDefaults = .standard
     ) {
         self.bellFeed = bellFeed
         self.nameCache = nameCache
         self.notifier = notifier
-        self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme()))
+        self.preferences = preferences
+        self.footprintMonitor = FootprintMonitor(defaults: preferences)
+        self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme(
+            isDark: NSApp?.effectiveAppearance.isDark ?? true,
+            defaults: preferences
+        )))
         let window = WindowRuntime(
             sessions: sessions,
             bellFeed: bellFeed,
@@ -1902,7 +1937,7 @@ public final class AppStateStore {
                     sessionIndex: index,
                     cache: nameCache,
                     resolver: ProjectNameResolver.shared,
-                    nameFromFiles: SettingsPreference.resolvedAutoNameFromFiles()
+                    nameFromFiles: SettingsPreference.resolvedAutoNameFromFiles(defaults: preferences)
                 )
                 if Self.isDefaultSessionTitle(resolved) {
                     // Deterministic chain missed — AI fallback (#0231). A
@@ -1910,7 +1945,7 @@ public final class AppStateStore {
                     // an unknown path kicks off an async request. The settings
                     // toggle (#0233) gates the whole AI step, memo included —
                     // a memoized AI name is still automatic naming.
-                    if !SettingsPreference.resolvedAutoNameWithAI() {
+                    if !SettingsPreference.resolvedAutoNameWithAI(defaults: preferences) {
                         cancelNameSuggestion(forSessionID: session.id)
                     } else if let memoized = nameSuggestionMemo[cwd] {
                         cancelNameSuggestion(forSessionID: session.id)
@@ -2054,7 +2089,7 @@ public final class AppStateStore {
             cancelTabNameSuggestion(forTabID: tab.id)
             return
         }
-        guard SettingsPreference.resolvedAutoNameWithAI() else {
+        guard SettingsPreference.resolvedAutoNameWithAI(defaults: preferences) else {
             cancelTabNameSuggestion(forTabID: tab.id)
             return
         }
@@ -2220,7 +2255,7 @@ public final class AppStateStore {
     ) -> BellDecisionRecord {
         let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
         let battyActive = NSApplication.shared.isActive
-        let systemNotificationsEnabled = SettingsPreference.resolvedSystemNotifications()
+        let systemNotificationsEnabled = SettingsPreference.resolvedSystemNotifications(defaults: preferences)
         let notifierPresent = notifier != nil
         let sessionMuted = location.session.notificationsMuted
         // hasMessage reads the untruncated entry.message so an
@@ -2300,7 +2335,7 @@ public final class AppStateStore {
     /// about to add — it was just recorded into `bellFeed` by the caller.
     private func scheduleSummarization(for entry: BellFeedEntry, tabTitle: String, sessionTitle: String) {
         guard let summarizer = notificationSummarizer else { return }
-        guard SettingsPreference.resolvedSummarizeNotificationsWithAI() else { return }
+        guard SettingsPreference.resolvedSummarizeNotificationsWithAI(defaults: preferences) else { return }
         let entryID = entry.id
         let message = entry.message
         let tabTitleCopy = tabTitle

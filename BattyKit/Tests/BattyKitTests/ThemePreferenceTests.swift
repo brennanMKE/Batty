@@ -6,18 +6,6 @@ import Testing
 
 struct ThemePreferenceTests {
 
-    // MARK: - Helpers
-
-    /// Returns a fresh `UserDefaults` suite isolated from the host's standard
-    /// defaults so tests can't contaminate each other or the developer's prefs.
-    private func isolatedDefaults(name: String = #function) -> UserDefaults {
-        let suite = "co.sstools.BattyKitTests.ThemePreference.\(name)"
-        let d = UserDefaults(suiteName: suite)!
-        // Wipe any leftover state from a previous test run.
-        d.removePersistentDomain(forName: suite)
-        return d
-    }
-
     // MARK: - Key selection
 
     @Test func darkKeyDiffersFromLightKey() {
@@ -35,7 +23,9 @@ struct ThemePreferenceTests {
     // MARK: - Migration from legacy single key
 
     @Test func migrationPreservesLegacyValueInBothSlots() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         let legacyName = ThemePreference.defaultDarkThemeName
 
         // Plant a legacy value exactly as the old code would have.
@@ -53,7 +43,9 @@ struct ThemePreferenceTests {
     @Test func migrationDoesNotOverwriteExistingSlots() {
         // If the user somehow already had per-appearance prefs set (e.g.
         // downgrade + upgrade), the migration must not clobber them.
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(ThemePreference.defaultLightThemeName, forKey: ThemePreference.lightDefaultsKey)
         defaults.set("SomeOtherTheme", forKey: ThemePreference.legacyDefaultsKey)
@@ -66,7 +58,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func migrationRunsOnlyOnce() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set("ThemeA", forKey: ThemePreference.legacyDefaultsKey)
 
         ThemePreference.migrateAndSeedIfNeeded(into: defaults)
@@ -82,7 +76,9 @@ struct ThemePreferenceTests {
     // MARK: - Default seeding (fresh install)
 
     @Test func freshInstallSeedsDefaultDarkTheme() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
 
         ThemePreference.migrateAndSeedIfNeeded(into: defaults)
 
@@ -90,7 +86,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func freshInstallSeedsDefaultLightTheme() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
 
         ThemePreference.migrateAndSeedIfNeeded(into: defaults)
 
@@ -129,7 +127,9 @@ struct ThemePreferenceTests {
     // MARK: - Per-appearance active-theme resolution
 
     @Test func activeThemeResolvesCorrectSlotForDark() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(ThemePreference.defaultLightThemeName, forKey: ThemePreference.lightDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
@@ -139,7 +139,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func activeThemeResolvesCorrectSlotForLight() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(ThemePreference.defaultLightThemeName, forKey: ThemePreference.lightDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
@@ -149,7 +151,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func activeThemeReturnsDifferentThemesForDarkAndLight() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(ThemePreference.defaultLightThemeName, forKey: ThemePreference.lightDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
@@ -160,7 +164,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func activeThemeReturnsNilForEmptySlot() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set("", forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
@@ -169,7 +175,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func activeThemeReturnsNilForUnknownThemeName() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set("NonExistentThemeName12345", forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
@@ -180,7 +188,9 @@ struct ThemePreferenceTests {
     // MARK: - Effective theme (session-local override → global fallback), #0363
 
     @Test func effectiveThemeUsesLocalOverrideWhenSet() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
@@ -193,7 +203,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func effectiveThemeFallsBackToGlobalWhenNoLocalOverride() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
@@ -202,7 +214,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func effectiveThemeFallsBackToGlobalWhenLocalOverrideIsEmptyString() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
@@ -211,7 +225,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func effectiveThemeFallsBackToGlobalWhenLocalOverrideUnknownToCatalog() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
@@ -224,7 +240,9 @@ struct ThemePreferenceTests {
     }
 
     @Test func effectiveThemeReturnsNilWhenNeitherLocalNorGlobalResolve() {
-        let defaults = isolatedDefaults()
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
         defaults.set("", forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
