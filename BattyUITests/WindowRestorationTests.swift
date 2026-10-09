@@ -48,12 +48,9 @@ nonisolated final class WindowRestorationTests: XCTestCase {
     /// Windows are told apart here by their own `identifier` instead,
     /// captured before the second window exists (so there is only one
     /// candidate and no ambiguity), and looked up per check with
-    /// `app.windows.matching(NSPredicate(format: "identifier == %@", ...))` —
-    /// an exact identifier match. A predicate rather than
-    /// `matching(identifier:)` because SwiftUI's auto-generated window
-    /// identifier exceeds the 128-character limit XCUITest enforces on
-    /// string-identifier queries (observed in VM run `20261006-003321-25688`);
-    /// the app assigns no identifier of its own to windows. The new-window
+    /// `BattyUITestHarness.window(withIdentifier:in:)` — an exact identifier
+    /// match (see its doc comment for why it is a predicate, not
+    /// `matching(identifier:)`). The new-window
     /// lookup uses plain Swift iteration over `allElementsBoundByIndex`, not
     /// a `.any` descendants query. `BattyUITestHarness.sidebar(in:)`'s own fallback path *does* use
     /// `.descendants(matching: .any)`, but as an exact identifier match, not
@@ -129,8 +126,8 @@ nonisolated final class WindowRestorationTests: XCTestCase {
             return
         }
 
-        let originalWindow = app.windows.matching(NSPredicate(format: "identifier == %@", originalWindowIdentifier)).firstMatch
-        let newWindow = app.windows.matching(NSPredicate(format: "identifier == %@", newWindowIdentifier)).firstMatch
+        let originalWindow = BattyUITestHarness.window(withIdentifier: originalWindowIdentifier, in: app)
+        let newWindow = BattyUITestHarness.window(withIdentifier: newWindowIdentifier, in: app)
 
         // Resolve both windows' sidebar elements now, before Cmd-B, while
         // both still exist in their normal expanded state (see class doc

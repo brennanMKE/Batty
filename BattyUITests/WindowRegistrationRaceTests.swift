@@ -72,8 +72,8 @@ nonisolated final class WindowRegistrationRaceTests: XCTestCase {
             return
         }
 
-        let originalWindow = app.windows.matching(identifier: originalWindowIdentifier).firstMatch
-        let newWindow = app.windows.matching(identifier: newWindowIdentifier).firstMatch
+        let originalWindow = BattyUITestHarness.window(withIdentifier: originalWindowIdentifier, in: app)
+        let newWindow = BattyUITestHarness.window(withIdentifier: newWindowIdentifier, in: app)
 
         // The only wait before Cmd-B: the new window's sidebar must exist.
         // No wait for boundBy:0 / key status, and no click — that gap is
@@ -114,7 +114,7 @@ nonisolated final class WindowRegistrationRaceTests: XCTestCase {
 
         let originalWindowIdentifier = app.windows.firstMatch.identifier
         XCTAssertFalse(originalWindowIdentifier.isEmpty, "Original window must have a stable identifier")
-        let originalWindow = app.windows.matching(identifier: originalWindowIdentifier).firstMatch
+        let originalWindow = BattyUITestHarness.window(withIdentifier: originalWindowIdentifier, in: app)
         let originalRowsBefore = sessionRowCount(in: originalWindow)
 
         app.typeKey("n", modifierFlags: [.command, .shift])
@@ -124,7 +124,7 @@ nonisolated final class WindowRegistrationRaceTests: XCTestCase {
             XCTFail("A window with an identifier different from the original must appear")
             return
         }
-        let newWindow = app.windows.matching(identifier: newWindowIdentifier).firstMatch
+        let newWindow = BattyUITestHarness.window(withIdentifier: newWindowIdentifier, in: app)
 
         let newWinSidebar = BattyUITestHarness.sidebar(in: newWindow)
         XCTAssertTrue(newWinSidebar.waitForExistence(timeout: 10),

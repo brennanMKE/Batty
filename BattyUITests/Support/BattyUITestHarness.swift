@@ -134,6 +134,18 @@ nonisolated enum BattyUITestHarness {
         }, timeout: timeout, description: "file at \(path)")
     }
 
+    /// Looks a window up by its exact AX `identifier`. Uses a predicate rather
+    /// than `matching(identifier:)` because XCUITest rejects string-identifier
+    /// queries longer than 128 characters with an `NSInternalInconsistencyException`,
+    /// and the app assigns no identifier of its own to content windows, so the
+    /// identifier is SwiftUI's mangled window-content type name (177 characters).
+    /// An `==` predicate on `identifier` is string-valued on both sides, unlike
+    /// the `MATCHES` SIGABRT case in `docs/ui-testing-vm.md` "Known limits".
+    @MainActor
+    static func window(withIdentifier identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.windows.matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
+    }
+
     @MainActor
     static func sidebar(in app: XCUIApplication) -> XCUIElement {
         let collection = app.collectionViews["session-sidebar"].firstMatch
@@ -144,8 +156,9 @@ nonisolated enum BattyUITestHarness {
     }
 
     /// Returns the sidebar element scoped to the given window — avoids the
-    /// `firstMatch` ambiguity when multiple windows are open. Pass
-    /// `app.windows.element(boundBy: N)` as `window`.
+    /// `firstMatch` ambiguity when multiple windows are open. Resolve `window`
+    /// with `window(withIdentifier:in:)`; a `boundBy:` index is not a stable
+    /// reference to a particular window across a reorder.
     @MainActor
     static func sidebar(in window: XCUIElement) -> XCUIElement {
         let collection = window.collectionViews["session-sidebar"].firstMatch

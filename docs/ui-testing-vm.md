@@ -507,6 +507,10 @@ script (e.g. `tart stop ... || true`).
   (polling every `WAIT_POLL_SECS`, up to `WAIT_FOR_SLOT_SECS`, both overridable — see
   "Preflight" above), so a caller no longer needs to poll-and-re-invoke by hand; it only needs
   to handle the case where no slot opens within the window.
+- XCUITest rejects `matching(identifier:)` strings longer than 128 characters
+  (`NSInternalInconsistencyException`). SwiftUI's auto-generated window identifier is 177
+  characters, so look windows up with `BattyUITestHarness.window(withIdentifier:in:)`
+  (#0418, #0445).
 - A run takes 6 CPUs and 12 GB of memory from the host while it runs.
 - SlidingTabs is exported at its sibling repo's current `HEAD`, not a pinned commit — see
   step 2 above.
