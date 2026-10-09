@@ -88,16 +88,14 @@ nonisolated final class WindowRegistrationRaceTests: XCTestCase {
         // hittability depends on cross-window covering, not on whether a
         // given window's own sidebar collapsed, so assert on !exists/exists
         // plus width rather than isHittable.
-        let newWinSidebarAfterToggle = BattyUITestHarness.sidebar(in: newWindow)
         XCTAssertTrue(
-            waitFor({ !newWinSidebarAfterToggle.exists || newWinSidebarAfterToggle.frame.width < expandedWidth / 2 },
+            waitFor({ BattyUITestHarness.isSidebarCollapsed(in: newWindow, expandedWidth: expandedWidth) },
                     timeout: 5),
             "New window's sidebar must collapse after an immediate, no-click Cmd-B"
         )
 
-        let origSidebar = BattyUITestHarness.sidebar(in: originalWindow)
         XCTAssertTrue(
-            waitFor({ origSidebar.exists && origSidebar.frame.width > expandedWidth / 2 },
+            waitFor({ BattyUITestHarness.isSidebarExpanded(in: originalWindow, expandedWidth: expandedWidth) },
                     timeout: 5),
             "Original window's sidebar must remain expanded — Cmd-B must not affect it, and must not be dropped for a window entirely"
         )

@@ -168,6 +168,36 @@ nonisolated enum BattyUITestHarness {
         return window.descendants(matching: .any).matching(identifier: "session-sidebar").firstMatch
     }
 
+    /// The Sidebar's width read from one snapshot, or nil when it is not in
+    /// the tree. `exists` followed by `frame` is two AX resolutions, and the
+    /// Sidebar can leave the tree between them; `XCUIElement.frame` then
+    /// records a test failure instead of returning a value (#0449).
+    /// `snapshot()` throws instead of recording, so a vanished Sidebar reads
+    /// as nil. Scope with an app or a `window(withIdentifier:in:)` element.
+    /// `exists` is checked first because a `snapshot()` with no match costs
+    /// XCUITest's no-match retries (~2-3 s); if the Sidebar vanishes between
+    /// the two reads the snapshot throws and the result is still nil.
+    @MainActor
+    static func sidebarWidth(in scope: XCUIElement) -> CGFloat? {
+        let query = scope.descendants(matching: .any).matching(identifier: "session-sidebar").firstMatch
+        guard query.exists else { return nil }
+        guard let snapshot = try? query.snapshot() else { return nil }
+        return snapshot.frame.width
+    }
+
+    /// Collapsed means gone from the tree or narrower than half of `expandedWidth`.
+    @MainActor
+    static func isSidebarCollapsed(in scope: XCUIElement, expandedWidth: CGFloat) -> Bool {
+        guard let width = sidebarWidth(in: scope) else { return true }
+        return width < expandedWidth / 2
+    }
+
+    @MainActor
+    static func isSidebarExpanded(in scope: XCUIElement, expandedWidth: CGFloat) -> Bool {
+        guard let width = sidebarWidth(in: scope) else { return false }
+        return width > expandedWidth / 2
+    }
+
     @MainActor
     static func sessionRow(named title: String, in app: XCUIApplication) -> XCUIElement {
         let identifier = "session-row.\(title)"

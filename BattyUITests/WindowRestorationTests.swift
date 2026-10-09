@@ -57,13 +57,14 @@ nonisolated final class WindowRestorationTests: XCTestCase {
     /// a `MATCHES` predicate — the SIGABRT gotcha in `docs/ui-testing-vm.md`'s
     /// "Known limits" is specifically about `MATCHES` evaluated against a
     /// non-string AX value, which does not apply to an exact-identifier
-    /// match. Each sidebar element is resolved once, before Cmd-B is
-    /// dispatched, while it still exists in its normal (expanded) state, so
-    /// `sidebar(in:)`'s existence-based branching picks the specific
-    /// `.outlines`/`.collectionViews` query rather than falling through to
-    /// that broader fallback; the same live element reference is then polled
-    /// after Cmd-B, since XCUIElement queries re-resolve on every property
-    /// access.
+    /// match. Before Cmd-B the new window's sidebar is resolved via
+    /// `sidebar(in:)` only to wait for it to exist. The post-Cmd-B checks do
+    /// not poll that element: each poll builds a fresh
+    /// `window.descendants(matching: .any).matching(identifier:
+    /// "session-sidebar").firstMatch` and reads its width from one snapshot
+    /// (`BattyUITestHarness.sidebarWidth(in:)`), because separate `exists` and
+    /// `frame` reads re-resolve the query twice and the sidebar can leave the
+    /// tree in between (#0449).
     ///
     /// `MultiWindowTests.testNewWindowHasIndependentSidebar`'s `boundBy:1`
     /// click has the identical misdirection — filed as **#0438**, not fixed
@@ -129,17 +130,13 @@ nonisolated final class WindowRestorationTests: XCTestCase {
         let originalWindow = BattyUITestHarness.window(withIdentifier: originalWindowIdentifier, in: app)
         let newWindow = BattyUITestHarness.window(withIdentifier: newWindowIdentifier, in: app)
 
-        // Resolve both windows' sidebar elements now, before Cmd-B, while
-        // both still exist in their normal expanded state (see class doc
-        // comment) — `newWinSidebar` is reused below as the post-toggle
-        // "must collapse" check, and `origSidebar` as the "must remain
-        // expanded" check, rather than re-resolving `sidebar(in:)` after the
-        // toggle when the new window's sidebar may already be gone from the
-        // AX tree.
+        // The post-toggle checks read each window's Sidebar through one
+        // snapshot per poll (`isSidebarCollapsed` / `isSidebarExpanded`), so a
+        // Sidebar that leaves the AX tree mid-poll reads as collapsed instead
+        // of failing the test.
         let newWinSidebar = BattyUITestHarness.sidebar(in: newWindow)
         XCTAssertTrue(newWinSidebar.waitForExistence(timeout: 10),
                       "New window sidebar must become accessible")
-        let origSidebar = BattyUITestHarness.sidebar(in: originalWindow)
 
         // Wait for the new window to actually become frontmost/key — do not
         // force it with a click (see class doc comment: a click reordered
@@ -163,14 +160,14 @@ nonisolated final class WindowRestorationTests: XCTestCase {
         // — either the collapsed NavigationSplitView column drops its
         // content out of the AX tree, or it shrinks; both are covered.
         XCTAssertTrue(
-            waitFor({ !newWinSidebar.exists || newWinSidebar.frame.width < expandedWidth / 2 },
+            waitFor({ BattyUITestHarness.isSidebarCollapsed(in: newWindow, expandedWidth: expandedWidth) },
                     timeout: 5),
             "Key window's sidebar must collapse after Cmd-B"
         )
 
         // Step 2: the original (never-toggled) window's sidebar must remain expanded.
         XCTAssertTrue(
-            waitFor({ origSidebar.exists && origSidebar.frame.width > expandedWidth / 2 },
+            waitFor({ BattyUITestHarness.isSidebarExpanded(in: originalWindow, expandedWidth: expandedWidth) },
                     timeout: 5),
             "Original window's sidebar must remain expanded after Cmd-B in the other window"
         )

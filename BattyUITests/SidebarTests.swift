@@ -46,14 +46,14 @@ nonisolated final class SidebarTests: XCTestCase {
         // Collapse.
         app.typeKey("b", modifierFlags: [.command])
         XCTAssertTrue(
-            waitFor({ !sidebar.isHittable || sidebar.frame.width < expandedWidth / 2 }, timeout: 5),
+            waitFor({ BattyUITestHarness.isSidebarCollapsed(in: app, expandedWidth: expandedWidth) }, timeout: 5),
             "Cmd-B must collapse the sidebar ([[0129]] regression)"
         )
 
         // Re-expand.
         app.typeKey("b", modifierFlags: [.command])
         XCTAssertTrue(
-            waitFor({ sidebar.isHittable && sidebar.frame.width > expandedWidth / 2 }, timeout: 5),
+            waitFor({ BattyUITestHarness.isSidebarExpanded(in: app, expandedWidth: expandedWidth) }, timeout: 5),
             "Second Cmd-B must re-expand the sidebar"
         )
     }
@@ -78,7 +78,7 @@ nonisolated final class SidebarTests: XCTestCase {
         secondaryRow.click()
 
         XCTAssertTrue(
-            waitFor({ sidebar.frame.width >= initialWidth - 10 }, timeout: 3),
+            waitFor({ (BattyUITestHarness.sidebarWidth(in: app) ?? 0) >= initialWidth - 10 }, timeout: 3),
             "Selecting a session row must not collapse the sidebar ([[0065]] regression)"
         )
     }
