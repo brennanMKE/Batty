@@ -87,6 +87,7 @@ public struct SessionSidebarView: View {
                         }
                     )
                     .accessibilityIdentifier("session-row.\(session.title)")
+                    .accessibilityValue(session.id == windowRuntime.selectedSessionID ? "selected" : "unselected")
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(
@@ -370,6 +371,7 @@ struct PaneRow: View {
             .help(pane.isHidden ? "Show pane" : "Hide pane")
             .disabled(!eyeEnabled)
             .accessibilityIdentifier("pane-eye-toggle.\(pane.id.uuidString)")
+            .accessibilityValue(pane.isHidden ? "hidden" : "visible")
         }
         .contentShape(Rectangle())
         .onTapGesture {

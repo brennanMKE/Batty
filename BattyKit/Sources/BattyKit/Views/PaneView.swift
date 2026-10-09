@@ -213,6 +213,7 @@ public struct PaneView: View {
                     )
                     .frame(width: chipMaxWidth)
                     .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
+                    .accessibilityValue(isActive ? "active" : "inactive")
                     .contextMenu { tabContextMenu(for: tab) }
                 }
                 .clipped()
