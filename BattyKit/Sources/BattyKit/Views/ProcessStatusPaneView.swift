@@ -70,26 +70,39 @@ struct ProcessStatusPaneView: View {
     // MARK: - Header (§3.1)
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(content.snapshot?.name ?? "No process selected")
-                        .font(.headline)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 8) {
+                headerIdentity
+                Spacer(minLength: 12)
+                chooseProcessMenu
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                headerIdentity
+                chooseProcessMenu
+            }
+        }
+    }
+
+    private var headerIdentity: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(content.snapshot?.name ?? "No process selected")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let pid = content.snapshot?.pid {
+                    Text(verbatim: "pid " + ProcessIdentifierFormatting.identifier(pid))
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    if let pid = content.snapshot?.pid {
-                        Text(verbatim: "pid " + ProcessIdentifierFormatting.identifier(pid))
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .contextMenu { headerContextMenu }
-                HStack(spacing: 8) {
-                    modeIndicator
-                    stateChip
+                        .fixedSize()
                 }
             }
-            Spacer(minLength: 12)
-            chooseProcessMenu
+            .contextMenu { headerContextMenu }
+            HStack(spacing: 8) {
+                modeIndicator
+                stateChip
+            }
         }
     }
 
@@ -124,11 +137,14 @@ struct ProcessStatusPaneView: View {
             Label("Pinned", systemImage: "pin.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
         case .followingTab(let tabID):
             Label("Following \(followedTabTitle(tabID))", systemImage: "link")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .truncationMode(.tail)
         case nil:
             EmptyView()
         }
@@ -146,24 +162,15 @@ struct ProcessStatusPaneView: View {
         if !content.hasNoSelection {
             switch content.runState {
             case .running:
-                chip("Running", color: .green)
+                StatusBadge(text: "Running", color: .green)
             case .exited:
-                chip("Exited", color: .secondary)
+                StatusBadge(text: "Exited", color: .secondary)
             case .permissionDenied:
-                chip("Permission Unavailable", color: .orange)
+                StatusBadge(text: "Permission Unavailable", color: .orange)
             case .unavailable:
-                chip("Unavailable", color: .red)
+                StatusBadge(text: "Unavailable", color: .red)
             }
         }
-    }
-
-    private func chip(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
     }
 
     // MARK: - "Choose Process…" (§2's retarget action)
@@ -231,13 +238,15 @@ struct ProcessStatusPaneView: View {
     // MARK: - Metrics (§3.2)
 
     private var metricsRow: some View {
-        HStack(spacing: 20) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.metricTileMinWidth), spacing: 12, alignment: .topLeading)], alignment: .leading, spacing: 8) {
             metricTile("CPU", value: content.snapshot?.cpuPercent.map { String(format: "%.0f%%", $0) } ?? "—")
             metricTile("Memory", value: content.snapshot?.physFootprintBytes.map(formattedBytes) ?? "—", detail: content.snapshot?.residentBytes.map { "Resident: \(formattedBytes($0))" })
             metricTile("Threads", value: content.snapshot?.threadCount.map(String.init) ?? "—")
             metricTile("Open Files", value: content.snapshot?.openFileCount.map(String.init) ?? "—")
         }
     }
+
+    private static let metricTileMinWidth: CGFloat = 88
 
     private var lastKnownMetricsRow: some View {
         metricsRow
@@ -249,9 +258,12 @@ struct ProcessStatusPaneView: View {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
             Text(value)
                 .font(.title3.monospacedDigit())
+                .lineLimit(1)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .help(detail ?? "")
     }
 

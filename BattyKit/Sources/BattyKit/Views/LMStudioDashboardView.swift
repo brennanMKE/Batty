@@ -148,11 +148,7 @@ struct LMStudioDashboardView: View {
     }
 
     private func statusPill(ps: LMStudioPsEntry) -> some View {
-        Text(ps.isGenerating ? "Generating" : "Idle")
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(ps.isGenerating ? Color.green.opacity(0.25) : Color.gray.opacity(0.2), in: Capsule())
+        StatusBadge(text: ps.isGenerating ? "Generating" : "Idle", color: ps.isGenerating ? .green : .secondary)
     }
 
     private func subtitle(for model: LMStudioLoadedModelSummary, ps: LMStudioPsEntry?) -> String {
