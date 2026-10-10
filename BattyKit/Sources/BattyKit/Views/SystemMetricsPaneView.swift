@@ -342,16 +342,21 @@ public struct SystemMetricsPaneView: View {
         }
     }
 
+    private static let pidColumnWidth: CGFloat = 48
+    private static let cpuColumnWidth: CGFloat = 44
+    private static let memoryColumnWidth: CGFloat = 62
+    private static let columnSpacing: CGFloat = 6
+
     private var processListHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Self.columnSpacing) {
             sortHeaderButton(.name, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-            sortHeaderButton(.pid, alignment: .trailing).frame(width: 60, alignment: .trailing)
-            sortHeaderButton(.cpu, alignment: .trailing).frame(width: 56, alignment: .trailing)
-            sortHeaderButton(.memory, alignment: .trailing).frame(width: 76, alignment: .trailing)
+            sortHeaderButton(.pid, alignment: .trailing).frame(width: Self.pidColumnWidth, alignment: .trailing)
+            sortHeaderButton(.cpu, alignment: .trailing).frame(width: Self.cpuColumnWidth, alignment: .trailing)
+            sortHeaderButton(.memory, alignment: .trailing).frame(width: Self.memoryColumnWidth, alignment: .trailing)
         }
         .font(.system(size: 9.5, weight: .semibold))
         .foregroundStyle(.tertiary)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(Color.primary.opacity(0.04))
     }
@@ -367,6 +372,7 @@ public struct SystemMetricsPaneView: View {
         } label: {
             HStack(spacing: 2) {
                 Text(field.rawValue.uppercased())
+                    .lineLimit(1)
                 if sortField == field {
                     Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
                         .font(.system(size: 7, weight: .bold))
@@ -388,7 +394,7 @@ public struct SystemMetricsPaneView: View {
 
     private func processRow(_ row: ProcessRow) -> some View {
         let denied = row.cpuPercent == nil && row.physFootprintBytes == nil
-        return HStack(spacing: 8) {
+        return HStack(spacing: Self.columnSpacing) {
             Text(row.name)
                 .font(.system(size: 11.5, design: .monospaced))
                 .lineLimit(1)
@@ -397,17 +403,17 @@ public struct SystemMetricsPaneView: View {
             Text(verbatim: String(row.pid))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
-                .frame(width: 60, alignment: .trailing)
+                .frame(width: Self.pidColumnWidth, alignment: .trailing)
             Text(row.cpuPercent.map { SystemMetricsFormatting.percent($0) } ?? "\u{2014}")
                 .monospacedDigit()
-                .frame(width: 56, alignment: .trailing)
+                .frame(width: Self.cpuColumnWidth, alignment: .trailing)
             Text(row.physFootprintBytes.map(SystemMetricsFormatting.bytes) ?? "\u{2014}")
                 .monospacedDigit()
-                .frame(width: 76, alignment: .trailing)
+                .frame(width: Self.memoryColumnWidth, alignment: .trailing)
         }
         .font(.system(size: 12))
         .foregroundStyle(denied ? .tertiary : .primary)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.visible)

@@ -312,6 +312,32 @@ nonisolated final class ViewGalleryTests: XCTestCase {
         }
     }
 
+    /// A linked worktree on a long branch with an upstream, 2 ahead and
+    /// 1 behind, plus a stash: every header badge at once.
+    @MainActor
+    func testGitStatusWorktreeWithStash() throws {
+        for appearance in Appearance.allCases {
+            let gallery = try launch(appearance)
+            defer { gallery.app.terminate() }
+
+            let worktree = scratch.appending(path: "gallery-worktree").path
+            let done = BattyUITestHarness.sentinelPath(named: "gallery-worktree-done")
+            let scriptPane = try runScript(Self.worktreeFixtureScript(root: scratch.path, worktree: worktree, done: done), named: "worktree-fixture.sh", source: gallery.source)
+            XCTAssertTrue(BattyUITestHarness.waitForFile(at: done, timeout: 90), "the worktree fixture script never finished")
+            BattyCLI.runExpectingSuccess(["pane", "close", "--pane", scriptPane.uuidString])
+
+            let view = try openView("git-status", extra: ["--path", worktree], contentIdentifier: "git-status.snapshot", in: gallery)
+            XCTAssertFalse(BattyScreen.element("git-status.not-a-repo", in: gallery.app).exists)
+            for text in ["Worktree", "1 stash"] {
+                let badge = gallery.app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch
+                XCTAssertTrue(badge.waitForExistence(timeout: 10), "no '\(text)' badge in the header")
+            }
+            let behind = gallery.app.descendants(matching: .any).matching(NSPredicate(format: "label == '1' OR value == '1'")).firstMatch
+            XCTAssertTrue(behind.waitForExistence(timeout: 10), "no behind count in the header")
+            try captureBothSizes("git-status.worktree", gallery, view: view, contentIdentifier: "git-status.snapshot")
+        }
+    }
+
     @MainActor
     func testGitStatusNotARepository() throws {
         for appearance in Appearance.allCases {
@@ -490,6 +516,43 @@ nonisolated final class ViewGalleryTests: XCTestCase {
         printf 'a\\nmain b\\n' > other.txt
         git commit -q -am 'Main edits'
         if git merge feature > /dev/null 2>&1; then touch \(q(done + ".merged-cleanly")); fi
+        touch \(q(done))
+        exec sleep 3600
+        """
+    }
+
+    private static func worktreeFixtureScript(root: String, worktree: String, done: String) -> String {
+        let q = BattyCLI.shellQuoted
+        let main = root + "/gallery-worktree-main"
+        let origin = root + "/gallery-worktree-origin.git"
+        return """
+        set -e
+        export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+        export GIT_AUTHOR_NAME='Ada Lovelace' GIT_AUTHOR_EMAIL=ada@example.com
+        export GIT_COMMITTER_NAME='Ada Lovelace' GIT_COMMITTER_EMAIL=ada@example.com
+        rm -rf \(q(main)) \(q(origin)) \(q(worktree))
+        git init -q --bare -b main \(q(origin))
+        git init -q -b main \(q(main))
+        cd \(q(main))
+        printf 'one\\n' > a.txt
+        git add -A
+        git commit -q -m 'Base'
+        git remote add origin \(q(origin))
+        git push -q -u origin main
+        printf 'two\\n' > a.txt
+        git stash -q
+        git worktree add -q -b feature/a-very-long-branch-name-for-narrow-panes \(q(worktree)) main
+        git commit -q --allow-empty -m 'Upstream moves on'
+        git push -q origin main
+        cd \(q(worktree))
+        git branch -q --set-upstream-to=origin/main
+        printf 'x\\n' > b.txt
+        git add -A
+        git commit -q -m 'Ahead one'
+        printf 'y\\n' > c.txt
+        git add -A
+        git commit -q -m 'Ahead two'
+        printf 'dirty\\n' > d.txt
         touch \(q(done))
         exec sleep 3600
         """

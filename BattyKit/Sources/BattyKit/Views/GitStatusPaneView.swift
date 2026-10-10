@@ -125,29 +125,102 @@ public struct GitStatusPaneView: View {
 
     @ViewBuilder
     private func headerRow(_ snapshot: GitStatusSnapshot) -> some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(snapshot.repoName)
-                        .font(.headline)
-                    branchLabel(snapshot)
-                    if snapshot.hasUpstream, snapshot.ahead > 0 || snapshot.behind > 0 {
-                        aheadBehindLabel(snapshot)
-                    }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                headerIdentity(snapshot)
+                Spacer(minLength: 8)
+                headerActions(showsChangeDirectoryTitle: true)
+            }
+            HStack(spacing: 8) {
+                headerIdentity(snapshot)
+                Spacer(minLength: 8)
+                headerActions(showsChangeDirectoryTitle: false)
+            }
+            stackedHeader(snapshot)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private func stackedHeader(_ snapshot: GitStatusSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(snapshot.repoName)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            HStack(spacing: 6) {
+                branchLabel(snapshot)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if snapshot.hasUpstream, snapshot.ahead > 0 || snapshot.behind > 0 {
+                    aheadBehindLabel(snapshot)
+                        .fixedSize()
+                }
+                Spacer(minLength: 4)
+                headerActions(showsChangeDirectoryTitle: false)
+            }
+            if snapshot.stashCount > 0 || snapshot.isWorktree {
+                HStack(spacing: 8) {
                     if snapshot.stashCount > 0 {
                         badge("\(snapshot.stashCount) stash\(snapshot.stashCount == 1 ? "" : "es")", systemImage: "tray.full")
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     if snapshot.isWorktree {
                         badge("Worktree", systemImage: "arrow.triangle.branch")
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                 }
-                if let parent = snapshot.submoduleParentName {
-                    Text("Submodule of \(parent)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            }
+            if let parent = snapshot.submoduleParentName {
+                Text("Submodule of \(parent)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+    }
+
+    private func headerIdentity(_ snapshot: GitStatusSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(snapshot.repoName)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .fixedSize()
+                branchLabel(snapshot)
+                    .lineLimit(1)
+                    .fixedSize()
+                if snapshot.hasUpstream, snapshot.ahead > 0 || snapshot.behind > 0 {
+                    aheadBehindLabel(snapshot)
+                        .fixedSize()
+                }
+                if snapshot.stashCount > 0 {
+                    badge("\(snapshot.stashCount) stash\(snapshot.stashCount == 1 ? "" : "es")", systemImage: "tray.full")
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                if snapshot.isWorktree {
+                    badge("Worktree", systemImage: "arrow.triangle.branch")
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             }
-            Spacer(minLength: 8)
+            if let parent = snapshot.submoduleParentName {
+                Text("Submodule of \(parent)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+    }
+
+    private func headerActions(showsChangeDirectoryTitle: Bool) -> some View {
+        HStack(spacing: 8) {
             if content.isRefreshing {
                 ProgressView()
                     .controlSize(.small)
@@ -159,11 +232,23 @@ public struct GitStatusPaneView: View {
             }
             .buttonStyle(.borderless)
             .help("Refresh now")
-            Button("Change Directory…") { presentChangeDirectoryPanel() }
+            if showsChangeDirectoryTitle {
+                Button("Change Directory…") { presentChangeDirectoryPanel() }
+                    .buttonStyle(.borderless)
+                    .lineLimit(1)
+                    .fixedSize()
+            } else {
+                Button {
+                    presentChangeDirectoryPanel()
+                } label: {
+                    Image(systemName: "folder")
+                }
                 .buttonStyle(.borderless)
+                .help("Change Directory…")
+                .accessibilityLabel("Change Directory…")
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .fixedSize()
     }
 
     @ViewBuilder

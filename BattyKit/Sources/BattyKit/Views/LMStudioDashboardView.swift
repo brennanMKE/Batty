@@ -52,21 +52,35 @@ struct LMStudioDashboardView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 8) {
-            connectionPill
-            Spacer(minLength: 8)
-            Toggle("Prompt Inspector", isOn: $content.promptInspectorEnabled)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .accessibilityIdentifier("lmstudio-prompt-inspector-toggle")
-            Button {
-                content.refreshNow()
-            } label: {
-                Image(systemName: "arrow.clockwise")
+        let toggle = Toggle("Prompt Inspector", isOn: $content.promptInspectorEnabled)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .lineLimit(1)
+            .fixedSize()
+            .accessibilityIdentifier("lmstudio-prompt-inspector-toggle")
+        let refresh = Button {
+            content.refreshNow()
+        } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.borderless)
+        .help("Refresh now")
+        .accessibilityIdentifier("lmstudio-refresh-button")
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                connectionPill
+                Spacer(minLength: 8)
+                toggle
+                refresh
             }
-            .buttonStyle(.borderless)
-            .help("Refresh now")
-            .accessibilityIdentifier("lmstudio-refresh-button")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    connectionPill
+                    Spacer(minLength: 8)
+                    refresh
+                }
+                toggle
+            }
         }
     }
 
@@ -82,7 +96,10 @@ struct LMStudioDashboardView: View {
         }()
         return HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
-            Text(text).font(.callout.weight(.medium))
+            Text(text)
+                .font(.callout.weight(.medium))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityIdentifier("lmstudio-connection-pill.\(content.connectionState.rawValue)")
     }

@@ -410,9 +410,15 @@ public struct PaneView: View {
                 }
                 paneEyeButton
             }
+            .frame(maxWidth: .infinity)
             .frame(height: Self.nonTerminalHeaderHeight)
 
+            // minWidth 0 keeps the content's intrinsic width out of the
+            // shell's own width, so over-wide content is clipped here
+            // instead of stretching the chrome row past the Pane.
             content()
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
+                .clipped()
         }
         .background(themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor))
         .contentShape(Rectangle())
