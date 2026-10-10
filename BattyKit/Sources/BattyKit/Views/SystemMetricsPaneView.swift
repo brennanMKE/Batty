@@ -75,31 +75,46 @@ public struct SystemMetricsPaneView: View {
     // MARK: - Status row
 
     private var statusRow: some View {
-        HStack(spacing: 10) {
-            thermalChip
-            pressureChip
-            Spacer(minLength: 8)
-            Text("Refreshing every 1s")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            Button {
-                Task { await content.refreshNow() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
+        let refresh = Button {
+            Task { await content.refreshNow() }
+        } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.borderless)
+        .help("Refresh now")
+        .accessibilityIdentifier("system-metrics-refresh-button")
+
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                thermalChip
+                pressureChip
+                Spacer(minLength: 8)
+                Text("Refreshing every 1s")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .fixedSize()
+                refresh
             }
-            .buttonStyle(.borderless)
-            .help("Refresh now")
-            .accessibilityIdentifier("system-metrics-refresh-button")
+            HStack(spacing: 8) {
+                thermalChip
+                pressureChip
+                Spacer(minLength: 8)
+                refresh
+            }
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
+                    thermalChip
+                    pressureChip
+                }
+                Spacer(minLength: 8)
+                refresh
+            }
         }
     }
 
     private var thermalChip: some View {
-        Label(thermalStateLabel, systemImage: "thermometer.medium")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(thermalStateColor))
+        StatusBadge(text: thermalStateLabel, systemImage: "thermometer.medium", color: thermalStateColor)
     }
 
     private var thermalStateLabel: String {
@@ -123,16 +138,7 @@ public struct SystemMetricsPaneView: View {
     }
 
     private var pressureChip: some View {
-        Text("Memory pressure: \(pressureLabel)")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(pressureColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .strokeBorder(pressureColor.opacity(0.4))
-                    .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
-            )
+        StatusBadge(text: "Memory pressure: \(pressureLabel)", color: pressureColor)
     }
 
     private var pressureLabel: String {
@@ -146,7 +152,7 @@ public struct SystemMetricsPaneView: View {
 
     private var pressureColor: Color {
         switch content.snapshot.memory.pressureLevel {
-        case .normal: return .secondary
+        case .normal: return .green
         case .warn: return .orange
         case .critical: return .red
         case .unknown: return .secondary
@@ -156,7 +162,7 @@ public struct SystemMetricsPaneView: View {
     // MARK: - Metrics grid
 
     private var metricsGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.tileMinWidth), spacing: 8, alignment: .top)], alignment: .leading, spacing: 8) {
             metricTile(
                 label: "CPU (aggregate)",
                 // Review round 1 (#0314): aggregatePercent is nil,
@@ -180,23 +186,29 @@ public struct SystemMetricsPaneView: View {
         }
     }
 
+    private static let tileMinWidth: CGFloat = 128
+
     private func metricTile(label: String, value: String, sub: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label.uppercased())
-                .font(.system(size: 9.5, weight: .semibold))
-                .foregroundStyle(.tertiary)
-            Text(value)
-                .font(.system(size: 15, weight: .semibold))
-                .monospacedDigit()
-            Text(sub)
-                .font(.system(size: 9.5))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(value)
+                .font(.system(.callout, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(sub)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
         .padding(9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.primary.opacity(0.08)))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary))
     }
 
     // MARK: - Per-core CPU bars
@@ -204,24 +216,32 @@ public struct SystemMetricsPaneView: View {
     private var coreBarsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("PER-CORE UTILIZATION")
-                .font(.system(size: 9.5, weight: .semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.tertiary)
             HStack(alignment: .bottom, spacing: 3) {
-                ForEach(Array((content.snapshot.cpu.perCorePercent ?? []).enumerated()), id: \.offset) { _, percent in
-                    coreBar(percent: percent)
+                if let perCore = content.snapshot.cpu.perCorePercent {
+                    ForEach(Array(perCore.enumerated()), id: \.offset) { _, percent in
+                        coreBar(percent: percent)
+                    }
+                } else {
+                    ForEach(0..<max(content.snapshot.cpu.coreCount, 1), id: \.self) { _ in
+                        coreBar(percent: nil)
+                    }
                 }
             }
             .frame(height: 34)
         }
     }
 
-    private func coreBar(percent: Double) -> some View {
+    private func coreBar(percent: Double?) -> some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(percent >= 80 ? Color.orange : Color.accentColor)
-                    .frame(height: max(1, proxy.size.height * CGFloat(min(max(percent, 0), 100)) / 100))
+                if let percent {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(percent >= 80 ? Color.orange : Color.accentColor)
+                        .frame(height: max(1, proxy.size.height * CGFloat(min(max(percent, 0), 100)) / 100))
+                }
             }
         }
         .background(RoundedRectangle(cornerRadius: 2).fill(Color.primary.opacity(0.06)))
@@ -247,13 +267,13 @@ public struct SystemMetricsPaneView: View {
             .clipShape(RoundedRectangle(cornerRadius: 5))
             .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.06)))
 
-            HStack(spacing: 14) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 136), spacing: 14, alignment: .leading)], alignment: .leading, spacing: 4) {
                 memoryLegendItem(color: .accentColor, label: "Active", bytes: memory.activeBytes)
                 memoryLegendItem(color: .purple, label: "Wired", bytes: memory.wiredBytes)
                 memoryLegendItem(color: .orange, label: "Compressed", bytes: memory.compressedBytes)
                 memoryLegendItem(color: .secondary.opacity(0.3), label: "Free", bytes: memory.freeBytes)
             }
-            .font(.system(size: 10.5))
+            .font(.caption2)
             .foregroundStyle(.secondary)
         }
     }
@@ -262,6 +282,8 @@ public struct SystemMetricsPaneView: View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8)
             Text("\(label) \(SystemMetricsFormatting.bytes(bytes))")
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
     }
 
@@ -372,7 +394,7 @@ public struct SystemMetricsPaneView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(row.pid)")
+            Text(verbatim: String(row.pid))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .frame(width: 60, alignment: .trailing)
