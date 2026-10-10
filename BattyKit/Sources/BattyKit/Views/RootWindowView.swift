@@ -41,6 +41,7 @@ public struct RootWindowView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             SessionDetailView(store: store, windowID: windowID)
+                .environment(\.paneWindowCorners, WindowCorners.detailArea(sidebarHidden: columnVisibility == .detailOnly))
         }
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)

@@ -2,17 +2,15 @@
 
 import SwiftUI
 
-/// Shared "this is the active item" outline. Originated as the Pane focus
-/// highlight (`#0052`) and extracted (`#0363`) so the Theme Selector's
-/// active-Theme card can reuse the exact same visual instead of a
-/// hand-copied approximation. Visual contract, unchanged from the original
-/// inline `PaneView` overlay: 2pt `strokeBorder`, 0.6 opacity when active,
-/// 0.12s ease-in-out fade keyed on `isActive`, hit-testing disabled so the
-/// outline never intercepts clicks/drags meant for the content beneath it.
-/// Corner radius and color are parameters so each caller can match its own
-/// clip shape and accent source (`PaneView` passes the active Theme's
-/// chrome accent; callers with no theming context can fall back to
-/// `Color.accentColor`).
+/// "This is the active item" outline for the Theme Selector's active-Theme
+/// card (`ThemeCard`). Originated as the Pane focus highlight (`#0052`) and
+/// was extracted (`#0363`) so the card could reuse the same visual; Pane
+/// outlines have since moved to `PaneAccentStroke` (`#0339`), so `ThemeCard`
+/// is the only caller. Visual contract: 2pt `strokeBorder`, 0.6 opacity when
+/// active, 0.12s ease-in-out fade keyed on `isActive`, hit-testing disabled
+/// so the outline never intercepts clicks/drags meant for the content
+/// beneath it. Corner radius and color are parameters so the caller can
+/// match its own clip shape and accent source.
 struct ActiveOutline: ViewModifier {
     let isActive: Bool
     var cornerRadius: CGFloat = 4

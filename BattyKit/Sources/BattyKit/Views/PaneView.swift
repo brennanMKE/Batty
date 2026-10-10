@@ -130,19 +130,22 @@ public struct PaneView: View {
         // a CALayer clip and does not introduce an off-screen buffer.
         .clipped()
         .overlay {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(accentColor, lineWidth: 2)
+            PaneAccentStroke(color: accentColor, lineWidth: 2)
                 .opacity((pane.activeTab?.isDragHovering ?? false) ? 1 : 0)
                 .animation(.easeOut(duration: 0.12), value: pane.activeTab?.isDragHovering ?? false)
                 .allowsHitTesting(false)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(accentColor, lineWidth: 2)
+            PaneAccentStroke(color: accentColor, lineWidth: 2)
                 .opacity(bellFlashOpacity)
                 .allowsHitTesting(false)
         }
-        .activeOutline(hasSiblingPanes && isPaneFocused, cornerRadius: 4, color: accentColor)
+        .overlay {
+            PaneAccentStroke(color: accentColor, lineWidth: 2)
+                .opacity(hasSiblingPanes && isPaneFocused ? 0.6 : 0)
+                .animation(.easeInOut(duration: 0.12), value: hasSiblingPanes && isPaneFocused)
+                .allowsHitTesting(false)
+        }
         .overlay {
             let state = PaneSwapDragState.shared
             if state.isDragging,
@@ -752,8 +755,7 @@ private struct PaneSwapDropZone: View {
                 return true
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(accentColor, lineWidth: 3)
+                PaneAccentStroke(color: accentColor, lineWidth: 3)
                     .opacity(isTargeted ? 1 : 0)
                     .animation(.easeOut(duration: 0.1), value: isTargeted)
                     .allowsHitTesting(false)

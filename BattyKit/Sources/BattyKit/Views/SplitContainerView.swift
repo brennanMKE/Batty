@@ -39,19 +39,21 @@ extension EnvironmentValues {
 
 public struct SplitContainerView: View {
     @Bindable public var tree: SplitTree
+    @Environment(\.paneWindowCorners) private var windowCorners
 
     public init(tree: SplitTree) {
         self.tree = tree
     }
 
     public var body: some View {
-        SplitNodeView(tree: tree, node: tree.root)
+        SplitNodeView(tree: tree, node: tree.root, windowCorners: windowCorners)
     }
 }
 
 private struct SplitNodeView: View {
     @Bindable var tree: SplitTree
     let node: SplitTreeNode
+    let windowCorners: WindowCorners
 
     var body: AnyView {
         switch node {
@@ -62,7 +64,7 @@ private struct SplitNodeView: View {
             if pane.isHidden {
                 return AnyView(Color.clear.frame(width: 0, height: 0))
             }
-            return AnyView(PaneView(pane: pane, tree: tree))
+            return AnyView(PaneView(pane: pane, tree: tree).environment(\.paneWindowCorners, windowCorners))
 
         case let .split(id, direction, ratio, left, right):
             // If one arm is entirely hidden, give the visible arm 100% with
@@ -70,10 +72,10 @@ private struct SplitNodeView: View {
             // when the pane is un-hidden (the next split re-equalizes only
             // visible panes, so the ratio reflects the visible share).
             if left.isEntirelyHidden {
-                return AnyView(SplitNodeView(tree: tree, node: right))
+                return AnyView(SplitNodeView(tree: tree, node: right, windowCorners: windowCorners))
             }
             if right.isEntirelyHidden {
-                return AnyView(SplitNodeView(tree: tree, node: left))
+                return AnyView(SplitNodeView(tree: tree, node: left, windowCorners: windowCorners))
             }
             return AnyView(
                 DraggableSplitView(
@@ -82,8 +84,8 @@ private struct SplitNodeView: View {
                     onRatioChange: { newRatio in
                         tree.updateRatio(forSplitID: id, to: newRatio)
                     },
-                    leftContent: { SplitNodeView(tree: tree, node: left) },
-                    rightContent: { SplitNodeView(tree: tree, node: right) }
+                    leftContent: { SplitNodeView(tree: tree, node: left, windowCorners: windowCorners.firstChild(of: direction)) },
+                    rightContent: { SplitNodeView(tree: tree, node: right, windowCorners: windowCorners.secondChild(of: direction)) }
                 )
             )
         }
