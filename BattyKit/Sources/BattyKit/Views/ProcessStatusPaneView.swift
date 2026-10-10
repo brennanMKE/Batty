@@ -77,7 +77,7 @@ struct ProcessStatusPaneView: View {
                         .font(.headline)
                         .lineLimit(1)
                     if let pid = content.snapshot?.pid {
-                        Text("pid \(pid)")
+                        Text(verbatim: "pid " + ProcessIdentifierFormatting.identifier(pid))
                             .font(.callout.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -97,7 +97,7 @@ struct ProcessStatusPaneView: View {
     private var headerContextMenu: some View {
         if let snapshot = content.snapshot {
             Button("Copy PID") {
-                copyToPasteboard("\(snapshot.pid)")
+                copyToPasteboard(ProcessIdentifierFormatting.identifier(snapshot.pid))
             }
             if let commandLine = snapshot.commandLine {
                 Button("Copy Command Line") {
@@ -210,7 +210,7 @@ struct ProcessStatusPaneView: View {
                 HStack {
                     Text(process.name)
                     Spacer()
-                    Text("\(process.id)")
+                    Text(verbatim: ProcessIdentifierFormatting.identifier(process.id))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -426,7 +426,7 @@ struct ProcessStatusPaneView: View {
         case .loaded(let descriptors):
             ForEach(descriptors) { fd in
                 HStack {
-                    Text("fd \(fd.id)")
+                    Text(verbatim: "fd " + ProcessIdentifierFormatting.identifier(fd.id))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Text(fd.path ?? (fd.isVnode ? "(unresolved)" : "(non-file descriptor)"))
@@ -458,7 +458,7 @@ struct ProcessStatusPaneView: View {
                 HStack {
                     Text(child.name)
                         .font(.caption.monospaced())
-                    Text("pid \(child.id)")
+                    Text(verbatim: "pid " + ProcessIdentifierFormatting.identifier(child.id))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer()
