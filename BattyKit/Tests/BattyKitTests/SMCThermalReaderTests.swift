@@ -30,8 +30,12 @@ struct SMCThermalReaderTests {
             // enough to catch a garbage/unswapped-byte-order decode.
             #expect(temperature > -20)
             #expect(temperature < 150)
+            #expect(reading.cpuTemperatureDetail != nil)
+            #expect(reading.unavailableReason == nil)
         } else {
             #expect(reading.cpuTemperatureKey == nil)
+            #expect(reading.cpuTemperatureDetail == nil)
+            #expect(reading.unavailableReason != nil)
         }
 
         if let fanRPM = reading.fanRPM {

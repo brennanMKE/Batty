@@ -290,7 +290,16 @@ resolved by assertion, per review's explicit instruction:**
    configurations; nothing in this spike rules that difference in or out.
    **Phase 2 must re-run this exact probe inside the built, signed app
    bundle before relying on it.**
-2. **SMC key names are model-specific, not universal.** `Tp09`/`Te05`/
+   *Update (#0455):* the same keys read unprivileged from a binary
+   ad-hoc signed with `--options runtime`, so Hardened Runtime alone does
+   not block the read; and the signed Development Beta read them in-app
+   once a reply-size bug was fixed (a readBytes reply's own `dataSize`
+   field is 0 on current macOS; the length comes from the key-info call).
+   The notarized release bundle remains unverified.
+2. **SMC key names are model-specific, not universal.** *(Restated, #0455:
+   shipped as IOHID die-sensor aggregation (`PMU tdie*`, `pACC`/`eACC MTR
+   Temp Sensor*`) with a widened SMC key list as fallback; no per-model
+   table or enumeration was built.)* `Tp09`/`Te05`/
    `Tg05`/`TW0P`/`F0Ac`/`F0Mx`/`FNum` are the keys that resolved on *this*
    Mac mini M4. Apple has changed SMC key naming across chip generations
    and product lines historically (the very fact round 1's Intel-era

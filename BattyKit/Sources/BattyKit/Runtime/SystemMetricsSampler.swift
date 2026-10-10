@@ -62,6 +62,8 @@ public actor SystemMetricsSampler: SystemMetricsSampling {
     /// discarded on hide.
     private var smcConnectionFailureGate = FailureLogGate<SMCConnectionFailure>()
     private var smcFanCountFailureGate = FailureLogGate<SMCProbeFailure>()
+    private var hidThermalFailureGate = FailureLogGate<HIDThermalFailure>()
+    private var hidThermalSession = HIDThermalReader.Session()
     private var cpuFailureGate = FailureLogGate<CPUReadFailure>()
     private var memoryFailureGate = FailureLogGate<MemoryReadFailure>()
     private var loadFailureGate = FailureLogGate<LoadReadFailure>()
@@ -74,7 +76,9 @@ public actor SystemMetricsSampler: SystemMetricsSampling {
         let smc = SMCThermalReader.read(
             temperatureKeyCache: &temperatureKeyCache,
             connectionFailureGate: &smcConnectionFailureGate,
-            fanCountFailureGate: &smcFanCountFailureGate
+            fanCountFailureGate: &smcFanCountFailureGate,
+            hidFailureGate: &hidThermalFailureGate,
+            hidSession: &hidThermalSession
         )
 
         let coreTicks = SystemCPUReader.currentTicks(failureGate: &cpuFailureGate)

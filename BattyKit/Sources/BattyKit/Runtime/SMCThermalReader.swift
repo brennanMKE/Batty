@@ -15,18 +15,36 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// outcome this type must represent honestly.
 public nonisolated struct SMCThermalReading: Equatable, Sendable {
     public let cpuTemperatureCelsius: Double?
+    /// The SMC key that produced the temperature, or `hidSource` when it is
+    /// the IOHID die-sensor aggregate.
     public let cpuTemperatureKey: String?
     public let fanCount: Int?
     public let fanRPM: Double?
     public let fanKey: String?
+    /// What the temperature is (e.g. "max of 14 die sensors"); `nil` exactly
+    /// when `cpuTemperatureCelsius` is.
+    public let cpuTemperatureDetail: String?
+    /// Why there is no temperature; `nil` whenever one was read.
+    public let unavailableReason: ThermalUnavailableReason?
+    /// Why the fan tile has nothing to show, when the cause is not simply
+    /// "no fan data".
+    public let fanUnavailableReason: ThermalUnavailableReason?
+
+    public static let hidSource = "HID"
 
     public init(
         cpuTemperatureCelsius: Double?,
         cpuTemperatureKey: String?,
         fanCount: Int?,
         fanRPM: Double?,
-        fanKey: String?
+        fanKey: String?,
+        cpuTemperatureDetail: String? = nil,
+        unavailableReason: ThermalUnavailableReason? = nil,
+        fanUnavailableReason: ThermalUnavailableReason? = nil
     ) {
+        self.fanUnavailableReason = fanUnavailableReason
+        self.cpuTemperatureDetail = cpuTemperatureDetail
+        self.unavailableReason = unavailableReason
         self.cpuTemperatureCelsius = cpuTemperatureCelsius
         self.cpuTemperatureKey = cpuTemperatureKey
         self.fanCount = fanCount
@@ -292,14 +310,22 @@ public nonisolated enum SMCThermalReader {
     private static let readKeyInfoSelector: UInt8 = 9
     private static let readBytesSelector: UInt8 = 5
 
-    /// Candidate CPU-temperature keys, tried in order until one resolves.
+    /// Fallback CPU-temperature keys, tried in order until one resolves, used
+    /// only when the HID die sensors (`HIDThermalReader`) yield nothing --
+    /// Intel Macs and any Apple Silicon whose HID names don't match.
+    /// Covers M1/M2/M4 `Tp*`, M3 `Te05`/`Tf*`, M5 `Tp00`.. (per third-party key tables, unverified here), and Intel `TC0*` (`sp78`).
     /// `Tp09` is the key the design's spike found on its Apple Silicon Mac
     /// mini M4; `Tp0T`/`Tp01`/`Tp05` are other commonly-cited Apple Silicon
     /// performance-core keys; `TC0P` is the classic Intel-era key
     /// (confirmed by the design's own spike to fail cleanly —
     /// `kSMCKeyNotFound`, not a protocol error — rather than crash or hang
     /// when absent).
-    private static let cpuTemperatureCandidates = ["Tp09", "Tp0T", "Tp01", "Tp05", "TC0P"]
+    private static let cpuTemperatureCandidates = [
+        "Tp09", "Tp0T", "Tp01", "Tp05",
+        "Te05", "Tf04", "Tf09",
+        "Tp00", "Tp04", "Tp08",
+        "TC0D", "TC0P", "TC0F", "TC0E", "TC0H",
+    ]
     private static let fanCountKey = "FNum"
     private static let firstFanSpeedKey = "F0Ac"
 
@@ -320,14 +346,68 @@ public nonisolated enum SMCThermalReader {
         connectionFailureGate: inout FailureLogGate<SMCConnectionFailure>,
         fanCountFailureGate: inout FailureLogGate<SMCProbeFailure>
     ) -> SMCThermalReading {
-        guard let connection = openConnection(failureGate: &connectionFailureGate) else { return .unavailable }
+        var hidFailureGate = FailureLogGate<HIDThermalFailure>()
+        var hidSession = HIDThermalReader.Session()
+        return read(
+            temperatureKeyCache: &temperatureKeyCache,
+            connectionFailureGate: &connectionFailureGate,
+            fanCountFailureGate: &fanCountFailureGate,
+            hidFailureGate: &hidFailureGate,
+            hidSession: &hidSession
+        )
+    }
+
+    /// The CPU temperature prefers the HID die-sensor aggregate (works on
+    /// every Apple Silicon generation without a per-chip key table) and falls
+    /// back to the SMC candidate walk; fans always come from SMC.
+    public static func read(
+        temperatureKeyCache: inout SMCTemperatureKeyCache,
+        connectionFailureGate: inout FailureLogGate<SMCConnectionFailure>,
+        fanCountFailureGate: inout FailureLogGate<SMCProbeFailure>,
+        hidFailureGate: inout FailureLogGate<HIDThermalFailure>,
+        hidSession: inout HIDThermalReader.Session
+    ) -> SMCThermalReading {
+        if isVirtualMachine {
+            return unavailableReading(ThermalUnavailableReason.resolve(isVirtualMachine: true, smcConnectionFailed: false))
+        }
+
+        var hidAggregate: CPUTemperatureAggregate?
+        switch HIDThermalReader.readAll(session: &hidSession) {
+        case .success(let readings):
+            hidAggregate = CPUTemperatureAggregation.aggregate(readings)
+            HIDThermalReader.log(hidFailureGate.record(failureCode: nil), failure: nil)
+        case .failure(let failure):
+            HIDThermalReader.log(hidFailureGate.record(failureCode: failure), failure: failure)
+        }
+
+        guard let connection = openConnection(failureGate: &connectionFailureGate) else {
+            if let hidAggregate {
+                return SMCThermalReading(
+                    cpuTemperatureCelsius: hidAggregate.celsius, cpuTemperatureKey: SMCThermalReading.hidSource,
+                    fanCount: nil, fanRPM: nil, fanKey: nil,
+                    cpuTemperatureDetail: CPUTemperatureAggregation.detail(for: hidAggregate),
+                    fanUnavailableReason: .sensorServiceUnavailable
+                )
+            }
+            return unavailableReading(ThermalUnavailableReason.resolve(isVirtualMachine: false, smcConnectionFailed: true))
+        }
         defer { IOServiceClose(connection) }
 
-        let previousResolution = temperatureKeyCache.resolution
-        let (temperature, temperatureKey) = temperatureKeyCache.temperature(
-            candidates: cpuTemperatureCandidates
-        ) { key in probeFloat(connection, key: key) }
-        logResolutionTransition(from: previousResolution, cache: temperatureKeyCache)
+        var temperature: Double?
+        var temperatureKey: String?
+        var detail: String?
+        if let hidAggregate {
+            temperature = hidAggregate.celsius
+            temperatureKey = SMCThermalReading.hidSource
+            detail = CPUTemperatureAggregation.detail(for: hidAggregate)
+        } else {
+            let previousResolution = temperatureKeyCache.resolution
+            (temperature, temperatureKey) = temperatureKeyCache.temperature(
+                candidates: cpuTemperatureCandidates
+            ) { key in probeFloat(connection, key: key) }
+            logResolutionTransition(from: previousResolution, cache: temperatureKeyCache)
+            detail = temperatureKey.map { "SMC key \($0)" }
+        }
 
         let fanCount: Int?
         switch probeFanCount(connection, key: fanCountKey) {
@@ -351,9 +431,32 @@ public nonisolated enum SMCThermalReader {
             cpuTemperatureKey: temperatureKey,
             fanCount: fanCount,
             fanRPM: fanRPM,
-            fanKey: fanKey
+            fanKey: fanKey,
+            cpuTemperatureDetail: detail,
+            unavailableReason: temperature == nil
+                ? ThermalUnavailableReason.resolve(isVirtualMachine: false, smcConnectionFailed: false)
+                : nil
         )
     }
+
+    private static func unavailableReading(_ reason: ThermalUnavailableReason) -> SMCThermalReading {
+        SMCThermalReading(
+            cpuTemperatureCelsius: nil, cpuTemperatureKey: nil,
+            fanCount: nil, fanRPM: nil, fanKey: nil,
+            unavailableReason: reason,
+            fanUnavailableReason: reason
+        )
+    }
+
+    /// `kern.hv_vmm_present`, the same signal the VM test runner uses to
+    /// prove a guest is virtualized. Constant for the process lifetime.
+    static let isVirtualMachine: Bool = {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        let isVM = sysctlbyname("kern.hv_vmm_present", &value, &size, nil, 0) == 0 && value == 1
+        if isVM { logger.info("virtual machine — skipping thermal reads") }
+        return isVM
+    }()
 
     private static func openConnection(failureGate: inout FailureLogGate<SMCConnectionFailure>) -> io_connect_t? {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSMC"))
@@ -474,8 +577,7 @@ public nonisolated enum SMCThermalReader {
         let smcResult = output[40]
         let dataSize = output.withUnsafeBytes { $0.load(fromByteOffset: 28, as: UInt32.self) }
         let dataType = output.withUnsafeBytes { $0.load(fromByteOffset: 32, as: UInt32.self) }
-        let byteCount = min(Int(dataSize), 32)
-        let bytes = Array(output[48..<(48 + byteCount)])
+        let bytes = Array(output[48..<80])
         return .success(RawReply(result: smcResult, dataSize: dataSize, dataType: dataType, bytes: bytes))
     }
 
@@ -490,6 +592,27 @@ public nonisolated enum SMCThermalReader {
     /// code enforcing it, closes that.
     private static let floatDataType = fourCharCode("flt ")
     private static let uint8DataType = fourCharCode("ui8 ")
+    private static let sp78DataType = fourCharCode("sp78")
+    private static let fpe2DataType = fourCharCode("fpe2")
+
+    /// `nil` for a size/type pair the probe does not understand.
+    static func decodeNumeric(dataType: UInt32, payload: [UInt8]) -> Float? {
+        if dataType == floatDataType, payload.count == 4 {
+            return payload.withUnsafeBytes { $0.load(as: Float32.self) }
+        }
+        if dataType == sp78DataType, payload.count == 2 {
+            return Float(SMCFixedPoint.sp78(payload[0], payload[1]))
+        }
+        if dataType == fpe2DataType, payload.count == 2 {
+            return Float(SMCFixedPoint.fpe2(payload[0], payload[1]))
+        }
+        return nil
+    }
+
+    private static func isSupportedNumeric(dataType: UInt32, dataSize: UInt32) -> Bool {
+        (dataType == floatDataType && dataSize == 4)
+            || ((dataType == sp78DataType || dataType == fpe2DataType) && dataSize == 2)
+    }
 
     /// `docs/design/system-metrics-view.md` §1.4 (~L221): a missing key
     /// replies `kr = KERN_SUCCESS` (the IOKit call itself worked) with
@@ -513,7 +636,7 @@ public nonisolated enum SMCThermalReader {
                 return .definitivelyAbsent(.keyNotFound(smcResult: info.result))
             }
             guard info.result == 0 else { return .transientFailure(.smcResult(info.result)) }
-            guard info.dataSize == 4, info.dataType == floatDataType else {
+            guard isSupportedNumeric(dataType: info.dataType, dataSize: info.dataSize) else {
                 return .definitivelyAbsent(.unexpectedShape(dataSize: info.dataSize, dataType: info.dataType))
             }
             switch call(connection, key: key, selector: readBytesSelector, inputDataSize: info.dataSize) {
@@ -524,8 +647,10 @@ public nonisolated enum SMCThermalReader {
                     return .definitivelyAbsent(.keyNotFound(smcResult: read.result))
                 }
                 guard read.result == 0 else { return .transientFailure(.smcResult(read.result)) }
-                guard read.bytes.count == 4 else { return .transientFailure(.shortReply(byteCount: read.bytes.count)) }
-                let value = read.bytes.withUnsafeBytes { $0.load(as: Float32.self) }
+                let payload = payload(read.bytes, requestedSize: info.dataSize)
+                guard payload.count == Int(info.dataSize),
+                      let value = decodeNumeric(dataType: info.dataType, payload: payload)
+                else { return .transientFailure(.shortReply(byteCount: payload.count)) }
                 // Belt-and-suspenders alongside the dataType gate above: this
                 // helper backs both a temperature key (plausibly -20...150 C)
                 // and a fan-speed key (plausibly 0...~20,000 RPM on any Mac),
@@ -545,6 +670,13 @@ public nonisolated enum SMCThermalReader {
                 return .value(Double(value))
             }
         }
+    }
+
+    /// A readBytes reply does not reliably echo `keyInfo.dataSize` back (it
+    /// comes back 0 on current macOS), so the value's length is the size the
+    /// preceding key-info call reported, not the reply's own size field.
+    static func payload(_ bytes: [UInt8], requestedSize: UInt32) -> [UInt8] {
+        Array(bytes.prefix(min(Int(requestedSize), bytes.count)))
     }
 
     private static func readFloat(_ connection: io_connect_t, key: String) -> Double? {

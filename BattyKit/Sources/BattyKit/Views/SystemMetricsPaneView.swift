@@ -176,12 +176,12 @@ public struct SystemMetricsPaneView: View {
             metricTile(
                 label: "CPU Temperature",
                 value: content.snapshot.smc.cpuTemperatureCelsius.map(SystemMetricsFormatting.celsius) ?? "\u{2014}",
-                sub: content.snapshot.smc.cpuTemperatureKey.map { "SMC key \($0)" } ?? "Not available on this Mac"
+                sub: content.snapshot.smc.cpuTemperatureDetail ?? (content.snapshot.smc.unavailableReason?.copy ?? "Not available on this Mac")
             )
             metricTile(
                 label: "Fan",
                 value: content.snapshot.smc.fanRPM.map(SystemMetricsFormatting.rpm) ?? "\u{2014}",
-                sub: content.snapshot.smc.fanCount.map { "\($0) fan\($0 == 1 ? "" : "s")" } ?? "Not available on this Mac"
+                sub: content.snapshot.smc.fanCount.map { "\($0) fan\($0 == 1 ? "" : "s")" } ?? (content.snapshot.smc.fanUnavailableReason?.fanCopy ?? "Not available on this Mac")
             )
         }
     }
