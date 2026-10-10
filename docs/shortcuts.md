@@ -488,11 +488,23 @@ SwiftUI's `Settings` scene before the monitor runs.
 The Pane menu's **Split Horizontally** and **Split Vertically** items are
 submenus, not single-click actions. Each lists **Terminal** first —
 identical to the item's old plain-click behavior — followed by **Git
-Status**, **Process Status**, **LM Studio Dashboard**, and **System
-Metrics**. Every row carries its own `ShortcutAction` chord (Section 2
+Status**, **Process Status**, **System Metrics**, and **LM Studio
+Dashboard**. Every action keeps its own `ShortcutAction` chord (Section 2
 above), so `Cmd-D`/`Cmd-Shift-D` still create a Terminal pane instantly
 from the keyboard — the menu restructuring only affects a mouse click on
 the row itself, which now opens the submenu instead of splitting directly.
+
+**Top-level "Open View" section (#0453).** The Pane menu also names the
+four views at its top level, under an "Open View" header: Git Status,
+Process Status, System Metrics, and LM Studio Dashboard. Each opens beside
+the focused Pane in the default (horizontal) direction and is disabled when
+no Session is selected. These four items carry the horizontal chords
+(`Cmd-G`, `Cmd-J`, `Cmd-E`, `Cmd-Y`) as their badges; the horizontal rows
+inside the Split Horizontally submenu deliberately omit the badge so each
+chord is advertised on one item only. (The NSEvent monitor dispatches the
+chords either way in a Batty window, so it never runs twice; when another
+window such as Settings has focus, the menu shortcut is what runs it.) The vertical rows keep
+their `Cmd-Shift` badges. The window toolbar is unchanged by design.
 
 **Why this isn't an Option-hover reveal.** The initial design asked for
 holding Option over "Split Horizontally"/"Split Vertically" to reveal the

@@ -36,9 +36,12 @@ Every shortcut Batty understands, how to change the ones you don't like, and the
 | Move Split Divider Up | `Cmd-Ctrl-↑` |
 | Move Split Divider Down | `Cmd-Ctrl-↓` |
 
-In the Pane menu, "Split Horizontally" and "Split Vertically" are
-submenus: Terminal first (same as the plain chord above), then Git
-Status, Process Status, LM Studio Dashboard, and System Metrics.
+The Pane menu opens with an "Open View" section naming Git Status,
+Process Status, System Metrics, and LM Studio Dashboard; each opens beside
+the focused Pane and shows its horizontal chord from the table above.
+"Split Horizontally" and "Split Vertically" are submenus for choosing the
+direction: Terminal first (same as the plain chord above), then the four
+views.
 
 ### Tabs
 

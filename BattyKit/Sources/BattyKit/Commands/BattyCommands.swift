@@ -219,6 +219,50 @@ public struct BattyCommands: Commands {
         }
 
         CommandMenu("Pane") {
+            // #0453: the four view kinds named at the Pane menu's top level.
+            // Each opens beside the focused Pane in the default direction
+            // and carries the horizontal chord's badge; the Split
+            // Horizontally submenu rows below deliberately omit that badge
+            // so a chord is advertised on exactly one item. In a content
+            // window `BattyShortcuts` takes the chord before the menu does,
+            // so it never runs twice; when another window such as Settings
+            // has focus, the menu shortcut is what runs it.
+            Section("Open View") {
+                Button {
+                    keyWindow?.createPane(kind: .gitStatus, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.gitStatus.displayName, systemImage: "arrow.triangle.branch")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalGitStatus))
+                .disabled(keyWindow?.selectedSession == nil)
+
+                Button {
+                    keyWindow?.createPane(kind: .processStatus, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.processStatus.displayName, systemImage: "list.bullet.rectangle")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalProcessStatus))
+                .disabled(keyWindow?.selectedSession == nil)
+
+                Button {
+                    keyWindow?.createPane(kind: .systemMetrics, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalSystemMetrics))
+                .disabled(keyWindow?.selectedSession == nil)
+
+                Button {
+                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalLMStudioDashboard))
+                .disabled(keyWindow?.selectedSession == nil)
+            }
+
+            Divider()
+
             // #0331: "Split Horizontally"/"Split Vertically" became
             // submenus, each listing Terminal first (identical to today's
             // plain action — same call, same result) followed by the four
@@ -260,28 +304,24 @@ public struct BattyCommands: Commands {
                 } label: {
                     Label(PaneContentKind.gitStatus.displayName, systemImage: "arrow.triangle.branch")
                 }
-                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalGitStatus))
 
                 Button {
                     keyWindow?.createPane(kind: .processStatus, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.processStatus.displayName, systemImage: "list.bullet.rectangle")
                 }
-                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalProcessStatus))
-
-                Button {
-                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
-                } label: {
-                    Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
-                }
-                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalLMStudioDashboard))
 
                 Button {
                     keyWindow?.createPane(kind: .systemMetrics, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
                 }
-                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitHorizontalSystemMetrics))
+
+                Button {
+                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
+                } label: {
+                    Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
+                }
             } label: {
                 Label("Split Horizontally", systemImage: "rectangle.split.2x1")
             }
@@ -313,18 +353,18 @@ public struct BattyCommands: Commands {
                 .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalProcessStatus))
 
                 Button {
-                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .vertical)
-                } label: {
-                    Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
-                }
-                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalLMStudioDashboard))
-
-                Button {
                     keyWindow?.createPane(kind: .systemMetrics, direction: .vertical)
                 } label: {
                     Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
                 }
                 .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalSystemMetrics))
+
+                Button {
+                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .vertical)
+                } label: {
+                    Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalLMStudioDashboard))
             } label: {
                 Label("Split Vertically", systemImage: "rectangle.split.1x2")
             }
