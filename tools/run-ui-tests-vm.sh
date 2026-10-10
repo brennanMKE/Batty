@@ -398,6 +398,14 @@ else
   done
 fi
 
+# ViewGalleryTests (#0451) is on request only: it skips unless the runner sees
+# BATTY_UI_GALLERY=1, which `xcodebuild` forwards from a TEST_RUNNER_ variable.
+# Only a filter that names the class turns it on, so a plain run is unaffected.
+GALLERY_ENV=""
+for spec in "$@"; do
+  [[ "$spec" == *ViewGalleryTests* ]] && GALLERY_ENV="TEST_RUNNER_BATTY_UI_GALLERY=1"
+done
+
 log "Running UI tests in the guest (this runs XCUITest inside the VM only)"
 # The "Batty UI Tests" scheme's Test action holds only BattyUITests -- the
 # "Batty (Beta)" scheme's own Test action was deliberately narrowed to
@@ -498,7 +506,7 @@ else
   pull_results
   run_guest_step 2700 "
     cd $GUEST_BATTY
-    $GUEST_TMO 2400 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
+    /usr/bin/env $GALLERY_ENV $GUEST_TMO 2400 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
       -destination 'platform=macOS' -derivedDataPath $GUEST_DD \
       -resultBundlePath $GUEST_RESULTS/UITests.xcresult \
       ${TEST_FILTER_ARGS[*]} \

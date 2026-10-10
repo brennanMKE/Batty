@@ -187,6 +187,58 @@ tools/export-ui-recordings.sh build/ui-tests/<run-id>/UITests.xcresult   # -> <r
   also include UI hierarchy snapshots and debug-description text; the helper exports only
   the clips.
 
+### View gallery screenshots (#0451)
+
+`BattyUITests/ViewGalleryTests` (on request only, see "Gating") produces review screenshots of the non-terminal view Panes
+(Git Status, Process Status, System Metrics, LM Studio Dashboard). It asserts only that each
+view rendered. Run and export:
+
+```sh
+tools/run-ui-tests-vm.sh BattyUITests/ViewGalleryTests
+tools/export-ui-screenshots.sh build/ui-tests/<run-id>/UITests.xcresult   # -> <run-id>/screenshots/
+```
+
+Each shot is a full-screen `XCUIScreen` capture (1024x768) attached as a PNG named
+`gallery.<view>.<large|narrow>.<light|dark>` with `lifetime = .keepAlways`, so a passing run
+keeps them without `BATTY_UI_KEEP_RECORDINGS=1`. The export script filters
+`xcresulttool export attachments` by `gallery.*` (the filter matches the attachment's name, not
+the file extension) and strips the `_<n>_<UUID>` Xcode appends.
+
+- **Sizes.** Window > Zoom fills the display and Cmd-B collapses the Sidebar. `large` hides the
+  source terminal Pane (`pane hide`) so the view Pane has the whole content area; `narrow` shows
+  it again and drags the Split divider (found as the source Pane's trailing edge plus a few
+  points) until the view Pane is about a quarter of the width.
+- **Dark appearance.** Neither the `-AppleInterfaceStyle Dark` launch argument nor
+  `defaults write -g AppleInterfaceStyle Dark` darkens the app in the guest, and `osascript`
+  to System Events hangs on an Automation prompt. What works is XCUITest driving System
+  Settings: a Pane script runs `open x-apple.systempreferences:com.apple.Appearance-Settings.extension`
+  and the test clicks the "Dark" (or "Light") control, then relaunches Batty. The guest is Dark
+  during the Dark pass; `tearDownWithError` flips it back to Light after every test, so a Dark
+  guest never reaches another test class.
+- **Banners.** The "App Background Activity" banner (#0419) and Batty's own "Notifications may
+  include alerts" banner are persistent, not transient. Before each capture the test hovers a
+  banner in `com.apple.notificationcenterui` and clicks its Close button.
+- **Git fixture.** A Pane runs a script that builds the repository with real `git` (the
+  sandboxed runner cannot exec it): a bare origin, a second clone that pushes (behind), local
+  commits (ahead), then staged, modified, deleted, renamed and untracked files, a staged-then-
+  modified file and a deep, long-named tracked file. A second repo is left mid-merge for the
+  operation banner and the Conflicted group.
+- **Disclosure groups** are collapsed by default; the test clicks each triangle's arrow (the
+  element's centre click hits the label, which does not toggle).
+- **Waits.** Process Status and System Metrics need a CPU baseline, so the test pauses a fixed
+  4 s (several 1 s ticks) after the view appears and 1.5 s after expanding sections; there is
+  no accessibility signal for "second tick happened". The pauses are a UI-test choice, not a
+  unit-test wait.
+- **Cost.** About 7 minutes of test time for the whole class (427.5 s in the measured run):
+  14 gallery launches plus 14 relaunches and 14 System Settings launches for the appearance
+  flips (Light to Dark and back, once per test).
+- **Gating.** The class is on request only and enforced: `setUpWithError` skips unless
+  `BATTY_UI_GALLERY=1` is in the runner's environment. `tools/run-ui-tests-vm.sh` exports it
+  (as `TEST_RUNNER_BATTY_UI_GALLERY=1` on the `xcodebuild` line) only when a filter argument
+  names `ViewGalleryTests`, so a plain full run, or any other filter, skips all 7 tests. It
+  also skips unless `kern.hv_vmm_present == 1`, because it drives System Settings and
+  Notification Center.
+
 ### What the runner does, step by step
 
 1. **Preflight.** Tart and the golden image exist. **Stale `batty-uitest-<run-id>` clones

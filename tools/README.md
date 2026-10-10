@@ -39,6 +39,18 @@ tools/export-ui-recordings.sh build/ui-tests/<run-id>/UITests.xcresult [out-dir]
 
 See `docs/ui-testing-vm.md` for how the switch works.
 
+### View gallery screenshots (#0451)
+
+`tools/run-ui-tests-vm.sh BattyUITests/ViewGalleryTests` attaches named PNGs of each
+non-terminal view Pane; `export-ui-screenshots.sh` writes them out:
+
+```bash
+tools/export-ui-screenshots.sh build/ui-tests/<run-id>/UITests.xcresult [out-dir]
+# -> <run-id>/screenshots/gallery.<view>.<large|narrow>.<light|dark>.png
+```
+
+See `docs/ui-testing-vm.md` ("View gallery screenshots") for how the shots are produced.
+
 ## memsample.sh
 
 A phys_footprint / graphics-region sampling harness for Batty (#0291, child
