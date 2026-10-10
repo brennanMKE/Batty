@@ -206,69 +206,13 @@ struct LMStudioDashboardView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(content.recentCompletions.prefix(30)) { record in
-                    completionRow(record)
-                }
+                completionTable(Array(content.recentCompletions.prefix(30)))
             }
         }
     }
 
-    private func completionRow(_ record: LMStudioCompletionRecord) -> some View {
-        HStack(spacing: 8) {
-            Text(record.completedAt, style: .time)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 64, alignment: .leading)
-            Text(record.modelIdentifier)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            if let tokPerSec = record.stats?.tokensPerSecond {
-                Text(String(format: "%.0f tok/s", tokPerSec))
-                    .font(.caption)
-            }
-            if let ttft = record.stats?.timeToFirstTokenSec {
-                Text(String(format: "TTFT %.2fs", ttft))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let stopReason = record.stats?.stopReason {
-                Text(stopReason)
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
-            }
-            if let pressure = record.contextPressure {
-                Text("\(Int(pressure * 100))% ctx")
-                    .font(.caption2)
-                    .foregroundStyle(pressure > 0.9 ? .red : .secondary)
-            }
-        }
-        .contextMenu {
-            Button("Copy Model Identifier") {
-                copyToPasteboard(record.modelIdentifier)
-            }
-            Button("Copy Stats as JSON") {
-                copyToPasteboard(statsJSON(record.stats))
-            }
-        }
-        .accessibilityIdentifier("lmstudio-completion-row.\(record.id.uuidString)")
-    }
-
-    private func statsJSON(_ stats: LMStudioPredictionStats?) -> String {
-        guard let stats,
-              let data = try? JSONEncoder().encode(stats),
-              let text = String(data: data, encoding: .utf8)
-        else { return "{}" }
-        return text
-    }
-
-    private func copyToPasteboard(_ string: String) {
-        #if canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(string, forType: .string)
-        #endif
+    private func completionTable(_ records: [LMStudioCompletionRecord]) -> some View {
+        LMStudioCompletionTable(records: records)
     }
 
     // MARK: - Throughput summary
@@ -276,11 +220,9 @@ struct LMStudioDashboardView: View {
     private var throughputSection: some View {
         let samples = content.recentCompletions.compactMap(\.stats?.tokensPerSecond)
         let average = samples.isEmpty ? nil : samples.reduce(0, +) / Double(samples.count)
-        var stopReasonTally: [String: Int] = [:]
-        for record in content.recentCompletions {
-            guard let reason = record.stats?.stopReason else { continue }
-            stopReasonTally[reason, default: 0] += 1
-        }
+        let stopReasonTallyText = LMStudioDashboardFormatting.stopReasonTallyText(
+            content.recentCompletions.compactMap(\.stats?.stopReason)
+        )
         return VStack(alignment: .leading, spacing: 4) {
             Text("Throughput").font(.headline)
             if let average {
@@ -292,8 +234,8 @@ struct LMStudioDashboardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if !stopReasonTally.isEmpty {
-                Text(stopReasonTally.sorted { $0.value > $1.value }.map { "\($0.key): \($0.value)" }.joined(separator: "  ·  "))
+            if let stopReasonTallyText {
+                Text(stopReasonTallyText)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -303,20 +245,23 @@ struct LMStudioDashboardView: View {
     // MARK: - Engine errors
 
     private var engineErrorsSection: some View {
-        DisclosureGroup("Engine Errors & Warnings (\(content.engineErrors.count))") {
-            if content.engineErrors.isEmpty {
-                Text("None.")
+        let entries = content.warningsAndErrors
+        return DisclosureGroup(LMStudioDashboardFormatting.engineSectionTitle(count: entries.count)) {
+            if entries.isEmpty {
+                Text("No errors or warnings.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                ForEach(content.engineErrors.prefix(20)) { entry in
+                ForEach(entries.prefix(20)) { entry in
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("\(entry.level ?? "?") · \(entry.engineName ?? "engine")")
+                        Text("\(LMStudioDashboardFormatting.displaySeverity(level: entry.level, message: entry.message)) · \(entry.engineName ?? "engine")")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Text(entry.message ?? "")
                             .font(.caption2)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }

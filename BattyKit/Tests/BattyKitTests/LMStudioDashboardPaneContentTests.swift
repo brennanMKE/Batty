@@ -405,6 +405,41 @@ struct LMStudioDashboardPaneContentTests {
         await content.awaitPendingTeardownReapsForTesting()
     }
 
+    @Test func runtimeStreamKeepsEveryLineButWarningsAndErrorsFiltersThem() async throws {
+        let content = LMStudioDashboardPaneContent()
+        content.clock = TestClock()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { self.emptyModelsResponse() }
+        content.makeModelStreamProcess = makeSleepForeverProcess
+        let lines = [
+            #"{"timestamp":1786253679000,"data":{"type":"runtime.log","level":"debug","message":"[kit][INFO]: loaded","engineName":"mlx"}}"#,
+            #"{"timestamp":1786253680000,"data":{"type":"runtime.log","level":"debug","message":"[kit][ERROR]: failed","engineName":"mlx"}}"#,
+            #"{"timestamp":1786253681000,"data":{"type":"runtime.log","level":"warn","message":"slow","engineName":"mlx"}}"#,
+        ]
+        content.makeRuntimeStreamProcess = { _ in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", "printf '%s\\n' '\(lines[0])' '\(lines[1])' '\(lines[2])'; exec sleep 60"]
+            return process
+        }
+
+        let lineApplied = EventCounter(content.lineAppliedEventsForTesting())
+        content.setUp(visible: true)
+        guard await lineApplied.awaitCount(3) else {
+            Issue.record("did not observe the runtime lines being applied")
+            content.tearDown()
+            await content.awaitPendingTeardownReapsForTesting()
+            return
+        }
+
+        #expect(content.engineErrors.count == 3)
+        #expect(content.warningsAndErrors.count == 2)
+        #expect(content.warningsAndErrors.map(\.message) == ["slow", "[kit][ERROR]: failed"])
+
+        content.tearDown()
+        await content.awaitPendingTeardownReapsForTesting()
+    }
+
     @Test func unmatchedInputStaysInFlight() async throws {
         let content = LMStudioDashboardPaneContent()
         content.clock = TestClock()

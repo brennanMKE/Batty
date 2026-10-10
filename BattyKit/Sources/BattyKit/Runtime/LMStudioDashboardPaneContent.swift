@@ -128,6 +128,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     public private(set) var recentCompletions: [LMStudioCompletionRecord] = []
     /// Newest-first, capped at `engineErrorCap`.
     public private(set) var engineErrors: [LMStudioEngineLogEntry] = []
+
+    var warningsAndErrors: [LMStudioEngineLogEntry] {
+        LMStudioDashboardFormatting.warningsAndErrors(engineErrors)
+    }
     /// Newest-first, capped at `inspectorCap`. Always empty unless
     /// `promptInspectorEnabled` is (or very recently was) `true`.
     public private(set) var inspectorEntries: [LMStudioInspectorRecord] = []
@@ -706,9 +710,9 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     }
 
     private func handleRuntimeStreamLine(_ line: String) {
-        guard let event = LMStudioLogLineParser.parse(line),
-              case .runtimeLog(let level, let message, let engineName) = event.kind
-        else { return }
+        guard let event = LMStudioLogLineParser.parse(line) else { return }
+        defer { emitLineApplied() }
+        guard case .runtimeLog(let level, let message, let engineName) = event.kind else { return }
         let entry = LMStudioEngineLogEntry(
             id: UUID(),
             timestamp: event.date,
@@ -873,11 +877,13 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         makeTestEventStream(.psPollApplied)
     }
 
-    /// Yields once every time a model-stream NDJSON line is parsed and
-    /// applied in `handleModelStreamLine` (`recordInFlight`/
-    /// `recordCompletion`, or a no-op `.runtimeLog`/`.other` case) — lets a
-    /// test await a specific count of lines the pipe has actually
-    /// processed, rather than guessing how long delivery takes.
+    /// Yields once for every parseable NDJSON line applied by
+    /// `handleModelStreamLine` (`recordInFlight`/`recordCompletion`, or a
+    /// no-op for a non-prediction event) or `handleRuntimeStreamLine`
+    /// (engine log insert, or a no-op for a non-`.runtimeLog` event).
+    /// Unparseable lines never fire it. Lets a test await a specific count
+    /// of lines the pipe has actually processed, rather than guessing how
+    /// long delivery takes.
     func lineAppliedEventsForTesting() -> AsyncStream<Void> {
         makeTestEventStream(.lineApplied)
     }
