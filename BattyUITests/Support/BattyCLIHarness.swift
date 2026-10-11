@@ -37,6 +37,8 @@ nonisolated struct CLITopology {
         let kind: String
         let activeTabID: UUID
         let tabIDs: [UUID]
+        /// Present only when the listing was requested with `--include-dimensions`.
+        let frame: CGRect?
     }
 
     struct Session {
@@ -111,6 +113,15 @@ nonisolated struct CLITopology {
         return []
     }
 
+    private static func rect(from object: [String: Any]) -> CGRect? {
+        guard let x = (object["x"] as? NSNumber)?.doubleValue,
+              let y = (object["y"] as? NSNumber)?.doubleValue,
+              let width = (object["width"] as? NSNumber)?.doubleValue,
+              let height = (object["height"] as? NSNumber)?.doubleValue
+        else { return nil }
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
     private static func parsePane(_ object: [String: Any]) -> Pane? {
         guard let id = (object["id"] as? String).flatMap(UUID.init(uuidString:)),
               let activeTabID = (object["activeTabID"] as? String).flatMap(UUID.init(uuidString:))
@@ -122,7 +133,8 @@ nonisolated struct CLITopology {
             isFocused: object["isFocused"] as? Bool ?? false,
             kind: object["kind"] as? String ?? "unknown",
             activeTabID: activeTabID,
-            tabIDs: tabs
+            tabIDs: tabs,
+            frame: (object["frame"] as? [String: Any]).flatMap(rect(from:))
         )
     }
 }
@@ -167,8 +179,8 @@ nonisolated enum BattyCLI {
         return result
     }
 
-    static func topology() -> CLITopology? {
-        let result = run(["list", "--json"])
+    static func topology(includeDimensions: Bool = false) -> CLITopology? {
+        let result = run(["list", "--json"] + (includeDimensions ? ["--include-dimensions"] : []))
         guard result.status == 0 else { return nil }
         return CLITopology(listOutput: result.output)
     }
@@ -235,6 +247,25 @@ nonisolated enum BattyCLI {
             throw HarnessFailure(description: "list --json never reported a Session after launch")
         }
         return (appURL, topology)
+    }
+
+    /// Launches Batty, waits for its window, and connects the CLI to it.
+    @MainActor
+    static func launchConnected(from testClass: AnyClass) throws -> (app: XCUIApplication, appURL: URL, initial: CLITopology) {
+        let app = BattyUITestHarness.launchBatty()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
+        let (appURL, initial) = try connect(to: app, from: testClass)
+        return (app, appURL, initial)
+    }
+
+    /// `batty new <dir>`: waits for the Session to be listed and returns it.
+    @discardableResult
+    static func newSession(at directory: URL, file: StaticString = #filePath, line: UInt = #line) throws -> (session: CLITopology.Session, paneID: UUID) {
+        let result = runExpectingSuccess(["new", directory.path], file: file, line: line)
+        let sessionID = try XCTUnwrap(result.ids.first, "new printed no Session id: \(result.summary)", file: file, line: line)
+        let paneID = try XCTUnwrap(result.ids.last, file: file, line: line)
+        let topology = try XCTUnwrap(waitForTopology { $0.session(sessionID) != nil }, "new Session \(sessionID) never listed", file: file, line: line)
+        return (try XCTUnwrap(topology.session(sessionID), file: file, line: line), paneID)
     }
 
     /// The pid of the one running instance of the bundle XCUITest launched.
@@ -328,6 +359,26 @@ nonisolated enum BattyScreen {
     @MainActor
     static func paneAnchor(_ pane: CLITopology.Pane, in app: XCUIApplication) -> XCUIElement {
         element(anchorIdentifier(for: pane), in: app)
+    }
+
+    /// Opens the Bell Feed popover from the toolbar.
+    @MainActor
+    static func openBellFeed(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let bell = app.toolbars.buttons["Bell Feed"].firstMatch
+        XCTAssertTrue(bell.waitForExistence(timeout: 10), "no Bell Feed toolbar button", file: file, line: line)
+        bell.click()
+        XCTAssertTrue(
+            BattyUITestHarness.waitFor({ app.popovers.firstMatch.exists || element("bell-feed.list", in: app).exists || app.staticTexts["No bell events"].exists }, timeout: 10),
+            "the Bell Feed did not open",
+            file: file,
+            line: line
+        )
+    }
+
+    /// Entry ids currently listed in an open Bell Feed.
+    @MainActor
+    static func bellEntryIDs(in app: XCUIApplication) -> Set<String> {
+        Set(identifiers(withPrefix: "bell-feed-entry.", in: app).map { String($0.dropFirst("bell-feed-entry.".count)) })
     }
 
     static func area(_ rect: CGRect) -> CGFloat { max(0, rect.width) * max(0, rect.height) }

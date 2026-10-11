@@ -40,6 +40,7 @@ public struct BellFeedView: View {
                         .tag(entry.id)
                         .contentShape(Rectangle())
                         .onTapGesture { handleJump(to: entry) }
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("bell-feed-entry.\(entry.id.uuidString)")
                     }
                 }
@@ -147,6 +148,7 @@ private struct BellFeedRow: View {
                         .font(.callout)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .accessibilityIdentifier("bell-feed-path.\(entry.id.uuidString)")
                     if entry.repeatCount > 1 {
                         Text(verbatim: "×\(entry.repeatCount)")
                             .font(.caption)
@@ -164,6 +166,7 @@ private struct BellFeedRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .accessibilityIdentifier("bell-feed-message.\(entry.id.uuidString)")
                 }
             }
         }

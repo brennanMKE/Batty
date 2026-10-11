@@ -16,6 +16,15 @@ public struct SessionSidebarView: View {
         self.windowRuntime = store.windowRuntime(for: windowID)
     }
 
+    /// "selected" / "unselected", then ", N unseen" while the Session has
+    /// unseen bell events. The numeric badge is folded into the row's single
+    /// accessibility element, so this is the only place it is readable.
+    static func rowAccessibilityValue(for session: SessionRuntime, isSelected: Bool) -> String {
+        let selection = isSelected ? "selected" : "unselected"
+        guard session.unseenBellCount > 0 else { return selection }
+        return "\(selection), \(session.unseenBellCount) unseen"
+    }
+
     public var body: some View {
         List(selection: sidebarSelection) {
             ForEach(windowRuntime.sessions) { session in
@@ -87,7 +96,7 @@ public struct SessionSidebarView: View {
                         }
                     )
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .accessibilityValue(session.id == windowRuntime.selectedSessionID ? "selected" : "unselected")
+                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID))
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(

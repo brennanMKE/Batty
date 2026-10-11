@@ -529,6 +529,8 @@ nonisolated final class CLIRemoteControlTests: XCTestCase {
             ["tab", "focus", "not-a-uuid"],
             ["session", "focus", "not-a-uuid"],
             ["session", "close", "--session", "not-a-uuid"],
+            ["session", "info", "--session", "not-a-uuid"],
+            ["notify", "--title", "ghost", "--tab", "not-a-uuid"],
         ]
         for arguments in malformed {
             let result = BattyCLI.run(arguments)
@@ -592,7 +594,7 @@ nonisolated final class CLIRemoteControlTests: XCTestCase {
         defer { app.terminate() }
 
         let outside = BattyCLI.run(["id"])
-        XCTAssertNotEqual(outside.status, 0, "id with no BATTY_* environment must fail: \(outside.summary)")
+        XCTAssertEqual(outside.status, 1, "id with no BATTY_* environment must exit 1: \(outside.summary)")
 
         let session = try XCTUnwrap(initial.selectedSession)
         let sentinel = BattyUITestHarness.sentinelPath(named: "id-json")

@@ -127,7 +127,9 @@ extension PaneRuntime {
     func topologyPayload(isFocused: Bool, includeDimensions: Bool = false) -> TopologyPanePayload {
         let visibleTabs = kind == .terminal ? tabs : []
         var frame: Rectangle?
-        if includeDimensions {
+        // A hidden Pane's retained surface keeps its last laid-out frame, which
+        // no longer describes anything on screen.
+        if includeDimensions && !isHidden {
             // Get dimensions from the pane's terminal view, fall back to layer bounds if layout hasn't run.
             for tab in tabs where tab.terminalNSView != nil {
                 let view = tab.terminalNSView!

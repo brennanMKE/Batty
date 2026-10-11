@@ -108,15 +108,42 @@ nonisolated final class CLIViewPaneTests: XCTestCase {
         )
         XCTAssertFalse(BattyScreen.element("git-status.not-a-repo", in: app).exists)
         XCTAssertFalse(BattyScreen.element("git-status.scan-failed", in: app).exists)
+        // The fixture's one untracked file is the only proof the Pane scanned
+        // --path rather than the source Pane's working directory (a plain
+        // temp directory). Its row sits inside the collapsed "Untracked Files"
+        // disclosure, so the group's count is what is visible.
+        let untracked = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Untracked Files (1)")).firstMatch
+        XCTAssertTrue(untracked.waitForExistence(timeout: 15), "the Pane did not report the fixture repository's one untracked file")
     }
 
     /// A Git Status Pane opened on a directory that is not a repository shows
-    /// the not-a-repository state instead of a snapshot. The source Pane's cwd
-    /// is not a repository either, so this does not prove `--path` is honoured.
+    /// the not-a-repository state instead of a snapshot. The source Pane's
+    /// working directory is a repository, so the state can only come from
+    /// `--path`.
     @MainActor
     func testSplitGitStatusWithNonRepositoryPathShowsNotARepository() throws {
-        let (app, _, session) = try launch()
+        let (app, _, _) = try launch()
         defer { app.terminate() }
+
+        let repo = try BattyCLI.makeGitRepository(in: scratch)
+        let (created, source) = try BattyCLI.newSession(at: repo)
+        BattyCLI.runExpectingSuccess(["session", "focus", created.id.uuidString])
+        let session = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == created.id }?.session(created.id))
+        XCTAssertTrue(BattyScreen.terminalPane(source, in: app).waitForExistence(timeout: 10))
+        let fullFrame = BattyScreen.terminalPane(source, in: app).frame
+
+        // Precondition: with no --path the Pane follows the source Pane's
+        // repository, so a not-a-repo result below cannot be the default.
+        let (defaultID, _) = try splitViewAndAssertRendered(
+            kind: "git-status",
+            contentIdentifier: "git-status.snapshot",
+            source: source,
+            in: session,
+            app: app
+        )
+        BattyCLI.runExpectingSuccess(["pane", "close", "--pane", defaultID.uuidString])
+        let afterClose = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(defaultID) == nil }?.session(created.id))
+        XCTAssertTrue(waitFor({ BattyScreen.area(BattyScreen.terminalPane(source, in: app).frame) > BattyScreen.area(fullFrame) * 0.9 }, timeout: 10))
 
         let plain = scratch.appending(path: "plain-directory")
         try FileManager.default.createDirectory(at: plain, withIntermediateDirectories: true)
@@ -124,8 +151,8 @@ nonisolated final class CLIViewPaneTests: XCTestCase {
             kind: "git-status",
             contentIdentifier: "git-status.not-a-repo",
             extraArguments: ["--path", plain.path],
-            source: session.focusedPaneID,
-            in: session,
+            source: source,
+            in: afterClose,
             app: app,
             contentSpansColumn: false
         )
@@ -146,21 +173,76 @@ nonisolated final class CLIViewPaneTests: XCTestCase {
         )
     }
 
-    /// `--pid` is accepted and the view renders; the pinned process's state is
-    /// not asserted.
+    /// `--pid` reaches the view: the header names the pinned pid and the run
+    /// state chip reads running. Without `--pid` the view follows the source
+    /// Pane's process instead, so the pid below cannot be the default.
     @MainActor
-    func testSplitProcessStatusAcceptsPid() throws {
+    func testSplitProcessStatusPinsThePid() throws {
         let (app, appURL, session) = try launch()
         defer { app.terminate() }
+
+        let appPID = try XCTUnwrap(BattyCLI.launchedProcessID(of: appURL))
+        let source = session.focusedPaneID
+        let fullFrame = BattyScreen.terminalPane(source, in: app).frame
+        let (followingID, _) = try splitViewAndAssertRendered(
+            kind: "process-status",
+            contentIdentifier: "process-status-view",
+            source: source,
+            in: session,
+            app: app
+        )
+        let pid = BattyScreen.element("process-status.pid", in: app)
+        XCTAssertTrue(pid.waitForExistence(timeout: 15), "the unpinned view shows no pid")
+        XCTAssertNotEqual(pid.value as? String, String(appPID), "the unpinned view must not already show the app's pid")
+        BattyCLI.runExpectingSuccess(["pane", "close", "--pane", followingID.uuidString])
+        let afterClose = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(followingID) == nil }?.session(session.id))
+        XCTAssertTrue(waitFor({ BattyScreen.area(BattyScreen.terminalPane(source, in: app).frame) > BattyScreen.area(fullFrame) * 0.9 }, timeout: 10))
 
         try splitViewAndAssertRendered(
             kind: "process-status",
             contentIdentifier: "process-status-view",
-            extraArguments: ["--pid", String(try XCTUnwrap(BattyCLI.launchedProcessID(of: appURL)))],
+            extraArguments: ["--pid", String(appPID)],
+            source: source,
+            in: afterClose,
+            app: app
+        )
+        XCTAssertTrue(
+            waitFor({ (BattyScreen.element("process-status.pid", in: app).value as? String) == String(appPID) }, timeout: 15),
+            "the view did not pin pid \(appPID): \(String(describing: BattyScreen.element("process-status.pid", in: app).value))"
+        )
+        XCTAssertTrue(
+            waitFor({ (BattyScreen.element("process-status.state-chip", in: app).value as? String) == "running" }, timeout: 15),
+            "the pinned live process should read running"
+        )
+        XCTAssertFalse(BattyScreen.element("process-status.exited-banner", in: app).exists)
+        XCTAssertFalse(BattyScreen.element("process-status.no-selection", in: app).exists)
+    }
+
+    /// A pinned pid that has already exited reads exited, with the banner.
+    @MainActor
+    func testSplitProcessStatusWithExitedPidReadsExited() throws {
+        let (app, _, session) = try launch()
+        defer { app.terminate() }
+
+        let finished = Process()
+        finished.executableURL = URL(filePath: "/usr/bin/true")
+        try finished.run()
+        finished.waitUntilExit()
+        let deadPID = finished.processIdentifier
+
+        try splitViewAndAssertRendered(
+            kind: "process-status",
+            contentIdentifier: "process-status-view",
+            extraArguments: ["--pid", String(deadPID)],
             source: session.focusedPaneID,
             in: session,
             app: app
         )
+        XCTAssertTrue(
+            waitFor({ (BattyScreen.element("process-status.state-chip", in: app).value as? String) == "exited" }, timeout: 15),
+            "an exited pid must read exited, saw \(String(describing: BattyScreen.element("process-status.state-chip", in: app).value))"
+        )
+        XCTAssertTrue(BattyScreen.element("process-status.exited-banner", in: app).waitForExistence(timeout: 10))
     }
 
     @MainActor
@@ -256,6 +338,51 @@ nonisolated final class CLIViewPaneTests: XCTestCase {
         XCTAssertEqual(BattyScreen.identifiers(withPrefix: "pane-close-button.", in: app), ["pane-close-button.\(id.uuidString)"],
                        "a second non-terminal Pane appeared")
         XCTAssertEqual(BattyScreen.identifiers(withPrefix: "git-status.snapshot", in: app).count, 1)
+        BattyScreen.expectMatches(topology, in: app)
+    }
+
+    /// SKILL.md section 4: a hidden Pane of the kind is not a match, so
+    /// `--unique` creates a new one; and a match never moves focus.
+    @MainActor
+    func testUniqueIgnoresHiddenPanesAndNeverMovesFocus() throws {
+        let (app, _, session) = try launch()
+        defer { app.terminate() }
+
+        let repo = try BattyCLI.makeGitRepository(in: scratch)
+        let source = session.focusedPaneID
+        let (hiddenID, _) = try splitViewAndAssertRendered(
+            kind: "git-status",
+            contentIdentifier: "git-status.snapshot",
+            extraArguments: ["--unique", "--path", repo.path],
+            source: source,
+            in: session,
+            app: app
+        )
+        BattyCLI.runExpectingSuccess(["pane", "hide", "--pane", hiddenID.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(hiddenID)?.isHidden == true })
+
+        let created = BattyCLI.runExpectingSuccess(["pane", "split", "--view", "git-status", "--unique", "--path", repo.path, "--pane", source.uuidString])
+        let freshID = try XCTUnwrap(created.ids.last, "--unique printed no id: \(created.summary)")
+        XCTAssertNotEqual(freshID, hiddenID, "a hidden Pane must not satisfy --unique")
+        XCTAssertFalse(created.output.contains("--unique matched an existing pane"), created.output)
+        var topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(freshID) != nil })
+        XCTAssertEqual(Set(topology.session(session.id)?.panes.filter { $0.kind == "git-status" }.map(\.id) ?? []), [hiddenID, freshID])
+        XCTAssertEqual(topology.pane(hiddenID)?.isHidden, true)
+        XCTAssertEqual(topology.pane(freshID)?.isHidden, false)
+        XCTAssertTrue(BattyScreen.element("pane-close-button.\(freshID.uuidString)", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(BattyScreen.element("pane-close-button.\(hiddenID.uuidString)", in: app).exists)
+
+        // Focus the source Pane, then match: focus must stay on the source
+        // rather than move to the matched Pane.
+        BattyCLI.runExpectingSuccess(["pane", "focus", source.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.session(session.id)?.focusedPaneID == source })
+        let matched = BattyCLI.runExpectingSuccess(["pane", "split", "--view", "git-status", "--unique", "--pane", source.uuidString])
+        XCTAssertEqual(matched.ids.last, freshID, "--unique must match the visible Pane: \(matched.summary)")
+        XCTAssertTrue(matched.output.contains("--unique matched an existing pane"), matched.output)
+        topology = try XCTUnwrap(BattyCLI.topology())
+        XCTAssertEqual(topology.session(session.id)?.focusedPaneID, source, "a --unique match moved focus")
+        XCTAssertEqual(topology.session(session.id)?.panes.count, session.panes.count + 2, "a match must create nothing")
+        XCTAssertTrue(waitFor({ BattyScreen.terminalPane(source, in: app).label == "focused" }, timeout: 10))
         BattyScreen.expectMatches(topology, in: app)
     }
 

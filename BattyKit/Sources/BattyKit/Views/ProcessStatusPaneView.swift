@@ -96,6 +96,8 @@ struct ProcessStatusPaneView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .fixedSize()
+                        .accessibilityIdentifier("process-status.pid")
+                        .accessibilityValue(String(pid))
                 }
             }
             .contextMenu { headerContextMenu }
@@ -160,16 +162,30 @@ struct ProcessStatusPaneView: View {
     @ViewBuilder
     private var stateChip: some View {
         if !content.hasNoSelection {
-            switch content.runState {
-            case .running:
-                StatusBadge(text: "Running", color: .green)
-            case .exited:
-                StatusBadge(text: "Exited", color: .secondary)
-            case .permissionDenied:
-                StatusBadge(text: "Permission Unavailable", color: .orange)
-            case .unavailable:
-                StatusBadge(text: "Unavailable", color: .red)
+            Group {
+                switch content.runState {
+                case .running:
+                    StatusBadge(text: "Running", color: .green)
+                case .exited:
+                    StatusBadge(text: "Exited", color: .secondary)
+                case .permissionDenied:
+                    StatusBadge(text: "Permission Unavailable", color: .orange)
+                case .unavailable:
+                    StatusBadge(text: "Unavailable", color: .red)
+                }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("process-status.state-chip")
+            .accessibilityValue(runStateAccessibilityValue)
+        }
+    }
+
+    private var runStateAccessibilityValue: String {
+        switch content.runState {
+        case .running: "running"
+        case .exited: "exited"
+        case .permissionDenied: "permission-denied"
+        case .unavailable: "unavailable"
         }
     }
 
@@ -310,6 +326,8 @@ struct ProcessStatusPaneView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("process-status.exited-banner")
     }
 
     private var permissionDeniedBanner: some View {
@@ -322,6 +340,8 @@ struct ProcessStatusPaneView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("process-status.permission-denied-banner")
     }
 
     /// #0356: an unrecognized-errno sample failure, distinct from
@@ -344,6 +364,8 @@ struct ProcessStatusPaneView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("process-status.unavailable-banner")
     }
 
     private var noSelectionState: some View {
@@ -357,6 +379,8 @@ struct ProcessStatusPaneView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("process-status.no-selection")
     }
 
     // MARK: - Disclosures (§3.4 — on-demand, never per-tick)
