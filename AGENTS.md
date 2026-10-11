@@ -205,6 +205,17 @@ Release scripts live in `scripts/`:
 
 Distribution is dual (user directive, 2026-10-09): each release's notarized, stapled DMG is copied into `website/downloads/Batty-<X.Y.Z>.dmg` (the Sparkle appcast enclosure keeps pointing there) **and** attached as an asset to the GitHub release for its tag (`gh release create`/`upload`, see `scripts/RELEASE.md` step 10). Creating the GitHub release is a shared-state action: user-run or explicitly approved, never autonomous.
 
+### Release branches (user directive, 2026-10-10)
+
+`main` is where the next minor version is built. Each shipped minor version gets a maintenance branch for its bug-fix releases.
+
+- **Cutting a release.** When `X.Y.0` is released from `main`, tag it `vX.Y.0`, the same tag style as `v1.1.0`. Then create `release/X.Y` from that tag. Creating and pushing the tag and the branch are shared-state actions: user-run or explicitly approved.
+- **New features go to `main`.** Issue branches (`issue/NNNN`) start from `main` and squash-merge into `main`, as in the issue workflow. Never merge feature work into a `release/X.Y` branch.
+- **Bug fixes for a shipped version** are fixed on `main` first through the normal issue workflow. Then `git cherry-pick -x` the squash commit onto `release/X.Y`. Fix on the release branch first only when the code no longer exists on `main`, and say so in the issue's Work log. Record the release-branch commit in the issue's `## Work log`.
+- **Patch releases** (`X.Y.1`, `X.Y.2`, …) are built from `release/X.Y`. Bump `MARKETING_VERSION` in `Configuration/App.xcconfig` on that branch, run the Release archive check and the VM UI suite against it, then follow the normal release pipeline. `tools/run-ui-tests-vm.sh` tests `git archive HEAD`, so check out the release branch, in its own worktree, before running it.
+- **Unfinished features on `main` stay behind a feature flag** until the release that ships them. With the flag off, the feature must be invisible and inert: no menu, Command Palette, Sidebar or CLI entry points, and no reads or writes of the feature's files. The flag is on in Batty Beta builds and off in Prod. Remove the flag in the release that ships the feature. Projects is the first such feature, for 1.3.0, while `release/1.2` carries 1.2.x fixes.
+- **Never cherry-pick from a release branch back into `main`.** A fix that started on `release/X.Y` gets its own `main` change through the issue workflow.
+
 ## Project layout
 
 ```
