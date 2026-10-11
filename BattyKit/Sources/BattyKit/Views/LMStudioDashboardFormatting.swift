@@ -39,11 +39,15 @@ nonisolated enum LMStudioDashboardFormatting {
         return sentence.prefix(1).uppercased() + sentence.dropFirst()
     }
 
-    /// "Finished: 6  ·  Hit token limit: 1", most frequent first, ties by label.
+    /// "Hit token limit: 1  ·  Failed: 2", most frequent first, ties by label.
+    /// "Finished" is omitted: it is the normal case and every row's badge already
+    /// shows it. Nil when nothing else remains.
     static func stopReasonTallyText(_ reasons: [String]) -> String? {
+        let finished = stopReasonDisplayName("eosFound")
         var tally: [String: Int] = [:]
         for reason in reasons {
-            tally[stopReasonDisplayName(reason), default: 0] += 1
+            let name = stopReasonDisplayName(reason)
+            if name != finished { tally[name, default: 0] += 1 }
         }
         guard !tally.isEmpty else { return nil }
         return tally

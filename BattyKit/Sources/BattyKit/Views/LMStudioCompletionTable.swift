@@ -7,10 +7,14 @@ enum LMStudioCompletionColumns: CaseIterable {
     case full, noContext, minimal, noTime, modelAndBadge
 }
 
-/// Live Requests rows as a column-aligned `Grid`. `ViewThatFits` walks the
+/// Live Requests rows as a column-aligned `Grid`. The model column is capped
+/// at `modelColumnMaxWidth` so the grid is intrinsically sized and the stats
+/// sit directly after it at wide Pane widths. `ViewThatFits` walks the
 /// layouts from richest to leanest, dropping whole columns; the last one
 /// (model + badge) always fits the minimum Pane width.
 struct LMStudioCompletionTable: View {
+    static let modelColumnMaxWidth: CGFloat = 240
+
     let records: [LMStudioCompletionRecord]
     var forcedColumns: LMStudioCompletionColumns?
 
@@ -47,7 +51,7 @@ struct LMStudioCompletionTable: View {
                         .font(.caption.weight(.medium))
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .frame(minWidth: 40, idealWidth: 100, maxWidth: .infinity, alignment: .leading)
+                        .frame(minWidth: 40, idealWidth: 100, maxWidth: Self.modelColumnMaxWidth, alignment: .leading)
                         .gridColumnAlignment(.leading)
                     if showTokens {
                         Text(record.stats?.tokensPerSecond.map { String(format: "%.0f tok/s", $0) } ?? "")

@@ -31,7 +31,9 @@ struct LMStudioDashboardFormattingTests {
 
     @Test func tallyUsesDisplayNamesMostFrequentFirst() {
         let reasons = Array(repeating: "eosFound", count: 6) + ["maxPredictedTokensReached"]
-        #expect(LMStudioDashboardFormatting.stopReasonTallyText(reasons) == "Finished: 6  ·  Hit token limit: 1")
+        #expect(LMStudioDashboardFormatting.stopReasonTallyText(reasons) == "Hit token limit: 1")
+        let mixed = ["failed", "failed", "maxPredictedTokensReached", "eosFound", "eosFound", "eosFound"]
+        #expect(LMStudioDashboardFormatting.stopReasonTallyText(mixed) == "Failed: 2  ·  Hit token limit: 1")
     }
 
     @Test func tallyMergesReasonsThatShareADisplayName() {
@@ -47,6 +49,10 @@ struct LMStudioDashboardFormattingTests {
     @Test func tallyBreaksTiesByLabel() {
         #expect(LMStudioDashboardFormatting.stopReasonTallyText(["toolCalls", "failed"]) == "Failed: 1  ·  Tool calls: 1")
         #expect(LMStudioDashboardFormatting.stopReasonTallyText([]) == nil)
+    }
+
+    @Test func tallyIsNilWhenEveryCompletionFinished() {
+        #expect(LMStudioDashboardFormatting.stopReasonTallyText(Array(repeating: "eosFound", count: 4)) == nil)
     }
 
     private func entry(level: String?, message: String?) -> LMStudioEngineLogEntry {
