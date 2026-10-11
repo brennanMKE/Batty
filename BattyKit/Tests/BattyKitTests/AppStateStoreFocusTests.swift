@@ -55,6 +55,46 @@ struct AppStateStoreFocusTests {
         #expect(session.tree.focusedPaneID == before)
     }
 
+    // MARK: - addTab(toPaneID:) (#0408)
+
+    @Test func addTabToNonFocusedPaneFocusesThatPaneAndActivatesNewTab() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        session.tree.splitFocusedPane(direction: .horizontal)
+        let target = session.tree.allPanes.first { $0.id != session.tree.focusedPaneID }!
+        let before = target.tabs.count
+
+        let tab = store.addTab(toPaneID: target.id)
+
+        #expect(tab != nil)
+        #expect(target.tabs.count == before + 1)
+        #expect(target.activeTabID == tab?.id)
+        #expect(session.tree.focusedPaneID == target.id)
+    }
+
+    @Test func addTabToFocusedPaneKeepsFocus() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let pane = session.tree.allPanes[0]
+        let focused = session.tree.focusedPaneID
+
+        let tab = store.addTab(toPaneID: pane.id)
+
+        #expect(pane.activeTabID == tab?.id)
+        #expect(session.tree.focusedPaneID == focused)
+    }
+
+    @Test func addTabToUnknownPaneIsNoOp() {
+        let store = AppStateStore()
+        let session = store.sessions[0]
+        let before = session.tree.focusedPaneID
+        let count = session.tree.allPanes[0].tabs.count
+
+        #expect(store.addTab(toPaneID: UUID()) == nil)
+        #expect(session.tree.focusedPaneID == before)
+        #expect(session.tree.allPanes[0].tabs.count == count)
+    }
+
     // MARK: - focusedTerminalTab (#0332)
     //
     // `AppStateStore.focusedTerminalTab` is the single canonical resolution

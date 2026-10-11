@@ -206,7 +206,7 @@ public struct PaneView: View {
                             items: $pane.tabs,
                             activeID: activeIDBinding,
                             onReorderCommit: nil,
-                            onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
+                            onAdd: { addTabFocusingPane(inheritingCWDFrom: pane.activeTab) }
                         ) { tab, isActive in
                             BattyTabChip(
                                 title: chipTitle(for: tab),
@@ -655,7 +655,7 @@ public struct PaneView: View {
         Divider()
 
         Button("Duplicate Tab") {
-            pane.addTab(inheritingCWDFrom: tab)
+            addTabFocusingPane(inheritingCWDFrom: tab)
         }
 
         Divider()
@@ -675,6 +675,15 @@ public struct PaneView: View {
             }
         }
         .disabled(pane.tabs.count < 2)
+    }
+
+    private func addTabFocusingPane(inheritingCWDFrom source: TabRuntime?) {
+        if let appStore {
+            appStore.addTab(toPaneID: pane.id, inheritingCWDFrom: source)
+        } else {
+            if tree.focusedPaneID != pane.id { tree.focusedPaneID = pane.id }
+            pane.addTab(inheritingCWDFrom: source)
+        }
     }
 
     private var activeIDBinding: Binding<UUID?> {

@@ -1237,6 +1237,30 @@ public final class AppStateStore {
         }
     }
 
+    /// Creates a Tab in the Pane `id` and moves Pane focus there, so the new
+    /// Tab is typeable even when another Pane was focused. Both writes happen
+    /// in the caller's event handler, so the Pane is already focused when the
+    /// new Tab mounts and `PaneView`'s `.onAppear` trigger focuses it. Call
+    /// only from user-event handlers (see docs/swiftui-observation-rules.md).
+    /// Returns `nil` for an unknown Pane.
+    @discardableResult
+    public func addTab(toPaneID id: UUID, inheritingCWDFrom source: TabRuntime? = nil) -> TabRuntime? {
+        guard let (window, pane) = locatePane(id: id) else { return nil }
+        window.focusPane(id: id)
+        return pane.addTab(inheritingCWDFrom: source)
+    }
+
+    private func locatePane(id: UUID) -> (WindowRuntime, PaneRuntime)? {
+        for window in windows {
+            for session in window.sessions {
+                if let pane = session.tree.allPanes.first(where: { $0.id == id }) {
+                    return (window, pane)
+                }
+            }
+        }
+        return nil
+    }
+
     /// Hides the pane with `id`, routing to the owning window. No-op when the
     /// pane is the last visible pane in its session (≥1 visible invariant).
     public func hidePane(id: UUID) {

@@ -173,6 +173,46 @@ nonisolated final class PaneFocusTests: XCTestCase {
                       "Cmd-Option-Down should focus the bottom pane")
     }
 
+    // MARK: - New Tab from a non-focused Pane (#0408)
+
+    @MainActor
+    func testPlusInNonFocusedPaneFocusesNewTabAndTypesIntoIt() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        app.typeKey("d", modifierFlags: [.command])
+        let panes = panesQuery(in: app)
+        XCTAssertTrue(waitFor({ panes.count >= 2 }, timeout: 5))
+        panes.element(boundBy: 0).click()
+        XCTAssertTrue(waitFor({ self.focusedIndex(in: app) == 0 }, timeout: 5),
+                      "Left pane should be focused before clicking + in the right pane")
+
+        let rightID = panes.element(boundBy: 1).identifier
+        XCTAssertTrue(rightID.hasPrefix("pane-terminal."))
+        let rightPaneUUID = String(rightID.dropFirst("pane-terminal.".count))
+        let bar = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@", "tab-bar.\(rightPaneUUID)"))
+            .firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 5))
+        let plus = bar.buttons["New tab"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 5))
+        plus.click()
+
+        XCTAssertTrue(waitFor({ self.focusedIndex(in: app) == 1 }, timeout: 5),
+                      "Clicking + in the right pane should focus the right pane")
+
+        let sentinel = BattyUITestHarness.sentinelPath(named: "new-tab-focus")
+        try? FileManager.default.removeItem(atPath: sentinel)
+        try? FileManager.default.removeItem(atPath: sentinel + ".tmp")
+        app.typeText("printf %s \"$BATTY_PANE_ID\" > '\(sentinel).tmp' && mv '\(sentinel).tmp' '\(sentinel)'\n")
+        XCTAssertTrue(BattyUITestHarness.waitForFile(at: sentinel, timeout: 10),
+                      "Typed command should reach a shell")
+        let landedIn = (try? String(contentsOfFile: sentinel, encoding: .utf8)) ?? ""
+        XCTAssertEqual(landedIn, rightPaneUUID,
+                       "Keystrokes should land in the right pane's new Tab, not the previously focused pane")
+    }
+
     // MARK: - Helpers
 
     @MainActor
