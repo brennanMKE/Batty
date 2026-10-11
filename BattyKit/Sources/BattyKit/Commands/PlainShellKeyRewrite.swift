@@ -5,13 +5,14 @@ import Darwin
 import Foundation
 import GhosttyTerminal
 
-/// Downgrades Shift- and Ctrl-modified Return to a plain Return while a lone
-/// interactive shell is the pty's foreground process group.
+/// Downgrades Shift-, Ctrl- and Command-modified Return to a plain Return
+/// while a lone interactive shell is the pty's foreground process group.
+/// Chords that include Option are left alone.
 ///
 /// libghostty's legacy encoder maps modified Return to `CSI 27;<mods>;13~`
-/// unconditionally (its function-key table has no mode gate for Shift-Enter),
-/// and zsh/bash readline have no binding for it, so the tail of the sequence
-/// self-inserts. Terminal.app sends a plain CR here. The rewrite applies only
+/// unconditionally (its function-key table has no mode gate for these
+/// modifiers), and zsh/bash readline have no binding for it, so the tail of
+/// the sequence self-inserts. Terminal.app sends a plain CR here. The rewrite applies only
 /// when the foreground process group's leader is a plain shell and the group
 /// has no other member, so a program started by a non-interactive wrapper
 /// script (which shares the script's group) keeps the full encoding.
@@ -41,8 +42,8 @@ public enum PlainShellKeyRewrite {
 
     private static func strippedModifiers(_ modifiers: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags? {
         let held = modifiers.intersection(relevantFlags)
-        guard !held.isEmpty, held.isSubset(of: [.shift, .control]) else { return nil }
-        return modifiers.subtracting([.shift, .control])
+        guard !held.isEmpty, held.isSubset(of: [.shift, .control, .command]) else { return nil }
+        return modifiers.subtracting([.shift, .control, .command])
     }
 
     public static func processName(of pid: pid_t) -> String? {

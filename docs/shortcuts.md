@@ -282,6 +282,13 @@ libghostty's copy buffer — keeping libghostty in charge of Cmd-C means
 the selection-to-clipboard path stays inside the surface. Paste is
 handled separately via Batty's `PasteDispatcher` menu action.
 
+With the defaults gone, libghostty's unconditional `CSI 27;<mods>;13~`
+entries for modified Return reach the shell. At a prompt where the
+foreground process group is a lone sh-family shell, `PlainShellKeyRewrite`
+rewrites Return and keypad Enter carrying any combination of Shift, Control
+and Command to a plain Return, as Terminal.app does. Chords that include
+Option, and every other foreground program, keep the full encoding.
+
 This is also why user-set libghostty keybindings (e.g. via a `.ghostty`
 config) do not take effect inside Batty: the `clear` directive nukes
 them, and Batty's own shortcut system is the only customization layer.

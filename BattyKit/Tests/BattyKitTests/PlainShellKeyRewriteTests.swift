@@ -100,11 +100,36 @@ struct PlainShellKeyRewriteTests {
         #expect(rewritten([]) == nil)
     }
 
-    @Test func optionAndCommandReturnAreLeftAlone() {
+    @Test func commandReturnBecomesPlainReturn() {
+        #expect(rewritten([.command]) == [])
+        #expect(rewritten([.command], process: "bash") == [])
+    }
+
+    @Test func commandShiftAndCommandControlReturnAreCovered() {
+        #expect(rewritten([.shift, .command]) == [])
+        #expect(rewritten([.control, .command]) == [])
+        #expect(rewritten([.shift, .control, .command]) == [])
+    }
+
+    @Test func commandKeypadEnterIsCovered() {
+        #expect(rewritten([.command, .numericPad], keyCode: 76) == [.numericPad])
+    }
+
+    @Test(arguments: ["claude", "vim", "fish"])
+    func commandReturnKeepsModifiedKeyOutsideShell(name: String) {
+        #expect(rewritten([.command], process: name) == nil)
+    }
+
+    @Test func commandReturnIsLeftAloneWithoutLoneShell() {
+        #expect(rewritten([.command], process: nil) == nil)
+        #expect(rewritten([.command], members: 2) == nil)
+    }
+
+    @Test func optionChordsAreLeftAlone() {
         #expect(rewritten([.option]) == nil)
         #expect(rewritten([.shift, .option]) == nil)
-        #expect(rewritten([.command]) == nil)
-        #expect(rewritten([.shift, .command]) == nil)
+        #expect(rewritten([.command, .option]) == nil)
+        #expect(rewritten([.command, .option, .shift]) == nil)
     }
 
     @Test func otherKeysAreLeftAlone() {
