@@ -96,5 +96,7 @@ struct ThemeCard: View {
             }
         }
         .activeOutline(isActive, cornerRadius: 8, color: accentColor)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("theme-card.\(theme.name)")
     }
 }

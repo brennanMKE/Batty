@@ -35,6 +35,26 @@ func themeCursorIndex(activeThemeName: String?, pinnedIDs: [String]) -> Int {
     return order.firstIndex(where: { $0.name == activeThemeName }) ?? 0
 }
 
+/// Scroll id carried by the first section header of the visible list. A
+/// filter change scrolls here, not to the first card, so the header stays in
+/// view; the header always sits directly above the first element of the
+/// current filtered list, whichever section (Pinned or Themes) that is.
+let themeListTopID = "co.sstools.Batty.themeListTop"
+
+/// The scroll target after a filter change: the top of the list, or `nil`
+/// when nothing is displayed (the empty state replaces the scroll view).
+func themeFilterScrollTarget(displayed: [GhosttyThemeDefinition]) -> String? {
+    displayed.isEmpty ? nil : themeListTopID
+}
+
+enum ThemeListSection: Equatable { case pinned, others }
+
+/// The section whose header carries `themeListTopID`: the first non-empty one.
+func themeTopHeaderSection(pinnedCount: Int, othersCount: Int) -> ThemeListSection? {
+    if pinnedCount > 0 { return .pinned }
+    return othersCount > 0 ? .others : nil
+}
+
 struct ThemeSelectorView: View {
     @Binding var isPresented: Bool
     let store: AppStateStore
@@ -117,6 +137,7 @@ struct ThemeSelectorView: View {
                 TextField("Filter themes\u{2026}", text: $query)
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
+                    .accessibilityIdentifier("theme-selector.filter")
                     .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
                     .onKeyPress(.downArrow) { moveSelection(1); return .handled }
                     .onKeyPress(.return) { confirmSelection(); return .handled }
@@ -144,6 +165,8 @@ struct ThemeSelectorView: View {
         }
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("theme-selector.root")
         .onAppear {
             searchFocused = true
         }
@@ -154,11 +177,11 @@ struct ThemeSelectorView: View {
             ScrollViewReader { proxy in
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if !filteredPinned.isEmpty {
-                        sectionHeader("Pinned")
+                        sectionHeader("Pinned", isTop: themeTopHeaderSection(pinnedCount: filteredPinned.count, othersCount: filteredOthers.count) == .pinned)
                         themeGrid(filteredPinned, startIndex: 0, proxy: proxy)
                     }
                     if !filteredOthers.isEmpty {
-                        sectionHeader(filteredPinned.isEmpty ? "Themes" : "All Themes")
+                        sectionHeader(filteredPinned.isEmpty ? "Themes" : "All Themes", isTop: themeTopHeaderSection(pinnedCount: filteredPinned.count, othersCount: filteredOthers.count) == .others)
                         themeGrid(filteredOthers, startIndex: filteredPinned.count, proxy: proxy)
                     }
                 }
@@ -182,7 +205,18 @@ struct ThemeSelectorView: View {
                         withAnimation { proxy.scrollTo(allDisplayed[newIdx].name, anchor: .center) }
                     }
                 }
-                .onChange(of: query) { _, _ in cursorIndex = 0 }
+                .onChange(of: query) { _, _ in
+                    // Event-origin (a keystroke flips `query`), so the
+                    // `cursorIndex` write is routine. Unanimated: an
+                    // animated swoop from deep in the catalog on every
+                    // keystroke would be worse than the bug. The cursor
+                    // reset alone can't scroll — it is usually already 0,
+                    // so `onChange(of: cursorIndex)` doesn't fire (`#0394`).
+                    cursorIndex = 0
+                    if let target = themeFilterScrollTarget(displayed: allDisplayed) {
+                        proxy.scrollTo(target, anchor: .top)
+                    }
+                }
             }
         }
     }
@@ -193,12 +227,17 @@ struct ThemeSelectorView: View {
     }
 
     @ViewBuilder
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
+    private func sectionHeader(_ title: String, isTop: Bool) -> some View {
+        let header = Text(title)
             .font(.caption)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
             .padding(.vertical, 6)
+        if isTop {
+            header.id(themeListTopID)
+        } else {
+            header
+        }
     }
 
     @ViewBuilder
@@ -330,6 +369,7 @@ struct SessionThemeSelectorView: View {
                 TextField("Filter themes\u{2026}", text: $query)
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
+                    .accessibilityIdentifier("theme-selector.filter")
                     .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
                     .onKeyPress(.downArrow) { moveSelection(1); return .handled }
                     .onKeyPress(.return) { confirmSelection(); return .handled }
@@ -357,6 +397,8 @@ struct SessionThemeSelectorView: View {
         }
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("theme-selector.root")
         .onAppear {
             searchFocused = true
         }
@@ -367,11 +409,11 @@ struct SessionThemeSelectorView: View {
             ScrollViewReader { proxy in
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if !filteredPinned.isEmpty {
-                        sectionHeader("Pinned")
+                        sectionHeader("Pinned", isTop: themeTopHeaderSection(pinnedCount: filteredPinned.count, othersCount: filteredOthers.count) == .pinned)
                         themeGrid(filteredPinned, startIndex: 0, proxy: proxy)
                     }
                     if !filteredOthers.isEmpty {
-                        sectionHeader(filteredPinned.isEmpty ? "Themes" : "All Themes")
+                        sectionHeader(filteredPinned.isEmpty ? "Themes" : "All Themes", isTop: themeTopHeaderSection(pinnedCount: filteredPinned.count, othersCount: filteredOthers.count) == .others)
                         themeGrid(filteredOthers, startIndex: filteredPinned.count, proxy: proxy)
                     }
                 }
@@ -386,7 +428,18 @@ struct SessionThemeSelectorView: View {
                         withAnimation { proxy.scrollTo(allDisplayed[newIdx].name, anchor: .center) }
                     }
                 }
-                .onChange(of: query) { _, _ in cursorIndex = 0 }
+                .onChange(of: query) { _, _ in
+                    // Event-origin (a keystroke flips `query`), so the
+                    // `cursorIndex` write is routine. Unanimated: an
+                    // animated swoop from deep in the catalog on every
+                    // keystroke would be worse than the bug. The cursor
+                    // reset alone can't scroll — it is usually already 0,
+                    // so `onChange(of: cursorIndex)` doesn't fire (`#0394`).
+                    cursorIndex = 0
+                    if let target = themeFilterScrollTarget(displayed: allDisplayed) {
+                        proxy.scrollTo(target, anchor: .top)
+                    }
+                }
             }
         }
     }
@@ -397,12 +450,17 @@ struct SessionThemeSelectorView: View {
     }
 
     @ViewBuilder
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
+    private func sectionHeader(_ title: String, isTop: Bool) -> some View {
+        let header = Text(title)
             .font(.caption)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
             .padding(.vertical, 6)
+        if isTop {
+            header.id(themeListTopID)
+        } else {
+            header
+        }
     }
 
     @ViewBuilder

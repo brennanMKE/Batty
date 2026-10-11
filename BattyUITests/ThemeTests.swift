@@ -90,4 +90,47 @@ nonisolated final class ThemeTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5),
                       "New session must appear after global theme application ([[0147]] regression)")
     }
+
+    // MARK: - Theme Selector filter scroll — [[0394]]
+
+    /// With the list scrolled deep into the catalog, typing a filter that
+    /// matches an early Theme must bring that Theme into view, on the first
+    /// keystroke and on a later one.
+    @MainActor
+    func testFilterScrollsMatchIntoView() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        app.typeKey("t", modifierFlags: [.command, .shift])
+
+        let root = app.descendants(matching: .any).matching(identifier: "theme-selector.root").firstMatch
+        XCTAssertTrue(root.waitForExistence(timeout: 5), "Theme Selector must open on Cmd-Shift-T")
+        let filter = app.descendants(matching: .any).matching(identifier: "theme-selector.filter").firstMatch
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+
+        func scrollDeep() {
+            root.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).hover()
+            for _ in 0..<40 { root.scroll(byDeltaX: 0, deltaY: -400) }
+        }
+
+        let match = app.descendants(matching: .any)
+            .matching(identifier: "theme-card.Acid Burn").firstMatch
+
+        // "a" matches hundreds of Themes: the cursor resets and the list is
+        // long enough to scroll. Scroll deep while that set is showing, then
+        // narrow it; the cursor is already 0, so only the query handler can
+        // bring the match back.
+        filter.click()
+        filter.typeText("a")
+        scrollDeep()
+        XCTAssertFalse(match.isHittable, "Precondition: the match must be scrolled out of view")
+        filter.click()
+        filter.typeText("cid Burn")
+        XCTAssertTrue(match.waitForExistence(timeout: 5), "Matching Theme must exist after filtering")
+        XCTAssertTrue(
+            BattyUITestHarness.waitFor({ match.isHittable && root.frame.contains(match.frame) }, timeout: 5),
+            "Matching Theme must be scrolled into view after narrowing the filter ([[0394]])"
+        )
+    }
 }

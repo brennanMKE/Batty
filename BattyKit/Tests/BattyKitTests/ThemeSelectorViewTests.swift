@@ -45,6 +45,32 @@ struct ThemeSelectorViewTests {
         #expect(order.count == BattyThemeCatalog.allThemes.count)
     }
 
+    // MARK: - themeFilterScrollTarget
+
+    @Test func filterScrollTargetIsNilWhenNothingDisplayed() {
+        #expect(themeFilterScrollTarget(displayed: []) == nil)
+    }
+
+    @Test func filterScrollTargetIsTopIDWhenResultsExist() {
+        let displayed = themeDisplayOrder(pinnedIDs: [])
+        #expect(themeFilterScrollTarget(displayed: displayed) == themeListTopID)
+    }
+
+    // MARK: - themeTopHeaderSection
+
+    @Test func topHeaderIsPinnedWhenPinnedMatchesExist() {
+        #expect(themeTopHeaderSection(pinnedCount: 2, othersCount: 0) == .pinned)
+        #expect(themeTopHeaderSection(pinnedCount: 2, othersCount: 5) == .pinned)
+    }
+
+    @Test func topHeaderIsOthersWhenNothingPinnedMatches() {
+        #expect(themeTopHeaderSection(pinnedCount: 0, othersCount: 5) == .others)
+    }
+
+    @Test func topHeaderIsNilWhenNothingDisplayed() {
+        #expect(themeTopHeaderSection(pinnedCount: 0, othersCount: 0) == nil)
+    }
+
     // MARK: - themeCursorIndex
 
     @Test func cursorIndexIsZeroWhenNoActiveTheme() {
