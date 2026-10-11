@@ -427,14 +427,17 @@ struct ProcessStatusPaneView: View {
             Text("Loading…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .unavailable:
             Text("Not available")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .loaded(let descriptors) where descriptors.isEmpty:
             Text("No open files")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .loaded(let descriptors):
             ForEach(descriptors) { fd in
                 HStack {
@@ -445,7 +448,11 @@ struct ProcessStatusPaneView: View {
                         .font(.caption.monospaced())
                         .lineLimit(1)
                         .textSelection(.enabled)
+                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("process-status.fd.\(fd.id)")
             }
         }
     }
@@ -457,14 +464,17 @@ struct ProcessStatusPaneView: View {
             Text("Loading…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .unavailable:
             Text("Not available")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .loaded(let children) where children.isEmpty:
             Text("No child processes")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .loaded(let children):
             ForEach(children) { child in
                 HStack {
@@ -479,6 +489,7 @@ struct ProcessStatusPaneView: View {
                     }
                     .font(.caption)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

@@ -239,6 +239,13 @@ nonisolated final class ViewGalleryTests: XCTestCase {
     }
 
     @MainActor
+    private func assertOpenFilesRowsLeadingAligned(in view: XCUIElement) {
+        let row = view.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "process-status.fd.")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "no open-file row on screen")
+        XCTAssertEqual(row.frame.minX - view.frame.minX, 16, accuracy: 4, "open-file rows do not start at the view's content origin")
+    }
+
+    @MainActor
     private func capture(_ name: String, _ gallery: Gallery, note: String? = nil) {
         dismissBanners()
         gallery.app.activate()
@@ -365,6 +372,7 @@ nonisolated final class ViewGalleryTests: XCTestCase {
             try captureBothSizes("process-status.following", gallery, view: view, contentIdentifier: "process-status-view") { _ in
                 expandDisclosures(in: gallery.app)
                 pause(1.5)
+                assertOpenFilesRowsLeadingAligned(in: BattyScreen.element("process-status-view", in: gallery.app))
             }
         }
     }
