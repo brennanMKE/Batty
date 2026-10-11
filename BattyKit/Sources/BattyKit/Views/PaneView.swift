@@ -29,9 +29,11 @@ public struct PaneView: View {
     private static let approxCharWidth: CGFloat = 7
     /// Per-chip non-text overhead (icon + close button + padding).
     private static let chipChromeWidth: CGFloat = 36
-    /// SlidingTabBar's own per-bar overhead: 2×12 h-padding + 22 "+" button = 46,
-    /// plus a small layout buffer = 56.
-    private static let barChromeWidth: CGFloat = 56
+    /// SlidingTabBar's own per-bar overhead: 2×12 h-padding + 22 "+" button
+    /// + the button's 12 trailing padding = 58.
+    private static let barChromeWidth: CGFloat = 58
+    /// paneEyeButton: 22 icon frame + 4 trailing padding.
+    private static let eyeButtonWidth: CGFloat = 26
     /// Width consumed by paneDragHandle when sibling panes are present:
     /// icon frame (22) + trailing padding (8) = 30.
     private static let dragHandleWidth: CGFloat = 30
@@ -41,10 +43,10 @@ public struct PaneView: View {
     private static let chipMaxWidthCap: CGFloat = 220
     private static let charBudgetMin: Int = 3
     private static let charBudgetMax: Int = 40
-    /// `nonTerminalBody`'s header row height, pinned to match
-    /// `SlidingTabBar`'s default `barHeight` (`SlidingTabs.SlidingTabBar
-    /// .init(barHeight:)`) so a non-terminal pane's content starts at the
-    /// same y as a terminal pane's tab-bar-bounded content (#0334 review).
+    /// Header row height for both the terminal and non-terminal arms, pinned
+    /// to match `SlidingTabBar`'s default `barHeight` (`SlidingTabs
+    /// .SlidingTabBar.init(barHeight:)`) so both kinds' content starts at the
+    /// same y (#0334 review).
     private static let nonTerminalHeaderHeight: CGFloat = 36
 
     public init(pane: PaneRuntime, tree: SplitTree) {
@@ -62,13 +64,13 @@ public struct PaneView: View {
 
     private var chipMaxWidth: CGFloat {
         let count = max(1, CGFloat(pane.tabs.count))
-        // When sibling panes are present, paneDragHandle (22pt icon + 8pt trailing
-        // padding = 30pt) sits in the same HStack as SlidingTabBar and reduces the
-        // width SlidingTabBar actually receives. Without this deduction the inner
-        // fixedSize HStack inside SlidingTabBar overflows the pane's allocated width
-        // and bleeds visually into the adjacent pane (the merged-tab-bar symptom).
+        // The strip is clipped inside the header's flexible placeholder, so it
+        // cannot push the trailing controls or bleed into the adjacent pane.
+        // The reservations (bar chrome, eye button, and the 30pt drag handle
+        // when sibling panes are present) size the chips to fit the space the
+        // strip is actually given, so they are not clipped.
         let reservation = hasSiblingPanes ? Self.dragHandleWidth : 0
-        let available = max(0, paneWidth - Self.barChromeWidth - reservation)
+        let available = max(0, paneWidth - Self.barChromeWidth - Self.eyeButtonWidth - reservation)
         let perChip = (available / count) - 6  // SlidingTabBar's default spacing
         return min(Self.chipMaxWidthCap, max(Self.chipMinWidth, perChip))
     }
@@ -104,12 +106,10 @@ public struct PaneView: View {
             }
         }
         // Hard-clamp to the size SplitLayout actually allotted this pane
-        // *before* .clipped()/.overlay() run. Without this, a tab bar that
-        // can't fit its chips at their minimum width (SlidingTabBar's inner
-        // fixedSize HStack) makes this VStack report an ideal size wider
-        // than the proposal, and everything anchored to that size — the
-        // focus-highlight overlay below in particular — draws past the
-        // real divider position (#0261). `allottedSize` is nil outside a
+        // *before* .clipped()/.overlay() run, so everything anchored to this
+        // size — the focus-highlight overlay below in particular — cannot
+        // draw past the real divider position (#0261). Non-terminal content
+        // that reports a wider ideal size still relies on it. `allottedSize` is nil outside a
         // split (a single unsplit pane), so this is a no-op there.
         //
         // `.topLeading` (not the default `.center`) so any tab-strip
@@ -195,39 +195,47 @@ public struct PaneView: View {
     private var terminalBody: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                SlidingTabBar(
-                    items: $pane.tabs,
-                    activeID: activeIDBinding,
-                    onReorderCommit: nil,
-                    onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
-                ) { tab, isActive in
-                    BattyTabChip(
-                        title: chipTitle(for: tab),
-                        isActive: isActive,
-                        isPaneFocused: isPaneFocused,
-                        hasUnseen: tab.unseenBellCount > 0,
-                        onClose: {
-                            if let appStore {
-                                appStore.requestCloseTab(id: tab.id)
-                            } else {
-                                pane.removeTab(id: tab.id)
-                            }
+                // The strip is laid out inside an overlay of a flexible
+                // placeholder so its (fixed-size) reported width cannot push
+                // the trailing controls out of the Pane.
+                Color.clear
+                    .frame(maxWidth: .infinity)
+                    .frame(height: Self.nonTerminalHeaderHeight)
+                    .overlay(alignment: .leading) {
+                        SlidingTabBar(
+                            items: $pane.tabs,
+                            activeID: activeIDBinding,
+                            onReorderCommit: nil,
+                            onAdd: { pane.addTab(inheritingCWDFrom: pane.activeTab) }
+                        ) { tab, isActive in
+                            BattyTabChip(
+                                title: chipTitle(for: tab),
+                                isActive: isActive,
+                                isPaneFocused: isPaneFocused,
+                                hasUnseen: tab.unseenBellCount > 0,
+                                onClose: {
+                                    if let appStore {
+                                        appStore.requestCloseTab(id: tab.id)
+                                    } else {
+                                        pane.removeTab(id: tab.id)
+                                    }
+                                }
+                            )
+                            .frame(width: chipMaxWidth)
+                            .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
+                            .accessibilityValue(isActive ? "active" : "inactive")
+                            .contextMenu { tabContextMenu(for: tab) }
                         }
-                    )
-                    .frame(width: chipMaxWidth)
-                    .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
-                    .accessibilityValue(isActive ? "active" : "inactive")
-                    .contextMenu { tabContextMenu(for: tab) }
-                }
-                .clipped()
-                // .contain marks the tab bar as a container so children stay
-                // as discrete accessibility elements with their own ids. Without
-                // this, SwiftUI on macOS folds the bar into a leaf and the
-                // identifier propagates down to every child Button — chip,
-                // close, and "+" all end up with identifier "tab-bar.<uuid>",
-                // and `tab-chip.<title>` becomes unfindable.
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
+                        // .contain marks the tab bar as a container so children stay
+                        // as discrete accessibility elements with their own ids. Without
+                        // this, SwiftUI on macOS folds the bar into a leaf and the
+                        // identifier propagates down to every child Button — chip,
+                        // close, and "+" all end up with identifier "tab-bar.<uuid>",
+                        // and `tab-chip.<title>` becomes unfindable.
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
+                    }
+                    .clipped()
 
                 if hasSiblingPanes {
                     paneDragHandle

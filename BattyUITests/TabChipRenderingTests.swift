@@ -103,6 +103,67 @@ nonisolated final class TabChipRenderingTests: XCTestCase {
         )
     }
 
+    // MARK: - Header controls stay inside a narrow terminal pane (#0460)
+
+    @MainActor
+    func testNarrowTerminalPaneHeaderControlsStayInsidePane() throws {
+        try assertNarrowPaneControlsInside(extraTabs: 0)
+    }
+
+    @MainActor
+    func testNarrowTerminalPaneHeaderControlsStayInsidePaneWithThreeTabs() throws {
+        try assertNarrowPaneControlsInside(extraTabs: 2)
+    }
+
+    @MainActor
+    private func assertNarrowPaneControlsInside(extraTabs: Int) throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        for _ in 0..<extraTabs { app.typeKey("t", modifierFlags: [.command]) }
+        app.typeKey("d", modifierFlags: [.command])
+
+        let panes = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'pane-terminal.'"))
+        XCTAssertTrue(waitFor({ panes.count >= 2 }, timeout: 10), "Expected two panes after Cmd-D")
+        let ordered = panes.allElementsBoundByIndex.sorted { $0.frame.minX < $1.frame.minX }
+        let left = ordered[0]
+        let right = ordered[1]
+        XCTAssertTrue(left.waitForExistence(timeout: 5))
+
+        let window = app.windows.firstMatch
+        let origin = window.coordinate(withNormalizedOffset: .zero)
+        func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
+            origin.withOffset(CGVector(dx: x - window.frame.minX, dy: y - window.frame.minY))
+        }
+        let y = left.frame.midY
+        let targetX = left.frame.minX + 300
+        for offset in stride(from: CGFloat(-1), through: 11, by: 2) {
+            let dividerX = (left.frame.maxX + right.frame.minX) / 2 + offset
+            point(dividerX, y).press(forDuration: 0.1, thenDragTo: point(targetX, y))
+            if waitFor({ left.frame.width < 340 }, timeout: 2) { break }
+        }
+        XCTAssertLessThan(left.frame.width, 340, "the Split divider did not move; the pane is not narrow")
+
+        let paneID = String(left.identifier.dropFirst("pane-terminal.".count))
+        let handle = BattyScreen.element("pane-drag-handle.\(paneID)", in: app)
+        let eye = BattyScreen.element("pane-eye-button.\(paneID)", in: app)
+        XCTAssertTrue(handle.waitForExistence(timeout: 5), "drag handle must exist")
+        XCTAssertTrue(eye.waitForExistence(timeout: 5), "eye button must exist")
+        XCTAssertTrue(handle.isHittable, "drag handle must be hittable")
+        XCTAssertTrue(eye.isHittable, "eye button must be hittable")
+        XCTAssertLessThanOrEqual(handle.frame.maxX, left.frame.maxX, "drag handle clipped by the pane edge (#0460)")
+        XCTAssertLessThanOrEqual(eye.frame.maxX, left.frame.maxX, "eye button clipped by the pane edge (#0460)")
+
+        let plus = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == 'New tab'"))
+            .allElementsBoundByIndex
+            .first { $0.frame.minX >= left.frame.minX && $0.frame.midX <= left.frame.maxX }
+        let plusButton = try XCTUnwrap(plus, "the left pane's New tab button must exist")
+        XCTAssertLessThanOrEqual(plusButton.frame.maxX, left.frame.maxX, "New tab button clipped by the pane edge (#0460)")
+    }
+
     // MARK: - Home dir tab shows "~" by default — [[0142]] default case
 
     /// A fresh tab (likely at $HOME) shows a non-empty chip title.
