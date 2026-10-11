@@ -81,7 +81,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            BattyShortcuts.handle(event) ? nil : event
+            BattyShortcuts.handle(event) ? nil : PlainShellKeyRewrite.rewrite(event)
         }
         TerminalClickFocusMonitor.start()
         appearanceObserver = AppearanceObserver(store: AppStateStore.shared)
