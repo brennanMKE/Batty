@@ -15,6 +15,186 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-2-0">
+            <h2>1.2.0 — 2026-10-11</h2>
+            <p class="meta">Panes can now show more than a terminal: Git status, a running process, whole-system
+            metrics and thermals, or a live LM Studio dashboard, each opened from the Pane menu. The
+            <code>batty</code> command-line tool grew into a full remote control for scripts and coding agents,
+            with JSON output, focus/close/hide verbs, idempotent setup, and an installable agent skill.</p>
+            <h3>New features</h3>
+            <ul>
+                <li>
+                    <strong>Status-view Panes.</strong> Besides terminals, a Pane can now host one of four
+                    live, read-only views. <em>Git Status</em> shows the branch, ahead/behind counts, stashes,
+                    and staged, unstaged, untracked, and conflicted files, refreshing as the working tree changes,
+                    with an inline diff preview and a banner during a rebase, merge, or cherry-pick.
+                    <em>Process Status</em> follows the foreground process of the terminal it was split from
+                    (or a specific pid) and shows CPU, memory, threads, open files, its command line, and child
+                    processes. <em>System Metrics</em> shows the thermal state, CPU temperature and fan speed
+                    where the Mac reports them, per-core CPU, a memory breakdown with pressure, load average, and a
+                    sortable process list. <em>LM Studio Dashboard</em> watches a local LM Studio for loaded
+                    models, live requests, throughput, and recent completions; its Prompt Inspector, which shows
+                    prompt and response text, is off until you turn it on. (#0304, #0305, #0313, #0314)
+                </li>
+                <li>
+                    <strong>Creating status views.</strong> The Pane menu opens with an Open View section listing
+                    Git Status, Process Status, System Metrics, and LM Studio Dashboard; each opens beside the focused
+                    Pane. Split Horizontally and Split Vertically are submenus too: Terminal first, then each view
+                    kind, for choosing the direction. Every kind also has its
+                    own shortcut, <kbd>Cmd</kbd>-<kbd>G</kbd> Git Status, <kbd>Cmd</kbd>-<kbd>J</kbd> Process
+                    Status, <kbd>Cmd</kbd>-<kbd>Y</kbd> LM Studio Dashboard, <kbd>Cmd</kbd>-<kbd>E</kbd> System
+                    Metrics, with <kbd>Shift</kbd> added to split vertically, and all of them are in the Command
+                    Palette and rebindable in Settings → Shortcuts. <kbd>Cmd</kbd>-<kbd>D</kbd> and
+                    <kbd>Shift</kbd>-<kbd>Cmd</kbd>-<kbd>D</kbd> still split a terminal directly. A status view's
+                    header has its own close button, and a view pauses its sampling while it is hidden or its
+                    Session isn't selected. (#0331, #0378, #0349, #0453)
+                </li>
+                <li>
+                    <strong>Command-line remote control.</strong> The <code>batty</code> tool now covers what a
+                    script or coding agent needs to manage its own workspace:
+                    <code>batty new</code> confirms the new Session and prints its Session and Pane ids
+                    (<code>--json</code> for JSON, <code>--no-wait</code> for the old fire-and-forget behavior);
+                    <code>batty session focus</code>, <code>pane focus</code>, and <code>tab focus</code> bring
+                    something to your attention; <code>batty session close</code>, <code>pane hide</code>, and
+                    <code>pane show</code> undo what a script set up; <code>pane split --view &lt;kind&gt;</code>
+                    opens a status view (<code>--path</code> for Git Status, <code>--pid</code> for Process
+                    Status), and <code>--unique</code> reuses a visible view of that kind instead of opening a
+                    duplicate, so a setup script is safe to re-run. <code>batty list</code> and
+                    <code>session info</code> now report each Pane's kind. (#0380, #0381, #0382, #0383, #0379,
+                    #0304, #0305)
+                </li>
+                <li>
+                    <strong>Machine-readable status and capabilities.</strong> <code>batty status --json</code>
+                    reports the app's state, including which app bundle and version answered, and reports failures
+                    as JSON too. The new <code>batty capabilities --json</code> lists every verb with its
+                    parameters, allowed values, and defaults, plus the exit codes, so an agent can discover what the
+                    installed build supports instead of guessing. (#0384, #0402, #0361)
+                </li>
+                <li>
+                    <strong>Agent skill for Claude Code, Cursor, OpenCode, and Codex.</strong> A
+                    <code>batty-cli</code> skill teaches coding agents how to drive Batty from the command line:
+                    which ids to keep, how to make setup idempotent, and what to do about each exit code. Run
+                    <code>batty capabilities</code> to get a ready-to-paste command that fetches the copy matching
+                    your installed version and installs it for every supported agent it finds on your Mac. (#0403,
+                    #0404)
+                </li>
+            </ul>
+            <h3>Bug fixes</h3>
+            <ul>
+                <li>
+                    The focused Pane's outline now follows the window's rounded corners instead of stopping short
+                    of them. (#0339)
+                </li>
+                <li>
+                    System Metrics reads the CPU temperature and fan speed on current Macs again, using the hottest
+                    of the chip's CPU sensors, and says plainly when it runs in a virtual machine with no sensors.
+                    (#0455)
+                </li>
+                <li>
+                    The status views lay out cleanly in narrow Panes: status badges stay on one line, tiles and
+                    stats reflow, headers stack instead of breaking words, and the Pane's own controls are never
+                    cut off. Process ids no longer show a thousands separator. The terminal Pane's header keeps
+                    its hide button visible in a narrow Pane, Process Status lists open files and child processes
+                    flush left, and the LM Studio Dashboard keeps each request's stats next to its model name in a
+                    wide Pane. (#0452, #0454, #0456, #0457, #0458, #0459, #0460, #0461)
+                </li>
+                <li>
+                    <kbd>Shift</kbd>-<kbd>Return</kbd>, <kbd>Ctrl</kbd>-<kbd>Return</kbd> and
+                    <kbd>Cmd</kbd>-<kbd>Return</kbd> at a zsh or bash prompt run the command, as in Terminal,
+                    instead of printing <code>;2;13~</code> or <code>;9;13~</code>. Programs you run from the
+                    shell, such as Claude Code, still receive the modified key. (#0393, #0468)
+                </li>
+                <li>
+                    Clicking at a shell prompt no longer types characters like <code>0;42;13M</code> after a
+                    program exits without turning mouse reporting off. <kbd>Shift</kbd>-drag still selects text.
+                    (#0411)
+                </li>
+                <li>
+                    Clicking <strong>+</strong> or Duplicate Tab in a Pane you aren't in now puts the keyboard in
+                    the new Tab. (#0408)
+                </li>
+                <li>
+                    The <code>batty</code> CLI connects to the Batty that's already running instead of sometimes
+                    launching another copy of the app. It now identifies the exact app bundle it belongs to, and
+                    recovers on its own when the app's connection to the background helper drops. (#0361)
+                </li>
+                <li>
+                    Typing <code>batty</code> in a Batty shell can no longer start a second copy of the app. Shells
+                    no longer get the app's own executable directory on their <code>PATH</code>; they get the
+                    bundled CLI's directory instead, so <code>batty</code> works in a Pane even if you haven't
+                    installed the CLI from Settings → Advanced. (#0364)
+                </li>
+                <li>
+                    Closing a Pane now returns focus to the Pane you were in before, instead of jumping to the
+                    first Pane in the Session. (#0337)
+                </li>
+                <li>
+                    When Batty isn't the active app, CLI commands with no explicit target, <code>batty
+                    &lt;path&gt;</code>, and menu commands go to the window you used last, instead of the oldest
+                    window. A newly opened window also gets <kbd>Cmd</kbd>-<kbd>B</kbd> and other window
+                    shortcuts right away. (#0439, #0437)
+                </li>
+                <li>
+                    The Theme Selector opens scrolled to your current Theme, with it marked and the keyboard
+                    selection starting there. Typing a filter scrolls the list to the matching Themes. (#0363,
+                    #0394)
+                </li>
+                <li>
+                    Open Quickly no longer moves focus onto a hidden Pane; it shows the Pane first. (#0405)
+                </li>
+                <li>
+                    Fixed a launch that could show the menu bar but no window. If no window has appeared once
+                    launch finishes, Batty now opens one. (#0444)
+                </li>
+            </ul>
+            <h3>Changes</h3>
+            <ul>
+                <li>
+                    <strong>Windows are no longer restored on relaunch.</strong> Batty now always starts with a
+                    single new window. The 1.0.5 notes said windows restore with their frames and per-window
+                    sidebar state; that no longer applies. Each window still keeps its own Sidebar state while the
+                    app is running. (#0444)
+                </li>
+                <li>
+                    <strong>Clipboard reads need your permission.</strong> When a terminal program
+                    asks to read your clipboard (for example over OSC 52), Batty asks you first. Your answer covers
+                    the rest of that Session and is not kept across relaunches. Denying sends the program an
+                    empty reply so it doesn't hang. (#0390)
+                </li>
+                <li>
+                    <strong>Lower GPU memory for hidden Panes.</strong> A Pane you can't see, whether it's hidden
+                    or in a Session that isn't selected, now gives back its GPU drawing buffers shortly after it
+                    goes out of view and rebuilds them when it's shown again. Memory now grows with the Panes on
+                    screen, not with every Pane you have open. (#0388, #0389)
+                </li>
+            </ul>
+            <h3>Known issues</h3>
+            <ul>
+                <li>
+                    Shell integration currently works only in bash and zsh. Since the terminal engine update,
+                    fish, elvish, and nushell get none, so Session auto-naming from the working directory and
+                    command-finished signals don't work in those shells. (#0400)
+                </li>
+                <li>
+                    <code>ssh</code> from a Batty Pane no longer forwards <code>COLORTERM</code> or a terminal
+                    type the remote host recognizes, which worked in earlier releases. (#0399, #0392)
+                </li>
+            </ul>
+            <h3>Under the hood</h3>
+            <ul>
+                <li>libghostty updated to a newer upstream revision. This update brings the GPU memory and
+                    clipboard changes above.</li>
+                <li>The status-view Panes got a reliability pass: System Metrics samples off the main thread,
+                    closing an LM Studio or Git Status Pane no longer stalls the UI, quitting cleans up LM Studio
+                    helper processes, and Process Status shows real errors instead of stale or zero values. (#0350–#0360,
+                    #0354, #0422, #0425)</li>
+                <li>Closing a Session from the Sidebar now uses the same close path as every other way of closing
+                    one. (#0396)</li>
+                <li>UI tests now run only inside a disposable virtual machine, never on a developer's Mac, and
+                    unit tests wait on completion signals instead of sleeps. (#0412, #0395, #0423, #0428)</li>
+            </ul>
+        </article>
+
         <article id="v1-0-5">
             <h2>1.0.5 — 2026-06-18</h2>
             <p class="meta">Multiple windows, on-device AI for session naming and bell notifications, and
