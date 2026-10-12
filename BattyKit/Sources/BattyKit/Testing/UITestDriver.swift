@@ -219,6 +219,43 @@ public enum UITestDriver {
             let joined = ShellQuote.joinPaths(urls)
             tab.terminal.send(joined)
             logger.info("ui-test: dropFileURLs tab=\(tab.id, privacy: .public) count=\(urls.count, privacy: .public) joinedLen=\(joined.count, privacy: .public)")
+
+        case .seedProject(let json):
+            guard store.featureFlags.projects, let projectStore = store.projectStore else {
+                logger.notice("ui-test: seedProject ignored; projects feature is off")
+                return
+            }
+            do {
+                let project = try ProjectsFile.decoder.decode(Project.self, from: Data(json.utf8))
+                try projectStore.upsert(project)
+                logger.info("ui-test: seedProject id=\(project.id, privacy: .public)")
+            } catch {
+                logger.error("ui-test: seedProject failed error=\(String(describing: error), privacy: .public)")
+            }
+
+        case .openProject(let name, let modeName):
+            guard store.featureFlags.projects, let projectStore = store.projectStore else {
+                logger.notice("ui-test: openProject ignored; projects feature is off")
+                return
+            }
+            guard let project = projectStore.project(named: name) else {
+                logger.notice("ui-test: openProject not-found name=\(name, privacy: .public)")
+                return
+            }
+            let mode: AppStateStore.ProjectOpenMode
+            switch modeName {
+            case nil, "focusExistingOrOpen": mode = .focusExistingOrOpen
+            case "openNew": mode = .openNew
+            default:
+                logger.notice("ui-test: openProject unknown mode=\(modeName ?? "", privacy: .public)")
+                return
+            }
+            do {
+                let result = try store.openProject(id: project.id, mode: mode)
+                logger.info("ui-test: openProject session=\(result.session.id, privacy: .public) created=\(result.wasCreated, privacy: .public)")
+            } catch {
+                logger.error("ui-test: openProject failed error=\(String(describing: error), privacy: .public)")
+            }
         }
     }
 
@@ -252,6 +289,8 @@ public enum UITestIntent: Decodable, Sendable {
     case beginPaneSwapDrag(at: Int)
     case endPaneSwapDrag
     case dropFileURLs(urls: [String], ontoPaneAt: Int)
+    case seedProject(json: String)
+    case openProject(name: String, mode: String?)
 
     var intentName: String {
         switch self {
@@ -274,11 +313,13 @@ public enum UITestIntent: Decodable, Sendable {
         case .beginPaneSwapDrag: return "beginPaneSwapDrag"
         case .endPaneSwapDrag: return "endPaneSwapDrag"
         case .dropFileURLs: return "dropFileURLs"
+        case .seedProject: return "seedProject"
+        case .openProject: return "openProject"
         }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case intent, name, layout, kind, from, to, at, with, urls, ontoPaneAt
+        case intent, name, layout, kind, from, to, at, with, urls, ontoPaneAt, json, mode
     }
 
     public init(from decoder: Decoder) throws {
@@ -328,6 +369,13 @@ public enum UITestIntent: Decodable, Sendable {
             self = .dropFileURLs(
                 urls: try c.decode([String].self, forKey: .urls),
                 ontoPaneAt: try c.decode(Int.self, forKey: .ontoPaneAt)
+            )
+        case "seedProject":
+            self = .seedProject(json: try c.decode(String.self, forKey: .json))
+        case "openProject":
+            self = .openProject(
+                name: try c.decode(String.self, forKey: .name),
+                mode: try c.decodeIfPresent(String.self, forKey: .mode)
             )
         default:
             throw DecodingError.dataCorruptedError(forKey: .intent, in: c, debugDescription: "Unknown intent: \(intent)")

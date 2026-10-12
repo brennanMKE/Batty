@@ -258,8 +258,15 @@ private struct SessionRow: View {
                 Text(session.title)
                     .lineLimit(1)
             } icon: {
-                Image(systemName: "rectangle.split.3x1")
-                    .foregroundStyle(session.sessionColor.color)
+                if store.featureFlags.projects, session.projectID != nil {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(session.sessionColor.color)
+                        .accessibilityIdentifier("session-row.project-glyph")
+                        .accessibilityLabel("Project")
+                } else {
+                    Image(systemName: "rectangle.split.3x1")
+                        .foregroundStyle(session.sessionColor.color)
+                }
             }
             Spacer()
             if session.unseenBellCount > 0 {

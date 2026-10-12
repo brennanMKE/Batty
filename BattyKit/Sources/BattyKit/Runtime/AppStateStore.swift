@@ -1121,6 +1121,73 @@ public final class AppStateStore {
         return result
     }
 
+    public enum ProjectOpenMode: Sendable {
+        /// Select the Project's existing Session (in any Window) if one is
+        /// open, otherwise open a new one.
+        case focusExistingOrOpen
+        /// Always open another Session, even if one is already open.
+        case openNew
+    }
+
+    public struct ProjectOpenResult {
+        public let session: SessionRuntime
+        /// `false` when an existing Session was selected instead.
+        public let wasCreated: Bool
+    }
+
+    /// Ids of Projects that currently have an open Session in any Window.
+    public var openProjectIDs: Set<UUID> {
+        Set(windows.flatMap(\.sessions).compactMap(\.projectID))
+    }
+
+    /// Opens a saved Project as a Session. No-op (throws `.featureDisabled`
+    /// and logs) while `featureFlags.projects` is off. Startup commands are
+    /// not run here.
+    ///
+    /// `contentFactory` is a test seam forwarded to every non-terminal
+    /// Pane; production callers leave it nil.
+    ///
+    /// The tree is built with `isSessionSelected: true` and the Session is
+    /// selected in the same synchronous call, so every Pane is visible at
+    /// creation.
+    @discardableResult
+    public func openProject(
+        id projectID: UUID,
+        mode: ProjectOpenMode = .focusExistingOrOpen,
+        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
+    ) throws -> ProjectOpenResult {
+        guard featureFlags.projects, let projectStore else {
+            logger.notice("openProject: ignored; projects feature is off")
+            throw ProjectOpenError.featureDisabled
+        }
+        guard let project = projectStore.project(id: projectID) else {
+            logger.notice("openProject: unknown project id=\(projectID, privacy: .public)")
+            throw ProjectOpenError.unknownProject(projectID)
+        }
+        if mode == .focusExistingOrOpen,
+           let window = windows.first(where: { $0.sessions.contains { $0.projectID == projectID } }),
+           let existing = window.sessions.first(where: { $0.projectID == projectID }) {
+            window.setSelectedSession(id: existing.id)
+            activateWindow(window)
+            let event = WatchEventPayload(type: "session_focused", sessionID: existing.id)
+            AppEventWatcher.shared.send(eventType: event.type, payload: event)
+            return ProjectOpenResult(session: existing, wasCreated: false)
+        }
+        guard let target = defaultTargetWindow() else {
+            logger.error("openProject: no window available")
+            throw ProjectOpenError.noWindow
+        }
+        let tree = try ProjectTreeBuilder.build(
+            project: project,
+            contentFactory: contentFactory,
+            isSessionSelected: true
+        )
+        let session = target.addProjectSession(project, tree: tree)
+        let event = WatchEventPayload(type: "session_created", sessionID: session.id)
+        AppEventWatcher.shared.send(eventType: event.type, payload: event)
+        return ProjectOpenResult(session: session, wasCreated: true)
+    }
+
     /// `fromCli` forwards to `WindowRuntime.removeSession(id:fromCli:)`,
     /// which is now the sole `session_destroyed` emitter (#0396) — this
     /// wrapper no longer emits its own copy, so a stale/unknown `id` (for

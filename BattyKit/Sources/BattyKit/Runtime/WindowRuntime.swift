@@ -214,6 +214,25 @@ public final class WindowRuntime {
         return session
     }
 
+    /// Adds and selects a Session built from a Project: titled with the
+    /// Project name (`titleOverride` pinned, so cwd auto-naming leaves it
+    /// alone) and colored with the Project color via `setSessionColor`. Does
+    /// not touch `SessionNameCache`.
+    @discardableResult
+    func addProjectSession(_ project: Project, tree: SplitTree) -> SessionRuntime {
+        let session = SessionRuntime(
+            title: project.name,
+            tree: tree,
+            titleOverride: true,
+            colorIndex: project.color.rawValue
+        )
+        session.projectID = project.id
+        sessions.append(session)
+        selectedSessionID = session.id
+        setSessionColor(id: session.id, to: project.color.rawValue)
+        return session
+    }
+
     /// `fromCli` marks the emitted `session_destroyed` event as XPC-driven
     /// (#0396), matching `focusSessionForXPC`/`focusPaneForXPC`/
     /// `focusTabForXPC`'s `fromCli: true`. Per caller: Sidebar close (via

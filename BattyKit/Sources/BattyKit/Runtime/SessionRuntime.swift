@@ -41,6 +41,10 @@ public final class SessionRuntime: Identifiable {
     /// re-derivation on reset). Not persisted — resets to `false` on every
     /// launch, same as every other `SessionRuntime` UI-state field.
     public var colorOverride: Bool
+    /// The Project this Session was opened from, if any. Informational and
+    /// in-memory only: never persisted, and nothing writes it back to the
+    /// Project.
+    public internal(set) var projectID: UUID?
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     /// Clipboard-read confirmation awaiting the user's answer, shown via

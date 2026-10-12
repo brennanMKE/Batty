@@ -22,3 +22,6 @@ Each Projects child appends the files and symbols it gates here. Removing the fl
 | Site | Gate | Issue |
 |---|---|---|
 | `AppStateStore.projectStore` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore.swift`) | nil, and `projects.json` never opened, read or created, unless `featureFlags.projects` | #0471 |
+| `AppStateStore.openProject(id:mode:)` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore.swift`) | logs and throws `ProjectOpenError.featureDisabled`; creates nothing | #0472 |
+| `UITestDriver` intents `seedProject`, `openProject` (`BattyKit/Sources/BattyKit/Testing/UITestDriver.swift`) | log and return unless `featureFlags.projects` | #0472 |
+| `SessionRow` folder glyph (`BattyKit/Sources/BattyKit/Views/SessionSidebarView.swift`) | shown only when `featureFlags.projects` and `session.projectID != nil` | #0472 |

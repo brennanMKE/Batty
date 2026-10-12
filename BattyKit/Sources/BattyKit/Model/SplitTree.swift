@@ -179,6 +179,34 @@ public final class SplitTree {
         self.init(root: .leaf(PaneRuntime()))
     }
 
+    /// Builds a tree whose only Pane is created with `kind`, `tabs` and
+    /// `path` up front, through the same per-kind resolution `splitPane`
+    /// uses (`makePane`), so a non-terminal first Pane is never a mutated
+    /// Terminal Pane. A `.processStatus` first Pane has no split source, so
+    /// it starts on the "No process selected" empty state.
+    static func withFirstPane(
+        kind: PaneContentKind,
+        path: String? = nil,
+        tabs: [TabRuntime]? = nil,
+        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
+        isSessionSelected: Bool
+    ) -> SplitTree {
+        final class Box { weak var tree: SplitTree? }
+        let box = Box()
+        let pane = makePane(
+            inheritingFrom: nil,
+            kind: kind,
+            path: path,
+            tabs: tabs,
+            contentFactory: contentFactory,
+            isSessionSelected: isSessionSelected,
+            tabLookup: { tabID in box.tree?.allPanes.flatMap(\.tabs).first(where: { $0.id == tabID }) }
+        )
+        let tree = SplitTree(root: .leaf(pane))
+        box.tree = tree
+        return tree
+    }
+
     /// Attaches this tree and every pane it currently contains to
     /// `sessionID`. Called once by `SessionRuntime.init`.
     public func attachToSession(_ sessionID: UUID) {
@@ -323,6 +351,10 @@ public final class SplitTree {
     /// `$HOME`. Ignored for `.terminal`, and ignored (not just unused —
     /// never read) whenever an explicit `contentFactory` is supplied.
     ///
+    /// `tabs`, when non-empty, are the Tabs a new `.terminal` pane is built
+    /// with instead of the single cwd-inheriting one; ignored for every
+    /// other kind. They take precedence over `command` and cwd inheritance.
+    ///
     /// `tabLookup` is required (no default): a `.processStatus` pane's
     /// `.followingTab` targets — including ones picked later via
     /// retarget — resolve only through it, so every caller, terminal-kind
@@ -334,6 +366,7 @@ public final class SplitTree {
         kind: PaneContentKind = .terminal,
         processStatusPid: Int32? = nil,
         path: String? = nil,
+        tabs: [TabRuntime]? = nil,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
         isSessionSelected: Bool,
         tabLookup: @escaping (UUID) -> TabRuntime?
@@ -365,6 +398,9 @@ public final class SplitTree {
                 resolvedFactory = PaneRuntime.makeContent
             }
             return PaneRuntime(kind: kind, isSessionSelected: isSessionSelected, contentFactory: resolvedFactory)
+        }
+        if let tabs, !tabs.isEmpty {
+            return PaneRuntime(tabs: tabs)
         }
         guard let sourceTab = source?.activeTab else {
             return command == nil ? PaneRuntime() : PaneRuntime(tabs: [TabRuntime(command: command)])
@@ -423,6 +459,7 @@ public final class SplitTree {
         kind: PaneContentKind = .terminal,
         processStatusPid: Int32? = nil,
         path: String? = nil,
+        tabs: [TabRuntime]? = nil,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
         isSessionSelected: Bool
     ) -> PaneRuntime? {
@@ -433,6 +470,7 @@ public final class SplitTree {
             kind: kind,
             processStatusPid: processStatusPid,
             path: path,
+            tabs: tabs,
             contentFactory: contentFactory,
             isSessionSelected: isSessionSelected,
             tabLookup: Self.tabLookup(for: self)
