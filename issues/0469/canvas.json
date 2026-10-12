@@ -1,0 +1,18 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-10-12T17:00:00Z"},
+  "title": "Batty Projects",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1280, "h": 820, "title": "1 · Project Editor", "is_interactive": true},
+    "OpenProject.dc.html": {"x": 1360, "y": 0, "w": 1280, "h": 820, "title": "2 · Open Project picker", "is_interactive": true},
+    "Opened.dc.html": {"x": 0, "y": 940, "w": 1280, "h": 820, "title": "3 · Project opened as a Session"},
+    "EntryPoints.dc.html": {"x": 1360, "y": 940, "w": 1280, "h": 820, "title": "4 · Entry points: menu, Sidebar, CLI"}
+  },
+  "order": ["Main.dc.html", "OpenProject.dc.html", "Opened.dc.html", "EntryPoints.dc.html"],
+  "notes": {
+    "heading": {"x": 0, "y": -300, "text": "Batty Projects — define a Session once, open it ready to work", "kind": "title1", "maxW": 2640}
+  },
+  "designSystems": []
+}

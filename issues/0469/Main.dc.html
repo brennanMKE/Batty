@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project Editor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#F0A050}a:hover{color:#F7C48A}
+input{font:inherit;color:inherit}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; padding: 30px 40px; background: #121316; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; color: #E7E7EA">
+  <div style="width: 1200px; height: 760px; display: flex; flex-direction: column; background: #1C1D21; border: 1px solid #34353B; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+
+    <div style="height: 40px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #232429; border-bottom: 1px solid #34353B">
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FF5F57"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FEBC2E"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #28C840"></span>
+      <div style="flex: 1; text-align: center; font-weight: 600; color: #C9CAD0; margin-right: 52px">Projects</div>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: flex">
+
+      <nav aria-label="Projects" style="width: 220px; flex: none; display: flex; flex-direction: column; background: #202126; border-right: 1px solid #34353B; padding: 12px 8px; box-sizing: border-box; gap: 2px">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8C8E96; padding: 4px 10px 8px">Projects</div>
+        <sc-for list="{{projects}}" as="p" hint-placeholder-count="4">
+          <button onClick="{{p.pick}}" style="{{p.rowStyle}}">
+            <span aria-hidden="true" style="{{p.dotStyle}}"></span>
+            <span style="display: flex; flex-direction: column; min-width: 0; text-align: left">
+              <span style="font-weight: 600">{{p.name}}</span>
+              <span style="font-size: 11px; color: #8C8E96; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.path}}</span>
+            </span>
+          </button>
+        </sc-for>
+        <div style="flex: 1"></div>
+        <button style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px dashed #45474F; border-radius: 8px; background: transparent; color: #C9CAD0">
+          <span aria-hidden="true" style="font-size: 16px; line-height: 1">+</span> New Project…
+        </button>
+      </nav>
+
+      <main style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+
+        <div style="flex: none; display: flex; align-items: flex-end; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #2E2F35">
+          <label style="display: flex; flex-direction: column; gap: 6px; width: 200px">
+            <span style="font-size: 11px; color: #8C8E96">Name</span>
+            <input value="Batty" style="height: 30px; box-sizing: border-box; padding: 0 10px; background: #15161A; border: 1px solid #3A3C42; border-radius: 6px">
+          </label>
+          <label style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0">
+            <span style="font-size: 11px; color: #8C8E96">Root folder</span>
+            <span style="display: flex; gap: 8px">
+              <input value="~/Developer/brennanMKE/Batty" style="flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; background: #15161A; border: 1px solid #3A3C42; border-radius: 6px; font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px">
+              <button style="height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #45474F; background: #2A2B31; color: #E7E7EA">Choose…</button>
+            </span>
+          </label>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 11px; color: #8C8E96">Session color</span>
+            <div style="display: flex; gap: 6px; height: 30px; align-items: center">
+              <sc-for list="{{colors}}" as="c" hint-placeholder-count="6">
+                <button aria-label="{{c.label}}" onClick="{{c.pick}}" style="{{c.style}}"></button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex: 1; min-height: 0; display: flex">
+
+          <section aria-label="Layout" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 16px 20px">
+            <div style="display: flex; align-items: center; justify-content: space-between">
+              <span style="font-weight: 600">Layout</span>
+              <button style="height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid #45474F; background: #2A2B31; color: #C9CAD0; font-size: 12px">Copy from current Session</button>
+            </div>
+            <div style="display: flex; gap: 10px">
+              <sc-for list="{{layouts}}" as="l" hint-placeholder-count="7">
+                <button aria-label="{{l.name}}" title="{{l.name}}" onClick="{{l.pick}}" style="{{l.btnStyle}}">
+                  <span style="position: relative; display: block; width: 100%; height: 100%">
+                    <sc-for list="{{l.frames}}" as="f" hint-placeholder-count="2">
+                      <span style="{{f.style}}"><span style="{{f.inner}}"></span></span>
+                    </sc-for>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="position: relative; flex: 1; min-height: 0; background: #15161A; border: 1px solid #2E2F35; border-radius: 10px; padding: 6px">
+              <div style="position: relative; width: 100%; height: 100%">
+                <sc-for list="{{slots}}" as="s" hint-placeholder-count="3">
+                  <div style="{{s.posStyle}}">
+                    <button onClick="{{s.pick}}" aria-label="{{s.aria}}" style="{{s.cardStyle}}">
+                      <span style="display: flex; align-items: center; gap: 8px">
+                        <span aria-hidden="true" style="{{s.badgeStyle}}">{{s.glyph}}</span>
+                        <span style="font-weight: 600">{{s.kindLabel}}</span>
+                        <span style="margin-left: auto; font-size: 11px; color: #8C8E96">Pane {{s.number}}</span>
+                      </span>
+                      <sc-if value="{{s.isTerminal}}" hint-placeholder-val="{{true}}">
+                        <span style="display: flex; gap: 4px; flex-wrap: wrap">
+                          <sc-for list="{{s.tabs}}" as="t" hint-placeholder-count="2">
+                            <span style="{{t.chipStyle}}">{{t.title}}</span>
+                          </sc-for>
+                        </span>
+                        <span style="display: flex; flex-direction: column; gap: 3px; font-family: 'JetBrains Mono', Menlo, monospace; font-size: 11.5px; color: #B9BBC2">
+                          <sc-for list="{{s.tabs}}" as="t" hint-placeholder-count="2">
+                            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><span style="color: #6E7079">{{t.title}}</span> {{t.line}}</span>
+                          </sc-for>
+                        </span>
+                      </sc-if>
+                      <sc-if value="{{s.isView}}" hint-placeholder-val="{{false}}">
+                        <span style="color: #9EA0A8; line-height: 1.4">{{s.blurb}}</span>
+                      </sc-if>
+                    </button>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="font-size: 12px; color: #8C8E96">Click a pane to set it up. Panes open at equal sizes; resize them freely afterwards.</div>
+          </section>
+
+          <aside aria-label="Pane settings" style="width: 360px; flex: none; display: flex; flex-direction: column; gap: 16px; padding: 16px 18px; border-left: 1px solid #2E2F35; background: #1F2025; overflow-y: auto; box-sizing: border-box">
+            <div style="display: flex; align-items: baseline; justify-content: space-between">
+              <span style="font-weight: 600">Pane {{sel.number}}</span>
+              <span style="font-size: 11px; color: #8C8E96">{{sel.where}}</span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <span style="font-size: 11px; color: #8C8E96">Shows</span>
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+                <sc-for list="{{kinds}}" as="k" hint-placeholder-count="5">
+                  <button onClick="{{k.pick}}" style="{{k.style}}">
+                    <span aria-hidden="true" style="{{k.badgeStyle}}">{{k.glyph}}</span>{{k.label}}
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+
+            <sc-if value="{{sel.isTerminal}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <div style="display: flex; align-items: center; justify-content: space-between">
+                  <span style="font-size: 11px; color: #8C8E96">Tabs</span>
+                  <button onClick="{{addTab}}" style="height: 24px; padding: 0 10px; border-radius: 6px; border: 1px solid #45474F; background: #2A2B31; color: #E7E7EA; font-size: 12px">+ Add Tab</button>
+                </div>
+                <sc-for list="{{sel.tabs}}" as="t" hint-placeholder-count="2">
+                  <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #34353B; border-radius: 8px; background: #191A1E">
+                    <div style="display: flex; align-items: center; gap: 8px">
+                      <span style="font-size: 11px; color: #8C8E96; width: 14px">{{t.n}}</span>
+                      <input aria-label="Tab title" value="{{t.title}}" onChange="{{t.setTitle}}" placeholder="Tab title (optional)" style="flex: 1; min-width: 0; height: 28px; box-sizing: border-box; padding: 0 8px; background: #15161A; border: 1px solid #3A3C42; border-radius: 6px; font-weight: 600">
+                      <sc-if value="{{t.removable}}" hint-placeholder-val="{{true}}">
+                        <button aria-label="Remove tab" onClick="{{t.remove}}" style="width: 28px; height: 28px; border-radius: 6px; border: 1px solid #3A3C42; background: transparent; color: #9EA0A8">×</button>
+                      </sc-if>
+                    </div>
+                    <label style="display: flex; flex-direction: column; gap: 4px">
+                      <span style="font-size: 11px; color: #8C8E96">Working directory</span>
+                      <span style="display: flex; align-items: center; height: 28px; background: #15161A; border: 1px solid #3A3C42; border-radius: 6px; font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; overflow: hidden">
+                        <span style="padding: 0 6px 0 8px; color: #6E7079; border-right: 1px solid #2E2F35; height: 100%; display: flex; align-items: center">root/</span>
+                        <input value="{{t.dir}}" onChange="{{t.setDir}}" placeholder="." style="flex: 1; min-width: 0; height: 100%; padding: 0 8px; background: transparent; border: 0">
+                      </span>
+                    </label>
+                    <label style="display: flex; flex-direction: column; gap: 4px">
+                      <span style="font-size: 11px; color: #8C8E96">Startup command</span>
+                      <span style="display: flex; align-items: center; height: 28px; background: #15161A; border: 1px solid #3A3C42; border-radius: 6px; font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; overflow: hidden">
+                        <span style="padding: 0 4px 0 8px; color: #F0A050">$</span>
+                        <input value="{{t.cmd}}" onChange="{{t.setCmd}}" placeholder="none — just a shell" style="flex: 1; min-width: 0; height: 100%; padding: 0 8px 0 2px; background: transparent; border: 0">
+                      </span>
+                    </label>
+                  </div>
+                </sc-for>
+                <div style="font-size: 11.5px; color: #8C8E96; line-height: 1.45">Each command is typed into its Tab's shell once the shell is ready. When it exits, the Tab stays open at the prompt.</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{sel.isGit}}" hint-placeholder-val="{{false}}">
+              <label style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 11px; color: #8C8E96">Repository folder</span>
+                <span style="display: flex; align-items: center; height: 28px; background: #15161A; border: 1px solid #3A3C42; border-radius: 6px; font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; overflow: hidden">
+                  <span style="padding: 0 6px 0 8px; color: #6E7079; border-right: 1px solid #2E2F35; height: 100%; display: flex; align-items: center">root/</span>
+                  <input value="{{sel.dir}}" onChange="{{setSlotDir}}" placeholder="." style="flex: 1; min-width: 0; height: 100%; padding: 0 8px; background: transparent; border: 0">
+                </span>
+              </label>
+            </sc-if>
+
+            <sc-if value="{{sel.isPlainView}}" hint-placeholder-val="{{false}}">
+              <div style="color: #9EA0A8; line-height: 1.45">{{sel.blurb}} Nothing to set up for this view.</div>
+            </sc-if>
+          </aside>
+        </div>
+
+        <div style="flex: none; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid #2E2F35; background: #202126">
+          <label style="display: flex; align-items: center; gap: 8px; color: #C9CAD0">
+            <input type="checkbox" checked="{{runOnOpen}}" onChange="{{toggleRun}}" style="width: 16px; height: 16px; accent-color: #F0A050">
+            Run startup commands when the Project opens
+          </label>
+          <div style="flex: 1"></div>
+          <button style="height: 30px; padding: 0 14px; border-radius: 6px; border: 1px solid #45474F; background: #2A2B31; color: #E7E7EA">Cancel</button>
+          <button style="height: 30px; padding: 0 14px; border-radius: 6px; border: 1px solid #45474F; background: #2A2B31; color: #E7E7EA">Save</button>
+          <button style="height: 30px; padding: 0 14px; border-radius: 6px; border: 0; background: #F0A050; color: #1A1206; font-weight: 600">Save &amp; Open</button>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+var KINDS = [
+  { id: 'terminal', label: 'Terminal', glyph: '>_', color: '#7AA2F7', blurb: '' },
+  { id: 'git', label: 'Git Status', glyph: '⎇', color: '#F2A65A', blurb: 'Branch, changes and recent commits for a repository.' },
+  { id: 'process', label: 'Process Status', glyph: '≡', color: '#5CC8B0', blurb: 'Live process list.' },
+  { id: 'metrics', label: 'System Metrics', glyph: '▥', color: '#B48EF0', blurb: 'CPU, memory and GPU load for this Mac.' },
+  { id: 'lmstudio', label: 'LM Studio', glyph: 'LM', color: '#F07FA8', blurb: 'Loaded models and server status from LM Studio.' }
+];
+var LAYOUTS = [
+  { id: 'singlePane', name: 'Single pane', f: [[0,0,1,1]] },
+  { id: 'horizontalSplit', name: 'Horizontal split', f: [[0,0,.5,1],[.5,0,.5,1]] },
+  { id: 'verticalSplit', name: 'Vertical split', f: [[0,0,1,.5],[0,.5,1,.5]] },
+  { id: 'threeColumns', name: 'Three columns', f: [[0,0,1/3,1],[1/3,0,1/3,1],[2/3,0,1/3,1]] },
+  { id: 'mainLeftTwoRight', name: 'Main left, two right', f: [[0,0,.5,1],[.5,0,.5,.5],[.5,.5,.5,.5]] },
+  { id: 'mainTopTwoBottom', name: 'Main top, two bottom', f: [[0,0,1,.5],[0,.5,.5,.5],[.5,.5,.5,.5]] },
+  { id: 'twoByTwoGrid', name: '2×2 grid', f: [[0,0,.5,.5],[.5,0,.5,.5],[0,.5,.5,.5],[.5,.5,.5,.5]] }
+];
+var COLORS = [
+  { id: 'orange', hex: '#F0A050' }, { id: 'blue', hex: '#5B8DEF' }, { id: 'teal', hex: '#3FB8A4' },
+  { id: 'purple', hex: '#A57BEA' }, { id: 'pink', hex: '#E86C9A' }, { id: 'gray', hex: '#8C8E96' }
+];
+var PROJECTS = [
+  { name: 'Batty', path: '~/Developer/brennanMKE/Batty', color: '#F0A050' },
+  { name: 'Homelab', path: '~/Developer/Homelab', color: '#3FB8A4' },
+  { name: 'Website', path: '~/Developer/brennanMKE/Batty/website', color: '#5B8DEF' },
+  { name: 'PixelArtGallery', path: '~/Developer/brennanMKE/Projects/PixelArtGallery', color: '#A57BEA' }
+];
+function pct(v) { return (v * 100).toFixed(3) + '%'; }
+function where(fr) {
+  var x = fr[0], y = fr[1], w = fr[2], h = fr[3];
+  if (w === 1 && h === 1) return 'Whole window';
+  var v = h === 1 ? '' : (y === 0 ? 'Top' : 'Bottom');
+  var hz = w === 1 ? '' : (x === 0 ? 'left' : (x + w > 0.99 ? 'right' : 'middle'));
+  if (!v) return hz.charAt(0).toUpperCase() + hz.slice(1);
+  return hz ? v + ' ' + hz : v;
+}
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      project: 0,
+      color: 'orange',
+      layout: 'mainTopTwoBottom',
+      sel: 0,
+      runOnOpen: true,
+      slots: [
+        { kind: 'terminal', dir: '.', tabs: [ { title: 'build', dir: '.', cmd: './build.sh' }, { title: 'shell', dir: '.', cmd: '' } ] },
+        { kind: 'git', dir: '.', tabs: [ { title: '', dir: '.', cmd: '' } ] },
+        { kind: 'terminal', dir: '.', tabs: [ { title: 'claude', dir: '.', cmd: 'claude' } ] },
+        { kind: 'metrics', dir: '.', tabs: [ { title: '', dir: '.', cmd: '' } ] }
+      ]
+    };
+  }
+
+  setSlot(i, patch) {
+    var slots = this.state.slots.map(function (s, j) { return j === i ? Object.assign({}, s, patch) : s; });
+    this.setState({ slots: slots });
+  }
+
+  setTab(i, ti, key, val) {
+    var s = this.state.slots[i];
+    var tabs = s.tabs.map(function (t, j) { if (j !== ti) return t; var n = Object.assign({}, t); n[key] = val; return n; });
+    this.setSlot(i, { tabs: tabs });
+  }
+
+  renderVals() {
+    var self = this;
+    var st = this.state;
+    var layout = LAYOUTS.find(function (l) { return l.id === st.layout; });
+    var sel = Math.min(st.sel, layout.f.length - 1);
+
+    var layouts = LAYOUTS.map(function (l) {
+      var on = l.id === st.layout;
+      return {
+        name: l.name,
+        pick: function () { self.setState({ layout: l.id, sel: 0 }); },
+        btnStyle: 'width: 64px; height: 44px; padding: 3px; box-sizing: border-box; border-radius: 6px; background: #15161A; border: ' + (on ? '2px solid #F0A050' : '1px solid #3A3C42'),
+        frames: l.f.map(function (fr, idx) {
+          return {
+            style: 'position: absolute; box-sizing: border-box; padding: 1px; left: ' + pct(fr[0]) + '; top: ' + pct(fr[1]) + '; width: ' + pct(fr[2]) + '; height: ' + pct(fr[3]),
+            inner: 'display: block; width: 100%; height: 100%; border-radius: 2px; background: ' + (on ? (idx === 0 ? '#5C4426' : '#3A3C42') : '#2E2F35')
+          };
+        })
+      };
+    });
+
+    var slots = layout.f.map(function (fr, i) {
+      var s = st.slots[i];
+      var k = KINDS.find(function (x) { return x.id === s.kind; });
+      var on = i === sel;
+      return {
+        number: i + 1,
+        aria: 'Pane ' + (i + 1) + ': ' + k.label,
+        pick: function () { self.setState({ sel: i }); },
+        posStyle: 'position: absolute; box-sizing: border-box; padding: 4px; left: ' + pct(fr[0]) + '; top: ' + pct(fr[1]) + '; width: ' + pct(fr[2]) + '; height: ' + pct(fr[3]),
+        cardStyle: 'width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; align-items: stretch; text-align: left; padding: 12px; overflow: hidden; border-radius: 8px; color: #E7E7EA; background: ' + (on ? '#24252B' : '#1D1E23') + '; border: ' + (on ? '2px solid #F0A050' : '1px solid #34353B'),
+        badgeStyle: 'display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 20px; padding: 0 4px; box-sizing: border-box; border-radius: 5px; font-family: \'JetBrains Mono\', Menlo, monospace; font-size: 11px; font-weight: 600; color: #121316; background: ' + k.color,
+        glyph: k.glyph,
+        kindLabel: k.label,
+        isTerminal: s.kind === 'terminal',
+        isView: s.kind !== 'terminal',
+        blurb: s.kind === 'git' ? 'Repository: root/' + (s.dir === '.' ? '' : s.dir) : k.blurb,
+        tabs: s.tabs.map(function (t, ti) {
+          return {
+            title: t.title || ('Tab ' + (ti + 1)),
+            line: t.cmd ? '$ ' + t.cmd : 'shell in root/' + (t.dir === '.' ? '' : t.dir),
+            chipStyle: 'padding: 2px 8px; border-radius: 5px; font-size: 11.5px; ' + (ti === 0 ? 'background: #34353B; color: #E7E7EA' : 'background: transparent; color: #8C8E96; border: 1px solid #34353B')
+          };
+        })
+      };
+    });
+
+    var cur = st.slots[sel];
+    var curKind = KINDS.find(function (x) { return x.id === cur.kind; });
+    var kinds = KINDS.map(function (k) {
+      var on = k.id === cur.kind;
+      return {
+        label: k.label, glyph: k.glyph,
+        pick: function () { self.setSlot(sel, { kind: k.id }); },
+        style: 'display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 7px; text-align: left; color: #E7E7EA; background: ' + (on ? '#2C2D33' : '#191A1E') + '; border: ' + (on ? '2px solid #F0A050' : '1px solid #34353B'),
+        badgeStyle: 'display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 18px; padding: 0 3px; box-sizing: border-box; border-radius: 4px; font-family: \'JetBrains Mono\', Menlo, monospace; font-size: 10px; font-weight: 600; color: #121316; background: ' + k.color
+      };
+    });
+
+    return {
+      projects: PROJECTS.map(function (p, i) {
+        var on = i === st.project;
+        return {
+          name: p.name, path: p.path,
+          pick: function () { self.setState({ project: i }); },
+          rowStyle: 'display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; color: #E7E7EA; background: ' + (on ? '#2F3037' : 'transparent'),
+          dotStyle: 'width: 10px; height: 10px; flex: none; border-radius: 5px; background: ' + p.color
+        };
+      }),
+      colors: COLORS.map(function (c) {
+        var on = c.id === st.color;
+        return {
+          label: c.id + ' Session color',
+          pick: function () { self.setState({ color: c.id }); },
+          style: 'width: 22px; height: 22px; border-radius: 11px; padding: 0; background: ' + c.hex + '; border: ' + (on ? '2px solid #FFFFFF' : '2px solid transparent') + '; box-shadow: ' + (on ? '0 0 0 1px ' + c.hex : 'none')
+        };
+      }),
+      layouts: layouts,
+      slots: slots,
+      kinds: kinds,
+      runOnOpen: st.runOnOpen,
+      toggleRun: function () { self.setState({ runOnOpen: !st.runOnOpen }); },
+      addTab: function () { self.setSlot(sel, { tabs: cur.tabs.concat([{ title: '', dir: '.', cmd: '' }]) }); },
+      setSlotDir: function (e) { self.setSlot(sel, { dir: e.target.value }); },
+      sel: {
+        number: sel + 1,
+        where: where(layout.f[sel]),
+        isTerminal: cur.kind === 'terminal',
+        isGit: cur.kind === 'git',
+        isPlainView: cur.kind !== 'terminal' && cur.kind !== 'git',
+        blurb: curKind.blurb,
+        dir: cur.dir,
+        tabs: cur.tabs.map(function (t, ti) {
+          return {
+            n: ti + 1, title: t.title, dir: t.dir, cmd: t.cmd,
+            removable: cur.tabs.length > 1,
+            setTitle: function (e) { self.setTab(sel, ti, 'title', e.target.value); },
+            setDir: function (e) { self.setTab(sel, ti, 'dir', e.target.value); },
+            setCmd: function (e) { self.setTab(sel, ti, 'cmd', e.target.value); },
+            remove: function () { self.setSlot(sel, { tabs: cur.tabs.filter(function (_, j) { return j !== ti; }) }); }
+          };
+        })
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

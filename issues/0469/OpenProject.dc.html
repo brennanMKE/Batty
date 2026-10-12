@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Open Project picker</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#F0A050}a:hover{color:#F7C48A}
+input{font:inherit;color:inherit}
+button{font:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; padding: 30px 40px; background: #121316; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; color: #E7E7EA">
+  <div style="position: relative; width: 1200px; height: 760px; display: flex; flex-direction: column; background: #1C1D21; border: 1px solid #34353B; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+
+    <div style="height: 40px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #232429; border-bottom: 1px solid #34353B">
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FF5F57"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FEBC2E"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #28C840"></span>
+      <div style="flex: 1; text-align: center; font-weight: 600; color: #C9CAD0; margin-right: 52px">Batty</div>
+    </div>
+
+    <div aria-hidden="true" style="flex: 1; display: flex; min-height: 0">
+      <div style="width: 220px; background: #202126; border-right: 1px solid #34353B; padding: 12px 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px">
+        <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8C8E96; padding: 4px 10px 8px">Sessions</div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #2F3037"><span style="width: 10px; height: 10px; border-radius: 5px; background: #8C8E96"></span>~</div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px"><span style="width: 10px; height: 10px; border-radius: 5px; background: #3FB8A4"></span>Homelab</div>
+      </div>
+      <div style="flex: 1; background: #15161A; padding: 16px; font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12.5px; color: #B9BBC2; line-height: 1.6">
+        <div>brennan@cameron ~ %</div>
+      </div>
+    </div>
+
+    <div style="position: absolute; inset: 40px 0 0 0; background: rgba(8,8,10,0.55); display: flex; align-items: flex-start; justify-content: center; padding-top: 70px">
+      <div role="dialog" aria-label="Open a Project" style="width: 720px; display: flex; flex-direction: column; background: #26272C; border: 1px solid #3E4047; border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); overflow: hidden">
+        <div style="display: flex; align-items: center; padding: 12px 16px; gap: 12px">
+          <span style="font-weight: 600; font-size: 14px">Open a Project</span>
+          <span style="flex: 1"></span>
+          <span style="font-size: 12px; color: #8C8E96">Esc to dismiss</span>
+        </div>
+        <div style="padding: 0 16px 12px">
+          <label style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; background: #1A1B1F; border: 1px solid #3A3C42; border-radius: 7px">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C8E96" stroke-width="1.6"><circle cx="7" cy="7" r="5"></circle><path d="M11 11l3.5 3.5"></path></svg>
+            <input aria-label="Filter Projects" placeholder="Filter Projects" style="flex: 1; background: transparent; border: 0; outline: none">
+          </label>
+        </div>
+        <div style="height: 1px; background: #34353B"></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px">
+          <sc-for list="{{cards}}" as="c" hint-placeholder-count="6">
+            <button onClick="{{c.pick}}" style="{{c.style}}">
+              <span style="position: relative; display: block; width: 100%; height: 108px; border-radius: 6px; background: #15161A; overflow: hidden">
+                <sc-for list="{{c.frames}}" as="f" hint-placeholder-count="3">
+                  <span style="{{f.style}}"><span style="{{f.inner}}"><span style="{{f.badge}}">{{f.glyph}}</span></span></span>
+                </sc-for>
+              </span>
+              <span style="display: flex; align-items: center; gap: 8px; margin-top: 10px">
+                <span aria-hidden="true" style="{{c.dot}}"></span>
+                <span style="font-weight: 600">{{c.name}}</span>
+                <sc-if value="{{c.isOpen}}" hint-placeholder-val="{{false}}">
+                  <span style="margin-left: auto; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: #34353B; color: #C9CAD0">OPEN</span>
+                </sc-if>
+              </span>
+              <span style="font-size: 11px; color: #8C8E96; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.path}}</span>
+              <span style="font-size: 11px; color: #8C8E96; margin-top: 2px">{{c.summary}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="display: flex; align-items: center; gap: 18px; padding: 10px 16px; border-top: 1px solid #34353B; background: #212227; font-size: 12px; color: #9EA0A8">
+          <span><span style="color: #E7E7EA; font-weight: 600">{{hint}}</span></span>
+          <span style="flex: 1"></span>
+          <span>⌥↩ Open another copy</span>
+          <span>⌘E Edit</span>
+          <span>⌘N New Project…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+var KC = { t: ['#7AA2F7', '>_'], g: ['#F2A65A', '⎇'], p: ['#5CC8B0', '≡'], m: ['#B48EF0', '▥'], l: ['#F07FA8', 'LM'] };
+var PROJECTS = [
+  { name: 'Batty', path: '~/Developer/brennanMKE/Batty', color: '#F0A050', summary: '3 panes · 3 tabs · 2 startup commands', open: false,
+    f: [[0,0,1,.5,'t'],[0,.5,.5,.5,'g'],[.5,.5,.5,.5,'t']] },
+  { name: 'Homelab', path: '~/Developer/Homelab', color: '#3FB8A4', summary: '2 panes · 1 tab · 1 startup command', open: true,
+    f: [[0,0,.5,1,'t'],[.5,0,.5,1,'m']] },
+  { name: 'Website', path: '~/Developer/brennanMKE/Batty/website', color: '#5B8DEF', summary: '2 panes · 2 tabs · 1 startup command', open: false,
+    f: [[0,0,1,.5,'t'],[0,.5,1,.5,'t']] },
+  { name: 'PixelArtGallery', path: '~/Developer/brennanMKE/Projects/PixelArtGallery', color: '#A57BEA', summary: '4 panes · 2 tabs · no startup commands', open: false,
+    f: [[0,0,.5,.5,'t'],[.5,0,.5,.5,'g'],[0,.5,.5,.5,'p'],[.5,.5,.5,.5,'l']] },
+  { name: 'QRCodeApp', path: '~/Developer/brennanMKE/Projects/QRCodeApp', color: '#E86C9A', summary: '1 pane · 1 tab · 1 startup command', open: false,
+    f: [[0,0,1,1,'t']] },
+  { name: 'ShortLinks', path: '~/Developer/brennanMKE/Projects/ShortLinks', color: '#8C8E96', summary: '3 panes · 4 tabs · 3 startup commands', open: false,
+    f: [[0,0,.5,1,'t'],[.5,0,.5,.5,'t'],[.5,.5,.5,.5,'g']] }
+];
+function pct(v) { return (v * 100).toFixed(3) + '%'; }
+
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: 0 }; }
+  renderVals() {
+    var self = this;
+    var st = this.state;
+    var cur = PROJECTS[st.sel];
+    return {
+      hint: cur.open ? '↩ Switch to the open ' + cur.name + ' Session' : '↩ Open ' + cur.name + ' in a new Session',
+      cards: PROJECTS.map(function (p, i) {
+        var on = i === st.sel;
+        return {
+          name: p.name, path: p.path, summary: p.summary, isOpen: p.open,
+          pick: function () { self.setState({ sel: i }); },
+          style: 'display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 10px; border-radius: 9px; color: #E7E7EA; background: ' + (on ? '#2F3037' : '#202126') + '; border: ' + (on ? '2px solid #F0A050' : '1px solid #34353B'),
+          dot: 'width: 9px; height: 9px; flex: none; border-radius: 5px; background: ' + p.color,
+          frames: p.f.map(function (fr) {
+            var k = KC[fr[4]];
+            return {
+              glyph: k[1],
+              style: 'position: absolute; box-sizing: border-box; padding: 3px; left: ' + pct(fr[0]) + '; top: ' + pct(fr[1]) + '; width: ' + pct(fr[2]) + '; height: ' + pct(fr[3]),
+              inner: 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; border-radius: 4px; background: #23242A; border: 1px solid ' + k[0] + '55',
+              badge: 'font-family: \'JetBrains Mono\', Menlo, monospace; font-size: 10px; font-weight: 600; padding: 1px 4px; border-radius: 3px; color: #121316; background: ' + k[0]
+            };
+          })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

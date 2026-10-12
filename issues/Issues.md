@@ -418,6 +418,7 @@ Use these canonical module names so issues stay consistent and groupable in the 
 | `BellFeed` | Bell event capture (BEL + OSC 9), feed popover, click-to-jump, system notifications |
 | `Theme` | Ghostty `.ghostty` theme loading, View → Theme menu, live theme application |
 | `Persistence` | Workspace serialization, `workspace.json`, restore on launch |
+| `Projects` | Projects (1.3.0, behind the feature flag): `Project` model, `projects.json` store, opening a Project as a Session, startup commands and their trust prompt, Project Editor, Open Project picker, Save Session as Project, `batty project` CLI, the feature-flag gate itself |
 | `Settings` | Settings window, `UserDefaults`, font/cursor/notification preferences |
 | `Build` | Xcode project, signing, notarization, Sparkle, terminfo / shell-integration resource bundling |
 | `Localization` | User-facing string extraction, `.xcstrings` / `Localizable.strings` catalogs, per-locale resources, locale switching |
