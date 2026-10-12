@@ -307,6 +307,21 @@ private struct SessionRow: View {
                 : String(localized: "Mute Notifications")) {
                 session.notificationsMuted.toggle()
             }
+            if let saveMenu = SaveSessionAsProject.menuModel(store: store, session: session) {
+                Divider()
+                if let target = saveMenu.updateTarget {
+                    Button(String(localized: "Update \u{201C}\(target.name)\u{201D}\u{2026}", comment: "Sidebar context menu: replace the stored Project's layout and Tabs with this Session")) {
+                        SaveSessionAsProject.begin(session: session, destination: .update(target.id), store: store)
+                    }
+                    Button("Save as New Project\u{2026}") {
+                        SaveSessionAsProject.begin(session: session, destination: .newProject, store: store)
+                    }
+                } else {
+                    Button("Save as Project\u{2026}") {
+                        SaveSessionAsProject.begin(session: session, destination: .newProject, store: store)
+                    }
+                }
+            }
             Divider()
             Button("Close", role: .destructive) {
                 windowRuntime.requestRemoveSession(id: session.id)

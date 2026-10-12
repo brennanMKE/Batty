@@ -775,4 +775,64 @@ check below):**
 
 ---
 
+## Save Session as Project
+
+Save as Project (#0476) captures a live Session into a draft Project and opens
+the Project Editor on it. `SessionProjectCapture` (pure, in `Model/`) reads the
+Session and writes nothing; the Project is stored only when the user clicks
+Save in the editor. It never runs on quit or on a timer, which is what
+separates it from the workspace persistence #0172 removed.
+
+**Captured:** the split topology (direction and nesting; a same-direction split
+nested in a split is one n-ary split), every Pane's kind (hidden Panes
+included, as ordinary slots), each Terminal Tab's working directory relative to
+the root, a Tab's title only when the user set one (`titleOverride`), a Git
+Status Pane's folder relative to the root, and the Session's color. The root is
+the first leaf Pane's first Tab's folder, else the first Terminal Tab that has
+one, else `$HOME` (then the editor reports the root as an error until one is
+chosen). The preset marker is set when the topology equals a `PaneLayout`
+preset's, otherwise the editor shows Custom.
+
+**Not captured:** split ratios and every other size (a reopened Project opens at
+equal sizes, #0255), startup commands, automatic Tab titles, Process Status
+pids, and a non-Terminal Pane's placeholder Tab. A Tab or repository outside
+the root is stored as the root and flagged with a warning on its field.
+
+**Entry points** (all behind `featureFlags.projects`; none has a shortcut or a
+`ShortcutAction`):
+
+- Sidebar row context menu: "Save as Project..." (after Mute Notifications,
+  before Close). Captures that row's Session.
+- File > "Save Session as Project..." between Open Project and Edit Projects.
+  Captures the key Window's selected Session; disabled with none.
+- Command Palette `extra:saveSessionAsProject` "Save Session as Project...".
+- Project Editor "Copy from current Session" beside the Layout title
+  (`project-editor.copy-from-session`). Captures `defaultTargetWindow()`'s
+  selected Session relative to the draft's root, keeps the draft's name, root,
+  color and run toggle, and asks first when Tabs, commands or views would be
+  replaced.
+- A Session opened from a stored Project (`projectID` set, Project still
+  exists) shows two items instead: `Update "<name>"...` (layout and Tabs
+  replaced, commands kept where the slot and Tab line up) and "Save as New
+  Project..." (File menu: "Save Session as New Project..."). The palette adds
+  `extra:updateSessionProject` "Update Project: <name>".
+
+**Not covered by unit tests (for the Tart VM suite, #0478):**
+
+- The Sidebar context menu item is present with the flag on and absent with
+  `BATTY_UI_TEST_FORCE_PROJECTS_OFF=1`; same for the File item and the palette
+  row. Choosing it opens the editor on a draft with the Session's Panes, Tabs
+  and color, and nothing is stored until Save.
+- Right-clicking a row that is not selected captures that row's Session and
+  leaves the selection, drag-reorder and row identifiers alone.
+- File > Save Session as Project... is disabled with no Window, and does
+  nothing while the editor or picker is key.
+- "Copy from current Session" in the editor, with and without configured Tabs
+  (the confirmation dialog), with the editor open over a different Window.
+- A Project-backed Session offers Update and Save as New; Update then Save
+  changes the stored Project and Cancel does not.
+- Opening the saved Project gives the same shape at equal sizes.
+
+---
+
 *Document version: 1 — 2026-05-20.*

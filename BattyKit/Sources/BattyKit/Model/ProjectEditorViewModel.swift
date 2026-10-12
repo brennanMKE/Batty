@@ -29,6 +29,13 @@ enum ProjectEditorUnsavedChoice: Sendable {
     case save, discard, cancel
 }
 
+enum ProjectCopyOutcome: Equatable {
+    case applied
+    /// The draft has Tabs, commands or views that the copy would replace.
+    case needsConfirmation
+    case noSession
+}
+
 enum ProjectPresetChange: Equatable {
     case applied
     /// Slots (zero-based) that carry configuration and would be dropped.
@@ -70,6 +77,10 @@ final class ProjectEditorViewModel {
     @ObservationIgnored private let suggestName: @MainActor (String) -> String?
     /// Save & Open: starts the open once the editor is out of the way.
     @ObservationIgnored var openProject: @MainActor (UUID) -> Void
+    /// Reads the content window's selected Session as a capture, made
+    /// relative to the given root (nil derives one). Nil when there is no
+    /// Session. Called only from a button action.
+    @ObservationIgnored var captureSession: @MainActor (String?) -> SessionProjectCapture?
     /// Closes the editor window without asking.
     @ObservationIgnored var closeWindow: @MainActor () -> Void
 
@@ -102,6 +113,7 @@ final class ProjectEditorViewModel {
         defaultRoot: @escaping @MainActor () -> String? = { nil },
         suggestName: @escaping @MainActor (String) -> String? = ProjectEditorViewModel.suggestedName(forRoot:),
         openProject: @escaping @MainActor (UUID) -> Void = { _ in },
+        captureSession: @escaping @MainActor (String?) -> SessionProjectCapture? = { _ in nil },
         closeWindow: @escaping @MainActor () -> Void = {}
     ) {
         self.store = store
@@ -109,6 +121,7 @@ final class ProjectEditorViewModel {
         self.defaultRoot = defaultRoot
         self.suggestName = suggestName
         self.openProject = openProject
+        self.captureSession = captureSession
         self.closeWindow = closeWindow
         if let project = initialSelection.flatMap({ store.project(id: $0) }) ?? store.projects.first {
             load(project)
@@ -232,7 +245,10 @@ final class ProjectEditorViewModel {
         }
 
         let rootIsUsable: Bool
-        if project.rootPath.isEmpty {
+        if draft.rootNeedsChoosing {
+            result.errors[.root] = String(localized: "Batty could not tell which folder this Session works in. Choose the Project's root folder.", comment: "Project Editor validation: a captured Session with no known folder")
+            rootIsUsable = false
+        } else if project.rootPath.isEmpty {
             result.errors[.root] = String(localized: "Choose the Project's root folder.", comment: "Project Editor validation")
             rootIsUsable = false
         } else if !project.rootPath.hasPrefix("/") {
@@ -265,6 +281,9 @@ final class ProjectEditorViewModel {
             case .processStatus, .systemMetrics, .lmStudioDashboard:
                 break
             }
+        }
+        for (field, note) in draft.captureNotes where result.errors[field] == nil && result.warnings[field] == nil {
+            result.warnings[field] = note
         }
         return result
     }
@@ -424,6 +443,8 @@ final class ProjectEditorViewModel {
 
     func setRootPath(_ path: String) {
         draft?.rootPath = path
+        draft?.rootNeedsChoosing = false
+        draft?.captureNotes = [:]
         saveError = nil
     }
 
@@ -433,6 +454,8 @@ final class ProjectEditorViewModel {
         guard draft != nil else { return }
         let path = Project.standardizedRoot(url.path)
         draft?.rootPath = path
+        draft?.rootNeedsChoosing = false
+        draft?.captureNotes = [:]
         if let current = draft?.name, nameIsAutoSuggested || Self.isUntitled(current), let suggested = suggestName(path) {
             draft?.name = suggested
         }
@@ -486,6 +509,7 @@ final class ProjectEditorViewModel {
         var layout = ProjectLayout.preset(preset, kinds: kept.map(\.kind))
         layout.root = layout.root.withPanes(kept)
         self.draft?.layout = layout
+        self.draft?.captureNotes = [:]
         stash = stash.filter { $0.key < newCount }
         tabIdentities = [:]
         selectedSlot = min(selectedSlot, newCount - 1)
@@ -498,9 +522,36 @@ final class ProjectEditorViewModel {
     func applyLayout(_ layout: ProjectLayout) {
         guard draft != nil else { return }
         draft?.layout = layout
+        draft?.captureNotes = [:]
         stash = [:]
         tabIdentities = [:]
         selectedSlot = min(selectedSlot, max(layout.paneCount - 1, 0))
+    }
+
+    /// "Copy from current Session": replaces the draft's layout, Pane kinds
+    /// and Tabs with a capture of the content window's selected Session,
+    /// made relative to the draft's root. Name, color and the run toggle stay.
+    /// Asks first (`.needsConfirmation`) when that would discard configured
+    /// Tabs, commands or views. An empty root takes the Session's folder.
+    @discardableResult
+    func copyFromCurrentSession(confirmDiscard: Bool = false) -> ProjectCopyOutcome {
+        guard let current = draft else { return .noSession }
+        let root = ProjectDraft.normalizedRoot(current.rootPath)
+        guard let capture = captureSession(root.hasPrefix("/") ? root : nil) else {
+            saveError = String(localized: "There is no Session to copy from.", comment: "Project Editor: Copy from current Session with no Session open")
+            return .noSession
+        }
+        if !confirmDiscard, current.layout.panes.contains(where: Self.hasConfiguration) {
+            return .needsConfirmation
+        }
+        saveError = nil
+        applyLayout(capture.layout)
+        draft?.captureNotes = capture.notes
+        if !root.hasPrefix("/") {
+            draft?.rootPath = capture.rootPath
+            draft?.rootNeedsChoosing = capture.rootIsFallback
+        }
+        return .applied
     }
 
     private func updateSelectedPane(_ transform: (inout ProjectPane) -> Void) {
@@ -521,6 +572,7 @@ final class ProjectEditorViewModel {
         guard let pane = selectedPane, pane.kind != kind else { return }
         let slot = selectedSlot
         tabIdentities[slot] = nil
+        draft?.captureNotes = [:]
         stash[slot, default: [:]][pane.kind] = pane
         let replacement = stash[slot]?[kind] ?? (kind == .terminal ? .terminal() : ProjectPane(kind: kind))
         updateSelectedPane { $0 = replacement }
@@ -539,11 +591,15 @@ final class ProjectEditorViewModel {
         var ids = selectedTabIDs
         ids.remove(at: index)
         tabIdentities[selectedSlot] = ids
+        draft?.captureNotes = [:]
         updateSelectedPane { $0.tabs.remove(at: index) }
     }
 
     func setTabTitle(_ index: Int, _ title: String) { updateTab(index) { $0.title = title } }
-    func setTabDirectory(_ index: Int, _ path: String) { updateTab(index) { $0.workingDirectory = path } }
+    func setTabDirectory(_ index: Int, _ path: String) {
+        draft?.captureNotes[.tabDirectory(slot: selectedSlot, tab: index)] = nil
+        updateTab(index) { $0.workingDirectory = path }
+    }
     func setTabCommand(_ index: Int, _ command: String) { updateTab(index) { $0.startupCommand = command } }
 
     private func updateTab(_ index: Int, _ transform: (inout ProjectTab) -> Void) {
@@ -554,6 +610,7 @@ final class ProjectEditorViewModel {
     }
 
     func setRepositoryPath(_ path: String) {
+        draft?.captureNotes[.repository(slot: selectedSlot)] = nil
         updateSelectedPane { pane in
             guard pane.kind == .gitStatus else { return }
             pane.repositoryPath = path

@@ -47,6 +47,9 @@ struct CommandPaletteView: View {
     /// Test seam for the "Open Project: <name>" commands; nil opens through
     /// `ProjectOpenPresenter`.
     var openProject: (@MainActor (UUID, AppStateStore.ProjectOpenMode) -> Void)?
+    /// Test seam for the Save Session as Project entries; nil opens the
+    /// Project Editor on a captured draft.
+    var saveSession: (@MainActor (SessionRuntime?, SaveSessionAsProject.Destination) -> Void)?
 
     @State private var query = ""
     @State private var selectedIndex = 0
@@ -117,6 +120,33 @@ struct CommandPaletteView: View {
                     }
                 }
             ))
+            if let session = store.keyWindowOrFirstRegistered()?.selectedSession {
+                let backing = session.projectID.flatMap { projectStore.project(id: $0) }
+                cmds.append(PaletteCommand(
+                    id: "extra:saveSessionAsProject",
+                    title: backing == nil
+                        ? String(localized: "Save Session as Project\u{2026}")
+                        : String(localized: "Save Session as New Project\u{2026}"),
+                    keyHint: nil,
+                    action: {
+                        runAfterDismiss {
+                            saveSessionAsProject(.newProject)
+                        }
+                    }
+                ))
+                if let backing {
+                    cmds.append(PaletteCommand(
+                        id: "extra:updateSessionProject",
+                        title: String(localized: "Update Project: \(backing.name)"),
+                        keyHint: nil,
+                        action: {
+                            runAfterDismiss {
+                                saveSessionAsProject(.update(backing.id))
+                            }
+                        }
+                    ))
+                }
+            }
             for project in projectStore.projects {
                 cmds.append(PaletteCommand(
                     id: "project:\(project.id.uuidString)",
@@ -149,6 +179,15 @@ struct CommandPaletteView: View {
         }
 
         return cmds
+    }
+
+    private func saveSessionAsProject(_ destination: SaveSessionAsProject.Destination) {
+        let session = store.keyWindowOrFirstRegistered()?.selectedSession
+        if let saveSession {
+            saveSession(session, destination)
+        } else {
+            SaveSessionAsProject.begin(session: session, destination: destination, store: store)
+        }
     }
 
     private func runAfterDismiss(_ work: @escaping @MainActor () -> Void) {

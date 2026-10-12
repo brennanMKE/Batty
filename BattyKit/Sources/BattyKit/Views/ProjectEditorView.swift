@@ -63,6 +63,7 @@ struct ProjectEditorView: View {
     let model: ProjectEditorViewModel
 
     @State private var pendingPreset: PendingPresetChange?
+    @State private var pendingCopy = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -70,7 +71,7 @@ struct ProjectEditorView: View {
                 .frame(width: 220)
             Divider()
             if model.draft != nil {
-                ProjectEditorMain(model: model, pendingPreset: $pendingPreset)
+                ProjectEditorMain(model: model, pendingPreset: $pendingPreset, pendingCopy: $pendingCopy)
             } else {
                 ProjectEditorEmptyState(model: model)
             }
@@ -116,6 +117,17 @@ struct ProjectEditorView: View {
             Button("Cancel", role: .cancel) { pendingPreset = nil }
         } message: { change in
             Text(droppedMessage(change.droppedSlots))
+        }
+        .confirmationDialog(
+            String(localized: "Replace this layout?", comment: "Project Editor: Copy from current Session would discard configured Panes"),
+            isPresented: $pendingCopy
+        ) {
+            Button("Replace", role: .destructive) {
+                model.copyFromCurrentSession(confirmDiscard: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The Tabs, commands and views set up in this Project's Panes will be replaced by those of the current Session.")
         }
     }
 
@@ -231,6 +243,7 @@ private struct ProjectListRow: View {
 private struct ProjectEditorMain: View {
     let model: ProjectEditorViewModel
     @Binding var pendingPreset: PendingPresetChange?
+    @Binding var pendingCopy: Bool
 
     var body: some View {
         let validation = model.validate()
@@ -238,7 +251,7 @@ private struct ProjectEditorMain: View {
             ProjectHeaderFields(model: model, validation: validation)
             Divider()
             HStack(spacing: 0) {
-                ProjectLayoutSection(model: model, pendingPreset: $pendingPreset)
+                ProjectLayoutSection(model: model, pendingPreset: $pendingPreset, pendingCopy: $pendingCopy)
                 Divider()
                 PaneInspector(model: model, validation: validation)
                     .frame(width: 340)
@@ -370,12 +383,18 @@ private struct ProjectColorSwatches: View {
 private struct ProjectLayoutSection: View {
     let model: ProjectEditorViewModel
     @Binding var pendingPreset: PendingPresetChange?
+    @Binding var pendingCopy: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Layout").fontWeight(.semibold)
                 Spacer()
+                Button("Copy from current Session") {
+                    if model.copyFromCurrentSession() == .needsConfirmation { pendingCopy = true }
+                }
+                .help(String(localized: "Replace the layout, Pane kinds and Tabs with those of the selected Session. Pane sizes are not copied.", comment: "Project Editor: Copy from current Session help"))
+                .accessibilityIdentifier("project-editor.copy-from-session")
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 68), spacing: 10)], alignment: .leading, spacing: 10) {
                 ForEach(PaneLayout.allCases) { layout in

@@ -20,6 +20,13 @@ struct ProjectDraft: Equatable {
     /// compares hashes at open time).
     var approvedCommandsHash: String?
     var lastOpenedAt: Date?
+    /// Messages about parts of a captured Session that could not be kept as
+    /// they were (a folder outside the root), shown as warnings until the
+    /// field or the structure around it is edited. Not part of the Project.
+    var captureNotes: [ProjectEditorField: String] = [:]
+    /// The root is a placeholder because the captured Session had no known
+    /// folder; the editor reports it as an error until the user sets one.
+    var rootNeedsChoosing = false
 
     init(project: Project) {
         id = project.id

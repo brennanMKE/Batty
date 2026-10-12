@@ -82,6 +82,38 @@ public struct BattyCommands: Commands {
         )
     }
 
+    /// The Save Session as Project items for the key Window's selected
+    /// Session. Nil (flag off) builds no item; a nil Session gives disabled
+    /// items.
+    private var saveSessionMenu: SaveSessionAsProjectMenuModel? {
+        SaveSessionAsProject.menuModel(store: store, session: keyWindow?.selectedSession)
+    }
+
+    @ViewBuilder
+    private func saveSessionMenuItems(_ model: SaveSessionAsProjectMenuModel) -> some View {
+        if let target = model.updateTarget {
+            Button {
+                SaveSessionAsProject.begin(session: actionWindow?.selectedSession, destination: .update(target.id), store: store)
+            } label: {
+                Label(String(localized: "Update \u{201C}\(target.name)\u{201D}\u{2026}", comment: "File menu: replace the stored Project's layout and Tabs with the selected Session"), systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(!model.isEnabled)
+            Button {
+                SaveSessionAsProject.begin(session: actionWindow?.selectedSession, destination: .newProject, store: store)
+            } label: {
+                Label("Save Session as New Project\u{2026}", systemImage: "square.and.arrow.down")
+            }
+            .disabled(!model.isEnabled)
+        } else {
+            Button {
+                SaveSessionAsProject.begin(session: actionWindow?.selectedSession, destination: .newProject, store: store)
+            } label: {
+                Label("Save Session as Project\u{2026}", systemImage: "square.and.arrow.down")
+            }
+            .disabled(!model.isEnabled)
+        }
+    }
+
     @ViewBuilder
     private func projectMenuItem(_ item: ProjectFileMenuModel.Item) -> some View {
         switch item {
@@ -139,6 +171,10 @@ public struct BattyCommands: Commands {
                     Label("Open Project", systemImage: "folder")
                 }
                 .disabled(keyWindow == nil)
+
+                if let saveMenu = saveSessionMenu {
+                    saveSessionMenuItems(saveMenu)
+                }
 
                 Button {
                     ProjectEditorWindowController.shared.show(store: store)

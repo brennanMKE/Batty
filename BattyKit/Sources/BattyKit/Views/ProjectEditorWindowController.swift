@@ -61,6 +61,10 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
             openProject: { [weak store] id in
                 guard let store else { return }
                 ProjectOpenPresenter.open(id: id, mode: .focusExistingOrOpen, in: store)
+            },
+            captureSession: { [weak store] root in
+                guard let session = store?.defaultTargetWindow()?.selectedSession else { return nil }
+                return SessionProjectCapture.capture(session: session, root: root)
             }
         )
         if let newDraft { model.requestNavigation(.newDraft(newDraft)) }
