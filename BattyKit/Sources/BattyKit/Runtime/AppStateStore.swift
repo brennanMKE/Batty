@@ -968,6 +968,33 @@ public final class AppStateStore {
         defaultTargetWindow()
     }
 
+    /// Whether `window` is the Project Editor, judged after walking up from a
+    /// sheet to the window it hangs from, so a dialog over the editor counts
+    /// as the editor. Matches on the editor's window identifier, so it never
+    /// constructs the editor's controller; that window exists only with the
+    /// Projects flag on.
+    static func isProjectEditorWindow(_ window: NSWindow?) -> Bool {
+        guard var current = window else { return false }
+        while let parent = current.sheetParent { current = parent }
+        return current.identifier?.rawValue == ProjectEditorWindowController.windowIdentifier
+    }
+
+    /// True while the Project Editor is the key window.
+    public var projectEditorIsKey: Bool {
+        Self.isProjectEditorWindow(NSApplication.shared.keyWindow)
+    }
+
+    /// The Window that menu actions on Sessions, Panes and Tabs act on:
+    /// `defaultTargetWindow()`, except nil while the Project Editor is key.
+    /// `BattyShortcuts` declines chords there, so without this the menu item
+    /// would run against the content window behind the editor. Use it inside
+    /// action closures only; enablement is computed from
+    /// `defaultTargetWindow()`. XPC and CLI paths keep using
+    /// `defaultTargetWindow()`.
+    public func menuTargetWindow(projectEditorIsKey: Bool? = nil) -> WindowRuntime? {
+        (projectEditorIsKey ?? self.projectEditorIsKey) ? nil : defaultTargetWindow()
+    }
+
     /// The Terminal Session tab safe to target for tab-scoped Terminal
     /// actions dispatched app-wide (paste, "exit\n" injection): the key
     /// content window's focused pane's active tab, resolved through
@@ -986,7 +1013,13 @@ public final class AppStateStore {
     /// implementation, called from both sites, is what makes that claim
     /// true rather than merely stated.
     public var focusedTerminalTab: TabRuntime? {
-        keyWindowOrFirstRegistered()?.selectedSession?.focusedTerminalPane?.activeTab
+        focusedTerminalTab(projectEditorIsKey: nil)
+    }
+
+    /// Nil while the Project Editor is key (see `menuTargetWindow`), so
+    /// Paste and Exit Shell leave the Terminal alone then.
+    func focusedTerminalTab(projectEditorIsKey: Bool?) -> TabRuntime? {
+        menuTargetWindow(projectEditorIsKey: projectEditorIsKey)?.selectedSession?.focusedTerminalPane?.activeTab
     }
 
     // MARK: - Init

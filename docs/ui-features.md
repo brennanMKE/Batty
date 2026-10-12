@@ -603,4 +603,93 @@ test asserts on its presence, then auto-dismiss with the chosen outcome.
 
 ---
 
+## Project Editor
+
+The Project Editor (#0474) is where a user defines Projects. It is one
+process-global AppKit window titled "Projects", created on demand by
+`ProjectEditorWindowController` from File ▸ **Edit Projects…**, and absent
+entirely when `FeatureFlags.projects` is off. It is not a content window: it is
+never registered with `AppStateStore.registerNSWindow`, so content-window
+shortcuts are off while it is key (`BattyShortcuts` declines the chord, and
+the menu items that act on a Session, Pane or Tab resolve no target, see
+below), and the Save & Open target is `defaultTargetWindow()`. Layout, left to right: the Projects list, the settings
+column (Name, Root folder, Session color, Layout strip, Pane preview), and the
+Pane inspector, with a footer.
+
+**Invariants:**
+
+- Edits are a draft. Nothing is written to `ProjectStore` until Save or
+  Save & Open. Cancel writes nothing and closes the window.
+- Switching Projects, choosing New Project, or closing the window with unsaved
+  changes asks Save, Discard Changes or Cancel.
+- Save is enabled only for a valid, changed draft. Save & Open is enabled for a
+  valid draft. Invalid fields show an inline message under the field.
+- Save & Open saves, closes the editor, then opens through
+  `requestOpenProject`, so the startup-command trust sheet appears when the
+  command set is new or changed.
+- The Layout strip shows all ten presets, plus a "Custom" thumbnail when the
+  Project's topology has no preset.
+- Changing the Layout keeps slot N's configuration where slot N still exists. A
+  confirmation names the Panes that would be removed when they carry
+  configuration.
+- Switching a Pane from Terminal to another kind and back keeps its Tabs until
+  Save.
+- While the Project Editor is key (a sheet over it counts as the editor),
+  menu actions that act on the content window behind it do nothing: New Tab,
+  splits, pane focus and resize, Exit Shell, Paste into a Terminal (Paste
+  still pastes into the editor's own text fields), session and tab selection,
+  and the toggles for Open Quickly, Sidebar, Layout picker, Theme selector
+  and Bell Feed. Close Tab (⌘W) closes the editor window instead.
+  `AppStateStore.menuTargetWindow()` and `focusedTerminalTab` carry the rule,
+  and it applies at action time only: menu enablement still reads
+  `defaultTargetWindow()`. The rule matches only the editor's window, so it
+  does nothing with the Projects flag off. XPC and CLI resolution keep using
+  `defaultTargetWindow()`.
+- A draft handed to the editor (Save as Project, #0476) counts as unsaved:
+  closing or switching away from it asks first.
+- Saving never overwrites the approval hash or last-opened date with the values
+  loaded when the Project was selected; it takes the stored ones.
+- With the flag off there is no Edit Projects… item, no Window-menu entry and
+  no way to create the window.
+
+**Accessibility identifiers:**
+
+- Window identifier `project-editor`.
+- Projects list: `project-editor.list`, rows `project-editor.list.row.<name>`
+  (`project-editor.list.row.new` for the unsaved Project),
+  `project-editor.new-project`, `project-editor.empty.new-project`.
+- Header: `project-editor.name`, `project-editor.root`,
+  `project-editor.root.choose`, swatches `project-editor.color.<case>` (`blue`,
+  `orange`, `green`, `pink`, `teal`, `red`, `violet`, `amber`, `cyan`,
+  `brown`). Field errors append `.error` and warnings `.warning` to the field's
+  identifier (for example `project-editor.name.error`).
+- Layout: `project-editor.layout.<PaneLayout rawValue>`,
+  `project-editor.layout.custom`; Pane preview `project-editor.preview`, cards
+  `project-editor.pane.<n>` (one-based).
+- Inspector: `project-editor.inspector`, kind buttons
+  `project-editor.kind.<PaneContentKind rawValue>`, `project-editor.add-tab`,
+  per Tab (one-based `<n>`) `project-editor.tab.<n>.title`,
+  `.directory`, `.directory.choose`, `.command`, `.remove`, and for Git Status
+  `project-editor.repository` and `project-editor.repository.choose`.
+- Footer: `project-editor.run-commands`, `project-editor.cancel`,
+  `project-editor.save`, `project-editor.save-open`, `project-editor.save-error`.
+
+**Not covered by unit tests (for the Tart VM suite, #0478):**
+
+- File ▸ Edit Projects… is present with the flag on and absent with
+  `BATTY_UI_TEST_FORCE_PROJECTS_OFF=1`, and the Window menu has no Projects
+  entry with the flag off.
+- The editor window opens and comes forward when already open. With it key,
+  ⌘T adds no Tab, ⇧⌘X sends no exit and ⌘V pastes nothing into the background
+  window's Terminal (⌘V still pastes into a focused editor field), while ⌘W
+  closes the editor (asking first when there are unsaved changes).
+- Typing in the fields, clicking Pane cards, arrow-key movement between cards,
+  swatch selection, the layout confirmation dialog, and the unsaved-changes
+  dialog.
+- Choose… (`NSOpenPanel`) and the Tab folder chooser.
+- Save & Open end to end: the Session appears in a content window, and the
+  trust sheet appears for an unapproved command set.
+
+---
+
 *Document version: 1 — 2026-05-20.*

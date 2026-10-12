@@ -3,9 +3,21 @@
 import SwiftUI
 
 struct LayoutThumbnailView: View {
-    let layout: PaneLayout
+    let panes: [PaneLayout.LayoutPane]
     let isSelected: Bool
     let themeChrome: ThemeChrome?
+    let size: CGSize
+
+    init(layout: PaneLayout, isSelected: Bool, themeChrome: ThemeChrome?, size: CGSize = CGSize(width: 120, height: 80)) {
+        self.init(panes: layout.layoutPanes, isSelected: isSelected, themeChrome: themeChrome, size: size)
+    }
+
+    init(panes: [PaneLayout.LayoutPane], isSelected: Bool, themeChrome: ThemeChrome?, size: CGSize = CGSize(width: 120, height: 80)) {
+        self.panes = panes
+        self.isSelected = isSelected
+        self.themeChrome = themeChrome
+        self.size = size
+    }
 
     private var paneFill: Color {
         themeChrome?.windowBackground ?? Color(nsColor: .windowBackgroundColor)
@@ -25,8 +37,6 @@ struct LayoutThumbnailView: View {
 
     var body: some View {
         Canvas { context, size in
-            let panes = layout.layoutPanes
-
             for pane in panes {
                 let rect = CGRect(
                     x: pane.frame.minX * size.width,
@@ -66,7 +76,7 @@ struct LayoutThumbnailView: View {
                 }
             }
         }
-        .frame(width: 120, height: 80)
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
