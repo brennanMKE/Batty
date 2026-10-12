@@ -40,6 +40,13 @@ enum CommandPaletteFilter {
 struct CommandPaletteView: View {
     @Binding var isPresented: Bool
     let store: AppStateStore
+    /// Defers work until this sheet has finished dismissing; nil runs it at
+    /// once. Opening a Project may present the startup-command trust sheet,
+    /// which may not present over a sheet that is still closing.
+    var afterDismiss: ((@escaping @MainActor () -> Void) -> Void)?
+    /// Test seam for the "Open Project: <name>" commands; nil opens through
+    /// `ProjectOpenPresenter`.
+    var openProject: (@MainActor (UUID, AppStateStore.ProjectOpenMode) -> Void)?
 
     @State private var query = ""
     @State private var selectedIndex = 0
@@ -99,6 +106,35 @@ struct CommandPaletteView: View {
             action: { AboutPanel.show() }
         ))
 
+        if store.featureFlags.projects, let projectStore = store.projectStore {
+            cmds.append(PaletteCommand(
+                id: "extra:openProjectPicker",
+                title: String(localized: "Open Project\u{2026}"),
+                keyHint: nil,
+                action: {
+                    runAfterDismiss {
+                        NotificationCenter.default.post(name: .battyToggleProjectPicker, object: nil)
+                    }
+                }
+            ))
+            for project in projectStore.projects {
+                cmds.append(PaletteCommand(
+                    id: "project:\(project.id.uuidString)",
+                    title: String(localized: "Open Project: \(project.name)"),
+                    keyHint: nil,
+                    action: {
+                        runAfterDismiss {
+                            if let openProject {
+                                openProject(project.id, .focusExistingOrOpen)
+                            } else {
+                                ProjectOpenPresenter.open(id: project.id, mode: .focusExistingOrOpen, in: store)
+                            }
+                        }
+                    }
+                ))
+            }
+        }
+
         for theme in BattyThemeCatalog.allThemes {
             cmds.append(PaletteCommand(
                 id: "theme:\(theme.name)",
@@ -113,6 +149,14 @@ struct CommandPaletteView: View {
         }
 
         return cmds
+    }
+
+    private func runAfterDismiss(_ work: @escaping @MainActor () -> Void) {
+        if let afterDismiss {
+            afterDismiss(work)
+        } else {
+            work()
+        }
     }
 
     private var filteredCommands: [PaletteCommand] {

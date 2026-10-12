@@ -59,12 +59,8 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
                 store?.defaultTargetWindow()?.selectedSession?.focusedTerminalPane?.activeTab?.workingDirectory
             },
             openProject: { [weak store] id in
-                store?.requestOpenProject(id: id, mode: .focusExistingOrOpen, completion: { result in
-                    guard case .failure(let error) = result else { return }
-                    if let openError = error as? ProjectOpenError, openError == .cancelled { return }
-                    logger.error("project editor: open failed: \(error.localizedDescription, privacy: .public)")
-                    NSAlert(error: error).runModal()
-                })
+                guard let store else { return }
+                ProjectOpenPresenter.open(id: id, mode: .focusExistingOrOpen, in: store)
             }
         )
         if let newDraft { model.requestNavigation(.newDraft(newDraft)) }
@@ -89,9 +85,12 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// `startNewProject` begins an empty unsaved Project, as the editor's own
+    /// "New Project" button does, after any selection or draft.
     @discardableResult
-    func show(store: AppStateStore, selecting projectID: UUID? = nil, newDraft: ProjectDraft? = nil) -> Bool {
+    func show(store: AppStateStore, selecting projectID: UUID? = nil, newDraft: ProjectDraft? = nil, startNewProject: Bool = false) -> Bool {
         guard prepare(store: store, selecting: projectID, newDraft: newDraft), let window else { return false }
+        if startNewProject { model?.requestNewProject() }
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()

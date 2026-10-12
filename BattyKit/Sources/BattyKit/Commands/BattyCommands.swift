@@ -61,13 +61,47 @@ public struct BattyCommands: Commands {
     private var keyWindow: WindowRuntime? { store.keyWindowOrFirstRegistered() }
 
     /// What a menu action acts on: `keyWindow`, except nil while the Project
-    /// Editor is key, so a menu-routed chord does not reach the content
-    /// window behind it. Read only inside action closures. Enablement and
+    /// Editor or the Open Project picker is key, so a menu-routed chord does
+    /// not reach the content window behind it (the picker's Cmd-N and Cmd-E
+    /// are New Session and Pane > Open View > System Metrics). Read only inside action closures. Enablement and
     /// labels read `keyWindow`: the `Commands` body can re-run while the
     /// editor is key, and nothing observed changes when focus returns to a
     /// content window, so anything derived from the editor-key state there
     /// could stay stale.
     private var actionWindow: WindowRuntime? { store.menuTargetWindow() }
+
+    /// Nil, so the whole group is absent, while the Projects flag is off.
+    /// `store.projectStore` is read only past that gate, so a flag-off build
+    /// never constructs it from here.
+    private var projectFileMenu: ProjectFileMenuModel? {
+        let enabled = ProjectEditorWindowController.isAvailable(featureFlags: store.featureFlags)
+        return ProjectFileMenuModel.make(
+            featureEnabled: enabled,
+            projects: enabled ? (store.projectStore?.projects ?? []) : [],
+            openProjectIDs: enabled ? store.openProjectIDs : []
+        )
+    }
+
+    @ViewBuilder
+    private func projectMenuItem(_ item: ProjectFileMenuModel.Item) -> some View {
+        switch item {
+        case .project(let id, let name, let isOpen):
+            Toggle(name, isOn: Binding(
+                get: { isOpen },
+                set: { _ in ProjectOpenPresenter.open(id: id, mode: .focusExistingOrOpen, in: store) }
+            ))
+        case .divider:
+            Divider()
+        case .chooseProject:
+            Button("Choose Project\u{2026}") {
+                postToContentWindow(.battyToggleProjectPicker)
+            }
+        case .newProject:
+            Button("New Project\u{2026}") {
+                ProjectEditorWindowController.shared.show(store: store, startNewProject: true)
+            }
+        }
+    }
 
     public init() {}
 
@@ -94,8 +128,17 @@ public struct BattyCommands: Commands {
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .openQuickly))
             .disabled(keyWindow?.selectedSession == nil)
 
-            if ProjectEditorWindowController.isAvailable(featureFlags: store.featureFlags) {
+            if let projectMenu = projectFileMenu {
                 Divider()
+
+                Menu {
+                    ForEach(projectMenu.items) { item in
+                        projectMenuItem(item)
+                    }
+                } label: {
+                    Label("Open Project", systemImage: "folder")
+                }
+                .disabled(keyWindow == nil)
 
                 Button {
                     ProjectEditorWindowController.shared.show(store: store)
@@ -246,7 +289,8 @@ public struct BattyCommands: Commands {
             // window `BattyShortcuts` takes the chord before the menu does,
             // so it never runs twice; when another window such as Settings
             // has focus, the menu shortcut is what runs it (the Project
-            // Editor excepted: its actions target no window).
+            // Editor and the Open Project picker excepted: their actions
+            // target no window).
             Section("Open View") {
                 Button {
                     actionWindow?.createPane(kind: .gitStatus, direction: .horizontal)

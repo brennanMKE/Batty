@@ -985,15 +985,37 @@ public final class AppStateStore {
     }
 
     /// The Window that menu actions on Sessions, Panes and Tabs act on:
-    /// `defaultTargetWindow()`, except nil while the Project Editor is key.
-    /// `BattyShortcuts` declines chords there, so without this the menu item
-    /// would run against the content window behind the editor. Use it inside
+    /// `defaultTargetWindow()`, except nil while the Project Editor or the
+    /// Open Project picker is key. `BattyShortcuts` declines chords there, so
+    /// without this the menu item would run against the content window behind
+    /// the editor. The picker's Cmd-N (New Project) and Cmd-E (Edit) are also
+    /// New Session and Pane > Open View > System Metrics, and must never act on the
+    /// content window behind the sheet. Use it inside
     /// action closures only; enablement is computed from
     /// `defaultTargetWindow()`. XPC and CLI paths keep using
     /// `defaultTargetWindow()`.
-    public func menuTargetWindow(projectEditorIsKey: Bool? = nil) -> WindowRuntime? {
-        (projectEditorIsKey ?? self.projectEditorIsKey) ? nil : defaultTargetWindow()
+    public func menuTargetWindow(projectEditorIsKey: Bool? = nil, projectPickerIsKey: Bool? = nil) -> WindowRuntime? {
+        let editorKey = projectEditorIsKey ?? self.projectEditorIsKey
+        let pickerKey = projectPickerIsKey ?? self.projectPickerIsKey
+        return editorKey || pickerKey ? nil : defaultTargetWindow()
     }
+
+    /// Whether `window` is the Open Project picker's sheet, which tags its
+    /// own window with `ProjectPickerView.windowIdentifier`.
+    static func isProjectPickerWindow(_ window: NSWindow?) -> Bool {
+        window?.identifier?.rawValue == ProjectPickerView.windowIdentifier
+    }
+
+    /// True while the Open Project picker is the key window. Its Cmd-N means
+    /// New Project, so the File menu's New Session (also Cmd-N) must not
+    /// act behind it if the menu ever sees the chord first.
+    public var projectPickerIsKey: Bool {
+        Self.isProjectPickerWindow(NSApplication.shared.keyWindow)
+    }
+
+    /// Whether the lazily built `ProjectStore` exists. Lets tests show a
+    /// flag-off code path never constructed it.
+    var projectStoreIsConstructed: Bool { projectStoreStorage != nil }
 
     /// The Terminal Session tab safe to target for tab-scoped Terminal
     /// actions dispatched app-wide (paste, "exit\n" injection): the key

@@ -692,4 +692,87 @@ Pane inspector, with a footer.
 
 ---
 
+## Open Project picker, File menu and Command Palette entries
+
+The Open Project picker (#0475) is a sheet on `SessionDetailView`, like the
+Layout picker, toggled by `.battyToggleProjectPicker` and guarded on
+`isKeyWindow` (#0242). Its logic lives in `ProjectPickerModel`; the File menu's
+Open Project submenu is `ProjectFileMenuModel` rendered by `BattyCommands`; the
+Command Palette entries are built in `CommandPaletteView.allCommands`. All of
+them are absent with `FeatureFlags.projects` off.
+
+**Invariants:**
+
+- The picker only reports a choice. `SessionDetailView` dismisses the sheet and
+  acts in the sheet's `onDismiss`, so the startup-command trust sheet (which
+  presents from the same view) is never competing with a closing sheet. The
+  palette's Project commands do the same through `afterDismiss`.
+- Return opens with `.focusExistingOrOpen` (the Project's open Session is
+  selected if there is one). Option-Return opens with `.openNew`. Double-click
+  opens like Return. A single click only selects.
+- Arrow keys move the selection over three columns, row-major, without
+  wrapping. Left and right therefore do not move the caret in the filter field.
+  Down from a column a short last row lacks lands on the last card.
+- Typing a filter selects its best match. Names match fuzzily; paths match as a
+  case-insensitive substring (the full path or its `~` form). Name matches rank
+  ahead of path matches; ties keep store order.
+- Cmd-E (Edit) and Cmd-N (New Project) are hidden buttons with key
+  equivalents inside the sheet. Cmd-N is also File > New Session, and Cmd-E is
+  the default for Pane > Open View > System Metrics
+  (`ShortcutAction.splitHorizontalSystemMetrics`). Two layers
+  are meant to keep either from acting on the content window: the sheet's key equivalent
+  runs before the main menu, and `AppStateStore.menuTargetWindow()` resolves no
+  target while the picker's window (tagged `project-picker`) is key.
+- The cards and OPEN badges are read live from the store, so they follow edits
+  made in the Project Editor or by the CLI while the sheet is up; the selection
+  stays on its Project by id.
+- The palette's "Open Project..." row presents the picker from the palette's
+  `onDismiss`, which relies on the content window being key again by then.
+- The File menu items have no key equivalents and there is no new
+  `ShortcutAction`. The submenu is disabled when no window is registered. Its
+  Choose Project... does nothing while the Project Editor is key
+  (`postToContentWindow`), like the other toggles.
+- With the flag off there is no Open Project submenu, no Choose Project... or
+  New Project..., no `project:` or `extra:openProjectPicker` palette ids, the
+  toggle notification is ignored, the sheet does not present, and
+  `ProjectStore` is never constructed from these paths.
+
+**Accessibility identifiers:**
+
+- Sheet root `project-picker.root`; filter field `project-picker.filter`; hint
+  line `project-picker.hint`.
+- Cards `project-picker.card.<Project name>`; OPEN badge
+  `project-picker.open-badge.<Project name>` (present only for a Project with
+  an open Session).
+- Empty state `project-picker.empty`, with `project-picker.new-project` when no
+  Projects exist.
+- File menu: submenu title "Open Project", items titled by Project name (a
+  check mark marks an open Project), "Choose Project...", "New Project...".
+- Command Palette: rows titled "Open Project: <name>" and "Open Project...".
+
+**Not covered by unit tests (for the Tart VM suite, #0478, plus the manual
+check below):**
+
+- With the flag on, File > Open Project shows each seeded Project, checks the
+  open one, and Choose Project... presents the sheet; with
+  `BATTY_UI_TEST_FORCE_PROJECTS_OFF=1` the submenu is absent and the palette
+  has no Project rows.
+- Typing narrows the cards; arrows move the selection; Return opens and
+  Option-Return opens another copy; Escape dismisses; clicking a card selects
+  it and double-clicking opens it.
+- A Project whose commands are unapproved shows the trust sheet after the
+  picker (or palette) has closed.
+- Cmd-E opens the Project Editor on the selection; Cmd-N opens it on a new
+  Project. **Manual check:** with the picker up, press Cmd-N and confirm the
+  Sidebar gains no Session and the editor opens on a new Project. Likewise
+  press Cmd-E and confirm no System Metrics Pane is added and the editor opens
+  on the selected Project.
+- The empty state's New Project... button.
+- Opening a Project that was deleted while the picker was up shows an alert.
+- Option-Return in the filter field opens another copy and does not insert a
+  newline.
+- The palette's "Open Project..." row presents the picker.
+
+---
+
 *Document version: 1 — 2026-05-20.*

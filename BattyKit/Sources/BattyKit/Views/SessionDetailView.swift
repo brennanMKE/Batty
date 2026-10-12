@@ -14,6 +14,9 @@ public struct SessionDetailView: View {
     @State private var commandPaletteShown: Bool = false
     @State private var openQuicklyShown: Bool = false
     @State private var layoutPickerShown: Bool = false
+    @State private var projectPickerShown: Bool = false
+    @State private var afterProjectPicker: ProjectPickerAction?
+    @State private var afterCommandPalette: (@MainActor () -> Void)?
     @State private var themeSelectorShown: Bool = false
     @State private var pendingPaste: PendingPaste?
     @State private var splitDetailToolbarSafeInsetTop: CGFloat = -1
@@ -50,6 +53,10 @@ public struct SessionDetailView: View {
             guard isKeyWindow else { return }
             layoutPickerShown.toggle()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .battyToggleProjectPicker)) { _ in
+            guard store.featureFlags.projects, isKeyWindow else { return }
+            projectPickerShown.toggle()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleThemeSelector)) { _ in
             guard isKeyWindow else { return }
             themeSelectorShown.toggle()
@@ -69,14 +76,29 @@ public struct SessionDetailView: View {
                 onCancel: { pendingPaste = nil }
             )
         }
-        .sheet(isPresented: $commandPaletteShown) {
-            CommandPaletteView(isPresented: $commandPaletteShown, store: store)
+        .sheet(isPresented: $commandPaletteShown, onDismiss: runAfterCommandPalette) {
+            CommandPaletteView(
+                isPresented: $commandPaletteShown,
+                store: store,
+                afterDismiss: { afterCommandPalette = $0 }
+            )
         }
         .sheet(isPresented: $openQuicklyShown) {
             OpenQuicklyView(isPresented: $openQuicklyShown, windowRuntime: windowRuntime)
         }
         .sheet(isPresented: $layoutPickerShown) {
             LayoutPickerView(isPresented: $layoutPickerShown, windowRuntime: windowRuntime)
+        }
+        .sheet(isPresented: projectPickerBinding, onDismiss: runAfterProjectPicker) {
+            ProjectPickerView(
+                projects: { store.projectStore?.projects ?? [] },
+                openProjectIDs: { store.openProjectIDs },
+                onAction: { action in
+                    afterProjectPicker = action
+                    projectPickerShown = false
+                },
+                onCancel: { projectPickerShown = false }
+            )
         }
         .sheet(isPresented: $themeSelectorShown) {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)
@@ -276,6 +298,32 @@ public struct SessionDetailView: View {
 
     private var isKeyWindow: Bool {
         store.keyWindowRuntime()?.id == windowRuntime.id
+    }
+
+    private var projectPickerBinding: Binding<Bool> {
+        Binding(
+            get: { store.featureFlags.projects && projectPickerShown },
+            set: { projectPickerShown = $0 }
+        )
+    }
+
+    private func runAfterCommandPalette() {
+        guard let work = afterCommandPalette else { return }
+        afterCommandPalette = nil
+        work()
+    }
+
+    private func runAfterProjectPicker() {
+        guard let action = afterProjectPicker else { return }
+        afterProjectPicker = nil
+        switch action {
+        case .open(let id, let mode):
+            ProjectOpenPresenter.open(id: id, mode: mode, in: store)
+        case .edit(let id):
+            ProjectEditorWindowController.shared.show(store: store, selecting: id)
+        case .newProject:
+            ProjectEditorWindowController.shared.show(store: store, startNewProject: true)
+        }
     }
 
     private var startupTrustBinding: Binding<ProjectStartupTrustRequest?> {

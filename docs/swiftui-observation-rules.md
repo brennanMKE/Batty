@@ -176,6 +176,15 @@ each path, and delete inferred echoes before reaching for guards.
 - If a write is illegal where it happens, restructure **which code owns the
   write** (direction + echo suppression), not *when* it runs.
 
+- **Work that must follow a sheet's dismissal waits for the sheet's
+  `onDismiss`.** It is the completion signal, delivered by SwiftUI when the
+  sheet has finished closing, so it is event-origin and not a `Task` hop. The
+  sheet only records what was chosen and sets its `isPresented` to false; the
+  host acts in `onDismiss`. Example (#0475): the Open Project picker and the
+  Command Palette hand a Project open to `SessionDetailView`, which runs it in
+  `.sheet(onDismiss:)` so the startup-command trust sheet is not presented
+  over a sheet that is still closing.
+
 ## Checklist before touching a state-flow path
 
 1. List every property the change writes, and the exact context each write
