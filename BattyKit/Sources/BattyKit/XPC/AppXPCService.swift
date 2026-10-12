@@ -24,6 +24,20 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     /// connection teardown answer for it with an indistinguishable drop.
     private let pendingRequests = PendingRequestRegistry()
 
+    /// The store the Project verbs act on. Every older verb reads
+    /// `AppStateStore.shared` directly; the Project verbs go through this so
+    /// a test can supply a store with the Projects flag on.
+    private let storeProvider: @MainActor @Sendable () -> AppStateStore
+    private let clock: any SchedulingClock
+
+    init(
+        store: @escaping @MainActor @Sendable () -> AppStateStore = { AppStateStore.shared },
+        clock: any SchedulingClock = SystemClock()
+    ) {
+        self.storeProvider = store
+        self.clock = clock
+        super.init()
+    }
 
     // Active watch subscription tracking. Only one is registered per connection at a time,
     // replaced on each new `watch` call. Cleaned up by AppEventWatcher when the subscription
@@ -391,10 +405,84 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             case XPCVerb.watch:
             watch(request, reply: reply)
 
+        case XPCVerb.projectList:
+            Task { @MainActor [pendingRequests, storeProvider] in
+                let store = storeProvider()
+                guard store.featureFlags.projects else {
+                    logger.notice("perform projectList: projects feature is off")
+                    pendingRequests.resolve(requestID, with: Self.unknownVerbResponse(decoded.verb))
+                    return
+                }
+                guard let reply = store.projectListReplyForXPC(),
+                      let replyData = try? JSONEncoder().encode(reply)
+                else {
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to build project list")))
+                    return
+                }
+                logger.info("perform projectList -> projects=\(reply.projects.count, privacy: .public)")
+                pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+            }
+        case XPCVerb.projectOpen:
+            Task { @MainActor [pendingRequests, storeProvider, clock] in
+                let store = storeProvider()
+                guard store.featureFlags.projects else {
+                    logger.notice("perform projectOpen: projects feature is off")
+                    pendingRequests.resolve(requestID, with: Self.unknownVerbResponse(decoded.verb))
+                    return
+                }
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(ProjectOpenRequest.self, from: payloadData)
+                else {
+                    logger.error("perform projectOpen: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed project open request")))
+                    return
+                }
+                let waiter = ProjectOpenWaiter()
+                let opened = store.openProjectForXPC(name: request.name, openNew: request.openNew) { outcome in
+                    waiter.timeoutTask?.cancel()
+                    switch outcome {
+                    case .opened(let reply):
+                        guard let replyData = try? JSONEncoder().encode(reply) else {
+                            pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode project open reply")))
+                            return
+                        }
+                        logger.info("perform projectOpen -> session=\(reply.sessionID?.uuidString ?? "<none>", privacy: .public) created=\(reply.created, privacy: .public)")
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                    case .failed(let message):
+                        logger.error("perform projectOpen: \(message, privacy: .public)")
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: message)))
+                    }
+                }
+                guard let opened, let trustRequestID = opened.trustRequestID else { return }
+                // The startup-command sheet is waiting for the user. Reply
+                // once they answer. If they never do, withdraw the sheet at
+                // the bound so a later answer cannot open a Project for a
+                // caller that has already been told it did not open. A CLI
+                // that is killed while waiting leaves the sheet up until the
+                // same bound; the user's consent still applies to whatever
+                // they answer. Resolving first means the cancellation's own
+                // completion finds the request already answered.
+                let name = opened.projectName
+                waiter.timeoutTask = Task { @MainActor in
+                    await clock.sleep(for: .seconds(ProjectOpenRequest.confirmationBoundSeconds))
+                    guard !Task.isCancelled else { return }
+                    let reply = ProjectOpenReply(status: .awaitingConfirmation, name: name, sessionID: nil, paneID: nil, created: false)
+                    if let replyData = try? JSONEncoder().encode(reply) {
+                        logger.notice("perform projectOpen: trust sheet unanswered; withdrawing it")
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                    }
+                    store.cancelStartupTrust(requestID: trustRequestID)
+                }
+            }
+
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
-            pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown verb: \(decoded.verb)")))
+            pendingRequests.resolve(requestID, with: Self.unknownVerbResponse(decoded.verb))
         }
+    }
+
+    private static func unknownVerbResponse(_ verb: String) -> Data {
+        encode(XPCResponse(ok: false, error: "unknown verb: \(verb)"))
     }
 
     /// Answers every in-flight `perform` call with the termination sentinel.
@@ -470,4 +558,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
 
     // Instance logger. Line 7 of the file declares `nonisolated private let logger` for the same
     // category. Both properties are reachable from unrelated call sites in the same file.
+}
+
+/// Holds the timer for one in-flight `projectOpen`, so the completion that
+/// answers the request can stop it.
+@MainActor
+private final class ProjectOpenWaiter {
+    var timeoutTask: Task<Void, Never>?
 }

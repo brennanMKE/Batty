@@ -32,7 +32,7 @@ struct AgentSkillFlagDriftTests {
     /// — see `CapabilitiesPropertyPayload.enumValueNames`'s doc comment).
     private static func knownFlagsByVerb() -> [String: Set<String>] {
         var result: [String: Set<String>] = [:]
-        for verb in CapabilitiesCommand.verbs() {
+        for verb in CapabilitiesCommand.verbs(flags: FeatureFlags(projects: true)) {
             var flags: Set<String> = []
             for property in verb.inputSchema.properties.values {
                 flags.formUnion(property.names)
@@ -94,7 +94,7 @@ struct AgentSkillFlagDriftTests {
     ///   via `enumValueNames`. Latent, not live: SKILL.md uses no
     ///   single-dash flags as of this writing.
     private static func verbFlagPairs(in markdown: String) -> [(verb: String, flag: String)] {
-        let knownVerbs = Set(CapabilitiesCommand.verbs().map(\.name))
+        let knownVerbs = Set(CapabilitiesCommand.verbs(flags: FeatureFlags(projects: true)).map(\.name))
         // Round-1 review N4: recipes invoke `"$BATTY"` (resolved once in the
         // bootstrap to whichever of `batty`/`batty-beta` is installed), not
         // a hardcoded `batty` — normalize that back to the literal word so

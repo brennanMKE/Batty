@@ -78,8 +78,8 @@ public nonisolated struct CapabilitiesPayload: Codable, Sendable, Equatable {
     /// stays the single place the *numbers* are assembled, so
     /// `docs/batty-cli-agent-workflows.md`'s failure table (#0368) and this
     /// verb read the same vocabulary and cannot drift apart silently.
-    public static func standardExitCodes(success: Int32, failure: Int32, validationFailure: Int32) -> [CapabilitiesExitCodePayload] {
-        [
+    public static func standardExitCodes(success: Int32, failure: Int32, validationFailure: Int32, includingProjects: Bool = false) -> [CapabilitiesExitCodePayload] {
+        var codes = [
             CapabilitiesExitCodePayload(code: success, meaning: "Success."),
             CapabilitiesExitCodePayload(code: failure, meaning: "CLI-side failure — invalid path, malformed id, or a bad option combination."),
             CapabilitiesExitCodePayload(code: XPCExitCode.brokerUnreachable, meaning: "Broker unreachable — agent not registered, or awaiting SMAppService approval."),
@@ -89,6 +89,10 @@ public nonisolated struct CapabilitiesPayload: Codable, Sendable, Equatable {
             CapabilitiesExitCodePayload(code: XPCExitCode.appRunningUnregistered, meaning: "The app is running but not registered with the broker, and did not re-register within the poll bound."),
             CapabilitiesExitCodePayload(code: XPCExitCode.appBundleUnresolved, meaning: "Could not determine, deterministically, which on-disk app bundle to target."),
             CapabilitiesExitCodePayload(code: validationFailure, meaning: "Invalid CLI syntax (ArgumentParser usage error)."),
-        ].sorted { $0.code < $1.code }
+        ]
+        if includingProjects {
+            codes.append(CapabilitiesExitCodePayload(code: XPCExitCode.awaitingConfirmation, meaning: "Reached the app, but the Project's startup commands need approval and the prompt in Batty went unanswered. Nothing was opened."))
+        }
+        return codes.sorted { $0.code < $1.code }
     }
 }

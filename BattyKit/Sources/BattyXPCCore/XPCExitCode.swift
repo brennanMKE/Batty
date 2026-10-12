@@ -42,4 +42,9 @@ public nonisolated enum XPCExitCode {
     /// LaunchServices, which is what let the CLI launch the wrong one of
     /// several bundles sharing `co.sstools.Batty` in the first place.
     public static let appBundleUnresolved: Int32 = 7
+
+    /// `batty project open` reached the app, but the Project's startup
+    /// commands need the user's approval and the prompt in Batty went
+    /// unanswered within the app's bound (#0477). Nothing was opened.
+    public static let awaitingConfirmation: Int32 = 8
 }

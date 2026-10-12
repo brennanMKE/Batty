@@ -241,6 +241,29 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0477. No request payload. Flag-gated app side: with the Projects
+    /// feature off the app answers `unknown verb: projectList`, which arrives
+    /// as `.requestFailed`.
+    static func projectList(endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<ProjectListReply> {
+        let outcome: Outcome<ProjectListReply> = perform(verb: XPCVerb.projectList, requestPayload: nil, endpoint: endpoint, timeout: timeout, logLabel: "projectList")
+        if case .success(let reply) = outcome {
+            logger.info("projectList -> projects=\(reply.projects.count, privacy: .public)")
+        }
+        return outcome
+    }
+
+    /// #0477. The app holds its reply while the user answers a startup-command
+    /// trust sheet, so callers pass a `timeout` longer than
+    /// `ProjectOpenRequest.confirmationBoundSeconds`.
+    static func projectOpen(endpoint: NSXPCListenerEndpoint, name: String, openNew: Bool, timeout: TimeInterval) -> Outcome<ProjectOpenReply> {
+        let requestPayload = try? JSONEncoder().encode(ProjectOpenRequest(name: name, openNew: openNew))
+        let outcome: Outcome<ProjectOpenReply> = perform(verb: XPCVerb.projectOpen, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "projectOpen")
+        if case .success(let reply) = outcome {
+            logger.info("projectOpen -> status=\(reply.status.rawValue, privacy: .public) created=\(reply.created, privacy: .public)")
+        }
+        return outcome
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

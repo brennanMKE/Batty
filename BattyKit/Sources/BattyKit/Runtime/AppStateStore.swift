@@ -102,6 +102,10 @@ public final class AppStateStore {
     @ObservationIgnored private var projectStoreStorage: ProjectStore?
     @ObservationIgnored private let projectsFileURL: URL?
     @ObservationIgnored var pendingStartupOpens: [UUID: PendingStartupOpen] = [:]
+    /// Test seam: observes every request to bring a Window forward, including
+    /// ones that find no `NSWindow` to act on (unit tests), so tests can pin
+    /// when an activation is asked for. Nil in production.
+    @ObservationIgnored var windowActivationObserver: ((WindowRuntime) -> Void)?
     /// Test seam: stands in for the Tab's terminal as the target of startup
     /// commands. Nil in production.
     @ObservationIgnored var startupInputSinkFactory: ((TabRuntime) -> any StartupInputSink)?
@@ -1206,6 +1210,9 @@ public final class AppStateStore {
     /// and logs) while `featureFlags.projects` is off. Startup commands are
     /// not run here.
     ///
+    /// `fromCli` marks the `session_created` / `session_focused` watch events
+    /// as driven by a `batty` call.
+    ///
     /// `contentFactory` is a test seam forwarded to every non-terminal
     /// Pane; production callers leave it nil.
     ///
@@ -1216,7 +1223,8 @@ public final class AppStateStore {
     public func openProject(
         id projectID: UUID,
         mode: ProjectOpenMode = .focusExistingOrOpen,
-        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
+        contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
+        fromCli: Bool = false
     ) throws -> ProjectOpenResult {
         guard featureFlags.projects, let projectStore else {
             logger.notice("openProject: ignored; projects feature is off")
@@ -1231,7 +1239,7 @@ public final class AppStateStore {
            let existing = window.sessions.first(where: { $0.projectID == projectID }) {
             window.setSelectedSession(id: existing.id)
             activateWindow(window)
-            let event = WatchEventPayload(type: "session_focused", sessionID: existing.id)
+            let event = WatchEventPayload(type: "session_focused", sessionID: existing.id, fromCli: fromCli)
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
             return ProjectOpenResult(session: existing, wasCreated: false)
         }
@@ -1245,7 +1253,10 @@ public final class AppStateStore {
             isSessionSelected: true
         )
         let session = target.addProjectSession(project, tree: tree)
-        let event = WatchEventPayload(type: "session_created", sessionID: session.id)
+        // A CLI create brings Batty forward like `batty new` does (its
+        // `open -a` activates the app); GUI opens are already in front.
+        if fromCli { activateWindow(target) }
+        let event = WatchEventPayload(type: "session_created", sessionID: session.id, fromCli: fromCli)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
         return ProjectOpenResult(session: session, wasCreated: true)
     }
@@ -1684,13 +1695,17 @@ public final class AppStateStore {
     /// a minimized window, so `pane focus` into one would otherwise be a
     /// silent visual no-op. A responder/app-activation-changing AppKit
     /// call: legal here for the same reason it's legal in
-    /// `jumpToBellEntry`/`BellNotifier` — this runs from the XPC-dispatched
-    /// `Task { @MainActor }` in `AppXPCService.perform`, an event-origin
-    /// call, never from view-update code. No-op when the window has no
+    /// `jumpToBellEntry`/`BellNotifier` — every caller is event-origin: the
+    /// XPC-dispatched `Task { @MainActor }` in `AppXPCService.perform`, the
+    /// trust sheet's button via `resolveStartupTrust`, and `openProject`'s
+    /// focus-existing branch, reached from GUI project opens (Command
+    /// Palette, project editor) via `ProjectOpenPresenter` and from
+    /// `UITestDriver` — never from view-update code. No-op when the window has no
     /// registered `NSWindow` yet (unit tests, headless CLI-only contexts)
     /// — the selection/focus writes above already ran regardless, which is
     /// what the store-state assertions in tests exercise.
-    private func activateWindow(_ window: WindowRuntime) {
+    func activateWindow(_ window: WindowRuntime) {
+        windowActivationObserver?(window)
         guard let nsWindow = nsWindow(for: window.id) else { return }
         if nsWindow.isMiniaturized {
             nsWindow.deminiaturize(nil)

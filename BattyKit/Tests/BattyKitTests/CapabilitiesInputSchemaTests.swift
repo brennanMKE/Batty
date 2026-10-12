@@ -209,6 +209,19 @@ struct CapabilitiesInputSchemaTests {
         assertNamesAreInvocable(CapabilitiesCommand.capabilitiesInputSchema, helpMessage: CapabilitiesCommand.helpMessage())
     }
 
+    @Test func projectListCommandSchemaMatchesStoredProperties() throws {
+        let instance = try ProjectListCommand.parse([])
+        assertSchemaMatchesStoredProperties(instance, schema: ProjectListCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ProjectListCommand.capabilitiesInputSchema, helpMessage: ProjectListCommand.helpMessage())
+    }
+
+    @Test func projectOpenCommandSchemaMatchesStoredProperties() throws {
+        let instance = try ProjectOpenCommand.parse(["Batty"])
+        assertSchemaMatchesStoredProperties(instance, schema: ProjectOpenCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ProjectOpenCommand.capabilitiesInputSchema, helpMessage: ProjectOpenCommand.helpMessage())
+        #expect(ProjectOpenCommand.capabilitiesInputSchema.properties["name"]?.required == true)
+    }
+
     // MARK: - Every leaf command conforms (parameter-roster analog of
     // #0384's verb-roster derivation)
 
@@ -222,10 +235,12 @@ struct CapabilitiesInputSchemaTests {
             guard !subcommands.isEmpty else { return [type] }
             return subcommands.flatMap(leafTypes)
         }
-        let leaves = BattyCLI.configuration.subcommands.flatMap(leafTypes)
-        #expect(!leaves.isEmpty)
-        for leaf in leaves {
-            #expect(leaf is CapabilitiesDescribable.Type, "\(leaf) has no capabilitiesInputSchema")
+        for flags in [FeatureFlags(projects: false), FeatureFlags(projects: true)] {
+            let leaves = BattyCLI.subcommands(for: flags).flatMap(leafTypes)
+            #expect(!leaves.isEmpty)
+            for leaf in leaves {
+                #expect(leaf is CapabilitiesDescribable.Type, "\(leaf) has no capabilitiesInputSchema")
+            }
         }
     }
 
@@ -354,7 +369,7 @@ struct CapabilitiesInputSchemaTests {
     /// joins one — so a hypothetical new `tab close` is a brand-new,
     /// unrecognized key, never a silent match against `pane close`'s or
     /// `session close`'s `"close"` entry.
-    private func shippedVerbPaths() -> Set<String> {
+    private func shippedVerbPaths(flags: FeatureFlags) -> Set<String> {
         func verbPaths(from type: ParsableCommand.Type, prefix: [String]) -> [String] {
             let config = type.configuration
             let name = config.commandName ?? String(describing: type)
@@ -362,11 +377,19 @@ struct CapabilitiesInputSchemaTests {
             guard !config.subcommands.isEmpty else { return [path.joined(separator: " ")] }
             return config.subcommands.flatMap { verbPaths(from: $0, prefix: path) }
         }
-        return Set(BattyCLI.configuration.subcommands.flatMap { verbPaths(from: $0, prefix: []) })
+        return Set(BattyCLI.subcommands(for: flags).flatMap { verbPaths(from: $0, prefix: []) })
     }
 
+    private let projectVerbPaths: Set<String> = ["project list", "project open"]
+
+    /// The table is the superset: with the Projects flag on it matches the
+    /// shipped tree exactly, and with it off the shipped tree is the table
+    /// minus the two `project` paths, so a gated verb can neither go
+    /// unclassified nor leak into the flag-off roster.
     @Test func leafArchetypeByVerbPathCoversExactlyTheShippedVerbPaths() {
-        #expect(Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys) == shippedVerbPaths())
+        let keys = Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys)
+        #expect(keys == shippedVerbPaths(flags: FeatureFlags(projects: true)))
+        #expect(keys.subtracting(projectVerbPaths) == shippedVerbPaths(flags: FeatureFlags(projects: false)))
     }
 
     @Test func everyArchetypeLeafArchetypeByVerbPathPointsAtExists() {

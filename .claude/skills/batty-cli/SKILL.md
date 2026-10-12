@@ -234,7 +234,29 @@ actually *do* about each one — the part a schema can't encode:
 | `5` | App terminated mid-request — restart the whole workflow from a fresh topology snapshot. |
 | `6` | App running but unregistered with the broker — don't retry blindly; ask the human to check/relaunch. |
 | `7` | Can't determine which on-disk app bundle to target — stop, this is a local install problem, not something a retry fixes. |
+| `8` | `project open` only: the startup-command prompt in Batty went unanswered; nothing opened. Ask the human to answer it, then retry. |
 | `64` | Invalid syntax — fix the invocation. |
+
+## 8. Opening a saved Project (Beta only)
+
+`project list` and `project open <name>` exist only in `batty-beta` while the
+Projects feature flag is on (until 1.3.0). The Prod `batty` has no `project`
+noun, so check `capabilities --json` before using them: if `project open` is
+not in `verbs`, the build does not have the feature, and you should not try
+another spelling.
+
+```bash
+"$BATTY" project list --json
+"$BATTY" project open "My Project" --json   # sessionID, paneID, created, name
+```
+
+`open` focuses the Project's Session when one is already open
+(`created: false`); `--new` opens another copy. An unknown name exits `4` and
+lists close matches. **You cannot skip the startup-command approval prompt:**
+if the Project's commands are new or changed, Batty asks the human and the
+command waits for their answer (up to 120 seconds). Exit `8` means nobody
+answered and nothing was opened; ask the human to be at Batty, then run it
+again. Do not try to work around the prompt.
 
 ## What this skill deliberately does not cover
 

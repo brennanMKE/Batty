@@ -17,6 +17,7 @@ struct PendingStartupOpen {
     var projectID: UUID
     var commandsHash: String
     var mode: AppStateStore.ProjectOpenMode
+    var fromCli: Bool
     var contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)?
     var completion: ((Result<AppStateStore.ProjectOpenResult, Error>) -> Void)?
 }
@@ -33,36 +34,45 @@ extension AppStateStore {
     /// Call from an event handler (menu, palette, sheet button, XPC
     /// request), never from `body`/`onAppear`: it appends to
     /// `WindowRuntime.pendingStartupTrusts`, which presents the sheet.
+    ///
+    /// Returns the id of the trust request when the sheet was queued (pass it
+    /// to `cancelStartupTrust(requestID:)` to withdraw it), nil when the open
+    /// resolved without one. `fromCli` marks the watch events as driven by a
+    /// `batty` call.
+    @discardableResult
     public func requestOpenProject(
         id projectID: UUID,
         mode: ProjectOpenMode = .focusExistingOrOpen,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
+        fromCli: Bool = false,
         completion: ((Result<ProjectOpenResult, Error>) -> Void)? = nil
-    ) {
+    ) -> UUID? {
         guard featureFlags.projects, let projectStore else {
             logger.notice("requestOpenProject: ignored; projects feature is off")
             completion?(.failure(ProjectOpenError.featureDisabled))
-            return
+            return nil
         }
         guard let project = projectStore.project(id: projectID) else {
             logger.notice("requestOpenProject: unknown project id=\(projectID, privacy: .public)")
             completion?(.failure(ProjectOpenError.unknownProject(projectID)))
-            return
+            return nil
         }
         let alreadyOpen = mode == .focusExistingOrOpen && openProjectIDs.contains(projectID)
         let decision = alreadyOpen ? ProjectStartupDecision.skip : ProjectStartupTrust.decide(project)
         switch decision {
         case .skip:
-            finishOpen(project, mode: mode, contentFactory: contentFactory,
+            finishOpen(project, mode: mode, contentFactory: contentFactory, fromCli: fromCli,
                        outcome: ProjectStartupOutcome(runCommands: false, hashToStore: nil), completion: completion)
+            return nil
         case .runWithoutPrompt:
-            finishOpen(project, mode: mode, contentFactory: contentFactory,
+            finishOpen(project, mode: mode, contentFactory: contentFactory, fromCli: fromCli,
                        outcome: ProjectStartupOutcome(runCommands: true, hashToStore: nil), completion: completion)
+            return nil
         case .prompt:
             guard let target = defaultTargetWindow() else {
                 logger.error("requestOpenProject: no window available for the trust sheet")
                 completion?(.failure(ProjectOpenError.noWindow))
-                return
+                return nil
             }
             let request = ProjectStartupTrustRequest(
                 id: UUID(),
@@ -72,8 +82,13 @@ extension AppStateStore {
                 rows: ProjectStartupTrust.rows(for: project)
             )
             pendingStartupOpens[request.id] = PendingStartupOpen(
-                projectID: projectID, commandsHash: request.commandsHash, mode: mode, contentFactory: contentFactory, completion: completion)
+                projectID: projectID, commandsHash: request.commandsHash, mode: mode, fromCli: fromCli,
+                contentFactory: contentFactory, completion: completion)
             target.pendingStartupTrusts.append(request)
+            // The CLI caller is waiting on this sheet, which is invisible if
+            // Batty is behind another app or minimized.
+            if fromCli { activateWindow(target) }
+            return request.id
         }
     }
 
@@ -94,11 +109,11 @@ extension AppStateStore {
             logger.notice("resolveStartupTrust: commands or run toggle changed while the sheet was open; asking again")
             requestOpenProject(
                 id: project.id, mode: pending.mode,
-                contentFactory: pending.contentFactory, completion: pending.completion)
+                contentFactory: pending.contentFactory, fromCli: pending.fromCli, completion: pending.completion)
             return
         }
         finishOpen(
-            project, mode: pending.mode, contentFactory: pending.contentFactory,
+            project, mode: pending.mode, contentFactory: pending.contentFactory, fromCli: pending.fromCli,
             outcome: ProjectStartupTrust.outcome(for: choice, project: project),
             completion: pending.completion)
     }
@@ -123,6 +138,7 @@ extension AppStateStore {
         _ project: Project,
         mode: ProjectOpenMode,
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)?,
+        fromCli: Bool,
         outcome: ProjectStartupOutcome,
         completion: ((Result<ProjectOpenResult, Error>) -> Void)?
     ) {
@@ -136,7 +152,7 @@ extension AppStateStore {
             }
         }
         do {
-            let result = try openProject(id: project.id, mode: mode, contentFactory: contentFactory)
+            let result = try openProject(id: project.id, mode: mode, contentFactory: contentFactory, fromCli: fromCli)
             if result.wasCreated, outcome.runCommands {
                 armStartupCommands(of: project, in: result.session)
             }

@@ -35,8 +35,15 @@ preserving:
 | surface (separate from tab) | — | Batty collapses surface into tab: one fewer noun |
 | window | **window** | multi-window exists |
 
-So the noun set is **`session`, `pane`, `tab`, `window`** (+ app-level verbs).
-No `workspace`, no `worktree`; `surface` is not a fifth noun, but it is an
+So the noun set is **`session`, `pane`, `tab`, `window`** (+ app-level verbs),
+plus **`project`**, a deliberate fifth noun approved with the Projects design
+on 2026-10-12 (#0469, built in #0477). `project` has two verbs, `list` and
+`open`, and is Beta-only until 1.3.0: it is compiled into the CLI's command
+tree only when the Projects feature flag is on (`docs/feature-flags.md`), so
+Prod's `--help` and `batty capabilities` never mention it. There are no
+`project add`, `remove` or `edit` verbs; Projects are edited in the Project
+Editor.
+No `workspace`, no `worktree`; `surface` is not a sixth noun, but it is an
 accepted **alias** for `tab` (see §1.2).
 
 ### 1.2 Context: how a command knows where it's running
