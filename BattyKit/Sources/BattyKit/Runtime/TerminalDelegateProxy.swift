@@ -63,6 +63,28 @@ final class TerminalDelegateProxy: NSObject,
         (TerminalClipboardRequestKind, @escaping (Bool) -> Void) -> Void
     )?
 
+    /// True once libghostty has reported any working directory. The first
+    /// report (OSC 7 from the bundled shell integration's prompt hook) is
+    /// the signal that the shell is up and drawing a prompt.
+    private(set) var hasReportedWorkingDirectory = false
+
+    private var pendingStartupCommand: StartupCommandDelivery?
+
+    /// Delivers `delivery` on the first working-directory report, or right
+    /// away if one has already arrived (the pwd closure in
+    /// ``onWorkingDirectoryChange`` is installed from a `.task` after mount,
+    /// so a report can precede any consumer of it). Kept out of
+    /// ``onWorkingDirectoryChange`` so it composes with auto-naming instead
+    /// of competing for that single slot. A shell that never emits OSC 7
+    /// never receives the command.
+    func armStartupCommand(_ delivery: StartupCommandDelivery) {
+        if hasReportedWorkingDirectory {
+            delivery.deliverOnNextMainTurn()
+        } else {
+            pendingStartupCommand = delivery
+        }
+    }
+
     init(state: TerminalViewState) {
         self.state = state
     }
@@ -92,8 +114,13 @@ final class TerminalDelegateProxy: NSObject,
     }
 
     func terminalDidChangeWorkingDirectory(_ path: String) {
+        hasReportedWorkingDirectory = true
         state.terminalDidChangeWorkingDirectory(path)
         onWorkingDirectoryChange?(path)
+        if let delivery = pendingStartupCommand {
+            pendingStartupCommand = nil
+            delivery.deliverOnNextMainTurn()
+        }
     }
 
     func terminalDidFinishCommand(exitCode: Int?, durationNanos: UInt64) {

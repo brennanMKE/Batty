@@ -25,3 +25,5 @@ Each Projects child appends the files and symbols it gates here. Removing the fl
 | `AppStateStore.openProject(id:mode:)` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore.swift`) | logs and throws `ProjectOpenError.featureDisabled`; creates nothing | #0472 |
 | `UITestDriver` intents `seedProject`, `openProject` (`BattyKit/Sources/BattyKit/Testing/UITestDriver.swift`) | log and return unless `featureFlags.projects` | #0472 |
 | `SessionRow` folder glyph (`BattyKit/Sources/BattyKit/Views/SessionSidebarView.swift`) | shown only when `featureFlags.projects` and `session.projectID != nil` | #0472 |
+| `AppStateStore.requestOpenProject(id:mode:contentFactory:completion:)`, `resolveStartupTrust`, `armStartupCommands(of:in:)` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore+ProjectStartup.swift`) | fail with `ProjectOpenError.featureDisabled` (open), or return (arm) unless `featureFlags.projects`; no `projects.json` access | #0473 |
+| `SessionDetailView.startupTrustBinding` (`BattyKit/Sources/BattyKit/Views/SessionDetailView.swift`) | the startup-command trust sheet never presents unless `featureFlags.projects` | #0473 |

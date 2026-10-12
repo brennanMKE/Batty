@@ -12,6 +12,7 @@ public enum ProjectOpenError: Error, Equatable, LocalizedError {
     case invalidRoot(String)
     case rootMissing(String)
     case rootNotADirectory(String)
+    case cancelled
 
     public var errorDescription: String? {
         switch self {
@@ -27,6 +28,8 @@ public enum ProjectOpenError: Error, Equatable, LocalizedError {
             String(localized: "The Project folder \u{201C}\(path)\u{201D} no longer exists.")
         case .rootNotADirectory(let path):
             String(localized: "The Project folder \u{201C}\(path)\u{201D} is not a folder.")
+        case .cancelled:
+            String(localized: "Opening the Project was cancelled.")
         }
     }
 }

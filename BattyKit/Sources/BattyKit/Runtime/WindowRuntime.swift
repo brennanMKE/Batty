@@ -70,6 +70,13 @@ public final class WindowRuntime {
         }
     }
     public var pendingCloseRequest: PendingCloseRequest?
+    /// Projects waiting on the user's answer to the startup-command trust
+    /// sheet, oldest first; the sheet shows the first. Written only by
+    /// `AppStateStore`: appended by an open request, removed when a sheet
+    /// button answers it, when the sheet is dismissed
+    /// (`SessionDetailView.startupTrustBinding` calls `cancelStartupTrust`),
+    /// or when this window is removed (`AppStateStore.removeWindow`).
+    public internal(set) var pendingStartupTrusts: [ProjectStartupTrustRequest] = []
     /// Called when `removeSession` empties `sessions`. Set by `AppStateStore`
     /// on new runtimes to close the owning window; `RootWindowView` replaces
     /// it with a closure that calls `NSWindow.performClose` on the live window.

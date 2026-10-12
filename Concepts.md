@@ -47,7 +47,7 @@ A saved, user-authored record of how to start a Session: what a Session is opene
 - **Opening:** opening a Project creates a new Session with its title and color pinned. A Session opened from a Project is **Project-backed** for its lifetime. The association is in-memory only, shown by a folder glyph in the Sidebar, and does not constrain the shell, which can `cd` anywhere.
 - **Storage:** `~/Library/Application Support/<Batty|Batty Beta>/projects.json`. Records are written only on explicit user action. Nothing is auto-saved, nothing is captured on quit or on a timer, and nothing is restored at launch. That is why Projects are not a revival of the Workspace persistence removed in #0172: a Project is a definition the user authored, not a snapshot of live state.
 - **Pane sizes:** not stored. Splits open as equal splits (#0255).
-- **Startup commands:** literal lines typed into the Tab's shell. They run only after a trust confirmation, and are re-confirmed when they change.
+- **Startup commands:** literal lines typed into the Tab's shell. They run only after a trust confirmation, and are re-confirmed when they change (the approval hash covers the Project root, and each command's Pane, Tab, directory and text). Each line is pasted and then followed by a real Return key press, so a multi-line command runs line by line; control characters and Unicode format characters are dropped. A command runs once, on the next main-queue turn after the Tab's shell first reports its working directory (OSC 7), or after arming if that report already arrived. Batty's zsh and bash integration emits OSC 7; a shell without it reports nothing unless the user's own configuration emits it, and then runs nothing. Input goes through the Tab's terminal state, so an IME composition the user has open stays as preedit and is not committed onto the command line.
 - **Persisted:** the Project record itself, as above. A Session's membership in a Project is not.
 
 ---
@@ -282,4 +282,4 @@ User-controlled preferences that are *not* layout. Stored in `UserDefaults`.
 
 ---
 
-*Document version: 0.5 — 2026-10-12. Adds Project (#0470, umbrella #0469). Previously 0.4 — 2026-08-08: corrects five `**Persisted:**` bullets (Window, Session, Pane, Tab, Terminal Session) left over from #0172's Workspace-persistence removal; they described layout persistence that no longer exists. Update whenever a new term gets introduced in the PRD or in issues.*
+*Document version: 0.6 — 2026-10-12. Spells out how Project startup commands are delivered (#0473). Previously 0.5 — 2026-10-12: adds Project (#0470, umbrella #0469). Previously 0.4 — 2026-08-08: corrects five `**Persisted:**` bullets (Window, Session, Pane, Tab, Terminal Session) left over from #0172's Workspace-persistence removal; they described layout persistence that no longer exists. Update whenever a new term gets introduced in the PRD or in issues.*

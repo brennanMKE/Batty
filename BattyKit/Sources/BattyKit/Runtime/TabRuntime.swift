@@ -156,6 +156,20 @@ public final class TabRuntime: Identifiable {
         return definition.toTerminalTheme()
     }
 
+    /// Types `command` into this Tab's shell once it reports its first working
+    /// directory, as input followed by Return. At most once per call, however
+    /// many further reports or re-mounts follow.
+    public func armStartupCommand(_ command: String) {
+        armStartupCommand(command, sink: TerminalStartupInputSink(tab: self))
+    }
+
+    @discardableResult
+    func armStartupCommand(_ command: String, sink: any StartupInputSink) -> StartupCommandDelivery {
+        let delivery = StartupCommandDelivery(command: command, sink: sink)
+        terminalDelegate.armStartupCommand(delivery)
+        return delivery
+    }
+
     /// Attaches this tab to its owning pane/session and (re-)applies the
     /// terminal configuration so the `BATTY_*` env vars carry the real ids.
     ///

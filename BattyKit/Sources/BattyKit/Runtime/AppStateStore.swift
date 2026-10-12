@@ -101,6 +101,10 @@ public final class AppStateStore {
     }
     @ObservationIgnored private var projectStoreStorage: ProjectStore?
     @ObservationIgnored private let projectsFileURL: URL?
+    @ObservationIgnored var pendingStartupOpens: [UUID: PendingStartupOpen] = [:]
+    /// Test seam: stands in for the Tab's terminal as the target of startup
+    /// commands. Nil in production.
+    @ObservationIgnored var startupInputSinkFactory: ((TabRuntime) -> any StartupInputSink)?
 
     /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
     /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
@@ -271,6 +275,9 @@ public final class AppStateStore {
     /// a test may call this one alone.
     public func removeWindow(id windowID: WindowID) {
         pruneRecentlyKeyWindowID(windowID)
+        for request in windows.first(where: { $0.id == windowID })?.pendingStartupTrusts ?? [] {
+            cancelStartupTrust(requestID: request.id)
+        }
         windows.removeAll { $0.id == windowID }
         logger.info("removeWindow windowID=\(windowID.value, privacy: .public); remaining windows=\(self.windows.count, privacy: .public)")
         // If no registered content windows remain and there was more than

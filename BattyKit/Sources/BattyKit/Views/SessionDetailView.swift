@@ -81,6 +81,11 @@ public struct SessionDetailView: View {
         .sheet(isPresented: $themeSelectorShown) {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)
         }
+        .sheet(item: startupTrustBinding) { request in
+            ProjectStartupTrustSheet(request: request) { choice in
+                store.resolveStartupTrust(requestID: request.id, choice: choice)
+            }
+        }
         .confirmationDialog(
             windowRuntime.pendingCloseRequest?.title ?? "",
             isPresented: pendingCloseBinding,
@@ -271,6 +276,18 @@ public struct SessionDetailView: View {
 
     private var isKeyWindow: Bool {
         store.keyWindowRuntime()?.id == windowRuntime.id
+    }
+
+    private var startupTrustBinding: Binding<ProjectStartupTrustRequest?> {
+        let shown = store.featureFlags.projects ? windowRuntime.pendingStartupTrusts.first : nil
+        return Binding(
+            get: { shown },
+            set: { newValue in
+                if newValue == nil, let shown {
+                    store.cancelStartupTrust(requestID: shown.id)
+                }
+            }
+        )
     }
 
     private var pendingCloseBinding: Binding<Bool> {
