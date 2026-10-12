@@ -14,7 +14,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// this path. No `#if DEBUG` gate because UI tests run against the Beta build.
 @MainActor
 public enum UITestDriver {
-    public static let scriptEnvVar = "BATTY_UI_TEST_SCRIPT"
+    public static let scriptEnvVar = FeatureFlags.uiTestEnvironmentVar
     public static let errorSentinelPrefix = "batty-ui-test-driver-error-"
 
     public static func runIfNeeded(store: AppStateStore) {

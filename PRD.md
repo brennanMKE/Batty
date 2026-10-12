@@ -51,6 +51,7 @@ The "Bat / Ghost / tty" naming theme is a wink at Ghostty — Batty is Ghostty's
 ### Non-goals (for v1)
 
 - A scripting/config language à la tmux's `.tmux.conf`.
+  - Note: a Project's startup commands (literal lines typed into a Tab's shell when a Project opens, behind a trust prompt) are **in scope** as of 1.3.0 (user decision, 2026-10-12, #0469). They are not a scripting or config language.
 - Session sharing or remote attach.
 - A plugin system.
 - Custom shell integrations beyond what Ghostty already provides.
@@ -355,7 +356,7 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 - **Mosh integration.** Roaming + reconnection for spotty networks.
 - **Echolocation (the remote feature).** A companion iOS app over the local network that exposes Batty's running terminals to a phone client. The "colony of bats away from the roost, communicating by echo" framing. Modeled on Muxy's mobile companion. Bell feed sync would be a natural extension.
 - **Command palette.** Cmd-Shift-P to fuzzy-search actions, sessions, panes, tabs, and themes.
-- **Session presets.** Save named layouts (e.g. "frontend dev" = three panes with specific cwds) and launch them from a menu.
+- **Session presets.** Save named layouts (e.g. "frontend dev" = three panes with specific cwds) and launch them from a menu. *Delivered by Projects (1.3.0, #0469); no longer "not committed".*
 - **Per-surface theme overrides.**
 - **Bell-event filtering.** Per-session "ignore quiet bells" or pattern matchers for noisy programs.
 - **Background-session freeze.** If memory becomes an issue, snapshot scrollback and kill PTYs for sessions not visited in N minutes; rehydrate on selection.
@@ -390,4 +391,4 @@ If those five hold, ship it.
 
 ---
 
-*Document version: 0.3 — 2026-05-08. Corrects layout model: tabs live inside panes (not above them), splits operate on panes within a session.*
+*Document version: 0.4 — 2026-10-12. Puts per-Project startup commands in scope and marks Session presets as delivered by Projects (#0470). Previously 0.3 — 2026-05-08: corrects layout model: tabs live inside panes (not above them), splits operate on panes within a session.*

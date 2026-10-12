@@ -85,6 +85,10 @@ public final class AppStateStore {
     /// `.standard` through one `cfprefsd` (#0426).
     @ObservationIgnored public let preferences: UserDefaults
 
+    /// Release gates. Views, commands, the palette and XPC read this rather
+    /// than resolving flags themselves. See `docs/feature-flags.md`.
+    @ObservationIgnored public let featureFlags: FeatureFlags
+
     /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
     /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
     @ObservationIgnored private var summarizationTasksForTesting: [UUID: Task<Void, Never>] = [:]
@@ -972,12 +976,14 @@ public final class AppStateStore {
         bellFeed: BellFeedStore = BellFeedStore(),
         nameCache: SessionNameCache = SessionNameCache(),
         notifier: BellNotifying? = nil,
-        preferences: UserDefaults = .standard
+        preferences: UserDefaults = .standard,
+        featureFlags: FeatureFlags = .resolved()
     ) {
         self.bellFeed = bellFeed
         self.nameCache = nameCache
         self.notifier = notifier
         self.preferences = preferences
+        self.featureFlags = featureFlags
         self.footprintMonitor = FootprintMonitor(defaults: preferences)
         self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme(
             isDark: NSApp?.effectiveAppearance.isDark ?? true,

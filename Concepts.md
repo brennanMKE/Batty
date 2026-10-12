@@ -20,6 +20,7 @@ Window
 Containment, top to bottom: **Window → Session → Pane → Tab → Terminal Session.**
 Layout glue: **Split** nodes arrange Panes within a Session.
 Customization: **Theme**.
+Saved definitions: **Project** (what a Session can be opened *from*; not part of the containment chain).
 Cross-cutting state: **Focus**, **Bell event**, **Bell Feed**, **Surface registry**.
 
 ---
@@ -35,6 +36,19 @@ A standard macOS `NSWindow` rendered by SwiftUI.
 - **Contains:** a collapsible left **Sidebar** plus a **Detail Area** that shows the currently selected Session.
 - **Lifecycle:** lives until the user closes it (Cmd-W on the window chrome) or quits the app. Closing the last window does not quit the app on macOS by default.
 - **Persisted:** no layout — no ordered Window list, no per-Window selected Session, no frame/zoom state is saved by Batty. Batty opts out of window restoration (`.restorationBehavior(.disabled)`, #0444), so every launch opens one Window with a fresh Session 1, and the Sidebar's collapsed state (per-Window `@SceneStorage`, see Sidebar) lasts only for the life of the process. Whether the Window's frame is remembered across relaunches is unverified: Batty sets no frame autosave name of its own, and AppKit's `NSWindow Frame ...` defaults entry may or may not be read back.
+
+---
+
+## Project
+
+A saved, user-authored record of how to start a Session: what a Session is opened *from*. Beta-only until 1.3.0 ships (feature flag, see `docs/feature-flags.md`).
+
+- **Contains:** a name, a root folder, a Session color, a Layout (a `PaneLayout` preset or a captured topology), a kind for each Pane, Terminal Tabs (each with an optional title, a working directory relative to the root, and an optional startup command), the Git Status repository folder, and a "run startup commands on open" toggle.
+- **Opening:** opening a Project creates a new Session with its title and color pinned. A Session opened from a Project is **Project-backed** for its lifetime. The association is in-memory only, shown by a folder glyph in the Sidebar, and does not constrain the shell, which can `cd` anywhere.
+- **Storage:** `~/Library/Application Support/<Batty|Batty Beta>/projects.json`. Records are written only on explicit user action. Nothing is auto-saved, nothing is captured on quit or on a timer, and nothing is restored at launch. That is why Projects are not a revival of the Workspace persistence removed in #0172: a Project is a definition the user authored, not a snapshot of live state.
+- **Pane sizes:** not stored. Splits open as equal splits (#0255).
+- **Startup commands:** literal lines typed into the Tab's shell. They run only after a trust confirmation, and are re-confirmed when they change.
+- **Persisted:** the Project record itself, as above. A Session's membership in a Project is not.
 
 ---
 
@@ -268,4 +282,4 @@ User-controlled preferences that are *not* layout. Stored in `UserDefaults`.
 
 ---
 
-*Document version: 0.4 — 2026-08-08. Corrects five `**Persisted:**` bullets (Window, Session, Pane, Tab, Terminal Session) left over from #0172's Workspace-persistence removal; they described layout persistence that no longer exists. Update whenever a new term gets introduced in the PRD or in issues.*
+*Document version: 0.5 — 2026-10-12. Adds Project (#0470, umbrella #0469). Previously 0.4 — 2026-08-08: corrects five `**Persisted:**` bullets (Window, Session, Pane, Tab, Terminal Session) left over from #0172's Workspace-persistence removal; they described layout persistence that no longer exists. Update whenever a new term gets introduced in the PRD or in issues.*
