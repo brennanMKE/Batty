@@ -21,4 +21,4 @@ Each Projects child appends the files and symbols it gates here. Removing the fl
 
 | Site | Gate | Issue |
 |---|---|---|
-| (none yet) | | |
+| `AppStateStore.projectStore` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore.swift`) | nil, and `projects.json` never opened, read or created, unless `featureFlags.projects` | #0471 |

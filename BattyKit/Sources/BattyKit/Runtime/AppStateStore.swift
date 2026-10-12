@@ -89,6 +89,19 @@ public final class AppStateStore {
     /// than resolving flags themselves. See `docs/feature-flags.md`.
     @ObservationIgnored public let featureFlags: FeatureFlags
 
+    /// Nil while `featureFlags.projects` is off; the store, and so the
+    /// `projects.json` path, is never touched in that case. Built on first
+    /// access when on.
+    public var projectStore: ProjectStore? {
+        guard featureFlags.projects else { return nil }
+        if let existing = projectStoreStorage { return existing }
+        let store = ProjectStore(fileURL: projectsFileURL)
+        projectStoreStorage = store
+        return store
+    }
+    @ObservationIgnored private var projectStoreStorage: ProjectStore?
+    @ObservationIgnored private let projectsFileURL: URL?
+
     /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
     /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
     @ObservationIgnored private var summarizationTasksForTesting: [UUID: Task<Void, Never>] = [:]
@@ -977,8 +990,10 @@ public final class AppStateStore {
         nameCache: SessionNameCache = SessionNameCache(),
         notifier: BellNotifying? = nil,
         preferences: UserDefaults = .standard,
-        featureFlags: FeatureFlags = .resolved()
+        featureFlags: FeatureFlags = .resolved(),
+        projectsFileURL: URL? = nil
     ) {
+        self.projectsFileURL = projectsFileURL
         self.bellFeed = bellFeed
         self.nameCache = nameCache
         self.notifier = notifier

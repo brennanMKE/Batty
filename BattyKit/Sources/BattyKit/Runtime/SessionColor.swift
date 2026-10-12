@@ -5,9 +5,10 @@ import SwiftUI
 /// Fixed 10-color palette used to give every Session a stable, automatically
 /// assigned identity color, shown by tinting its Sidebar row's
 /// `rectangle.split.3x1` symbol. `WindowRuntime`'s least-used round-robin
-/// assigner walks cases in this declaration order; `SessionRuntime` stores
-/// only the raw index (`colorIndex: Int`), never this enum, so the palette
-/// can change shape later without touching stored state. See
+/// assigner walks cases in this declaration order. `SessionRuntime` keeps
+/// only the raw index (`colorIndex: Int`) in memory, but `Project` persists
+/// the raw value in `projects.json`, so the palette is append-only: never
+/// reorder or remove a case. See
 /// `issues/0335.md` for the Radix-scale-9 hue rationale and the
 /// colorblind-safe adjacency spacing.
 public enum SessionColor: Int, CaseIterable, Sendable {
