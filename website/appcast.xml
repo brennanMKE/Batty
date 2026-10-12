@@ -26,7 +26,31 @@
 
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
-        <item>
+    <item>
+      <title>1.2.0</title>
+      <pubDate>Mon, 12 Oct 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-2-0</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        Panes can now show more than a terminal: Git Status, Process Status,
+        System Metrics, and an LM Studio Dashboard, opened from the Pane
+        menu's Open View section or with Cmd-G, Cmd-J, Cmd-E, and Cmd-Y. The
+        batty command-line tool is now a full remote control for scripts and
+        coding agents, with JSON output, focus/close/hide verbs, idempotent
+        setup, and an installable agent skill. Also fixes Shift-, Ctrl- and
+        Cmd-Return at a shell prompt, stray mouse-report characters after a
+        program exits, and the CLI sometimes launching a second copy of the
+        app. Windows are no longer restored on relaunch.
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.2.0.dmg"
+        sparkle:version="20261012"
+        sparkle:shortVersionString="1.2.0"
+        sparkle:edSignature="Jf4YULn+1yTKQ79Ao9OJZP+eYoUsQLwge7I2e8p3aAzu97ovARqpuYyJoYJxg3dhj1/PrdZa7kjl91JFKlNoAA=="
+        length="25388080"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.0.5</title>
       <pubDate>Thu, 18 Jun 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
