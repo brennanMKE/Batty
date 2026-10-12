@@ -1,5 +1,5 @@
 {
-  "fetched": "2026-09-23",
+  "fetched": "2026-10-12",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "currency": "USD per MTok",
   "models": {
@@ -44,6 +44,18 @@
       "output": 20.0,
       "cache_write_5m": 5.0,
       "cache_read": 0.2
+    },
+    "claude-sonnet-5-5": {
+      "input": 2.0,
+      "output": 10.0,
+      "cache_write_5m": 2.5,
+      "cache_read": 0.1
+    },
+    "claude-haiku-5-5": {
+      "input": 0.1,
+      "output": 0.5,
+      "cache_write_5m": 0.125,
+      "cache_read": 0.01
     }
   },
   "notes": "Sonnet 5's $2/$10 launch pricing is now the standard rate; the previously scheduled 2026-09-01 increase to $3/$15 will not occur. Cache hits are 0.025x base on Fable 5.1 and 0.05x on Opus 5.5."
