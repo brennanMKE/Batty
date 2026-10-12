@@ -81,7 +81,15 @@
 
 set -euo pipefail
 
-GOLDEN="batty-uitest-golden"
+# ONE shared golden for every project on this host, resolved -- never a literal.
+# A hardcoded image name is exactly how seven 68 GB goldens (477 GB) appeared on
+# cameron; see Homelab protocols/tart-golden/PROTOCOL.md. `require` asserts the
+# Xcode floor and fails in one second, not twenty minutes into a build.
+command -v tart-golden >/dev/null 2>&1 || {
+  echo "tart-golden not found on PATH (MacRoot Root/bin) -- see Homelab protocols/tart-golden/PROTOCOL.md" >&2
+  exit 1
+}
+GOLDEN="$(tart-golden require --xcode 27.0)"
 PREFIX="batty-uitest"
 REPO="${0:A:h:h}"
 SLIDINGTABS_REPO="${REPO:h}/SlidingTabs"
