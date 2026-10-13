@@ -14,7 +14,7 @@ enum ProjectPickerAction: Equatable {
 }
 
 enum ProjectPickerDirection {
-    case left, right, up, down
+    case left, right, up, down, home, end
 }
 
 struct ProjectPickerCard: Identifiable, Equatable {
@@ -31,6 +31,24 @@ struct ProjectPickerCard: Identifiable, Equatable {
     let summary: String
     let isOpen: Bool
     let slots: [Slot]
+    let lastOpenedAt: Date?
+}
+
+enum ProjectPickerTier: Equatable {
+    case featured, rest
+}
+
+/// Where the selected card sits, so a re-rank that moves it can be noticed
+/// even though its id did not change.
+struct ProjectPickerPosition: Equatable {
+    let id: UUID
+    let tier: ProjectPickerTier
+    let index: Int
+}
+
+enum ProjectPickerEscape: Equatable {
+    case cleared
+    case dismiss
 }
 
 enum ProjectPickerEmptyState: Equatable {
@@ -42,7 +60,9 @@ enum ProjectPickerEmptyState: Equatable {
 /// filter, where the selection sits in the grid, what Return does and what
 /// the hint line says.
 struct ProjectPickerModel: Equatable {
-    static let columnCount = 3
+    static let featuredCount = 3
+    static let featuredColumns = 3
+    static let restColumns = 4
 
     private(set) var query = ""
     private(set) var selectedID: UUID?
@@ -74,6 +94,59 @@ struct ProjectPickerModel: Equatable {
         filtered.map(card(for:))
     }
 
+    var isFiltering: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The first three ranked Projects; empty while filtering, when every match
+    /// is a compact card.
+    var featured: [ProjectPickerCard] {
+        guard !isFiltering else { return [] }
+        return Array(cards.prefix(Self.featuredCount))
+    }
+
+    var rest: [ProjectPickerCard] {
+        let all = cards
+        return isFiltering ? all : Array(all.dropFirst(Self.featuredCount))
+    }
+
+    var showsNewProjectCard: Bool {
+        !isFiltering && !projects.isEmpty && projects.count < Self.featuredCount
+    }
+
+    /// The tier headings are drawn from three Projects up; below that the
+    /// row holds the Projects and the New Project card on their own.
+    var showsTierHeadings: Bool {
+        !isFiltering && projects.count >= Self.featuredCount
+    }
+
+    var matchCountText: String {
+        Self.matchCountText(cards.count)
+    }
+
+    static func matchCountText(_ count: Int) -> String {
+        count == 1
+            ? String(localized: "1 match", comment: "Open Project picker: heading above the filtered Projects")
+            : String(localized: "\(count) matches", comment: "Open Project picker: heading above the filtered Projects")
+    }
+
+    var selectedPosition: ProjectPickerPosition? {
+        guard let selectedID else { return nil }
+        let featured = featured
+        if let index = featured.firstIndex(where: { $0.id == selectedID }) {
+            return ProjectPickerPosition(id: selectedID, tier: .featured, index: index)
+        }
+        guard let index = rest.firstIndex(where: { $0.id == selectedID }) else { return nil }
+        return ProjectPickerPosition(id: selectedID, tier: .rest, index: index)
+    }
+
+    var cursor: ProjectPickerGridCursor {
+        ProjectPickerGridCursor(sections: [
+            .init(columns: Self.featuredColumns, count: featured.count),
+            .init(columns: Self.restColumns, count: rest.count),
+        ])
+    }
+
     var selectedCard: ProjectPickerCard? {
         guard let selectedID else { return nil }
         return cards.first { $0.id == selectedID }
@@ -97,35 +170,23 @@ struct ProjectPickerModel: Equatable {
         selectedID = id
     }
 
-    /// Left and right step through the cards in reading order; up and down
-    /// jump a row. Nothing wraps. Down from a row the next row cannot fully
-    /// reach lands on the last card, so a short last row stays reachable.
+    /// Escape clears a filter first and asks to dismiss only when there is none.
+    mutating func escape() -> ProjectPickerEscape {
+        guard isFiltering else { return .dismiss }
+        setQuery("")
+        return .cleared
+    }
+
+    /// The cursor decides where each direction lands over the tiers in
+    /// reading order (see `ProjectPickerGridCursor`).
     mutating func move(_ direction: ProjectPickerDirection) {
-        let visible = filtered
+        let visible = cards
         guard !visible.isEmpty else { return }
         guard let selectedID, let index = visible.firstIndex(where: { $0.id == selectedID }) else {
             self.selectedID = visible[0].id
             return
         }
-        let columns = Self.columnCount
-        let target: Int
-        switch direction {
-        case .left:
-            target = max(index - 1, 0)
-        case .right:
-            target = min(index + 1, visible.count - 1)
-        case .up:
-            target = index - columns >= 0 ? index - columns : index
-        case .down:
-            if index + columns < visible.count {
-                target = index + columns
-            } else if index / columns < (visible.count - 1) / columns {
-                target = visible.count - 1
-            } else {
-                target = index
-            }
-        }
-        self.selectedID = visible[target].id
+        self.selectedID = visible[cursor.moved(from: index, direction)].id
     }
 
     /// Return opens, focusing the open Session if there is one; Option-Return
@@ -203,7 +264,8 @@ struct ProjectPickerModel: Equatable {
             displayPath: Self.abbreviate(path: project.rootPath, homeDirectory: homeDirectory),
             summary: Self.summary(panes: project.paneCount, tabs: project.tabCount, startupCommands: project.startupCommandCount),
             isOpen: openProjectIDs.contains(project.id),
-            slots: zip(frames, panes).map { ProjectPickerCard.Slot(frame: $0, kind: $1.kind) }
+            slots: zip(frames, panes).map { ProjectPickerCard.Slot(frame: $0, kind: $1.kind) },
+            lastOpenedAt: project.lastOpenedAt
         )
     }
 }

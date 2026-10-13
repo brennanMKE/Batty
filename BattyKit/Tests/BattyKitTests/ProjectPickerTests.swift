@@ -168,8 +168,8 @@ struct ProjectPickerModelTests {
         #expect(gone.selectedID == a.id)
     }
 
-    @Test func selectionMovesOverTheGridWithoutWrapping() {
-        let ps = (0..<5).map { project("P\($0)") }
+    @Test func selectionMovesOverTheTiersWithoutWrapping() {
+        let ps = (0..<8).map { project("P\($0)") }
         var m = model(ps)
         m.move(.left)
         #expect(m.selectedID == ps[0].id)
@@ -178,25 +178,125 @@ struct ProjectPickerModelTests {
         m.move(.right)
         #expect(m.selectedID == ps[1].id)
         m.move(.down)
-        #expect(m.selectedID == ps[4].id, "row below exists: same column")
+        #expect(m.selectedID == ps[5].id, "featured column 1 maps to compact column 2, the third of four")
         m.move(.down)
-        #expect(m.selectedID == ps[4].id, "last row: stays")
+        #expect(m.selectedID == ps[7].id, "second compact row has one card, short of column 2; lands on the last card")
+        m.move(.down)
+        #expect(m.selectedID == ps[7].id, "last row of the last tier: stays")
         m.move(.up)
-        #expect(m.selectedID == ps[1].id)
+        #expect(m.selectedID == ps[3].id, "up within the compact tier keeps the column of the card it came from")
+        m.move(.up)
+        #expect(m.selectedID == ps[0].id)
+        m.move(.end)
+        #expect(m.selectedID == ps[7].id)
         m.move(.right)
-        m.move(.right)
-        #expect(m.selectedID == ps[3].id, "row-major reading order")
-        m.move(.right)
-        m.move(.right)
-        #expect(m.selectedID == ps[4].id, "right stops at the last card")
+        #expect(m.selectedID == ps[7].id, "right stops at the last card")
+        m.move(.home)
+        #expect(m.selectedID == ps[0].id)
     }
 
-    @Test func downFromAColumnThePartialLastRowLacksLandsOnTheLastCard() {
+    @Test func rightFromTheLastFeaturedCardEntersTheCompactTier() {
+        let ps = (0..<5).map { project("P\($0)") }
+        var m = model(ps)
+        m.select(ps[2].id)
+        m.move(.right)
+        #expect(m.selectedID == ps[3].id)
+        m.move(.left)
+        #expect(m.selectedID == ps[2].id)
+    }
+
+    @Test func downFromTheLastFeaturedColumnIntoAShortCompactRowStaysInRange() {
         let ps = (0..<5).map { project("P\($0)") }
         var m = model(ps)
         m.select(ps[2].id)
         m.move(.down)
-        #expect(m.selectedID == ps[4].id)
+        #expect(m.selectedID == ps[4].id, "column 2 maps to compact column 3, which a two-card row lacks")
+    }
+
+    @Test func downFromAColumnThePartialLastRowLacksLandsOnTheLastCard() {
+        let ps = (0..<8).map { project("P\($0)") }
+        var m = model(ps)
+        m.select(ps[6].id)
+        m.move(.down)
+        #expect(m.selectedID == ps[7].id)
+    }
+
+    @Test func featuredAndRestSplitTheRankedListAtThree() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Beta"), c = project("Gamma", lastOpenedAt: 300)
+        let d = project("Delta", lastOpenedAt: 200), e = project("Eps", lastOpenedAt: 50)
+        let m = model([a, b, c, d, e], open: [c.id])
+        #expect(m.featured.map(\.name) == ["Delta", "Alpha", "Eps"])
+        #expect(m.rest.map(\.name) == ["Beta", "Gamma"])
+        #expect(m.rest.last?.isOpen == true)
+        #expect(!m.showsNewProjectCard)
+        #expect(m.showsTierHeadings)
+        #expect(m.featured.first?.lastOpenedAt == Date(timeIntervalSince1970: 200))
+    }
+
+    @Test func fewerThanThreeProjectsAreAllFeaturedWithANewProjectCard() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Beta", lastOpenedAt: 200)
+        var m = model([a, b])
+        #expect(m.featured.map(\.name) == ["Beta", "Alpha"])
+        #expect(m.rest.isEmpty)
+        #expect(m.showsNewProjectCard)
+        #expect(!m.showsTierHeadings)
+        m.setQuery("alp")
+        #expect(!m.showsNewProjectCard)
+        m.setQuery("zzz")
+        #expect(!m.showsNewProjectCard)
+        #expect(!model([]).showsNewProjectCard)
+        #expect(!model([a, b, project("Gamma")]).showsNewProjectCard)
+    }
+
+    @Test func aQueryCollapsesToOneCompactTierInFilterOrder() {
+        var m = model([
+            project("Zeta", root: "/Users/test/code/site"),
+            project("Site", root: "/Users/test/other"),
+            project("Gamma", root: "/Users/test/code/site2", lastOpenedAt: 100),
+            project("Delta"),
+        ])
+        m.setQuery("site")
+        #expect(m.isFiltering)
+        #expect(m.featured.isEmpty)
+        #expect(m.rest.map(\.name) == ["Site", "Gamma", "Zeta"])
+        #expect(!m.showsTierHeadings)
+        #expect(m.selectedPosition == ProjectPickerPosition(id: m.rest[0].id, tier: .rest, index: 0))
+        m.move(.down)
+        #expect(m.selectedID == m.rest[0].id, "one row of matches: down stays")
+        m.move(.right)
+        #expect(m.selectedID == m.rest[1].id)
+    }
+
+    @Test func escapeClearsAQueryBeforeItDismisses() {
+        let ps = [project("Alpha"), project("Beta"), project("Gamma"), project("Delta")]
+        var m = model(ps)
+        m.setQuery("gam")
+        #expect(m.escape() == .cleared)
+        #expect(m.query.isEmpty)
+        #expect(m.selectedID == ps[0].id)
+        #expect(m.featured.count == 3)
+        #expect(m.escape() == .dismiss)
+        m.setQuery("   ")
+        #expect(m.escape() == .dismiss, "a blank query is no filter")
+    }
+
+    @Test func matchCountTextPluralizes() {
+        #expect(ProjectPickerModel.matchCountText(1) == "1 match")
+        #expect(ProjectPickerModel.matchCountText(2) == "2 matches")
+        var m = model([project("Alpha"), project("Beta"), project("Alps")])
+        m.setQuery("al")
+        #expect(m.matchCountText == "2 matches")
+    }
+
+    @Test func selectedPositionFollowsAReRankThatKeepsTheSameCard() {
+        let a = project("Alpha", lastOpenedAt: 400), b = project("Beta", lastOpenedAt: 300)
+        let c = project("Gamma", lastOpenedAt: 200), d = project("Delta", lastOpenedAt: 100)
+        var m = model([a, b, c, d])
+        m.select(a.id)
+        #expect(m.selectedPosition == ProjectPickerPosition(id: a.id, tier: .featured, index: 0))
+        let after = m.refreshed(projects: [a, b, c, d], openProjectIDs: [a.id])
+        #expect(after.selectedID == a.id)
+        #expect(after.selectedPosition == ProjectPickerPosition(id: a.id, tier: .rest, index: 0))
     }
 
     @Test func movingDoesNothingWithoutCards() {
@@ -478,14 +578,35 @@ struct ProjectPickerWindowTests {
 @MainActor
 struct ProjectPickerViewTests {
     @Test func theSheetLaysOutWithCardsAndWithTheEmptyState() {
-        for projects in [[project("Alpha"), project("Beta")], []] {
+        let four = [project("Alpha"), project("Beta"), project("Gamma"), project("Delta")]
+        for projects in [four, [project("Alpha"), project("Beta")], []] {
             let view = ProjectPickerView(
                 projects: { projects }, openProjectIDs: { [] }, homeDirectory: "/Users/test",
                 onAction: { _ in }, onCancel: {})
             let host = NSHostingView(rootView: view)
-            host.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+            host.frame = NSRect(x: 0, y: 0, width: 860, height: 600)
             host.layoutSubtreeIfNeeded()
             #expect(host.fittingSize.width > 0)
         }
+    }
+}
+
+struct ProjectRecencyRelativeTextTests {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func describesDatesRelativeToTheGivenNow() {
+        for offset in [12 * 60, 2 * 3600, 86_400] as [TimeInterval] {
+            let text = ProjectRecency.relativeOpenedText(now.addingTimeInterval(-offset), now: now)
+            #expect(text?.isEmpty == false)
+        }
+        let minutes = ProjectRecency.relativeOpenedText(now.addingTimeInterval(-12 * 60), now: now)
+        let hours = ProjectRecency.relativeOpenedText(now.addingTimeInterval(-2 * 3600), now: now)
+        let day = ProjectRecency.relativeOpenedText(now.addingTimeInterval(-86_400), now: now)
+        #expect(minutes != hours)
+        #expect(day != hours)
+    }
+
+    @Test func aNeverOpenedProjectHasNoText() {
+        #expect(ProjectRecency.relativeOpenedText(nil, now: now) == nil)
     }
 }

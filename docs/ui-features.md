@@ -897,9 +897,36 @@ them are absent with `FeatureFlags.projects` off.
 - Return opens with `.focusExistingOrOpen` (the Project's open Session is
   selected if there is one). Option-Return opens with `.openNew`. Double-click
   opens like Return. A single click only selects.
-- Arrow keys move the selection over three columns, row-major, without
-  wrapping. Left and right therefore do not move the caret in the filter field.
-  Down from a column a short last row lacks lands on the last card.
+- The sheet is a fixed 860 x 600 (#0493). The first three Projects of
+  `ProjectRecency.ranked` are large cards under "Recent" in three columns
+  (`project-picker.featured`, a 132 pt thumbnail with kind glyphs and, when the
+  Project was ever opened, a relative time on the name row); every later
+  Project is a compact card under "All Projects" in four columns
+  (`project-picker.rest`, a 58 pt thumbnail, name, OPEN badge and path). Open
+  Projects keep the `.last` placement, so they are the last compact cards with
+  their OPEN badge. Below three Projects every Project is a large card, there
+  are no headings, and one dashed "New Project..." card
+  (`project-picker.new-project-card`, a click is the `.newProject` action; the
+  keyboard cursor never lands on it) follows the last Project. With none the
+  empty state shows. "Cmd-N New Project..." is always in the footer.
+- A non-blank filter collapses to one compact four-column grid
+  (`project-picker.rest` alone) under an "N matches" heading. Escape clears a
+  non-blank filter and dismisses only when the filter is blank; the header
+  caption reads "Esc to clear" or "Esc to dismiss" to match.
+- Arrow keys move the selection through `ProjectPickerGridCursor` over the
+  tiers in reading order, without wrapping. Left and right step one card and
+  cross the tier boundary. The filter field's key handlers consume the arrows and
+  Home/End, so none of them moves the caret in the field.
+  Home and End select the first and last card. Down within a tier keeps the
+  column, and from a column the short last row lacks lands on the last card.
+  Down from a tier's last row enters the next tier's first row, and Up from a
+  first row enters the previous tier's last row, at the mapped column: the
+  column whose centre is nearest, `floor((c + 0.5) / C * C')`. Three columns
+  to four map 0, 1, 2 to 0, 2, 3; four to three map 0, 1, 2, 3 to 0, 1, 1, 2.
+  The target column is clamped to that row's card count. Down from the last
+  card row and Up from the first are no-ops.
+- When a re-rank moves the selected card (a Session opens or closes while the
+  sheet is up) the view scrolls to it, keyed on the card's tier and index.
 - Typing a filter selects its best match. Names match fuzzily; paths match as a
   case-insensitive substring (the full path or its `~` form). Name matches rank
   ahead of path matches; ties keep ranked order.
@@ -966,6 +993,9 @@ them are absent with `FeatureFlags.projects` off.
 
 - Sheet root `project-picker.root`; filter field `project-picker.filter`; hint
   line `project-picker.hint`.
+- Tier containers `project-picker.featured` and `project-picker.rest` (each a
+  `.contain` element; while filtering only `rest` exists); the
+  `project-picker.new-project-card` button below three Projects.
 - Cards `project-picker.card.<Project name>`; OPEN badge
   `project-picker.open-badge.<Project name>` (present only for a Project with
   an open Session).
@@ -1106,6 +1136,11 @@ unchanged; these are the ones they do not cover):
 | Open Quickly: Return finds the open Session, Option-Return opens another; OPEN marker (#0491) | `ProjectsOpenTests.testOpenQuicklyReturnFindsTheOpenSessionAndOptionReturnOpensAnother` |
 | Open Quickly: Option-Return on the Project's own Tab row opens another copy, Return jumps (#0499) | `ProjectsOpenTests.testOpenQuicklyOptionReturnOnTheProjectsOwnTabRowOpensAnotherAndReturnJumps` |
 | Open Quickly: the trust sheet presents only after Open Quickly has closed (#0491) | `ProjectsOpenTests.testOpenQuicklyShowsTheTrustSheetOnlyAfterItHasClosed` |
+| Tiers follow recency; an opened Project moves to All Projects with its OPEN badge; footer New Project hint (#0493) | `ProjectsPickerTierTests.testTiersFollowRecencyAndAnOpenedProjectMovesToTheCompactTier` |
+| Down/Up cross the tiers, Home/End, Down-Right-Return opens a compact card (#0493) | `ProjectsPickerTierTests.testArrowKeysCrossTheTiersAndHomeAndEndJumpToTheEnds` |
+| Filtering collapses to one grid; Escape clears then dismisses (#0493) | `ProjectsPickerTierTests.testFilteringCollapsesToOneGridAndEscapeIsTwoStep` |
+| Two Projects: New Project card opens the Editor (#0493) | `ProjectsPickerTierTests.testFewerThanThreeProjectsShowANewProjectCardThatOpensTheEditor` |
+| Cursor transitions, tier split, New Project card, two-step Escape, match count, relative time (#0493) | `ProjectPickerGridCursorTests`, `ProjectPickerModelTests`, `ProjectRecencyRelativeTextTests` (BattyKit) |
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
 | Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both assert that the picker presents, #0483) |
 | Trust sheet, Open Without Running, Run Commands, remembered approval, edited command | `ProjectsStartupTests.testTrustSheetGatesStartupCommandsAndRemembersApproval` |

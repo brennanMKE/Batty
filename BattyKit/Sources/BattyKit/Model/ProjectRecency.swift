@@ -31,4 +31,15 @@ enum ProjectRecency {
         }
         return entries.map(\.element)
     }
+
+    /// A localized relative phrase for `date` measured from `now`; nil for a
+    /// Project that was never opened.
+    static func relativeOpenedText(_ date: Date?, now: Date) -> String? {
+        guard let date else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.unitsStyle = .abbreviated
+        formatter.formattingContext = .beginningOfSentence
+        return formatter.localizedString(for: date, relativeTo: now)
+    }
 }

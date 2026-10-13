@@ -72,8 +72,15 @@ nonisolated final class ProjectsFlagOffTests: ProjectsUITestCase {
         XCTAssertFalse(element("open-quickly.tab-hint", in: app).exists, "Open Quickly shows a Tab-row hint with the flag off")
         app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
 
+        // Use the app further (add and select a Session) before checking the store is untouched.
+        click("session-sidebar.add-session-button", in: app)
+        let first = BattyUITestHarness.sessionRow(named: "Session 1", in: app)
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        first.click()
+
         // Inert: the configured store was never opened, written or backed up.
         XCTAssertEqual(try Data(contentsOf: storeFile), seededBytes, "the flag-off app rewrote projects.json")
+        XCTAssertFalse(String(decoding: try Data(contentsOf: storeFile), as: UTF8.self).contains("lastOpenedAt"), "the flag-off app recorded an open")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: storeDirectory.path).sorted(), ["projects.json"], "the flag-off app wrote beside projects.json")
         XCTAssertFalse(editorWindow(in: app).exists)
     }
