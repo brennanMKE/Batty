@@ -33,7 +33,7 @@ A Process Status pane shows one process's CPU, memory, threads and open files. U
 
 - **Follow a Terminal Pane…** tracks whatever is running in that pane.
 - **Pick a Running Process…** opens a list of your running processes. Type in the field at the top to narrow it by name or by PID, use the Up and Down arrow keys to move through the rows, and press Return to pick one. Escape clears the field, and a second Escape closes the list.
-- **Follow by name** is a checkbox at the bottom of that list. With it on, choosing a row follows the name rather than the PID: when that process exits, the pane shows **Waiting** (with its last reading dimmed) and picks up the next process with the same name as soon as one starts. Handy while you rebuild and rerun an app. If you already pinned the right process, **Follow “name” by Name** in the same menu switches it to following by name. **Stop Following by Name** in the same menu pins the current process, or clears the pane if nothing is running.
+- **Follow by name** is a checkbox at the bottom of that list. With it on, choosing a row follows the name rather than the PID: when that process exits, the pane shows **Waiting** (with its last reading dimmed) and picks up the next process with the same name as soon as one starts (at once if one is already running). Choosing a row follows that exact process first. Handy while you rebuild and rerun an app. If you already pinned the right process, **Follow “name” by Name** in the same menu switches it to following by name, even after that process has exited. **Stop Following by Name** in the same menu pins the current process, or clears the pane if nothing is running.
 
 A pane pinned to a single PID shows **Exited** when that process ends and stops looking.
 

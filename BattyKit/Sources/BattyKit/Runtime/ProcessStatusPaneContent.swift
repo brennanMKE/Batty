@@ -83,6 +83,10 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     public struct Snapshot: Equatable, Sendable {
         public var pid: pid_t
         public var name: String
+        /// The enumerator's `bsdName` for `pid`, read when the pid changes.
+        /// Differs from `name` (`proc_name`), and survives `.exited` so
+        /// follow-by-name stays offerable after the process is gone.
+        public var listedName: String?
         public var executablePath: String?
         public var commandLine: String?
         public var cpuPercent: Double?
@@ -95,6 +99,8 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
 
     private enum Resolution {
         case pid(pid_t)
+        /// A pid found by re-enumerating this tick after a loss; its sample must not re-enumerate.
+        case successorPid(pid_t)
         case noSelection
         case sourceTabGone
         case waitingForName
@@ -203,9 +209,20 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// Resolves a followed name to a pid. Defaults to the real enumerator;
     /// injectable so tests can script which process appears and disappears.
     private let nameResolver: @MainActor (String) -> pid_t?
-    /// The pid currently resolved for a `.followingName` target. Cleared on
-    /// `.processNotFound` and on every ``retarget(to:)``.
-    @ObservationIgnored private(set) var followedPid: pid_t?
+    /// Reads a pid's enumerator name and start time. Injectable so tests can
+    /// script PID reuse; defaults to the real `bsdInfo` read.
+    private let identityReader: @MainActor (pid_t) -> ProcessInspector.ListedIdentity?
+
+    /// The process currently resolved for a `.followingName` target. `identity`
+    /// is nil when it could not be read at resolution time, which disables the
+    /// reuse check for that process. Cleared when the process is lost and on
+    /// every ``retarget(to:seedPid:)``.
+    private struct FollowedProcess {
+        var pid: pid_t
+        var identity: ProcessInspector.ListedIdentity?
+    }
+    @ObservationIgnored private var followed: FollowedProcess?
+    @ObservationIgnored var followedPid: pid_t? { followed?.pid }
     private var samplingTask: Task<Void, Never>?
     /// `#0314` merge: the pid-keyed CPU-delta baseline (review round 1,
     /// B2 — mode B's followed pid changes tick to tick, and delta-ing
@@ -275,7 +292,8 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         samplingInterval: Duration = .seconds(1),
         coreMetricsProvider: @escaping @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure> = ProcessInspector.coreMetrics,
         clock: SchedulingClock = SystemClock(),
-        nameResolver: @escaping @MainActor (String) -> pid_t? = ProcessInspector.firstSameUserProcess(named:)
+        nameResolver: @escaping @MainActor (String) -> pid_t? = ProcessInspector.firstSameUserProcess(named:),
+        identityReader: @escaping @MainActor (pid_t) -> ProcessInspector.ListedIdentity? = ProcessInspector.listedIdentity(pid:)
     ) {
         self.target = target
         self.hasNoSelection = target == nil
@@ -284,6 +302,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         self.coreMetricsProvider = coreMetricsProvider
         self.clock = clock
         self.nameResolver = nameResolver
+        self.identityReader = identityReader
     }
 
     // MARK: - PaneContentLifecycle
@@ -318,10 +337,18 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// re-runs identity resolution against the new one — the same
     /// "one-time resolution, explicit re-trigger" shape
     /// `docs/design/git-status-view.md` uses for its own retarget action.
-    public func retarget(to newTarget: Target?) {
+    ///
+    /// `seedPid` applies to `.followingName` only: when that pid is alive and
+    /// listed under the followed name, it is followed first, ahead of the
+    /// enumerator's first match.
+    public func retarget(to newTarget: Target?, seedPid: pid_t? = nil) {
         stopSampling()
         target = newTarget
-        followedPid = nil
+        followed = nil
+        if case .followingName(let name) = newTarget, let seedPid,
+           let identity = identityReader(seedPid), identity.name == name {
+            followed = FollowedProcess(pid: seedPid, identity: identity)
+        }
         hasNoSelection = newTarget == nil
         runState = .running
         snapshot = nil
@@ -399,14 +426,40 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             guard let pid = tab.terminalNSView?.foregroundPid else { return .noSelection }
             return .pid(pid)
         case .followingName(let name):
-            if let followedPid { return .pid(followedPid) }
-            guard let pid = nameResolver(name) else { return .waitingForName }
-            logger.info("process-status: followed name=\(name, privacy: .public) resolved pid=\(pid, privacy: .public)")
-            followedPid = pid
-            return .pid(pid)
+            if let followed {
+                // One `proc_pidinfo` per tick; a different start time or name
+                // means the kernel recycled the pid or the process exec'd into another name.
+                if let recorded = followed.identity, let current = identityReader(followed.pid), current != recorded {
+                    logger.info("process-status: followed name=\(name, privacy: .public) pid=\(followed.pid, privacy: .public) was recycled or changed name, re-resolving")
+                    let resolution = reresolve(name: name, lost: followed.pid)
+                    if case .pid(let successor) = resolution { return .successorPid(successor) }
+                    return resolution
+                }
+                return .pid(followed.pid)
+            }
+            return resolveByName(name, excluding: nil)
         case nil:
             return .noSelection
         }
+    }
+
+    private func resolveByName(_ name: String, excluding lost: pid_t?) -> Resolution {
+        guard let pid = nameResolver(name), pid != lost else { return .waitingForName }
+        let identity = identityReader(pid)
+        // A resolved pid whose listed name differs was replaced between the
+        // enumeration and this read.
+        if let identity, identity.name != name { return .waitingForName }
+        logger.info("process-status: followed name=\(name, privacy: .public) resolved pid=\(pid, privacy: .public)")
+        followed = FollowedProcess(pid: pid, identity: identity)
+        return .pid(pid)
+    }
+
+    /// The followed process is gone (or was replaced under its pid): drop it
+    /// and look for a successor at once rather than a tick later.
+    private func reresolve(name: String, lost: pid_t) -> Resolution {
+        cpuTracker.reset()
+        followed = nil
+        return resolveByName(name, excluding: lost)
     }
 
     private func performSample() {
@@ -425,10 +478,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         case .pid(let pid):
             hasNoSelection = false
             sample(pid: pid)
+        case .successorPid(let pid):
+            hasNoSelection = false
+            sample(pid: pid, canReresolve: false)
         }
     }
 
-    private func sample(pid: pid_t) {
+    /// `canReresolve` bounds the loss handling to one extra enumeration per
+    /// tick: the successor sampled in the same tick never re-enters it.
+    private func sample(pid: pid_t, canReresolve: Bool = true) {
         switch coreMetricsProvider(pid) {
         case .success(let metrics):
             if runState == .unavailable {
@@ -446,6 +504,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             let identity = ProcessInspector.identity(pid: pid)
             let commandLine = try? ProcessInspector.commandLine(pid: pid).get()
             let name = identity.name ?? basename(of: identity.executablePath) ?? "pid \(pid)"
+            let listedName = pidChanged ? identityReader(pid)?.name : snapshot?.listedName
             let processSample = ProcessSample(
                 pid: pid,
                 name: name,
@@ -459,6 +518,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             snapshot = Snapshot(
                 pid: pid,
                 name: name,
+                listedName: listedName,
                 executablePath: identity.executablePath,
                 commandLine: commandLine,
                 cpuPercent: cpuPercent(for: processSample),
@@ -477,9 +537,13 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             // `capturedAt` is what `.exited` displays (B5).
             cpuTracker.reset()
             if case .followingName(let name) = target {
-                logger.info("process-status: followed name=\(name, privacy: .public) pid=\(pid, privacy: .public) exited, waiting")
-                followedPid = nil
-                runState = .waiting
+                logger.info("process-status: followed name=\(name, privacy: .public) pid=\(pid, privacy: .public) exited, looking for a successor")
+                followed = nil
+                if canReresolve, case .pid(let successor) = reresolve(name: name, lost: pid) {
+                    sample(pid: successor, canReresolve: false)
+                } else {
+                    runState = .waiting
+                }
                 return
             }
             logger.info("process-status: pid=\(pid, privacy: .public) exited")
@@ -500,6 +564,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             snapshot = Snapshot(
                 pid: pid,
                 name: identity.name ?? basename(of: identity.executablePath) ?? "pid \(pid)",
+                listedName: pidChanged ? identityReader(pid)?.name : snapshot?.listedName,
                 executablePath: identity.executablePath,
                 commandLine: nil,
                 cpuPercent: nil,

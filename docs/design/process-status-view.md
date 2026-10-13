@@ -420,26 +420,39 @@ a Terminal Pane.
   `pbi_start_tvsec`/`pbi_start_tvusec` ascending, then pid): the
   longest-running process of that name, so a long-lived main instance wins over
   a short-lived helper. The picker's list uses the same comparator.
-- **Resolution.** A private `followedPid` holds the current match. While held,
-  every tick samples it and does no enumeration. While not held,
-  `resolveTarget()` calls `ProcessInspector.firstSameUserProcess(named:)` (a
-  pid-list walk plus `bsdInfo`, no per-pid path lookup) once per tick.
-- **Loss or retarget.** On `ESRCH` the `.processNotFound` branch clears `followedPid`,
-  resets the CPU baseline, sets `RunState.waiting`, keeps `snapshot`, and does
-  not cancel the sampling task. The next tick re-enumerates. A successor takes
-  the normal pid-changed path, so disclosures reset and CPU% starts a fresh
-  baseline. A retarget clears `followedPid` too. This repeats for the Pane's life. Unlike mode A there is no
+- **Resolution.** A private record of the followed process (pid, plus its
+  `bsdName` and start time read when it was resolved) is held. While held,
+  every tick does one `proc_pidinfo(PROC_PIDTBSDINFO)` read (on the order of
+  microseconds) to confirm name and start time still match, then samples it, and
+  enumerates nothing. A mismatch means the kernel recycled the pid and is treated
+  as a loss. While not held, `resolveTarget()` calls
+  `ProcessInspector.firstSameUserProcess(named:)` (a pid-list walk plus
+  `bsdInfo`, no per-pid path lookup) once per tick.
+- **Loss or retarget.** On `ESRCH` (or a reused pid) the pane clears the
+  record, resets the CPU baseline and re-enumerates at once. A successor that
+  already exists is sampled in the same tick, so there is no Waiting flash; the
+  re-entry is bounded to one extra enumeration per loss. Otherwise it sets
+  `RunState.waiting`, keeps `snapshot`, does not cancel the sampling task, and
+  re-enumerates each tick. A successor takes the normal pid-changed path, so
+  disclosures reset and CPU% starts a fresh baseline. A retarget clears the
+  record. This repeats for the Pane's life. Unlike mode A there is no
   tombstone; the sampling loop stops only through hide, teardown or retarget.
 - **Waiting is not an error.** The chip reads "Waiting" and a banner reads
   "Waiting for “name” — no matching process is running", with the last sample
   time and the dimmed last-known metrics when a sample exists.
 - **Entry and exit.** The picker's "Follow by name" checkbox (off on each open)
-  makes a chosen row follow its name. While pinned, the menu offers
-  "Follow “name” by Name"; while following, "Stop Following by Name" pins the
-  current pid, or clears the target when none is held.
+  makes a chosen row follow its name, starting with that row's process when it
+  is alive and listed under the name (`retarget(to:seedPid:)`); later
+  re-resolutions use `listOrder`. While pinned, the menu offers
+  "Follow “name” by Name" in `.running` and `.exited`: the name is
+  `Snapshot.listedName` (the `bsdName`, captured while the process ran), so the
+  item survives the exit. From `.running` it is seeded with the pinned pid;
+  from `.exited` it is unseeded, so the next match is the successor. While
+  following, "Stop Following by Name" pins the current pid, or clears the target
+  when none is held.
 - **Scope.** The name is held on the content object for the Pane's life and is
-  not persisted across relaunch; no CLI flag is added. Pid reuse between ticks
-  is the same exposure mode A already has.
+  not persisted across relaunch; no CLI flag is added. Mode A stays unguarded
+  against pid reuse; mode C checks it as above.
 
 ---
 
