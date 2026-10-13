@@ -218,9 +218,9 @@ private struct ProjectListRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(entry.color.color)
-                .frame(width: 10, height: 10)
+            Image(systemName: entry.symbol.resolvedSystemName)
+                .foregroundStyle(entry.color.color)
+                .frame(width: 18)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.name)
@@ -318,6 +318,11 @@ private struct ProjectHeaderFields: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Session color").font(.caption).foregroundStyle(.secondary)
                 ProjectColorSwatches(model: model)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Symbol").font(.caption).foregroundStyle(.secondary)
+                ProjectSymbolPicker(model: model)
             }
         }
         .padding(.horizontal, 20)

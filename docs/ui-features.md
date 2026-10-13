@@ -535,7 +535,7 @@ Quickly was caught as `[0150]`.
 - `open-quickly.root`, `open-quickly.filter-field`,
   `open-quickly.row.<target>`.
 - `menu.file.open-quickly` — the File menu item for Open Quickly.
-- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`.
+- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`. With `BATTY_UI_TEST_SIDEBAR_ICONS=1` the value ends with `, icon <SF Symbol name>` (#0482), for example `selected, icon circle.fill`; it is how UI tests read which symbol a row draws.
 - `accessibilityValue("active" / "inactive")` on `tab-chip.<title>`.
 
 ---
@@ -677,7 +677,11 @@ Pane inspector, with a footer.
 - Header: `project-editor.name`, `project-editor.root`,
   `project-editor.root.choose`, swatches `project-editor.color.<case>` (`blue`,
   `orange`, `green`, `pink`, `teal`, `red`, `violet`, `amber`, `cyan`,
-  `brown`). Field errors append `.error` and warnings `.warning` to the field's
+  `brown`). The Symbol field (#0482): button `project-editor.symbol` (value the
+  current symbol's display name, for example `Terminal`); its popover
+  holds 36 cells `project-editor.symbol.<ProjectSymbol rawValue>`
+  (`folder`, `terminal`, `code`, ..., `map`, in catalog order), the chosen one with the
+  selected trait. Arrows move the cursor, Return or Space chooses, Escape closes. Field errors append `.error` and warnings `.warning` to the field's
   identifier (for example `project-editor.name.error`).
 - Layout: `project-editor.layout.<PaneLayout rawValue>`,
   `project-editor.layout.custom`; Pane preview `project-editor.preview`, cards
@@ -896,6 +900,10 @@ unchanged; these are the ones they do not cover):
 | Palette Save Session as Project... | `ProjectsEditorTests.testCommandPaletteSaveSessionAsProjectOpensTheEditor` |
 | `batty project list` / `open` | `ProjectsCLITests.testProjectListShowsSeededProjectsAndOpenMarker` |
 | Flag off: File, Window, Sidebar, palette, no `projects.json` | `ProjectsFlagOffTests` |
+| Plain row is a circle, Project row shows its symbol, an editor Save updates the open row; keyboard picks from the Symbol popover (#0482) | `ProjectsSymbolTests.testPlainRowIsACircleAndAProjectRowShowsItsSymbolAndFollowsAnEditorSave` |
+| Escape closes the Symbol popover without a change (#0482) | `ProjectsSymbolTests.testEscapeClosesThePopoverWithoutChangingTheSymbol` |
+| A Project with no stored symbol shows the folder (#0482) | `ProjectsSymbolTests.testAProjectWithNoSymbolShowsTheFolder` |
+| Flag off: the row keeps `rectangle.split.3x1` (#0482) | `ProjectsSymbolTests.testFlagOffRowKeepsTheThreeColumnSymbol` |
 | Cmd-Q with unsaved editor edits asks; Cancel keeps the app and the edit; Discard quits (#0481) | `ProjectsEditorQuitTests.testQuitWithUnsavedEditsAsksAndCancelKeepsTheAppAndTheEdit` |
 | Last content window closed with unsaved editor edits keeps the app; Cmd-W with no content window asks, then quits (#0481) | `ProjectsEditorQuitTests.testClosingTheLastContentWindowKeepsTheAppWhileTheEditorHasUnsavedEditsAndCmdWClosesTheEditor` |
 | Cmd-W with a sheet over the editor does nothing (#0481) | `ProjectsEditorQuitTests.testCmdWWithASheetOverTheEditorLeavesTheSheetAndTheEditorAlone` |
@@ -910,8 +918,9 @@ view would let them use the documented identifier):
 - `project-editor.pane.<n>` surfaces as `project-editor.preview` on every card; the tests match
   `project-editor.preview` plus the label "Pane <n>: <kind>". Pane 1's card reports the whole
   preview as its frame, so cards are clicked near their top-left.
-- `session-row.project-glyph` is not an element at all: the Sidebar `Label` merges the icon into
-  `session-row.<title>`. The tests tell the folder from the plain symbol by the icon's pixels.
+- `session-row.project-glyph` and `session-row.icon` are not elements at all: the Sidebar `Label`
+  merges the icon into `session-row.<title>`. The tests read the symbol from that row's value, which
+  carries `, icon <symbol>` when `BATTY_UI_TEST_SIDEBAR_ICONS=1` (#0482).
 - A File menu check mark is exposed neither as `value` nor as selection; the tests read it from
   the item's pixels.
 - The trust sheet root's identifier can likewise replace its controls' identifiers; the tests

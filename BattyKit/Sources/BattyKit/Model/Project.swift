@@ -197,6 +197,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     /// at decode and resolves no paths.
     public var rootPath: String
     public var color: SessionColor
+    /// Absent in files written before symbols existed; decodes to `.folder`.
+    public var symbol: ProjectSymbol
     public var layout: ProjectLayout
     public var runStartupCommandsOnOpen: Bool
     public var approvedCommandsHash: String?
@@ -207,6 +209,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         name: String,
         rootPath: String,
         color: SessionColor = .blue,
+        symbol: ProjectSymbol = .folder,
         layout: ProjectLayout = .preset(.singlePane),
         runStartupCommandsOnOpen: Bool = false,
         approvedCommandsHash: String? = nil,
@@ -216,6 +219,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.name = name
         self.rootPath = Project.standardizedRoot(rootPath)
         self.color = color
+        self.symbol = symbol
         self.layout = layout
         self.runStartupCommandsOnOpen = runStartupCommandsOnOpen
         self.approvedCommandsHash = approvedCommandsHash
@@ -271,7 +275,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt
+        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -288,6 +292,12 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         } else {
             if c.contains(.color) { logger.error("unrecognized project color; using the default") }
             color = .blue
+        }
+        if let raw = try? c.decodeIfPresent(String.self, forKey: .symbol), let decoded = ProjectSymbol(rawValue: raw) {
+            symbol = decoded
+        } else {
+            if c.contains(.symbol) { logger.error("unrecognized project symbol; using the default") }
+            symbol = .folder
         }
         layout = try c.decode(ProjectLayout.self, forKey: .layout)
         runStartupCommandsOnOpen = try c.decodeIfPresent(Bool.self, forKey: .runStartupCommandsOnOpen) ?? false

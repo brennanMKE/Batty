@@ -1265,6 +1265,14 @@ public final class AppStateStore {
         Set(windows.flatMap(\.sessions).compactMap(\.projectID))
     }
 
+    /// Points every open Session backed by `project` at its current symbol,
+    /// across all Windows. Title and color stay as pinned at open.
+    func applyProjectSymbol(of project: Project) {
+        for session in windows.flatMap(\.sessions) where session.projectID == project.id {
+            session.projectSymbol = project.symbol
+        }
+    }
+
     /// Opens a saved Project as a Session. No-op (throws `.featureDisabled`
     /// and logs) while `featureFlags.projects` is off. Startup commands are
     /// not run here.

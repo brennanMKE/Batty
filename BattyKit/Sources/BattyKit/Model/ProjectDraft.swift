@@ -13,6 +13,7 @@ struct ProjectDraft: Equatable {
     var name: String
     var rootPath: String
     var color: SessionColor
+    var symbol: ProjectSymbol
     var layout: ProjectLayout
     var runStartupCommandsOnOpen: Bool
     /// Carried through untouched: editing commands never clears it, so
@@ -33,6 +34,7 @@ struct ProjectDraft: Equatable {
         name = project.name
         rootPath = project.rootPath
         color = project.color
+        symbol = project.symbol
         layout = project.layout
         runStartupCommandsOnOpen = project.runStartupCommandsOnOpen
         approvedCommandsHash = project.approvedCommandsHash
@@ -44,6 +46,7 @@ struct ProjectDraft: Equatable {
         name: String,
         rootPath: String,
         color: SessionColor,
+        symbol: ProjectSymbol = .folder,
         layout: ProjectLayout = .preset(.singlePane),
         runStartupCommandsOnOpen: Bool = true
     ) {
@@ -51,6 +54,7 @@ struct ProjectDraft: Equatable {
         self.name = name
         self.rootPath = rootPath
         self.color = color
+        self.symbol = symbol
         self.layout = layout
         self.runStartupCommandsOnOpen = runStartupCommandsOnOpen
         self.approvedCommandsHash = nil
@@ -109,6 +113,7 @@ struct ProjectDraft: Equatable {
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             rootPath: Self.normalizedRoot(rootPath),
             color: color,
+            symbol: symbol,
             layout: normalizedLayout,
             runStartupCommandsOnOpen: runStartupCommandsOnOpen,
             approvedCommandsHash: approvedCommandsHash,

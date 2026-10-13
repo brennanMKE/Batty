@@ -45,6 +45,10 @@ public final class SessionRuntime: Identifiable {
     /// in-memory only: never persisted, and nothing writes it back to the
     /// Project.
     public internal(set) var projectID: UUID?
+    /// The backing Project's symbol, copied at open and refreshed when the
+    /// Project is saved. In-memory only, like `projectID`; the Sidebar row
+    /// reads this rather than looking the Project up from `body`.
+    public internal(set) var projectSymbol: ProjectSymbol?
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     /// Clipboard-read confirmation awaiting the user's answer, shown via

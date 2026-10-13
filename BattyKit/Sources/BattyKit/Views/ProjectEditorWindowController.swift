@@ -83,6 +83,7 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
         window.tabbingMode = .disallowed
         window.delegate = self
         window.center()
+        model.projectSaved = { [weak store] project in store?.applyProjectSymbol(of: project) }
         model.closeWindow = { [weak self] in self?.window?.close() }
         model.presentForQuit = { [weak self] in
             guard let window = self?.window, window.attachedSheet == nil else { return false }

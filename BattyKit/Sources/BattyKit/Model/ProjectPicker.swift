@@ -26,6 +26,7 @@ struct ProjectPickerCard: Identifiable, Equatable {
     let id: UUID
     let name: String
     let color: SessionColor
+    let symbol: ProjectSymbol
     let displayPath: String
     let summary: String
     let isOpen: Bool
@@ -193,6 +194,7 @@ struct ProjectPickerModel: Equatable {
             id: project.id,
             name: project.name,
             color: project.color,
+            symbol: project.symbol,
             displayPath: Self.abbreviate(path: project.rootPath, homeDirectory: homeDirectory),
             summary: Self.summary(panes: project.paneCount, tabs: project.tabCount, startupCommands: project.startupCommandCount),
             isOpen: openProjectIDs.contains(project.id),

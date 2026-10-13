@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Fixed 10-color palette used to give every Session a stable, automatically
 /// assigned identity color, shown by tinting its Sidebar row's
-/// `rectangle.split.3x1` symbol. `WindowRuntime`'s least-used round-robin
+/// icon. `WindowRuntime`'s least-used round-robin
 /// assigner walks cases in this declaration order. `SessionRuntime` keeps
 /// only the raw index (`colorIndex: Int`) in memory, but `Project` persists
 /// the raw value in `projects.json`, so the palette is append-only: never

@@ -49,7 +49,7 @@ private final class EditorFixture {
             .terminal(tabs: [ProjectTab(title: "claude", workingDirectory: "docs", startupCommand: "claude")]),
         ])
         return Project(
-            name: name, rootPath: root.path, color: .violet, layout: layout,
+            name: name, rootPath: root.path, color: .violet, symbol: .chip, layout: layout,
             runStartupCommandsOnOpen: false, approvedCommandsHash: approved,
             lastOpenedAt: Date(timeIntervalSince1970: 1_700_000_000))
     }

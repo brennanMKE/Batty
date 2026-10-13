@@ -55,6 +55,7 @@ struct ProjectEditorListEntry: Identifiable, Equatable {
     let name: String
     let path: String
     let color: SessionColor
+    let symbol: ProjectSymbol
     let isUnsavedNew: Bool
 }
 
@@ -85,6 +86,9 @@ final class ProjectEditorViewModel {
     @ObservationIgnored var captureSession: @MainActor (String?) -> SessionProjectCapture?
     /// Closes the editor window without asking.
     @ObservationIgnored var closeWindow: @MainActor () -> Void
+    /// Called with the stored Project after every successful `save()`, so
+    /// open Sessions can follow the symbol. Runs from the save action.
+    @ObservationIgnored var projectSaved: @MainActor (Project) -> Void = { _ in }
     /// Brings the editor window front so a quit question is visible. False
     /// when the window cannot show one, for example because a sheet is
     /// already up on it.
@@ -156,7 +160,7 @@ final class ProjectEditorViewModel {
 
     var listEntries: [ProjectEditorListEntry] {
         var entries = store.projects.map {
-            ProjectEditorListEntry(id: $0.id, name: $0.name, path: Self.abbreviated($0.rootPath), color: $0.color, isUnsavedNew: false)
+            ProjectEditorListEntry(id: $0.id, name: $0.name, path: Self.abbreviated($0.rootPath), color: $0.color, symbol: $0.symbol, isUnsavedNew: false)
         }
         if let draft, isNewDraft {
             let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -165,6 +169,7 @@ final class ProjectEditorViewModel {
                 name: name.isEmpty ? Self.untitledName : name,
                 path: Self.abbreviated(ProjectDraft.normalizedRoot(draft.rootPath)),
                 color: draft.color,
+                symbol: draft.symbol,
                 isUnsavedNew: true
             ))
         }
@@ -514,6 +519,7 @@ final class ProjectEditorViewModel {
     }
 
     func setColor(_ color: SessionColor) { draft?.color = color }
+    func setSymbol(_ symbol: ProjectSymbol) { draft?.symbol = symbol }
     func setRunStartupCommandsOnOpen(_ value: Bool) { draft?.runStartupCommandsOnOpen = value }
 
     // MARK: - Layout
@@ -729,6 +735,7 @@ final class ProjectEditorViewModel {
         let slot = selectedSlot
         load(stored)
         selectedSlot = min(slot, max(stored.layout.paneCount - 1, 0))
+        projectSaved(stored)
         return stored
     }
 

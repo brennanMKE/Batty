@@ -34,11 +34,12 @@ nonisolated enum ProjectFixture {
         layout: [String: Any],
         preset: String? = nil,
         runStartupCommands: Bool = false,
+        symbol: String? = nil,
         id: UUID = UUID()
     ) -> [String: Any] {
         var layoutObject: [String: Any] = ["root": layout]
         if let preset { layoutObject["preset"] = preset }
-        return [
+        var result: [String: Any] = [
             "id": id.uuidString,
             "name": name,
             "rootPath": root.path,
@@ -46,6 +47,8 @@ nonisolated enum ProjectFixture {
             "layout": layoutObject,
             "runStartupCommandsOnOpen": runStartupCommands,
         ]
+        if let symbol { result["symbol"] = symbol }
+        return result
     }
 
     static func write(_ projects: [[String: Any]], to file: URL) throws {
@@ -88,6 +91,7 @@ nonisolated enum ProjectFixture {
 /// the menu, picker, palette and terminal helpers the classes share.
 nonisolated class ProjectsUITestCase: XCTestCase {
     static let projectsFileEnvVar = "BATTY_UI_TEST_PROJECTS_FILE"
+    static let sidebarIconsEnvVar = "BATTY_UI_TEST_SIDEBAR_ICONS"
 
     var scratch: URL!
     var storeFile: URL!
@@ -124,7 +128,7 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         extraEnvironment: [String: String] = [:]
     ) throws -> (app: XCUIApplication, initial: CLITopology?) {
         if let projects { try ProjectFixture.write(projects, to: storeFile) }
-        var environment = [ProjectsUITestCase.projectsFileEnvVar: storeFile.path]
+        var environment = [ProjectsUITestCase.projectsFileEnvVar: storeFile.path, Self.sidebarIconsEnvVar: "1"]
         if flagOff { environment["BATTY_UI_TEST_FORCE_PROJECTS_OFF"] = "1" }
         environment.merge(extraEnvironment) { _, new in new }
         let app = BattyUITestHarness.launchBatty(script: script, extraEnvironment: environment, extraArguments: extraArguments)
@@ -323,16 +327,45 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         target.click()
     }
 
+    // MARK: - Banners
+
+    /// The guest's persistent "App Background Activity" banner covers the top right of
+    /// the screen, where the editor header's Symbol button sits, so a click there lands on
+    /// the banner. Hovers it to reveal Close and clicks that, with a swipe as the fallback.
+    @MainActor
+    func dismissBanners() {
+        let center = XCUIApplication(bundleIdentifier: "com.apple.notificationcenterui")
+        let predicate = NSPredicate(format: "label CONTAINS 'can run in the background' OR label CONTAINS 'Notifications may include' OR title CONTAINS 'App Background Activity'")
+        for _ in 0..<4 {
+            let banner = center.descendants(matching: .any).matching(predicate).firstMatch
+            guard banner.exists else { return }
+            banner.hover()
+            let close = center.groups["AXNotificationListItems"].buttons["Close"].firstMatch
+            if close.waitForExistence(timeout: 2) { close.click() } else { banner.swipeRight() }
+            _ = waitFor({ !banner.exists }, timeout: 5)
+        }
+    }
+
     // MARK: - Sidebar glyph
 
-    /// The Sidebar row's icon is merged into the row's single accessibility element
-    /// (`session-row.<title>`), so `session-row.project-glyph` is not addressable. The
-    /// icon occupies the left of that element; this returns the fraction of its pixels
-    /// that differ from the row background, which tells the solid folder from the
-    /// outlined three-column symbol whatever the Session color is.
+    /// The SF Symbol a Sidebar row draws. The icon is merged into the row's single
+    /// accessibility element, so the app appends ", icon <symbol>" to the row's value when
+    /// `BATTY_UI_TEST_SIDEBAR_ICONS=1`, which `launchApp` sets.
     @MainActor
-    func iconInk(ofRow row: XCUIElement) -> Double? {
-        leadingInk(of: row, points: 14, backgroundAtRight: false)
+    func rowIcon(_ title: String, in app: XCUIApplication) -> String? {
+        let value = BattyUITestHarness.sessionRow(named: title, in: app).value as? String
+        guard let range = value?.range(of: ", icon ") else { return nil }
+        return value.map { String($0[range.upperBound...]) }
+    }
+
+    @MainActor
+    func waitForRowIcon(_ title: String, _ symbol: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(BattyUITestHarness.sessionRow(named: title, in: app).waitForExistence(timeout: 10), "no Sidebar row \(title)", file: file, line: line)
+        XCTAssertTrue(
+            waitFor({ self.rowIcon(title, in: app) == symbol }, timeout: 10),
+            "row \(title) draws \(rowIcon(title, in: app) ?? "nothing"), expected \(symbol)",
+            file: file, line: line
+        )
     }
 
     /// The fraction of the leftmost `points` of `element` whose pixels differ from the
@@ -380,23 +413,12 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         XCTAssertGreaterThan(on, off + 0.02, "the open Project's menu item has no check mark (ink \(on) vs \(off))", file: file, line: line)
     }
 
-    /// A Project row's folder glyph is solid; a plain Session's symbol is an outline.
+    /// A Project-backed row draws its Project's symbol (the folder by default) and a plain
+    /// Session draws the solid circle.
     @MainActor
     func assertProjectGlyph(projectRow: String, plainRow: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let project = BattyUITestHarness.sessionRow(named: projectRow, in: app)
-        let plain = BattyUITestHarness.sessionRow(named: plainRow, in: app)
-        XCTAssertTrue(project.waitForExistence(timeout: 10), "no Sidebar row \(projectRow)", file: file, line: line)
-        XCTAssertTrue(plain.exists, "no Sidebar row \(plainRow)", file: file, line: line)
-        guard let projectInk = iconInk(ofRow: project), let plainInk = iconInk(ofRow: plain) else {
-            return XCTFail("could not read the Sidebar row icons", file: file, line: line)
-        }
-        for (name, row) in [("project-row-\(projectRow)", project), ("plain-row-\(plainRow)", plain)] {
-            let attachment = XCTAttachment(image: row.screenshot().image)
-            attachment.name = name
-            attachment.lifetime = .keepAlways
-            add(attachment)
-        }
-        XCTAssertGreaterThan(projectInk, plainInk + 0.10, "the Project row's icon is not the solid folder glyph (ink \(projectInk) vs \(plainInk))", file: file, line: line)
+        waitForRowIcon(projectRow, "folder.fill", in: app, file: file, line: line)
+        waitForRowIcon(plainRow, "circle.fill", in: app, file: file, line: line)
     }
 
     // MARK: - Topology and terminals

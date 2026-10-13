@@ -18,6 +18,14 @@ public enum UITestDriver {
     public static let errorSentinelPrefix = "batty-ui-test-driver-error-"
     public static let projectsFileEnvVar = "BATTY_UI_TEST_PROJECTS_FILE"
 
+    /// With "1" alongside the script variable, Sidebar rows append their
+    /// icon's SF Symbol name to their accessibility value.
+    public static let sidebarIconsEnvVar = "BATTY_UI_TEST_SIDEBAR_ICONS"
+
+    static func exposesSidebarIcons(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment[scriptEnvVar] != nil && environment[sidebarIconsEnvVar] == "1"
+    }
+
     /// Where a UI-test launch keeps `projects.json`, so a test never shares
     /// the guest's real store. Honored only alongside the script variable,
     /// like `FeatureFlags.uiTestForceProjectsOffVar`; an empty or relative

@@ -234,6 +234,7 @@ public final class WindowRuntime {
             colorIndex: project.color.rawValue
         )
         session.projectID = project.id
+        session.projectSymbol = project.symbol
         sessions.append(session)
         selectedSessionID = session.id
         setSessionColor(id: session.id, to: project.color.rawValue)

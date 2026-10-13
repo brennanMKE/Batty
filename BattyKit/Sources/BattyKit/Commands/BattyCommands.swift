@@ -118,11 +118,13 @@ public struct BattyCommands: Commands {
     @ViewBuilder
     private func projectMenuItem(_ item: ProjectFileMenuModel.Item) -> some View {
         switch item {
-        case .project(let id, let name, let isOpen):
-            Toggle(name, isOn: Binding(
+        case .project(let id, let name, let symbol, let isOpen):
+            Toggle(isOn: Binding(
                 get: { isOpen },
                 set: { _ in ProjectOpenPresenter.open(id: id, mode: .focusExistingOrOpen, in: store) }
-            ))
+            )) {
+                Label(name, systemImage: symbol.resolvedSystemName)
+            }
         case .divider:
             Divider()
         case .chooseProject:

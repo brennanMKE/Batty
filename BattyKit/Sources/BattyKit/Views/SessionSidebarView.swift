@@ -19,10 +19,24 @@ public struct SessionSidebarView: View {
     /// "selected" / "unselected", then ", N unseen" while the Session has
     /// unseen bell events. The numeric badge is folded into the row's single
     /// accessibility element, so this is the only place it is readable.
-    static func rowAccessibilityValue(for session: SessionRuntime, isSelected: Bool) -> String {
-        let selection = isSelected ? "selected" : "unselected"
-        guard session.unseenBellCount > 0 else { return selection }
-        return "\(selection), \(session.unseenBellCount) unseen"
+    static func rowAccessibilityValue(for session: SessionRuntime, isSelected: Bool, iconName: String? = nil) -> String {
+        var value = isSelected ? "selected" : "unselected"
+        if session.unseenBellCount > 0 { value += ", \(session.unseenBellCount) unseen" }
+        if let iconName { value += ", icon \(iconName)" }
+        return value
+    }
+
+    /// The Sidebar's icon is merged into the row's single accessibility
+    /// element, so a UI test that asserts which symbol a row draws reads it
+    /// from the row's value. Off unless the harness asks, so VoiceOver never
+    /// speaks symbol names and tests that compare the value exactly are
+    /// unaffected.
+    private static let exposesRowIcon = UITestDriver.exposesSidebarIcons()
+
+    private func rowIconName(for session: SessionRuntime) -> String? {
+        guard Self.exposesRowIcon else { return nil }
+        let symbol = session.projectID != nil ? (session.projectSymbol ?? .default) : nil
+        return SessionRowIcon.systemName(flagOn: store.featureFlags.projects, projectSymbol: symbol)
     }
 
     public var body: some View {
@@ -96,7 +110,7 @@ public struct SessionSidebarView: View {
                         }
                     )
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID))
+                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, iconName: rowIconName(for: session)))
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(
@@ -243,6 +257,51 @@ private struct SidebarRowBackground: ViewModifier {
     }
 }
 
+/// Which SF Symbol a Sidebar Session row draws. `projectSymbol` is nil for a
+/// plain Session. With the Projects flag off every row keeps the three-column
+/// symbol.
+enum SessionRowIcon {
+    static let legacySystemName = "rectangle.split.3x1"
+    static let plainSystemName = "circle.fill"
+
+    static func systemName(flagOn: Bool, projectSymbol: ProjectSymbol?) -> String {
+        guard flagOn else { return legacySystemName }
+        guard let projectSymbol else { return plainSystemName }
+        return projectSymbol.resolvedSystemName
+    }
+}
+
+private struct SessionRowIconView: View {
+    let flagOn: Bool
+    let isProjectBacked: Bool
+    let projectSymbol: ProjectSymbol?
+    let color: SessionColor
+
+    private static let width: CGFloat = 18
+
+    var body: some View {
+        let symbol = isProjectBacked ? (projectSymbol ?? .default) : nil
+        let name = SessionRowIcon.systemName(flagOn: flagOn, projectSymbol: symbol)
+        if !flagOn {
+            Image(systemName: name)
+                .foregroundStyle(color.color)
+        } else if isProjectBacked {
+            Image(systemName: name)
+                .foregroundStyle(color.color)
+                .frame(width: Self.width)
+                .accessibilityIdentifier("session-row.project-glyph")
+                .accessibilityLabel("Project")
+        } else {
+            Image(systemName: name)
+                .imageScale(.small)
+                .foregroundStyle(color.color)
+                .frame(width: Self.width)
+                .accessibilityIdentifier("session-row.icon")
+                .accessibilityLabel(color.displayName)
+        }
+    }
+}
+
 private struct SessionRow: View {
     @Bindable var session: SessionRuntime
     let store: AppStateStore
@@ -258,15 +317,12 @@ private struct SessionRow: View {
                 Text(session.title)
                     .lineLimit(1)
             } icon: {
-                if store.featureFlags.projects, session.projectID != nil {
-                    Image(systemName: "folder.fill")
-                        .foregroundStyle(session.sessionColor.color)
-                        .accessibilityIdentifier("session-row.project-glyph")
-                        .accessibilityLabel("Project")
-                } else {
-                    Image(systemName: "rectangle.split.3x1")
-                        .foregroundStyle(session.sessionColor.color)
-                }
+                SessionRowIconView(
+                    flagOn: store.featureFlags.projects,
+                    isProjectBacked: session.projectID != nil,
+                    projectSymbol: session.projectSymbol,
+                    color: session.sessionColor
+                )
             }
             Spacer()
             if session.unseenBellCount > 0 {

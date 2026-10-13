@@ -210,7 +210,10 @@ private struct ProjectPickerCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             thumbnail
             HStack(spacing: 8) {
-                Circle().fill(card.color.color).frame(width: 9, height: 9)
+                Image(systemName: card.symbol.resolvedSystemName)
+                    .foregroundStyle(card.color.color)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
                 Text(card.name).fontWeight(.semibold).lineLimit(1)
                 if card.isOpen {
                     Spacer(minLength: 4)

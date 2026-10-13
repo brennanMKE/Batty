@@ -213,8 +213,8 @@ struct ProjectFileMenuModelTests {
         let a = project("Zulu"), b = project("Alpha")
         let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [a, b], openProjectIDs: [])
         #expect(model?.items == [
-            .project(id: a.id, name: "Zulu", isOpen: false),
-            .project(id: b.id, name: "Alpha", isOpen: false),
+            .project(id: a.id, name: "Zulu", symbol: .folder, isOpen: false),
+            .project(id: b.id, name: "Alpha", symbol: .folder, isOpen: false),
             .divider,
             .chooseProject,
             .newProject,
@@ -225,8 +225,8 @@ struct ProjectFileMenuModelTests {
         let a = project("Alpha"), b = project("Beta")
         let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [a, b], openProjectIDs: [b.id])
         #expect(model?.items.prefix(2) == [
-            .project(id: a.id, name: "Alpha", isOpen: false),
-            .project(id: b.id, name: "Beta", isOpen: true),
+            .project(id: a.id, name: "Alpha", symbol: .folder, isOpen: false),
+            .project(id: b.id, name: "Beta", symbol: .folder, isOpen: true),
         ])
     }
 
