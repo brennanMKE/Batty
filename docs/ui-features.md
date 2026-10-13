@@ -4,7 +4,7 @@ This document is the authoritative reference for each major UI feature area in
 Batty. Read it before modifying any of the behaviors listed here: drag-and-drop,
 tab and session rename, theme application, layout picker, bell feed, tab chip
 rendering, settings sheet, sidebar toggle, fuzzy finders,
-and modal confirmation flows. Each section describes what the feature does, the
+modal confirmation flows, and the Process Status picker. Each section describes what the feature does, the
 invariants it must preserve, the regression history that established those
 invariants, and the accessibility identifiers used for test assertions. Issue
 numbers are written in brackets (e.g., `[0159]`) and refer to the files in
@@ -626,6 +626,66 @@ test asserts on its presence, then auto-dismiss with the chosen outcome.
   `.cancel-button` inside.
 - `quit-confirmation.sheet` — the sheet root; `.quit-button` and
   `.cancel-button` inside.
+
+---
+
+## Process Status picker and follow-by-name
+
+The Process Status Pane's "Choose Process…" menu has three ways to pick a
+target: "Follow a Terminal Pane…", "Pick a Running Process…" (pins a pid), and
+follow by name (#0486). "Pick a Running Process…" opens a popover that lists
+every same-uid process, with a filter field above the list and a "Follow by
+name" checkbox below it. Following by name keeps the Pane on the first live
+process with the chosen name and moves to the next one whenever the one shown
+exits, for the Pane's life.
+
+**Invariants:**
+
+- The process list is fetched once, from the menu item's `Button` action, never
+  inside `body` or a `Menu` content closure (`body` re-evaluates once a second).
+  The filter runs over that cached array.
+- The filter field has focus when the popover opens. Matching is
+  `ProcessPickerFilter.apply`: a trimmed empty query shows everything; an
+  all-digit query matches a pid prefix or a name substring, with an exact pid
+  first; anything else is a case- and diacritic-insensitive name substring.
+- Up/Down move a highlighted row, Return picks the highlighted row (or the
+  first visible row), Escape clears a non-empty query and dismisses the popover
+  when the query is empty.
+- List order and "first" for follow-by-name are both
+  `RunningProcess.listOrder`: name, then start time, then pid.
+- A pinned target still tombstones to Exited and stops sampling. A followed
+  name never tombstones: it moves to Waiting, keeps the last sample, and keeps
+  the sampling loop running (enumerating once per tick) until a process with
+  that name appears.
+- The followed name lives on `ProcessStatusPaneContent.target` and survives
+  hide/show. It is not persisted across relaunch.
+- A hidden Pane does no periodic work, including while Waiting.
+
+**Regression patterns:**
+
+- `[0305]` — Process Status Pane and the "Pick a Running Process…" list.
+- `[0486]` — Added the filter field and follow-by-name.
+
+**Accessibility identifiers:**
+
+- `process-status-view` — the Pane's content root.
+- `process-status.pid` — the pid label; its value is the pid.
+- `process-status.mode` — the mode indicator; value `pinned`, `following-tab`
+  or `following-name`.
+- `process-status.state-chip` — value `running`, `exited`, `permission-denied`,
+  `unavailable` or `waiting`.
+- `process-status.choose-process` — the "Choose Process…" menu.
+- `process-status.running-process-picker` — the picker popover root.
+- `process-status.picker.filter-field` — the filter text field.
+- `process-status.picker.list` — the filtered list.
+- `process-status.picker.row.<pid>` — one row per process.
+- `process-status.picker.empty` — shown when the query matches nothing.
+- `process-status.picker.follow-by-name` — the "Follow by name" checkbox.
+- `process-status.waiting-banner`, `process-status.exited-banner`,
+  `process-status.permission-denied-banner`,
+  `process-status.unavailable-banner` — the state banners.
+- `process-status.no-selection` — the "No process selected" state.
+- `process-status.fd.<n>` — a row in the Open Files disclosure.
 
 ---
 

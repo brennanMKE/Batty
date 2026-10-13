@@ -405,6 +405,42 @@ resolution against the new target, the same "one-time resolution, explicit
 re-trigger" shape `docs/design/git-status-view.md` §1 uses for its own
 retarget action.
 
+### Mode C — Following a process name
+
+Added by `#0486`. Modes A and B are unchanged. The user case is rebuilding
+and relaunching an app or CLI tool: the pid changes on every run, so a pinned
+pane dies after the first one, and mode B only helps when the process runs in
+a Terminal Pane.
+
+- **Target.** `ProcessStatusPaneContent.Target.followingName(String)`, holding
+  the exact `RunningProcess.name` (`proc_bsdinfo.pbi_name`, at most 31
+  characters). A process matches when its name is equal, case-sensitively, and
+  it is owned by the same uid (§1.5).
+- **Which match.** The first under `RunningProcess.listOrder` (name, then
+  `pbi_start_tvsec`/`pbi_start_tvusec` ascending, then pid): the
+  longest-running process of that name, so a long-lived main instance wins over
+  a short-lived helper. The picker's list uses the same comparator.
+- **Resolution.** A private `followedPid` holds the current match. While held,
+  every tick samples it and does no enumeration. While not held,
+  `resolveTarget()` calls `ProcessInspector.firstSameUserProcess(named:)` (a
+  pid-list walk plus `bsdInfo`, no per-pid path lookup) once per tick.
+- **Loss or retarget.** On `ESRCH` the `.processNotFound` branch clears `followedPid`,
+  resets the CPU baseline, sets `RunState.waiting`, keeps `snapshot`, and does
+  not cancel the sampling task. The next tick re-enumerates. A successor takes
+  the normal pid-changed path, so disclosures reset and CPU% starts a fresh
+  baseline. A retarget clears `followedPid` too. This repeats for the Pane's life. Unlike mode A there is no
+  tombstone; the sampling loop stops only through hide, teardown or retarget.
+- **Waiting is not an error.** The chip reads "Waiting" and a banner reads
+  "Waiting for “name” — no matching process is running", with the last sample
+  time and the dimmed last-known metrics when a sample exists.
+- **Entry and exit.** The picker's "Follow by name" checkbox (off on each open)
+  makes a chosen row follow its name. While pinned, the menu offers
+  "Follow “name” by Name"; while following, "Stop Following by Name" pins the
+  current pid, or clears the target when none is held.
+- **Scope.** The name is held on the content object for the Pane's life and is
+  not persisted across relaunch; no CLI flag is added. Pid reuse between ticks
+  is the same exposure mode A already has.
+
 ---
 
 ## 3. What it shows

@@ -33,6 +33,12 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         /// Tombstones only when the Tab itself disappears (the lookup
         /// misses), not when a single command within it exits.
         case followingTab(UUID)
+        /// Mode C. The exact `ProcessInspector.RunningProcess.name` the
+        /// picker showed (`bsdName`, at most 31 characters). Resolves to the
+        /// first same-uid process with that name under
+        /// `RunningProcess.listOrder`, and re-resolves each time the one
+        /// being shown exits, for the Pane's life. Never tombstones.
+        case followingName(String)
     }
 
     /// What the view renders for the current tick. Each case is a real
@@ -64,6 +70,10 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         case exited
         case permissionDenied
         case unavailable
+        /// Mode C only: no process currently matches the followed name. Not
+        /// an error; the sampling loop keeps running and re-enumerates each
+        /// tick, and the last `snapshot` is kept.
+        case waiting
     }
 
     /// One tick's worth of core metrics plus the identity fields
@@ -87,6 +97,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         case pid(pid_t)
         case noSelection
         case sourceTabGone
+        case waitingForName
     }
 
     /// What an on-demand disclosure section (`openFilesState`/
@@ -189,6 +200,12 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// `ProcessStatusPaneContentTests`' CPU% tests can control that
     /// interval explicitly too, instead of bracketing it with `Date()`.
     private let clock: SchedulingClock
+    /// Resolves a followed name to a pid. Defaults to the real enumerator;
+    /// injectable so tests can script which process appears and disappears.
+    private let nameResolver: @MainActor (String) -> pid_t?
+    /// The pid currently resolved for a `.followingName` target. Cleared on
+    /// `.processNotFound` and on every ``retarget(to:)``.
+    @ObservationIgnored private(set) var followedPid: pid_t?
     private var samplingTask: Task<Void, Never>?
     /// `#0314` merge: the pid-keyed CPU-delta baseline (review round 1,
     /// B2 — mode B's followed pid changes tick to tick, and delta-ing
@@ -257,7 +274,8 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         tabLookup: @escaping (UUID) -> TabRuntime?,
         samplingInterval: Duration = .seconds(1),
         coreMetricsProvider: @escaping @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure> = ProcessInspector.coreMetrics,
-        clock: SchedulingClock = SystemClock()
+        clock: SchedulingClock = SystemClock(),
+        nameResolver: @escaping @MainActor (String) -> pid_t? = ProcessInspector.firstSameUserProcess(named:)
     ) {
         self.target = target
         self.hasNoSelection = target == nil
@@ -265,6 +283,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         self.samplingInterval = samplingInterval
         self.coreMetricsProvider = coreMetricsProvider
         self.clock = clock
+        self.nameResolver = nameResolver
     }
 
     // MARK: - PaneContentLifecycle
@@ -302,6 +321,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     public func retarget(to newTarget: Target?) {
         stopSampling()
         target = newTarget
+        followedPid = nil
         hasNoSelection = newTarget == nil
         runState = .running
         snapshot = nil
@@ -316,6 +336,13 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         childProcessesState = .notLoaded
         guard lifecyclePhase == .active else { return }
         startSampling()
+    }
+
+    /// Leaves mode C: pins the currently resolved pid, or clears the target
+    /// when none is resolved. No-op for any other target.
+    public func stopFollowingName() {
+        guard case .followingName = target else { return }
+        retarget(to: followedPid.map { .pinned($0) })
     }
 
     /// §3.4's "Watch this instead" affordance on a child-process row —
@@ -371,6 +398,12 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             guard let tab = tabLookup(tabID) else { return .sourceTabGone }
             guard let pid = tab.terminalNSView?.foregroundPid else { return .noSelection }
             return .pid(pid)
+        case .followingName(let name):
+            if let followedPid { return .pid(followedPid) }
+            guard let pid = nameResolver(name) else { return .waitingForName }
+            logger.info("process-status: followed name=\(name, privacy: .public) resolved pid=\(pid, privacy: .public)")
+            followedPid = pid
+            return .pid(pid)
         case nil:
             return .noSelection
         }
@@ -386,6 +419,9 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             samplingTask = nil
         case .noSelection:
             hasNoSelection = true
+        case .waitingForName:
+            hasNoSelection = false
+            if runState != .waiting { runState = .waiting }
         case .pid(let pid):
             hasNoSelection = false
             sample(pid: pid)
@@ -439,9 +475,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             // Deliberately does not touch `snapshot` — the last
             // successful sample (if any) stays put, and its
             // `capturedAt` is what `.exited` displays (B5).
+            cpuTracker.reset()
+            if case .followingName(let name) = target {
+                logger.info("process-status: followed name=\(name, privacy: .public) pid=\(pid, privacy: .public) exited, waiting")
+                followedPid = nil
+                runState = .waiting
+                return
+            }
             logger.info("process-status: pid=\(pid, privacy: .public) exited")
             runState = .exited
-            cpuTracker.reset()
             samplingTask?.cancel()
             samplingTask = nil
         case .failure(.permissionDenied):
