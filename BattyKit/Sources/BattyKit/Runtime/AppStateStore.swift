@@ -156,6 +156,16 @@ public final class AppStateStore {
     /// `removeWindow` synchronously in the same teardown, and either can
     /// satisfy `terminateIfLastContentWindowGone`'s guards first.
     @ObservationIgnored private var terminationScheduled = false
+    var terminationIsScheduled: Bool { terminationScheduled }
+
+    /// Set when `terminateIfLastContentWindowGone` held off quitting because
+    /// the Project Editor had unsaved edits. Closing the editor then re-runs
+    /// the check. See `AppStateStore+Quit.swift`.
+    @ObservationIgnored var quitWhenEditorCloses = false
+
+    /// Tests substitute the editor's view model; nothing else assigns it.
+    /// Read only past the Projects flag gate.
+    @ObservationIgnored var projectEditorModelOverride: (@MainActor () -> ProjectEditorViewModel?)?
     /// One in-flight AI naming request per session, keyed by session id and
     /// tagged with the cwd it was issued for so a repeat report of the same
     /// cwd doesn't cancel-and-restart the request.
@@ -363,7 +373,7 @@ public final class AppStateStore {
     /// A future writer of `windows`/`nsWindowMap` (#0234 will add some) must
     /// preserve this: the deferred block reads live store state, never a
     /// snapshot taken at decision time.
-    private func terminateIfLastContentWindowGone() {
+    func terminateIfLastContentWindowGone() {
         // The nsWindowMap only contains live registered windows. When it's
         // empty, all content windows have closed.
         guard nsWindowMap.isEmpty else { return }
@@ -371,6 +381,7 @@ public final class AppStateStore {
         // removed yet (e.g. due to concurrent teardown), also check windows.
         // A window with sessions still attached is not truly gone.
         guard windows.allSatisfy({ $0.sessions.isEmpty }) else { return }
+        guard !holdQuitForUnsavedEditor() else { return }
         guard !terminationScheduled else { return }
         terminationScheduled = true
         logger.info("terminateIfLastContentWindowGone: no content windows remain; scheduling termination")
@@ -381,6 +392,7 @@ public final class AppStateStore {
                 logger.info("terminateIfLastContentWindowGone: state changed before the deferred check ran; aborting")
                 return
             }
+            guard !self.holdQuitForUnsavedEditor() else { return }
             logger.info("terminateIfLastContentWindowGone: terminating (deferred)")
             self.nameCache.save()
             self.terminateHandler()
@@ -981,9 +993,16 @@ public final class AppStateStore {
     /// constructs the editor's controller; that window exists only with the
     /// Projects flag on.
     static func isProjectEditorWindow(_ window: NSWindow?) -> Bool {
-        guard var current = window else { return false }
+        projectEditorWindow(from: window) != nil
+    }
+
+    /// The editor window `window` is or hangs from by `sheetParent`, nil when
+    /// that window is not the editor. Matches on the window identifier, so it
+    /// never constructs the editor's controller.
+    static func projectEditorWindow(from window: NSWindow?) -> NSWindow? {
+        guard var current = window else { return nil }
         while let parent = current.sheetParent { current = parent }
-        return current.identifier?.rawValue == ProjectEditorWindowController.windowIdentifier
+        return current.identifier?.rawValue == ProjectEditorWindowController.windowIdentifier ? current : nil
     }
 
     /// True while the Project Editor is the key window.

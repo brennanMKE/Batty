@@ -116,13 +116,12 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
             acc + w.sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
         }
         logger.info("applicationShouldTerminate windows=\(store.windows.count, privacy: .public) totalTabs=\(totalTabs, privacy: .public)")
-        if QuitConfirmation.shouldQuitOrPrompt(store: store) {
-            store.nameCache.save()
-            logger.info("applicationShouldTerminate -> terminateNow")
-            return .terminateNow
+        let reply = store.handleTerminateRequest { proceed in
+            logger.info("applicationShouldTerminate: Project Editor question answered, proceed=\(proceed, privacy: .public)")
+            NSApp.reply(toApplicationShouldTerminate: proceed)
         }
-        logger.info("applicationShouldTerminate -> terminateCancel (prompt shown)")
-        return .terminateCancel
+        logger.info("applicationShouldTerminate -> \(String(describing: reply), privacy: .public)")
+        return reply
     }
 
     func applicationWillTerminate(_ notification: Notification) {

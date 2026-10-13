@@ -645,6 +645,22 @@ Pane inspector, with a footer.
   `defaultTargetWindow()`. The rule matches only the editor's window, so it
   does nothing with the Projects flag off. XPC and CLI resolution keep using
   `defaultTargetWindow()`.
+- Quitting with unsaved edits (#0481): Cmd-Q brings the editor front and asks the same
+  Save, Discard Changes or Cancel question as closing the window (a sheet on the editor).
+  Save stores the edits and lets the quit continue; a failed Save cancels the quit and shows
+  the save error; Discard Changes lets the quit continue and does not touch the draft; Cancel
+  cancels the quit. The editor question comes before the "Quit Batty?" alert, which runs only
+  if the quit is still going. A clean editor, or none, quits as before. If a sheet is already
+  on the editor, the quit is cancelled instead of asking. The question goes through
+  `AppStateStore.handleTerminateRequest`, `applicationShouldTerminate` returning
+  `.terminateLater` and `NSApp.reply(toApplicationShouldTerminate:)`.
+- When the last content window closes while the editor has unsaved edits, the app keeps
+  running; closing the editor (which asks first) then quits. A clean editor does not keep the
+  app running. Close Tab (Cmd-W) stays enabled with no content window so it can close the
+  editor; with a sheet over the editor it does nothing.
+- UI-test mode (`BATTY_UI_TEST_MODE=1`) skips the editor's quit question so XCUITest's
+  teardown `terminate()` cannot hang on it. `BATTY_UI_TEST_PROMPT_EDITOR_ON_QUIT=1` turns it
+  back on; it is read only in UI-test mode.
 - A draft handed to the editor (Save as Project, #0476) counts as unsaved:
   closing or switching away from it asks first.
 - Saving never overwrites the approval hash or last-opened date with the values
@@ -880,6 +896,9 @@ unchanged; these are the ones they do not cover):
 | Palette Save Session as Project... | `ProjectsEditorTests.testCommandPaletteSaveSessionAsProjectOpensTheEditor` |
 | `batty project list` / `open` | `ProjectsCLITests.testProjectListShowsSeededProjectsAndOpenMarker` |
 | Flag off: File, Window, Sidebar, palette, no `projects.json` | `ProjectsFlagOffTests` |
+| Cmd-Q with unsaved editor edits asks; Cancel keeps the app and the edit; Discard quits (#0481) | `ProjectsEditorQuitTests.testQuitWithUnsavedEditsAsksAndCancelKeepsTheAppAndTheEdit` |
+| Last content window closed with unsaved editor edits keeps the app; Cmd-W with no content window asks, then quits (#0481) | `ProjectsEditorQuitTests.testClosingTheLastContentWindowKeepsTheAppWhileTheEditorHasUnsavedEditsAndCmdWClosesTheEditor` |
+| Cmd-W with a sheet over the editor does nothing (#0481) | `ProjectsEditorQuitTests.testCmdWWithASheetOverTheEditorLeavesTheSheetAndTheEditorAlone` |
 
 **Identifiers the accessibility tree does not honor** (tracked by #0484; the pixel-check helpers `iconInk`/`assertCheckMarks` in `ProjectsHarness.swift` go away with it; the tests work around each; fixing the
 view would let them use the documented identifier):

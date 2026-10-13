@@ -23,6 +23,8 @@ enum ProjectEditorNavigation: Equatable {
     case newProject
     case newDraft(ProjectDraft)
     case closeWindow
+    /// The app is quitting. Perform replies to the pending quit request.
+    case terminate
 }
 
 enum ProjectEditorUnsavedChoice: Sendable {
@@ -83,6 +85,11 @@ final class ProjectEditorViewModel {
     @ObservationIgnored var captureSession: @MainActor (String?) -> SessionProjectCapture?
     /// Closes the editor window without asking.
     @ObservationIgnored var closeWindow: @MainActor () -> Void
+    /// Brings the editor window front so a quit question is visible. False
+    /// when the window cannot show one, for example because a sheet is
+    /// already up on it.
+    @ObservationIgnored var presentForQuit: @MainActor () -> Bool = { true }
+    @ObservationIgnored private var quitReply: (@MainActor (Bool) -> Void)?
 
     private(set) var draft: ProjectDraft?
     private var baseline: Project?
@@ -351,11 +358,51 @@ final class ProjectEditorViewModel {
     func requestNavigation(_ navigation: ProjectEditorNavigation) -> Bool {
         if case .select(let id) = navigation, id == draft?.id { return true }
         if isDirty {
+            if pendingNavigation == .terminate, navigation != .terminate { replyToQuit(false) }
             pendingNavigation = navigation
             return false
         }
         perform(navigation)
         return true
+    }
+
+    /// The app wants to quit. `reply(true)` lets it, `reply(false)` cancels
+    /// it; it is called exactly once, at once when the draft is clean or the
+    /// window cannot show the question, otherwise after the user answers the
+    /// unsaved-changes question. A request that arrives while an earlier
+    /// quit question is still up cancels both and dismisses the question.
+    /// Discard replies true without touching the
+    /// draft, so a quit cancelled later by another prompt loses nothing.
+    func requestQuit(reply: @escaping @MainActor (Bool) -> Void) {
+        replyToQuit(false)
+        guard isDirty else {
+            reply(true)
+            return
+        }
+        if pendingNavigation == .terminate {
+            abandonQuit()
+            reply(false)
+            return
+        }
+        guard presentForQuit() else {
+            reply(false)
+            return
+        }
+        quitReply = reply
+        requestNavigation(.terminate)
+    }
+
+    /// Ends a pending quit question as cancelled, for a window that closes
+    /// or a model that is replaced while one is up.
+    func abandonQuit() {
+        if pendingNavigation == .terminate { pendingNavigation = nil }
+        replyToQuit(false)
+    }
+
+    private func replyToQuit(_ proceed: Bool) {
+        guard let reply = quitReply else { return }
+        quitReply = nil
+        reply(proceed)
     }
 
     func requestSelect(_ id: UUID) { requestNavigation(.select(id)) }
@@ -366,12 +413,14 @@ final class ProjectEditorViewModel {
         switch choice {
         case .cancel:
             pendingNavigation = nil
+            if navigation == .terminate { replyToQuit(false) }
         case .discard:
             pendingNavigation = nil
             perform(navigation)
         case .save:
             guard save() != nil else {
                 pendingNavigation = nil
+                if navigation == .terminate { replyToQuit(false) }
                 return
             }
             pendingNavigation = nil
@@ -390,6 +439,8 @@ final class ProjectEditorViewModel {
             load(newDraft: draft, handedIn: true)
         case .closeWindow:
             closeWindow()
+        case .terminate:
+            replyToQuit(true)
         }
     }
 

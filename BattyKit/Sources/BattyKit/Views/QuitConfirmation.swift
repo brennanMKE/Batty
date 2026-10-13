@@ -16,6 +16,23 @@ public enum QuitConfirmation {
         ProcessInfo.processInfo.environment[testModeEnvVar] == "1"
     }
 
+    /// Read only while `isInUITestMode`. UI-test mode skips the Project
+    /// Editor's unsaved-changes question on quit for the same teardown
+    /// reason; a test that exercises the question sets this to "1".
+    public static let promptEditorOnQuitEnvVar = "BATTY_UI_TEST_PROMPT_EDITOR_ON_QUIT"
+
+    /// Whether a quit asks about a Project Editor with unsaved edits: always
+    /// outside UI-test mode, and in it only when `promptEditorOnQuitEnvVar`
+    /// is "1".
+    public static var promptsEditorOnQuit: Bool {
+        promptsEditorOnQuit(environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func promptsEditorOnQuit(environment: [String: String]) -> Bool {
+        guard environment[testModeEnvVar] == "1" else { return true }
+        return environment[promptEditorOnQuitEnvVar] == "1"
+    }
+
     public static func shouldQuitOrPrompt(store: AppStateStore?) -> Bool {
         if isInUITestMode { return true }
         // `store` must be resolved before the setting can be read, since the

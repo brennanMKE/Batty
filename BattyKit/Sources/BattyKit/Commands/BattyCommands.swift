@@ -598,8 +598,12 @@ public struct BattyCommands: Commands {
             Button {
                 let title = keyWindow?.closeFocusedItemTitle ?? "Close Tab"
                 logger.info("Cmd-W action fired (Tab menu, title=\(title, privacy: .public))")
-                if store.projectEditorIsKey || store.auxiliaryWindowIsKey {
-                    NSApp.keyWindow?.performClose(nil)
+                let key = NSApp.keyWindow
+                if store.closeProjectEditor(from: key) {
+                    return
+                }
+                if store.auxiliaryWindowIsKey {
+                    key?.performClose(nil)
                 } else {
                     actionWindow?.requestCloseFocusedTab()
                 }
@@ -612,7 +616,7 @@ public struct BattyCommands: Commands {
                 Label(keyWindow?.closeFocusedItemTitle ?? "Close Tab", systemImage: "xmark")
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .closeTab))
-            .disabled(keyWindow?.selectedSession == nil)
+            .disabled(!store.closeItemIsEnabled)
 
             Button {
                 ExitDispatcher.sendExit(store: store)

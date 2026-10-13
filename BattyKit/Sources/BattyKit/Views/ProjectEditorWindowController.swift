@@ -25,6 +25,7 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
 
     private(set) var window: NSWindow?
     private(set) var model: ProjectEditorViewModel?
+    private weak var store: AppStateStore?
 
     /// Whether the editor may be offered or opened at all. The File menu and
     /// `prepare` both read this.
@@ -83,6 +84,14 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.center()
         model.closeWindow = { [weak self] in self?.window?.close() }
+        model.presentForQuit = { [weak self] in
+            guard let window = self?.window, window.attachedSheet == nil else { return false }
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+            return true
+        }
+        self.store = store
 
         self.model = model
         self.window = window
@@ -110,6 +119,8 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         window?.delegate = nil
         window = nil
+        model?.abandonQuit()
         model = nil
+        store?.projectEditorDidClose()
     }
 }
