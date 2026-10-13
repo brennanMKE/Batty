@@ -275,7 +275,18 @@ the file extension) and strips the `_<n>_<UUID>` Xcode appends.
    different SlidingTabs commit than a previous run if that sibling repo has moved. This is
    a known limitation; pinning it (e.g. to a tag, or vendoring a snapshot) is left to a
    follow-up if it ever causes a hard-to-reproduce guest-only failure.
-3. **Clone and boot** headless, `--dir=run:"$EXPORT":ro` (read-only).
+3. **Clone and boot** headless and muted, `--no-graphics --no-audio --dir=run:"$EXPORT":ro`
+   (read-only). `--no-audio` is Tart's "Disable audio pass-through to host": `--no-graphics`
+   only drops the window, so without the flag the guest's audio device still exists and every
+   sound the guest makes plays on the host's output (lowering the host volume lowers it). The
+   one test confirmed to ask for sound is
+   `CLIBackgroundSessionTests.testNotifyToABackgroundSessionIsUnseenAndCollapses`, whose
+   `batty notify --sound` posts a notification with `content.sound = .default`
+   (`BellNotifier.swift`); `BellFeedTests.testBellByteProducesFeedEntry` can too if Batty is not
+   the active app when the bell arrives. No UI test asserts on sound, so muting changes nothing
+   a test observes. Do not use `--suspendable` for this (it changes other devices too), and do
+   not turn off the guest's "Play sound" or system-notification settings: their defaults are
+   part of what the suite runs against.
 4. **Confirm the guest is actually virtualized** (`kern.hv_vmm_present == 1`) before trusting
    the host guard's logic inside it.
 5. **Extract both tar files locally in the guest**, then select Beta by writing
@@ -583,6 +594,9 @@ script (e.g. `tart stop ... || true`).
 
 ## Known limits
 
+- The guest runs muted (`--no-audio`, step 3), so a UI test cannot observe or depend on sound;
+  assert Bell Feed entries and state instead. A runner copy that predates the flag (an older
+  worktree or a branch not yet rebased onto it) still plays guest sounds on the host.
 - One UI test run at a time on this host, across every project sharing it (Changeover,
   Curator, Switchyard, Quartermaster, System1, Batty). The preflight refuses to start a clone
   while `tart list` shows anything running, and never stops another project's VM. **Observed
