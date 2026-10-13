@@ -276,4 +276,91 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
         XCTAssertTrue(waitFor({ self.value("process-status.pid", in: app) == String(pids[1]) }, timeout: 15))
         XCTAssertEqual(value("process-status.mode", in: app), "following-name")
     }
+
+    @MainActor
+    func testExitedBannerFollowButtonThenRelaunch() throws {
+        let (app, terminal) = try launchWithProcessStatusPane()
+        defer { app.terminate() }
+        let first = try startFixture(from: terminal)
+
+        let pid = try openPickerOnFixture(app)
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ self.value("process-status.pid", in: app) == String(pid) }, timeout: 15))
+
+        stopFixture(first)
+        XCTAssertTrue(BattyScreen.element("process-status.exited-banner", in: app).waitForExistence(timeout: 20))
+        let follow = BattyScreen.element("process-status.follow-by-name", in: app)
+        XCTAssertTrue(follow.waitForExistence(timeout: 5), "no follow button in the Exited banner")
+        follow.click()
+        XCTAssertTrue(waitFor({ self.value("process-status.mode", in: app) == "following-name" }, timeout: 10))
+
+        try startFixture(from: terminal)
+        XCTAssertTrue(
+            waitFor({
+                guard let shown = self.value("process-status.pid", in: app), let now = pid_t(shown) else { return false }
+                return now != pid
+            }, timeout: 20),
+            "pid stayed \(String(describing: value("process-status.pid", in: app)))"
+        )
+        XCTAssertTrue(waitFor({ self.value("process-status.state-chip", in: app) == "running" }, timeout: 15))
+    }
+
+    @MainActor
+    func testHeaderFollowAndStopButtonsWhileRunning() throws {
+        let (app, terminal) = try launchWithProcessStatusPane()
+        defer { app.terminate() }
+        try startFixture(from: terminal)
+
+        let pid = try openPickerOnFixture(app)
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ self.value("process-status.pid", in: app) == String(pid) }, timeout: 15))
+
+        let follow = BattyScreen.element("process-status.follow-by-name", in: app)
+        XCTAssertTrue(follow.waitForExistence(timeout: 5), "no follow button in the header")
+        XCTAssertFalse(BattyScreen.element("process-status.stop-following", in: app).exists)
+        follow.click()
+        XCTAssertTrue(waitFor({ self.value("process-status.mode", in: app) == "following-name" }, timeout: 10))
+        XCTAssertEqual(value("process-status.pid", in: app), String(pid))
+
+        let stop = BattyScreen.element("process-status.stop-following", in: app)
+        XCTAssertTrue(stop.waitForExistence(timeout: 5), "no stop button while following by name")
+        XCTAssertFalse(BattyScreen.element("process-status.follow-by-name", in: app).exists)
+        stop.click()
+        XCTAssertTrue(waitFor({ self.value("process-status.mode", in: app) == "pinned" }, timeout: 10))
+        XCTAssertEqual(value("process-status.pid", in: app), String(pid))
+    }
+
+    @MainActor
+    func testEmptyStateButtonsOpenThePickerAndFollowAPane() throws {
+        let (app, terminal) = try launchWithProcessStatusPane()
+        defer { app.terminate() }
+        let fixturePane = try startFixture(from: terminal)
+
+        _ = try openPickerOnFixture(app)
+        BattyScreen.element("process-status.picker.follow-by-name", in: app).click()
+        let rowQuery = rows(app)
+        XCTAssertTrue(waitFor({ rowQuery.count == 1 }, timeout: 10))
+        rowQuery.element(boundBy: 0).click()
+        XCTAssertTrue(waitFor({ self.value("process-status.mode", in: app) == "following-name" }, timeout: 15))
+
+        stopFixture(fixturePane)
+        XCTAssertTrue(waitFor({ self.value("process-status.state-chip", in: app) == "waiting" }, timeout: 20))
+        BattyScreen.element("process-status.stop-following", in: app).click()
+        XCTAssertTrue(BattyScreen.element("process-status.no-selection", in: app).waitForExistence(timeout: 10))
+
+        BattyScreen.element("process-status.empty.pick-process", in: app).click()
+        XCTAssertTrue(BattyScreen.element("process-status.picker.filter-field", in: app).waitForExistence(timeout: 10))
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !app.popovers.firstMatch.exists }, timeout: 10))
+
+        let pane = BattyScreen.element("process-status.empty.follow-pane", in: app)
+        XCTAssertTrue(pane.waitForExistence(timeout: 5))
+        pane.click()
+        let item = pane.menuItems.firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "no terminal Pane in the empty state's menu")
+        item.click()
+        XCTAssertTrue(waitFor({ self.value("process-status.mode", in: app) == "following-tab" }, timeout: 10))
+        XCTAssertFalse(BattyScreen.element("process-status.no-selection", in: app).exists)
+    }
 }

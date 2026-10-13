@@ -405,6 +405,16 @@ resolution against the new target, the same "one-time resolution, explicit
 re-trigger" shape `docs/design/git-status-view.md` §1 uses for its own
 retarget action.
 
+The same actions are also visible in the Pane body, so none of them depends on
+opening the pull-down (#0498): a follow or stop button inside the identity
+block, under the mode and state row, the follow button inside the Exited
+banner, and, in the "No process
+selected" state, "Follow a Terminal Pane…" and "Pick a Running Process…"
+buttons that replace the instruction sentence. The empty state's pick button
+fills the same cache and flips the same flag as the pull-down item, so the
+picker popover keeps its single anchor on the pull-down. The terminal Pane list
+is built by one shared view for the submenu and the empty state's menu.
+
 ### Mode C — Following a process name
 
 Added by `#0486`. Modes A and B are unchanged. The user case is rebuilding
@@ -449,7 +459,11 @@ a Terminal Pane.
   item survives the exit. From `.running` it is seeded with the pinned pid;
   from `.exited` it is unseeded, so the next match is the successor. While
   following, "Stop Following by Name" pins the current pid, or clears the target
-  when none is held.
+  when none is held. The same decision drives two visible controls, through
+  `ProcessStatusFollowAction`: a header button while the pinned process runs
+  (and "Stop Following by Name" while following a name), and a button in the
+  Exited banner once it has exited, so a Pane shows the follow control in
+  exactly one place per state.
 - **Scope.** The name is held on the content object for the Pane's life and is
   not persisted across relaunch; no CLI flag is added. Mode A stays unguarded
   against pid reuse; mode C checks it as above.

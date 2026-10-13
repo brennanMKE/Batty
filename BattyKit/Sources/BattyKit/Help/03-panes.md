@@ -29,7 +29,13 @@ Drag the divider between two panes. The cursor switches to a resize handle as yo
 
 ## Process Status
 
-A Process Status pane shows one process's CPU, memory, threads and open files. Use its **Choose Process…** menu to point it somewhere:
+A Process Status pane shows one process's CPU, memory, threads and open files. Buttons in the pane let you keep it on the process you care about:
+
+- **Follow “name” by Name** sits under the process name while it runs, and inside the **Exited** banner once it has ended. It keeps the pane on that name, so the pane picks up the next process with the same name when you relaunch it. In a narrow pane it reads **Follow by Name**.
+- **Stop Following by Name** replaces it while the pane follows a name. It pins the current process, or clears the pane if nothing is running.
+- When no process is selected, **Follow a Terminal Pane…** and **Pick a Running Process…** are buttons in the pane.
+
+The **Choose Process…** menu lists all of these in one place:
 
 - **Follow a Terminal Pane…** tracks whatever is running in that pane.
 - **Pick a Running Process…** opens a list of your running processes. Type in the field at the top to narrow it by name or by PID, use the Up and Down arrow keys to move through the rows, and press Return to pick one. Escape clears the field, and a second Escape closes the list.
