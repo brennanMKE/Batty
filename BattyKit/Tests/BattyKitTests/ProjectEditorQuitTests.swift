@@ -419,3 +419,110 @@ struct ProjectEditorCloseItemTests {
         #expect(store.closeItemIsEnabled)
     }
 }
+
+/// The Root, Tab and Git Status repository folder choosers are sheets on the editor window (#0497),
+/// so the panel is driven through an injected presenter and never run.
+@MainActor
+struct ProjectEditorPanelTests {
+    private final class Recorder {
+        var windows: [NSWindow] = []
+        var directories: [URL?] = []
+        var completions: [(URL?) -> Void] = []
+
+        var presenter: ProjectEditorPanels.Presenter {
+            { [self] panel, window, completion in
+                windows.append(window)
+                directories.append(panel.directoryURL)
+                completions.append(completion)
+            }
+        }
+    }
+
+    private func window() -> NSWindow {
+        NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
+    }
+
+    @Test func theRootChooserHangsFromTheEditorWindowAndAppliesTheChosenFolderOnCompletion() throws {
+        let f = try QuitFixture()
+        let recorder = Recorder()
+        let editor = window()
+        let chosen = f.base.appendingPathComponent("elsewhere")
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        let before = f.model.draft?.rootPath
+
+        ProjectEditorPanels.chooseRoot(for: f.model, window: editor, present: recorder.presenter)
+
+        #expect(recorder.windows == [editor])
+        #expect(f.model.draft?.rootPath == before, "nothing applies before the panel completes")
+        recorder.completions[0](chosen)
+        #expect(f.model.draft?.rootPath == Project.standardizedRoot(chosen.path))
+    }
+
+    @Test func aCancelledRootChooserLeavesTheEditorAsItWas() throws {
+        let f = try QuitFixture()
+        let recorder = Recorder()
+        f.dirty("Unsaved Edit")
+        let before = f.model.draft
+
+        ProjectEditorPanels.chooseRoot(for: f.model, window: window(), present: recorder.presenter)
+        recorder.completions[0](nil)
+
+        #expect(f.model.draft == before)
+        #expect(f.model.draft?.name == "Unsaved Edit")
+    }
+
+    @Test func theFolderChooserAppliesToTheTabItWasOpenedFor() throws {
+        let f = try QuitFixture()
+        let recorder = Recorder()
+        let inside = f.base.appendingPathComponent("root/web")
+        try FileManager.default.createDirectory(at: inside, withIntermediateDirectories: true)
+        let editor = window()
+
+        ProjectEditorPanels.chooseFolder(for: f.model, tab: 0, window: editor, present: recorder.presenter)
+        #expect(recorder.windows == [editor])
+        #expect(f.model.selectedPane?.tabs[0].workingDirectory != "web", "nothing applies before the panel completes")
+        recorder.completions[0](inside)
+
+        #expect(f.model.selectedPane?.tabs[0].workingDirectory == "web")
+        #expect(f.model.saveError == nil)
+    }
+
+    @Test func theFolderChooserAppliesToTheRepositoryOfAGitStatusPane() throws {
+        let f = try QuitFixture()
+        let recorder = Recorder()
+        let inside = f.base.appendingPathComponent("root/repo")
+        try FileManager.default.createDirectory(at: inside, withIntermediateDirectories: true)
+        f.model.setKind(.gitStatus)
+        #expect(f.model.selectedPane?.kind == .gitStatus)
+
+        ProjectEditorPanels.chooseFolder(for: f.model, tab: nil, window: window(), present: recorder.presenter)
+        recorder.completions[0](inside)
+
+        #expect(f.model.selectedPane?.repositoryPath == "repo")
+    }
+
+    @Test func aFolderOutsideTheRootIsRefusedAndAppliesNothing() throws {
+        let f = try QuitFixture()
+        let recorder = Recorder()
+        let before = f.model.selectedPane?.tabs[0].workingDirectory
+
+        ProjectEditorPanels.chooseFolder(for: f.model, tab: 0, window: window(), present: recorder.presenter)
+        recorder.completions[0](f.base)
+
+        #expect(f.model.saveError != nil)
+        #expect(f.model.selectedPane?.tabs[0].workingDirectory == before)
+    }
+
+    @Test func noWindowMeansNoPanelAndNoChange() throws {
+        let f = try QuitFixture()
+        let recorder = Recorder()
+        f.dirty("Unsaved Edit")
+
+        ProjectEditorPanels.chooseDirectory(startingAt: nil, message: "m", window: nil, present: recorder.presenter) { _ in
+            Issue.record("completion must not run without a panel")
+        }
+
+        #expect(recorder.completions.isEmpty)
+        #expect(f.model.draft?.name == "Unsaved Edit")
+    }
+}

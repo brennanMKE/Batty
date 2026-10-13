@@ -2,7 +2,10 @@
 
 import AppKit
 import BattyXPCCore
+import OSLog
 import SwiftUI
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProjectEditorView")
 
 extension PaneContentKind {
     var projectEditorGlyph: String {
@@ -40,8 +43,34 @@ extension PaneContentKind {
 }
 
 enum ProjectEditorPanels {
-    /// Presented from a button action only, never from a view update.
-    static func chooseDirectory(startingAt url: URL?, message: String) -> URL? {
+    /// Calls back with the chosen folder, or nil when the panel was cancelled.
+    typealias Presenter = (NSOpenPanel, NSWindow, @escaping (URL?) -> Void) -> Void
+
+    static let sheetPresenter: Presenter = { panel, window, completion in
+        panel.beginSheetModal(for: window) { response in
+            completion(response == .OK ? panel.url : nil)
+        }
+    }
+
+    /// Presented from a button action only, never from a view update. The panel
+    /// is a sheet on the editor so `attachedSheet` is non-nil and the editor's
+    /// Cmd-W and Cmd-Q rules for a sheet cover it; `runModal()` would leave
+    /// both unexamined. The callers pass the editor's own window, never the key window, so
+    /// an accessibility press while another window is key still lands on the
+    /// editor. With no editor window nothing is presented.
+    /// `completion` runs once from the panel's own completion handler with the
+    /// chosen folder, and never for a cancelled panel.
+    static func chooseDirectory(
+        startingAt url: URL?,
+        message: String,
+        window: NSWindow?,
+        present: Presenter = sheetPresenter,
+        completion: @escaping (URL) -> Void
+    ) {
+        guard let window else {
+            logger.error("chooseDirectory: no window to present the open panel on")
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -49,7 +78,45 @@ enum ProjectEditorPanels {
         panel.canCreateDirectories = true
         panel.directoryURL = url
         panel.message = message
-        return panel.runModal() == .OK ? panel.url : nil
+        present(panel, window) { chosen in
+            guard let chosen else { return }
+            completion(chosen)
+        }
+    }
+
+    static func chooseRoot(
+        for model: ProjectEditorViewModel,
+        window: NSWindow? = ProjectEditorWindowController.shared.window,
+        present: Presenter = sheetPresenter
+    ) {
+        let current = model.draft.map { URL(fileURLWithPath: ProjectDraft.normalizedRoot($0.rootPath)) }
+        chooseDirectory(
+            startingAt: current,
+            message: String(localized: "Choose the Project's root folder", comment: "Project Editor: open panel message"),
+            window: window,
+            present: present
+        ) { [weak model] url in
+            model?.applyChosenRoot(url)
+        }
+    }
+
+    /// `tab` nil is the repository folder of a Git Status Pane.
+    static func chooseFolder(
+        for model: ProjectEditorViewModel,
+        tab: Int?,
+        window: NSWindow? = ProjectEditorWindowController.shared.window,
+        present: Presenter = sheetPresenter
+    ) {
+        guard let draft = model.draft else { return }
+        let root = URL(fileURLWithPath: ProjectDraft.normalizedRoot(draft.rootPath), isDirectory: true)
+        chooseDirectory(
+            startingAt: root,
+            message: String(localized: "Choose a folder inside the Project's root folder", comment: "Project Editor: open panel message"),
+            window: window,
+            present: present
+        ) { [weak model] url in
+            model?.applyChosenDirectory(url, tab: tab)
+        }
     }
 }
 
@@ -330,13 +397,7 @@ private struct ProjectHeaderFields: View {
     }
 
     private func chooseRoot() {
-        let current = model.draft.map { URL(fileURLWithPath: ProjectDraft.normalizedRoot($0.rootPath)) }
-        if let url = ProjectEditorPanels.chooseDirectory(
-            startingAt: current,
-            message: String(localized: "Choose the Project's root folder", comment: "Project Editor: open panel message")
-        ) {
-            model.applyChosenRoot(url)
-        }
+        ProjectEditorPanels.chooseRoot(for: model)
     }
 }
 
@@ -625,14 +686,7 @@ private struct PaneInspector: View {
     }
 
     private func chooseFolder(tab: Int?) {
-        guard let draft = model.draft else { return }
-        let root = URL(fileURLWithPath: ProjectDraft.normalizedRoot(draft.rootPath), isDirectory: true)
-        if let url = ProjectEditorPanels.chooseDirectory(
-            startingAt: root,
-            message: String(localized: "Choose a folder inside the Project's root folder", comment: "Project Editor: open panel message")
-        ) {
-            model.applyChosenDirectory(url, tab: tab)
-        }
+        ProjectEditorPanels.chooseFolder(for: model, tab: tab)
     }
 }
 
@@ -809,14 +863,7 @@ private struct TabCard: View {
     }
 
     private func chooseFolder() {
-        guard let draft = model.draft else { return }
-        let root = URL(fileURLWithPath: ProjectDraft.normalizedRoot(draft.rootPath), isDirectory: true)
-        if let url = ProjectEditorPanels.chooseDirectory(
-            startingAt: root,
-            message: String(localized: "Choose a folder inside the Project's root folder", comment: "Project Editor: open panel message")
-        ) {
-            model.applyChosenDirectory(url, tab: index)
-        }
+        ProjectEditorPanels.chooseFolder(for: model, tab: index)
     }
 }
 

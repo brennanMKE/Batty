@@ -25,7 +25,7 @@ nonisolated final class ProjectsEditorQuitTests: ProjectsUITestCase {
     }
 
     @MainActor
-    private func unsavedSheet(in app: XCUIApplication) -> XCUIElement {
+    private func editorSheet(in app: XCUIApplication) -> XCUIElement {
         editorWindow(in: app).sheets.firstMatch
     }
 
@@ -40,21 +40,21 @@ nonisolated final class ProjectsEditorQuitTests: ProjectsUITestCase {
         editExistingName(in: app)
         app.typeKey("q", modifierFlags: .command)
 
-        let sheet = unsavedSheet(in: app)
+        let sheet = editorSheet(in: app)
         XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Cmd-Q with unsaved edits did not ask")
         XCTAssertTrue(sheet.buttons["Save"].exists, "no Save button")
         XCTAssertTrue(sheet.buttons["Discard Changes"].exists, "no Discard Changes button")
         XCTAssertTrue(sheet.buttons["Cancel"].exists, "no Cancel button")
 
         sheet.buttons["Cancel"].click()
-        XCTAssertTrue(waitFor({ !self.unsavedSheet(in: app).exists }, timeout: 10), "Cancel did not dismiss the question")
+        XCTAssertTrue(waitFor({ !self.editorSheet(in: app).exists }, timeout: 10), "Cancel did not dismiss the question")
         XCTAssertEqual(app.state, .runningForeground, "Cancel did not cancel the quit")
         XCTAssertEqual(element("project-editor.name", in: app).value as? String, "Existing Changed", "Cancel lost the edit")
         XCTAssertEqual(ProjectFixture.names(in: storeFile), ["Existing"], "Cancel wrote the edit to the store")
 
         app.typeKey("q", modifierFlags: .command)
-        XCTAssertTrue(unsavedSheet(in: app).waitForExistence(timeout: 10), "the second Cmd-Q did not ask")
-        unsavedSheet(in: app).buttons["Discard Changes"].click()
+        XCTAssertTrue(editorSheet(in: app).waitForExistence(timeout: 10), "the second Cmd-Q did not ask")
+        editorSheet(in: app).buttons["Discard Changes"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 20), "Discard did not let the quit continue")
         XCTAssertEqual(ProjectFixture.names(in: storeFile), ["Existing"], "Discard wrote the edit to the store")
     }
@@ -86,7 +86,7 @@ nonisolated final class ProjectsEditorQuitTests: ProjectsUITestCase {
         closeMenus(app)
 
         app.typeKey("w", modifierFlags: .command)
-        let sheet = unsavedSheet(in: app)
+        let sheet = editorSheet(in: app)
         XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Cmd-W with unsaved edits did not ask")
         sheet.buttons["Discard Changes"].click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 20), "closing the editor did not finish the held quit")
@@ -100,13 +100,40 @@ nonisolated final class ProjectsEditorQuitTests: ProjectsUITestCase {
 
         editExistingName(in: app)
         click("project-editor.new-project", in: app)
-        let sheet = unsavedSheet(in: app)
+        let sheet = editorSheet(in: app)
         XCTAssertTrue(sheet.waitForExistence(timeout: 10), "New Project with unsaved edits did not ask")
 
         app.typeKey("w", modifierFlags: .command)
         sheet.buttons["Cancel"].click()
-        XCTAssertTrue(waitFor({ !self.unsavedSheet(in: app).exists }, timeout: 10), "Cancel did not dismiss the question")
+        XCTAssertTrue(waitFor({ !self.editorSheet(in: app).exists }, timeout: 10), "Cancel did not dismiss the question")
         XCTAssertTrue(editorWindow(in: app).exists, "Cmd-W behind the sheet closed the editor")
         XCTAssertEqual(element("project-editor.name", in: app).value as? String, "Existing Changed", "the edit was lost")
+    }
+
+    @MainActor
+    func testCmdWAndCmdQWhileTheRootFolderPanelIsUpLeaveThePanelEditorAndAppAlone() throws {
+        let (app, _) = try launchApp(
+            projects: [try existingProject()],
+            extraEnvironment: ["BATTY_UI_TEST_PROMPT_EDITOR_ON_QUIT": "1"]
+        )
+        defer { app.terminate() }
+
+        editExistingName(in: app)
+        click("project-editor.root.choose", in: app)
+        let panel = editorSheet(in: app)
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "Choose... did not present the folder panel as a sheet on the editor")
+
+        app.typeKey("w", modifierFlags: .command)
+        app.typeKey("q", modifierFlags: .command)
+
+        XCTAssertEqual(app.state, .runningForeground, "Cmd-Q with the folder panel up quit the app")
+        XCTAssertTrue(editorWindow(in: app).exists, "Cmd-W with the folder panel up closed the editor")
+        XCTAssertTrue(panel.exists, "Cmd-W or Cmd-Q dismissed the folder panel")
+        XCTAssertNotNil(BattyCLI.topology(), "the app stopped answering")
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.editorSheet(in: app).exists }, timeout: 10), "Escape did not dismiss the folder panel")
+        XCTAssertEqual(element("project-editor.name", in: app).value as? String, "Existing Changed", "the edit was lost")
+        XCTAssertEqual(ProjectFixture.names(in: storeFile), ["Existing"], "the edit was written to the store")
     }
 }

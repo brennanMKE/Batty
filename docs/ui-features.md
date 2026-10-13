@@ -744,6 +744,11 @@ Pane inspector, with a footer.
   running; closing the editor (which asks first) then quits. A clean editor does not keep the
   app running. Close Tab (Cmd-W) stays enabled with no content window so it can close the
   editor; with a sheet over the editor it does nothing.
+- The Root folder, Tab folder and Git Status repository choosers (#0497) are `NSOpenPanel` sheets on the editor
+  (`beginSheetModal(for:)` through `ProjectEditorPanels`), not `runModal()`. With one up, the
+  editor has an attached sheet, so Cmd-W does nothing and Cmd-Q is cancelled at once, by the
+  same two rules as any other sheet. The chosen folder is applied from the panel's completion
+  handler; a cancelled panel changes nothing. With no window to hang from, no panel is shown.
 - UI-test mode (`BATTY_UI_TEST_MODE=1`) skips the editor's quit question so XCUITest's
   teardown `terminate()` cannot hang on it. `BATTY_UI_TEST_PROMPT_EDITOR_ON_QUIT=1` turns it
   back on; it is read only in UI-test mode.
