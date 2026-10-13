@@ -164,7 +164,8 @@ extension AppStateStore {
 
     /// Arms each non-blank startup command on the Tab it belongs to. The
     /// commands type themselves in once that Tab's shell reports its first
-    /// working directory.
+    /// working directory; a shell that does not report one in time puts its
+    /// Tab in the waiting state instead (``StartupCommandWaiting``).
     func armStartupCommands(of project: Project, in session: SessionRuntime) {
         guard featureFlags.projects else { return }
         let panes = session.tree.allPanes
@@ -176,11 +177,8 @@ extension AppStateStore {
                 continue
             }
             let tab = panes[entry.paneIndex].tabs[entry.tabIndex]
-            if let sink = startupInputSinkFactory?(tab) {
-                tab.armStartupCommand(entry.command, sink: sink)
-            } else {
-                tab.armStartupCommand(entry.command)
-            }
+            let sink = startupInputSinkFactory?(tab) ?? TerminalStartupInputSink(tab: tab)
+            tab.armStartupCommand(entry.command, sink: sink, clock: startupReadinessClock)
         }
     }
 }

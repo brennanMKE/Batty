@@ -15,6 +15,9 @@ public struct BattyTabChip: View {
     private let isPaneFocused: Bool
     private let hasUnseen: Bool
     private let onClose: (() -> Void)?
+    private let startupWaiting: StartupCommandWaiting?
+    private let onRunStartupCommand: (() -> Void)?
+    private let onDismissStartupCommand: (() -> Void)?
 
     @Environment(\.themeChrome) private var themeChrome
     @State private var isHovered: Bool = false
@@ -28,13 +31,45 @@ public struct BattyTabChip: View {
         isActive: Bool,
         isPaneFocused: Bool = true,
         hasUnseen: Bool = false,
-        onClose: (() -> Void)? = nil
+        onClose: (() -> Void)? = nil,
+        startupWaiting: StartupCommandWaiting? = nil,
+        onRunStartupCommand: (() -> Void)? = nil,
+        onDismissStartupCommand: (() -> Void)? = nil
     ) {
         self.title = title
         self.isActive = isActive
         self.isPaneFocused = isPaneFocused
         self.hasUnseen = hasUnseen
         self.onClose = onClose
+        self.startupWaiting = startupWaiting
+        self.onRunStartupCommand = onRunStartupCommand
+        self.onDismissStartupCommand = onDismissStartupCommand
+    }
+
+    static let startupWaitingHelp = "Startup command not run \u{2014} the shell didn\u{2019}t report it was ready"
+
+    /// A menu rather than a popover or sheet: it shows the pending command
+    /// without opening a window or moving first responder off the terminal.
+    @ViewBuilder
+    private func startupWaitingIndicator(_ waiting: StartupCommandWaiting) -> some View {
+        Menu {
+            Text(waiting.command)
+            Divider()
+            Button("Run Now") { onRunStartupCommand?() }
+            Button("Dismiss") { onDismissStartupCommand?() }
+        } label: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Color.orange)
+                .frame(width: 14, height: 14)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(Self.startupWaitingHelp)
+        .accessibilityLabel(Self.startupWaitingHelp)
+        .accessibilityIdentifier("tab-startup-waiting")
     }
 
     private var accentColor: Color { themeChrome?.accent ?? Color.accentColor }
@@ -79,6 +114,10 @@ public struct BattyTabChip: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let startupWaiting {
+                startupWaitingIndicator(startupWaiting)
+            }
 
             if let onClose {
                 ZStack {

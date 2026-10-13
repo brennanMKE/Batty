@@ -49,6 +49,7 @@ private final class Fixture {
     let root: URL
     let projectsFile: URL
     let sinks = SinkBox()
+    let clock = TestClock()
 
     init() throws {
         let base = FileManager.default.temporaryDirectory
@@ -73,6 +74,7 @@ private final class Fixture {
         )
         let box = sinks
         store.startupInputSinkFactory = { tab in box.sink(for: tab.id) }
+        store.startupReadinessClock = clock
         return store
     }
 
@@ -615,5 +617,336 @@ struct ProjectStartupOpenTests {
 
         #expect(results.count == 1)
         #expect(store.windows.flatMap(\.sessions).count == sessionsAfterFirst)
+    }
+}
+
+@MainActor
+private func attach(_ tab: TabRuntime) {
+    tab.terminalDelegate.surfaceDidAttach()
+}
+
+/// Advances `clock` past the readiness deadline and returns once the
+/// deadline Task has finished running.
+@MainActor
+private func passDeadline(of tab: TabRuntime, on clock: TestClock) async {
+    let task = tab.terminalDelegate.readinessDeadlineTask
+    await clock.advance(by: StartupCommandReadiness.deadline)
+    await task?.value
+}
+
+@MainActor
+@Suite(.timeLimit(.minutes(1)))
+struct ProjectStartupReadinessTests {
+    @Test func reportBeforeTheDeadlineDeliversOnceAndLeavesNothingScheduled() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        let delivery = tab.armStartupCommand("./build.sh", sink: sink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+
+        report("/work", on: tab)
+        #expect(clock.pendingCount == 0)
+        await delivery.waitUntilFinished()
+        #expect(sink.events == ["paste:./build.sh", "return"])
+        #expect(tab.startupCommandWaiting == nil)
+
+        report("/work/src", on: tab)
+        await drainMainQueue()
+        #expect(sink.events == ["paste:./build.sh", "return"])
+    }
+
+    @Test func deadlineWithoutAReportTypesNothingAndEntersTheWaitingState() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        let delivery = tab.armStartupCommand("cd src\nmake", sink: sink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+        #expect(tab.startupCommandWaiting == nil)
+
+        await passDeadline(of: tab, on: clock)
+
+        #expect(tab.startupCommandWaiting == StartupCommandWaiting(command: "cd src\nmake"))
+        #expect(sink.events.isEmpty)
+        #expect(!delivery.isFinished)
+        #expect(clock.pendingCount == 0)
+    }
+
+    @Test func lateReportDeliversOnceAndClearsTheWaitingState() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        let delivery = tab.armStartupCommand("claude", sink: sink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+        await passDeadline(of: tab, on: clock)
+        #expect(tab.startupCommandWaiting != nil)
+
+        report("/work", on: tab)
+        #expect(tab.startupCommandWaiting == nil)
+        await delivery.waitUntilFinished()
+        #expect(sink.events == ["paste:claude", "return"])
+
+        report("/work/src", on: tab)
+        await drainMainQueue()
+        #expect(sink.events == ["paste:claude", "return"])
+    }
+
+    @Test func runNowDeliversOnceAndALaterReportDeliversNothing() async throws {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        let delivery = tab.armStartupCommand("claude", sink: sink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+        await passDeadline(of: tab, on: clock)
+
+        tab.runWaitingStartupCommand()
+        #expect(tab.startupCommandWaiting == nil)
+        await delivery.waitUntilFinished()
+        #expect(sink.events == ["paste:claude", "return"])
+
+        report("/work", on: tab)
+        tab.runWaitingStartupCommand()
+        await drainMainQueue()
+        #expect(sink.events == ["paste:claude", "return"])
+    }
+
+    @Test func dismissTypesNothingClearsTheStateAndALaterReportDeliversNothing() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        tab.armStartupCommand("claude", sink: sink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+        await passDeadline(of: tab, on: clock)
+
+        tab.dismissWaitingStartupCommand()
+        #expect(tab.startupCommandWaiting == nil)
+
+        report("/work", on: tab)
+        tab.runWaitingStartupCommand()
+        await drainMainQueue()
+        #expect(sink.events.isEmpty)
+        #expect(clock.pendingCount == 0)
+    }
+
+    @Test func shellClosingBeforeAnyReportDisarmsWithoutAWaitingState() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        tab.armStartupCommand("claude", sink: sink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+
+        tab.terminalDelegate.terminalDidClose(processAlive: false)
+
+        #expect(clock.pendingCount == 0)
+        #expect(tab.startupCommandWaiting == nil)
+        report("/work", on: tab)
+        await drainMainQueue()
+        #expect(sink.events.isEmpty)
+    }
+
+    @Test func shellClosingWhileWaitingClearsTheState() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        tab.armStartupCommand("claude", sink: sink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+        await passDeadline(of: tab, on: clock)
+        #expect(tab.startupCommandWaiting != nil)
+
+        tab.terminalDelegate.terminalDidClose(processAlive: false)
+
+        #expect(tab.startupCommandWaiting == nil)
+        #expect(sink.events.isEmpty)
+    }
+
+    @Test func awaitingADismissedOrClosedDeliveryReturns() async {
+        let clock = TestClock()
+        let dismissedTab = TabRuntime()
+        let dismissedSink = RecordingSink()
+        let dismissed = dismissedTab.armStartupCommand("a", sink: dismissedSink, clock: clock)
+        attach(dismissedTab)
+        await clock.waitForSleepers(1)
+        await passDeadline(of: dismissedTab, on: clock)
+        dismissedTab.dismissWaitingStartupCommand()
+        await dismissed.waitUntilFinished()
+
+        let closedTab = TabRuntime()
+        let closed = closedTab.armStartupCommand("b", sink: RecordingSink(), clock: clock)
+        closedTab.terminalDelegate.terminalDidClose(processAlive: false)
+        await closed.waitUntilFinished()
+        #expect(dismissedSink.events.isEmpty)
+    }
+
+    @Test func tabTeardownCancelsTheDeadline() async {
+        let clock = TestClock()
+        var tab: TabRuntime? = TabRuntime()
+        tab?.armStartupCommand("a", sink: RecordingSink(), clock: clock)
+        tab.map(attach)
+        await clock.waitForSleepers(1)
+        tab = nil
+        #expect(clock.pendingCount == 0)
+    }
+
+    @Test func rearmingReplacesTheRunningDeadlineAndAbandonsTheOldDelivery() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let firstSink = RecordingSink()
+        let secondSink = RecordingSink()
+        let first = tab.armStartupCommand("first", sink: firstSink, clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+
+        let second = tab.armStartupCommand("second", sink: secondSink, clock: clock)
+        await first.waitUntilFinished()
+        await clock.waitForSleepers(1)
+        #expect(clock.pendingCount == 1)
+
+        await passDeadline(of: tab, on: clock)
+        #expect(tab.startupCommandWaiting == StartupCommandWaiting(command: "second"))
+        report("/work", on: tab)
+        await second.waitUntilFinished()
+        #expect(firstSink.events.isEmpty)
+        #expect(secondSink.events == ["paste:second", "return"])
+    }
+
+    @Test func deadlineStartsAtSurfaceAttachNotAtArming() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        tab.armStartupCommand("claude", sink: sink, clock: clock)
+        #expect(clock.pendingCount == 0)
+
+        #expect(await clock.advance(by: StartupCommandReadiness.deadline * 3) == 0)
+        #expect(tab.startupCommandWaiting == nil)
+
+        attach(tab)
+        await clock.waitForSleepers(1)
+        #expect(tab.startupCommandWaiting == nil)
+        await passDeadline(of: tab, on: clock)
+        #expect(tab.startupCommandWaiting != nil)
+    }
+
+    @Test func armingAfterTheSurfaceAttachedStartsTheDeadline() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        attach(tab)
+        tab.armStartupCommand("claude", sink: RecordingSink(), clock: clock)
+        await clock.waitForSleepers(1)
+        await passDeadline(of: tab, on: clock)
+        #expect(tab.startupCommandWaiting != nil)
+    }
+
+    @Test func attachingAgainDoesNotRestartARunningDeadline() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        tab.armStartupCommand("claude", sink: RecordingSink(), clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+        attach(tab)
+        #expect(clock.pendingCount == 1)
+    }
+
+    @Test func aTabArmedWithNoCommandNeverSchedulesADeadline() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        let delivery = tab.armStartupCommand("  \n\t", sink: sink, clock: clock)
+        attach(tab)
+        await delivery.waitUntilFinished()
+        #expect(clock.pendingCount == 0)
+        #expect(sink.events.isEmpty)
+        #expect(tab.startupCommandWaiting == nil)
+    }
+
+    @Test func reportThatArrivedBeforeArmingNeverSchedulesADeadline() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        let sink = RecordingSink()
+        report("/work", on: tab)
+        attach(tab)
+        let delivery = tab.armStartupCommand("claude", sink: sink, clock: clock)
+        await delivery.waitUntilFinished()
+        #expect(clock.pendingCount == 0)
+        #expect(sink.events == ["paste:claude", "return"])
+    }
+
+    @Test func autoNamingStillReceivesEveryReportAcrossTheWaitingState() async {
+        let clock = TestClock()
+        let tab = TabRuntime()
+        var reported: [String] = []
+        tab.terminalDelegate.onWorkingDirectoryChange = { reported.append($0) }
+        let delivery = tab.armStartupCommand("claude", sink: RecordingSink(), clock: clock)
+        attach(tab)
+        await clock.waitForSleepers(1)
+        await passDeadline(of: tab, on: clock)
+        report("/a", on: tab)
+        report("/b", on: tab)
+        await delivery.waitUntilFinished()
+        #expect(reported == ["/a", "/b"])
+    }
+}
+
+@MainActor
+@Suite(.timeLimit(.minutes(1)))
+struct ProjectStartupReadinessOpenTests {
+    @Test func openingWithCommandsSchedulesTheDeadlineOnTheStoresClock() async throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        var project = fixture.project()
+        project.approvedCommandsHash = project.startupCommandsHash
+        try store.projectStore?.upsert(project)
+        var result: Result<AppStateStore.ProjectOpenResult, Error>?
+        store.requestOpenProject(id: project.id, completion: { result = $0 })
+        let session = try #require(try result?.get().session)
+        let tab = session.tree.allPanes[0].tabs[0]
+        #expect(fixture.clock.pendingCount == 0)
+
+        attach(tab)
+        await fixture.clock.waitForSleepers(1)
+        await passDeadline(of: tab, on: fixture.clock)
+
+        #expect(tab.startupCommandWaiting == StartupCommandWaiting(command: "./build.sh"))
+        #expect(fixture.sinks.isEmpty)
+    }
+
+    @Test func openingWithoutRunningCommandsNeverSchedulesADeadline() async throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project(runOnOpen: false)
+        try store.projectStore?.upsert(project)
+        var result: Result<AppStateStore.ProjectOpenResult, Error>?
+        store.requestOpenProject(id: project.id, completion: { result = $0 })
+        let session = try #require(try result?.get().session)
+        let tab = session.tree.allPanes[0].tabs[0]
+
+        attach(tab)
+        await drainMainQueue()
+        #expect(fixture.clock.pendingCount == 0)
+        #expect(tab.startupCommandWaiting == nil)
+    }
+
+    @Test func openWithoutRunningChoiceNeverSchedulesADeadline() async throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project()
+        try store.projectStore?.upsert(project)
+        var result: Result<AppStateStore.ProjectOpenResult, Error>?
+        store.requestOpenProject(id: project.id, completion: { result = $0 })
+        let window = try #require(store.defaultTargetWindow())
+        let request = try #require(window.pendingStartupTrusts.first)
+        store.resolveStartupTrust(requestID: request.id, choice: .openWithoutRunning)
+        let session = try #require(try result?.get().session)
+        let tab = session.tree.allPanes[0].tabs[0]
+
+        attach(tab)
+        await drainMainQueue()
+        #expect(fixture.clock.pendingCount == 0)
+        #expect(tab.startupCommandWaiting == nil)
     }
 }

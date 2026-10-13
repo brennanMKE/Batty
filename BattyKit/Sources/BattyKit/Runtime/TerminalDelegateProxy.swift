@@ -69,24 +69,104 @@ final class TerminalDelegateProxy: NSObject,
     private(set) var hasReportedWorkingDirectory = false
 
     private var pendingStartupCommand: StartupCommandDelivery?
+    private var readinessClock: (any SchedulingClock)?
+    /// The pending deadline, exposed so a test can await it after advancing
+    /// its clock instead of guessing when the Task has run.
+    private(set) var readinessDeadlineTask: Task<Void, Never>?
+    private var hasAttachedSurface = false
+
+    /// Set by the owning ``TabRuntime``; carried only into log lines.
+    var tabID: UUID?
+
+    /// Fires when the Tab enters (a value) or leaves (nil) the state of
+    /// waiting on a startup command whose shell never reported readiness.
+    /// Wired by ``TabRuntime``, which holds the observed copy of it.
+    var onStartupWaitingChange: ((StartupCommandWaiting?) -> Void)?
+
+    private(set) var startupWaiting: StartupCommandWaiting? {
+        didSet { if startupWaiting != oldValue { onStartupWaitingChange?(startupWaiting) } }
+    }
 
     /// Delivers `delivery` on the first working-directory report, or right
     /// away if one has already arrived (the pwd closure in
     /// ``onWorkingDirectoryChange`` is installed from a `.task` after mount,
     /// so a report can precede any consumer of it). Kept out of
     /// ``onWorkingDirectoryChange`` so it composes with auto-naming instead
-    /// of competing for that single slot. A shell that never emits OSC 7
-    /// never receives the command.
-    func armStartupCommand(_ delivery: StartupCommandDelivery) {
-        if hasReportedWorkingDirectory {
+    /// of competing for that single slot.
+    ///
+    /// A shell that never reports does not get the command typed blindly: it
+    /// may be sitting at a password or login prompt. Once the surface has
+    /// been attached for ``StartupCommandReadiness/deadline`` on `clock` with
+    /// no report, the Tab enters ``startupWaiting`` and the delivery stays
+    /// armed until a late report, ``runStartupCommandNow()`` or
+    /// ``dismissStartupCommand()``.
+    func armStartupCommand(
+        _ delivery: StartupCommandDelivery,
+        clock: any SchedulingClock = SystemClock()
+    ) {
+        if hasReportedWorkingDirectory || !delivery.hasCommand {
             delivery.deliverOnNextMainTurn()
-        } else {
-            pendingStartupCommand = delivery
+            return
         }
+        dismissStartupCommand()
+        pendingStartupCommand = delivery
+        readinessClock = clock
+        if hasAttachedSurface { startReadinessDeadline() }
+    }
+
+    /// The deadline is measured from here, not from arming, so a Tab in a
+    /// Session nobody has looked at yet is not penalised for never mounting.
+    func surfaceDidAttach() {
+        hasAttachedSurface = true
+        if pendingStartupCommand != nil, readinessDeadlineTask == nil, startupWaiting == nil {
+            startReadinessDeadline()
+        }
+    }
+
+    /// Types the waiting command through the same delivery, so it still
+    /// happens at most once however many reports follow.
+    @discardableResult
+    func runStartupCommandNow() -> StartupCommandDelivery? {
+        guard let delivery = takePendingStartupCommand() else { return nil }
+        delivery.deliverOnNextMainTurn()
+        return delivery
+    }
+
+    func dismissStartupCommand() {
+        takePendingStartupCommand()?.abandon()
+    }
+
+    private func takePendingStartupCommand() -> StartupCommandDelivery? {
+        readinessDeadlineTask?.cancel()
+        readinessDeadlineTask = nil
+        startupWaiting = nil
+        let delivery = pendingStartupCommand
+        pendingStartupCommand = nil
+        return delivery
+    }
+
+    private func startReadinessDeadline() {
+        guard let clock = readinessClock else { return }
+        readinessDeadlineTask = Task { @MainActor [weak self] in
+            await clock.sleep(for: StartupCommandReadiness.deadline)
+            guard !Task.isCancelled else { return }
+            self?.readinessDeadlineDidPass()
+        }
+    }
+
+    private func readinessDeadlineDidPass() {
+        readinessDeadlineTask = nil
+        guard let delivery = pendingStartupCommand else { return }
+        logger.notice("startup command waiting: tab=\(self.tabID?.uuidString ?? "unknown", privacy: .public) reason=deadline")
+        startupWaiting = StartupCommandWaiting(command: delivery.commandText)
     }
 
     init(state: TerminalViewState) {
         self.state = state
+    }
+
+    deinit {
+        readinessDeadlineTask?.cancel()
     }
 
     func terminalDidChangeTitle(_ title: String) {
@@ -102,6 +182,10 @@ final class TerminalDelegateProxy: NSObject,
     }
 
     func terminalDidClose(processAlive: Bool) {
+        if let abandoned = takePendingStartupCommand() {
+            abandoned.abandon()
+            logger.notice("startup command disarmed: tab=\(self.tabID?.uuidString ?? "unknown", privacy: .public) reason=shell exited before reporting readiness")
+        }
         state.terminalDidClose(processAlive: processAlive)
     }
 
@@ -117,8 +201,7 @@ final class TerminalDelegateProxy: NSObject,
         hasReportedWorkingDirectory = true
         state.terminalDidChangeWorkingDirectory(path)
         onWorkingDirectoryChange?(path)
-        if let delivery = pendingStartupCommand {
-            pendingStartupCommand = nil
+        if let delivery = takePendingStartupCommand() {
             delivery.deliverOnNextMainTurn()
         }
     }
@@ -129,6 +212,7 @@ final class TerminalDelegateProxy: NSObject,
 
     func terminalDidAttachSurface(_ surface: TerminalSurface) {
         state.terminalDidAttachSurface(surface)
+        surfaceDidAttach()
     }
 
     func terminalDidDetachSurface() {

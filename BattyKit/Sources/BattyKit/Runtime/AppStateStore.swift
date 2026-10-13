@@ -109,6 +109,9 @@ public final class AppStateStore {
     /// Test seam: stands in for the Tab's terminal as the target of startup
     /// commands. Nil in production.
     @ObservationIgnored var startupInputSinkFactory: ((TabRuntime) -> any StartupInputSink)?
+    /// Time source for the startup-command readiness deadline. Tests inject a
+    /// `TestClock`.
+    @ObservationIgnored var startupReadinessClock: any SchedulingClock = SystemClock()
 
     /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
     /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.

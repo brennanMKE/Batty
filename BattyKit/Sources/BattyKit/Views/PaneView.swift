@@ -219,7 +219,10 @@ public struct PaneView: View {
                                     } else {
                                         pane.removeTab(id: tab.id)
                                     }
-                                }
+                                },
+                                startupWaiting: startupWaiting(for: tab),
+                                onRunStartupCommand: { tab.runWaitingStartupCommand() },
+                                onDismissStartupCommand: { tab.dismissWaitingStartupCommand() }
                             )
                             .frame(width: chipMaxWidth)
                             .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
@@ -639,6 +642,11 @@ public struct PaneView: View {
 
     @ViewBuilder
     private func tabContextMenu(for tab: TabRuntime) -> some View {
+        if startupWaiting(for: tab) != nil {
+            Button("Run Startup Command Now") { tab.runWaitingStartupCommand() }
+            Button("Dismiss Startup Command") { tab.dismissWaitingStartupCommand() }
+            Divider()
+        }
         Button("Rename…") {
             renameDraft = tab.titleOverride ?? ""
             renamingTab = tab
@@ -675,6 +683,11 @@ public struct PaneView: View {
             }
         }
         .disabled(pane.tabs.count < 2)
+    }
+
+    private func startupWaiting(for tab: TabRuntime) -> StartupCommandWaiting? {
+        guard appStore?.featureFlags.projects == true else { return nil }
+        return tab.startupCommandWaiting
     }
 
     private func addTabFocusingPane(inheritingCWDFrom source: TabRuntime?) {

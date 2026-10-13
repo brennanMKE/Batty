@@ -106,4 +106,64 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
         _ = waitForSessions(named: "Runner")
         XCTAssertFalse(FileManager.default.fileExists(atPath: edited.path), "the unapproved edited command ran")
     }
+
+    /// `/bin/sh` is not zsh or bash, so Batty loads no shell integration into it and it never
+    /// reports OSC 7: the situation of #0479. The deadline is real time (10 s), so waits
+    /// here are expectation timeouts used as failure guards, not sleeps.
+    @MainActor
+    private func waitingIndicator(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == %@ OR label BEGINSWITH %@ OR title BEGINSWITH %@",
+            "tab-startup-waiting", "Startup command not run", "Startup command not run"
+        )).firstMatch
+    }
+
+    @MainActor
+    private func chooseWaitingAction(_ title: String, in app: XCUIApplication) {
+        let indicator = waitingIndicator(in: app)
+        XCTAssertTrue(indicator.waitForExistence(timeout: 60), "the startup-command waiting indicator never appeared")
+        indicator.click()
+        let item = app.menuItems[title]
+        XCTAssertTrue(item.waitForExistence(timeout: 10), "no \(title) in the waiting indicator's menu")
+        item.click()
+    }
+
+    @MainActor
+    func testShellThatNeverReportsShowsWaitingIndicatorWithRunNowAndDismiss() throws {
+        let root = try makeDirectory("silent-root")
+        let marker = scratch.appending(path: "ran-silent")
+        let command = "touch \(BattyCLI.shellQuoted(marker.path))"
+        let project = ProjectFixture.project(
+            name: "Silent",
+            root: root,
+            layout: ProjectFixture.terminal([ProjectFixture.tab("Server", command: command)]),
+            preset: "singlePane",
+            runStartupCommands: true
+        )
+        let (app, _) = try launchApp(projects: [project], extraArguments: ["-co.sstools.Batty.defaultShell", "/bin/sh"])
+        defer { app.terminate() }
+
+        openThroughPicker("Silent", in: app)
+        waitForSheet(in: app)
+        let remember = app.checkBoxes.matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH %@", "project-startup-trust.remember", "Don")).firstMatch
+        if remember.waitForExistence(timeout: 5), !isChecked(remember) { remember.click() }
+        clickSheetButton("project-startup-trust.run", "Run Commands", in: app)
+        var silent = try XCTUnwrap(waitForSessions(named: "Silent").first)
+
+        // Run Now types the command once.
+        chooseWaitingAction("Run Now", in: app)
+        XCTAssertTrue(BattyUITestHarness.waitForFile(at: marker.path, timeout: 60), "Run Now did not run the startup command")
+        XCTAssertTrue(waitFor({ !self.waitingIndicator(in: app).exists }, timeout: 10), "the indicator stayed after Run Now")
+        assertShellResponds(pane: silent.focusedPaneID, app: app)
+
+        // Dismiss types nothing.
+        try FileManager.default.removeItem(at: marker)
+        closeSession(silent.id)
+        openThroughPicker("Silent", in: app)
+        silent = try XCTUnwrap(waitForSessions(named: "Silent").first)
+        chooseWaitingAction("Dismiss", in: app)
+        XCTAssertTrue(waitFor({ !self.waitingIndicator(in: app).exists }, timeout: 10), "the indicator stayed after Dismiss")
+        assertShellResponds(pane: silent.focusedPaneID, app: app)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "Dismiss still ran the startup command")
+    }
 }

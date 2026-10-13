@@ -35,7 +35,7 @@ nonisolated enum BattyUITestHarness {
     /// `waitForDriverErrors()` before your first assertion to surface
     /// script failures clearly.
     @MainActor
-    static func launchBatty(script: [[String: Any]], extraEnvironment: [String: String] = [:]) -> XCUIApplication {
+    static func launchBatty(script: [[String: Any]], extraEnvironment: [String: String] = [:], extraArguments: [String] = []) -> XCUIApplication {
         guard let data = try? JSONSerialization.data(withJSONObject: script),
               let json = String(data: data, encoding: .utf8) else {
             preconditionFailure("Could not JSON-encode test script")
@@ -46,6 +46,7 @@ nonisolated enum BattyUITestHarness {
         app.launchArguments += Self.stateIsolationArguments
         app.launchEnvironment["BATTY_UI_TEST_SCRIPT"] = json
         for (key, value) in extraEnvironment { app.launchEnvironment[key] = value }
+        app.launchArguments += extraArguments
         app.launch()
         return app
     }

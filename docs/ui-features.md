@@ -852,6 +852,10 @@ unchanged; these are the ones they do not cover):
 - `project-startup-trust` -- the startup-command trust sheet; `project-startup-trust.remember`
   (checked by default), `project-startup-trust.open-without-running`, `project-startup-trust.run`.
   Each listed command is a static text `$ <command>`.
+- `tab-startup-waiting` -- the Tab chip's menu button shown when a startup command's shell never
+  reported readiness (#0479); label and help "Startup command not run -- the shell didn't report it was
+  ready"; menu items "Run Now" and "Dismiss". Found by label as well, since Accessibility may not
+  honor the identifier (#0484).
 - `command-palette.root`. Palette rows have no identifiers; the tests find them by their
   title text ("Open Project: <name>", "Open Project...", "Save Session as Project...").
 - `tab-chip.<title>`, `session-row.<title>`, `pane-terminal.<pane id>`, `git-status.snapshot`.
@@ -868,6 +872,7 @@ unchanged; these are the ones they do not cover):
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
 | Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both wrapped in a strict `XCTExpectFailure` for #0483: the row never presents the picker; remove the wrapper when #0483 lands) |
 | Trust sheet, Open Without Running, Run Commands, remembered approval, edited command | `ProjectsStartupTests.testTrustSheetGatesStartupCommandsAndRemembersApproval` |
+| Waiting indicator for a shell that never reports OSC 7 (`/bin/sh`), Run Now, Dismiss (#0479) | `ProjectsStartupTests.testShellThatNeverReportsShowsWaitingIndicatorWithRunNowAndDismiss` |
 | Edit Projects..., Window menu entry | `ProjectsEditorTests.testEditProjectsMenuOpensTheEditorOnTheStoredProjects` |
 | Create, Save & Open, Tab directory | `ProjectsEditorTests.testEditorCreatesAProjectAndSaveAndOpenOpensIt` |
 | Cancel leaves the store unchanged | `ProjectsEditorTests.testCancelLeavesTheStoredProjectUnchanged` |

@@ -119,12 +119,13 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         projects: [[String: Any]]? = nil,
         flagOff: Bool = false,
         script: [[String: Any]] = [],
-        connectCLI: Bool = true
+        connectCLI: Bool = true,
+        extraArguments: [String] = []
     ) throws -> (app: XCUIApplication, initial: CLITopology?) {
         if let projects { try ProjectFixture.write(projects, to: storeFile) }
         var environment = [ProjectsUITestCase.projectsFileEnvVar: storeFile.path]
         if flagOff { environment["BATTY_UI_TEST_FORCE_PROJECTS_OFF"] = "1" }
-        let app = BattyUITestHarness.launchBatty(script: script, extraEnvironment: environment)
+        let app = BattyUITestHarness.launchBatty(script: script, extraEnvironment: environment, extraArguments: extraArguments)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
         if !script.isEmpty {
             XCTAssertNil(BattyUITestHarness.waitForDriverErrors(timeout: 1), "Driver script failed")

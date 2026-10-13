@@ -18,6 +18,11 @@ public final class TabRuntime: Identifiable {
 
     public internal(set) var runningCommandDisplayName: String?
 
+    /// Non-nil while an approved Project startup command is armed but its
+    /// shell never reported readiness. Mirrors ``TerminalDelegateProxy``'s
+    /// state so views can observe it.
+    public internal(set) var startupCommandWaiting: StartupCommandWaiting?
+
     /// The owning pane/session, filled in by ``attachContext(paneID:sessionID:)``
     /// once this tab is placed into a `PaneRuntime` that has joined a
     /// `SessionRuntime`. `nil` at construction — see that method's doc for
@@ -149,6 +154,10 @@ public final class TabRuntime: Identifiable {
         self.unseenBellCount = unseenBellCount
         self.lastBellAt = lastBellAt
         self.lastBellMessage = lastBellMessage
+        terminalDelegate.tabID = id
+        terminalDelegate.onStartupWaitingChange = { [weak self] waiting in
+            self?.startupCommandWaiting = waiting
+        }
     }
 
     private static func activeTheme() -> TerminalTheme {
@@ -164,10 +173,24 @@ public final class TabRuntime: Identifiable {
     }
 
     @discardableResult
-    func armStartupCommand(_ command: String, sink: any StartupInputSink) -> StartupCommandDelivery {
+    func armStartupCommand(
+        _ command: String,
+        sink: any StartupInputSink,
+        clock: any SchedulingClock = SystemClock()
+    ) -> StartupCommandDelivery {
         let delivery = StartupCommandDelivery(command: command, sink: sink)
-        terminalDelegate.armStartupCommand(delivery)
+        terminalDelegate.armStartupCommand(delivery, clock: clock)
         return delivery
+    }
+
+    /// Run Now on the waiting indicator. Event-origin only (a button).
+    public func runWaitingStartupCommand() {
+        terminalDelegate.runStartupCommandNow()
+    }
+
+    /// Dismiss on the waiting indicator. Event-origin only (a button).
+    public func dismissWaitingStartupCommand() {
+        terminalDelegate.dismissStartupCommand()
     }
 
     /// Attaches this tab to its owning pane/session and (re-)applies the
