@@ -368,6 +368,32 @@ struct SessionRowAccessibilityValueTests {
         #expect(SessionSidebarView.rowAccessibilityValue(for: session(unseen: 0), isSelected: false, iconName: "cpu.fill") == "unselected, icon cpu.fill")
     }
 
+    @Test func aProjectPartNamesTheSymbolBetweenTheBadgeAndTheIcon() {
+        let plain = SessionSidebarView.rowAccessibilityValue(for: session(unseen: 0), isSelected: true, projectSymbol: nil)
+        #expect(plain == "selected")
+        #expect(SessionSidebarView.rowAccessibilityValue(for: session(unseen: 0), isSelected: true, projectSymbol: .folder) == "selected, Project, Folder symbol")
+        #expect(SessionSidebarView.rowAccessibilityValue(for: session(unseen: 0), isSelected: false, projectSymbol: .terminal) == "unselected, Project, Terminal symbol")
+        #expect(
+            SessionSidebarView.rowAccessibilityValue(for: session(unseen: 2), isSelected: false, projectSymbol: .chip, iconName: "cpu.fill")
+                == "unselected, 2 unseen, Project, \(ProjectSymbol.chip.displayName) symbol, icon cpu.fill"
+        )
+    }
+
+    @Test func theProjectSymbolGate() {
+        let id = UUID()
+        #expect(SessionSidebarView.rowProjectSymbol(flagOn: false, projectID: id, symbol: .web) == nil)
+        #expect(SessionSidebarView.rowProjectSymbol(flagOn: true, projectID: nil, symbol: .web) == nil)
+        #expect(SessionSidebarView.rowProjectSymbol(flagOn: true, projectID: id, symbol: nil) == .default)
+        #expect(SessionSidebarView.rowProjectSymbol(flagOn: true, projectID: id, symbol: .web) == .web)
+    }
+
+    @Test func everySymbolHasADistinctProjectPart() {
+        let values = ProjectSymbol.allCases.map {
+            SessionSidebarView.rowAccessibilityValue(for: session(unseen: 0), isSelected: false, projectSymbol: $0)
+        }
+        #expect(Set(values).count == ProjectSymbol.allCases.count)
+    }
+
     @Test func iconsAreExposedOnlyAlongsideTheScriptVariable() {
         #expect(!UITestDriver.exposesSidebarIcons(environment: [:]))
         #expect(!UITestDriver.exposesSidebarIcons(environment: [UITestDriver.sidebarIconsEnvVar: "1"]))

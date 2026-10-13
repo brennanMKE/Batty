@@ -17,20 +17,37 @@ public struct SessionSidebarView: View {
     }
 
     /// "selected" / "unselected", then ", N unseen" while the Session has
-    /// unseen bell events. The numeric badge is folded into the row's single
-    /// accessibility element, so this is the only place it is readable.
-    static func rowAccessibilityValue(for session: SessionRuntime, isSelected: Bool, iconName: String? = nil) -> String {
+    /// unseen bell events, then ", Project, <symbol name> symbol" when the Session is
+    /// backed by a Project. The row's icon and numeric badge are folded into
+    /// its single accessibility element, so this value is the only place
+    /// either is readable.
+    static func rowAccessibilityValue(
+        for session: SessionRuntime,
+        isSelected: Bool,
+        projectSymbol: ProjectSymbol? = nil,
+        iconName: String? = nil
+    ) -> String {
         var value = isSelected ? "selected" : "unselected"
         if session.unseenBellCount > 0 { value += ", \(session.unseenBellCount) unseen" }
+        if let projectSymbol { value += ", Project, \(projectSymbol.displayName) symbol" }
         if let iconName { value += ", icon \(iconName)" }
         return value
     }
 
-    /// The Sidebar's icon is merged into the row's single accessibility
-    /// element, so a UI test that asserts which symbol a row draws reads it
-    /// from the row's value. Off unless the harness asks, so VoiceOver never
-    /// speaks symbol names and tests that compare the value exactly are
-    /// unaffected.
+    /// The symbol whose name the row's value carries: nil for a plain Session
+    /// and whenever the Projects flag is off, so a flag-off row's value is
+    /// exactly what it was before Projects.
+    static func rowProjectSymbol(flagOn: Bool, projectID: UUID?, symbol: ProjectSymbol?) -> ProjectSymbol? {
+        guard flagOn, projectID != nil else { return nil }
+        return symbol ?? .default
+    }
+
+    /// The Project part of the row's value names the Project's symbol for
+    /// VoiceOver, but not the SF Symbol itself, and says nothing about the
+    /// plain Session circle or the flag-off icon. A UI test that asserts the
+    /// drawn SF Symbol reads it from the row's value. Off unless the harness
+    /// asks, so VoiceOver never speaks SF Symbol names and tests that compare
+    /// the value exactly are unaffected.
     private static let exposesRowIcon = UITestDriver.exposesSidebarIcons()
 
     private func rowIconName(for session: SessionRuntime) -> String? {
@@ -86,11 +103,11 @@ public struct SessionSidebarView: View {
                         .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
                     }
                 } label: {
-                    // SessionRow has no child that needs its own identifier
-                    // (no Button, nothing else already carries one), so the
-                    // fold-into-a-leaf behavior this identifier would
-                    // otherwise trigger is harmless here — `.contain` isn't
-                    // needed. Applied on the label content, not on the whole
+                    // SessionRow's icon identifiers and label are folded into
+                    // this row's single element, and no child is a control
+                    // that needs its own identifier, so `.contain` isn't
+                    // used. The icon's state is exposed through
+                    // `rowAccessibilityValue` instead. Applied on the label content, not on the whole
                     // DisclosureGroup, purely so it doesn't also describe the
                     // disclosed pane rows below it.
                     SessionRow(
@@ -110,7 +127,7 @@ public struct SessionSidebarView: View {
                         }
                     )
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, iconName: rowIconName(for: session)))
+                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(flagOn: store.featureFlags.projects, projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session)))
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(

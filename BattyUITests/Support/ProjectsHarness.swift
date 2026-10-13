@@ -227,12 +227,9 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         XCTAssertTrue(element("project-picker.root", in: app).waitForExistence(timeout: 10), "the Open Project picker did not appear")
     }
 
-    /// The picker's filter text field. Its own `project-picker.filter` identifier is
-    /// replaced by the sheet root's `project-picker.root` in the accessibility tree, so
-    /// either identifier is accepted and the match is scoped to text fields.
     @MainActor
     func pickerFilterField(in app: XCUIApplication) -> XCUIElement {
-        app.textFields.matching(NSPredicate(format: "identifier IN %@", ["project-picker.filter", "project-picker.root"])).firstMatch
+        app.textFields["project-picker.filter"]
     }
 
     /// Types `filter` until it leaves exactly the card for `name`, so the
@@ -300,19 +297,14 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         )
     }
 
-    /// A Pane card in the editor's preview. Every card carries the preview's
-    /// `project-editor.preview` identifier instead of `project-editor.pane.<n>`, so a
-    /// card is found by its "Pane <n>: <kind>" label.
+    /// A Pane card in the editor's preview: a button labelled "Pane <n>: <kind>".
     @MainActor
     func paneCard(_ number: Int, in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(
-            format: "(identifier == %@ OR identifier == %@) AND label BEGINSWITH %@",
-            "project-editor.preview", "project-editor.pane.\(number)", "Pane \(number):"
-        )).firstMatch
+        app.buttons["project-editor.pane.\(number)"]
     }
 
-    /// Pane 1's card reports the whole preview as its frame, so every card is clicked
-    /// near its top-left, which lies inside the card whichever frame it reports.
+    /// Clicked near the top-left: a center click on Pane 1 in a 2x2 layout did not select it
+    /// in the VM (#0484); the top-left lies inside the card whichever frame it reports.
     @MainActor
     func clickPaneCard(_ number: Int, in app: XCUIApplication) {
         let card = paneCard(number, in: app)
@@ -397,7 +389,10 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     }
 
     /// A menu item's check mark sits in its leading column and XCUITest exposes it
-    /// neither as a value nor as selection, so it is read from the item's pixels.
+    /// neither as a value nor as selection, so it is read from the item's pixels. This
+    /// stays as a pixel check (#0484 finding 4): the item is an `NSMenuItem` built by
+    /// SwiftUI from a `Toggle`, and its state was not observed in the accessibility tree.
+    /// `ProjectFileMenuModel`'s unit tests are the primary coverage of check state.
     @MainActor
     func assertCheckMarks(checked: XCUIElement, unchecked: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         guard let on = leadingInk(of: checked, points: 20, backgroundAtRight: true),
@@ -413,11 +408,28 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         XCTAssertGreaterThan(on, off + 0.02, "the open Project's menu item has no check mark (ink \(on) vs \(off))", file: file, line: line)
     }
 
-    /// A Project-backed row draws its Project's symbol (the folder by default) and a plain
-    /// Session draws the solid circle.
+    /// The Project part of a Sidebar row's value, such as "Folder" for ", Project, Folder symbol",
+    /// or nil when the row is not Project-backed.
+    @MainActor
+    func rowProjectPart(_ title: String, in app: XCUIApplication) -> String? {
+        let value = BattyUITestHarness.sessionRow(named: title, in: app).value as? String
+        guard let range = value?.range(of: ", Project, ") else { return nil }
+        return value.map { String($0[range.upperBound...].prefix { $0 != "," }) }.flatMap { $0.hasSuffix(" symbol") ? String($0.dropLast(" symbol".count)) : nil }
+    }
+
+    /// A Project-backed row's value names its Project's symbol (the folder by default) and
+    /// a plain Session's value has no Project part.
     @MainActor
     func assertProjectGlyph(projectRow: String, plainRow: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(BattyUITestHarness.sessionRow(named: projectRow, in: app).waitForExistence(timeout: 10), "no Sidebar row \(projectRow)", file: file, line: line)
+        XCTAssertTrue(
+            waitFor({ self.rowProjectPart(projectRow, in: app) == "Folder" }, timeout: 10),
+            "row \(projectRow) has Project part \(rowProjectPart(projectRow, in: app) ?? "none"), expected Folder",
+            file: file, line: line
+        )
         waitForRowIcon(projectRow, "folder.fill", in: app, file: file, line: line)
+        XCTAssertTrue(BattyUITestHarness.sessionRow(named: plainRow, in: app).exists, "no Sidebar row \(plainRow)", file: file, line: line)
+        XCTAssertNil(rowProjectPart(plainRow, in: app), "plain row \(plainRow) claims to be Project-backed", file: file, line: line)
         waitForRowIcon(plainRow, "circle.fill", in: app, file: file, line: line)
     }
 

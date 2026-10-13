@@ -535,7 +535,7 @@ Quickly was caught as `[0150]`.
 - `open-quickly.root`, `open-quickly.filter-field`,
   `open-quickly.row.<target>`.
 - `menu.file.open-quickly` — the File menu item for Open Quickly.
-- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`. With `BATTY_UI_TEST_SIDEBAR_ICONS=1` the value ends with `, icon <SF Symbol name>` (#0482), for example `selected, icon circle.fill`; it is how UI tests read which symbol a row draws.
+- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`, then `, N unseen` while bells are unseen, then `, Project, <symbol name> symbol` (for example `selected, Project, Terminal symbol`) for a Project-backed Session with the Projects flag on (#0484); never present with the flag off. With `BATTY_UI_TEST_SIDEBAR_ICONS=1` the value also ends with `, icon <SF Symbol name>` (#0482), for example `selected, icon circle.fill`; it is how UI tests read which SF Symbol a row draws.
 - `accessibilityValue("active" / "inactive")` on `tab-chip.<title>`.
 
 ---
@@ -888,7 +888,7 @@ unchanged; these are the ones they do not cover):
 
 - `project-startup-trust` -- the startup-command trust sheet; `project-startup-trust.remember`
   (checked by default), `project-startup-trust.open-without-running`, `project-startup-trust.run`.
-  Each listed command is a static text `$ <command>`.
+  Each listed command is one element `project-startup-trust.command.<n>` (#0484).
 - `tab-startup-waiting` -- the Tab chip's menu button shown when a startup command's shell never
   reported readiness (#0479); label and help "Startup command not run -- the shell didn't report it was
   ready"; menu items "Run Now" and "Dismiss". Found by label as well, since Accessibility may not
@@ -925,23 +925,24 @@ unchanged; these are the ones they do not cover):
 | Last content window closed with unsaved editor edits keeps the app; Cmd-W with no content window asks, then quits (#0481) | `ProjectsEditorQuitTests.testClosingTheLastContentWindowKeepsTheAppWhileTheEditorHasUnsavedEditsAndCmdWClosesTheEditor` |
 | Cmd-W with a sheet over the editor does nothing (#0481) | `ProjectsEditorQuitTests.testCmdWWithASheetOverTheEditorLeavesTheSheetAndTheEditorAlone` |
 
-**Identifiers the accessibility tree does not honor** (tracked by #0484; the pixel-check helpers `iconInk`/`assertCheckMarks` in `ProjectsHarness.swift` go away with it; the tests work around each; fixing the
-view would let them use the documented identifier):
+**Accessibility structure (#0484).** The picker sheet root, the Project Editor's Pane preview, the
+startup-command trust sheet root and the Symbol field are `.accessibilityElement(children: .contain)`
+containers, so their children keep their own identifiers (`project-picker.filter`,
+`project-picker.hint`, `project-editor.pane.<n>`, `project-startup-trust.remember`,
+`.open-without-running`, `.run`). Each Pane card is a button labelled "Pane <n>: <kind>" and each trust
+sheet command is one combined element `project-startup-trust.command.<n>` (one-based) whose label joins
+the Pane/Tab label and `$ <command>`. The Symbol field's inner button is `.focusable(false)`. This list is the contract. It has not yet been run in the Tart VM or
+checked with Accessibility Inspector.
 
-- `project-picker.filter`, `project-picker.hint` and the other un-buttoned children of the picker
-  sheet surface as `project-picker.root`, because the root's identifier is applied to a container
-  that does not contain its children. The tests find the filter as the text field with either
-  identifier. The cards (`project-picker.card.<name>`) are buttons and keep their own.
-- `project-editor.pane.<n>` surfaces as `project-editor.preview` on every card; the tests match
-  `project-editor.preview` plus the label "Pane <n>: <kind>". Pane 1's card reports the whole
-  preview as its frame, so cards are clicked near their top-left.
-- `session-row.project-glyph` and `session-row.icon` are not elements at all: the Sidebar `Label`
-  merges the icon into `session-row.<title>`. The tests read the symbol from that row's value, which
-  carries `, icon <symbol>` when `BATTY_UI_TEST_SIDEBAR_ICONS=1` (#0482).
-- A File menu check mark is exposed neither as `value` nor as selection; the tests read it from
-  the item's pixels.
-- The trust sheet root's identifier can likewise replace its controls' identifiers; the tests
-  also match its buttons and toggle by title.
+- A Sidebar row's value carries `, Project, <symbol name> symbol` for a Project-backed Session while the
+  Projects flag is on. `ProjectsHarness.assertProjectGlyph`
+  reads it. `BATTY_UI_TEST_SIDEBAR_ICONS=1` stays for the SF Symbol name, which the Project part cannot
+  carry (the plain circle versus `rectangle.split.3x1` has no spoken form).
+- A File menu check mark is exposed neither as `value` nor as selection in the VM; `assertCheckMarks`
+  reads it from the item's pixels. The item is a SwiftUI `Toggle` in a native `NSMenu`, so this is
+  most likely how XCUITest maps `NSMenuItem` state; whether VoiceOver announces it as checked is not
+  verified (owed as a manual check with Accessibility Inspector, #0484). `ProjectFileMenuModel`'s unit
+  tests are the primary coverage of check state.
 
 **Not automated, kept as manual checks:** Cmd-N and Cmd-E inside the picker (the key
 equivalents compete with File > New Session and Pane > Open View; see the picker section's

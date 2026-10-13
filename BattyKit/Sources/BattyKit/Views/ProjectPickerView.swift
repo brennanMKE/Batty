@@ -83,6 +83,7 @@ struct ProjectPickerView: View {
         .background(.regularMaterial)
         .background(ProjectPickerWindowTag())
         .background(shortcutButtons)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-picker.root")
         .onAppear { filterFocused = true }
     }

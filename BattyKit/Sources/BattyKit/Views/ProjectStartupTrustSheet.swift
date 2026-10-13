@@ -14,13 +14,15 @@ struct ProjectStartupTrustSheet: View {
                 .font(.headline)
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(request.rows) { row in
+                    ForEach(Array(request.rows.enumerated()), id: \.element.id) { index, row in
                         VStack(alignment: .leading, spacing: 1) {
                             Text(row.label)
                                 .foregroundStyle(.secondary)
                             Text("$ \(row.command)")
                                 .textSelection(.enabled)
                         }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("project-startup-trust.command.\(index + 1)")
                     }
                 }
                 .font(.system(.callout, design: .monospaced))
@@ -46,6 +48,7 @@ struct ProjectStartupTrustSheet: View {
         }
         .padding(20)
         .frame(width: 460)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-startup-trust")
     }
 }

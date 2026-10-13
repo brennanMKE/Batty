@@ -28,6 +28,7 @@ struct ProjectSymbolPicker: View {
                     .foregroundStyle(color)
                     .frame(width: 26, height: 22)
             }
+            .focusable(false)
             .help(selected.displayName)
             .accessibilityLabel(Text("Symbol"))
             .accessibilityValue(Text(selected.displayName))
@@ -51,6 +52,8 @@ struct ProjectSymbolPicker: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isFieldFocused)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Symbol"))
         .onKeyPress(.leftArrow) { move(.left) }
         .onKeyPress(.rightArrow) { move(.right) }
         .onKeyPress(.upArrow) { move(.up) }

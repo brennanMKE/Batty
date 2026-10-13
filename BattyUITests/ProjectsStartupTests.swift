@@ -11,17 +11,18 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
         element("project-startup-trust", in: app)
     }
 
-    /// Text in the sheet is exposed through `value`, not `label`.
+    /// Each command reads as one element, `project-startup-trust.command.<n>`, whose label
+    /// joins the Pane/Tab label and the command.
     @MainActor
     private func listsCommand(containing text: String, in app: XCUIApplication) -> Bool {
-        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)).firstMatch.exists
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "project-startup-trust.command.", text
+        )).firstMatch.exists
     }
 
-    /// The sheet root's identifier can replace a control's own, so controls are also
-    /// matched by their title.
     @MainActor
-    private func sheetButton(_ identifier: String, title: String, in app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@ OR title == %@", identifier, title, title)).firstMatch
+    private func sheetButton(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons[identifier]
     }
 
     @MainActor
@@ -31,7 +32,7 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
 
     @MainActor
     private func clickSheetButton(_ identifier: String, _ title: String, in app: XCUIApplication) {
-        let button = sheetButton(identifier, title: title, in: app)
+        let button = sheetButton(identifier, in: app)
         XCTAssertTrue(button.waitForExistence(timeout: 10), "no \(title) button in the trust sheet")
         button.click()
     }
@@ -68,7 +69,7 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
         closeSession(runner.id)
         openThroughPicker("Runner", in: app)
         waitForSheet(in: app)
-        let remember = app.checkBoxes.matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH %@", "project-startup-trust.remember", "Don")).firstMatch
+        let remember = app.checkBoxes["project-startup-trust.remember"]
         XCTAssertTrue(remember.waitForExistence(timeout: 5), "no remember toggle in the trust sheet")
         if !isChecked(remember) { remember.click() }
         XCTAssertTrue(isChecked(remember), "the remember toggle is off: \(remember.debugDescription)")
@@ -145,7 +146,7 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
 
         openThroughPicker("Silent", in: app)
         waitForSheet(in: app)
-        let remember = app.checkBoxes.matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH %@", "project-startup-trust.remember", "Don")).firstMatch
+        let remember = app.checkBoxes["project-startup-trust.remember"]
         if remember.waitForExistence(timeout: 5), !isChecked(remember) { remember.click() }
         clickSheetButton("project-startup-trust.run", "Run Commands", in: app)
         var silent = try XCTUnwrap(waitForSessions(named: "Silent").first)

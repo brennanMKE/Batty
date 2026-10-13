@@ -487,6 +487,7 @@ private struct PanePreview: View {
         .onKeyPress(.rightArrow) { model.moveSelection(.right); return .handled }
         .onKeyPress(.upArrow) { model.moveSelection(.up); return .handled }
         .onKeyPress(.downArrow) { model.moveSelection(.down); return .handled }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-editor.preview")
     }
 }
