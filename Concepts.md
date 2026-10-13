@@ -67,6 +67,7 @@ A single visible region inside a Session — a leaf of the Split tree.
   - `rectangle.split.2x1` toolbar button or Cmd-D — split the focused Pane horizontally; new Pane appears to the right.
   - `rectangle.split.1x2` toolbar button or Cmd-Shift-D — split the focused Pane vertically; new Pane appears below.
   - The new Pane is born with one Tab containing one fresh Terminal Session in the parent Pane's cwd.
+  - A split from a non-terminal Pane starts in that Pane's directory (Git Status: the repository directory shown; Process Status: the followed Tab's directory), else in the most recently focused terminal Pane's directory in the same Session.
 - **Resizing:**
   - Mouse: drag the Split divider between Panes.
   - Keyboard: Cmd-Ctrl-arrows resize the Split containing focus by ±5%.

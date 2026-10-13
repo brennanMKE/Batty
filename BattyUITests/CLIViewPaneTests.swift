@@ -116,6 +116,98 @@ nonisolated final class CLIViewPaneTests: XCTestCase {
         XCTAssertTrue(untracked.waitForExistence(timeout: 15), "the Pane did not report the fixture repository's one untracked file")
     }
 
+    /// #0487: a terminal split from a Git Status Pane starts in the directory
+    /// that Pane shows. The fixture repository is not the source terminal's
+    /// directory, so neither the topology nor `pwd` can pass by default.
+    @MainActor
+    func testSplitTerminalFromGitStatusPaneInheritsRepositoryDirectory() throws {
+        let (app, _, session) = try launch()
+        defer { app.terminate() }
+
+        let repo = try BattyCLI.makeGitRepository(in: scratch)
+        let (gitPaneID, _) = try splitViewAndAssertRendered(
+            kind: "git-status",
+            contentIdentifier: "git-status.snapshot",
+            extraArguments: ["--path", repo.path],
+            source: session.focusedPaneID,
+            in: session,
+            app: app
+        )
+        let gitSession = try XCTUnwrap(
+            BattyCLI.waitForTopology { $0.session(session.id)?.focusedPaneID == gitPaneID }?.session(session.id),
+            "focus did not move to the Git Status Pane"
+        )
+        let knownPanes = Set(gitSession.panes.map(\.id))
+
+        app.typeKey("d", modifierFlags: [.command])
+
+        let afterSplit = try XCTUnwrap(
+            BattyCLI.waitForTopology { $0.session(session.id)?.panes.count == knownPanes.count + 1 }?.session(session.id),
+            "Cmd-D from the Git Status Pane did not add a Pane"
+        )
+        let newPane = try XCTUnwrap(afterSplit.panes.first { !knownPanes.contains($0.id) })
+        XCTAssertEqual(newPane.kind, "terminal")
+
+        let expected = URL(fileURLWithPath: repo.path).resolvingSymlinksInPath().path
+        let reported = try XCTUnwrap(
+            BattyCLI.waitForTopology { topology in
+                topology.pane(newPane.id)?.activeTabWorkingDirectory != nil
+            }?.pane(newPane.id)?.activeTabWorkingDirectory,
+            "the new terminal Tab reports no working directory"
+        )
+        XCTAssertEqual(URL(fileURLWithPath: reported).resolvingSymlinksInPath().path, expected)
+
+        let terminal = BattyScreen.terminalPane(newPane.id, in: app)
+        XCTAssertTrue(terminal.waitForExistence(timeout: 10))
+        terminal.click()
+        let sentinel = BattyUITestHarness.sentinelPath(named: "split-from-git-pwd")
+        app.typeText("pwd > \(sentinel)\n")
+        XCTAssertTrue(BattyUITestHarness.waitForFile(at: sentinel, timeout: 15), "the new terminal never ran pwd")
+        let printed = (try? String(contentsOfFile: sentinel, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "<sentinel unreadable>"
+        XCTAssertEqual(URL(fileURLWithPath: printed).resolvingSymlinksInPath().path, expected)
+    }
+
+    /// #0487: Cmd-G from a Git Status Pane opens the second Git Status Pane on
+    /// the same repository, not on the temp home.
+    @MainActor
+    func testGitStatusFromGitStatusPaneMonitorsTheSameRepository() throws {
+        let (app, _, session) = try launch()
+        defer { app.terminate() }
+
+        let repo = try BattyCLI.makeGitRepository(in: scratch)
+        let (gitPaneID, _) = try splitViewAndAssertRendered(
+            kind: "git-status",
+            contentIdentifier: "git-status.snapshot",
+            extraArguments: ["--path", repo.path],
+            source: session.focusedPaneID,
+            in: session,
+            app: app
+        )
+        let gitSession = try XCTUnwrap(
+            BattyCLI.waitForTopology { $0.session(session.id)?.focusedPaneID == gitPaneID }?.session(session.id),
+            "focus did not move to the Git Status Pane"
+        )
+        let knownPanes = Set(gitSession.panes.map(\.id))
+
+        app.typeKey("g", modifierFlags: [.command])
+
+        let afterSplit = try XCTUnwrap(
+            BattyCLI.waitForTopology { $0.session(session.id)?.panes.count == knownPanes.count + 1 }?.session(session.id),
+            "Cmd-G from the Git Status Pane did not add a Pane"
+        )
+        let secondID = try XCTUnwrap(afterSplit.panes.first { !knownPanes.contains($0.id) }).id
+        XCTAssertEqual(afterSplit.pane(secondID)?.kind, "git-status")
+        XCTAssertTrue(BattyScreen.element("pane-close-button.\(secondID.uuidString)", in: app).waitForExistence(timeout: 10))
+
+        let untracked = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Untracked Files (1)"))
+        XCTAssertTrue(
+            waitFor({ untracked.count >= 2 }, timeout: 15),
+            "the second Git Status Pane did not report the fixture repository's untracked file"
+        )
+        XCTAssertFalse(BattyScreen.element("git-status.not-a-repo", in: app).exists)
+    }
+
     /// A Git Status Pane opened on a directory that is not a repository shows
     /// the not-a-repository state instead of a snapshot. The source Pane's
     /// working directory is a repository, so the state can only come from

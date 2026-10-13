@@ -214,7 +214,7 @@ public final class SplitTree {
         ratio: Double = 0.5,
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane = Self.makePane(inheritingFrom: source, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
+        let newPane = Self.makePane(inheritingFrom: source, in: self, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
         if let sessionID {
             newPane.attachToSession(sessionID)
         }
@@ -259,7 +259,7 @@ public final class SplitTree {
         ratio: Double = 0.5,
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
-        let newPane = Self.makePane(inheritingFrom: source, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
+        let newPane = Self.makePane(inheritingFrom: source, in: self, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
         if let sessionID {
             newPane.attachToSession(sessionID)
         }
@@ -280,13 +280,12 @@ public final class SplitTree {
         }
     }
 
-    /// `kind != .terminal` skips cwd inheritance and `command` entirely — a
-    /// non-terminal pane has no cwd to inherit "in the same sense" a
-    /// terminal split does (`docs/pane-kinds.md` §1) and `command` presumes
-    /// a shell. This entry point stays terminal-only for its cwd-inheriting
-    /// callers (`splitFocusedPane`/`splitFullDimension`); `splitPane(id:...)`
-    /// is the only caller that can pass a non-terminal `kind` today (#0315's
-    /// XPC `pane split --view <kind>`).
+    /// `kind != .terminal` skips `command` entirely — it presumes a shell.
+    /// The directory a new Pane inherits comes from ``inheritedSource(from:in:tabLookup:)``
+    /// for every `kind` and every source kind, terminal or not.
+    /// `splitFocusedPane`/`splitFullDimension` build terminal Panes only;
+    /// `splitPane(id:...)` is the only caller that can pass a non-terminal `kind`
+    /// (#0315's XPC `pane split --view <kind>`, and `WindowRuntime.createPane`).
     /// `contentFactory` forwards to `PaneRuntime.init`'s own injection
     /// point (#0313 review round 1) — `nil` (the default) means "resolve
     /// automatically," per kind: `PaneRuntime.makeContent` for every kind
@@ -316,20 +315,23 @@ public final class SplitTree {
     /// onto this parameter hit and had to fix.
     ///
     /// `path`, added by #0304, is the directory a `.gitStatus` pane
-    /// monitors when this function's own default applies — resolved by
-    /// the caller per `docs/design/git-status-view.md` §1's order:
-    /// explicit CLI `--path`, else `source`'s active Tab's working
-    /// directory (the same cwd a terminal split would inherit), else
+    /// monitors when this function's own default applies — resolved per
+    /// `docs/design/git-status-view.md` §1's order: explicit CLI `--path`,
+    /// else the directory ``inheritedSource(from:in:tabLookup:)`` resolves
+    /// from `source` (the same cwd a terminal split would inherit), else
     /// `$HOME`. Ignored for `.terminal`, and ignored (not just unused —
     /// never read) whenever an explicit `contentFactory` is supplied.
     ///
     /// `tabLookup` is required (no default): a `.processStatus` pane's
     /// `.followingTab` targets — including ones picked later via
     /// retarget — resolve only through it, so every caller, terminal-kind
-    /// splits included, must supply a real by-id lookup even though only
-    /// the `.processStatus` branch below ever invokes it.
+    /// splits included, must supply a real by-id lookup even though it is only
+    /// invoked by the `.processStatus` branch below and by
+    /// `inheritedSource(from:in:tabLookup:)` to resolve a Process Status
+    /// source's followed Tab.
     private static func makePane(
         inheritingFrom source: PaneRuntime?,
+        in tree: SplitTree,
         command: String? = nil,
         kind: PaneContentKind = .terminal,
         processStatusPid: Int32? = nil,
@@ -338,40 +340,129 @@ public final class SplitTree {
         isSessionSelected: Bool,
         tabLookup: @escaping (UUID) -> TabRuntime?
     ) -> PaneRuntime {
+        let inherited = inheritedSource(from: source, in: tree, tabLookup: tabLookup)
         guard kind == .terminal else {
             let resolvedFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)?
             if let contentFactory {
                 resolvedFactory = contentFactory
             } else if kind == .processStatus {
                 // #0305 mode selection: an explicit `--pid` pins mode A;
-                // otherwise mode B follows the split-source pane's active
-                // Tab (`docs/design/process-status-view.md` §2 — "the
-                // previously-focused Pane's active Tab"). No source pane
-                // (a freestanding creation with no sibling to inherit
-                // from) falls through to the "No process selected" empty
-                // state.
+                // otherwise mode B follows `inherited.followedTabID` (see
+                // `inheritedSource`): the terminal source's active Tab, else
+                // the Process Status source's followed Tab, else the most
+                // recently focused terminal Pane's active Tab. It is nil
+                // (the "No process selected" empty state) with no source or
+                // no terminal Pane to follow.
                 let target: ProcessStatusPaneContent.Target? = processStatusPid.map { .pinned($0) }
-                    ?? source.map { .followingTab($0.activeTabID) }
+                    ?? inherited.followedTabID.map { .followingTab($0) }
                 resolvedFactory = { _ in ProcessStatusPaneContent(target: target, tabLookup: tabLookup) }
             } else if kind == .gitStatus {
                 // #0304's own directory resolution — see this function's
                 // doc comment above for why this branch comes *after* the
                 // `if let contentFactory` check, never before it.
-                let sourceCWD = source?.activeTab?.terminal.workingDirectory
-                    ?? source?.activeTab?.terminal.configuration.workingDirectory
-                let resolvedPath = path ?? sourceCWD ?? NSHomeDirectory()
+                let resolvedPath = path ?? inherited.workingDirectory ?? NSHomeDirectory()
                 resolvedFactory = { _ in GitStatusPaneContent(directoryPath: resolvedPath) }
             } else {
                 resolvedFactory = PaneRuntime.makeContent
             }
             return PaneRuntime(kind: kind, isSessionSelected: isSessionSelected, contentFactory: resolvedFactory)
         }
-        guard let sourceTab = source?.activeTab else {
+        guard source != nil else {
             return command == nil ? PaneRuntime() : PaneRuntime(tabs: [TabRuntime(command: command)])
         }
-        let cwd = sourceTab.terminal.workingDirectory
-            ?? sourceTab.terminal.configuration.workingDirectory
-        return PaneRuntime(tabs: [TabRuntime(workingDirectory: cwd, command: command)])
+        return PaneRuntime(tabs: [TabRuntime(workingDirectory: inherited.workingDirectory, command: command)])
+    }
+
+    struct InheritedSource: Equatable {
+        enum Step: String {
+            case none
+            case terminal
+            case gitStatusDirectory
+            case followedTab
+            case recentTerminal
+        }
+
+        var workingDirectory: String?
+        var followedTabID: UUID?
+        var step: Step
+    }
+
+    /// The single owner of "what does a Pane split from `source` inherit".
+    /// Precedence, per directory: a terminal source's active Tab; a Git Status
+    /// source's `directoryPath` (not its repository toplevel, so a subdirectory
+    /// stays a subdirectory); a Process Status source following a Tab that
+    /// still resolves, that Tab's directory; otherwise the most recently
+    /// focused terminal Pane in `tree`, else the first terminal Pane in
+    /// depth-first order (`focusHistory` is not seeded at construction), else
+    /// nothing. Hidden Panes count. A non-terminal Pane's own placeholder Tab
+    /// never has a directory and is never followed. A followed Process Status Tab
+    /// with no cwd is still followed by a new Process Status Pane, while a
+    /// terminal split falls through to the most recent terminal for its
+    /// directory; this is deliberate, so the new Pane keeps watching the same
+    /// process.
+    ///
+    /// Reads `terminal.workingDirectory` (the live value), not the
+    /// `TabRuntime.workingDirectory` mirror: this runs once from an
+    /// event-driven split, the case the mirror's doc comment lists for the raw
+    /// property.
+    static func inheritedSource(
+        from source: PaneRuntime?,
+        in tree: SplitTree,
+        tabLookup: (UUID) -> TabRuntime?
+    ) -> InheritedSource {
+        guard let source else { return InheritedSource(workingDirectory: nil, followedTabID: nil, step: .none) }
+
+        func directory(of tab: TabRuntime) -> String? {
+            tab.terminal.workingDirectory ?? tab.terminal.configuration.workingDirectory
+        }
+
+        let result: InheritedSource
+        switch source.kind {
+        case .terminal:
+            result = InheritedSource(
+                workingDirectory: source.activeTab.flatMap(directory(of:)),
+                followedTabID: source.activeTabID,
+                step: .terminal
+            )
+        default:
+            var directoryPath: String?
+            var step = InheritedSource.Step.none
+            var followedTabID: UUID?
+            if let git = source.content as? GitStatusPaneContent {
+                directoryPath = git.directoryPath
+                step = .gitStatusDirectory
+            } else if let process = source.content as? ProcessStatusPaneContent,
+                      case .followingTab(let id)? = process.target,
+                      let tab = tabLookup(id) {
+                followedTabID = tab.id
+                if let cwd = directory(of: tab) {
+                    directoryPath = cwd
+                    step = .followedTab
+                }
+            }
+            let fallbackTab = mostRecentTerminalPane(in: tree)?.activeTab
+            if directoryPath == nil {
+                directoryPath = fallbackTab.flatMap(directory(of:))
+                step = directoryPath == nil ? .none : .recentTerminal
+            }
+            result = InheritedSource(
+                workingDirectory: directoryPath,
+                followedTabID: followedTabID ?? fallbackTab?.id,
+                step: step
+            )
+        }
+        logger.info("split-tree: inherited cwd step=\(result.step.rawValue, privacy: .public) source-kind=\(source.kind.rawValue, privacy: .public) resolved=\(result.workingDirectory ?? "nil", privacy: .private)")
+        return result
+    }
+
+    private static func mostRecentTerminalPane(in tree: SplitTree) -> PaneRuntime? {
+        let panes = tree.allPanes
+        for id in tree.focusHistory {
+            if let pane = panes.first(where: { $0.id == id }), pane.kind == .terminal {
+                return pane
+            }
+        }
+        return panes.first { $0.kind == .terminal }
     }
 
     /// Splits the pane with `targetPaneID`, wherever it lives in the tree —
@@ -429,6 +520,7 @@ public final class SplitTree {
         guard let targetPane = root.findPane(id: targetPaneID) else { return nil }
         let newPane = Self.makePane(
             inheritingFrom: targetPane,
+            in: self,
             command: command,
             kind: kind,
             processStatusPid: processStatusPid,

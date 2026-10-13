@@ -134,21 +134,21 @@ public enum PaneContentKind: String, Codable, Sendable, Hashable {
   and resize/rebalance logic are kind-agnostic for the same reason: they
   move/resize *panes*, not tabs, so a Git Status pane swaps and resizes
   exactly like a terminal pane does today, for free.
-- **`SplitTree.makePane` (`SplitTree.swift:208-215`, confirmed current)
-  is terminal-only today and stays terminal-only.** It is called from
-  `splitFocusedPane`, `splitFullDimension`, and `splitPane(id:...)` — all
-  three are the "split an existing pane, inheriting its cwd" family, which
-  only makes sense for a terminal source (a Git Status pane has no cwd to
-  inherit in the same sense — see §5's `--view` discussion). A parallel
-  entry point, `SplitTree.makePane(kind:)` or a new
-  `SplitTree.insertPane(_:adjacentTo:direction:)` taking an
-  already-constructed non-terminal `PaneRuntime`, is the right shape for a
-  future issue to add: it inserts a pre-built pane using the same
-  `SplitTreeNode.inserting`/`rebalancingChain` machinery `makePane`'s
-  callers already use, without threading `inheritingFrom: PaneRuntime?`
-  through a codepath that doesn't apply to it. Not built here — this
-  document names the extension point so `#0304`/`#0315` don't reinvent it
-  differently.
+- **Every split routes through `SplitTree.makePane`, and a split from a
+  non-terminal Pane inherits a directory too (#0487).** `makePane` is called
+  from `splitFocusedPane`, `splitFullDimension`, and `splitPane(id:...)`.
+  It asks `SplitTree.inheritedSource(from:in:tabLookup:)` what the source
+  Pane contributes, whatever its kind: a terminal source's active Tab cwd;
+  a Git Status source's `directoryPath` (the directory shown, not the
+  repository toplevel); a Process Status source following a Tab, that Tab's
+  cwd; otherwise the most recently focused terminal Pane in the same Session
+  (`focusHistory`, else the first terminal Pane depth-first; hidden Panes
+  count); otherwise nothing, and the shell starts in libghostty's default.
+  System Metrics and LM Studio Dashboard hold no directory, so they always
+  take the last two steps. The structural placeholder Tab of a non-terminal
+  Pane (§1) never has a cwd and is never read. The same resolution seeds a
+  typed Git Status Pane's directory when no `--path` is given and a typed
+  Process Status Pane's followed Tab when no `--pid` is given.
 - **`TabRuntime` is untouched.** No optional `terminal`, no kind field on
   `TabRuntime` (see the kind-on-Tab rejection above). This is the load-
   bearing simplification the pane-level decision buys: everything in
