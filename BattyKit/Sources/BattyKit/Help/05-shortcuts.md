@@ -98,6 +98,8 @@ Batty's shortcuts fire regardless of which view has keyboard focus — terminal,
 
 That's why `Cmd-N` inside a busy terminal creates a new session instead of being sent to the shell, and why `Cmd-W` closes the active tab even when you're typing into `vim`. Remap an action away from its default and the original combo falls back to whatever AppKit would normally do with it.
 
+Batty's session, pane and tab shortcuts only act on the window you are looking at. With Settings or Help in front, `Cmd-N`, `Cmd-T`, `Cmd-D`, the pane and tab moves and `Shift-Cmd-X` do nothing rather than changing a session in a window behind it. `Cmd-W` closes Settings or Help, and `Cmd-V` pastes into a Settings text field if one is focused.
+
 ## What macOS keeps for itself
 
 A handful of system shortcuts can't be overridden by any app and keep working regardless of Batty's settings:

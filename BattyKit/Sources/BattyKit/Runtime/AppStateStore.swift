@@ -991,20 +991,56 @@ public final class AppStateStore {
         Self.isProjectEditorWindow(NSApplication.shared.keyWindow)
     }
 
+    /// Whether `window` is an auxiliary window: a titled window that is not a
+    /// registered content window, such as Settings, Help, the Project Editor
+    /// or Sparkle's update window. Judged after walking up from a sheet
+    /// (`sheetParent`) or child window (`parent`) to the window it hangs from,
+    /// so a sheet or child window over a content window is not auxiliary and a
+    /// dialog over Settings is. Borderless windows and non-activating panels
+    /// are left out, so their chords keep resolving as before. The style mask, not `canBecomeMain`: a window that has never
+    /// been shown reports `canBecomeMain == false` even when titled, which
+    /// would make the rule untestable. `isContentWindow` is the registry
+    /// lookup, injected so the rule is a pure function.
+    static func isAuxiliaryWindow(_ window: NSWindow?, isContentWindow: (NSWindow) -> Bool) -> Bool {
+        guard var current = window else { return false }
+        while let up = current.sheetParent ?? current.parent { current = up }
+        guard !isContentWindow(current) else { return false }
+        return current.styleMask.contains(.titled) && !current.styleMask.contains(.nonactivatingPanel)
+    }
+
+    /// Whether `window` is an auxiliary window by this store's registry.
+    func isAuxiliaryWindow(_ window: NSWindow?) -> Bool {
+        Self.isAuxiliaryWindow(window) { nsWindowMap[ObjectIdentifier($0)] != nil }
+    }
+
+    /// The key window as `auxiliaryWindowIsKey` reads it. Tests substitute a
+    /// never-shown window; nothing else assigns it.
+    @ObservationIgnored var keyWindowProvider: () -> NSWindow? = { NSApplication.shared.keyWindow }
+
+    /// True while an auxiliary window (see `isAuxiliaryWindow`) is key.
+    public var auxiliaryWindowIsKey: Bool {
+        isAuxiliaryWindow(keyWindowProvider())
+    }
+
     /// The Window that menu actions on Sessions, Panes and Tabs act on:
-    /// `defaultTargetWindow()`, except nil while the Project Editor or the
-    /// Open Project picker is key. `BattyShortcuts` declines chords there, so
-    /// without this the menu item would run against the content window behind
-    /// the editor. The picker's Cmd-N (New Project) and Cmd-E (Edit) are also
-    /// New Session and Pane > Open View > System Metrics, and must never act on the
-    /// content window behind the sheet. Use it inside
-    /// action closures only; enablement is computed from
-    /// `defaultTargetWindow()`. XPC and CLI paths keep using
+    /// `defaultTargetWindow()`, except nil while the Project Editor, the Open
+    /// Project picker or any other auxiliary window (Settings, Help) is key.
+    /// `BattyShortcuts` declines chords there, so without this the menu item
+    /// would run against the content window behind it. The picker's Cmd-N
+    /// (New Project) and Cmd-E (Edit) are also New Session and Pane > Open
+    /// View > System Metrics, and must never act on the content window
+    /// behind the sheet. Use it inside action closures only; enablement is
+    /// computed from `defaultTargetWindow()`. XPC and CLI paths keep using
     /// `defaultTargetWindow()`.
-    public func menuTargetWindow(projectEditorIsKey: Bool? = nil, projectPickerIsKey: Bool? = nil) -> WindowRuntime? {
+    public func menuTargetWindow(
+        projectEditorIsKey: Bool? = nil,
+        projectPickerIsKey: Bool? = nil,
+        auxiliaryWindowIsKey: Bool? = nil
+    ) -> WindowRuntime? {
         let editorKey = projectEditorIsKey ?? self.projectEditorIsKey
         let pickerKey = projectPickerIsKey ?? self.projectPickerIsKey
-        return editorKey || pickerKey ? nil : defaultTargetWindow()
+        let auxiliaryKey = auxiliaryWindowIsKey ?? self.auxiliaryWindowIsKey
+        return editorKey || pickerKey || auxiliaryKey ? nil : defaultTargetWindow()
     }
 
     /// Whether `window` is the Open Project picker's sheet, which tags its
@@ -1045,10 +1081,11 @@ public final class AppStateStore {
         focusedTerminalTab(projectEditorIsKey: nil)
     }
 
-    /// Nil while the Project Editor is key (see `menuTargetWindow`), so
-    /// Paste and Exit Shell leave the Terminal alone then.
-    func focusedTerminalTab(projectEditorIsKey: Bool?) -> TabRuntime? {
-        menuTargetWindow(projectEditorIsKey: projectEditorIsKey)?.selectedSession?.focusedTerminalPane?.activeTab
+    /// Nil while the Project Editor, the Open Project picker or an auxiliary
+    /// window is key (see `menuTargetWindow`), so Paste and Exit Shell leave
+    /// the Terminal alone then.
+    func focusedTerminalTab(projectEditorIsKey: Bool?, auxiliaryWindowIsKey: Bool? = nil) -> TabRuntime? {
+        menuTargetWindow(projectEditorIsKey: projectEditorIsKey, auxiliaryWindowIsKey: auxiliaryWindowIsKey)?.selectedSession?.focusedTerminalPane?.activeTab
     }
 
     // MARK: - Init

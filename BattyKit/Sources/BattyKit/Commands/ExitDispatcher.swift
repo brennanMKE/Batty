@@ -25,7 +25,14 @@ public enum ExitDispatcher {
     /// out of sync once).
     public static func sendExit(store: AppStateStore?) {
         guard let store, let tab = focusedTerminalTab(in: store) else { return }
-        tab.terminal.send("exit\n")
+        sendText(tab, "exit\n")
+    }
+
+    /// Injectable seam, not `private`: a test cannot observe PTY bytes, so it
+    /// swaps in a recorder to prove Exit Shell sends nothing when no target
+    /// resolves.
+    static var sendText: (TabRuntime, String) -> Void = { tab, text in
+        tab.terminal.send(text)
     }
 
     // Not `private` — ExitDispatcherTests exercises resolution directly

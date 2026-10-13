@@ -61,13 +61,14 @@ public struct BattyCommands: Commands {
     private var keyWindow: WindowRuntime? { store.keyWindowOrFirstRegistered() }
 
     /// What a menu action acts on: `keyWindow`, except nil while the Project
-    /// Editor or the Open Project picker is key, so a menu-routed chord does
-    /// not reach the content window behind it (the picker's Cmd-N and Cmd-E
-    /// are New Session and Pane > Open View > System Metrics). Read only inside action closures. Enablement and
-    /// labels read `keyWindow`: the `Commands` body can re-run while the
-    /// editor is key, and nothing observed changes when focus returns to a
-    /// content window, so anything derived from the editor-key state there
-    /// could stay stale.
+    /// Editor, the Open Project picker or another auxiliary window (Settings,
+    /// Help) is key, so a menu-routed chord does not reach the content window
+    /// behind it (the picker's Cmd-N and Cmd-E are New Session and Pane >
+    /// Open View > System Metrics). Read only inside action closures.
+    /// Enablement and labels read `keyWindow`: the `Commands` body can re-run
+    /// while one of those windows is key, and nothing observed changes when
+    /// focus returns to a content window, so anything derived from the
+    /// key-window state there could stay stale.
     private var actionWindow: WindowRuntime? { store.menuTargetWindow() }
 
     /// Nil, so the whole group is absent, while the Projects flag is off.
@@ -323,10 +324,11 @@ public struct BattyCommands: Commands {
             // Horizontally submenu rows below deliberately omit that badge
             // so a chord is advertised on exactly one item. In a content
             // window `BattyShortcuts` takes the chord before the menu does,
-            // so it never runs twice; when another window such as Settings
-            // has focus, the menu shortcut is what runs it (the Project
-            // Editor and the Open Project picker excepted: their actions
-            // target no window).
+            // so it never runs twice. When an auxiliary window such as
+            // Settings, Help, the Project Editor or the Open Project picker
+            // is key, the menu item resolves no target and does nothing:
+            // the new Pane would open in a content window the user can't
+            // see.
             Section("Open View") {
                 Button {
                     actionWindow?.createPane(kind: .gitStatus, direction: .horizontal)
@@ -596,7 +598,7 @@ public struct BattyCommands: Commands {
             Button {
                 let title = keyWindow?.closeFocusedItemTitle ?? "Close Tab"
                 logger.info("Cmd-W action fired (Tab menu, title=\(title, privacy: .public))")
-                if store.projectEditorIsKey {
+                if store.projectEditorIsKey || store.auxiliaryWindowIsKey {
                     NSApp.keyWindow?.performClose(nil)
                 } else {
                     actionWindow?.requestCloseFocusedTab()
@@ -656,9 +658,11 @@ public struct BattyCommands: Commands {
     }
 
     /// The toggles the content windows observe. Dropped while the Project
-    /// Editor is key, so they do not act on the window behind it.
+    /// Editor or another auxiliary window is key, so they do not act on the
+    /// window behind it. (Each receiver also requires its own window to be
+    /// key, so with no content window key they are inert either way.)
     private func postToContentWindow(_ name: Notification.Name) {
-        guard !store.projectEditorIsKey else { return }
+        guard !store.projectEditorIsKey, !store.auxiliaryWindowIsKey else { return }
         NotificationCenter.default.post(name: name, object: nil)
     }
 

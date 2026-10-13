@@ -242,6 +242,26 @@ On each key-down event it:
 6. Returns `false` otherwise, letting AppKit forward the event to the
    menu bar and below.
 
+**When Settings or Help is key (#0480).** The monitor declines every chord
+(step 2), so the main menu sees it. The menu items that act on Sessions,
+Panes and Tabs resolve their target through `AppStateStore.menuTargetWindow()`
+inside the action closure, and that returns `nil` while an *auxiliary
+window* is key: a titled window that is not a non-activating panel and is
+not a registered content window, judged after walking a sheet or child window
+up to its parent (`AppStateStore.isAuxiliaryWindow`). So with Settings or Help in front, New Session, New Tab,
+the splits and Open View items, focus and resize moves, Tab and Session
+selection, Exit Shell and the panel toggles do nothing, and `Cmd-V` falls
+through to the standard paste action (so a focused Settings text field still
+pastes and the terminal behind never receives it). `Cmd-W` closes the key
+Settings or Help window (`performClose`) and leaves the content window's Tabs
+alone. Enablement and labels are deliberately *not* gated: they keep reading
+`defaultTargetWindow()`, because nothing observed changes when focus returns
+to a content window, so a disabled state computed from the key window could
+stay stale. CLI, XPC, the Command Palette and `batty://` URLs keep using
+`defaultTargetWindow()` and are unaffected. New Window, Settings, Help, About,
+Check for Updates and the Theme menu work from anywhere because they do not
+touch a hidden Session.
+
 Why this exists, in two pieces:
 
 - **SwiftUI Commands can't beat NSWindow on `Cmd-W`.** Per `#0062`,
@@ -258,9 +278,10 @@ Why this exists, in two pieces:
   AppKit side is the local monitor, which fires *before*
   `performKeyEquivalent` does.
 
-The monitor approach also lets shortcuts work from sidebar focus,
-terminal focus, settings focus — every window in the app — without
-needing per-view bridges.
+The monitor approach also lets shortcuts work from sidebar focus and
+terminal focus in every content window without needing per-view bridges.
+It deliberately does not run while Settings or Help is key (see "When
+Settings or Help is key" above).
 
 ### The libghostty keybind-clear
 
@@ -509,8 +530,9 @@ no Session is selected. These four items carry the horizontal chords
 (`Cmd-G`, `Cmd-J`, `Cmd-E`, `Cmd-Y`) as their badges; the horizontal rows
 inside the Split Horizontally submenu deliberately omit the badge so each
 chord is advertised on one item only. (The NSEvent monitor dispatches the
-chords either way in a Batty window, so it never runs twice; when another
-window such as Settings has focus, the menu shortcut is what runs it.) The vertical rows keep
+chords either way in a Batty content window, so it never runs twice; when
+Settings, Help or another auxiliary window is key, the menu item resolves no
+target and does nothing, #0480.) The vertical rows keep
 their `Cmd-Shift` badges. The window toolbar is unchanged by design.
 
 **Why this isn't an Option-hover reveal.** The initial design asked for
