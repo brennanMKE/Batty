@@ -102,18 +102,27 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
     /// fetched once per open). Leaves the picker open with the name typed.
     @MainActor
     private func openPickerOnFixture(_ app: XCUIApplication, excluding stale: pid_t? = nil) throws -> pid_t {
+        try openPickerOnFixtures(app, count: 1, excluding: stale)[0]
+    }
+
+    /// As ``openPickerOnFixture(_:excluding:)`` for `count` same-named
+    /// fixtures; the pids come back in row order.
+    @MainActor
+    private func openPickerOnFixtures(_ app: XCUIApplication, count: Int, excluding stale: pid_t? = nil) throws -> [pid_t] {
         var lastTree: [String] = []
         for _ in 0..<6 {
             openPicker(app)
             app.typeText(fixtureName)
-            var found: pid_t?
+            var found: [pid_t] = []
             waitFor({
                 let rows = self.rows(app)
-                guard rows.count == 1, let pid = self.pid(ofRow: rows.element(boundBy: 0).identifier), pid != stale else { return false }
-                found = pid
+                guard rows.count == count else { return false }
+                let pids = (0..<count).compactMap { self.pid(ofRow: rows.element(boundBy: $0).identifier) }
+                guard pids.count == count, !pids.contains(where: { $0 == stale }) else { return false }
+                found = pids
                 return true
             }, timeout: 5)
-            if let found { return found }
+            if !found.isEmpty { return found }
             lastTree = app.popovers.firstMatch.descendants(matching: .any).allElementsBoundByIndex.prefix(30)
                 .map { "\($0.elementType.rawValue)|\($0.identifier)|\($0.label)" }
             app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
@@ -217,5 +226,54 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
             XCTAssertFalse(BattyScreen.element("process-status.waiting-banner", in: app).exists)
             current = try XCTUnwrap(self.value("process-status.pid", in: app).flatMap { pid_t($0) })
         }
+    }
+
+    @MainActor
+    func testFollowByNameIsOfferedAfterExitAndPicksUpTheRelaunch() throws {
+        let (app, terminal) = try launchWithProcessStatusPane()
+        defer { app.terminate() }
+        let first = try startFixture(from: terminal)
+
+        let pid = try openPickerOnFixture(app)
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ self.value("process-status.pid", in: app) == String(pid) }, timeout: 15))
+        XCTAssertEqual(value("process-status.mode", in: app), "pinned")
+
+        stopFixture(first)
+        XCTAssertTrue(BattyScreen.element("process-status.exited-banner", in: app).waitForExistence(timeout: 20))
+
+        let choose = BattyScreen.element("process-status.choose-process", in: app)
+        choose.click()
+        let item = app.menuItems["Follow \u{201C}\(fixtureName!)\u{201D} by Name"]
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "no Follow by Name item after the process exited")
+        item.click()
+        XCTAssertTrue(waitFor({ self.value("process-status.mode", in: app) == "following-name" }, timeout: 10))
+
+        try startFixture(from: terminal)
+        XCTAssertTrue(
+            waitFor({
+                guard let shown = self.value("process-status.pid", in: app), let now = pid_t(shown) else { return false }
+                return now != pid
+            }, timeout: 20),
+            "pid stayed \(String(describing: value("process-status.pid", in: app)))"
+        )
+        XCTAssertTrue(waitFor({ self.value("process-status.state-chip", in: app) == "running" }, timeout: 15))
+    }
+
+    @MainActor
+    func testFollowByNameFromTheSecondRowFollowsThatProcess() throws {
+        let (app, terminal) = try launchWithProcessStatusPane()
+        defer { app.terminate() }
+        try startFixture(from: terminal)
+        try startFixture(from: terminal)
+
+        let pids = try openPickerOnFixtures(app, count: 2)
+        let toggle = BattyScreen.element("process-status.picker.follow-by-name", in: app)
+        XCTAssertTrue(toggle.exists)
+        toggle.click()
+        BattyScreen.element("process-status.picker.row.\(pids[1])", in: app).click()
+
+        XCTAssertTrue(waitFor({ self.value("process-status.pid", in: app) == String(pids[1]) }, timeout: 15))
+        XCTAssertEqual(value("process-status.mode", in: app), "following-name")
     }
 }

@@ -666,11 +666,18 @@ exits, for the Pane's life.
 - The followed name lives on `ProcessStatusPaneContent.target` and survives
   hide/show. It is not persisted across relaunch.
 - A hidden Pane does no periodic work, including while Waiting.
+- "Follow “name” by Name" is offered while the pinned process runs and after it
+  has exited (`Snapshot.listedName`). From a picker row or from a running pinned
+  process it follows that process first; from Exited it follows the next match.
+- When the followed process is lost the Pane re-enumerates at once, so a
+  relaunch that already exists shows with no Waiting flash. A recycled pid
+  (different start time or name) counts as a loss.
 
 **Regression patterns:**
 
 - `[0305]` — Process Status Pane and the "Pick a Running Process…" list.
 - `[0486]` — Added the filter field and follow-by-name.
+- `[0498]` — Follow-by-name after exit, immediate re-resolve, pid-reuse guard, clicked row first.
 
 **Accessibility identifiers:**
 

@@ -414,6 +414,28 @@ public enum ProcessInspector {
         bsdInfo(pid: pid).map(bsdName)
     }
 
+    /// What distinguishes one process from a later one that reuses its pid:
+    /// the enumerator's name plus the kernel start time.
+    public struct ListedIdentity: Equatable, Sendable {
+        public var name: String
+        public var startSeconds: UInt64
+        public var startMicroseconds: UInt64
+
+        public init(name: String, startSeconds: UInt64, startMicroseconds: UInt64) {
+            self.name = name
+            self.startSeconds = startSeconds
+            self.startMicroseconds = startMicroseconds
+        }
+    }
+
+    /// One `proc_pidinfo(PROC_PIDTBSDINFO)` read; `nil` when the pid is gone
+    /// or unreadable.
+    public static func listedIdentity(pid: pid_t) -> ListedIdentity? {
+        bsdInfo(pid: pid).map {
+            ListedIdentity(name: bsdName($0), startSeconds: $0.pbi_start_tvsec, startMicroseconds: $0.pbi_start_tvusec)
+        }
+    }
+
     // MARK: - Shared low-level helpers
 
     private static func allPids() -> [pid_t] {

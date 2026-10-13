@@ -249,7 +249,11 @@ struct ProcessStatusPaneView: View {
         RunningProcessPickerView(
             processes: runningProcessesCache,
             onPick: { process, followByName in
-                content.retarget(to: followByName ? .followingName(process.name) : .pinned(process.id))
+                if followByName {
+                    content.retarget(to: .followingName(process.name), seedPid: process.id)
+                } else {
+                    content.retarget(to: .pinned(process.id))
+                }
                 isPickingProcess = false
             },
             onDismiss: { isPickingProcess = false }
@@ -257,10 +261,9 @@ struct ProcessStatusPaneView: View {
     }
 
     /// "Stop Following by Name" while in mode C; "Follow “<name>” by Name"
-    /// while pinned. The name comes from the same `bsdName` read the
-    /// enumerator compares against, not `snapshot.name`. The lookup is one
-    /// `proc_pidinfo` call, made only while pinned, and the item is omitted
-    /// when it fails or the pane is not `.running`.
+    /// while pinned. The name is `snapshot.listedName`, the `bsdName`
+    /// the enumerator compares against (not `snapshot.name`), captured while
+    /// the process ran so the item is still offered after `.exited`.
     @ViewBuilder
     private var followByNameMenuItem: some View {
         switch content.target {
@@ -269,9 +272,12 @@ struct ProcessStatusPaneView: View {
                 content.stopFollowingName()
             }
         case .pinned:
-            if content.runState == .running, let pid = content.snapshot?.pid, let name = ProcessInspector.listedName(pid: pid) {
+            if content.runState == .running || content.runState == .exited, let name = content.snapshot?.listedName {
                 Button("Follow “\(name)” by Name") {
-                    content.retarget(to: .followingName(name))
+                    // After `.exited` there is no live process to seed, so the
+                    // next match is the successor.
+                    let seed = content.runState == .running ? content.snapshot?.pid : nil
+                    content.retarget(to: .followingName(name), seedPid: seed)
                 }
             }
         case .followingTab, nil:
