@@ -80,7 +80,8 @@ public struct SessionDetailView: View {
             CommandPaletteView(
                 isPresented: $commandPaletteShown,
                 store: store,
-                afterDismiss: { afterCommandPalette = $0 }
+                afterDismiss: { afterCommandPalette = $0 },
+                presentProjectPicker: { presentProjectPicker() }
             )
         }
         .sheet(isPresented: $openQuicklyShown) {
@@ -305,6 +306,11 @@ public struct SessionDetailView: View {
             get: { store.featureFlags.projects && projectPickerShown },
             set: { projectPickerShown = $0 }
         )
+    }
+
+    private func presentProjectPicker() {
+        guard store.featureFlags.projects else { return }
+        projectPickerShown = true
     }
 
     private func runAfterCommandPalette() {

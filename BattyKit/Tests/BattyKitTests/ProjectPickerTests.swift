@@ -323,18 +323,27 @@ struct ProjectPaletteEntryTests {
         #expect(recorder.calls.map(\.0) == [a.id])
     }
 
-    @Test func thePickerEntryPostsTheToggle() throws {
+    @Test func thePickerEntryHandsTheHostADirectPresentAfterDismissInsteadOfBroadcasting() throws {
         let fixture = StoreFixture()
         let store = try fixture.store(projectsEnabled: true)
-        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+        var deferred: [@MainActor () -> Void] = []
+        var presented = 0
+        let view = CommandPaletteView(
+            isPresented: .constant(true), store: store,
+            afterDismiss: { deferred.append($0) },
+            presentProjectPicker: { presented += 1 })
         var posted = 0
         let token = NotificationCenter.default.addObserver(
             forName: .battyToggleProjectPicker, object: nil, queue: nil) { _ in posted += 1 }
         defer { NotificationCenter.default.removeObserver(token) }
 
         view.allCommands.first { $0.id == "extra:openProjectPicker" }?.action()
+        #expect(presented == 0)
+        #expect(deferred.count == 1)
 
-        #expect(posted == 1)
+        deferred.forEach { $0() }
+        #expect(presented == 1)
+        #expect(posted == 0)
     }
 
     @Test func flagOffHasNoProjectEntriesAndNeverBuildsTheStore() throws {

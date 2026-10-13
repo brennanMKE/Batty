@@ -44,6 +44,12 @@ struct CommandPaletteView: View {
     /// once. Opening a Project may present the startup-command trust sheet,
     /// which may not present over a sheet that is still closing.
     var afterDismiss: ((@escaping @MainActor () -> Void) -> Void)?
+    /// Presents the Open Project picker on the window hosting this palette.
+    /// The row calls it directly rather than broadcasting a notification: the
+    /// notification handler is gated on the key window, which is not
+    /// guaranteed to be the content window while this sheet's `onDismiss`
+    /// runs. nil does nothing.
+    var presentProjectPicker: (@MainActor () -> Void)?
     /// Test seam for the "Open Project: <name>" commands; nil opens through
     /// `ProjectOpenPresenter`.
     var openProject: (@MainActor (UUID, AppStateStore.ProjectOpenMode) -> Void)?
@@ -116,7 +122,7 @@ struct CommandPaletteView: View {
                 keyHint: nil,
                 action: {
                     runAfterDismiss {
-                        NotificationCenter.default.post(name: .battyToggleProjectPicker, object: nil)
+                        presentProjectPicker?()
                     }
                 }
             ))

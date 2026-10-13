@@ -747,7 +747,11 @@ them are absent with `FeatureFlags.projects` off.
   made in the Project Editor or by the CLI while the sheet is up; the selection
   stays on its Project by id.
 - The palette's "Open Project..." row presents the picker from the palette's
-  `onDismiss`, which relies on the content window being key again by then.
+  `onDismiss` by calling a closure `SessionDetailView` hands it, which sets this
+  window's `projectPickerShown` directly (#0483). It does not broadcast
+  `.battyToggleProjectPicker`: that handler is gated on `isKeyWindow`, which is
+  not guaranteed to hold inside the palette's `onDismiss`. The closure re-checks
+  `featureFlags.projects`.
 - The File menu items have no key equivalents and there is no new
   `ShortcutAction`. The submenu is disabled when no window is registered. Its
   Choose Project... does nothing while the Project Editor is key
@@ -890,7 +894,7 @@ unchanged; these are the ones they do not cover):
 | Open from the picker; glyph, Panes, Tab titles | `ProjectsOpenTests.testPickerOpensProjectWithGlyphLayoutAndTabTitles` |
 | Return finds, Option-Return opens another | `ProjectsOpenTests.testReturnFocusesTheOpenSessionAndOptionReturnOpensAnother` |
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
-| Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both wrapped in a strict `XCTExpectFailure` for #0483: the row never presents the picker; remove the wrapper when #0483 lands) |
+| Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both assert that the picker presents, #0483) |
 | Trust sheet, Open Without Running, Run Commands, remembered approval, edited command | `ProjectsStartupTests.testTrustSheetGatesStartupCommandsAndRemembersApproval` |
 | Waiting indicator for a shell that never reports OSC 7 (`/bin/sh`), Run Now, Dismiss (#0479) | `ProjectsStartupTests.testShellThatNeverReportsShowsWaitingIndicatorWithRunNowAndDismiss` |
 | Edit Projects..., Window menu entry | `ProjectsEditorTests.testEditProjectsMenuOpensTheEditorOnTheStoredProjects` |
