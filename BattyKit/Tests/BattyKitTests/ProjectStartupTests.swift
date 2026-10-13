@@ -413,6 +413,28 @@ struct ProjectStartupOpenTests {
         #expect(window.pendingStartupTrusts.isEmpty)
     }
 
+    @Test func rememberingTheApprovalKeepsProjectFieldsWrittenWhileTheSheetWasUp() async throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project()
+        try store.projectStore?.upsert(project)
+        let opened = Date(timeIntervalSince1970: 1_900_000_000)
+        store.projectUsageClock = { opened }
+        store.requestOpenProject(id: project.id, completion: { _ in })
+        let window = try #require(store.defaultTargetWindow())
+        let request = try #require(window.pendingStartupTrusts.first)
+        var edited = project
+        edited.color = .cyan
+        try store.projectStore?.upsert(edited)
+
+        store.resolveStartupTrust(requestID: request.id, choice: .run(rememberApproval: true))
+
+        let stored = try #require(store.projectStore?.project(id: project.id))
+        #expect(stored.color == .cyan)
+        #expect(stored.approvedCommandsHash == project.startupCommandsHash)
+        #expect(stored.lastOpenedAt == opened)
+    }
+
     @Test func runCommandsWithoutRememberLeavesTheHashAlone() async throws {
         let fixture = try Fixture()
         let store = fixture.store()

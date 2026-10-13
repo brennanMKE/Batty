@@ -35,6 +35,7 @@ nonisolated enum ProjectFixture {
         preset: String? = nil,
         runStartupCommands: Bool = false,
         symbol: String? = nil,
+        lastOpenedAt: String? = nil,
         id: UUID = UUID()
     ) -> [String: Any] {
         var layoutObject: [String: Any] = ["root": layout]
@@ -48,6 +49,7 @@ nonisolated enum ProjectFixture {
             "runStartupCommandsOnOpen": runStartupCommands,
         ]
         if let symbol { result["symbol"] = symbol }
+        if let lastOpenedAt { result["lastOpenedAt"] = lastOpenedAt }
         return result
     }
 
@@ -375,7 +377,9 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
         let scale = Double(w) / Double(width)
         let regionWidth = min(w, Int(points * scale))
-        let backgroundOffset = backgroundAtRight ? (w - 1) * 4 : 0
+        // Mid-row, not the corner: a highlighted item (the pointer or keyboard rests on the
+        // first one) has rounded corners that are not its fill.
+        let backgroundOffset = backgroundAtRight ? ((h / 2) * w + (w - 1)) * 4 : 0
         let background = (0..<3).map { Int(pixels[backgroundOffset + $0]) }
         var inked = 0
         for y in 0..<h {

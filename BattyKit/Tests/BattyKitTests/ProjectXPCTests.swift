@@ -140,6 +140,25 @@ struct ProjectXPCTests {
         #expect(list.projects.map(\.id) == [zed.id, alpha.id])
     }
 
+    @Test func listIsRankedByRecencyWithOpenProjectsLast() async throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        var old = fixture.project("Old"), recent = fixture.project("Recent")
+        old.lastOpenedAt = Date(timeIntervalSince1970: 100)
+        recent.lastOpenedAt = Date(timeIntervalSince1970: 200)
+        let never = fixture.project("Never"), busy = fixture.project("Busy")
+        for project in [never, old, busy, recent] { try store.projectStore?.upsert(project) }
+        store.projectUsageClock = { Date(timeIntervalSince1970: 300) }
+        _ = try store.openProject(id: busy.id)
+        let service = AppXPCService(store: { store }, clock: TestClock())
+
+        let response = try await perform(service, verb: XPCVerb.projectList)
+
+        let list = try JSONDecoder().decode(ProjectListReply.self, from: try #require(response.payload))
+        #expect(list.projects.map(\.name) == ["Recent", "Old", "Never", "Busy"])
+        #expect(list.projects.map(\.isOpen) == [false, false, false, true])
+    }
+
     @Test func listOfAnEmptyStoreIsAnEmptyArray() async throws {
         let fixture = try Fixture()
         let store = fixture.store()

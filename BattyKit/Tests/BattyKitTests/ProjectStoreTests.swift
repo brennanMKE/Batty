@@ -204,6 +204,69 @@ struct ProjectStoreTests {
         #expect(!FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))
     }
 
+    @Test func aMalformedLastOpenedAtOnDiskKeepsEveryProject() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let layout = #""layout":{"root":{"type":"pane","pane":{"kind":"terminal"}}}"#
+        let json = """
+        {"version":1,"projects":[
+         {"id":"11111111-1111-1111-1111-111111111111","name":"Bad","rootPath":"/tmp/a","lastOpenedAt":"yesterday",\(layout)},
+         {"id":"22222222-2222-2222-2222-222222222222","name":"Good","rootPath":"/tmp/b","lastOpenedAt":"2023-11-14T22:13:20Z",\(layout)}
+        ]}
+        """
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(json.utf8).write(to: url)
+
+        let store = ProjectStore(fileURL: url)
+
+        #expect(store.projects.map(\.name) == ["Bad", "Good"])
+        #expect(store.projects[0].lastOpenedAt == nil)
+        #expect(store.projects[1].lastOpenedAt == Date(timeIntervalSince1970: 1_700_000_000))
+    }
+
+    @Test(arguments: [
+        #"{"version":1,"projects":[{"id":"11111111-1111-1111-1111-111111111111","name":"Keep","rootPath":"/tmp/a","layout":{"root":{"type":"pane","pane":{"kind":"terminal"}}}},{"id":"22222222-2222-2222-2222-222222222222","name":"Dropped","rootPath":"relative","layout":{"root":{"type":"pane","pane":{"kind":"terminal"}}}}]}"#,
+        #"{"version":99,"projects":[{"id":"11111111-1111-1111-1111-111111111111","name":"Keep","rootPath":"/tmp/a","layout":{"root":{"type":"pane","pane":{"kind":"terminal"}}}}]}"#,
+    ])
+    func recordOpenOnAFileNotFullyLoadedUpdatesMemoryOnly(json: String) throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let original = Data(json.utf8)
+        try original.write(to: url)
+        let store = ProjectStore(fileURL: url)
+        let keep = try #require(store.projects.first)
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try store.recordOpen(id: keep.id, at: date)
+
+        #expect(store.project(id: keep.id)?.lastOpenedAt == date)
+        #expect(try Data(contentsOf: url) == original, "the file is byte-for-byte untouched")
+        let backup = url.deletingLastPathComponent().appendingPathComponent(ProjectStore.backupFileName)
+        #expect(!FileManager.default.fileExists(atPath: backup.path))
+    }
+
+    @Test func recordOpenWritesTheDateToMemoryAndDiskAndRejectsAnUnknownId() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let store = ProjectStore(fileURL: url)
+        let a = project("A"), b = project("B")
+        try store.upsert(a)
+        try store.upsert(b)
+        let date = Date(timeIntervalSince1970: 1_800_000_000.25)
+
+        try store.recordOpen(id: b.id, at: date)
+
+        #expect(store.project(id: b.id)?.lastOpenedAt == date)
+        #expect(store.project(id: a.id)?.lastOpenedAt == nil)
+        #expect(store.projects.map(\.name) == ["A", "B"], "store order is untouched")
+        #expect(ProjectStore(fileURL: url).project(id: b.id)?.lastOpenedAt == date)
+        let unknown = UUID()
+        #expect(throws: ProjectStoreError.unknownProject(unknown)) {
+            try store.recordOpen(id: unknown, at: date)
+        }
+    }
+
     @Test func flagOnBuildsTheStoreLazilyOnInjectedPath() throws {
         let url = makeTempURL()
         defer { cleanup(url) }

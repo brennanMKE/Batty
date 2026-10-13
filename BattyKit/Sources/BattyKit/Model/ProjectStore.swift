@@ -161,6 +161,23 @@ public final class ProjectStore {
         try commit(ordered + remaining)
     }
 
+    /// Sets `lastOpenedAt` on the Project and saves. A failed write rolls the
+    /// in-memory list back and rethrows. While the file on disk could not be
+    /// fully loaded (a dropped Project or a newer version), only memory is
+    /// updated: opening a Project must not rewrite a file the user has not
+    /// explicitly saved.
+    public func recordOpen(id: UUID, at date: Date) throws {
+        guard let index = projects.firstIndex(where: { $0.id == id }) else { throw ProjectStoreError.unknownProject(id) }
+        var updated = projects
+        updated[index].lastOpenedAt = date
+        if unreadableOriginal != nil {
+            projects = updated
+            logger.notice("recordOpen: projects file not fully loaded; keeping lastOpenedAt in memory only")
+            return
+        }
+        try commit(updated)
+    }
+
     private func commit(_ updated: [Project]) throws {
         let previous = projects
         projects = updated

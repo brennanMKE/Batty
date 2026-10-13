@@ -32,37 +32,39 @@ nonisolated final class ProjectsCLITests: ProjectsUITestCase {
             name: "Alpha Stack",
             root: try makeDirectory("alpha"),
             layout: ProjectFixture.split("horizontal", [ProjectFixture.terminal(), ProjectFixture.view("system-metrics")]),
-            preset: "horizontalSplit"
+            preset: "horizontalSplit",
+            lastOpenedAt: "2026-01-02T00:00:00Z"
         )
-        let beta = ProjectFixture.project(name: "Beta Duo", root: try makeDirectory("beta"), layout: ProjectFixture.terminal(), preset: "singlePane")
+        let beta = ProjectFixture.project(name: "Beta Duo", root: try makeDirectory("beta"), layout: ProjectFixture.terminal(), preset: "singlePane", lastOpenedAt: "2026-01-01T00:00:00Z")
         let (app, _) = try launchApp(projects: [alpha, beta])
         defer { app.terminate() }
 
         var entries = try list()
-        XCTAssertEqual(entries.map(\.name), ["Alpha Stack", "Beta Duo"])
+        XCTAssertEqual(entries.map(\.name), ["Alpha Stack", "Beta Duo"], "seeded dates agree with store order")
         XCTAssertEqual(entries.map(\.paneCount), [2, 1])
         XCTAssertEqual(entries.map(\.isOpen), [false, false])
 
         let text = BattyCLI.runExpectingSuccess(["project", "list"])
         XCTAssertTrue(text.output.contains("Alpha Stack") && text.output.contains("Beta Duo"), "the table omits a Project: \(text.output)")
 
-        let opened = BattyCLI.runExpectingSuccess(["project", "open", "Beta Duo"])
-        XCTAssertTrue(opened.output.contains("Opened Session \"Beta Duo\""), opened.summary)
-        let session = try XCTUnwrap(waitForSessions(named: "Beta Duo").first)
-        XCTAssertTrue(BattyUITestHarness.sessionRow(named: "Beta Duo", in: app).waitForExistence(timeout: 10))
+        let opened = BattyCLI.runExpectingSuccess(["project", "open", "Alpha Stack"])
+        XCTAssertTrue(opened.output.contains("Opened Session \"Alpha Stack\""), opened.summary)
+        let session = try XCTUnwrap(waitForSessions(named: "Alpha Stack").first)
+        XCTAssertTrue(BattyUITestHarness.sessionRow(named: "Alpha Stack", in: app).waitForExistence(timeout: 10))
 
         entries = try list()
+        XCTAssertEqual(entries.map(\.name), ["Beta Duo", "Alpha Stack"], "the open Project, first in store order, sinks below the closed one")
         XCTAssertEqual(entries.map(\.isOpen), [false, true], "only the opened Project carries the open marker")
         let marked = BattyCLI.runExpectingSuccess(["project", "list"])
-        let betaLine = try XCTUnwrap(marked.lines.first { $0.hasPrefix("Beta Duo") })
-        XCTAssertTrue(betaLine.hasSuffix("open"), "the table does not mark the open Project: \(marked.output)")
-        XCTAssertFalse(try XCTUnwrap(marked.lines.first { $0.hasPrefix("Alpha Stack") }).hasSuffix("open"))
+        let alphaLine = try XCTUnwrap(marked.lines.first { $0.hasPrefix("Alpha Stack") })
+        XCTAssertTrue(alphaLine.hasSuffix("open"), "the table does not mark the open Project: \(marked.output)")
+        XCTAssertFalse(try XCTUnwrap(marked.lines.first { $0.hasPrefix("Beta Duo") }).hasSuffix("open"))
 
-        let focused = BattyCLI.runExpectingSuccess(["project", "open", "beta duo"])
-        XCTAssertTrue(focused.output.contains("Focused Session \"Beta Duo\""), "a second open found no existing Session: \(focused.summary)")
-        XCTAssertEqual(BattyCLI.topology()?.sessions.filter { $0.name == "Beta Duo" }.count, 1)
+        let focused = BattyCLI.runExpectingSuccess(["project", "open", "alpha stack"])
+        XCTAssertTrue(focused.output.contains("Focused Session \"Alpha Stack\""), "a second open found no existing Session: \(focused.summary)")
+        XCTAssertEqual(BattyCLI.topology()?.sessions.filter { $0.name == "Alpha Stack" }.count, 1)
 
-        let another = BattyCLI.runExpectingSuccess(["project", "open", "Beta Duo", "--new", "--json"])
+        let another = BattyCLI.runExpectingSuccess(["project", "open", "Alpha Stack", "--new", "--json"])
         let json = try XCTUnwrap(CLITopology.jsonObject(in: another.output))
         XCTAssertEqual(json["created"] as? Bool, true)
         let copyID = try XCTUnwrap((json["sessionID"] as? String).flatMap(UUID.init(uuidString:)))

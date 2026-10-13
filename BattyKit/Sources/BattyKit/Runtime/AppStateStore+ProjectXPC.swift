@@ -20,7 +20,7 @@ extension AppStateStore {
             return nil
         }
         let open = openProjectIDs
-        return ProjectListReply(projects: projectStore.projects.map {
+        return ProjectListReply(projects: ProjectRecency.ranked(projectStore.projects, openProjectIDs: open).map {
             ProjectListEntry(
                 id: $0.id, name: $0.name, rootPath: $0.rootPath,
                 paneCount: $0.layout.paneCount, isOpen: open.contains($0.id))

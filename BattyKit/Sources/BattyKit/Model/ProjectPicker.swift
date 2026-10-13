@@ -51,10 +51,11 @@ struct ProjectPickerModel: Equatable {
     private let homeDirectory: String
 
     init(projects: [Project], openProjectIDs: Set<UUID>, homeDirectory: String) {
-        self.projects = projects
+        let ranked = ProjectRecency.ranked(projects, openProjectIDs: openProjectIDs)
+        self.projects = ranked
         self.openProjectIDs = openProjectIDs
         self.homeDirectory = homeDirectory
-        selectedID = projects.first?.id
+        selectedID = ranked.first?.id
     }
 
     /// The same query and selection over current data, for a view that reads
@@ -62,7 +63,7 @@ struct ProjectPickerModel: Equatable {
     /// id; if that Project is gone or filtered out, the best match is chosen.
     func refreshed(projects: [Project], openProjectIDs: Set<UUID>) -> ProjectPickerModel {
         var copy = self
-        copy.projects = projects
+        copy.projects = ProjectRecency.ranked(projects, openProjectIDs: openProjectIDs)
         copy.openProjectIDs = openProjectIDs
         if let selectedID, copy.filtered.contains(where: { $0.id == selectedID }) { return copy }
         copy.selectedID = copy.filtered.first?.id

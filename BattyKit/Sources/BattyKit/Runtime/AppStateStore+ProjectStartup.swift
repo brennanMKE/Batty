@@ -145,7 +145,7 @@ extension AppStateStore {
         completion: ((Result<ProjectOpenResult, Error>) -> Void)?
     ) {
         if let hash = outcome.hashToStore, let projectStore {
-            var approved = project
+            var approved = projectStore.project(id: project.id) ?? project
             approved.approvedCommandsHash = hash
             do {
                 try projectStore.upsert(approved)

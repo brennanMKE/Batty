@@ -112,6 +112,8 @@ public final class AppStateStore {
     /// Time source for the startup-command readiness deadline. Tests inject a
     /// `TestClock`.
     @ObservationIgnored var startupReadinessClock: any SchedulingClock = SystemClock()
+    /// Wall clock for `Project.lastOpenedAt`. Tests assign a fixed closure.
+    @ObservationIgnored var projectUsageClock: () -> Date = Date.init
 
     /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
     /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
@@ -1308,6 +1310,7 @@ public final class AppStateStore {
             activateWindow(window)
             let event = WatchEventPayload(type: "session_focused", sessionID: existing.id, fromCli: fromCli)
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
+            recordProjectOpen(projectStore, id: projectID)
             return ProjectOpenResult(session: existing, wasCreated: false)
         }
         guard let target = defaultTargetWindow() else {
@@ -1327,7 +1330,18 @@ public final class AppStateStore {
         if fromCli || auxiliaryWindowIsKey { activateWindow(target) }
         let event = WatchEventPayload(type: "session_created", sessionID: session.id, fromCli: fromCli)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
+        recordProjectOpen(projectStore, id: projectID)
         return ProjectOpenResult(session: session, wasCreated: true)
+    }
+
+    /// A failed write is logged, never thrown: the Session already exists and
+    /// a stale timestamp is the lesser harm.
+    private func recordProjectOpen(_ store: ProjectStore, id: UUID) {
+        do {
+            try store.recordOpen(id: id, at: projectUsageClock())
+        } catch {
+            logger.error("openProject: recording lastOpenedAt failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// `fromCli` forwards to `WindowRuntime.removeSession(id:fromCli:)`,

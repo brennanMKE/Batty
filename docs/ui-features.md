@@ -735,7 +735,20 @@ them are absent with `FeatureFlags.projects` off.
   Down from a column a short last row lacks lands on the last card.
 - Typing a filter selects its best match. Names match fuzzily; paths match as a
   case-insensitive substring (the full path or its `~` form). Name matches rank
-  ahead of path matches; ties keep store order.
+  ahead of path matches; ties keep ranked order.
+- Order (#0492): `ProjectRecency.ranked` is the single sorter for the picker,
+  File > Open Project, the palette's "Open Project: <name>" rows and
+  `batty project list`. Most recently opened first (`Project.lastOpenedAt`,
+  written by `AppStateStore.openProject` on every successful open, including
+  focusing an open Project), then never-opened Projects in store order. Open
+  Projects sink below closed ones (`.last`), keeping recency order among
+  themselves and their OPEN badge / check mark / `open` marker. The Project
+  Editor's list alone stays in store order, because it is where the user
+  arranges that order. Covered by `ProjectRecencyTests`, `ProjectRecordOpenTests`,
+  the leniency and no-rewrite tests in `ProjectTests` and `ProjectStoreTests`,
+  the approval test in `ProjectStartupTests`, the surface order tests in
+  `ProjectPickerTests`, `ProjectPaletteEntryTests` and `ProjectXPCTests`, and
+  the VM UI test `ProjectsCLITests.testProjectListShowsSeededProjectsAndOpenMarker`.
 - Cmd-E (Edit) and Cmd-N (New Project) are hidden buttons with key
   equivalents inside the sheet. Cmd-N is also File > New Session, and Cmd-E is
   the default for Pane > Open View > System Metrics

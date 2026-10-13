@@ -302,6 +302,11 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         layout = try c.decode(ProjectLayout.self, forKey: .layout)
         runStartupCommandsOnOpen = try c.decodeIfPresent(Bool.self, forKey: .runStartupCommandsOnOpen) ?? false
         approvedCommandsHash = try c.decodeIfPresent(String.self, forKey: .approvedCommandsHash)
-        lastOpenedAt = try c.decodeIfPresent(Date.self, forKey: .lastOpenedAt)
+        if let decoded = try? c.decodeIfPresent(Date.self, forKey: .lastOpenedAt) {
+            lastOpenedAt = decoded
+        } else {
+            if c.contains(.lastOpenedAt), !((try? c.decodeNil(forKey: .lastOpenedAt)) ?? false) { logger.error("unreadable project lastOpenedAt; treating the project as never opened") }
+            lastOpenedAt = nil
+        }
     }
 }

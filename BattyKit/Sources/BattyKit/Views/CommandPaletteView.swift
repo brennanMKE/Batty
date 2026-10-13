@@ -153,7 +153,7 @@ struct CommandPaletteView: View {
                     ))
                 }
             }
-            for project in projectStore.projects {
+            for project in ProjectRecency.ranked(projectStore.projects, openProjectIDs: store.openProjectIDs) {
                 cmds.append(PaletteCommand(
                     id: "project:\(project.id.uuidString)",
                     title: String(localized: "Open Project: \(project.name)"),

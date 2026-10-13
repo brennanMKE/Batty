@@ -179,4 +179,27 @@ struct ProjectTests {
         let json = #"{"id":"\#(validID)","name":"P","rootPath":"/tmp/p","lastOpenedAt":"2023-11-14T22:13:20Z","layout":{"root":{"type":"pane","pane":{"kind":"terminal"}}}}"#
         #expect(try decodeProject(json).lastOpenedAt == Date(timeIntervalSince1970: 1_700_000_000))
     }
+
+    @Test func aFileWrittenBeforeLastOpenedAtLoadsAsNeverOpenedAndRanksInStoreOrder() throws {
+        let ids = ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"]
+        let projects = try ids.enumerated().map { index, id in
+            try decodeProject(#"{"id":"\#(id)","name":"P\#(index)","rootPath":"/tmp/p","layout":{"root":{"type":"pane","pane":{"kind":"terminal"}}}}"#)
+        }
+        #expect(projects.allSatisfy { $0.lastOpenedAt == nil })
+        #expect(ProjectRecency.ranked(projects, openProjectIDs: []).map(\.name) == ["P0", "P1"])
+    }
+
+    @Test func anUnparseableLastOpenedAtDecodesToNilAndKeepsTheProject() throws {
+        let project = try decodeProject(projectJSON(pane: #"{"kind":"terminal"}"#, extra: #""lastOpenedAt":"yesterday","#))
+        #expect(project.name == "P")
+        #expect(project.lastOpenedAt == nil)
+    }
+
+    @Test func aNonStringLastOpenedAtDecodesToNilAndKeepsTheProject() throws {
+        for value in ["7", "true", "{}", "[1]", "null"] {
+            let project = try decodeProject(projectJSON(pane: #"{"kind":"terminal"}"#, extra: "\"lastOpenedAt\":\(value),"))
+            #expect(project.name == "P")
+            #expect(project.lastOpenedAt == nil)
+        }
+    }
 }

@@ -56,7 +56,9 @@ struct ProjectListCommand: ParsableCommand {
         discussion: """
         Prints each Project's name, root folder (the home folder shown as \
         `~`), Pane count, and `open` when a Session from it is open, in the \
-        order Batty lists them. Read-only.
+        order Batty lists them: most recently opened first, then Projects never \
+        opened in the order saved. Projects with an open Session are listed last. \
+        Read-only.
         """,
         helpNames: .long
     )

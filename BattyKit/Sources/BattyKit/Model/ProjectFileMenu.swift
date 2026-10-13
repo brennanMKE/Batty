@@ -26,7 +26,7 @@ struct ProjectFileMenuModel: Equatable {
 
     static func make(featureEnabled: Bool, projects: [Project], openProjectIDs: Set<UUID>) -> ProjectFileMenuModel? {
         guard featureEnabled else { return nil }
-        var items: [Item] = projects.map { .project(id: $0.id, name: $0.name, symbol: $0.symbol, isOpen: openProjectIDs.contains($0.id)) }
+        var items: [Item] = ProjectRecency.ranked(projects, openProjectIDs: openProjectIDs).map { .project(id: $0.id, name: $0.name, symbol: $0.symbol, isOpen: openProjectIDs.contains($0.id)) }
         if !items.isEmpty { items.append(.divider) }
         items.append(.chooseProject)
         items.append(.newProject)

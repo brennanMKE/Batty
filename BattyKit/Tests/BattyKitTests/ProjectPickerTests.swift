@@ -11,9 +11,10 @@ private func project(
     _ name: String,
     root: String = "/Users/test/Developer/work",
     layout: ProjectLayout = .preset(.singlePane),
-    color: SessionColor = .blue
+    color: SessionColor = .blue,
+    lastOpenedAt: TimeInterval? = nil
 ) -> Project {
-    Project(name: name, rootPath: root, color: color, layout: layout)
+    Project(name: name, rootPath: root, color: color, layout: layout, lastOpenedAt: lastOpenedAt.map(Date.init(timeIntervalSince1970:)))
 }
 
 @MainActor
@@ -43,7 +44,7 @@ struct ProjectPickerModelTests {
         ProjectPickerModel(projects: projects, openProjectIDs: open, homeDirectory: home)
     }
 
-    @Test func cardsKeepStoreOrderAndDescribeEachProject() {
+    @Test func cardsDescribeEachProject() {
         let layout = ProjectLayout.preset(.mainLeftTwoRight, kinds: [.terminal, .gitStatus, .terminal])
         let a = project("Alpha", layout: layout, color: .teal)
         let b = project("Beta")
@@ -59,6 +60,39 @@ struct ProjectPickerModelTests {
         #expect(alpha.slots.map(\.frame) == layout.slotFrames)
         #expect(!alpha.isOpen)
         #expect(m.cards[1].isOpen)
+    }
+
+    @Test func cardsAreRankedByRecencyWithOpenProjectsLastAndStillMarkedOpen() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Beta"), c = project("Gamma", lastOpenedAt: 300)
+        let d = project("Delta", lastOpenedAt: 200)
+        let m = model([a, b, c, d], open: [c.id])
+
+        #expect(m.cards.map(\.name) == ["Delta", "Alpha", "Beta", "Gamma"])
+        #expect(m.cards.map(\.isOpen) == [false, false, false, true])
+        #expect(m.selectedID == d.id)
+    }
+
+    @Test func refreshingReRanksWhenASessionOpens() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Beta", lastOpenedAt: 200)
+        let m = model([a, b])
+        #expect(m.cards.map(\.name) == ["Beta", "Alpha"])
+
+        let refreshed = m.refreshed(projects: [a, b], openProjectIDs: [b.id])
+
+        #expect(refreshed.cards.map(\.name) == ["Alpha", "Beta"])
+        #expect(refreshed.selectedID == b.id, "the selection stays on its Project by id")
+    }
+
+    @Test func arrowKeysFollowTheRankedOrder() {
+        let a = project("Alpha"), b = project("Beta", lastOpenedAt: 200), c = project("Gamma", lastOpenedAt: 300)
+        var m = model([a, b, c])
+        #expect(m.cards.map(\.name) == ["Gamma", "Beta", "Alpha"])
+        m.move(.right)
+        #expect(m.selectedID == b.id)
+        m.move(.right)
+        #expect(m.selectedID == a.id)
+        m.move(.left)
+        #expect(m.selectedID == b.id)
     }
 
     @Test func emptyStateDistinguishesNoProjectsFromNoMatches() {
@@ -93,14 +127,14 @@ struct ProjectPickerModelTests {
         #expect(m.cards.map(\.name) == ["Alpha"])
     }
 
-    @Test func filterRanksNameMatchesAheadOfPathMatchesAndKeepsStoreOrderOnTies() {
+    @Test func filterRanksNameMatchesAheadOfPathMatchesAndKeepsRankedOrderOnTies() {
         var m = model([
             project("Zeta", root: "/Users/test/code/site"),
             project("Site", root: "/Users/test/other"),
-            project("Gamma", root: "/Users/test/code/site2"),
+            project("Gamma", root: "/Users/test/code/site2", lastOpenedAt: 100),
         ])
         m.setQuery("site")
-        #expect(m.cards.map(\.name) == ["Site", "Zeta", "Gamma"])
+        #expect(m.cards.map(\.name) == ["Site", "Gamma", "Zeta"])
         #expect(m.selectedID == m.cards.first?.id)
     }
 
@@ -209,12 +243,13 @@ struct ProjectFileMenuModelTests {
         #expect(model?.items == [.chooseProject, .newProject])
     }
 
-    @Test func listsProjectsInStoreOrderThenDividerChooseAndNew() {
-        let a = project("Zulu"), b = project("Alpha")
-        let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [a, b], openProjectIDs: [])
+    @Test func listsProjectsInRankedOrderThenDividerChooseAndNew() {
+        let a = project("Zulu"), b = project("Alpha", lastOpenedAt: 50), c = project("Mike", lastOpenedAt: 90)
+        let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [a, b, c], openProjectIDs: [c.id])
         #expect(model?.items == [
-            .project(id: a.id, name: "Zulu", symbol: .folder, isOpen: false),
             .project(id: b.id, name: "Alpha", symbol: .folder, isOpen: false),
+            .project(id: a.id, name: "Zulu", symbol: .folder, isOpen: false),
+            .project(id: c.id, name: "Mike", symbol: .folder, isOpen: true),
             .divider,
             .chooseProject,
             .newProject,
@@ -286,6 +321,19 @@ struct ProjectPaletteEntryTests {
         #expect(commands.contains { $0.id == "project:\(b.id.uuidString)" && $0.title == "Open Project: Beta" })
         #expect(commands.contains { $0.id == "extra:openProjectPicker" && $0.title == "Open Project\u{2026}" })
         #expect(Set(commands.map(\.id)).count == commands.count, "ids stay unique")
+    }
+
+    @Test func emptyQueryRowsAreRankedByRecencyWithOpenProjectsLast() throws {
+        let fixture = StoreFixture()
+        let a = project("Alpha", root: "/tmp"), b = project("Beta", root: "/tmp", lastOpenedAt: 100), c = project("Gamma", root: "/tmp", lastOpenedAt: 300)
+        let d = project("Delta", root: "/tmp", lastOpenedAt: 200)
+        let store = try fixture.store(projectsEnabled: true, seeding: [a, b, c, d])
+        _ = try store.openProject(id: c.id, contentFactory: { _ in nil })
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+
+        #expect(projectCommands(view).map(\.title) == [
+            "Open Project: Delta", "Open Project: Beta", "Open Project: Alpha", "Open Project: Gamma",
+        ])
     }
 
     @Test func invokingAProjectEntryOpensItThroughTheSeamWithFocusMode() throws {
