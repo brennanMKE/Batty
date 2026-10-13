@@ -16,6 +16,20 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 public enum UITestDriver {
     public static let scriptEnvVar = FeatureFlags.uiTestEnvironmentVar
     public static let errorSentinelPrefix = "batty-ui-test-driver-error-"
+    public static let projectsFileEnvVar = "BATTY_UI_TEST_PROJECTS_FILE"
+
+    /// Where a UI-test launch keeps `projects.json`, so a test never shares
+    /// the guest's real store. Honored only alongside the script variable,
+    /// like `FeatureFlags.uiTestForceProjectsOffVar`; an empty or relative
+    /// path is ignored.
+    static func projectsFileOverride(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        guard environment[scriptEnvVar] != nil,
+              let path = environment[projectsFileEnvVar],
+              path.hasPrefix("/") else { return nil }
+        return URL(fileURLWithPath: path)
+    }
 
     public static func runIfNeeded(store: AppStateStore) {
         guard let raw = ProcessInfo.processInfo.environment[scriptEnvVar] else { return }

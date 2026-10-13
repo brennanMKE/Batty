@@ -1059,7 +1059,7 @@ public final class AppStateStore {
         featureFlags: FeatureFlags = .resolved(),
         projectsFileURL: URL? = nil
     ) {
-        self.projectsFileURL = projectsFileURL
+        self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
         self.bellFeed = bellFeed
         self.nameCache = nameCache
         self.notifier = notifier

@@ -835,4 +835,70 @@ the root is stored as the root and flagged with a warning on its field.
 
 ---
 
+## Projects UI tests (#0478)
+
+The Projects UI tests live in `BattyUITests/Projects*Tests.swift` and run only in the
+Tart VM (`docs/ui-testing-vm.md`). `ProjectsUITestCase` (in `Support/ProjectsHarness.swift`)
+gives each test its own `projects.json`: the app reads `BATTY_UI_TEST_PROJECTS_FILE`
+(an absolute path) only when `BATTY_UI_TEST_SCRIPT` is also set, so no test touches the
+guest's real `~/Library/Application Support/Batty Beta/projects.json`. Tests write the
+store before launch, open Projects through the real picker, menu and palette (the
+driver's `openProject` intent bypasses the trust flow), and read the topology back
+through the embedded CLI.
+
+**Identifiers the tests rely on** (the Project Editor, picker and menu lists above are
+unchanged; these are the ones they do not cover):
+
+- `project-startup-trust` -- the startup-command trust sheet; `project-startup-trust.remember`
+  (checked by default), `project-startup-trust.open-without-running`, `project-startup-trust.run`.
+  Each listed command is a static text `$ <command>`.
+- `command-palette.root`. Palette rows have no identifiers; the tests find them by their
+  title text ("Open Project: <name>", "Open Project...", "Save Session as Project...").
+- `tab-chip.<title>`, `session-row.<title>`, `pane-terminal.<pane id>`, `git-status.snapshot`.
+- Menu items have no identifiers; the File items "Open Project" (submenu: Project names,
+  "Choose Project...", "New Project..."), "Save Session as Project...", "Edit Projects...", the
+  Sidebar item "Save as Project...", and the Window item "Projects" are found by title.
+
+**Coverage map** (the checklists above and in the #0474-#0477 sections):
+
+| Flow | Test |
+|---|---|
+| Open from the picker; glyph, Panes, Tab titles | `ProjectsOpenTests.testPickerOpensProjectWithGlyphLayoutAndTabTitles` |
+| Return finds, Option-Return opens another | `ProjectsOpenTests.testReturnFocusesTheOpenSessionAndOptionReturnOpensAnother` |
+| OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
+| Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both wrapped in a strict `XCTExpectFailure` for #0483: the row never presents the picker; remove the wrapper when #0483 lands) |
+| Trust sheet, Open Without Running, Run Commands, remembered approval, edited command | `ProjectsStartupTests.testTrustSheetGatesStartupCommandsAndRemembersApproval` |
+| Edit Projects..., Window menu entry | `ProjectsEditorTests.testEditProjectsMenuOpensTheEditorOnTheStoredProjects` |
+| Create, Save & Open, Tab directory | `ProjectsEditorTests.testEditorCreatesAProjectAndSaveAndOpenOpensIt` |
+| Cancel leaves the store unchanged | `ProjectsEditorTests.testCancelLeavesTheStoredProjectUnchanged` |
+| Sidebar Save as Project, round trip, equal sizes | `ProjectsEditorTests.testSidebarSaveAsProjectRoundTripsTheSessionShape` |
+| Palette Save Session as Project... | `ProjectsEditorTests.testCommandPaletteSaveSessionAsProjectOpensTheEditor` |
+| `batty project list` / `open` | `ProjectsCLITests.testProjectListShowsSeededProjectsAndOpenMarker` |
+| Flag off: File, Window, Sidebar, palette, no `projects.json` | `ProjectsFlagOffTests` |
+
+**Identifiers the accessibility tree does not honor** (tracked by #0484; the pixel-check helpers `iconInk`/`assertCheckMarks` in `ProjectsHarness.swift` go away with it; the tests work around each; fixing the
+view would let them use the documented identifier):
+
+- `project-picker.filter`, `project-picker.hint` and the other un-buttoned children of the picker
+  sheet surface as `project-picker.root`, because the root's identifier is applied to a container
+  that does not contain its children. The tests find the filter as the text field with either
+  identifier. The cards (`project-picker.card.<name>`) are buttons and keep their own.
+- `project-editor.pane.<n>` surfaces as `project-editor.preview` on every card; the tests match
+  `project-editor.preview` plus the label "Pane <n>: <kind>". Pane 1's card reports the whole
+  preview as its frame, so cards are clicked near their top-left.
+- `session-row.project-glyph` is not an element at all: the Sidebar `Label` merges the icon into
+  `session-row.<title>`. The tests tell the folder from the plain symbol by the icon's pixels.
+- A File menu check mark is exposed neither as `value` nor as selection; the tests read it from
+  the item's pixels.
+- The trust sheet root's identifier can likewise replace its controls' identifiers; the tests
+  also match its buttons and toggle by title.
+
+**Not automated, kept as manual checks:** Cmd-N and Cmd-E inside the picker (the key
+equivalents compete with File > New Session and Pane > Open View; see the picker section's
+manual check), the layout-change and unsaved-changes dialogs, the editor's Choose...
+(`NSOpenPanel`) buttons, and the editor-key menu-suppression chords (Cmd-T, Shift-Cmd-X,
+Cmd-V, Cmd-W with the editor key).
+
+---
+
 *Document version: 1 — 2026-05-20.*
