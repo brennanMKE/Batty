@@ -34,8 +34,8 @@
 #      `.package(path: "../../SlidingTabs")`, a separate repo outside this
 #      one). The two are laid out as siblings once extracted in the guest,
 #      matching the relative path SlidingTabs needs.
-#   3. Clone the golden image, boot headless with the export mounted
-#      read-only.
+#   3. Clone the golden image, boot headless and muted (`--no-graphics
+#      --no-audio`) with the export mounted read-only.
 #   4. In the guest: extract both tar files locally, write
 #      Configuration/Active.xcconfig to select Beta (it's gitignored, so
 #      git archive never carries it, and the scheme's own pre-action only
@@ -342,9 +342,11 @@ mkdir -p "$RESULTS_DIR"
 log "Cloning $GOLDEN → $CLONE"
 tart clone "$GOLDEN" "$CLONE"
 
-log "Booting $CLONE (headless, export mounted read-only)"
+log "Booting $CLONE (headless, muted, export mounted read-only)"
 boot_start=$SECONDS
-tart run "$CLONE" --no-graphics --dir=run:"$EXPORT":ro >"$RESULTS_DIR/tart-run.log" 2>&1 &
+# --no-audio: without it Tart routes guest audio to the host output (e.g. the
+# notification sound from `batty notify --sound`). No UI test depends on sound.
+tart run "$CLONE" --no-graphics --no-audio --dir=run:"$EXPORT":ro >"$RESULTS_DIR/tart-run.log" 2>&1 &
 TART_RUN_PID=$!
 boot_deadline=$(( SECONDS + BOOT_TIMEOUT_SECS ))
 until tart exec "$CLONE" true >/dev/null 2>&1; do
