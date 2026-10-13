@@ -637,11 +637,15 @@ test asserts on its presence, then auto-dismiss with the chosen outcome.
 
 ## Process Status picker and follow-by-name
 
-The Process Status Pane's "Choose Process…" menu has three ways to pick a
-target: "Follow a Terminal Pane…", "Pick a Running Process…" (pins a pid), and
-follow by name (#0486). "Pick a Running Process…" opens a popover that lists
-every same-uid process, with a filter field above the list and a "Follow by
-name" checkbox below it. Following by name keeps the Pane on the first live
+The Process Status Pane offers every action as a visible control (#0498): a
+"Follow “name” by Name" or "Stop Following by Name" button under the process
+name in the header, the same follow button inside the Exited banner, and the
+"Follow a Terminal Pane…" and "Pick a Running Process…" buttons in the "No
+process selected" state. The "Choose Process…" pull-down in the header lists
+the same actions in full: "Follow a Terminal Pane…", "Pick a Running
+Process…" (pins a pid), and follow by name (#0486). "Pick a Running Process…"
+opens a popover that lists every same-uid process, with a filter field above
+the list and a "Follow by name" checkbox below it. Following by name keeps the Pane on the first live
 process with the chosen name and moves to the next one whenever the one shown
 exits, for the Pane's life.
 
@@ -672,12 +676,26 @@ exits, for the Pane's life.
 - When the followed process is lost the Pane re-enumerates at once, so a
   relaunch that already exists shows with no Waiting flash. A recycled pid
   (different start time or name) counts as a loss.
+- The follow action is offered by one helper, `ProcessStatusFollowAction`; the
+  pull-down item, the header button and the banner button all map from it, so
+  they cannot disagree.
+- The follow control appears in exactly one place per state: the header while
+  the pinned process runs (and "Stop Following by Name" while following a
+  name), the Exited banner once it has exited. Following a Tab, or a pid with
+  no listed name, shows none and leaves no blank row.
+- The picker popover has exactly one anchor, the "Choose Process…" pull-down.
+  The empty state's "Pick a Running Process…" button flips the same state;
+  it never adds a second `.popover`.
+- The follow button falls back to "Follow by Name" when the full title does not
+  fit; its accessibility label stays the full title. The Exited banner's text
+  and button stack when they do not share a row.
 
 **Regression patterns:**
 
 - `[0305]` — Process Status Pane and the "Pick a Running Process…" list.
 - `[0486]` — Added the filter field and follow-by-name.
 - `[0498]` — Follow-by-name after exit, immediate re-resolve, pid-reuse guard, clicked row first.
+- `[0498]` round 2 — Visible follow, stop and empty-state controls in the Pane.
 
 **Accessibility identifiers:**
 
@@ -688,6 +706,14 @@ exits, for the Pane's life.
 - `process-status.state-chip` — value `running`, `exited`, `permission-denied`,
   `unavailable` or `waiting`.
 - `process-status.choose-process` — the "Choose Process…" menu.
+- `process-status.follow-by-name` — the "Follow “name” by Name" button, in the
+  header while running or in the Exited banner once exited (never both).
+- `process-status.stop-following` — the "Stop Following by Name" button in the
+  header while following a name.
+- `process-status.empty.follow-pane` — the empty state's "Follow a Terminal
+  Pane…" menu button.
+- `process-status.empty.pick-process` — the empty state's "Pick a Running
+  Process…" button.
 - `process-status.running-process-picker` — the picker popover root.
 - `process-status.picker.filter-field` — the filter text field.
 - `process-status.picker.list` — the filtered list.

@@ -110,6 +110,9 @@ struct ProcessStatusPaneView: View {
                 modeIndicator
                 stateChip
             }
+            if let action = headerFollowAction {
+                followControl(action)
+            }
         }
     }
 
@@ -214,23 +217,16 @@ struct ProcessStatusPaneView: View {
     private var chooseProcessMenu: some View {
         Menu("Choose Process…") {
             Menu("Follow a Terminal Pane…") {
-                let terminalPanes = tree.allPanes.filter { $0.kind == .terminal }
-                if terminalPanes.isEmpty {
-                    Text("No terminal panes in this session")
-                } else {
-                    ForEach(terminalPanes) { pane in
-                        Button(terminalPaneLabel(pane)) {
-                            content.retarget(to: .followingTab(pane.activeTabID))
-                        }
-                    }
-                }
+                terminalPaneChoices
             }
             Button("Pick a Running Process…") {
-                runningProcessesCache = ProcessInspector.allSameUserProcesses()
-                    .sorted(by: ProcessInspector.RunningProcess.listOrder)
-                isPickingProcess = true
+                pickRunningProcess()
             }
-            followByNameMenuItem
+            if let action = followAction {
+                Button(Self.title(for: action)) {
+                    perform(action)
+                }
+            }
         }
         .menuStyle(.button)
         .fixedSize()
@@ -238,6 +234,32 @@ struct ProcessStatusPaneView: View {
         .popover(isPresented: $isPickingProcess) {
             runningProcessPicker
         }
+    }
+
+    /// The terminal Panes of this Session, shared by the pull-down's submenu
+    /// and the empty state's "Follow a Terminal Pane…" menu so the two lists
+    /// cannot diverge.
+    @ViewBuilder
+    private var terminalPaneChoices: some View {
+        let terminalPanes = tree.allPanes.filter { $0.kind == .terminal }
+        if terminalPanes.isEmpty {
+            Text("No terminal panes in this session")
+        } else {
+            ForEach(terminalPanes) { pane in
+                Button(terminalPaneLabel(pane)) {
+                    content.retarget(to: .followingTab(pane.activeTabID))
+                }
+            }
+        }
+    }
+
+    /// Runs only from a `Button` action (see `runningProcessesCache`). The
+    /// popover stays attached to `chooseProcessMenu` alone; every entry point
+    /// flips the same `isPickingProcess`.
+    private func pickRunningProcess() {
+        runningProcessesCache = ProcessInspector.allSameUserProcesses()
+            .sorted(by: ProcessInspector.RunningProcess.listOrder)
+        isPickingProcess = true
     }
 
     /// The list `pickRunningProcess`'s `Button` action populates
@@ -260,29 +282,85 @@ struct ProcessStatusPaneView: View {
         )
     }
 
-    /// "Stop Following by Name" while in mode C; "Follow “<name>” by Name"
-    /// while pinned. The name is `snapshot.listedName`, the `bsdName`
-    /// the enumerator compares against (not `snapshot.name`), captured while
-    /// the process ran so the item is still offered after `.exited`.
-    @ViewBuilder
-    private var followByNameMenuItem: some View {
-        switch content.target {
-        case .followingName:
-            Button("Stop Following by Name") {
-                content.stopFollowingName()
-            }
-        case .pinned:
-            if content.runState == .running || content.runState == .exited, let name = content.snapshot?.listedName {
-                Button("Follow “\(name)” by Name") {
-                    // After `.exited` there is no live process to seed, so the
-                    // next match is the successor.
-                    let seed = content.runState == .running ? content.snapshot?.pid : nil
-                    content.retarget(to: .followingName(name), seedPid: seed)
-                }
-            }
-        case .followingTab, nil:
-            EmptyView()
+    // MARK: - Follow by name (one decision, several places)
+
+    /// What `ProcessStatusFollowAction` offers for the current state. The
+    /// pull-down item, the header button and the exited banner's button all
+    /// map from this. The name is `snapshot.listedName`, the `bsdName` the
+    /// enumerator compares against (not `snapshot.name`), captured while the
+    /// process ran so it is still available after `.exited`.
+    private var followAction: ProcessStatusFollowAction? {
+        ProcessStatusFollowAction.offered(
+            target: content.target,
+            runState: content.runState,
+            listedName: content.snapshot?.listedName,
+            pid: content.snapshot?.pid
+        )
+    }
+
+    /// The header carries the action except for an exited pinned process,
+    /// where the banner carries it, so it is never shown twice.
+    private var headerFollowAction: ProcessStatusFollowAction? {
+        guard let action = followAction else { return nil }
+        if case .follow = action, content.runState != .running { return nil }
+        return action
+    }
+
+    private func perform(_ action: ProcessStatusFollowAction) {
+        switch action {
+        case .follow(let name, let seedPid):
+            content.retarget(to: .followingName(name), seedPid: seedPid)
+        case .stopFollowing:
+            content.stopFollowingName()
         }
+    }
+
+    private static func title(for action: ProcessStatusFollowAction) -> String {
+        switch action {
+        case .follow(let name, _): "Follow “\(name)” by Name"
+        case .stopFollowing: "Stop Following by Name"
+        }
+    }
+
+    private static func symbol(for action: ProcessStatusFollowAction) -> String {
+        switch action {
+        case .follow: "arrow.triangle.2.circlepath"
+        case .stopFollowing: "pin"
+        }
+    }
+
+    private static func identifier(for action: ProcessStatusFollowAction) -> String {
+        switch action {
+        case .follow: "process-status.follow-by-name"
+        case .stopFollowing: "process-status.stop-following"
+        }
+    }
+
+    /// A process name can be 31 characters, wider than a narrow Pane, so
+    /// the follow title falls back to "Follow by Name" (the name is already
+    /// in the header). The accessibility label stays the full title either way.
+    private func followControl(_ action: ProcessStatusFollowAction) -> some View {
+        let full = Self.title(for: action)
+        return ViewThatFits(in: .horizontal) {
+            followButton(action, title: full)
+            if case .follow = action {
+                followButton(action, title: "Follow by Name")
+            }
+        }
+    }
+
+    private func followButton(_ action: ProcessStatusFollowAction, title: String) -> some View {
+        Button {
+            perform(action)
+        } label: {
+            Label(title, systemImage: Self.symbol(for: action))
+        }
+        .buttonStyle(.borderless)
+        .font(.caption)
+        .lineLimit(1)
+        .fixedSize()
+        .accessibilityLabel(Self.title(for: action))
+        .accessibilityIdentifier(Self.identifier(for: action))
     }
 
     private func terminalPaneLabel(_ pane: PaneRuntime) -> String {
@@ -345,17 +423,39 @@ struct ProcessStatusPaneView: View {
 
     // MARK: - Banners (§3.5/§3.6)
 
-    /// Review round 1, B5: this must not assert a fact this type never
-    /// observed. The design specifies "the timestamp of the last
-    /// successful sample" — `content.snapshot?.capturedAt` — not the
-    /// instant the exit was *detected*, which can be up to a full refresh
-    /// interval later, and is nonexistent for a pid that was already dead
-    /// the very first time it was sampled (in which case there is no
-    /// "last seen" to show at all).
     private var exitedBanner: some View {
+        let label = exitedBannerLabel
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                label
+                if let action = followAction, case .follow = action {
+                    Spacer(minLength: 8)
+                    followControl(action)
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                label
+                if let action = followAction, case .follow = action {
+                    followControl(action)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var exitedBannerLabel: some View {
         HStack(spacing: 8) {
             Image(systemName: "moon.zzz.fill")
                 .foregroundStyle(.secondary)
+            // Review round 1, B5: this must not assert a fact this type never
+            // observed. The design specifies "the timestamp of the last
+            // successful sample" — `content.snapshot?.capturedAt` — not the
+            // instant the exit was *detected*, which can be up to a full refresh
+            // interval later, and is nonexistent for a pid that was already dead
+            // the very first time it was sampled (in which case there is no
+            // "last seen" to show at all).
             if let capturedAt = content.snapshot?.capturedAt {
                 Text("Process exited — last seen \(capturedAt.formatted(date: .omitted, time: .standard))")
                     .font(.callout)
@@ -364,9 +464,6 @@ struct ProcessStatusPaneView: View {
                     .font(.callout)
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("process-status.exited-banner")
     }
@@ -431,18 +528,41 @@ struct ProcessStatusPaneView: View {
     }
 
     private var noSelectionState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Text("No process selected")
                 .font(.title3.weight(.semibold))
-            Text("Use “Choose Process…” to follow a terminal pane, pick a running process, or follow a process by name.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("process-status.no-selection")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    emptyStateFollowPaneMenu
+                    emptyStatePickButton
+                }
+                VStack(spacing: 8) {
+                    emptyStateFollowPaneMenu
+                    emptyStatePickButton
+                }
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("process-status.no-selection")
+    }
+
+    private var emptyStateFollowPaneMenu: some View {
+        Menu("Follow a Terminal Pane…") {
+            terminalPaneChoices
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .accessibilityIdentifier("process-status.empty.follow-pane")
+    }
+
+    private var emptyStatePickButton: some View {
+        Button("Pick a Running Process…") {
+            pickRunningProcess()
+        }
+        .fixedSize()
+        .accessibilityIdentifier("process-status.empty.pick-process")
     }
 
     // MARK: - Disclosures (§3.4 — on-demand, never per-tick)
