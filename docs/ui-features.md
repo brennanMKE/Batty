@@ -535,9 +535,15 @@ Quickly was caught as `[0150]`.
   path-only match); in a tier Tab rows come first, then Projects with a name match, then Projects
   that match only by path; Projects within each group follow `ProjectRecency.ranked`. An empty query lists Tab rows, then Projects in recency order. Because a
   Project-backed Session is titled with the Project name, when the Project is open in this Window its
-  Tab rows precede its Project row, so the UI tests press Down until `open-quickly.hint` appears before Return.
+  Tab rows precede its Project row. Return on such a Tab row jumps to it.
 - Return or a click on a Project row opens it with `.focusExistingOrOpen`; Option-Return opens
-  `.openNew` (on a Tab row it is a plain Return). The view only reports an `OpenQuicklyAction`;
+  `.openNew`. On a plain Tab row Option-Return is a plain Return. On a Tab row of a Project-backed
+  Session (#0499) Option-Return reports `.openProject(projectID, .openNew)` and does not jump, so the
+  user lands on the Tab row and can open another copy without pressing Down; a selected Tab row of
+  that kind shows the footer line `open-quickly.tab-hint` ("Open another copy of <name>", where <name> is the saved Project's own name, not the Session's title; no footer if the Project is gone), distinct from
+  `open-quickly.hint`, which appears only for a selected Project row (the UI test helper
+  `selectProjectRowInOpenQuickly` presses Down until that hint appears). The view only reports an
+  `OpenQuicklyAction`;
   `SessionDetailView` runs it from the sheet's `onDismiss`, so the startup-command trust sheet never
   competes with a closing sheet. It is routed to this Window as a value, not by notification.
 - With the flag off there are no Project rows, no footer and no read of the Projects store.
@@ -1013,7 +1019,7 @@ unchanged; these are the ones they do not cover):
   reported readiness (#0479); label and help "Startup command not run -- the shell didn't report it was
   ready"; menu items "Run Now" and "Dismiss". Found by label as well, since Accessibility may not
   honor the identifier (#0484).
-- `open-quickly.root`, `open-quickly.row.project.<name>`, `open-quickly.open-badge.<name>`, `open-quickly.hint` (#0491; see Fuzzy finders).
+- `open-quickly.root`, `open-quickly.row.project.<name>`, `open-quickly.open-badge.<name>`, `open-quickly.hint` (#0491), `open-quickly.tab-hint` (#0499; see Fuzzy finders).
 - `command-palette.root`. Palette rows have no identifiers; the tests find them by their
   title text ("Open Project: <name>", "Open Project...", "Save Session as Project...").
 - `tab-chip.<title>`, `session-row.<title>`, `pane-terminal.<pane id>`, `git-status.snapshot`.
@@ -1029,6 +1035,7 @@ unchanged; these are the ones they do not cover):
 | Return finds, Option-Return opens another | `ProjectsOpenTests.testReturnFocusesTheOpenSessionAndOptionReturnOpensAnother` |
 | Open Quickly: type a Project name, Return opens it as a Session (#0491) | `ProjectsOpenTests.testOpenQuicklyOpensAProjectByTypingItsName` |
 | Open Quickly: Return finds the open Session, Option-Return opens another; OPEN marker (#0491) | `ProjectsOpenTests.testOpenQuicklyReturnFindsTheOpenSessionAndOptionReturnOpensAnother` |
+| Open Quickly: Option-Return on the Project's own Tab row opens another copy, Return jumps (#0499) | `ProjectsOpenTests.testOpenQuicklyOptionReturnOnTheProjectsOwnTabRowOpensAnotherAndReturnJumps` |
 | Open Quickly: the trust sheet presents only after Open Quickly has closed (#0491) | `ProjectsOpenTests.testOpenQuicklyShowsTheTrustSheetOnlyAfterItHasClosed` |
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
 | Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both assert that the picker presents, #0483) |
@@ -1040,7 +1047,7 @@ unchanged; these are the ones they do not cover):
 | Sidebar Save as Project, round trip, equal sizes | `ProjectsEditorTests.testSidebarSaveAsProjectRoundTripsTheSessionShape` |
 | Palette Save Session as Project... | `ProjectsEditorTests.testCommandPaletteSaveSessionAsProjectOpensTheEditor` |
 | `batty project list` / `open` | `ProjectsCLITests.testProjectListShowsSeededProjectsAndOpenMarker` |
-| Flag off: File, Window, Sidebar, palette, Open Quickly (no Project row or hint, #0491), no `projects.json` | `ProjectsFlagOffTests` |
+| Flag off: File, Window, Sidebar, palette, Open Quickly (no Project row, hint or Tab-row hint, #0491, #0499), no `projects.json` | `ProjectsFlagOffTests` |
 | Plain row is a circle, Project row shows its symbol, an editor Save updates the open row; keyboard picks from the Symbol popover (#0482) | `ProjectsSymbolTests.testPlainRowIsACircleAndAProjectRowShowsItsSymbolAndFollowsAnEditorSave` |
 | Escape closes the Symbol popover without a change (#0482) | `ProjectsSymbolTests.testEscapeClosesThePopoverWithoutChangingTheSymbol` |
 | A Project with no stored symbol shows the folder (#0482) | `ProjectsSymbolTests.testAProjectWithNoSymbolShowsTheFolder` |

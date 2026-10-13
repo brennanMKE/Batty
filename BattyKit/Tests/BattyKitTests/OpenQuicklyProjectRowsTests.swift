@@ -266,8 +266,8 @@ struct OpenQuicklyActionTests {
     @Test func returnOnAProjectFocusesOrOpensAndOptionReturnOpensAnother() {
         let target = row("Alpha")
         let window = WindowRuntime(bellFeed: BellFeedStore(), nameCache: SessionNameCache())
-        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: false, in: window) == .openProject(target.id, .focusExistingOrOpen))
-        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: true, in: window) == .openProject(target.id, .openNew))
+        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: false, projectsEnabled: true, in: window) == .openProject(target.id, .focusExistingOrOpen))
+        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: true, projectsEnabled: true, in: window) == .openProject(target.id, .openNew))
     }
 
     @Test func activatingAProjectRowReportsTheActionAndOpensNothing() throws {
@@ -286,7 +286,7 @@ struct OpenQuicklyActionTests {
         #expect(store.openProjectIDs.isEmpty)
     }
 
-    @Test func aTabRowJumpsWithOrWithoutOptionAndReportsNoAction() {
+    @Test func aPlainTabRowJumpsWithOrWithoutOptionAndReportsNoAction() {
         let window = WindowRuntime(bellFeed: BellFeedStore(), nameCache: SessionNameCache())
         _ = window.addSession()
         let first = window.sessions[0], second = window.sessions[1]
@@ -296,10 +296,110 @@ struct OpenQuicklyActionTests {
             let result = QuickOpenResult(
                 sessionID: second.id, sessionTitle: second.title,
                 tabID: pane.activeTabID, tabTitle: "t")
-            let action = OpenQuicklyFilter.choose(.tab(result), optionHeld: optionHeld, in: window)
+            #expect(result.projectID == nil)
+            let action = OpenQuicklyFilter.choose(.tab(result), optionHeld: optionHeld, projectsEnabled: true, in: window)
             #expect(action == nil)
             #expect(window.selectedSessionID == second.id)
         }
+    }
+
+    private func projectBackedTab(_ store: AppStateStore, _ project: Project) throws -> (window: WindowRuntime, other: SessionRuntime, backed: SessionRuntime, row: QuickOpenResult) {
+        _ = try store.openProject(id: project.id, contentFactory: { _ in nil })
+        let window = store.windows[0]
+        let backed = try #require(window.sessions.first { $0.projectID == project.id })
+        let other = try #require(window.sessions.first { $0.projectID == nil })
+        let row = try #require(OpenQuicklyFilter.allResults(for: window).first { $0.sessionID == backed.id })
+        return (window, other, backed, row)
+    }
+
+    @Test func optionReturnOnAProjectBackedTabRowReportsAnotherCopyAndDoesNotJump() throws {
+        let fixture = Fixture()
+        let alpha = project("Alpha")
+        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let (window, other, backed, row) = try projectBackedTab(store, alpha)
+        window.setSelectedSession(id: other.id)
+        let activeTab = backed.focusedPaneAnyKind.activeTabID
+        let sessionCount = window.sessions.count
+        var reported: [OpenQuicklyAction] = []
+
+        OpenQuicklyFilter.activate(.tab(row), optionHeld: true, in: window) { reported.append($0) }
+
+        #expect(reported == [.openProject(alpha.id, .openNew)])
+        #expect(window.selectedSessionID == other.id)
+        #expect(backed.focusedPaneAnyKind.activeTabID == activeTab)
+        #expect(window.sessions.count == sessionCount)
+    }
+
+    @Test func returnOnAProjectBackedTabRowJumpsAndReportsNothing() throws {
+        let fixture = Fixture()
+        let alpha = project("Alpha")
+        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let (window, other, backed, row) = try projectBackedTab(store, alpha)
+        window.setSelectedSession(id: other.id)
+        var reported: [OpenQuicklyAction] = []
+
+        OpenQuicklyFilter.activate(.tab(row), optionHeld: false, in: window) { reported.append($0) }
+
+        #expect(reported.isEmpty)
+        #expect(window.selectedSessionID == backed.id)
+        #expect(OpenQuicklyFilter.choose(.tab(row), optionHeld: false, projectsEnabled: true, in: window) == nil)
+    }
+
+    @Test func allResultsCarriesTheProjectIDOnlyForAProjectBackedSession() throws {
+        let fixture = Fixture()
+        let alpha = project("Alpha")
+        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let (window, other, backed, _) = try projectBackedTab(store, alpha)
+        let results = OpenQuicklyFilter.allResults(for: window)
+        #expect(results.filter { $0.sessionID == backed.id }.map(\.projectID) == [alpha.id])
+        #expect(results.filter { $0.sessionID == other.id }.map(\.projectID) == [nil])
+    }
+
+    @Test func theTabFooterNamesTheProjectNotTheSessionTitle() throws {
+        let fixture = Fixture()
+        let alpha = project("Alpha")
+        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let (window, _, backed, _) = try projectBackedTab(store, alpha)
+        window.renameSession(id: backed.id, to: "Scratch pad")
+        let renamed = try #require(OpenQuicklyFilter.allResults(for: window).first { $0.sessionID == backed.id })
+        #expect(renamed.sessionTitle == "Scratch pad")
+
+        let rows = OpenQuicklyFilter.projectRows(in: store)
+        #expect(OpenQuicklyFilter.tabHintName(for: renamed, projects: rows) == "Alpha")
+    }
+
+    @Test func theTabFooterIsAbsentWhenTheProjectIsMissingOrTheRowHasNone() throws {
+        let fixture = Fixture()
+        let alpha = project("Alpha")
+        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let (window, other, _, backed) = try projectBackedTab(store, alpha)
+        let rows = OpenQuicklyFilter.projectRows(in: store)
+        #expect(OpenQuicklyFilter.tabHintName(for: backed, projects: rows) == "Alpha")
+        #expect(OpenQuicklyFilter.tabHintName(for: backed, projects: []) == nil)
+        #expect(OpenQuicklyFilter.tabHintName(for: backed, projects: [row("Beta")]) == nil)
+        let plain = try #require(OpenQuicklyFilter.allResults(for: window).first { $0.sessionID == other.id })
+        #expect(OpenQuicklyFilter.tabHintName(for: plain, projects: rows) == nil)
+    }
+
+    @Test func withTheFlagOffOptionReturnOnATabRowIsAPlainJumpAndTheStoreIsNeverRead() throws {
+        let fixture = Fixture()
+        let store = try fixture.store(projectsEnabled: false)
+        let window = store.windows[0]
+        _ = window.addSession()
+        let first = window.sessions[0], second = window.sessions[1]
+        window.setSelectedSession(id: first.id)
+        let results = OpenQuicklyFilter.allResults(for: window)
+        let row = try #require(results.first { $0.sessionID == second.id })
+        #expect(row.projectID == nil)
+        OpenQuicklyFilter.activate(.tab(row), optionHeld: true, in: window, onAction: nil)
+        #expect(window.selectedSessionID == second.id)
+
+        window.setSelectedSession(id: first.id)
+        let forced = QuickOpenResult(sessionID: second.id, sessionTitle: row.sessionTitle, tabID: row.tabID, tabTitle: row.tabTitle, projectID: UUID())
+        OpenQuicklyFilter.activate(.tab(forced), optionHeld: true, in: window, onAction: nil)
+        #expect(window.selectedSessionID == second.id)
+        #expect(OpenQuicklyFilter.choose(.tab(forced), optionHeld: true, projectsEnabled: false, in: window) == nil)
+        #expect(!store.projectStoreIsConstructed)
     }
 }
 
@@ -316,7 +416,7 @@ struct OpenQuicklyRoutingTests {
         store.windowActivationObserver = { activated.append($0) }
 
         let rowForAlpha = try #require(OpenQuicklyFilter.projectRows(in: store).first)
-        let action = OpenQuicklyFilter.choose(.project(rowForAlpha), optionHeld: false, in: store.windows[0])
+        let action = OpenQuicklyFilter.choose(.project(rowForAlpha), optionHeld: false, projectsEnabled: true, in: store.windows[0])
         #expect(action == .openProject(alpha.id, .focusExistingOrOpen))
         #expect(activated.isEmpty)
 
@@ -326,6 +426,25 @@ struct OpenQuicklyRoutingTests {
         #expect(activated.map(\.id) == [store.windows[0].id])
         #expect(store.windows[0].selectedSessionID == original.id)
         #expect(store.windows[0].sessions.count == sessionCount)
+    }
+
+    @Test func theTabRowActionOpensAnotherCopyOnlyWhenTheHostPerformsTheValue() throws {
+        let fixture = Fixture()
+        let alpha = project("Alpha")
+        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        _ = try store.openProject(id: alpha.id, contentFactory: { _ in nil })
+        let window = store.windows[0]
+        let backed = try #require(window.sessions.first { $0.projectID == alpha.id })
+        let row = try #require(OpenQuicklyFilter.allResults(for: window).first { $0.sessionID == backed.id })
+        var afterDismiss: OpenQuicklyAction?
+        let sessionCount = window.sessions.count
+
+        OpenQuicklyFilter.activate(.tab(row), optionHeld: true, in: window) { afterDismiss = $0 }
+        #expect(window.sessions.count == sessionCount)
+
+        afterDismiss?.perform(in: store)
+        #expect(window.sessions.count == sessionCount + 1)
+        #expect(window.sessions.filter { $0.projectID == alpha.id }.count == 2)
     }
 
     @Test func aMissingProjectIsShownToThePersonWhoAskedForIt() throws {

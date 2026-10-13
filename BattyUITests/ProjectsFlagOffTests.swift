@@ -64,9 +64,12 @@ nonisolated final class ProjectsFlagOffTests: ProjectsUITestCase {
 
         // Open Quickly: it opens, and lists no Project row or hint.
         presentOpenQuickly(in: app)
+        XCTAssertTrue(element("open-quickly.row", in: app).waitForExistence(timeout: 5), "Open Quickly lists no Tab row")
+        XCTAssertFalse(element("open-quickly.tab-hint", in: app).exists, "Open Quickly shows a Tab-row hint with the flag off")
         app.typeText("Ghost")
         XCTAssertTrue(waitFor({ BattyScreen.identifiers(withPrefix: "open-quickly.row.project.", in: app).isEmpty }, timeout: 5), "Open Quickly lists a Project row with the flag off")
         XCTAssertFalse(element("open-quickly.hint", in: app).exists, "Open Quickly shows a Project hint with the flag off")
+        XCTAssertFalse(element("open-quickly.tab-hint", in: app).exists, "Open Quickly shows a Tab-row hint with the flag off")
         app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
 
         // Inert: the configured store was never opened, written or backed up.

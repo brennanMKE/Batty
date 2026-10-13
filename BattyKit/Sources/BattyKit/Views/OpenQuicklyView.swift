@@ -15,6 +15,7 @@ struct QuickOpenResult: Identifiable, Equatable {
     let sessionTitle: String
     let tabID: UUID
     let tabTitle: String
+    var projectID: UUID?
 
     var id: UUID { tabID }
     var displayTitle: String { "\(sessionTitle) \u{203A} \(tabTitle)" }
@@ -104,23 +105,42 @@ enum OpenQuicklyFilter {
         in windowRuntime: WindowRuntime,
         onAction: ((OpenQuicklyAction) -> Void)?
     ) {
-        if let action = choose(entry, optionHeld: optionHeld, in: windowRuntime) {
+        if let action = choose(entry, optionHeld: optionHeld, projectsEnabled: onAction != nil, in: windowRuntime) {
             onAction?(action)
         }
     }
 
     /// Commits a row. A Tab row jumps now and returns nil; a Project row
     /// returns the action the host runs once the sheet has closed.
-    /// Option-Return on a Project opens another copy; on a Tab it is Return.
-    static func choose(_ entry: OpenQuicklyEntry, optionHeld: Bool, in windowRuntime: WindowRuntime) -> OpenQuicklyAction? {
+    /// Option-Return on a Project opens another copy. On a Tab it is Return,
+    /// except on a Tab of a Project-backed Session with the Projects flag on,
+    /// where it reports the same another-copy action and does not jump.
+    static func choose(
+        _ entry: OpenQuicklyEntry,
+        optionHeld: Bool,
+        projectsEnabled: Bool,
+        in windowRuntime: WindowRuntime
+    ) -> OpenQuicklyAction? {
         switch entry {
         case .tab(let result):
+            if optionHeld, projectsEnabled, let projectID = result.projectID {
+                return .openProject(projectID, .openNew)
+            }
             logger.info("open quickly jumping to session \(result.sessionTitle, privacy: .public) tab \(result.tabTitle, privacy: .public)")
             windowRuntime.jumpToTab(sessionID: result.sessionID, tabID: result.tabID)
             return nil
         case .project(let row):
             return .openProject(row.id, optionHeld ? .openNew : .focusExistingOrOpen)
         }
+    }
+
+    /// The Project name the Tab-row footer shows: the saved Project's own
+    /// name, not the Session's title, which a Sidebar rename or a Project
+    /// rename can leave different. Nil when the row has no Project or the
+    /// Project is no longer in `projects`.
+    static func tabHintName(for result: QuickOpenResult, projects: [OpenQuicklyProjectRow]) -> String? {
+        guard let projectID = result.projectID else { return nil }
+        return projects.first { $0.id == projectID }?.name
     }
 
     /// Every jumpable (session, tab) pair in `windowRuntime`, unfiltered by
@@ -140,7 +160,8 @@ enum OpenQuicklyFilter {
                         sessionID: session.id,
                         sessionTitle: session.title,
                         tabID: tab.id,
-                        tabTitle: TabTitleFormatter.chipTitle(for: tab)
+                        tabTitle: TabTitleFormatter.chipTitle(for: tab),
+                        projectID: session.projectID
                     )
                 }
             }
@@ -268,6 +289,8 @@ struct OpenQuicklyView: View {
 
             if let selectedProject {
                 projectFooter(selectedProject)
+            } else if let name = selectedTabHintName(in: results) {
+                tabFooter(name)
             }
         }
         .frame(width: 540, height: 380)
@@ -304,6 +327,27 @@ struct OpenQuicklyView: View {
         .padding(.vertical, 8)
         .background(Color(nsColor: .controlBackgroundColor))
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private func tabFooter(_ name: String) -> some View {
+        HStack {
+            Text("\u{2325}\u{21A9} Open another copy of \(name)")
+                .lineLimit(1)
+                .accessibilityIdentifier("open-quickly.tab-hint")
+            Spacer()
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func selectedTabHintName(in results: [OpenQuicklyEntry]) -> String? {
+        guard let projectRows, results.indices.contains(selectedIndex),
+              case .tab(let result) = results[selectedIndex] else { return nil }
+        return OpenQuicklyFilter.tabHintName(for: result, projects: projectRows())
     }
 
     private func selectedProjectRow(in results: [OpenQuicklyEntry]) -> OpenQuicklyProjectRow? {
