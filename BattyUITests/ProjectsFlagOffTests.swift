@@ -62,6 +62,13 @@ nonisolated final class ProjectsFlagOffTests: ProjectsUITestCase {
         XCTAssertEqual(projectRows.count, 0, "the palette lists Projects rows with the flag off: \(projectRows.allElementsBoundByIndex.map { $0.label + "|" + String(describing: $0.value) })")
         app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
 
+        // Open Quickly: it opens, and lists no Project row or hint.
+        presentOpenQuickly(in: app)
+        app.typeText("Ghost")
+        XCTAssertTrue(waitFor({ BattyScreen.identifiers(withPrefix: "open-quickly.row.project.", in: app).isEmpty }, timeout: 5), "Open Quickly lists a Project row with the flag off")
+        XCTAssertFalse(element("open-quickly.hint", in: app).exists, "Open Quickly shows a Project hint with the flag off")
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+
         // Inert: the configured store was never opened, written or backed up.
         XCTAssertEqual(try Data(contentsOf: storeFile), seededBytes, "the flag-off app rewrote projects.json")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: storeDirectory.path).sorted(), ["projects.json"], "the flag-off app wrote beside projects.json")

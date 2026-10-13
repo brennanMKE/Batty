@@ -15,6 +15,7 @@ public struct SessionDetailView: View {
     @State private var openQuicklyShown: Bool = false
     @State private var layoutPickerShown: Bool = false
     @State private var afterProjectPicker: ProjectPickerAction?
+    @State private var afterOpenQuickly: OpenQuicklyAction?
     @State private var afterCommandPalette: (@MainActor () -> Void)?
     @State private var themeSelectorShown: Bool = false
     @State private var pendingPaste: PendingPaste?
@@ -85,8 +86,17 @@ public struct SessionDetailView: View {
                 presentProjectPicker: { presentProjectPicker() }
             )
         }
-        .sheet(isPresented: $openQuicklyShown) {
-            OpenQuicklyView(isPresented: $openQuicklyShown, windowRuntime: windowRuntime)
+        .sheet(isPresented: $openQuicklyShown, onDismiss: runAfterOpenQuickly) {
+            if store.featureFlags.projects {
+                OpenQuicklyView(
+                    isPresented: $openQuicklyShown,
+                    windowRuntime: windowRuntime,
+                    projectRows: { OpenQuicklyFilter.projectRows(in: store) },
+                    onAction: { afterOpenQuickly = $0 }
+                )
+            } else {
+                OpenQuicklyView(isPresented: $openQuicklyShown, windowRuntime: windowRuntime)
+            }
         }
         .sheet(isPresented: $layoutPickerShown) {
             LayoutPickerView(isPresented: $layoutPickerShown, windowRuntime: windowRuntime)
@@ -318,6 +328,12 @@ public struct SessionDetailView: View {
         guard let work = afterCommandPalette else { return }
         afterCommandPalette = nil
         work()
+    }
+
+    private func runAfterOpenQuickly() {
+        guard let action = afterOpenQuickly else { return }
+        afterOpenQuickly = nil
+        action.perform(in: store)
     }
 
     private func runAfterProjectPicker() {

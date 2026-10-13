@@ -141,9 +141,13 @@ struct ProjectPickerModel: Equatable {
 
     var hint: String {
         guard let card = selectedCard else { return "" }
-        return card.isOpen
-            ? String(localized: "\u{21A9} Switch to the open \(card.name) Session", comment: "Open Project picker: hint for a Project that already has an open Session")
-            : String(localized: "\u{21A9} Open \(card.name) in a new Session", comment: "Open Project picker: hint for a Project with no open Session")
+        return Self.hint(name: card.name, isOpen: card.isOpen)
+    }
+
+    static func hint(name: String, isOpen: Bool) -> String {
+        isOpen
+            ? String(localized: "\u{21A9} Switch to the open \(name) Session", comment: "Open Project picker: hint for a Project that already has an open Session")
+            : String(localized: "\u{21A9} Open \(name) in a new Session", comment: "Open Project picker: hint for a Project with no open Session")
     }
 
     static func summary(panes: Int, tabs: Int, startupCommands: Int) -> String {

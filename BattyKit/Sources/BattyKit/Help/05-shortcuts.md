@@ -71,7 +71,11 @@ views.
 | Paste | `Cmd-V` |
 | Quit | `Cmd-Q` |
 
-See [Sessions](02-sessions.md), [Panes and Splits](03-panes.md), [Tabs](04-tabs.md), and [Notifications](06-notifications.md) for more on the actions covered there. The Command Palette, Open Quickly, and Layout Picker chords above don't yet have their own Help pages.
+See [Sessions](02-sessions.md), [Panes and Splits](03-panes.md), [Tabs](04-tabs.md), and [Notifications](06-notifications.md) for more on the actions covered there. The Command Palette and Layout Picker chords above don't yet have their own Help pages.
+
+## Open Quickly
+
+`Cmd-Shift-O` opens Open Quickly, a list of the Sessions and terminal Tabs in the current window. Start typing to filter it by Session or Tab name, use `Up` and `Down` to move the selection, press `Return` to jump to the selected Tab, and press `Esc` to close the list without going anywhere.
 
 ## Customizing shortcuts
 

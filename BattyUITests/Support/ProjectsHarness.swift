@@ -273,6 +273,34 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     }
 
     @MainActor
+    func presentOpenQuickly(in app: XCUIApplication) {
+        app.typeKey("o", modifierFlags: [.command, .shift])
+        XCTAssertTrue(element("open-quickly.root", in: app).waitForExistence(timeout: 10), "Open Quickly did not appear")
+    }
+
+    /// With a Project row selected the footer shows `open-quickly.hint`. A Session that carries
+    /// the Project's name lists its Tab rows first, so reaching the Project row takes arrow presses.
+    @MainActor
+    func selectProjectRowInOpenQuickly(_ name: String, in app: XCUIApplication) {
+        XCTAssertTrue(element("open-quickly.row.project.\(name)", in: app).waitForExistence(timeout: 5), "no Open Quickly row for Project \(name)")
+        for _ in 0..<8 where !element("open-quickly.hint", in: app).exists {
+            app.typeKey(XCUIKeyboardKey.downArrow.rawValue, modifierFlags: [])
+        }
+        XCTAssertTrue(element("open-quickly.hint", in: app).waitForExistence(timeout: 5), "the Project row never became the selection")
+    }
+
+    /// ⇧⌘O, type `name`, reach the Project row, Return (Option-Return for another copy).
+    /// Waits for the sheet to close.
+    @MainActor
+    func openThroughOpenQuickly(_ name: String, option: Bool = false, in app: XCUIApplication) {
+        presentOpenQuickly(in: app)
+        app.typeText(name)
+        selectProjectRowInOpenQuickly(name, in: app)
+        pressReturn(in: app, option: option)
+        XCTAssertTrue(waitFor({ !self.element("open-quickly.root", in: app).exists }, timeout: 10), "Open Quickly did not close after Return")
+    }
+
+    @MainActor
     func openCommandPalette(in app: XCUIApplication) -> XCUIElement {
         app.typeKey("p", modifierFlags: [.command, .shift])
         let palette = element("command-palette.root", in: app)
