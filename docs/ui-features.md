@@ -448,8 +448,9 @@ state is per-window `@SceneStorage` (the legacy `SidebarPreference.hiddenKey`
 only seeds it once) and lasts for the life of the process; window restoration
 is disabled (#0444), so it does not survive relaunches.
 
-The `+` button for creating a new Session lives in the Sidebar header. Its
-visibility and hit-testability when the sidebar is collapsed must be explicitly
+The `+` button for creating a new Session lives in the Sidebar footer (a bottom
+safe-area inset), as does the Open Project button in Batty Beta. The
+footer's visibility and hit-testability when the sidebar is collapsed must be explicitly
 specified and tested — `[0065]` called this out as bug-prone.
 
 **Invariants:**
@@ -479,7 +480,9 @@ specified and tested — `[0065]` called this out as bug-prone.
 
 - `session-sidebar` — the sidebar root; frame width used to assert
   collapsed/expanded state.
-- `session-sidebar.add-session-button` — the `+` button in the sidebar header.
+- `session-sidebar.add-session-button` — the `+` button in the sidebar footer.
+- `session-sidebar.open-project-button` — the Open Project (`briefcase`) button
+  beside it; built only with `FeatureFlags.projects` on (#0490).
 - `session-sidebar.chevron` — the disclosure chevron; frame used to assert
   positional stability across toggle.
 
@@ -715,8 +718,9 @@ Pane inspector, with a footer.
 ## Open Project picker, File menu and Command Palette entries
 
 The Open Project picker (#0475) is a sheet on `SessionDetailView`, like the
-Layout picker, toggled by `.battyToggleProjectPicker` and guarded on
-`isKeyWindow` (#0242). Its logic lives in `ProjectPickerModel`; the File menu's
+Layout picker, presented from `WindowRuntime.projectPickerShown` (#0490). The
+File menu's `.battyToggleProjectPicker` is guarded on `isKeyWindow` (#0242)
+unless it names a window. Its logic lives in `ProjectPickerModel`; the File menu's
 Open Project submenu is `ProjectFileMenuModel` rendered by `BattyCommands`; the
 Command Palette entries are built in `CommandPaletteView.allCommands`. All of
 them are absent with `FeatureFlags.projects` off.
@@ -782,6 +786,14 @@ them are absent with `FeatureFlags.projects` off.
   an auxiliary window is key.
   `defaultTargetWindow()` and the CLI's activation are unchanged, and a content
   window key changes nothing.
+- The Sidebar footer's Open Project button (`session-sidebar.open-project-button`,
+  `briefcase`, help "Open Project...") sets its own window's
+  `WindowRuntime.projectPickerShown` through `SidebarFooter.presentProjectPicker`.
+  It posts no notification and checks no key window, so it presents on the
+  window it was clicked in and never on another. With no Projects it still
+  presents the picker, which shows its empty state. It has no keyboard
+  shortcut. With the flag off the button is not built and nothing reads
+  `store.projectStore`.
 - With the flag off there is no Open Project submenu, no Choose Project... or
   New Project..., no `project:` or `extra:openProjectPicker` palette ids, the
   toggle notification is ignored, the sheet does not present, and
@@ -817,11 +829,18 @@ check below):**
   Sidebar gains no Session and the editor opens on a new Project. Likewise
   press Cmd-E and confirm no System Metrics Pane is added and the editor opens
   on the selected Project.
-- The empty state's New Project... button.
 - Opening a Project that was deleted while the picker was up shows an alert.
 - Option-Return in the filter field opens another copy and does not insert a
   newline.
 - The palette's "Open Project..." row presents the picker.
+- Unit suite `SidebarFooterTests` covers the gate, the symbol, two-window
+  isolation and the flag-off no-op.
+- `ProjectsOpenTests.testSidebarOpenProjectButtonPresentsThePickerAndOpensAProject`
+  and `testSidebarOpenProjectButtonWithNoProjectsShowsTheEmptyStateAndOpensTheEditor`
+  (the footer button, the distinct `+` button, and the empty state's New
+  Project... button); `ProjectsFlagOffTests` checks the button is absent with
+  the flag off and present with it on. Manual check: the symbol's look at
+  footer size, light and dark, themed and unthemed Sidebars.
 
 ---
 

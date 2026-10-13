@@ -14,7 +14,6 @@ public struct SessionDetailView: View {
     @State private var commandPaletteShown: Bool = false
     @State private var openQuicklyShown: Bool = false
     @State private var layoutPickerShown: Bool = false
-    @State private var projectPickerShown: Bool = false
     @State private var afterProjectPicker: ProjectPickerAction?
     @State private var afterCommandPalette: (@MainActor () -> Void)?
     @State private var themeSelectorShown: Bool = false
@@ -57,7 +56,7 @@ public struct SessionDetailView: View {
             guard store.featureFlags.projects,
                   ProjectPickerToggle.shouldHandle(userInfo: note.userInfo, windowID: windowRuntime.id, isKeyWindow: isKeyWindow)
             else { return }
-            projectPickerShown.toggle()
+            windowRuntime.projectPickerShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleThemeSelector)) { _ in
             guard isKeyWindow else { return }
@@ -98,9 +97,9 @@ public struct SessionDetailView: View {
                 openProjectIDs: { store.openProjectIDs },
                 onAction: { action in
                     afterProjectPicker = action
-                    projectPickerShown = false
+                    windowRuntime.projectPickerShown = false
                 },
-                onCancel: { projectPickerShown = false }
+                onCancel: { windowRuntime.projectPickerShown = false }
             )
         }
         .sheet(isPresented: $themeSelectorShown) {
@@ -305,14 +304,14 @@ public struct SessionDetailView: View {
 
     private var projectPickerBinding: Binding<Bool> {
         Binding(
-            get: { store.featureFlags.projects && projectPickerShown },
-            set: { projectPickerShown = $0 }
+            get: { store.featureFlags.projects && windowRuntime.projectPickerShown },
+            set: { if windowRuntime.projectPickerShown != $0 { windowRuntime.projectPickerShown = $0 } }
         )
     }
 
     private func presentProjectPicker() {
         guard store.featureFlags.projects else { return }
-        projectPickerShown = true
+        windowRuntime.projectPickerShown = true
     }
 
     private func runAfterCommandPalette() {

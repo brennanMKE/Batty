@@ -229,6 +229,14 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         XCTAssertTrue(element("project-picker.root", in: app).waitForExistence(timeout: 10), "the Open Project picker did not appear")
     }
 
+    /// Clicks the Sidebar footer's Open Project button, which presents the
+    /// picker on its own window (no menu, no key-window check).
+    @MainActor
+    func presentPickerFromSidebar(in app: XCUIApplication) {
+        click("session-sidebar.open-project-button", in: app)
+        XCTAssertTrue(element("project-picker.root", in: app).waitForExistence(timeout: 10), "the Sidebar Open Project button did not present the picker")
+    }
+
     @MainActor
     func pickerFilterField(in app: XCUIApplication) -> XCUIElement {
         app.textFields["project-picker.filter"]

@@ -20,6 +20,10 @@ nonisolated final class ProjectsFlagOffTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: nil, flagOff: true, connectCLI: false)
         defer { app.terminate() }
 
+        // Sidebar footer: the + button is there, the Open Project button is not.
+        XCTAssertTrue(element("session-sidebar.add-session-button", in: app).waitForExistence(timeout: 10), "the Sidebar footer has no + button")
+        XCTAssertFalse(element("session-sidebar.open-project-button", in: app).exists, "the Sidebar footer has an Open Project button with the flag off")
+
         // File menu: ordinary items are there, no Projects item is.
         let file = openMenu("File", in: app)
         XCTAssertTrue(menuItem("New Session", in: file).waitForExistence(timeout: 5), "the File menu did not populate: \(menuTitles(file))")
@@ -88,6 +92,9 @@ nonisolated final class ProjectsFlagOffTests: ProjectsUITestCase {
     func testFlagOnControlShowsTheEntryPoints() throws {
         let (app, _) = try launchApp(projects: [try seedProject()], connectCLI: false)
         defer { app.terminate() }
+
+        XCTAssertTrue(element("session-sidebar.add-session-button", in: app).waitForExistence(timeout: 10), "the Sidebar footer has no + button")
+        XCTAssertTrue(element("session-sidebar.open-project-button", in: app).exists, "the Sidebar footer has no Open Project button with the flag on")
 
         let file = openMenu("File", in: app)
         XCTAssertTrue(menuItem("Edit Projects", in: file).waitForExistence(timeout: 5), "File has no Edit Projects item with the flag on: \(menuTitles(file))")

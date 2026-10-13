@@ -155,6 +155,19 @@ public struct SessionSidebarView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("New Session")
+                .accessibilityIdentifier(SidebarFooter.addSessionIdentifier)
+                if SidebarFooter.showsOpenProjectButton(featureFlags: store.featureFlags) {
+                    Button {
+                        SidebarFooter.presentProjectPicker(in: windowRuntime, featureFlags: store.featureFlags)
+                    } label: {
+                        Image(systemName: SidebarFooter.openProjectSystemName)
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(SidebarFooter.openProjectHelp)
+                    .accessibilityLabel(SidebarFooter.openProjectLabel)
+                    .accessibilityIdentifier(SidebarFooter.openProjectIdentifier)
+                }
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -271,6 +284,27 @@ private struct SidebarRowBackground: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// The Sidebar footer's buttons. The Open Project button exists only with the
+/// Projects flag on, and presents the picker on the window that owns the
+/// Sidebar: it writes that window's `WindowRuntime`, so no notification and no
+/// key-window check is involved. It reads nothing from `AppStateStore.projectStore`.
+enum SidebarFooter {
+    static let addSessionIdentifier = "session-sidebar.add-session-button"
+    static let openProjectIdentifier = "session-sidebar.open-project-button"
+    static let openProjectSystemName = "briefcase"
+    static let openProjectHelp = "Open Project\u{2026}"
+    static let openProjectLabel = "Open Project"
+
+    static func showsOpenProjectButton(featureFlags: FeatureFlags) -> Bool {
+        featureFlags.projects
+    }
+
+    static func presentProjectPicker(in windowRuntime: WindowRuntime, featureFlags: FeatureFlags) {
+        guard showsOpenProjectButton(featureFlags: featureFlags) else { return }
+        windowRuntime.projectPickerShown = true
     }
 }
 
