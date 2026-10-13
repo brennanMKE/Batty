@@ -15,6 +15,41 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-2-1">
+            <h2>1.2.1 — 2026-10-13</h2>
+            <p class="meta">Process Status gets easier to point at the process you care about, and can keep
+            following an app or tool across relaunches.</p>
+            <h3>Process Status</h3>
+            <ul>
+                <li>
+                    <strong>Filter the process list.</strong> Choose Process… → Pick a Running Process… opens with
+                    a filter field. Type a name or a PID to narrow the list. <kbd>↑</kbd>/<kbd>↓</kbd> move the
+                    highlight, <kbd>Return</kbd> picks, and <kbd>Esc</kbd> clears the filter, then closes the
+                    picker. (#0486)
+                </li>
+                <li>
+                    <strong>Follow by name.</strong> A Process Status Pane can follow a process by name instead of
+                    by PID, and picks up the next process with that name when the current one exits. Turn it on with
+                    the <em>Follow “name” by Name</em> button under the process name, the button on the
+                    “process exited” banner, or the Follow by name checkbox in the picker. A relaunch is picked up
+                    straight away, and a reused PID is never mistaken for the process you were following.
+                    (#0486, #0498)
+                </li>
+                <li>
+                    An empty Process Status Pane shows <em>Follow a Terminal Pane…</em> and <em>Pick a Running
+                    Process…</em> buttons. (#0498)
+                </li>
+            </ul>
+            <h3>Bug fixes</h3>
+            <ul>
+                <li>Splitting from a Git Status Pane, or another non-terminal Pane, starts the new terminal in
+                that Pane's directory instead of your home folder. (#0487)</li>
+                <li>While Settings, Help or another auxiliary window is in front, menu commands no longer act
+                on the terminal window behind it. <kbd>Cmd</kbd>-<kbd>W</kbd> closes Settings or Help.
+                (#0480)</li>
+            </ul>
+        </article>
+
         <article id="v1-2-0">
             <h2>1.2.0 — 2026-10-11</h2>
             <p class="meta">Panes can now show more than a terminal: Git status, a running process, whole-system
