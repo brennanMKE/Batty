@@ -27,6 +27,27 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.2.1</title>
+      <pubDate>Tue, 13 Oct 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-2-1</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        Process Status can filter the process list by name or PID, and can
+        follow a process by name, picking up the next one with that name when
+        it exits. That is handy while you relaunch an app or CLI tool. Follow
+        by Name is a button right in the Pane. Also: splits from a Git Status
+        Pane start in its directory, and menu commands no longer act on the
+        terminal behind Settings or Help.
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.2.1.dmg"
+        sparkle:version="20261013"
+        sparkle:shortVersionString="1.2.1"
+        sparkle:edSignature="PFOe6hs0GaUbVBFS+EzqA8idfNVPO3iuYF2fo8UDDQ+IjmcPAifT/NtumZPSU0M06srC/Fwjqq4u4ISPKNRdAw=="
+        length="25453766"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.2.0</title>
       <pubDate>Mon, 12 Oct 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
