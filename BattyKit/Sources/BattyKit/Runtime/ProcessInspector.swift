@@ -330,6 +330,38 @@ public enum ProcessInspector {
         public var id: pid_t
         public var name: String
         public var executablePath: String?
+        /// `proc_bsdinfo.pbi_start_tvsec`/`pbi_start_tvusec`, the process's
+        /// kernel start time. Only used to order same-named processes.
+        public var startSeconds: UInt64
+        public var startMicroseconds: UInt64
+
+        public init(
+            id: pid_t,
+            name: String,
+            executablePath: String? = nil,
+            startSeconds: UInt64 = 0,
+            startMicroseconds: UInt64 = 0
+        ) {
+            self.id = id
+            self.name = name
+            self.executablePath = executablePath
+            self.startSeconds = startSeconds
+            self.startMicroseconds = startMicroseconds
+        }
+
+        /// The one ordering the picker list and follow-by-name resolution
+        /// share: name ascending (localized, case-insensitive), then start
+        /// time ascending, then pid ascending.
+        public static func listOrder(_ lhs: RunningProcess, _ rhs: RunningProcess) -> Bool {
+            switch lhs.name.localizedCaseInsensitiveCompare(rhs.name) {
+            case .orderedAscending: return true
+            case .orderedDescending: return false
+            case .orderedSame: break
+            }
+            if lhs.startSeconds != rhs.startSeconds { return lhs.startSeconds < rhs.startSeconds }
+            if lhs.startMicroseconds != rhs.startMicroseconds { return lhs.startMicroseconds < rhs.startMicroseconds }
+            return lhs.id < rhs.id
+        }
     }
 
     /// Same-uid processes only (§2's "Pick a Running Process…" picker) —
@@ -344,8 +376,42 @@ public enum ProcessInspector {
         return allPids().compactMap { pid -> RunningProcess? in
             guard let info = bsdInfo(pid: pid), info.pbi_uid == myUID else { return nil }
             let path = identity(pid: pid).executablePath
-            return RunningProcess(id: pid, name: bsdName(info), executablePath: path)
+            return RunningProcess(
+                id: pid,
+                name: bsdName(info),
+                executablePath: path,
+                startSeconds: info.pbi_start_tvsec,
+                startMicroseconds: info.pbi_start_tvusec
+            )
         }
+    }
+
+    /// The first same-uid process whose `bsdName` equals `name` exactly
+    /// (case-sensitive) under ``RunningProcess/listOrder(_:_:)``, i.e. the
+    /// longest-running one, then the lowest pid. Walks `allPids()` +
+    /// `bsdInfo` only (no `proc_pidpath` per pid), since follow-by-name
+    /// calls this once per tick while no match is held.
+    public static func firstSameUserProcess(named name: String) -> pid_t? {
+        let myUID = getuid()
+        var best: RunningProcess?
+        for pid in allPids() {
+            guard let info = bsdInfo(pid: pid), info.pbi_uid == myUID, bsdName(info) == name else { continue }
+            let candidate = RunningProcess(
+                id: pid,
+                name: name,
+                startSeconds: info.pbi_start_tvsec,
+                startMicroseconds: info.pbi_start_tvusec
+            )
+            if let current = best, !RunningProcess.listOrder(candidate, current) { continue }
+            best = candidate
+        }
+        return best?.id
+    }
+
+    /// The name the enumerator would list `pid` under, or `nil` when the
+    /// pid is gone or unreadable.
+    public static func listedName(pid: pid_t) -> String? {
+        bsdInfo(pid: pid).map(bsdName)
     }
 
     // MARK: - Shared low-level helpers
@@ -367,8 +433,9 @@ public enum ProcessInspector {
         guard actualCount > 0 else { return [] }
         // Round 2: keeps pid 0 (`kernel_task`), matching `#0314`'s
         // `ProcessMetricsReader.listAllPIDs()` exactly, rather than
-        // filtering it out here — confirmed lossless for both callers of
-        // this function (`children(ofPid:)`/`allSameUserProcesses()`):
+        // filtering it out here — confirmed lossless for all callers of
+        // this function (`children(ofPid:)`/`allSameUserProcesses()`/
+        // `firstSameUserProcess(named:)`):
         // pid 0 is root-owned with ppid 0, so `bsdInfo(pid: 0)` fails
         // (matching `ProcessMetricsReader`'s own doc comment that
         // `proc_pidinfo` fails for pid 0 on real hardware) and it never

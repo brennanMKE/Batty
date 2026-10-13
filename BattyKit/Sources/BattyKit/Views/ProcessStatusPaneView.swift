@@ -6,7 +6,7 @@ import SwiftUI
 /// provisional placeholder `#0315` shipped. Renders exactly what
 /// `docs/design/process-status-view.md`'s feasibility spike proved
 /// obtainable via libproc for a same-uid target — nothing more. Every
-/// state (`.running`, `.exited`, `.permissionDenied`, `.unavailable`, "no
+/// state (`.running`, `.exited`, `.permissionDenied`, `.unavailable`, `.waiting`, "no
 /// selection") is a first-class banner keyed off a real kernel signal
 /// (`ProcessStatusPaneContent.RunState`/`hasNoSelection`), never an
 /// inferred guess — the phase-1 review's own defect (a mockup showing
@@ -57,6 +57,11 @@ struct ProcessStatusPaneView: View {
                     case .unavailable:
                         unavailableBanner
                         lastKnownMetricsRow
+                    case .waiting:
+                        waitingBanner
+                        if content.snapshot != nil {
+                            lastKnownMetricsRow
+                        }
                     }
                 }
             }
@@ -141,12 +146,24 @@ struct ProcessStatusPaneView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize()
+                .accessibilityIdentifier("process-status.mode")
+                .accessibilityValue("pinned")
         case .followingTab(let tabID):
             Label("Following \(followedTabTitle(tabID))", systemImage: "link")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .accessibilityIdentifier("process-status.mode")
+                .accessibilityValue("following-tab")
+        case .followingName(let name):
+            Label("Following “\(name)”", systemImage: "arrow.triangle.2.circlepath")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityIdentifier("process-status.mode")
+                .accessibilityValue("following-name")
         case nil:
             EmptyView()
         }
@@ -172,6 +189,8 @@ struct ProcessStatusPaneView: View {
                     StatusBadge(text: "Permission Unavailable", color: .orange)
                 case .unavailable:
                     StatusBadge(text: "Unavailable", color: .red)
+                case .waiting:
+                    StatusBadge(text: "Waiting", color: .orange)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -186,6 +205,7 @@ struct ProcessStatusPaneView: View {
         case .exited: "exited"
         case .permissionDenied: "permission-denied"
         case .unavailable: "unavailable"
+        case .waiting: "waiting"
         }
     }
 
@@ -207,9 +227,10 @@ struct ProcessStatusPaneView: View {
             }
             Button("Pick a Running Process…") {
                 runningProcessesCache = ProcessInspector.allSameUserProcesses()
-                    .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                    .sorted(by: ProcessInspector.RunningProcess.listOrder)
                 isPickingProcess = true
             }
+            followByNameMenuItem
         }
         .menuStyle(.button)
         .fixedSize()
@@ -225,23 +246,37 @@ struct ProcessStatusPaneView: View {
     /// is unambiguously built once per open rather than re-built on every
     /// `body` re-evaluation.
     private var runningProcessPicker: some View {
-        List(runningProcessesCache) { process in
-            Button {
-                content.retarget(to: .pinned(process.id))
+        RunningProcessPickerView(
+            processes: runningProcessesCache,
+            onPick: { process, followByName in
+                content.retarget(to: followByName ? .followingName(process.name) : .pinned(process.id))
                 isPickingProcess = false
-            } label: {
-                HStack {
-                    Text(process.name)
-                    Spacer()
-                    Text(verbatim: ProcessIdentifierFormatting.identifier(process.id))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            },
+            onDismiss: { isPickingProcess = false }
+        )
+    }
+
+    /// "Stop Following by Name" while in mode C; "Follow “<name>” by Name"
+    /// while pinned. The name comes from the same `bsdName` read the
+    /// enumerator compares against, not `snapshot.name`. The lookup is one
+    /// `proc_pidinfo` call, made only while pinned, and the item is omitted
+    /// when it fails or the pane is not `.running`.
+    @ViewBuilder
+    private var followByNameMenuItem: some View {
+        switch content.target {
+        case .followingName:
+            Button("Stop Following by Name") {
+                content.stopFollowingName()
+            }
+        case .pinned:
+            if content.runState == .running, let pid = content.snapshot?.pid, let name = ProcessInspector.listedName(pid: pid) {
+                Button("Follow “\(name)” by Name") {
+                    content.retarget(to: .followingName(name))
                 }
             }
-            .buttonStyle(.plain)
+        case .followingTab, nil:
+            EmptyView()
         }
-        .frame(minWidth: 260, minHeight: 320)
-        .accessibilityIdentifier("process-status.running-process-picker")
     }
 
     private func terminalPaneLabel(_ pane: PaneRuntime) -> String {
@@ -330,6 +365,27 @@ struct ProcessStatusPaneView: View {
         .accessibilityIdentifier("process-status.exited-banner")
     }
 
+    private var waitingBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "hourglass")
+                .foregroundStyle(.orange)
+            if case .followingName(let name) = content.target {
+                if let capturedAt = content.snapshot?.capturedAt {
+                    Text("Waiting for “\(name)” — no matching process is running — last seen \(capturedAt.formatted(date: .omitted, time: .standard))")
+                        .font(.callout)
+                } else {
+                    Text("Waiting for “\(name)” — no matching process is running")
+                        .font(.callout)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("process-status.waiting-banner")
+    }
+
     private var permissionDeniedBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: "lock.fill")
@@ -372,7 +428,7 @@ struct ProcessStatusPaneView: View {
         VStack(spacing: 8) {
             Text("No process selected")
                 .font(.title3.weight(.semibold))
-            Text("Use “Choose Process…” to follow a terminal pane or pick a running process.")
+            Text("Use “Choose Process…” to follow a terminal pane, pick a running process, or follow a process by name.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
