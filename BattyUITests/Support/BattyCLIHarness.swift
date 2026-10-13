@@ -198,10 +198,10 @@ nonisolated enum BattyCLI {
     /// Re-reads `list --json` until `predicate` holds, returning that
     /// topology, or `nil` at the bound. The bound is a hang guard; each
     /// attempt is a real round trip to the app.
-    static func waitForTopology(timeout: TimeInterval = 10, _ predicate: @escaping (CLITopology) -> Bool) -> CLITopology? {
+    static func waitForTopology(timeout: TimeInterval = 10, includeDimensions: Bool = false, _ predicate: @escaping (CLITopology) -> Bool) -> CLITopology? {
         var match: CLITopology?
         BattyUITestHarness.waitFor({
-            guard let topology = topology(), predicate(topology) else { return false }
+            guard let topology = topology(includeDimensions: includeDimensions), predicate(topology) else { return false }
             match = topology
             return true
         }, timeout: timeout)

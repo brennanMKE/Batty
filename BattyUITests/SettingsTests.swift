@@ -38,13 +38,22 @@ nonisolated final class SettingsTests: XCTestCase {
         )
     }
 
-    /// Settings window can be dismissed with Cmd-W.
+    /// Settings window can be dismissed with Cmd-W, and the Cmd-W belongs to
+    /// Settings: the content window behind it keeps every Tab (#0196, #0480).
     @MainActor
     func testSettingsWindowCanBeDismissed() throws {
         let app = BattyUITestHarness.launchBatty()
         defer { app.terminate() }
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        let contentIdentifier = app.windows.firstMatch.identifier
+
+        let chipsAtLaunch = BattyScreen.elements(withPrefix: "tab-chip.", in: app).count
+        app.typeKey("t", modifierFlags: [.command])
+        XCTAssertTrue(waitFor({ BattyScreen.elements(withPrefix: "tab-chip.", in: app).count > chipsAtLaunch }, timeout: 5),
+                      "a second Tab must exist so Cmd-W has a Tab it could wrongly close")
+        let tabsBefore = BattyScreen.elements(withPrefix: "tab-chip.", in: app).count
+
         app.typeKey(",", modifierFlags: [.command])
         XCTAssertTrue(waitFor({ app.windows.count >= 2 }, timeout: 5),
                       "Settings must open first")
@@ -53,6 +62,14 @@ nonisolated final class SettingsTests: XCTestCase {
         XCTAssertTrue(
             waitFor({ app.windows.count < 2 }, timeout: 5),
             "Cmd-W must dismiss the Settings window"
+        )
+        XCTAssertTrue(
+            app.windows.matching(NSPredicate(format: "identifier == %@", contentIdentifier)).firstMatch.exists,
+            "Cmd-W in Settings must not close the content window"
+        )
+        XCTAssertEqual(
+            BattyScreen.elements(withPrefix: "tab-chip.", in: app).count, tabsBefore,
+            "Cmd-W in Settings must not close a Tab in the content window behind it"
         )
     }
 

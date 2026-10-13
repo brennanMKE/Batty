@@ -944,6 +944,50 @@ public final class AppStateStore {
         defaultTargetWindow()
     }
 
+    /// Whether `window` is an auxiliary window: a titled window that is not a
+    /// registered content window, such as Settings, Help or Sparkle's update
+    /// window. Judged after walking up from a sheet (`sheetParent`) or child
+    /// window (`parent`) to the window it hangs from, so a sheet or child
+    /// window over a content window is not auxiliary and a dialog over
+    /// Settings is. Borderless windows and non-activating panels are left
+    /// out, so their chords keep resolving as before. The style mask, not
+    /// `canBecomeMain`: a window that has never been shown reports
+    /// `canBecomeMain == false` even when titled, which would make the rule
+    /// untestable. `isContentWindow` is the registry lookup, injected so the
+    /// rule is a pure function.
+    static func isAuxiliaryWindow(_ window: NSWindow?, isContentWindow: (NSWindow) -> Bool) -> Bool {
+        guard var current = window else { return false }
+        while let up = current.sheetParent ?? current.parent { current = up }
+        guard !isContentWindow(current) else { return false }
+        return current.styleMask.contains(.titled) && !current.styleMask.contains(.nonactivatingPanel)
+    }
+
+    /// Whether `window` is an auxiliary window by this store's registry.
+    func isAuxiliaryWindow(_ window: NSWindow?) -> Bool {
+        Self.isAuxiliaryWindow(window) { nsWindowMap[ObjectIdentifier($0)] != nil }
+    }
+
+    /// The key window as `auxiliaryWindowIsKey` reads it. Tests substitute a
+    /// never-shown window; nothing else assigns it.
+    @ObservationIgnored var keyWindowProvider: () -> NSWindow? = { NSApplication.shared.keyWindow }
+
+    /// True while an auxiliary window (see `isAuxiliaryWindow`) is key.
+    public var auxiliaryWindowIsKey: Bool {
+        isAuxiliaryWindow(keyWindowProvider())
+    }
+
+    /// The Window that menu actions on Sessions, Panes and Tabs act on:
+    /// `defaultTargetWindow()`, except nil while an auxiliary window
+    /// (Settings, Help) is key. `BattyShortcuts` declines chords there, so
+    /// without this the menu item would run against the content window
+    /// behind it. Use it inside action closures only; enablement is computed
+    /// from `defaultTargetWindow()`. XPC and CLI paths keep using
+    /// `defaultTargetWindow()`.
+    public func menuTargetWindow(auxiliaryWindowIsKey: Bool? = nil) -> WindowRuntime? {
+        let auxiliaryKey = auxiliaryWindowIsKey ?? self.auxiliaryWindowIsKey
+        return auxiliaryKey ? nil : defaultTargetWindow()
+    }
+
     /// The Terminal Session tab safe to target for tab-scoped Terminal
     /// actions dispatched app-wide (paste, "exit\n" injection): the key
     /// content window's focused pane's active tab, resolved through
@@ -962,7 +1006,13 @@ public final class AppStateStore {
     /// implementation, called from both sites, is what makes that claim
     /// true rather than merely stated.
     public var focusedTerminalTab: TabRuntime? {
-        keyWindowOrFirstRegistered()?.selectedSession?.focusedTerminalPane?.activeTab
+        focusedTerminalTab(auxiliaryWindowIsKey: nil)
+    }
+
+    /// Nil while an auxiliary window is key (see `menuTargetWindow`), so
+    /// Paste and Exit Shell leave the Terminal alone then.
+    func focusedTerminalTab(auxiliaryWindowIsKey: Bool?) -> TabRuntime? {
+        menuTargetWindow(auxiliaryWindowIsKey: auxiliaryWindowIsKey)?.selectedSession?.focusedTerminalPane?.activeTab
     }
 
     // MARK: - Init

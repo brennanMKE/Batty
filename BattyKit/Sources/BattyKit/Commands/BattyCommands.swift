@@ -60,6 +60,15 @@ public struct BattyCommands: Commands {
     /// test — see `keyWindowOrFirstRegistered()`'s doc comment.
     private var keyWindow: WindowRuntime? { store.keyWindowOrFirstRegistered() }
 
+    /// What a menu action acts on: `keyWindow`, except nil while an auxiliary
+    /// window (Settings, Help) is key, so a menu-routed chord does not reach
+    /// the content window behind it. Read only inside action closures.
+    /// Enablement and labels read `keyWindow`: the `Commands` body can re-run
+    /// while one of those windows is key, and nothing observed changes when
+    /// focus returns to a content window, so anything derived from the
+    /// key-window state there could stay stale.
+    private var actionWindow: WindowRuntime? { store.menuTargetWindow() }
+
     public init() {}
 
     public var body: some Commands {
@@ -70,7 +79,7 @@ public struct BattyCommands: Commands {
 
             Button("New Session") {
                 logger.info("Cmd-N action fired (File → New Session)")
-                keyWindow?.addSession()
+                actionWindow?.addSession()
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
             .disabled(keyWindow == nil)
@@ -78,7 +87,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                NotificationCenter.default.post(name: .battyToggleOpenQuickly, object: nil)
+                postToContentWindow(.battyToggleOpenQuickly)
             } label: {
                 Label("Open Quickly\u{2026}", systemImage: "bolt")
             }
@@ -88,7 +97,7 @@ public struct BattyCommands: Commands {
 
         CommandGroup(after: .sidebar) {
             Button {
-                NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
+                postToContentWindow(.battyToggleSidebar)
             } label: {
                 Label(
                     String(localized: "Toggle Sidebar"),
@@ -100,7 +109,7 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Session") {
             Button {
-                keyWindow?.addSession()
+                actionWindow?.addSession()
             } label: {
                 Label("New Session", systemImage: "plus.square")
             }
@@ -109,7 +118,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
+                postToContentWindow(.battyToggleLayoutPicker)
             } label: {
                 Label("Choose Layout\u{2026}", systemImage: "rectangle.3.group")
             }
@@ -120,7 +129,7 @@ public struct BattyCommands: Commands {
 
             ForEach(0..<9) { index in
                 Button {
-                    keyWindow?.selectSession(at: index)
+                    actionWindow?.selectSession(at: index)
                 } label: {
                     Text(sessionMenuTitle(at: index))
                 }
@@ -134,7 +143,7 @@ public struct BattyCommands: Commands {
 
         CommandMenu("Theme") {
             Button {
-                NotificationCenter.default.post(name: .battyToggleThemeSelector, object: nil)
+                postToContentWindow(.battyToggleThemeSelector)
             } label: {
                 Label("Open Theme Selector\u{2026}", systemImage: "paintbrush")
             }
@@ -200,7 +209,7 @@ public struct BattyCommands: Commands {
 
         CommandGroup(after: .windowArrangement) {
             Button {
-                NotificationCenter.default.post(name: .battyToggleBellFeed, object: nil)
+                postToContentWindow(.battyToggleBellFeed)
             } label: {
                 Label("Toggle Bell Feed", systemImage: "bell")
             }
@@ -225,11 +234,13 @@ public struct BattyCommands: Commands {
             // Horizontally submenu rows below deliberately omit that badge
             // so a chord is advertised on exactly one item. In a content
             // window `BattyShortcuts` takes the chord before the menu does,
-            // so it never runs twice; when another window such as Settings
-            // has focus, the menu shortcut is what runs it.
+            // so it never runs twice. When an auxiliary window such as
+            // Settings or Help is key, the menu item resolves no target and
+            // does nothing: the new Pane would open in a content window the
+            // user can't see.
             Section("Open View") {
                 Button {
-                    keyWindow?.createPane(kind: .gitStatus, direction: .horizontal)
+                    actionWindow?.createPane(kind: .gitStatus, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.gitStatus.displayName, systemImage: "arrow.triangle.branch")
                 }
@@ -237,7 +248,7 @@ public struct BattyCommands: Commands {
                 .disabled(keyWindow?.selectedSession == nil)
 
                 Button {
-                    keyWindow?.createPane(kind: .processStatus, direction: .horizontal)
+                    actionWindow?.createPane(kind: .processStatus, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.processStatus.displayName, systemImage: "list.bullet.rectangle")
                 }
@@ -245,7 +256,7 @@ public struct BattyCommands: Commands {
                 .disabled(keyWindow?.selectedSession == nil)
 
                 Button {
-                    keyWindow?.createPane(kind: .systemMetrics, direction: .horizontal)
+                    actionWindow?.createPane(kind: .systemMetrics, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
                 }
@@ -253,7 +264,7 @@ public struct BattyCommands: Commands {
                 .disabled(keyWindow?.selectedSession == nil)
 
                 Button {
-                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
+                    actionWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
                 }
@@ -290,7 +301,7 @@ public struct BattyCommands: Commands {
             // this menu's structure.
             Menu {
                 Button {
-                    guard let tree = keyWindow?.selectedSession?.tree else { return }
+                    guard let tree = actionWindow?.selectedSession?.tree else { return }
                     tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
                 } label: {
                     Label(PaneContentKind.terminal.displayName, systemImage: "rectangle.split.2x1")
@@ -300,25 +311,25 @@ public struct BattyCommands: Commands {
                 Divider()
 
                 Button {
-                    keyWindow?.createPane(kind: .gitStatus, direction: .horizontal)
+                    actionWindow?.createPane(kind: .gitStatus, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.gitStatus.displayName, systemImage: "arrow.triangle.branch")
                 }
 
                 Button {
-                    keyWindow?.createPane(kind: .processStatus, direction: .horizontal)
+                    actionWindow?.createPane(kind: .processStatus, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.processStatus.displayName, systemImage: "list.bullet.rectangle")
                 }
 
                 Button {
-                    keyWindow?.createPane(kind: .systemMetrics, direction: .horizontal)
+                    actionWindow?.createPane(kind: .systemMetrics, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
                 }
 
                 Button {
-                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
+                    actionWindow?.createPane(kind: .lmStudioDashboard, direction: .horizontal)
                 } label: {
                     Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
                 }
@@ -329,7 +340,7 @@ public struct BattyCommands: Commands {
 
             Menu {
                 Button {
-                    guard let tree = keyWindow?.selectedSession?.tree else { return }
+                    guard let tree = actionWindow?.selectedSession?.tree else { return }
                     tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
                 } label: {
                     Label(PaneContentKind.terminal.displayName, systemImage: "rectangle.split.1x2")
@@ -339,28 +350,28 @@ public struct BattyCommands: Commands {
                 Divider()
 
                 Button {
-                    keyWindow?.createPane(kind: .gitStatus, direction: .vertical)
+                    actionWindow?.createPane(kind: .gitStatus, direction: .vertical)
                 } label: {
                     Label(PaneContentKind.gitStatus.displayName, systemImage: "arrow.triangle.branch")
                 }
                 .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalGitStatus))
 
                 Button {
-                    keyWindow?.createPane(kind: .processStatus, direction: .vertical)
+                    actionWindow?.createPane(kind: .processStatus, direction: .vertical)
                 } label: {
                     Label(PaneContentKind.processStatus.displayName, systemImage: "list.bullet.rectangle")
                 }
                 .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalProcessStatus))
 
                 Button {
-                    keyWindow?.createPane(kind: .systemMetrics, direction: .vertical)
+                    actionWindow?.createPane(kind: .systemMetrics, direction: .vertical)
                 } label: {
                     Label(PaneContentKind.systemMetrics.displayName, systemImage: "gauge")
                 }
                 .keyboardShortcut(shortcuts.keyboardShortcut(for: .splitVerticalSystemMetrics))
 
                 Button {
-                    keyWindow?.createPane(kind: .lmStudioDashboard, direction: .vertical)
+                    actionWindow?.createPane(kind: .lmStudioDashboard, direction: .vertical)
                 } label: {
                     Label(PaneContentKind.lmStudioDashboard.displayName, systemImage: "cpu")
                 }
@@ -371,7 +382,7 @@ public struct BattyCommands: Commands {
             .disabled(keyWindow?.selectedSession == nil)
 
             Button {
-                guard let tree = keyWindow?.selectedSession?.tree else { return }
+                guard let tree = actionWindow?.selectedSession?.tree else { return }
                 tree.splitFullDimension(direction: .horizontal, inheritingFrom: tree.focusedPane)
             } label: {
                 Label("Split Full-Height Column", systemImage: "rectangle.split.2x1")
@@ -380,7 +391,7 @@ public struct BattyCommands: Commands {
             .disabled(keyWindow?.selectedSession == nil)
 
             Button {
-                guard let tree = keyWindow?.selectedSession?.tree else { return }
+                guard let tree = actionWindow?.selectedSession?.tree else { return }
                 tree.splitFullDimension(direction: .vertical, inheritingFrom: tree.focusedPane)
             } label: {
                 Label("Split Full-Width Row", systemImage: "rectangle.split.1x2")
@@ -391,7 +402,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                NotificationCenter.default.post(name: .battyToggleLayoutPicker, object: nil)
+                postToContentWindow(.battyToggleLayoutPicker)
             } label: {
                 Label("Layouts\u{2026}", systemImage: "rectangle.3.group")
             }
@@ -401,7 +412,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                keyWindow?.selectedSession?.focusPane(adjacent: .left)
+                actionWindow?.selectedSession?.focusPane(adjacent: .left)
             } label: {
                 Label("Focus Pane Left", systemImage: "arrow.left")
             }
@@ -409,7 +420,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                keyWindow?.selectedSession?.focusPane(adjacent: .right)
+                actionWindow?.selectedSession?.focusPane(adjacent: .right)
             } label: {
                 Label("Focus Pane Right", systemImage: "arrow.right")
             }
@@ -417,7 +428,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                keyWindow?.selectedSession?.focusPane(adjacent: .up)
+                actionWindow?.selectedSession?.focusPane(adjacent: .up)
             } label: {
                 Label("Focus Pane Above", systemImage: "arrow.up")
             }
@@ -425,7 +436,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                keyWindow?.selectedSession?.focusPane(adjacent: .down)
+                actionWindow?.selectedSession?.focusPane(adjacent: .down)
             } label: {
                 Label("Focus Pane Below", systemImage: "arrow.down")
             }
@@ -435,7 +446,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.left)
+                actionWindow?.selectedSession?.tree.resizeFocusedSplit(.left)
             } label: {
                 Label("Move Split Divider Left", systemImage: "chevron.left")
             }
@@ -443,7 +454,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.right)
+                actionWindow?.selectedSession?.tree.resizeFocusedSplit(.right)
             } label: {
                 Label("Move Split Divider Right", systemImage: "chevron.right")
             }
@@ -451,7 +462,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.up)
+                actionWindow?.selectedSession?.tree.resizeFocusedSplit(.up)
             } label: {
                 Label("Move Split Divider Up", systemImage: "chevron.up")
             }
@@ -459,7 +470,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                keyWindow?.selectedSession?.tree.resizeFocusedSplit(.down)
+                actionWindow?.selectedSession?.tree.resizeFocusedSplit(.down)
             } label: {
                 Label("Move Split Divider Down", systemImage: "chevron.down")
             }
@@ -486,7 +497,7 @@ public struct BattyCommands: Commands {
             // `focusedPane`/`closeFocusedItemTitle` and relabels itself
             // "Close Pane" rather than staying disabled.
             Button {
-                keyWindow?.selectedSession?.focusedTerminalPane?.addTab()
+                actionWindow?.selectedSession?.focusedTerminalPane?.addTab()
             } label: {
                 Label("New Tab", systemImage: "plus")
             }
@@ -496,7 +507,11 @@ public struct BattyCommands: Commands {
             Button {
                 let title = keyWindow?.closeFocusedItemTitle ?? "Close Tab"
                 logger.info("Cmd-W action fired (Tab menu, title=\(title, privacy: .public))")
-                keyWindow?.requestCloseFocusedTab()
+                if store.auxiliaryWindowIsKey {
+                    NSApp.keyWindow?.performClose(nil)
+                } else {
+                    actionWindow?.requestCloseFocusedTab()
+                }
             } label: {
                 // Title reflects what this actually does (#0334): a
                 // focused non-terminal pane has no Tab bar, so ⌘W closes
@@ -519,7 +534,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                keyWindow?.selectedSession?.focusedTerminalPane?.selectPreviousTab()
+                actionWindow?.selectedSession?.focusedTerminalPane?.selectPreviousTab()
             } label: {
                 Label("Show Previous Tab", systemImage: "chevron.left")
             }
@@ -527,7 +542,7 @@ public struct BattyCommands: Commands {
             .disabled((focusedTerminalPane?.tabs.count ?? 0) < 2)
 
             Button {
-                keyWindow?.selectedSession?.focusedTerminalPane?.selectNextTab()
+                actionWindow?.selectedSession?.focusedTerminalPane?.selectNextTab()
             } label: {
                 Label("Show Next Tab", systemImage: "chevron.right")
             }
@@ -538,7 +553,7 @@ public struct BattyCommands: Commands {
 
             ForEach(0..<9) { index in
                 Button {
-                    keyWindow?.selectedSession?.focusedTerminalPane?.selectTab(at: index)
+                    actionWindow?.selectedSession?.focusedTerminalPane?.selectTab(at: index)
                 } label: {
                     Text(tabMenuTitle(at: index))
                 }
@@ -549,6 +564,15 @@ public struct BattyCommands: Commands {
                 .disabled(!tabExists(at: index))
             }
         }
+    }
+
+    /// The toggles the content windows observe. Dropped while an auxiliary
+    /// window is key, so they do not act on the window behind it. (Each
+    /// receiver also requires its own window to be key, so with no content
+    /// window key they are inert either way.)
+    private func postToContentWindow(_ name: Notification.Name) {
+        guard !store.auxiliaryWindowIsKey else { return }
+        NotificationCenter.default.post(name: name, object: nil)
     }
 
     private var cmdNumberSwitchesSessions: Bool {
