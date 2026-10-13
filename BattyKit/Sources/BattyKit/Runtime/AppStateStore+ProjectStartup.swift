@@ -86,8 +86,10 @@ extension AppStateStore {
                 contentFactory: contentFactory, completion: completion)
             target.pendingStartupTrusts.append(request)
             // The CLI caller is waiting on this sheet, which is invisible if
-            // Batty is behind another app or minimized.
-            if fromCli { activateWindow(target) }
+            // Batty is behind another app or minimized. The same holds for a
+            // GUI request made while Settings, Help or the Project Editor is
+            // key: `target` is the content window behind it.
+            if fromCli || auxiliaryWindowIsKey { activateWindow(target) }
             return request.id
         }
     }

@@ -1321,8 +1321,10 @@ public final class AppStateStore {
         )
         let session = target.addProjectSession(project, tree: tree)
         // A CLI create brings Batty forward like `batty new` does (its
-        // `open -a` activates the app); GUI opens are already in front.
-        if fromCli { activateWindow(target) }
+        // `open -a` activates the app). A GUI open normally starts from the
+        // content window, but from Settings, Help or the Project Editor the
+        // target is hidden behind that window, so it comes forward too.
+        if fromCli || auxiliaryWindowIsKey { activateWindow(target) }
         let event = WatchEventPayload(type: "session_created", sessionID: session.id, fromCli: fromCli)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
         return ProjectOpenResult(session: session, wasCreated: true)
@@ -1767,7 +1769,10 @@ public final class AppStateStore {
     /// trust sheet's button via `resolveStartupTrust`, and `openProject`'s
     /// focus-existing branch, reached from GUI project opens (Command
     /// Palette, project editor) via `ProjectOpenPresenter` and from
-    /// `UITestDriver` — never from view-update code. No-op when the window has no
+    /// `UITestDriver`; `openProject`'s create path and `requestOpenProject`'s
+    /// trust-sheet path when a GUI open starts with an auxiliary window key;
+    /// and File > Open Project > Choose Project... under the same condition —
+    /// never from view-update code. No-op when the window has no
     /// registered `NSWindow` yet (unit tests, headless CLI-only contexts)
     /// — the selection/focus writes above already ran regardless, which is
     /// what the store-state assertions in tests exercise.

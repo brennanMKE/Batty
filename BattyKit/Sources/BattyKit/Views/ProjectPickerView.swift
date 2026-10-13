@@ -8,6 +8,17 @@ extension Notification.Name {
     public static let battyToggleProjectPicker = Notification.Name("co.sstools.Batty.toggleProjectPicker")
 }
 
+enum ProjectPickerToggle {
+    static let windowIDKey = "windowID"
+
+    /// A toggle that names a window is handled by that window alone, key or
+    /// not; one that names none is handled by the key window.
+    static func shouldHandle(userInfo: [AnyHashable: Any]?, windowID: WindowID, isKeyWindow: Bool) -> Bool {
+        guard let target = userInfo?[windowIDKey] as? WindowID else { return isKeyWindow }
+        return target == windowID
+    }
+}
+
 /// The Open Project sheet. It only reports what the person chose; the host
 /// dismisses the sheet first and then acts, so the startup-command trust
 /// sheet can present from the same view.

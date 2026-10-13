@@ -1,5 +1,6 @@
 // ProjectXPCTests.swift
 
+import AppKit
 import BattyXPCCore
 import Foundation
 import Testing
@@ -41,6 +42,11 @@ private final class Fixture {
 @MainActor
 private final class ActivationLog {
     var count = 0
+}
+
+@MainActor
+private final class TargetLog {
+    var ids: [WindowID] = []
 }
 
 @MainActor
@@ -379,6 +385,157 @@ struct ProjectXPCTests {
         let log = activations(store)
         _ = try await open(AppXPCService(store: { store }, clock: TestClock()), "Batty")
         #expect(log.count == 1)
+    }
+
+    // MARK: - GUI opens while an auxiliary window is key
+
+    private func titledWindow() -> NSWindow {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        return window
+    }
+
+    private func targets(_ store: AppStateStore) -> TargetLog {
+        let log = TargetLog()
+        store.windowActivationObserver = { log.ids.append($0.id) }
+        return log
+    }
+
+    @Test func aGUICreateFromAnAuxiliaryKeyWindowBringsTheTargetForward() throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project("Batty", panes: 2)
+        try store.projectStore?.upsert(project)
+        let settings = titledWindow()
+        store.keyWindowProvider = { settings }
+        let log = targets(store)
+        let target = try #require(store.defaultTargetWindow())
+
+        let result = try store.openProject(id: project.id, mode: .openNew)
+
+        #expect(result.wasCreated)
+        #expect(target.sessions.contains { $0.id == result.session.id })
+        #expect(target.selectedSession?.id == result.session.id)
+        #expect(log.ids == [target.id])
+    }
+
+    @Test func aGUICreateFromAContentKeyWindowDoesNotActivate() throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project("Batty", panes: 2)
+        try store.projectStore?.upsert(project)
+        let content = titledWindow()
+        store.registerNSWindow(content, for: store.windows[0].id)
+        store.keyWindowProvider = { content }
+        let log = targets(store)
+
+        _ = try store.openProject(id: project.id, mode: .openNew)
+
+        #expect(log.ids.isEmpty)
+    }
+
+    @Test func aTrustSheetRequestedFromAnAuxiliaryKeyWindowActivatesTheWindowItQueuedOn() throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project("Batty", command: "./build.sh", panes: 2)
+        try store.projectStore?.upsert(project)
+        let settings = titledWindow()
+        store.keyWindowProvider = { settings }
+        let log = targets(store)
+
+        let requestID = try #require(store.requestOpenProject(id: project.id, mode: .openNew, completion: { _ in }))
+
+        let queuedOn = try #require(store.windows.first { $0.pendingStartupTrusts.contains { $0.id == requestID } })
+        #expect(log.ids == [queuedOn.id])
+        store.cancelStartupTrust(requestID: requestID)
+    }
+
+    @Test func aTrustSheetRequestedFromAContentKeyWindowDoesNotActivate() throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project("Batty", command: "./build.sh", panes: 2)
+        try store.projectStore?.upsert(project)
+        let content = titledWindow()
+        store.registerNSWindow(content, for: store.windows[0].id)
+        store.keyWindowProvider = { content }
+        let log = targets(store)
+
+        let requestID = try #require(store.requestOpenProject(id: project.id, mode: .openNew, completion: { _ in }))
+
+        #expect(log.ids.isEmpty)
+        store.cancelStartupTrust(requestID: requestID)
+    }
+
+    @Test func aCLICreateStillActivatesExactlyOnceFromAnAuxiliaryKeyWindow() throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project("Batty", panes: 2)
+        try store.projectStore?.upsert(project)
+        let settings = titledWindow()
+        store.keyWindowProvider = { settings }
+        let log = targets(store)
+
+        _ = try store.openProject(id: project.id, mode: .openNew, fromCli: true)
+
+        #expect(log.ids.count == 1)
+    }
+
+    @Test func focusingAnOpenProjectFromAnAuxiliaryKeyWindowActivatesOnce() throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let project = fixture.project("Batty", panes: 2)
+        try store.projectStore?.upsert(project)
+        _ = try store.openProject(id: project.id)
+        let settings = titledWindow()
+        store.keyWindowProvider = { settings }
+        let log = targets(store)
+
+        let result = try store.openProject(id: project.id)
+
+        #expect(!result.wasCreated)
+        #expect(log.ids.count == 1)
+    }
+
+    @Test func flagOffGUIOpenFromAnAuxiliaryKeyWindowActivatesNothing() throws {
+        let fixture = try Fixture()
+        let store = fixture.store(projects: false)
+        let settings = titledWindow()
+        store.keyWindowProvider = { settings }
+        let log = targets(store)
+
+        var failure: Error?
+        store.requestOpenProject(id: UUID(), completion: { if case .failure(let e) = $0 { failure = e } })
+
+        #expect(failure as? ProjectOpenError == .featureDisabled)
+        #expect(log.ids.isEmpty)
+    }
+
+    @Test func flagOffOpenProjectFromAnAuxiliaryKeyWindowThrowsAndActivatesNothing() throws {
+        let fixture = try Fixture()
+        let store = fixture.store(projects: false)
+        let settings = titledWindow()
+        store.keyWindowProvider = { settings }
+        let log = targets(store)
+
+        #expect(throws: ProjectOpenError.featureDisabled) {
+            try store.openProject(id: UUID(), mode: .openNew)
+        }
+        #expect(log.ids.isEmpty)
+    }
+
+    @Test func aPickerToggleNamingAWindowIsHandledByThatWindowOnly() {
+        let named = WindowID(), other = WindowID()
+        let info: [AnyHashable: Any] = [ProjectPickerToggle.windowIDKey: named]
+        #expect(ProjectPickerToggle.shouldHandle(userInfo: info, windowID: named, isKeyWindow: false))
+        #expect(!ProjectPickerToggle.shouldHandle(userInfo: info, windowID: other, isKeyWindow: true))
+    }
+
+    @Test func aPickerToggleNamingNoWindowIsHandledByTheKeyWindowOnly() {
+        let id = WindowID()
+        #expect(ProjectPickerToggle.shouldHandle(userInfo: nil, windowID: id, isKeyWindow: true))
+        #expect(!ProjectPickerToggle.shouldHandle(userInfo: nil, windowID: id, isKeyWindow: false))
+        #expect(!ProjectPickerToggle.shouldHandle(userInfo: ["other": 1], windowID: id, isKeyWindow: false))
     }
 
     // MARK: - Wire shapes

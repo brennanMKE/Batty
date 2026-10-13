@@ -129,7 +129,17 @@ public struct BattyCommands: Commands {
             Divider()
         case .chooseProject:
             Button("Choose Project\u{2026}") {
-                postToContentWindow(.battyToggleProjectPicker)
+                // With an auxiliary window key (Settings, Help or the Project
+                // Editor) the default target comes forward and the toggle names
+                // it, so the picker shows there whatever the key window is.
+                if store.auxiliaryWindowIsKey, let target = store.defaultTargetWindow() {
+                    store.activateWindow(target)
+                    NotificationCenter.default.post(
+                        name: .battyToggleProjectPicker, object: nil,
+                        userInfo: [ProjectPickerToggle.windowIDKey: target.id])
+                } else {
+                    postToContentWindow(.battyToggleProjectPicker)
+                }
             }
         case .newProject:
             Button("New Project\u{2026}") {

@@ -53,8 +53,10 @@ public struct SessionDetailView: View {
             guard isKeyWindow else { return }
             layoutPickerShown.toggle()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .battyToggleProjectPicker)) { _ in
-            guard store.featureFlags.projects, isKeyWindow else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .battyToggleProjectPicker)) { note in
+            guard store.featureFlags.projects,
+                  ProjectPickerToggle.shouldHandle(userInfo: note.userInfo, windowID: windowRuntime.id, isKeyWindow: isKeyWindow)
+            else { return }
             projectPickerShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleThemeSelector)) { _ in

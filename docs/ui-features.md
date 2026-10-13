@@ -753,9 +753,22 @@ them are absent with `FeatureFlags.projects` off.
   not guaranteed to hold inside the palette's `onDismiss`. The closure re-checks
   `featureFlags.projects`.
 - The File menu items have no key equivalents and there is no new
-  `ShortcutAction`. The submenu is disabled when no window is registered. Its
-  Choose Project... does nothing while the Project Editor is key
-  (`postToContentWindow`), like the other toggles.
+  `ShortcutAction`. The submenu is disabled when no window is registered.
+- Choosing a Project from the submenu while Settings, Help or the Project Editor
+  is key (#0485) brings the target content window forward: `openProject`
+  (create) and `requestOpenProject` (trust sheet) call `activateWindow` when
+  `auxiliaryWindowIsKey`, in the same menu action, so the new Session or the
+  trust sheet is visible. This also covers Save & Open when the editor was key.
+- Choose Project... from Settings, Help or the Project Editor brings the target
+  content window forward and presents the picker there: the menu action posts
+  `.battyToggleProjectPicker` with the target's `WindowID` in `userInfo`
+  (`ProjectPickerToggle`), and `SessionDetailView` handles a toggle that names
+  its window whether or not that window is key yet. An unnamed toggle
+  is still handled by the key window only. Elsewhere the item
+  posts the unnamed toggle through `postToContentWindow`, which drops it while
+  an auxiliary window is key.
+  `defaultTargetWindow()` and the CLI's activation are unchanged, and a content
+  window key changes nothing.
 - With the flag off there is no Open Project submenu, no Choose Project... or
   New Project..., no `project:` or `extra:openProjectPicker` palette ids, the
   toggle notification is ignored, the sheet does not present, and

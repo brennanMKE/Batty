@@ -262,6 +262,11 @@ stay stale. CLI, XPC, the Command Palette and `batty://` URLs keep using
 Check for Updates and the Theme menu work from anywhere because they do not
 touch a hidden Session.
 
+File > Open Project > a Project name has no chord, so it is not blocked: it
+brings the content window forward and opens there (#0485), including the
+startup-command trust sheet. Choose Project... from Settings, Help or the
+Project Editor brings the content window forward and presents the picker there.
+
 Why this exists, in two pieces:
 
 - **SwiftUI Commands can't beat NSWindow on `Cmd-W`.** Per `#0062`,
