@@ -85,6 +85,19 @@ extension AppStateStore {
         return true
     }
 
+    /// Close item while an auxiliary window (Settings, Help) is key, or a sheet
+    /// or child window over one. Closes the auxiliary window only when it is
+    /// itself the key window with no sheet attached; a sheet or child window
+    /// is left alone, because closing the window under a sheet could discard
+    /// what the sheet asks about. Returns whether `window` resolved to an
+    /// auxiliary window.
+    @discardableResult
+    func closeAuxiliaryWindow(from window: NSWindow?, close: (NSWindow) -> Void = { $0.performClose(nil) }) -> Bool {
+        guard let top = Self.topLevelWindow(from: window), isAuxiliaryWindow(top) else { return false }
+        if top === window, top.attachedSheet == nil { close(top) }
+        return true
+    }
+
     /// Whether the Tab menu's Close item is enabled. Disabled only for a
     /// content window with no selected Session. With no content window it
     /// stays enabled so the item can close the Project Editor. It makes the

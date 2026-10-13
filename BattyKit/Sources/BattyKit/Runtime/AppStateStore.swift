@@ -1012,6 +1012,14 @@ public final class AppStateStore {
         Self.isProjectEditorWindow(NSApplication.shared.keyWindow)
     }
 
+    /// The window `window` hangs from: `window` itself, or the top of its
+    /// `sheetParent` / `parent` chain.
+    static func topLevelWindow(from window: NSWindow?) -> NSWindow? {
+        guard var current = window else { return nil }
+        while let up = current.sheetParent ?? current.parent { current = up }
+        return current
+    }
+
     /// Whether `window` is an auxiliary window: a titled window that is not a
     /// registered content window, such as Settings, Help, the Project Editor
     /// or Sparkle's update window. Judged after walking up from a sheet
@@ -1023,8 +1031,7 @@ public final class AppStateStore {
     /// would make the rule untestable. `isContentWindow` is the registry
     /// lookup, injected so the rule is a pure function.
     static func isAuxiliaryWindow(_ window: NSWindow?, isContentWindow: (NSWindow) -> Bool) -> Bool {
-        guard var current = window else { return false }
-        while let up = current.sheetParent ?? current.parent { current = up }
+        guard let current = topLevelWindow(from: window) else { return false }
         guard !isContentWindow(current) else { return false }
         return current.styleMask.contains(.titled) && !current.styleMask.contains(.nonactivatingPanel)
     }

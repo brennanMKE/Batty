@@ -254,7 +254,10 @@ selection, Exit Shell and the panel toggles do nothing, and `Cmd-V` falls
 through to the standard paste action (so a focused Settings text field still
 pastes and the terminal behind never receives it). `Cmd-W` closes the key
 Settings or Help window (`performClose`) and leaves the content window's Tabs
-alone. Enablement and labels are deliberately *not* gated: they keep reading
+alone. With a sheet or child window hanging from that window and key, `Cmd-W`
+does nothing (`AppStateStore.closeAuxiliaryWindow(from:close:)`, #0496), the
+same rule the Project Editor follows. Enablement and labels are deliberately
+*not* gated: they keep reading
 `defaultTargetWindow()`, because nothing observed changes when focus returns
 to a content window, so a disabled state computed from the key window could
 stay stale. CLI, XPC, the Command Palette and `batty://` URLs keep using

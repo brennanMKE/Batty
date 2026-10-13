@@ -375,6 +375,25 @@ struct ProjectEditorCloseItemTests {
         #expect(closed.isEmpty, "a sheet blocks closing, so the chord does nothing rather than closing the sheet")
     }
 
+    @Test func theEditorWithAnAttachedSheetIsNotClosed() {
+        final class SheetedWindow: NSWindow {
+            var stub: NSWindow?
+            override var attachedSheet: NSWindow? { stub }
+        }
+        let store = AppStateStore()
+        let editor = SheetedWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                                   styleMask: [.titled, .closable], backing: .buffered, defer: true)
+        editor.isReleasedWhenClosed = false
+        editor.identifier = NSUserInterfaceItemIdentifier(ProjectEditorWindowController.windowIdentifier)
+        var closed: [NSWindow] = []
+        #expect(store.closeProjectEditor(from: editor) { closed.append($0) })
+        #expect(closed == [editor])
+        closed = []
+        editor.stub = sheet()
+        #expect(store.closeProjectEditor(from: editor) { closed.append($0) })
+        #expect(closed.isEmpty)
+    }
+
     @Test func otherWindowsAndSheetsOverThemAreNotTheEditor() {
         let store = AppStateStore()
         let settings = window(identifier: "com_apple_SwiftUI_Settings_window")

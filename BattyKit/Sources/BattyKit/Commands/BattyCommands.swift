@@ -611,14 +611,10 @@ public struct BattyCommands: Commands {
                 let title = keyWindow?.closeFocusedItemTitle ?? "Close Tab"
                 logger.info("Cmd-W action fired (Tab menu, title=\(title, privacy: .public))")
                 let key = NSApp.keyWindow
-                if store.closeProjectEditor(from: key) {
+                if store.closeProjectEditor(from: key) || store.closeAuxiliaryWindow(from: key) {
                     return
                 }
-                if store.auxiliaryWindowIsKey {
-                    key?.performClose(nil)
-                } else {
-                    actionWindow?.requestCloseFocusedTab()
-                }
+                actionWindow?.requestCloseFocusedTab()
             } label: {
                 // Title reflects what this actually does (#0334): a
                 // focused non-terminal pane has no Tab bar, so ⌘W closes

@@ -233,3 +233,90 @@ struct AuxiliaryWindowGateTests {
         #expect(forwarded == 1, "the standard paste action must run so a focused Settings text field still pastes")
     }
 }
+
+/// A window whose `attachedSheet` is stubbed: a never-shown window reports
+/// none even after `beginSheet`.
+private final class SheetedWindow: NSWindow {
+    var stub: NSWindow?
+    override var attachedSheet: NSWindow? { stub }
+}
+
+@MainActor
+struct AuxiliaryWindowCloseTests {
+    @Test func anAuxiliaryWindowWithAnAttachedSheetIsLeftAlone() {
+        let store = AppStateStore()
+        let settings = SheetedWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                                     styleMask: [.titled, .closable], backing: .buffered, defer: true)
+        settings.isReleasedWhenClosed = false
+        var closed: [NSWindow] = []
+        #expect(store.closeAuxiliaryWindow(from: settings) { closed.append($0) })
+        #expect(closed == [settings])
+        closed = []
+        settings.stub = sheetPanel()
+        #expect(store.closeAuxiliaryWindow(from: settings) { closed.append($0) })
+        #expect(closed.isEmpty)
+    }
+
+    private func titledWindow() -> NSWindow {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        return window
+    }
+
+    private func sheetPanel() -> NSPanel {
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 50),
+                            styleMask: [.titled], backing: .buffered, defer: true)
+        panel.isReleasedWhenClosed = false
+        return panel
+    }
+
+    @Test func theAuxiliaryWindowItselfIsClosed() {
+        let store = AppStateStore()
+        let settings = titledWindow()
+        var closed: [NSWindow] = []
+        #expect(store.closeAuxiliaryWindow(from: settings) { closed.append($0) })
+        #expect(closed == [settings])
+    }
+
+    @Test func aSheetOverTheAuxiliaryWindowIsLeftAlone() {
+        let store = AppStateStore()
+        let settings = titledWindow()
+        let sheet = sheetPanel()
+        settings.beginSheet(sheet)
+        defer { settings.endSheet(sheet) }
+        var closed: [NSWindow] = []
+        #expect(store.closeAuxiliaryWindow(from: sheet) { closed.append($0) })
+        #expect(closed.isEmpty)
+    }
+
+    @Test func aChildWindowOfTheAuxiliaryWindowIsLeftAlone() {
+        let store = AppStateStore()
+        let settings = titledWindow()
+        let child = titledWindow()
+        settings.addChildWindow(child, ordered: .above)
+        defer { settings.removeChildWindow(child) }
+        var closed: [NSWindow] = []
+        #expect(store.closeAuxiliaryWindow(from: child) { closed.append($0) })
+        #expect(closed.isEmpty)
+    }
+
+    @Test func aSheetOverAContentWindowIsNotHandled() {
+        let store = AppStateStore()
+        let content = titledWindow()
+        store.registerNSWindow(content, for: store.windows[0].id)
+        let sheet = sheetPanel()
+        content.beginSheet(sheet)
+        defer { content.endSheet(sheet) }
+        var closed: [NSWindow] = []
+        #expect(!store.closeAuxiliaryWindow(from: sheet) { closed.append($0) })
+        #expect(!store.closeAuxiliaryWindow(from: content) { closed.append($0) })
+        #expect(closed.isEmpty)
+    }
+
+    @Test func nilIsNotHandled() {
+        var closed: [NSWindow] = []
+        #expect(!AppStateStore().closeAuxiliaryWindow(from: nil) { closed.append($0) })
+        #expect(closed.isEmpty)
+    }
+}
