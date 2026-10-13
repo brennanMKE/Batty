@@ -705,6 +705,68 @@ struct GitStatusPaneContentTests {
         #expect(content.state == .notARepository(path: "/tmp/example-repo"))
     }
 
+    // MARK: - Worktrees
+
+    private func worktreeFixture(_ records: [[String]]) -> String {
+        records.map { ($0 + ["", ""]).joined(separator: "\u{0}") }.joined()
+    }
+
+    private func snapshotFor(worktreeListOutput: String?, toplevel: String) async -> GitStatusSnapshot? {
+        let scanner = RecordingScanner()
+        scanner.nextResult = .snapshot(GitStatusRawScan(
+            statusOutput: "# branch.head main",
+            operationMarker: .none,
+            submoduleParentName: nil,
+            isWorktree: false,
+            repositoryToplevel: toplevel,
+            worktreeListOutput: worktreeListOutput
+        ))
+        let (content, _) = makeContent(scanner: scanner)
+        content.setUp(visible: true)
+        guard await awaitScanHandled(content, atLeast: 1) else { return nil }
+        guard case .snapshot(let snapshot) = content.state else {
+            Issue.record("expected .snapshot, got \(content.state)")
+            return nil
+        }
+        return snapshot
+    }
+
+    @Test func worktreesComposeMainFirstThenSortedWithExactlyTheToplevelCurrent() async {
+        let output = worktreeFixture([
+            ["worktree /repos/main", "HEAD abc1234", "branch refs/heads/main"],
+            ["worktree /repos/wt-c", "HEAD abc1234", "detached"],
+            ["worktree /repos/wt-a", "HEAD abc1234", "branch refs/heads/a", "locked why"],
+        ])
+        guard let snapshot = await snapshotFor(worktreeListOutput: output, toplevel: "/repos/wt-c") else { return }
+        #expect(snapshot.worktrees.map(\.path) == ["/repos/main", "/repos/wt-a", "/repos/wt-c"])
+        #expect(snapshot.worktrees.map(\.isCurrent) == [false, false, true])
+        #expect(snapshot.worktrees[1].lockReason == "why")
+    }
+
+    @Test func aNilWorktreeListComposesNoWorktrees() async {
+        guard let snapshot = await snapshotFor(worktreeListOutput: nil, toplevel: "/repos/main") else { return }
+        #expect(snapshot.worktrees.isEmpty)
+    }
+
+    @Test func aSymlinkedVersusResolvedPathMismatchStillMarksTheEntryCurrent() async {
+        let output = worktreeFixture([
+            ["worktree /private/tmp", "HEAD abc1234", "branch refs/heads/main"],
+            ["worktree /private/var", "HEAD abc1234", "branch refs/heads/wt"],
+        ])
+        guard let snapshot = await snapshotFor(worktreeListOutput: output, toplevel: "/var") else { return }
+        #expect(snapshot.worktrees.map(\.isCurrent) == [false, true])
+    }
+
+    @Test func aBareFirstEntryIsNeverMarkedCurrent() async {
+        let output = worktreeFixture([
+            ["worktree /repos/bare.git", "bare"],
+            ["worktree /repos/wt", "HEAD abc1234", "branch refs/heads/main"],
+        ])
+        guard let snapshot = await snapshotFor(worktreeListOutput: output, toplevel: "/repos/bare.git") else { return }
+        #expect(snapshot.worktrees.count == 2)
+        #expect(snapshot.worktrees.allSatisfy { !$0.isCurrent })
+    }
+
     // MARK: - Change Directory…
 
     @Test func changeDirectoryRetargetsAndForcesAFreshScan() async {

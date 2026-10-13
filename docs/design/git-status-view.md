@@ -321,6 +321,36 @@ future issue wants a "click a file to open its full diff/history in a
 dedicated pane" flow, that's new scope for that issue to argue, not
 something this design pre-builds room for.
 
+### Worktrees
+
+Added by #0488. A fifth disclosure group, `Worktrees (N)`, sits after the file
+groups and the "working tree clean" line, collapsed by default, and renders only
+when the repository has two or more worktrees (a single plain checkout would
+list only the Pane's own directory).
+
+- **Data.** A third command in the existing scan, `git -C <path> worktree list
+  --porcelain -z`, parsed by the pure `GitWorktreeListParser`. A failure leaves
+  the raw field nil and never fails the scan (git older than 2.36 lacks `-z`
+  there). It is re-read on every scan; no new timer, watcher or process per
+  tick. A Pane watching the main worktree sees `git worktree add` and `lock`
+  through its existing FSEvents stream. Accepted limits: a Pane in a linked
+  worktree does not watch the common directory, and no Pane sees a worktree's
+  directory being deleted elsewhere (which makes it prunable); the refresh
+  button catches up in both cases.
+- **Order and current marker.** Main worktree first, then linked worktrees
+  sorted by path. The current entry is the one whose path equals the scan's
+  `--show-toplevel` after symlink-resolving normalisation (so `/tmp` and
+  `/private/tmp` agree). Bare entries are never current.
+- **Row.** Current glyph, `~`-abbreviated path, branch or `detached @ <sha7>`,
+  and `Bare` / `Locked` / `Prunable` badges (lock and prune reasons as help
+  text). Context menu: Copy Path and Reveal in Finder. No add, remove, prune,
+  lock or move, consistent with §3.
+- **Bare repositories.** A Pane pointed at a bare repository stays
+  `.notARepository`. A Pane inside a linked worktree of a bare repository lists
+  the bare entry first.
+- **Deferred.** "Open a terminal in this worktree" waits on #0487's directory
+  plumbing for splits from non-terminal Panes.
+
 ---
 
 ## 3. Read-only or interactive
@@ -619,7 +649,7 @@ idempotence at the state-machine level regardless of caller.
 | Question | Answer | Section |
 |---|---|---|
 | 1. Which directory? | CLI `--path`, else previously-focused Pane's Tab cwd, else `$HOME`. Frozen at creation; user can retarget via an explicit "Change Directory…" picker. Not-a-repo is a defined empty state; submodule/worktree are detected via `git rev-parse` flags and shown as informational badges, with no behavior change to status computation. | §1 |
-| 2. What does it show? | Header (repo, branch, ahead/behind, stash count, submodule/worktree badges) + state banner (rebase/merge/cherry-pick) + four disclosable, grouped file lists (conflicted — conditional, sorts first — /staged/unstaged/untracked) with colored status badges + click-to-select inline diff peek + non-mutating context menu (Reveal in Finder, Copy Path, Open in Default Editor). | §2 |
+| 2. What does it show? | Header (repo, branch, ahead/behind, stash count, submodule/worktree badges) + state banner (rebase/merge/cherry-pick) + four disclosable, grouped file lists (conflicted — conditional, sorts first — /staged/unstaged/untracked) with colored status badges + worktrees (shown with two or more) + click-to-select inline diff peek + non-mutating context menu (Reveal in Finder, Copy Path, Open in Default Editor). | §2 |
 | 3. Read-only or interactive? | Read-only for this ship. Selection/disclosure/diff-peek are interactive UI but mutate nothing. Staging/unstaging/discard explicitly deferred to a future issue, not designed or stubbed here. | §3 |
 | 4. How does it stay current? | FSEvents on the resolved path (+ `.git` state markers for worktrees), two-layer debounce (event coalescing + in-flight-call coalescing), async off-main-thread `git --no-optional-locks status --porcelain=v2 --branch --show-stash` subprocess (spawned via `Process`, the user's real `git`, never contending for `.git/index.lock` with the user's own terminal). Wired into `PaneContentLifecycle`'s four methods exactly per `docs/pane-view-lifecycle.md` §6 — suspended means the FSEventStream is fully released, not paused; showing re-creates it and forces one refresh; teardown sends `SIGTERM` and waits with a bounded timeout, not an unbounded block on the main actor. | §4 |
 

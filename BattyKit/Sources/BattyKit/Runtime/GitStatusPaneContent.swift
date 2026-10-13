@@ -58,13 +58,17 @@ public nonisolated struct GitStatusRawScan: Sendable, Equatable {
     /// URL from a `GitStatusFileEntry.path`; `repoName` is derived from
     /// its last path component, not `directoryPath`'s.
     public var repositoryToplevel: String
+    /// Raw stdout of `git worktree list --porcelain -z`; `nil` when that call
+    /// failed, which never fails the scan.
+    public var worktreeListOutput: String?
 
-    public init(statusOutput: String, operationMarker: GitOperationMarker, submoduleParentName: String?, isWorktree: Bool, repositoryToplevel: String) {
+    public init(statusOutput: String, operationMarker: GitOperationMarker, submoduleParentName: String?, isWorktree: Bool, repositoryToplevel: String, worktreeListOutput: String? = nil) {
         self.statusOutput = statusOutput
         self.operationMarker = operationMarker
         self.submoduleParentName = submoduleParentName
         self.isWorktree = isWorktree
         self.repositoryToplevel = repositoryToplevel
+        self.worktreeListOutput = worktreeListOutput
     }
 }
 
@@ -530,12 +534,21 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
             return .scanFailed("git status produced output that could not be decoded as UTF-8")
         }
 
+        var worktreeListOutput: String?
+        let worktrees = run(["-C", path, "worktree", "list", "--porcelain", "-z"])
+        if worktrees.exitCode == 0, let text = String(data: worktrees.stdoutData, encoding: .utf8) {
+            worktreeListOutput = text
+        } else {
+            logger.error("scan: git worktree list failed exit=\(worktrees.exitCode, privacy: .public) stderr=\(worktrees.stderr, privacy: .public)")
+        }
+
         return .snapshot(GitStatusRawScan(
             statusOutput: statusOutput,
             operationMarker: operationMarker,
             submoduleParentName: submoduleParentName,
             isWorktree: isWorktree,
-            repositoryToplevel: toplevel
+            repositoryToplevel: toplevel,
+            worktreeListOutput: worktreeListOutput
         ))
     }
 
@@ -841,6 +854,11 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
             case .cherryPick: operationState = .cherryPick
             case .merge: operationState = .merge(conflictCount: parsed.conflicted.count)
             }
+            let worktrees = GitWorktreeListParser.ordered(
+                GitWorktreeListParser.parse(raw.worktreeListOutput ?? ""),
+                currentPath: raw.repositoryToplevel
+            )
+            logger.info("scan: worktrees=\(worktrees.count, privacy: .public) current=\(worktrees.first(where: \.isCurrent)?.path ?? "none", privacy: .private)")
             let snapshot = GitStatusSnapshot(
                 repoName: (raw.repositoryToplevel as NSString).lastPathComponent,
                 repositoryToplevel: raw.repositoryToplevel,
@@ -856,7 +874,8 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
                 conflicted: parsed.conflicted,
                 staged: parsed.staged,
                 unstaged: parsed.unstaged,
-                untracked: parsed.untracked
+                untracked: parsed.untracked,
+                worktrees: worktrees
             )
             state = .snapshot(snapshot)
         }

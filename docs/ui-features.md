@@ -702,6 +702,68 @@ exits, for the Pane's life.
 
 ---
 
+## Git Status Pane
+
+The Git Status Pane (`pane split --view git-status`, Pane menu > Open View)
+shows one repository's working tree: a header, an operation banner during a
+rebase, merge or cherry-pick, then disclosure groups for Conflicted, Staged
+Changes, Changes and Untracked Files, and, below them, Worktrees (#0488). It is
+read-only; see `docs/design/git-status-view.md`.
+
+**Invariants:**
+
+- Everything on screen comes from one scan (`ProcessGitStatusScanner`): `git
+  rev-parse`, `git status --porcelain=v2 -z` and `git worktree list
+  --porcelain -z`. The Worktrees group adds no timer, watcher or per-tick
+  process; it is re-read on each scan the Pane already makes (activation, show
+  after hide, Change Directory..., the refresh button, a debounced FSEvents
+  burst).
+- A failed `git worktree list` (an old `git`) leaves `worktreeListOutput` nil
+  and never fails the scan; the file groups keep working.
+- The Worktrees group renders only when the repository has two or more
+  worktrees, below the file groups and the "working tree clean" line, and starts
+  collapsed. Order: the main worktree first, then the linked worktrees sorted by
+  path (`localizedStandardCompare`).
+- The current worktree is the entry whose path equals the scan's
+  `--show-toplevel` after both go through `standardizedFileURL` and
+  `resolvingSymlinksInPath`. A bare entry is never current.
+- A Pane pointed at a bare repository is `.notARepository`; the worktree list
+  is read only once `--is-inside-work-tree` is true.
+- A Pane watching the main worktree sees `git worktree add` and `lock` through
+  its existing FSEvents stream. A Pane watching a linked worktree does not watch
+  the common directory, and no Pane sees a worktree's directory being deleted
+  elsewhere (that is what makes it prunable); in those cases the refresh button
+  catches up.
+- A worktree row's context menu has Copy Path (the absolute path) and Reveal in
+  Finder (disabled for a prunable entry whose directory is gone). Nothing
+  mutates the repository.
+- No write to observed state happens from view code; the group's expansion is
+  SwiftUI-owned.
+
+**Regression patterns:**
+
+- `[0304]` — The Git Status view.
+- `[0488]` — Added the Worktrees group.
+
+**Accessibility identifiers:**
+
+- `git-status.snapshot`, `git-status.not-a-repo`, `git-status.scan-failed` —
+  the three states of the Pane body.
+- `git-status.operation-banner` — the rebase, merge or cherry-pick banner.
+- `git-status.diff-peek` — the inline diff under a selected file row.
+- `git-status.file.<path>` — one row per changed file.
+- The Worktrees disclosure has no identifier (a container's identifier replaces its
+  rows'); find it as the disclosure triangle labelled `Worktrees (N)`.
+- `git-status.worktree.<last path component>` — one row per worktree. The
+  `accessibilityLabel` is `<~path>, <branch | detached @ sha | bare>` followed by
+  `, <state>` for each of `current`, `locked` and `prunable` that applies (the
+  summary already carries `bare` and `detached`; a macOS group element does not expose `accessibilityValue`). The
+  identifier carries the last path component, not the absolute path, because
+  XCUITest rejects identifier queries over 128 characters; two worktrees with
+  the same basename share an identifier and are told apart by label.
+
+---
+
 ## Project Editor
 
 The Project Editor (#0474) is where a user defines Projects. It is one

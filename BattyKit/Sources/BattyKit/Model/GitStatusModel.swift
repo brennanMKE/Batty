@@ -125,6 +125,7 @@ public nonisolated struct GitStatusSnapshot: Sendable, Equatable {
     public var staged: [GitStatusFileEntry]
     public var unstaged: [GitStatusFileEntry]
     public var untracked: [GitStatusFileEntry]
+    public var worktrees: [GitWorktreeEntry]
     public var updatedAt: Date
 
     public init(
@@ -143,6 +144,7 @@ public nonisolated struct GitStatusSnapshot: Sendable, Equatable {
         staged: [GitStatusFileEntry] = [],
         unstaged: [GitStatusFileEntry] = [],
         untracked: [GitStatusFileEntry] = [],
+        worktrees: [GitWorktreeEntry] = [],
         updatedAt: Date = Date()
     ) {
         self.repoName = repoName
@@ -160,7 +162,49 @@ public nonisolated struct GitStatusSnapshot: Sendable, Equatable {
         self.staged = staged
         self.unstaged = unstaged
         self.untracked = untracked
+        self.worktrees = worktrees
         self.updatedAt = updatedAt
+    }
+}
+
+/// One worktree from `git worktree list --porcelain -z`. `isCurrent` is set
+/// during composition (`GitWorktreeListParser.ordered`), never by the parser.
+public nonisolated struct GitWorktreeEntry: Sendable, Equatable, Hashable, Identifiable {
+    public var path: String
+    public var headSHA: String?
+    public var branch: String?
+    public var isDetached: Bool
+    public var isBare: Bool
+    public var isLocked: Bool
+    public var lockReason: String?
+    public var isPrunable: Bool
+    public var pruneReason: String?
+    public var isCurrent: Bool
+
+    public var id: String { path }
+
+    public init(
+        path: String,
+        headSHA: String? = nil,
+        branch: String? = nil,
+        isDetached: Bool = false,
+        isBare: Bool = false,
+        isLocked: Bool = false,
+        lockReason: String? = nil,
+        isPrunable: Bool = false,
+        pruneReason: String? = nil,
+        isCurrent: Bool = false
+    ) {
+        self.path = path
+        self.headSHA = headSHA
+        self.branch = branch
+        self.isDetached = isDetached
+        self.isBare = isBare
+        self.isLocked = isLocked
+        self.lockReason = lockReason
+        self.isPrunable = isPrunable
+        self.pruneReason = pruneReason
+        self.isCurrent = isCurrent
     }
 }
 
@@ -372,5 +416,81 @@ public nonisolated enum GitStatusPorcelainParser {
         case "U": return .unmerged
         default: return nil
         }
+    }
+}
+
+
+/// Pure parser for `git worktree list --porcelain -z`: every attribute is its
+/// own NUL-terminated token and records are separated by an extra NUL. `-z`
+/// avoids git's C-quoting of unusual paths, the same reason the status parser
+/// uses it.
+public nonisolated enum GitWorktreeListParser {
+    public static func parse(_ output: String) -> [GitWorktreeEntry] {
+        var entries: [GitWorktreeEntry] = []
+        var current: GitWorktreeEntry?
+
+        func flush() {
+            if let entry = current { entries.append(entry) }
+            current = nil
+        }
+
+        for token in output.split(separator: "\0", omittingEmptySubsequences: false) {
+            let line = String(token)
+            if line.isEmpty {
+                flush()
+            } else if line.hasPrefix("worktree ") {
+                flush()
+                current = GitWorktreeEntry(path: String(line.dropFirst("worktree ".count)))
+            } else if current != nil {
+                apply(line, to: &current!)
+            }
+        }
+        flush()
+        return entries
+    }
+
+    private static func apply(_ line: String, to entry: inout GitWorktreeEntry) {
+        if line.hasPrefix("HEAD ") {
+            entry.headSHA = String(line.dropFirst("HEAD ".count))
+        } else if line.hasPrefix("branch ") {
+            let ref = String(line.dropFirst("branch ".count))
+            let prefix = "refs/heads/"
+            entry.branch = ref.hasPrefix(prefix) ? String(ref.dropFirst(prefix.count)) : ref
+        } else if line == "detached" {
+            entry.isDetached = true
+        } else if line == "bare" {
+            entry.isBare = true
+        } else if line == "locked" {
+            entry.isLocked = true
+        } else if line.hasPrefix("locked ") {
+            entry.isLocked = true
+            entry.lockReason = String(line.dropFirst("locked ".count))
+        } else if line == "prunable" {
+            entry.isPrunable = true
+        } else if line.hasPrefix("prunable ") {
+            entry.isPrunable = true
+            entry.pruneReason = String(line.dropFirst("prunable ".count))
+        }
+    }
+
+    /// Main worktree first (git prints it first), then the linked worktrees
+    /// sorted by path; the entry whose path matches `currentPath` (compared
+    /// after symlink resolution, so `/tmp` and `/private/tmp` agree) is marked
+    /// current. A bare entry is never current.
+    public static func ordered(_ entries: [GitWorktreeEntry], currentPath: String) -> [GitWorktreeEntry] {
+        guard let first = entries.first else { return [] }
+        let normalizedCurrent = normalized(currentPath)
+        let linked = entries.dropFirst().sorted {
+            $0.path.localizedStandardCompare($1.path) == .orderedAscending
+        }
+        return ([first] + linked).map { entry in
+            var marked = entry
+            marked.isCurrent = !entry.isBare && normalized(entry.path) == normalizedCurrent
+            return marked
+        }
+    }
+
+    private static func normalized(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
     }
 }

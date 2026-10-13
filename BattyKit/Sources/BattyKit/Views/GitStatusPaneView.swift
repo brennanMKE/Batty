@@ -115,6 +115,7 @@ public struct GitStatusPaneView: View {
                             .foregroundStyle(.secondary)
                             .padding(24)
                     }
+                    worktreesGroup(snapshot.worktrees)
                 }
             }
         }
@@ -327,6 +328,92 @@ public struct GitStatusPaneView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
         }
+    }
+
+    /// Carries no identifier of its own: SwiftUI hands a container's identifier to
+    /// the rows inside it and the rows' own `git-status.worktree.*` identifiers lose.
+    @ViewBuilder
+    private func worktreesGroup(_ worktrees: [GitWorktreeEntry]) -> some View {
+        if worktrees.count >= 2 {
+            DisclosureGroup("Worktrees (\(worktrees.count))") {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(worktrees) { worktree in
+                        worktreeRow(worktree)
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func worktreeSummary(_ worktree: GitWorktreeEntry) -> String {
+        if worktree.isBare { return "bare" }
+        if worktree.isDetached { return "detached @ \(String((worktree.headSHA ?? "").prefix(7)))" }
+        return worktree.branch ?? ""
+    }
+
+    @ViewBuilder
+    private func worktreeRow(_ worktree: GitWorktreeEntry) -> some View {
+        let abbreviated = (worktree.path as NSString).abbreviatingWithTildeInPath
+        let name = (abbreviated as NSString).lastPathComponent
+        let directory = (abbreviated as NSString).deletingLastPathComponent
+        let summary = worktreeSummary(worktree)
+        let states = [
+            worktree.isCurrent ? "current" : nil,
+            worktree.isLocked ? "locked" : nil,
+            worktree.isPrunable ? "prunable" : nil,
+        ].compactMap { $0 }
+        HStack(spacing: 6) {
+            Image(systemName: worktree.isCurrent ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(worktree.isCurrent ? Color.accentColor : Color.secondary)
+            HStack(spacing: 4) {
+                Text(name)
+                    .fontWeight(.medium)
+                if !directory.isEmpty {
+                    Text(directory)
+                        .foregroundStyle(.secondary)
+                }
+                if !worktree.isBare, !summary.isEmpty {
+                    Text(summary)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.callout)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            Spacer(minLength: 0)
+            if worktree.isBare { badge("Bare", systemImage: "archivebox") }
+            if worktree.isLocked {
+                if let reason = worktree.lockReason {
+                    badge("Locked", systemImage: "lock").help(reason)
+                } else {
+                    badge("Locked", systemImage: "lock")
+                }
+            }
+            if worktree.isPrunable {
+                if let reason = worktree.pruneReason {
+                    badge("Prunable", systemImage: "trash").help(reason)
+                } else {
+                    badge("Prunable", systemImage: "trash")
+                }
+            }
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(worktree.path, forType: .string)
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: worktree.path)])
+            }
+            .disabled(worktree.isPrunable && !FileManager.default.fileExists(atPath: worktree.path))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel((["\(abbreviated), \(summary)"] + states).joined(separator: ", "))
+        .accessibilityIdentifier("git-status.worktree.\((worktree.path as NSString).lastPathComponent)")
     }
 
     @ViewBuilder

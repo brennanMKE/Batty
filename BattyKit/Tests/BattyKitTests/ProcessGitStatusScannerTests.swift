@@ -593,3 +593,113 @@ struct ProcessGitStatusScannerTests {
         #expect(processB.terminationReason == .uncaughtSignal, "processB must have exited because it was signaled, not for some other reason")
     }
 }
+
+@MainActor
+extension ProcessGitStatusScannerTests {
+    private static func siblingPath(_ label: String) -> String {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("GitStatusScannerTests-\(label)-\(UUID().uuidString)")
+            .path
+    }
+
+    private static func worktreeEntries(scanning path: String) async -> [GitWorktreeEntry]? {
+        guard case .snapshot(let raw) = await ProcessGitStatusScanner().scan(atPath: path),
+              let output = raw.worktreeListOutput else { return nil }
+        return GitWorktreeListParser.ordered(GitWorktreeListParser.parse(output), currentPath: raw.repositoryToplevel)
+    }
+
+    private static func resolved(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    }
+
+    @Test func aPlainCheckoutListsOnlyItself() async {
+        let main = Self.makeRepoWithOneCommit()
+        defer { Self.removeTempDirectory(main) }
+        let entries = await Self.worktreeEntries(scanning: main)
+        #expect(entries?.count == 1)
+        #expect(entries?.first?.isCurrent == true)
+    }
+
+    @Test func twoLinkedWorktreesListMainFirstThenSortedAndMarkCurrent() async {
+        let main = Self.makeRepoWithOneCommit()
+        let wtB = Self.siblingPath("b")
+        let wtA = Self.siblingPath("a")
+        defer { [main, wtA, wtB].forEach(Self.removeTempDirectory) }
+        Self.runGit(["worktree", "add", "-q", wtB, "-b", "branch-b"], in: main)
+        Self.runGit(["worktree", "add", "-q", wtA, "-b", "branch-a"], in: main)
+
+        let fromMain = await Self.worktreeEntries(scanning: main)
+        #expect(fromMain?.count == 3)
+        #expect(fromMain?.first.map { Self.resolved($0.path) } == Self.resolved(main))
+        let linked = fromMain?.dropFirst().map { Self.resolved($0.path) }
+        #expect(linked == [Self.resolved(wtA), Self.resolved(wtB)])
+        #expect(fromMain?.filter(\.isCurrent).map { Self.resolved($0.path) } == [Self.resolved(main)])
+
+        let subdir = wtA + "/sub"
+        try? FileManager.default.createDirectory(atPath: subdir, withIntermediateDirectories: true)
+        let fromLinkedSubdir = await Self.worktreeEntries(scanning: subdir)
+        #expect(fromLinkedSubdir?.count == 3)
+        #expect(fromLinkedSubdir?.filter(\.isCurrent).map { Self.resolved($0.path) } == [Self.resolved(wtA)])
+        #expect(fromLinkedSubdir?.first(where: { Self.resolved($0.path) == Self.resolved(wtA) })?.branch == "branch-a")
+    }
+
+    @Test func detachedAndLockedWorktreeReportsBothWithTheReason() async {
+        let main = Self.makeRepoWithOneCommit()
+        let wt = Self.siblingPath("locked")
+        defer { [main, wt].forEach(Self.removeTempDirectory) }
+        Self.runGit(["worktree", "add", "-q", "--detach", wt], in: main)
+        Self.runGit(["worktree", "lock", "--reason", "keep me", wt], in: main)
+
+        let entries = await Self.worktreeEntries(scanning: main)
+        let entry = entries?.first { Self.resolved($0.path) == Self.resolved(wt) }
+        #expect(entry?.isDetached == true)
+        #expect(entry?.isLocked == true)
+        #expect(entry?.lockReason == "keep me")
+        #expect(entry?.headSHA?.isEmpty == false)
+    }
+
+    @Test func aWorktreeWhoseDirectoryWasRemovedIsPrunableWithAReason() async {
+        let main = Self.makeRepoWithOneCommit()
+        let wt = Self.siblingPath("gone")
+        defer { [main, wt].forEach(Self.removeTempDirectory) }
+        Self.runGit(["worktree", "add", "-q", wt, "-b", "gone-branch"], in: main)
+        try? FileManager.default.removeItem(atPath: wt)
+
+        let entries = await Self.worktreeEntries(scanning: main)
+        let entry = entries?.first { ($0.path as NSString).lastPathComponent == (wt as NSString).lastPathComponent }
+        #expect(entry?.isPrunable == true)
+        #expect(entry?.pruneReason?.isEmpty == false)
+    }
+
+    @Test func aWorktreePathContainingASpaceIsListedIntact() async {
+        let main = Self.makeRepoWithOneCommit()
+        let parent = Self.siblingPath("space dir")
+        defer { [main, parent].forEach(Self.removeTempDirectory) }
+        try? FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
+        let wt = parent + "/my worktree"
+        Self.runGit(["worktree", "add", "-q", wt, "-b", "space-branch"], in: main)
+
+        let entries = await Self.worktreeEntries(scanning: main)
+        #expect(entries?.contains { Self.resolved($0.path) == Self.resolved(wt) } == true)
+    }
+
+    @Test func aLinkedWorktreeOfABareRepositoryListsTheBareEntryFirst() async {
+        let seed = Self.makeRepoWithOneCommit()
+        let bare = Self.siblingPath("bare") + ".git"
+        let wt = Self.siblingPath("bare-wt")
+        defer { [seed, bare, wt].forEach(Self.removeTempDirectory) }
+        Self.runGit(["clone", "-q", "--bare", seed, bare], in: seed)
+        Self.runGit(["worktree", "add", "-q", wt, "main"], in: bare)
+
+        let entries = await Self.worktreeEntries(scanning: wt)
+        #expect(entries?.count == 2)
+        #expect(entries?.first?.isBare == true)
+        #expect(entries?.first?.branch == nil)
+        #expect(entries?.first?.isCurrent == false)
+        #expect(entries?.last?.isCurrent == true)
+        #expect(entries?.last?.branch == "main")
+
+        let bareResult = await ProcessGitStatusScanner().scan(atPath: bare)
+        #expect(bareResult == .notARepository)
+    }
+}

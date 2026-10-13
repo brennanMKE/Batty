@@ -37,6 +37,12 @@ A Process Status pane shows one process's CPU, memory, threads and open files. U
 
 A pane pinned to a single PID shows **Exited** when that process ends and stops looking.
 
+## Git Status
+
+A Git Status pane shows the state of one repository: the branch, how far ahead or behind it is, and your changes grouped as Conflicted, Staged Changes, Changes and Untracked Files. Click a file to see its diff inline. The pane only looks; it never changes the repository.
+
+When the repository has more than one worktree, a **Worktrees** group appears below the file groups, collapsed until you open it. It lists the main worktree first and then the others in path order, each with its branch (or the commit it is detached at) and **Bare**, **Locked** or **Prunable** badges where Git reports them. A check mark shows the worktree this pane is looking at. Control-click a row for **Copy Path** and **Reveal in Finder**. If this pane is looking at a linked worktree, or a worktree's folder was deleted, use the refresh button to update the list.
+
 ## Pane vs tab vs session
 
 - **Tab** when you want a parallel context in the same view — one shell and one `vim`, switched with `Cmd-Option-1`, `Cmd-Option-2` by default.
