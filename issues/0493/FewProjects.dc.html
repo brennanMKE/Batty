@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Two Projects, and none</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#F0A050}a:hover{color:#F7C48A}
+button{font:inherit}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; padding: 40px; background: #121316; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; color: #E7E7EA; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px">
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 15px; font-weight: 600">Two Projects: every Project is a big card</h2>
+    <div role="dialog" aria-label="Open a Project, two Projects" style="display: flex; flex-direction: column; background: #26272C; border: 1px solid #3E4047; border-radius: 12px; overflow: hidden">
+      <div style="padding: 12px 16px; font-weight: 600; font-size: 14px">Open a Project</div>
+      <div style="height: 1px; background: #34353B"></div>
+      <div style="padding: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+        <button style="display: flex; flex-direction: column; text-align: left; padding: 10px; border-radius: 9px; color: #E7E7EA; background: #2F3037; border: 2px solid #F0A050">
+          <span style="display: block; height: 150px; border-radius: 6px; background: #15161A"></span>
+          <span style="display: flex; align-items: center; gap: 8px; margin-top: 10px"><span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 5px; background: #F0A050"></span><span style="font-weight: 600; font-size: 14px">Batty</span><span style="margin-left: auto; font-size: 11px; color: #8C8E96">12 min ago</span></span>
+          <span style="font-size: 11px; color: #8C8E96; margin-top: 3px">~/Developer/brennanMKE/Batty</span>
+        </button>
+        <button style="display: flex; flex-direction: column; text-align: left; padding: 10px; border-radius: 9px; color: #E7E7EA; background: #202126; border: 1px solid #34353B">
+          <span style="display: block; height: 150px; border-radius: 6px; background: #15161A"></span>
+          <span style="display: flex; align-items: center; gap: 8px; margin-top: 10px"><span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 5px; background: #3FB8A4"></span><span style="font-weight: 600; font-size: 14px">Homelab</span><span style="margin-left: auto; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: #34353B; color: #C9CAD0">OPEN</span></span>
+          <span style="font-size: 11px; color: #8C8E96; margin-top: 3px">~/Developer/Homelab</span>
+        </button>
+      </div>
+    </div>
+    <p style="margin: 0; color: #9EA0A8; font-size: 12px; line-height: 1.5">With three or fewer Projects there's only one row, so no "All Projects" heading.</p>
+  </section>
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 15px; font-weight: 600">No Projects: today's empty state</h2>
+    <div role="dialog" aria-label="Open a Project, empty" style="display: flex; flex-direction: column; background: #26272C; border: 1px solid #3E4047; border-radius: 12px; overflow: hidden">
+      <div style="padding: 12px 16px; font-weight: 600; font-size: 14px">Open a Project</div>
+      <div style="height: 1px; background: #34353B"></div>
+      <div style="height: 236px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #9EA0A8">
+        <svg aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#8C8E96" stroke-width="1.4"><path d="M3 6.5h6l2 2h10v10a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"></path><path d="M12 12v5M9.5 14.5h5"></path></svg>
+        <div style="font-weight: 600; color: #E7E7EA">No Projects yet</div>
+        <div>Save a Session as a Project, or start a new one.</div>
+        <button style="height: 30px; padding: 0 14px; border-radius: 6px; border: 0; background: #F0A050; color: #1A1206; font-weight: 600">New Project…</button>
+      </div>
+    </div>
+    <p style="margin: 0; color: #9EA0A8; font-size: 12px; line-height: 1.5">Unchanged from today: no "+" card in the grid, and ⌘N stays in the footer.</p>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

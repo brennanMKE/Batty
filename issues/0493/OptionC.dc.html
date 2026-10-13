@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option C: four featured, open strip</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#F0A050}a:hover{color:#F7C48A}
+button{font:inherit}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; padding: 30px 40px; background: #121316; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; color: #E7E7EA">
+  <div style="position: relative; width: 1200px; height: 760px; background: #1C1D21; border: 1px solid #34353B; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+    <div style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #232429; border-bottom: 1px solid #34353B">
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FF5F57"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FEBC2E"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #28C840"></span>
+      <div style="flex: 1; text-align: center; font-weight: 600; color: #C9CAD0; margin-right: 52px">Batty</div>
+    </div>
+    <div style="position: absolute; inset: 40px 0 0 0; background: rgba(8,8,10,0.55); display: flex; justify-content: center; padding-top: 40px">
+      <div role="dialog" aria-label="Open a Project" style="width: 860px; height: 600px; display: flex; flex-direction: column; background: #26272C; border: 1px solid #3E4047; border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); overflow: hidden">
+        <div style="display: flex; align-items: center; padding: 12px 16px; gap: 12px">
+          <span style="font-weight: 600; font-size: 14px">Open a Project</span>
+          <span style="flex: 1"></span>
+          <span style="font-size: 12px; color: #8C8E96">Esc to dismiss</span>
+        </div>
+        <div style="padding: 0 16px 12px">
+          <label style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; background: #1A1B1F; border: 1px solid #3A3C42; border-radius: 7px">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C8E96" stroke-width="1.6"><circle cx="7" cy="7" r="5"></circle><path d="M11 11l3.5 3.5"></path></svg>
+            <input aria-label="Filter Projects" placeholder="Filter Projects" style="flex: 1; background: transparent; border: 0; outline: none; color: #E7E7EA; font: inherit">
+          </label>
+        </div>
+        <div style="height: 1px; background: #34353B"></div>
+        <div style="flex: 1; min-height: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+            <sc-for list="{{featured}}" as="c" hint-placeholder-count="4">
+              <button style="{{c.style}}">
+                <span style="position: relative; display: block; width: 100%; height: 104px; border-radius: 6px; background: #15161A; overflow: hidden">
+                  <sc-for list="{{c.frames}}" as="f" hint-placeholder-count="3">
+                    <span style="{{f.style}}"><span style="{{f.inner}}"><span style="{{f.badge}}">{{f.glyph}}</span></span></span>
+                  </sc-for>
+                </span>
+                <span style="display: flex; align-items: center; gap: 7px; margin-top: 9px">
+                  <span aria-hidden="true" style="{{c.dot}}"></span>
+                  <span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.name}}</span>
+                </span>
+                <span style="font-size: 11px; color: #8C8E96; margin-top: 2px">{{c.when}}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px">
+            <sc-for list="{{rest}}" as="c" hint-placeholder-count="3">
+              <button style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid #34353B; border-radius: 7px; background: #202126; color: #E7E7EA; text-align: left">
+                <span aria-hidden="true" style="{{c.dot}}"></span>
+                <span style="font-weight: 600">{{c.name}}</span>
+                <span style="margin-left: auto; font-size: 11px; color: #8C8E96">{{c.when}}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-top: auto">
+            <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8C8E96">Open now</div>
+            <div style="display: flex; gap: 10px">
+              <sc-for list="{{open}}" as="c" hint-placeholder-count="1">
+                <button style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border: 1px dashed #45474F; border-radius: 7px; background: transparent; color: #E7E7EA">
+                  <span aria-hidden="true" style="{{c.dot}}"></span>
+                  <span style="font-weight: 600">{{c.name}}</span>
+                  <span style="font-size: 11px; color: #8C8E96">↩ switch</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 18px; padding: 10px 16px; border-top: 1px solid #34353B; background: #212227; font-size: 12px; color: #9EA0A8">
+          <span style="color: #E7E7EA; font-weight: 600">↩ Open Batty in a new Session</span>
+          <span style="flex: 1"></span>
+          <span>⌥↩ Open another copy</span>
+          <span>⌘E Edit</span>
+          <span>⌘N New Project…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+var KC = { t: ['#7AA2F7', '>_'], g: ['#F2A65A', '⎇'], p: ['#5CC8B0', '≡'], m: ['#B48EF0', '▥'], l: ['#F07FA8', 'LM'] };
+var P = [
+  { name: 'Batty', color: '#F0A050', when: '12 min ago', f: [[0,0,1,.5,'t'],[0,.5,.5,.5,'g'],[.5,.5,.5,.5,'t']] },
+  { name: 'Website', color: '#5B8DEF', when: '2 h ago', f: [[0,0,1,.5,'t'],[0,.5,1,.5,'t']] },
+  { name: 'PixelArtGallery', color: '#A57BEA', when: 'Yesterday', f: [[0,0,.5,.5,'t'],[.5,0,.5,.5,'g'],[0,.5,.5,.5,'p'],[.5,.5,.5,.5,'l']] },
+  { name: 'QRCodeApp', color: '#E86C9A', when: '3 days ago', f: [[0,0,1,1,'t']] },
+  { name: 'ShortLinks', color: '#8C8E96', when: 'Last week' },
+  { name: 'Changeover', color: '#3FB8A4', when: 'Last week' },
+  { name: 'Skinamp', color: '#D9B34A', when: 'Never' },
+  { name: 'Dotfiles', color: '#7AA2F7', when: 'Never' },
+  { name: 'Homelab', color: '#3FB8A4', open: true }
+];
+function pct(v) { return (v * 100).toFixed(3) + '%'; }
+class Component extends DCLogic {
+  renderVals() {
+    var all = P.map(function (p, i) {
+      return {
+        name: p.name, when: p.when, isOpen: !!p.open,
+        frames: (p.f || []).map(function (fr) {
+          var k = KC[fr[4]];
+          return {
+            glyph: k[1],
+            style: 'position: absolute; box-sizing: border-box; padding: 3px; left: ' + pct(fr[0]) + '; top: ' + pct(fr[1]) + '; width: ' + pct(fr[2]) + '; height: ' + pct(fr[3]),
+            inner: 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box; border-radius: 4px; background: #23242A; border: 1px solid ' + k[0] + '55',
+            badge: 'font-family: \'JetBrains Mono\', Menlo, monospace; font-size: 10px; font-weight: 600; padding: 1px 4px; border-radius: 3px; color: #121316; background: ' + k[0]
+          };
+        }),
+        dot: 'width: 9px; height: 9px; flex: none; border-radius: 5px; background: ' + p.color,
+        style: 'display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 9px; border-radius: 9px; color: #E7E7EA; background: ' + (i === 0 ? '#2F3037' : '#202126') + '; border: ' + (i === 0 ? '2px solid #F0A050' : '1px solid #34353B')
+      };
+    });
+    var closed = all.filter(function (c) { return !c.isOpen; });
+    return { featured: closed.slice(0, 4), rest: closed.slice(4), open: all.filter(function (c) { return c.isOpen; }) };
+  }
+}
+</script>
+</body>
+</html>

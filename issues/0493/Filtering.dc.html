@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Filtering collapses to one tier</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#F0A050}a:hover{color:#F7C48A}
+button{font:inherit}
+</style>
+</helmet>
+<div style="width: 1280px; height: 820px; box-sizing: border-box; padding: 30px 40px; background: #121316; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; color: #E7E7EA">
+  <div style="position: relative; width: 1200px; height: 760px; background: #1C1D21; border: 1px solid #34353B; border-radius: 12px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5)">
+    <div style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #232429; border-bottom: 1px solid #34353B">
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FF5F57"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #FEBC2E"></span>
+      <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 6px; background: #28C840"></span>
+      <div style="flex: 1; text-align: center; font-weight: 600; color: #C9CAD0; margin-right: 52px">Batty</div>
+    </div>
+    <div style="position: absolute; inset: 40px 0 0 0; background: rgba(8,8,10,0.55); display: flex; justify-content: center; padding-top: 40px">
+      <div role="dialog" aria-label="Open a Project" style="width: 860px; height: 600px; display: flex; flex-direction: column; background: #26272C; border: 1px solid #3E4047; border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); overflow: hidden">
+        <div style="display: flex; align-items: center; padding: 12px 16px; gap: 12px">
+          <span style="font-weight: 600; font-size: 14px">Open a Project</span>
+          <span style="flex: 1"></span>
+          <span style="font-size: 12px; color: #8C8E96">Esc to clear</span>
+        </div>
+        <div style="padding: 0 16px 12px">
+          <label style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; background: #1A1B1F; border: 1px solid #F0A050; border-radius: 7px">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C8E96" stroke-width="1.6"><circle cx="7" cy="7" r="5"></circle><path d="M11 11l3.5 3.5"></path></svg>
+            <input aria-label="Filter Projects" value="pro" style="flex: 1; background: transparent; border: 0; outline: none; color: #E7E7EA; font: inherit">
+          </label>
+        </div>
+        <div style="height: 1px; background: #34353B"></div>
+        <div style="flex: 1; min-height: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+          <div style="font-size: 11px; color: #8C8E96">3 matches · best match first</div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+            <button style="display: flex; flex-direction: column; text-align: left; padding: 10px; border-radius: 8px; color: #E7E7EA; background: #2F3037; border: 2px solid #F0A050">
+              <span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 5px; background: #A57BEA"></span><span style="font-weight: 600">PixelArtGallery</span></span>
+              <span style="font-size: 10.5px; color: #8C8E96; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">~/Developer/brennanMKE/Projects/PixelArtGallery</span>
+            </button>
+            <button style="display: flex; flex-direction: column; text-align: left; padding: 10px; border-radius: 8px; color: #E7E7EA; background: #202126; border: 1px solid #34353B">
+              <span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 5px; background: #E86C9A"></span><span style="font-weight: 600">QRCodeApp</span></span>
+              <span style="font-size: 10.5px; color: #8C8E96; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">~/Developer/brennanMKE/Projects/QRCodeApp</span>
+            </button>
+            <button style="display: flex; flex-direction: column; text-align: left; padding: 10px; border-radius: 8px; color: #E7E7EA; background: #202126; border: 1px solid #34353B">
+              <span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 5px; background: #8C8E96"></span><span style="font-weight: 600">ShortLinks</span></span>
+              <span style="font-size: 10.5px; color: #8C8E96; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">~/Developer/brennanMKE/Projects/ShortLinks</span>
+            </button>
+          </div>
+          <p style="margin: 8px 0 0; font-size: 12px; color: #8C8E96; line-height: 1.5; max-width: 620px">While you type, the two tiers collapse into one compact grid. Matches are ranked by name (prefix, then substring, then scattered), then by path. Recency only breaks ties. Esc clears the filter and brings back the two tiers.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 18px; padding: 10px 16px; border-top: 1px solid #34353B; background: #212227; font-size: 12px; color: #9EA0A8">
+          <span style="color: #E7E7EA; font-weight: 600">↩ Open PixelArtGallery in a new Session</span>
+          <span style="flex: 1"></span>
+          <span>⌥↩ Open another copy</span>
+          <span>⌘E Edit</span>
+          <span>⌘N New Project…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
