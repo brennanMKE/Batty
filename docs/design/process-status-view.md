@@ -277,6 +277,11 @@ pid (tombstones on exit) and a followed terminal's foreground process
 creation and switchable later via an explicit retarget action. Never an
 implicit, silent rebind.**
 
+A Process Status Pane opened from another Process Status Pane (no `--pid`)
+inherits that Pane's target as it is: the same pinned pid, the same followed
+name, or the same followed Tab. A source in any other kind gives the Tab
+`SplitTree.inheritedSource` resolves (#0495).
+
 ### Mode A — Pinned pid
 
 The CLI's create verb (`#0315`, still an open design) supplies a literal

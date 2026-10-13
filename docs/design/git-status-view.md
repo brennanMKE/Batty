@@ -132,8 +132,7 @@ ongoing binding.
    directory, resolved the same way `SplitTree.makePane(inheritingFrom:)`
    already resolves cwd inheritance for a new terminal Pane** —
    `sourceTab.terminal.workingDirectory ?? sourceTab.terminal.
-   configuration.workingDirectory` (`BattyKit/Sources/BattyKit/Model/
-   SplitTree.swift:208-215`, confirmed current), not
+   configuration.workingDirectory` (`SplitTree.inheritedSource(from:in:tabLookup:)`), not
    `TabRuntime.workingDirectory` alone. That distinction matters: `TabRuntime
    .workingDirectory` (`BattyKit/Sources/BattyKit/Runtime/TabRuntime.swift:47`)
    is the Observation-tracked mirror the file's own doc comment
@@ -147,7 +146,10 @@ ongoing binding.
    pane-creation time is model-layer, non-view code — exactly the
    category `TabRuntime.swift:43-44`'s own doc comment says may still read
    the live Combine value directly — so this reuses `makePane`'s existing
-   pattern rather than inventing a new one. Used when `--path` is omitted
+   pattern rather than inventing a new one. When the source Pane is not a
+   terminal, the directory is the one `SplitTree.inheritedSource` resolves
+   for that kind (see "The directory a split from a Git Status Pane
+   inherits" below and `docs/pane-kinds.md`). Used when `--path` is omitted
    or the pane is created some other way in the future.
 3. **Fallback of last resort: `$HOME`.** If neither above resolves (no
    focused pane exists, e.g. a freshly launched window with no terminal
@@ -155,6 +157,15 @@ ongoing binding.
    failing outright — it will almost certainly show "not a Git
    repository," which is a defined, non-error state (§1.2 below), not a
    crash.
+
+### The directory a split from a Git Status Pane inherits
+
+The order above is the directory a Git Status Pane is opened *on*. The
+converse (#0487): a terminal split from a Git Status Pane starts in that
+Pane's current `directoryPath` (the directory shown, or the one picked with
+"Change Directory…"), not its repository toplevel, resolved once at creation.
+A second Git Status Pane opened from it (no `--path`) monitors the same
+directory. The rule for other non-terminal sources is in `docs/pane-kinds.md`.
 
 ### Retargeting: "Change Directory…"
 

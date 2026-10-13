@@ -37,6 +37,8 @@ nonisolated struct CLITopology {
         let kind: String
         let activeTabID: UUID
         let tabIDs: [UUID]
+        let tabWorkingDirectories: [UUID: String]
+        var activeTabWorkingDirectory: String? { tabWorkingDirectories[activeTabID] }
         /// Present only when the listing was requested with `--include-dimensions`.
         let frame: CGRect?
     }
@@ -126,7 +128,14 @@ nonisolated struct CLITopology {
         guard let id = (object["id"] as? String).flatMap(UUID.init(uuidString:)),
               let activeTabID = (object["activeTabID"] as? String).flatMap(UUID.init(uuidString:))
         else { return nil }
-        let tabs = (object["tabs"] as? [[String: Any]] ?? []).compactMap { ($0["id"] as? String).flatMap(UUID.init(uuidString:)) }
+        let tabObjects = object["tabs"] as? [[String: Any]] ?? []
+        let tabs = tabObjects.compactMap { ($0["id"] as? String).flatMap(UUID.init(uuidString:)) }
+        var workingDirectories: [UUID: String] = [:]
+        for tab in tabObjects {
+            if let id = (tab["id"] as? String).flatMap(UUID.init(uuidString:)), let path = tab["workingDirectory"] as? String {
+                workingDirectories[id] = path
+            }
+        }
         return Pane(
             id: id,
             isHidden: object["isHidden"] as? Bool ?? false,
@@ -134,6 +143,7 @@ nonisolated struct CLITopology {
             kind: object["kind"] as? String ?? "unknown",
             activeTabID: activeTabID,
             tabIDs: tabs,
+            tabWorkingDirectories: workingDirectories,
             frame: (object["frame"] as? [String: Any]).flatMap(rect(from:))
         )
     }
