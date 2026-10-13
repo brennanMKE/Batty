@@ -927,16 +927,29 @@ them are absent with `FeatureFlags.projects` off.
   `ProjectRecency.ranked` are large cards under "Recent" in three columns
   (`project-picker.featured`, a 132 pt thumbnail with kind glyphs and, when the
   Project was ever opened, a relative time on the name row); every later
-  Project is a compact card under "All Projects" in four columns
+  closed Project is a compact card under "All Projects" in four columns
   (`project-picker.rest`, a 58 pt thumbnail, name, OPEN badge and path). Open
-  Projects keep the `.last` placement, so they are the last compact cards with
-  their OPEN badge. Below three Projects every Project is a large card, there
-  are no headings, and one dashed "New Project..." card
+  Projects (#0500) leave both tiers while the filter is blank and fill an
+  "Open now" strip below the scrolling tiers and above the footer
+  (`project-picker.open-now`, a four-column grid of 36 pt dashed chips, so five
+  or more wrap; absent when nothing is open). The strip is a partition of the
+  ranked list inside the picker; `ProjectRecency.defaultPlacement` stays `.last`
+  and every other Projects surface is unchanged. A chip shows the symbol, the
+  name, a small green dot carrying the OPEN badge identifier (accessibility
+  label "Open") and a trailing `+` button; there is no text badge or caption.
+  Return or a double-click on a chip reports `.focusExistingOrOpen` (switch to
+  the open Session); Option-Return and the `+` button
+  (`project-picker.open-now.another.<name>`, help "Open another copy") report
+  `.openNew`. The tiers and the New Project card key on the closed count:
+  headings need three closed Projects, the card shows below three. Below three
+  closed Projects every closed Project is a large card, there are no headings,
+  and one dashed "New Project..." card
   (`project-picker.new-project-card`, a click is the `.newProject` action; the
   keyboard cursor never lands on it) follows the last Project. With none the
   empty state shows. "Cmd-N New Project..." is always in the footer.
 - A non-blank filter collapses to one compact four-column grid
-  (`project-picker.rest` alone) under an "N matches" heading. Escape clears a
+  (`project-picker.rest` alone; the Open now strip is hidden and open matches
+  keep their OPEN badge in the grid) under an "N matches" heading. Escape clears a
   non-blank filter and dismisses only when the filter is blank; the header
   caption reads "Esc to clear" or "Esc to dismiss" to match.
 - Arrow keys move the selection through `ProjectPickerGridCursor` over the
@@ -950,7 +963,10 @@ them are absent with `FeatureFlags.projects` off.
   column whose centre is nearest, `floor((c + 0.5) / C * C')`. Three columns
   to four map 0, 1, 2 to 0, 2, 3; four to three map 0, 1, 2, 3 to 0, 1, 1, 2.
   The target column is clamped to that row's card count. Down from the last
-  card row and Up from the first are no-ops.
+  card row and Up from the first are no-ops. The Open now strip is the third
+  section, `(4, openNow.count)`: Down from the last All Projects row lands on
+  the strip's first row (clamped to its chip count), Up returns, and End lands
+  on the last chip. Empty sections are dropped from the cursor.
 - When a re-rank moves the selected card (a Session opens or closes while the
   sheet is up) the view scrolls to it, keyed on the card's tier and index.
 - Typing a filter selects its best match. Names match fuzzily; paths match as a
@@ -1020,8 +1036,10 @@ them are absent with `FeatureFlags.projects` off.
 - Sheet root `project-picker.root`; filter field `project-picker.filter`; hint
   line `project-picker.hint`.
 - Tier containers `project-picker.featured` and `project-picker.rest` (each a
-  `.contain` element; while filtering only `rest` exists); the
-  `project-picker.new-project-card` button below three Projects.
+  `.contain` element; while filtering only `rest` exists); the Open now strip
+  `project-picker.open-now` (`.contain`) with its `+` buttons
+  `project-picker.open-now.another.<Project name>`; the
+  `project-picker.new-project-card` button below three closed Projects.
 - Cards `project-picker.card.<Project name>`; OPEN badge
   `project-picker.open-badge.<Project name>` (present only for a Project with
   an open Session).
@@ -1166,6 +1184,9 @@ unchanged; these are the ones they do not cover):
 | Down/Up cross the tiers, Home/End, Down-Right-Return opens a compact card (#0493) | `ProjectsPickerTierTests.testArrowKeysCrossTheTiersAndHomeAndEndJumpToTheEnds` |
 | Filtering collapses to one grid; Escape clears then dismisses (#0493) | `ProjectsPickerTierTests.testFilteringCollapsesToOneGridAndEscapeIsTwoStep` |
 | Two Projects: New Project card opens the Editor (#0493) | `ProjectsPickerTierTests.testFewerThanThreeProjectsShowANewProjectCardThatOpensTheEditor` |
+| Open Projects fill the Open now strip; End then Return switches; the `+` button opens another copy (#0500) | `ProjectsPickerTierTests.testOpenProjectsLiveInTheOpenNowStripAndSwitchOrOpenAnotherCopy` |
+| Filtering hides the strip, Escape restores it (#0500) | `ProjectsPickerTierTests.testFilteringHidesTheOpenNowStripAndEscapeRestoresIt` |
+| Strip partition, third cursor section, `+` action (#0500) | `ProjectPickerModelTests`, `ProjectPickerGridCursorTests` (BattyKit) |
 | Cursor transitions, tier split, New Project card, two-step Escape, match count, relative time (#0493) | `ProjectPickerGridCursorTests`, `ProjectPickerModelTests`, `ProjectRecencyRelativeTextTests` (BattyKit) |
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
 | Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both assert that the picker presents, #0483) |

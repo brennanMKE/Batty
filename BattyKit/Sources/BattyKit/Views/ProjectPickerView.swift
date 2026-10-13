@@ -73,7 +73,11 @@ struct ProjectPickerView: View {
             if let empty = current.emptyState {
                 emptyState(empty)
             } else {
-                tiers(current)
+                let tiers = current.tiers
+                self.tiers(current, tiers: tiers)
+                if !tiers.openNow.isEmpty {
+                    openNowStrip(tiers.openNow, selectedID: current.selectedID)
+                }
             }
 
             footer
@@ -122,25 +126,25 @@ struct ProjectPickerView: View {
         .padding(.bottom, 12)
     }
 
-    private func tiers(_ current: ProjectPickerModel) -> some View {
+    private func tiers(_ current: ProjectPickerModel, tiers: ProjectPickerModel.Tiers) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if current.isFiltering {
                         tier(
                             heading: current.matchCountText,
-                            cards: current.rest, style: .compact, columns: ProjectPickerModel.restColumns, spacing: 10,
+                            cards: tiers.rest, style: .compact, columns: ProjectPickerModel.restColumns, spacing: 10,
                             selectedID: current.selectedID, identifier: "project-picker.rest")
                     } else {
                         tier(
                             heading: current.showsTierHeadings ? String(localized: "Recent", comment: "Open Project picker: heading above the most recently opened Projects") : nil,
-                            cards: current.featured, style: .large, columns: ProjectPickerModel.featuredColumns, spacing: 12,
+                            cards: tiers.featured, style: .large, columns: ProjectPickerModel.featuredColumns, spacing: 12,
                             selectedID: current.selectedID, identifier: "project-picker.featured",
                             showsNewProjectCard: current.showsNewProjectCard)
-                        if !current.rest.isEmpty {
+                        if !tiers.rest.isEmpty {
                             tier(
                                 heading: String(localized: "All Projects", comment: "Open Project picker: heading above the remaining Projects"),
-                                cards: current.rest, style: .compact, columns: ProjectPickerModel.restColumns, spacing: 10,
+                                cards: tiers.rest, style: .compact, columns: ProjectPickerModel.restColumns, spacing: 10,
                                 selectedID: current.selectedID, identifier: "project-picker.rest")
                         }
                     }
@@ -148,7 +152,7 @@ struct ProjectPickerView: View {
                 .padding(16)
             }
             .onChange(of: current.selectedPosition) { _, position in
-                if let id = position?.id { proxy.scrollTo(id) }
+                if let position, position.tier != .openNow { proxy.scrollTo(position.id) }
             }
         }
     }
@@ -186,6 +190,37 @@ struct ProjectPickerView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(identifier)
+    }
+
+    private func openNowStrip(_ cards: [ProjectPickerCard], selectedID: UUID?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Open now")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: ProjectPickerModel.openNowColumns),
+                spacing: 10
+            ) {
+                ForEach(cards) { card in
+                    ProjectPickerOpenChipView(
+                        card: card,
+                        isSelected: card.id == selectedID,
+                        onSelect: { model.select(card.id) },
+                        onSwitch: {
+                            model.select(card.id)
+                            if let action = model.openAction(optionHeld: false) { onAction(action) }
+                        },
+                        onAnother: {
+                            if let action = model.anotherCopyAction(for: card.id) { onAction(action) }
+                        })
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("project-picker.open-now")
     }
 
     private var newProjectCard: some View {
@@ -389,6 +424,63 @@ private struct ProjectPickerCardView: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityHidden(true)
+    }
+}
+
+struct ProjectPickerOpenChipView: View {
+    let card: ProjectPickerCard
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onSwitch: () -> Void
+    let onAnother: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: card.symbol.resolvedSystemName)
+                    .foregroundStyle(card.color.color)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
+                Text(card.name)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 7, height: 7)
+                    .accessibilityElement()
+                    .accessibilityLabel(Text("Open"))
+                    .accessibilityIdentifier("project-picker.open-badge.\(card.name)")
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 10)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2, perform: onSwitch)
+            .onTapGesture(perform: onSelect)
+            Button(action: onAnother) {
+                Image(systemName: "plus")
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Open another copy", comment: "Open Project picker: help for the button on an Open now chip"))
+            .accessibilityLabel(Text("Open another copy"))
+            .accessibilityIdentifier("project-picker.open-now.another.\(card.name)")
+        }
+        .padding(.trailing, 10)
+        .frame(height: 36)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color(nsColor: isSelected ? .controlBackgroundColor : .clear)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .strokeBorder(
+                    isSelected ? Color.accentColor : Color(nsColor: .separatorColor),
+                    style: StrokeStyle(lineWidth: isSelected ? 2 : 1, dash: isSelected ? [] : [4, 3]))
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(card.name))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("project-picker.card.\(card.name)")
     }
 }
 

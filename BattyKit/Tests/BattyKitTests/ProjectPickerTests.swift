@@ -226,8 +226,9 @@ struct ProjectPickerModelTests {
         let d = project("Delta", lastOpenedAt: 200), e = project("Eps", lastOpenedAt: 50)
         let m = model([a, b, c, d, e], open: [c.id])
         #expect(m.featured.map(\.name) == ["Delta", "Alpha", "Eps"])
-        #expect(m.rest.map(\.name) == ["Beta", "Gamma"])
-        #expect(m.rest.last?.isOpen == true)
+        #expect(m.rest.map(\.name) == ["Beta"])
+        #expect(m.openNow.map(\.name) == ["Gamma"])
+        #expect(m.openNow.map(\.isOpen) == [true])
         #expect(!m.showsNewProjectCard)
         #expect(m.showsTierHeadings)
         #expect(m.featured.first?.lastOpenedAt == Date(timeIntervalSince1970: 200))
@@ -296,7 +297,87 @@ struct ProjectPickerModelTests {
         #expect(m.selectedPosition == ProjectPickerPosition(id: a.id, tier: .featured, index: 0))
         let after = m.refreshed(projects: [a, b, c, d], openProjectIDs: [a.id])
         #expect(after.selectedID == a.id)
-        #expect(after.selectedPosition == ProjectPickerPosition(id: a.id, tier: .rest, index: 0))
+        #expect(after.selectedPosition == ProjectPickerPosition(id: a.id, tier: .openNow, index: 0))
+    }
+
+    @Test func openProjectsLeaveBothTiersForTheOpenNowStrip() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Beta", lastOpenedAt: 600)
+        let c = project("Gamma", lastOpenedAt: 300), d = project("Delta", lastOpenedAt: 200)
+        let e = project("Eps", lastOpenedAt: 500), f = project("Zeta", lastOpenedAt: 400)
+        let m = model([a, b, c, d, e, f], open: [e.id, c.id])
+        #expect(m.featured.map(\.name) == ["Beta", "Zeta", "Delta"])
+        #expect(m.rest.map(\.name) == ["Alpha"])
+        #expect(m.openNow.map(\.name) == ["Eps", "Gamma"])
+        let ids = (m.featured + m.rest + m.openNow).map(\.id)
+        #expect(Set(ids).count == 6 && ids.count == 6)
+        #expect(!m.showsNewProjectCard)
+        #expect(m.showsTierHeadings)
+    }
+
+    @Test func threeProjectsWithOneOpenShowTwoFeaturedAStripAndTheNewProjectCard() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Beta", lastOpenedAt: 200), c = project("Gamma", lastOpenedAt: 300)
+        let m = model([a, b, c], open: [c.id])
+        #expect(m.featured.map(\.name) == ["Beta", "Alpha"])
+        #expect(m.rest.isEmpty)
+        #expect(m.openNow.map(\.name) == ["Gamma"])
+        #expect(m.showsNewProjectCard)
+        #expect(!m.showsTierHeadings)
+    }
+
+    @Test func whenEveryProjectIsOpenTheStripHoldsThemAllBesideTheNewProjectCard() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Beta", lastOpenedAt: 200)
+        let m = model([a, b], open: [a.id, b.id])
+        #expect(m.featured.isEmpty)
+        #expect(m.rest.isEmpty)
+        #expect(m.openNow.map(\.name) == ["Beta", "Alpha"])
+        #expect(m.showsNewProjectCard)
+        #expect(!m.showsTierHeadings)
+        #expect(m.emptyState == nil)
+        #expect(m.selectedPosition?.tier == .openNow)
+    }
+
+    @Test func aQueryHidesTheStripAndKeepsOpenMatchesInTheCompactGrid() {
+        let a = project("Alpha", lastOpenedAt: 100), b = project("Alps", lastOpenedAt: 200)
+        var m = model([a, b, project("Gamma"), project("Delta")], open: [b.id])
+        m.setQuery("al")
+        #expect(m.openNow.isEmpty)
+        #expect(m.featured.isEmpty)
+        #expect(Set(m.rest.map(\.name)) == ["Alpha", "Alps"])
+        #expect(m.rest.first { $0.id == b.id }?.isOpen == true)
+        m.setQuery("")
+        #expect(m.openNow.map(\.name) == ["Alps"])
+    }
+
+    @Test func theCursorWalksFromAllProjectsIntoTheStripAndBack() {
+        let ps = (0..<7).map { project("P\($0)", lastOpenedAt: TimeInterval(1000 - $0)) }
+        let m = model(ps, open: [ps[0].id, ps[1].id])
+        // closed: P2 P3 P4 | P5 P6 ; open: P0 P1
+        #expect(m.openNow.map(\.name) == ["P0", "P1"])
+        var walk = m
+        walk.select(ps[6].id)
+        walk.move(.down)
+        #expect(walk.selectedID == ps[1].id, "column 1 of the last All Projects row maps to chip column 1")
+        #expect(walk.selectedPosition?.tier == .openNow)
+        walk.move(.down)
+        #expect(walk.selectedID == ps[1].id)
+        walk.move(.up)
+        #expect(walk.selectedID == ps[6].id)
+        walk.move(.right)
+        #expect(walk.selectedID == ps[0].id, "right from the last All Projects card lands on the first chip")
+        walk.move(.end)
+        #expect(walk.selectedID == ps[1].id)
+    }
+
+    @Test func anotherCopyActionIsOnlyForOpenProjects() {
+        let a = project("Alpha"), b = project("Beta")
+        var m = model([a, b], open: [b.id])
+        #expect(m.anotherCopyAction(for: b.id) == .open(b.id, .openNew))
+        #expect(m.anotherCopyAction(for: a.id) == nil)
+        #expect(m.anotherCopyAction(for: UUID()) == nil)
+        m.select(b.id)
+        #expect(m.openAction(optionHeld: false) == .open(b.id, .focusExistingOrOpen))
+        #expect(m.openAction(optionHeld: true) == .open(b.id, .openNew))
+        #expect(m.selectedPosition?.tier == .openNow)
     }
 
     @Test func movingDoesNothingWithoutCards() {
@@ -579,15 +660,36 @@ struct ProjectPickerWindowTests {
 struct ProjectPickerViewTests {
     @Test func theSheetLaysOutWithCardsAndWithTheEmptyState() {
         let four = [project("Alpha"), project("Beta"), project("Gamma"), project("Delta")]
-        for projects in [four, [project("Alpha"), project("Beta")], []] {
+        let withOpen = [project("Alpha"), project("Beta"), project("Gamma"), project("Delta"), project("Eps")]
+        for (projects, open) in [(four, Set<UUID>()), ([project("Alpha"), project("Beta")], Set<UUID>()), ([], Set<UUID>()), (withOpen, Set([withOpen[1].id, withOpen[4].id]))] {
             let view = ProjectPickerView(
-                projects: { projects }, openProjectIDs: { [] }, homeDirectory: "/Users/test",
+                projects: { projects }, openProjectIDs: { open }, homeDirectory: "/Users/test",
                 onAction: { _ in }, onCancel: {})
             let host = NSHostingView(rootView: view)
             host.frame = NSRect(x: 0, y: 0, width: 860, height: 600)
             host.layoutSubtreeIfNeeded()
             #expect(host.fittingSize.width > 0)
         }
+    }
+}
+
+@MainActor
+struct ProjectPickerOpenChipLayoutTests {
+    private func width(of view: some View) -> CGFloat {
+        NSHostingView(rootView: view).fittingSize.width
+    }
+
+    private func chip(_ name: String) -> ProjectPickerOpenChipView {
+        let card = ProjectPickerModel(projects: [project(name)], openProjectIDs: [], homeDirectory: "/Users/test").cards[0]
+        return ProjectPickerOpenChipView(card: card, isSelected: false, onSelect: {}, onSwitch: {}, onAnother: {})
+    }
+
+    /// A chip is (860 - 2 * 16 padding - 3 * 10 gaps) / 4, about 199 pt wide.
+    @Test func aNineCharacterNameFitsInsideAChipWithTheFixedControls() {
+        let chipWidth: CGFloat = (860 - 32 - 30) / 4
+        let fixed = width(of: chip(""))
+        let name = width(of: Text("Charlie W").fontWeight(.semibold).lineLimit(1).fixedSize())
+        #expect(fixed + name + 8 <= chipWidth, "fixed \(fixed) + name \(name) must fit \(chipWidth)")
     }
 }
 

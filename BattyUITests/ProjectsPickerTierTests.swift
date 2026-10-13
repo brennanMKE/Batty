@@ -62,7 +62,8 @@ nonisolated final class ProjectsPickerTierTests: ProjectsUITestCase {
         openThroughPicker("Bravo", in: app)
         _ = waitForSessions(named: "Bravo")
         presentPicker(in: app)
-        XCTAssertTrue(card("Bravo", under: "project-picker.rest", in: app).waitForExistence(timeout: 5), "the open Project did not sink to All Projects")
+        XCTAssertTrue(card("Bravo", under: "project-picker.open-now", in: app).waitForExistence(timeout: 5), "the open Project did not move to the Open now strip")
+        XCTAssertFalse(card("Bravo", under: "project-picker.rest", in: app).exists)
         XCTAssertFalse(card("Bravo", under: "project-picker.featured", in: app).exists)
         XCTAssertTrue(element("project-picker.open-badge.Bravo", in: app).exists, "the open Project's card has no OPEN badge")
     }
@@ -127,5 +128,69 @@ nonisolated final class ProjectsPickerTierTests: ProjectsUITestCase {
         click("project-picker.new-project-card", in: app)
         XCTAssertTrue(waitFor({ !self.element("project-picker.root", in: app).exists }, timeout: 10), "the picker did not close")
         XCTAssertTrue(editorWindow(in: app).waitForExistence(timeout: 10), "the New Project card did not open the Project Editor")
+    }
+
+    // MARK: - Open now strip (#0500)
+
+    @MainActor
+    func testOpenProjectsLiveInTheOpenNowStripAndSwitchOrOpenAnotherCopy() throws {
+        let (app, initial) = try launchApp(projects: try seed(["Alpha", "Bravo", "Charlie Web", "Delta Web"]))
+        defer { app.terminate() }
+        let original = try XCTUnwrap(initial?.selectedSession)
+
+        openThroughPicker("Bravo", in: app)
+        let first = try XCTUnwrap(waitForSessions(named: "Bravo").first)
+        let afterOpen = try XCTUnwrap(BattyCLI.topology()).sessions.count
+
+        let originalRow = BattyUITestHarness.sessionRow(named: original.name, in: app)
+        XCTAssertTrue(originalRow.waitForExistence(timeout: 5))
+        originalRow.click()
+        XCTAssertNotNil(BattyCLI.waitForTopology { $0.selectedSessionID == original.id }, "selecting the original Session did not take")
+
+        presentPicker(in: app)
+        XCTAssertTrue(card("Bravo", under: "project-picker.open-now", in: app).waitForExistence(timeout: 5), "the open Project is not in the Open now strip")
+        XCTAssertTrue(element("project-picker.open-badge.Bravo", in: app).exists)
+        for name in ["Delta Web", "Charlie Web", "Alpha"] {
+            XCTAssertTrue(card(name, under: "project-picker.featured", in: app).exists, "\(name) is not featured")
+        }
+        XCTAssertFalse(element("project-picker.rest", in: app).exists, "All Projects shows with three closed Projects")
+        XCTAssertFalse(card("Bravo", under: "project-picker.featured", in: app).exists)
+
+        pressKey(.end, in: app)
+        assertHint(contains: "Switch to the open Bravo Session", in: app, "End did not select the strip's chip")
+        pressReturn(in: app)
+        XCTAssertTrue(waitFor({ !self.element("project-picker.root", in: app).exists }, timeout: 10), "the picker did not close after Return")
+        let found = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == first.id }, "Return did not select the open Session")
+        XCTAssertEqual(found.sessions.count, afterOpen, "Return opened another Session instead of switching")
+
+        presentPicker(in: app)
+        click("project-picker.open-now.another.Bravo", in: app)
+        XCTAssertTrue(waitFor({ !self.element("project-picker.root", in: app).exists }, timeout: 10), "the picker did not close after the + button")
+        let copied = try XCTUnwrap(BattyCLI.waitForTopology { $0.sessions.count == afterOpen + 1 }, "the + button did not open another Session")
+        XCTAssertNotEqual(copied.selectedSessionID, first.id, "the + button selected the existing Session")
+        let copy = try XCTUnwrap(copied.selectedSessionID.flatMap { copied.session($0) }, "the new Session is not selected")
+        XCTAssertEqual(copy.name, "Bravo", "the new Session is not a Bravo Session")
+        _ = waitForSessions(named: "Bravo", count: 2)
+    }
+
+    @MainActor
+    func testFilteringHidesTheOpenNowStripAndEscapeRestoresIt() throws {
+        let (app, _) = try launchApp(projects: try seed(["Alpha", "Bravo", "Charlie Web", "Delta Web"]))
+        defer { app.terminate() }
+
+        openThroughPicker("Bravo", in: app)
+        _ = waitForSessions(named: "Bravo")
+        presentPicker(in: app)
+        XCTAssertTrue(element("project-picker.open-now", in: app).waitForExistence(timeout: 5))
+
+        pickerFilterField(in: app).click()
+        app.typeText("Brav")
+        XCTAssertTrue(card("Bravo", under: "project-picker.rest", in: app).waitForExistence(timeout: 5), "the open match is not in the filtered grid")
+        XCTAssertTrue(element("project-picker.open-badge.Bravo", in: app).exists)
+        XCTAssertTrue(waitFor({ !self.element("project-picker.open-now", in: app).exists }, timeout: 5), "the strip shows while filtering")
+
+        pressKey(.escape, in: app)
+        XCTAssertTrue(element("project-picker.open-now", in: app).waitForExistence(timeout: 5), "Escape did not restore the strip")
+        XCTAssertTrue(element("project-picker.root", in: app).exists)
     }
 }

@@ -92,4 +92,36 @@ struct ProjectPickerGridCursorTests {
         #expect(cursor.moved(from: 1, .down) == 4)
         #expect(cursor.moved(from: 1, .up) == 1)
     }
+
+    private let withStrip = ProjectPickerGridCursor(sections: [Section(columns: 3, count: 3), Section(columns: 4, count: 5), Section(columns: 4, count: 2)])
+    private let withFullRows = ProjectPickerGridCursor(sections: [Section(columns: 3, count: 3), Section(columns: 4, count: 8), Section(columns: 4, count: 2)])
+
+    @Test func stripLeftRightHomeEnd() {
+        #expect(moves(withStrip, .left) == [0, 0, 1, 2, 3, 4, 5, 6, 7, 8])
+        #expect(moves(withStrip, .right) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 9])
+        #expect(moves(withStrip, .end) == Array(repeating: 9, count: 10))
+        #expect(moves(withStrip, .home) == Array(repeating: 0, count: 10))
+    }
+
+    @Test func stripDownFromTheLastAllProjectsRowAndNoOpOnTheStrip() {
+        // Rest is rows [3,4,5,6] and [7]; 4, 5 and 6 sit above the short row and land on its only card.
+        #expect(moves(withStrip, .down) == [3, 5, 6, 7, 7, 7, 7, 8, 8, 9])
+    }
+
+    @Test func stripDownClampsToTheChipsInItsFirstRow() {
+        // Last All Projects row is indexes 7...10 (columns 0...3); the strip has two chips (11, 12),
+        // so columns 2 and 3 must clamp to the second chip.
+        #expect((7...10).map { withFullRows.moved(from: $0, .down) } == [11, 12, 12, 12])
+    }
+
+    @Test func stripUpReturnsToTheLastAllProjectsRow() {
+        #expect(moves(withStrip, .up) == [0, 1, 2, 0, 1, 1, 2, 3, 7, 7])
+        #expect([11, 12].map { withFullRows.moved(from: $0, .up) } == [7, 8])
+    }
+
+    @Test func anEmptyMiddleSectionIsSkippedBetweenFeaturedAndStrip() {
+        let cursor = ProjectPickerGridCursor(sections: [Section(columns: 3, count: 2), Section(columns: 4, count: 0), Section(columns: 4, count: 1)])
+        #expect(moves(cursor, .down) == [2, 2, 2])
+        #expect(moves(cursor, .up) == [0, 1, 0])
+    }
 }

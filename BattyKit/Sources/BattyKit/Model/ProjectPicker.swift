@@ -35,7 +35,7 @@ struct ProjectPickerCard: Identifiable, Equatable {
 }
 
 enum ProjectPickerTier: Equatable {
-    case featured, rest
+    case featured, rest, openNow
 }
 
 /// Where the selected card sits, so a re-rank that moves it can be noticed
@@ -63,6 +63,7 @@ struct ProjectPickerModel: Equatable {
     static let featuredCount = 3
     static let featuredColumns = 3
     static let restColumns = 4
+    static let openNowColumns = 4
 
     private(set) var query = ""
     private(set) var selectedID: UUID?
@@ -98,26 +99,47 @@ struct ProjectPickerModel: Equatable {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// The first three ranked Projects; empty while filtering, when every match
-    /// is a compact card.
-    var featured: [ProjectPickerCard] {
-        guard !isFiltering else { return [] }
-        return Array(cards.prefix(Self.featuredCount))
+    /// The cards split into the picker's three groups, derived once from the
+    /// ranked list. With a blank query open Projects leave the two tiers for
+    /// the Open now strip; `ProjectRecency` already ranks them last and in
+    /// recency order, so this is a partition and not a sort. While filtering,
+    /// every match is one compact grid and no strip shows.
+    struct Tiers: Equatable {
+        let featured: [ProjectPickerCard]
+        let rest: [ProjectPickerCard]
+        let openNow: [ProjectPickerCard]
     }
 
-    var rest: [ProjectPickerCard] {
+    var tiers: Tiers {
         let all = cards
-        return isFiltering ? all : Array(all.dropFirst(Self.featuredCount))
+        guard !isFiltering else { return Tiers(featured: [], rest: all, openNow: []) }
+        let closed = all.filter { !$0.isOpen }
+        return Tiers(
+            featured: Array(closed.prefix(Self.featuredCount)),
+            rest: Array(closed.dropFirst(Self.featuredCount)),
+            openNow: all.filter(\.isOpen))
+    }
+
+    /// The first three closed Projects in ranked order; empty while filtering.
+    var featured: [ProjectPickerCard] { tiers.featured }
+
+    var rest: [ProjectPickerCard] { tiers.rest }
+
+    var openNow: [ProjectPickerCard] { tiers.openNow }
+
+    private var closedCount: Int {
+        let tiers = tiers
+        return tiers.featured.count + tiers.rest.count
     }
 
     var showsNewProjectCard: Bool {
-        !isFiltering && !projects.isEmpty && projects.count < Self.featuredCount
+        !isFiltering && !projects.isEmpty && closedCount < Self.featuredCount
     }
 
-    /// The tier headings are drawn from three Projects up; below that the
-    /// row holds the Projects and the New Project card on their own.
+    /// The tier headings are drawn from three closed Projects up; below that
+    /// the row holds the Projects and the New Project card on their own.
     var showsTierHeadings: Bool {
-        !isFiltering && projects.count >= Self.featuredCount
+        !isFiltering && closedCount >= Self.featuredCount
     }
 
     var matchCountText: String {
@@ -132,18 +154,30 @@ struct ProjectPickerModel: Equatable {
 
     var selectedPosition: ProjectPickerPosition? {
         guard let selectedID else { return nil }
-        let featured = featured
-        if let index = featured.firstIndex(where: { $0.id == selectedID }) {
-            return ProjectPickerPosition(id: selectedID, tier: .featured, index: index)
+        return Self.position(of: selectedID, in: tiers)
+    }
+
+    private static func position(of id: UUID, in tiers: Tiers) -> ProjectPickerPosition? {
+        let groups: [(ProjectPickerTier, [ProjectPickerCard])] = [
+            (.featured, tiers.featured), (.rest, tiers.rest), (.openNow, tiers.openNow),
+        ]
+        for (tier, cards) in groups {
+            if let index = cards.firstIndex(where: { $0.id == id }) {
+                return ProjectPickerPosition(id: id, tier: tier, index: index)
+            }
         }
-        guard let index = rest.firstIndex(where: { $0.id == selectedID }) else { return nil }
-        return ProjectPickerPosition(id: selectedID, tier: .rest, index: index)
+        return nil
     }
 
     var cursor: ProjectPickerGridCursor {
+        Self.cursor(for: tiers)
+    }
+
+    private static func cursor(for tiers: Tiers) -> ProjectPickerGridCursor {
         ProjectPickerGridCursor(sections: [
-            .init(columns: Self.featuredColumns, count: featured.count),
-            .init(columns: Self.restColumns, count: rest.count),
+            .init(columns: featuredColumns, count: tiers.featured.count),
+            .init(columns: restColumns, count: tiers.rest.count),
+            .init(columns: openNowColumns, count: tiers.openNow.count),
         ])
     }
 
@@ -180,13 +214,14 @@ struct ProjectPickerModel: Equatable {
     /// The cursor decides where each direction lands over the tiers in
     /// reading order (see `ProjectPickerGridCursor`).
     mutating func move(_ direction: ProjectPickerDirection) {
-        let visible = cards
+        let tiers = tiers
+        let visible = tiers.featured + tiers.rest + tiers.openNow
         guard !visible.isEmpty else { return }
         guard let selectedID, let index = visible.firstIndex(where: { $0.id == selectedID }) else {
             self.selectedID = visible[0].id
             return
         }
-        self.selectedID = visible[cursor.moved(from: index, direction)].id
+        self.selectedID = visible[Self.cursor(for: tiers).moved(from: index, direction)].id
     }
 
     /// Return opens, focusing the open Session if there is one; Option-Return
@@ -194,6 +229,13 @@ struct ProjectPickerModel: Equatable {
     func openAction(optionHeld: Bool) -> ProjectPickerAction? {
         guard let selectedID else { return nil }
         return .open(selectedID, optionHeld ? .openNew : .focusExistingOrOpen)
+    }
+
+    /// The Open now chip's `+` button: a plain click that opens another copy
+    /// of a Project that is open; a closed Project has no such affordance.
+    func anotherCopyAction(for id: UUID) -> ProjectPickerAction? {
+        guard openProjectIDs.contains(id), projects.contains(where: { $0.id == id }) else { return nil }
+        return .open(id, .openNew)
     }
 
     func editAction() -> ProjectPickerAction? {
