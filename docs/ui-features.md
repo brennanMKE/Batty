@@ -889,7 +889,12 @@ Pane inspector, with a footer.
   covers it. The Projects list row shows a small `icloud` glyph after a shared
   Project's name (`accessibilityHidden`). New Projects, Save Session as Project
   drafts and Copy from current Session start local.
-- Footer: `project-editor.run-commands`, `project-editor.cancel`,
+- Footer: `project-editor.run-commands` (on by default for New Project... and
+  for Save Session as Project drafts; Update from Session keeps the stored
+  Project's value), `project-editor.commands-off-hint` (caption "Startup
+  commands won't run when this Project opens." shown only while the draft has
+  a non-empty startup command and the toggle is off, #0502),
+  `project-editor.cancel`,
   `project-editor.save`, `project-editor.save-open`, `project-editor.save-error`.
 
 **Not covered by unit tests (for the Tart VM suite, #0478):**
@@ -1222,6 +1227,8 @@ unchanged; these are the ones they do not cover):
 | Create, Save & Open, Tab directory | `ProjectsEditorTests.testEditorCreatesAProjectAndSaveAndOpenOpensIt` |
 | Cancel leaves the store unchanged | `ProjectsEditorTests.testCancelLeavesTheStoredProjectUnchanged` |
 | Sidebar Save as Project, round trip, equal sizes | `ProjectsEditorTests.testSidebarSaveAsProjectRoundTripsTheSessionShape` |
+| Commands-off hint follows the toggle | `ProjectsEditorTests.testCommandsOffHintTracksTheToggleWhenCommandsExist` |
+| Save Session as Project draft has the run toggle on | `ProjectsEditorTests.testSavedSessionProjectHasTheRunToggleOn` |
 | Palette Save Session as Project... | `ProjectsEditorTests.testCommandPaletteSaveSessionAsProjectOpensTheEditor` |
 | `batty project list` / `open` | `ProjectsCLITests.testProjectListShowsSeededProjectsAndOpenMarker` |
 | Flag off: File, Window, Sidebar, palette, Open Quickly (no Project row, hint or Tab-row hint, #0491, #0499), no `projects.json` | `ProjectsFlagOffTests` |

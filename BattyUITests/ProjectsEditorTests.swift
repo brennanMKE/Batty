@@ -179,6 +179,62 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         XCTAssertEqual(sized.session(reopened.id)?.panes.count, 3)
     }
 
+    @MainActor
+    func testCommandsOffHintTracksTheToggleWhenCommandsExist() throws {
+        let withCommand = ProjectFixture.project(
+            name: "Commanded",
+            root: try makeDirectory("commanded-root"),
+            layout: ProjectFixture.terminal([ProjectFixture.tab(command: "claude")]),
+            runStartupCommands: false
+        )
+        let withoutCommand = ProjectFixture.project(
+            name: "Bare",
+            root: try makeDirectory("bare-root"),
+            layout: ProjectFixture.terminal(),
+            runStartupCommands: false
+        )
+        let (app, _) = try launchApp(projects: [withCommand, withoutCommand])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        let hint = element("project-editor.commands-off-hint", in: app)
+
+        click("project-editor.list.row.Commanded", in: app)
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "commands with the toggle off show no hint")
+        click("project-editor.run-commands", in: app)
+        XCTAssertTrue(waitFor({ !hint.exists }, timeout: 5), "the hint stayed after the toggle was turned on")
+        click("project-editor.run-commands", in: app)
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "the hint did not return when the toggle went off again")
+
+        click("project-editor.list.row.Bare", in: app)
+        XCTAssertTrue(element("project-editor.run-commands", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(waitFor({ !hint.exists }, timeout: 5), "a Project with no commands shows the hint")
+    }
+
+    @MainActor
+    func testSavedSessionProjectHasTheRunToggleOn() throws {
+        let (app, _) = try launchApp(script: [["intent": "createSession", "name": "Toggled"]])
+        defer { app.terminate() }
+
+        let row = BattyUITestHarness.sessionRow(named: "Toggled", in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.rightClick()
+        let saveItem = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Save as Project")).firstMatch
+        XCTAssertTrue(saveItem.waitForExistence(timeout: 5))
+        saveItem.click()
+
+        XCTAssertTrue(editorWindow(in: app).waitForExistence(timeout: 10))
+        let toggle = element("project-editor.run-commands", in: app)
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertTrue(isChecked(toggle), "the captured draft starts with the run toggle off")
+        let save = element("project-editor.save", in: app)
+        XCTAssertTrue(waitFor({ save.isEnabled }, timeout: 10))
+        save.click()
+        XCTAssertTrue(waitFor({ (ProjectFixture.read(self.storeFile) ?? []).count == 1 }, timeout: 10))
+        let stored = try XCTUnwrap(ProjectFixture.read(storeFile)?.first)
+        XCTAssertEqual(stored["runStartupCommandsOnOpen"] as? Bool, true)
+    }
+
     // MARK: - 7. Command Palette
 
     @MainActor

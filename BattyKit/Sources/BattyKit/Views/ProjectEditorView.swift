@@ -902,6 +902,13 @@ private struct ProjectEditorFooter: View {
                 )
             )
             .accessibilityIdentifier("project-editor.run-commands")
+            if model.draft?.showsCommandsOffHint == true {
+                Text("Startup commands won't run when this Project opens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("project-editor.commands-off-hint")
+            }
             Spacer()
             if let error = model.saveError {
                 Text(error)

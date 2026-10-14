@@ -67,6 +67,12 @@ struct ProjectDraft: Equatable {
         self.lastOpenedAt = nil
     }
 
+    /// True when the draft holds a startup command that would be stored but
+    /// the run toggle is off. Counts commands as `makeProject()` stores them.
+    var showsCommandsOffHint: Bool {
+        !runStartupCommandsOnOpen && !makeProject().startupCommands.isEmpty
+    }
+
     /// `~` expanded and the path standardized. Empty stays empty.
     static func normalizedRoot(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

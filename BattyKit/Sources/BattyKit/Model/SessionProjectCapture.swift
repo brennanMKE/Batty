@@ -236,15 +236,15 @@ struct SessionProjectCapture: Equatable {
         return "\(base) \(counter)"
     }
 
-    /// A new, unsaved Project. The run toggle is off: a captured Project has
-    /// no commands.
+    /// A new, unsaved Project. The run toggle starts on, as for New Project...:
+    /// it only matters once the user adds a command, and the trust sheet
+    /// prompts before anything runs.
     func newDraft(name: String, existingNames: [String]) -> ProjectDraft {
         var draft = ProjectDraft(
             name: Self.uniqueName(name, among: existingNames),
             rootPath: rootPath,
             color: color,
-            layout: layout,
-            runStartupCommandsOnOpen: false
+            layout: layout
         )
         draft.captureNotes = notes
         draft.rootNeedsChoosing = rootIsFallback

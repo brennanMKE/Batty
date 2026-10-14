@@ -170,7 +170,7 @@ struct SaveSessionAsProjectEntryTests {
         #expect(draft.name == "Website 2", "the Session title is taken, so the name is numbered")
         #expect(draft.color == .pink)
         #expect(draft.rootPath == fixture.root.path)
-        #expect(!draft.runStartupCommandsOnOpen)
+        #expect(draft.runStartupCommandsOnOpen)
         #expect(draft.layout.panes[0].tabs.map(\.workingDirectory) == [".", "src"])
         #expect(try Data(contentsOf: fixture.projectsFile) == before)
         #expect(store.projectStore?.projects.map(\.name) == ["Website"])
@@ -226,7 +226,7 @@ struct SaveSessionAsProjectEntryTests {
             let draft = try #require(SaveSessionAsProject.draft(for: stale, destination: .update(stored.id), store: store))
             #expect(draft.id != stored.id, "a stale update becomes a new Project")
             #expect(draft.name == "Website")
-            #expect(!draft.runStartupCommandsOnOpen)
+            #expect(draft.runStartupCommandsOnOpen)
             #expect(draft.makeProject().startupCommands.isEmpty)
         }
         let update = try #require(SaveSessionAsProject.draft(for: backed, destination: .update(stored.id), store: store))
@@ -244,7 +244,7 @@ struct SaveSessionAsProjectEntryTests {
 
         let draft = try #require(SaveSessionAsProject.draft(for: session, destination: .update(UUID()), store: store))
         #expect(draft.name == "Website")
-        #expect(!draft.runStartupCommandsOnOpen)
+        #expect(draft.runStartupCommandsOnOpen)
     }
 }
 

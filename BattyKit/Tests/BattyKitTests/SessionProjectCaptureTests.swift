@@ -312,10 +312,10 @@ struct SessionProjectCaptureNamingTests {
         #expect(SessionProjectCapture.uniqueName("Batty", among: ["Batty", " BATTY 2 "]) == "Batty 3")
     }
 
-    @Test func aNewDraftHasTheRunToggleOffAndTheCaptureNotes() {
+    @Test func aNewDraftHasTheRunToggleOnAndTheCaptureNotes() {
         let node = SplitTreeNode.leaf(pane(tabs: [tab(root), tab("/Users/test/other")]))
         let draft = capture(node).newDraft(name: "N", existingNames: [])
-        #expect(!draft.runStartupCommandsOnOpen)
+        #expect(draft.runStartupCommandsOnOpen)
         #expect(draft.captureNotes.keys.contains(.tabDirectory(slot: 0, tab: 1)))
         #expect(!draft.rootNeedsChoosing)
         #expect(draft.makeProject().startupCommands.isEmpty)
@@ -357,5 +357,40 @@ struct SessionProjectUpdateDraftTests {
         #expect(draft.runStartupCommandsOnOpen)
         #expect(draft.approvedCommandsHash == "abc")
         #expect(draft.layout.preset == .singlePane)
+    }
+}
+
+struct CapturedProjectStartupTests {
+    private func draftWith(command: String?) -> ProjectDraft {
+        var draft = capture(.leaf(pane(tabs: [tab(root)])), root: root).newDraft(name: "N", existingNames: [])
+        draft.layout = ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(workingDirectory: ".", startupCommand: command)])))
+        return draft
+    }
+
+    @Test func updateDraftKeepsAStoredToggleThatIsOff() {
+        var project = Project(name: "Stored", rootPath: root, color: .teal, runStartupCommandsOnOpen: false)
+        project.approvedCommandsHash = "abc"
+        let draft = capture(.leaf(pane(tabs: [tab(root)])), root: root).updateDraft(of: project)
+        #expect(!draft.runStartupCommandsOnOpen)
+    }
+
+    @Test func aCapturedProjectWithACommandPromptsAndWithoutOneSkips() {
+        #expect(ProjectStartupTrust.decide(draftWith(command: "claude").makeProject()) == .prompt)
+        #expect(ProjectStartupTrust.decide(draftWith(command: nil).makeProject()) == .skip)
+    }
+
+    @Test func hintShowsOnlyForACommandWithTheToggleOff() {
+        var draft = draftWith(command: "claude")
+        #expect(draft.runStartupCommandsOnOpen)
+        #expect(!draft.showsCommandsOffHint)
+
+        draft.runStartupCommandsOnOpen = false
+        #expect(draft.showsCommandsOffHint)
+
+        draft.layout = draftWith(command: nil).layout
+        #expect(!draft.showsCommandsOffHint)
+
+        draft.layout = draftWith(command: "  \n ").layout
+        #expect(!draft.showsCommandsOffHint, "a whitespace-only command is not stored")
     }
 }
