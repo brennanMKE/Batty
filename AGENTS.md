@@ -271,12 +271,14 @@ Do **not** use `print()` or `NSLog()` for diagnostics — they disappear in rele
 
 Never do any of these, in any session or subagent:
 - Pass `-allowProvisioningUpdates` or `-allowProvisioningDeviceRegistration` to `xcodebuild`.
-- Make a **signed** build with `CODE_SIGN_STYLE = Automatic`. Ad-hoc or unsigned builds (`./build.sh`, `./build.sh package` without `--sign`, the VM runner) are fine.
+- Make a **Developer ID** signed build with `CODE_SIGN_STYLE = Automatic`. Routine builds (`./build.sh`, `./build.sh unit`, `./build.sh package` without `--sign`, Xcode builds, the VM runner) never use the Developer ID identity and never carry restricted entitlements, so they need no profile.
 - Use Xcode's Accounts or Manage Certificates, or `fastlane`/`altool`/App Store Connect API calls that create, revoke, renew or download certificates or profiles.
 - Delete, export, re-import or modify any identity or key in the Keychain.
 - Ask the user to create, revoke or "fix" a certificate in the developer portal.
 
-Signing with the Developer ID happens only through `scripts/release.sh`, with the user's go-ahead each time. If a signing step fails, stop and report it. Never work around it.
+Developer ID signing happens in exactly two places (user decision, 2026-10-14). Both use **Manual** signing with the committed profiles in `Configuration/Profiles/`, which never contacts Apple:
+- `./build.sh package --sign`, to build the Beta the user installs;
+- `scripts/release.sh`, only with the user's go-ahead each time. If a signing step fails, stop and report it. Never work around it.
 
 ## Restricted areas
 
