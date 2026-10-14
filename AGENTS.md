@@ -265,6 +265,19 @@ Do **not** use `print()` or `NSLog()` for diagnostics — they disappear in rele
 - **Layout model is pure value types** (currently `SplitDirection` and `Pane` in `LayoutModel.swift` — the Codable `Session`/`Tab`/`SplitNode` snapshot types were deleted along with workspace persistence in #0172, not merely renamed) — Codable, Sendable, no view or libghostty types embedded. Workspace persistence (`workspace.json`) was built, then removed (#0172); `Pane` stays Codable and persistence-ready even though nothing serializes it today.
 - **App is unsandboxed.** Terminal apps run arbitrary user processes (shells, compilers, etc.) and can't fit App Store sandbox rules. `ENABLE_APP_SANDBOX = NO` in the `Batty` target. Hardened Runtime stays on for notarization.
 
+## Developer ID certificate (binding, user directive 2026-10-13)
+
+**The team's Developer ID Application certificate cannot be replaced.** Apple policy allows no new Developer ID for years. If the one working identity is lost, Batty cannot ship anything. This Mac's identity is "Developer ID Application: Brennan Stehling (XV8BAAVZ6V)", serial `5DAD92F9908AF699`, SHA-1 `B3D61A3414743127561307C4188B27B31BD0C4D1`. The account already holds several look-alike duplicates, created when agent-driven signed builds made Xcode drop and recreate the certificate (#0265). Only this one has a private key here.
+
+Never do any of these, in any session or subagent:
+- Pass `-allowProvisioningUpdates` or `-allowProvisioningDeviceRegistration` to `xcodebuild`.
+- Make a **signed** build with `CODE_SIGN_STYLE = Automatic`. Ad-hoc or unsigned builds (`./build.sh`, `./build.sh package` without `--sign`, the VM runner) are fine.
+- Use Xcode's Accounts or Manage Certificates, or `fastlane`/`altool`/App Store Connect API calls that create, revoke, renew or download certificates or profiles.
+- Delete, export, re-import or modify any identity or key in the Keychain.
+- Ask the user to create, revoke or "fix" a certificate in the developer portal.
+
+Signing with the Developer ID happens only through `scripts/release.sh`, with the user's go-ahead each time. If a signing step fails, stop and report it. Never work around it.
+
 ## Restricted areas
 
 Don't modify these without explicit user confirmation:
