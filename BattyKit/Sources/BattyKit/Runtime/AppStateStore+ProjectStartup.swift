@@ -47,11 +47,7 @@ extension AppStateStore {
         fromCli: Bool = false,
         completion: ((Result<ProjectOpenResult, Error>) -> Void)? = nil
     ) -> UUID? {
-        guard featureFlags.projects, let projectStore else {
-            logger.notice("requestOpenProject: ignored; projects feature is off")
-            completion?(.failure(ProjectOpenError.featureDisabled))
-            return nil
-        }
+        let projectStore = self.projectStore
         guard let project = projectStore.project(id: projectID) else {
             logger.notice("requestOpenProject: unknown project id=\(projectID, privacy: .public)")
             completion?(.failure(ProjectOpenError.unknownProject(projectID)))
@@ -98,10 +94,7 @@ extension AppStateStore {
     /// double click, a closed window) is ignored.
     public func resolveStartupTrust(requestID: UUID, choice: ProjectStartupChoice) {
         guard let pending = takePendingStartupOpen(requestID: requestID) else { return }
-        guard featureFlags.projects, let projectStore else {
-            pending.completion?(.failure(ProjectOpenError.featureDisabled))
-            return
-        }
+        let projectStore = self.projectStore
         guard let project = projectStore.project(id: pending.projectID) else {
             pending.completion?(.failure(ProjectOpenError.unknownProject(pending.projectID)))
             return
@@ -144,7 +137,7 @@ extension AppStateStore {
         outcome: ProjectStartupOutcome,
         completion: ((Result<ProjectOpenResult, Error>) -> Void)?
     ) {
-        if let hash = outcome.hashToStore, let projectStore {
+        if let hash = outcome.hashToStore {
             do {
                 try projectStore.recordApproval(id: project.id, hash: hash)
             } catch {
@@ -167,7 +160,6 @@ extension AppStateStore {
     /// working directory; a shell that does not report one in time puts its
     /// Tab in the waiting state instead (``StartupCommandWaiting``).
     func armStartupCommands(of project: Project, in session: SessionRuntime) {
-        guard featureFlags.projects else { return }
         let panes = session.tree.allPanes
         for entry in project.startupCommands {
             guard panes.indices.contains(entry.paneIndex),

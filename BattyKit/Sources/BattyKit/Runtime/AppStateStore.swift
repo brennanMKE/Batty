@@ -85,15 +85,9 @@ public final class AppStateStore {
     /// `.standard` through one `cfprefsd` (#0426).
     @ObservationIgnored public let preferences: UserDefaults
 
-    /// Release gates. Views, commands, the palette and XPC read this rather
-    /// than resolving flags themselves. See `docs/feature-flags.md`.
-    @ObservationIgnored public let featureFlags: FeatureFlags
-
-    /// Nil while `featureFlags.projects` is off; the store, and so the
-    /// `projects.json` path, is never touched in that case. Built on first
-    /// access when on.
-    public var projectStore: ProjectStore? {
-        guard featureFlags.projects else { return nil }
+    /// Built on first access, so `projects.json` is never touched until a
+    /// Projects surface reads it.
+    public var projectStore: ProjectStore {
         if let existing = projectStoreStorage { return existing }
         let store = ProjectStore(fileURL: projectsFileURL)
         projectStoreStorage = store
@@ -166,7 +160,6 @@ public final class AppStateStore {
     @ObservationIgnored var quitWhenEditorCloses = false
 
     /// Tests substitute the editor's view model; nothing else assigns it.
-    /// Read only past the Projects flag gate.
     @ObservationIgnored var projectEditorModelOverride: (@MainActor () -> ProjectEditorViewModel?)?
     /// One in-flight AI naming request per session, keyed by session id and
     /// tagged with the cwd it was issued for so a repeat report of the same
@@ -992,8 +985,7 @@ public final class AppStateStore {
     /// Whether `window` is the Project Editor, judged after walking up from a
     /// sheet to the window it hangs from, so a dialog over the editor counts
     /// as the editor. Matches on the editor's window identifier, so it never
-    /// constructs the editor's controller; that window exists only with the
-    /// Projects flag on.
+    /// constructs the editor's controller.
     static func isProjectEditorWindow(_ window: NSWindow?) -> Bool {
         projectEditorWindow(from: window) != nil
     }
@@ -1085,7 +1077,7 @@ public final class AppStateStore {
     }
 
     /// Whether the lazily built `ProjectStore` exists. Lets tests show a
-    /// flag-off code path never constructed it.
+    /// code path never constructed it.
     var projectStoreIsConstructed: Bool { projectStoreStorage != nil }
 
     /// The Terminal Session tab safe to target for tab-scoped Terminal
@@ -1124,7 +1116,6 @@ public final class AppStateStore {
         nameCache: SessionNameCache = SessionNameCache(),
         notifier: BellNotifying? = nil,
         preferences: UserDefaults = .standard,
-        featureFlags: FeatureFlags = .resolved(),
         projectsFileURL: URL? = nil
     ) {
         self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
@@ -1132,7 +1123,6 @@ public final class AppStateStore {
         self.nameCache = nameCache
         self.notifier = notifier
         self.preferences = preferences
-        self.featureFlags = featureFlags
         self.footprintMonitor = FootprintMonitor(defaults: preferences)
         self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme(
             isDark: NSApp?.effectiveAppearance.isDark ?? true,
@@ -1282,9 +1272,7 @@ public final class AppStateStore {
         }
     }
 
-    /// Opens a saved Project as a Session. No-op (throws `.featureDisabled`
-    /// and logs) while `featureFlags.projects` is off. Startup commands are
-    /// not run here.
+    /// Opens a saved Project as a Session. Startup commands are not run here.
     ///
     /// `fromCli` marks the `session_created` / `session_focused` watch events
     /// as driven by a `batty` call.
@@ -1302,10 +1290,7 @@ public final class AppStateStore {
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil,
         fromCli: Bool = false
     ) throws -> ProjectOpenResult {
-        guard featureFlags.projects, let projectStore else {
-            logger.notice("openProject: ignored; projects feature is off")
-            throw ProjectOpenError.featureDisabled
-        }
+        let projectStore = self.projectStore
         guard let project = projectStore.project(id: projectID) else {
             logger.notice("openProject: unknown project id=\(projectID, privacy: .public)")
             throw ProjectOpenError.unknownProject(projectID)

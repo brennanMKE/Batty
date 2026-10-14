@@ -225,10 +225,9 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   signed explicitly, XPC peer validation, how to check a Mac's keys, and the
   rules that keep the account's certificates from being revoked. Read this
   before touching signing settings, release scripts, or entitlements.
-- [`feature-flags.md`](feature-flags.md) — the `FeatureFlags` type (on in Beta,
-  off in Prod), its two resolution paths, the UI-test force-off override, and
-  the gate-site list every flagged feature appends to. Read this before gating
-  or ungating a feature.
+- [`feature-flags.md`](feature-flags.md) — the policy (on in Beta, off in Prod)
+  and the recipe for adding the next feature flag, plus the retired-flags list.
+  There are no flags today. Read this before gating a feature.
 - [`source-layout.md`](source-layout.md) — how `BattyKit/Sources/BattyKit/`
   is grouped into folders by concern (`Views/`, `Runtime/`, `Model/`,
   `Commands/`, `Theme/`, `Settings/`, `Updater/`, `Util/`). Read this

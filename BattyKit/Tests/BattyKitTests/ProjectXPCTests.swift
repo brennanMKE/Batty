@@ -23,10 +23,9 @@ private final class Fixture {
         try? FileManager.default.removeItem(at: base)
     }
 
-    func store(projects: Bool = true) -> AppStateStore {
+    func store() -> AppStateStore {
         AppStateStore(
             nameCache: SessionNameCache(fileURL: base.appendingPathComponent("cache.json")),
-            featureFlags: FeatureFlags(projects: projects),
             projectsFileURL: projectsFile
         )
     }
@@ -87,31 +86,11 @@ private func reply(_ response: XPCResponse) throws -> ProjectOpenReply {
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct ProjectXPCTests {
-    // MARK: - Flag off
-
-    @Test func flagOffRefusesBothVerbsAsUnknownAndNeverTouchesTheStore() async throws {
-        let fixture = try Fixture()
-        let store = fixture.store(projects: false)
-        let service = AppXPCService(store: { store }, clock: TestClock())
-        let sessionsBefore = store.windows.flatMap(\.sessions).count
-
-        let list = try await perform(service, verb: XPCVerb.projectList)
-        #expect(list.ok == false)
-        #expect(list.error == "unknown verb: projectList")
-        #expect(list.payload == nil)
-
-        let open = try await open(service, "Anything")
-        #expect(open.ok == false)
-        #expect(open.error == "unknown verb: projectOpen")
-
-        #expect(!store.projectStoreIsConstructed)
-        #expect(!FileManager.default.fileExists(atPath: fixture.projectsFile.path))
-        #expect(store.windows.flatMap(\.sessions).count == sessionsBefore)
-    }
+    // MARK: - Unknown verbs
 
     @Test func aVerbTheAppNeverHeardOfStillGetsTheSameWording() async throws {
         let fixture = try Fixture()
-        let store = fixture.store(projects: false)
+        let store = fixture.store()
         let service = AppXPCService(store: { store }, clock: TestClock())
         let response = try await perform(service, verb: "projectDelete")
         #expect(response.error == "unknown verb: projectDelete")
@@ -124,8 +103,8 @@ struct ProjectXPCTests {
         let store = fixture.store()
         let zed = fixture.project("Zed", panes: 3)
         let alpha = fixture.project("Alpha")
-        try store.projectStore?.upsert(zed)
-        try store.projectStore?.upsert(alpha)
+        try store.projectStore.upsert(zed)
+        try store.projectStore.upsert(alpha)
         _ = try store.openProject(id: alpha.id)
         let service = AppXPCService(store: { store }, clock: TestClock())
 
@@ -147,7 +126,7 @@ struct ProjectXPCTests {
         old.lastOpenedAt = Date(timeIntervalSince1970: 100)
         recent.lastOpenedAt = Date(timeIntervalSince1970: 200)
         let never = fixture.project("Never"), busy = fixture.project("Busy")
-        for project in [never, old, busy, recent] { try store.projectStore?.upsert(project) }
+        for project in [never, old, busy, recent] { try store.projectStore.upsert(project) }
         store.projectUsageClock = { Date(timeIntervalSince1970: 300) }
         _ = try store.openProject(id: busy.id)
         let service = AppXPCService(store: { store }, clock: TestClock())
@@ -173,7 +152,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty")
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let service = AppXPCService(store: { store }, clock: TestClock())
         let recorder = EventRecorder()
         defer { recorder.stop() }
@@ -204,8 +183,8 @@ struct ProjectXPCTests {
     @Test func openingAnUnknownNameFailsAndListsTheCloseMatches() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        try store.projectStore?.upsert(fixture.project("Batty"))
-        try store.projectStore?.upsert(fixture.project("Homelab"))
+        try store.projectStore.upsert(fixture.project("Batty"))
+        try store.projectStore.upsert(fixture.project("Homelab"))
         let service = AppXPCService(store: { store }, clock: TestClock())
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
@@ -222,7 +201,7 @@ struct ProjectXPCTests {
     @Test func anUnknownNameWithNoCloseMatchPointsAtList() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        try store.projectStore?.upsert(fixture.project("Batty"))
+        try store.projectStore.upsert(fixture.project("Batty"))
         let response = try await open(AppXPCService(store: { store }, clock: TestClock()), "Completely Different")
         #expect(try #require(response.error).contains("batty project list"))
     }
@@ -247,7 +226,7 @@ struct ProjectXPCTests {
         let store = fixture.store()
         var project = fixture.project("Gone")
         project.rootPath = fixture.base.appendingPathComponent("missing").path
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
         let response = try await open(AppXPCService(store: { store }, clock: TestClock()), "Gone")
@@ -266,7 +245,7 @@ struct ProjectXPCTests {
     @Test func theReplyWaitsForTheUsersAnswerToTheTrustSheet() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        try store.projectStore?.upsert(fixture.project("Batty", command: "./build.sh"))
+        try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let clock = TestClock()
         let service = AppXPCService(store: { store }, clock: clock)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
@@ -289,7 +268,7 @@ struct ProjectXPCTests {
     @Test func dismissingTheTrustSheetFailsTheRequestAndOpensNothing() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        try store.projectStore?.upsert(fixture.project("Batty", command: "./build.sh"))
+        try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let clock = TestClock()
         let service = AppXPCService(store: { store }, clock: clock)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
@@ -308,7 +287,7 @@ struct ProjectXPCTests {
     @Test func anUnansweredSheetIsWithdrawnAtTheBoundAndTheReplySaysSo() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        try store.projectStore?.upsert(fixture.project("Batty", command: "./build.sh"))
+        try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let clock = TestClock()
         let service = AppXPCService(store: { store }, clock: clock)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
@@ -340,7 +319,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", command: "./build.sh")
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let existing = try store.openProject(id: project.id).session
         let clock = TestClock()
 
@@ -363,7 +342,7 @@ struct ProjectXPCTests {
     @Test func aCLIOpenThatNeedsApprovalBringsTheWindowForwardForTheSheet() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        try store.projectStore?.upsert(fixture.project("Batty", command: "./build.sh"))
+        try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let log = activations(store)
         let clock = TestClock()
         let pending = Task { @MainActor in try await open(AppXPCService(store: { store }, clock: clock), "Batty") }
@@ -377,7 +356,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", command: "./build.sh")
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let log = activations(store)
         store.requestOpenProject(id: project.id, completion: { _ in })
         #expect(log.count == 0)
@@ -387,7 +366,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty")
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let log = activations(store)
         _ = try store.openProject(id: project.id, mode: .openNew)
         #expect(log.count == 0)
@@ -399,7 +378,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty")
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         _ = try store.openProject(id: project.id)
         let log = activations(store)
         _ = try await open(AppXPCService(store: { store }, clock: TestClock()), "Batty")
@@ -425,7 +404,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", panes: 2)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let settings = titledWindow()
         store.keyWindowProvider = { settings }
         let log = targets(store)
@@ -443,7 +422,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", panes: 2)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let content = titledWindow()
         store.registerNSWindow(content, for: store.windows[0].id)
         store.keyWindowProvider = { content }
@@ -458,7 +437,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", command: "./build.sh", panes: 2)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let settings = titledWindow()
         store.keyWindowProvider = { settings }
         let log = targets(store)
@@ -474,7 +453,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", command: "./build.sh", panes: 2)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let content = titledWindow()
         store.registerNSWindow(content, for: store.windows[0].id)
         store.keyWindowProvider = { content }
@@ -490,7 +469,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", panes: 2)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let settings = titledWindow()
         store.keyWindowProvider = { settings }
         let log = targets(store)
@@ -504,7 +483,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project("Batty", panes: 2)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         _ = try store.openProject(id: project.id)
         let settings = titledWindow()
         store.keyWindowProvider = { settings }
@@ -514,33 +493,6 @@ struct ProjectXPCTests {
 
         #expect(!result.wasCreated)
         #expect(log.ids.count == 1)
-    }
-
-    @Test func flagOffGUIOpenFromAnAuxiliaryKeyWindowActivatesNothing() throws {
-        let fixture = try Fixture()
-        let store = fixture.store(projects: false)
-        let settings = titledWindow()
-        store.keyWindowProvider = { settings }
-        let log = targets(store)
-
-        var failure: Error?
-        store.requestOpenProject(id: UUID(), completion: { if case .failure(let e) = $0 { failure = e } })
-
-        #expect(failure as? ProjectOpenError == .featureDisabled)
-        #expect(log.ids.isEmpty)
-    }
-
-    @Test func flagOffOpenProjectFromAnAuxiliaryKeyWindowThrowsAndActivatesNothing() throws {
-        let fixture = try Fixture()
-        let store = fixture.store(projects: false)
-        let settings = titledWindow()
-        store.keyWindowProvider = { settings }
-        let log = targets(store)
-
-        #expect(throws: ProjectOpenError.featureDisabled) {
-            try store.openProject(id: UUID(), mode: .openNew)
-        }
-        #expect(log.ids.isEmpty)
     }
 
     @Test func aPickerToggleNamingAWindowIsHandledByThatWindowOnly() {

@@ -25,6 +25,7 @@ struct CapabilitiesCommandTests {
             "session info", "session focus", "session close",
             "pane split", "pane close", "pane focus", "pane hide", "pane show",
             "tab focus",
+            "project list", "project open",
             "id", "notify", "capabilities",
         ])
     }
@@ -87,11 +88,11 @@ struct CapabilitiesCommandTests {
         #expect(Set(codes).count == codes.count)
     }
 
-    @Test func exitCodeTableHasExactlyNineEntries() {
-        // 0, 1, 2, 3, 4, 5, 6, 7, 64 — the full vocabulary as of #0384.
+    @Test func exitCodeTableHasExactlyTenEntries() {
+        // 0, 1, 2, 3, 4, 5, 6, 7, 8, 64 — the full vocabulary (8 is the awaiting-confirmation code).
         // A future code added to XPCExitCode should grow this list, so this
         // count is meant to be revisited deliberately, not silently pass.
-        #expect(CapabilitiesCommand.buildPayload().exitCodes.count == 9)
+        #expect(CapabilitiesCommand.buildPayload().exitCodes.count == 10)
     }
 
     // MARK: - JSON encoding

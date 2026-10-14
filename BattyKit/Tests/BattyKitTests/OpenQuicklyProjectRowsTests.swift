@@ -48,13 +48,12 @@ private final class Fixture {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    func store(projectsEnabled: Bool, seeding projects: [Project] = []) throws -> AppStateStore {
+    func store(seeding projects: [Project] = []) throws -> AppStateStore {
         let store = AppStateStore(
             nameCache: SessionNameCache(fileURL: directory.appendingPathComponent("cache.json")),
-            featureFlags: FeatureFlags(projects: projectsEnabled),
             projectsFileURL: projectsFile
         )
-        for project in projects { try store.projectStore?.upsert(project) }
+        for project in projects { try store.projectStore.upsert(project) }
         return store
     }
 }
@@ -143,13 +142,13 @@ struct OpenQuicklyRankingTests {
 @MainActor
 struct OpenQuicklyRecencyTests {
     private func rankedNames(_ store: AppStateStore) -> [String] {
-        ProjectRecency.ranked(store.projectStore?.projects ?? [], openProjectIDs: store.openProjectIDs).map(\.name)
+        ProjectRecency.ranked(store.projectStore.projects, openProjectIDs: store.openProjectIDs).map(\.name)
     }
 
     @Test func projectRowsFollowTheSharedRankingForEveryOpenFixture() throws {
         let fixture = Fixture()
         let never = project("Beta Never"), older = project("Beta Older", lastOpenedAt: 100), newer = project("Beta Newer", lastOpenedAt: 900)
-        let store = try fixture.store(projectsEnabled: true, seeding: [never, newer, older])
+        let store = try fixture.store(seeding: [never, newer, older])
 
         func rows() -> [String] { OpenQuicklyFilter.projectRows(in: store).map(\.name) }
         #expect(rows() == rankedNames(store))
@@ -168,7 +167,7 @@ struct OpenQuicklyRecencyTests {
     @Test func theFilteredOrderWithinOneTierIsTheSharedOrder() throws {
         let fixture = Fixture()
         let a = project("Beta A"), b = project("Beta B", lastOpenedAt: 100), c = project("Beta C", lastOpenedAt: 500)
-        let store = try fixture.store(projectsEnabled: true, seeding: [a, b, c])
+        let store = try fixture.store(seeding: [a, b, c])
         let entries = OpenQuicklyFilter.apply(query: "beta", tabs: [], projects: OpenQuicklyFilter.projectRows(in: store))
         #expect(entries.compactMap { entry -> String? in
             if case .project(let r) = entry { r.name } else { nil }
@@ -180,7 +179,7 @@ struct OpenQuicklyRecencyTests {
         let fixture = Fixture()
         let pathOnly = project("Quebec", root: "/tmp/beta-stuff", lastOpenedAt: 900)
         let prefix = project("Beta Duo", lastOpenedAt: 100)
-        let store = try fixture.store(projectsEnabled: true, seeding: [pathOnly, prefix])
+        let store = try fixture.store(seeding: [pathOnly, prefix])
         let entries = OpenQuicklyFilter.apply(query: "beta", tabs: [], projects: OpenQuicklyFilter.projectRows(in: store))
         #expect(names(entries) == ["project:Beta Duo", "project:Quebec"])
     }
@@ -192,7 +191,7 @@ struct OpenQuicklyPathOnlyRecencyTests {
         let fixture = Fixture()
         let pathOnly = project("Quebec", root: "/tmp/bta-stuff", lastOpenedAt: 900)
         let scattered = project("Bxexta", lastOpenedAt: 100)
-        let store = try fixture.store(projectsEnabled: true, seeding: [pathOnly, scattered])
+        let store = try fixture.store(seeding: [pathOnly, scattered])
         let rows = OpenQuicklyFilter.projectRows(in: store)
         #expect(rows.map(\.name) == ["Quebec", "Bxexta"])
         #expect(names(OpenQuicklyFilter.apply(query: "bta", tabs: [], projects: rows)) == ["project:Bxexta", "project:Quebec"])
@@ -204,7 +203,7 @@ struct OpenQuicklyDeduplicationTests {
     @Test func anOpenProjectKeepsItsRowNextToItsSessionsTabRows() throws {
         let fixture = Fixture()
         let batty = project("Batty")
-        let store = try fixture.store(projectsEnabled: true, seeding: [batty])
+        let store = try fixture.store(seeding: [batty])
         _ = try store.openProject(id: batty.id, contentFactory: { _ in nil })
         let window = store.windows[0]
 
@@ -223,7 +222,7 @@ struct OpenQuicklyDeduplicationTests {
     @Test func aProjectOpenOnlyInAnotherWindowHasAnOpenRowAndNoTabRow() throws {
         let fixture = Fixture()
         let remote = project("Remote Work")
-        let store = try fixture.store(projectsEnabled: true, seeding: [remote])
+        let store = try fixture.store(seeding: [remote])
         let other = store.windowRuntime(for: WindowID())
         let tree = try ProjectTreeBuilder.build(project: remote, contentFactory: { _ in nil }, isSessionSelected: true)
         other.addProjectSession(remote, tree: tree)
@@ -242,7 +241,7 @@ struct OpenQuicklyDeduplicationTests {
     @Test func aSecondCopyDoesNotAddASecondProjectRow() throws {
         let fixture = Fixture()
         let a = project("Alpha"), b = project("Beta")
-        let store = try fixture.store(projectsEnabled: true, seeding: [a, b])
+        let store = try fixture.store(seeding: [a, b])
         _ = try store.openProject(id: a.id, contentFactory: { _ in nil })
         _ = try store.openProject(id: a.id, mode: .openNew, contentFactory: { _ in nil })
         #expect(store.windows.flatMap(\.sessions).filter { $0.projectID == a.id }.count == 2)
@@ -256,7 +255,7 @@ struct OpenQuicklyDeduplicationTests {
 
     @Test func aProjectWithoutASessionIsNotMarkedOpen() throws {
         let fixture = Fixture()
-        let store = try fixture.store(projectsEnabled: true, seeding: [project("Alpha")])
+        let store = try fixture.store(seeding: [project("Alpha")])
         #expect(OpenQuicklyFilter.projectRows(in: store).map(\.isOpen) == [false])
     }
 }
@@ -266,14 +265,14 @@ struct OpenQuicklyActionTests {
     @Test func returnOnAProjectFocusesOrOpensAndOptionReturnOpensAnother() {
         let target = row("Alpha")
         let window = WindowRuntime(bellFeed: BellFeedStore(), nameCache: SessionNameCache())
-        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: false, projectsEnabled: true, in: window) == .openProject(target.id, .focusExistingOrOpen))
-        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: true, projectsEnabled: true, in: window) == .openProject(target.id, .openNew))
+        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: false, in: window) == .openProject(target.id, .focusExistingOrOpen))
+        #expect(OpenQuicklyFilter.choose(.project(target), optionHeld: true, in: window) == .openProject(target.id, .openNew))
     }
 
     @Test func activatingAProjectRowReportsTheActionAndOpensNothing() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         let window = store.windows[0]
         let sessionCount = window.sessions.count
         var reported: [OpenQuicklyAction] = []
@@ -297,7 +296,7 @@ struct OpenQuicklyActionTests {
                 sessionID: second.id, sessionTitle: second.title,
                 tabID: pane.activeTabID, tabTitle: "t")
             #expect(result.projectID == nil)
-            let action = OpenQuicklyFilter.choose(.tab(result), optionHeld: optionHeld, projectsEnabled: true, in: window)
+            let action = OpenQuicklyFilter.choose(.tab(result), optionHeld: optionHeld, in: window)
             #expect(action == nil)
             #expect(window.selectedSessionID == second.id)
         }
@@ -315,7 +314,7 @@ struct OpenQuicklyActionTests {
     @Test func optionReturnOnAProjectBackedTabRowReportsAnotherCopyAndDoesNotJump() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         let (window, other, backed, row) = try projectBackedTab(store, alpha)
         window.setSelectedSession(id: other.id)
         let activeTab = backed.focusedPaneAnyKind.activeTabID
@@ -333,7 +332,7 @@ struct OpenQuicklyActionTests {
     @Test func returnOnAProjectBackedTabRowJumpsAndReportsNothing() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         let (window, other, backed, row) = try projectBackedTab(store, alpha)
         window.setSelectedSession(id: other.id)
         var reported: [OpenQuicklyAction] = []
@@ -342,13 +341,13 @@ struct OpenQuicklyActionTests {
 
         #expect(reported.isEmpty)
         #expect(window.selectedSessionID == backed.id)
-        #expect(OpenQuicklyFilter.choose(.tab(row), optionHeld: false, projectsEnabled: true, in: window) == nil)
+        #expect(OpenQuicklyFilter.choose(.tab(row), optionHeld: false, in: window) == nil)
     }
 
     @Test func allResultsCarriesTheProjectIDOnlyForAProjectBackedSession() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         let (window, other, backed, _) = try projectBackedTab(store, alpha)
         let results = OpenQuicklyFilter.allResults(for: window)
         #expect(results.filter { $0.sessionID == backed.id }.map(\.projectID) == [alpha.id])
@@ -358,7 +357,7 @@ struct OpenQuicklyActionTests {
     @Test func theTabFooterNamesTheProjectNotTheSessionTitle() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         let (window, _, backed, _) = try projectBackedTab(store, alpha)
         window.renameSession(id: backed.id, to: "Scratch pad")
         let renamed = try #require(OpenQuicklyFilter.allResults(for: window).first { $0.sessionID == backed.id })
@@ -371,7 +370,7 @@ struct OpenQuicklyActionTests {
     @Test func theTabFooterIsAbsentWhenTheProjectIsMissingOrTheRowHasNone() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         let (window, other, _, backed) = try projectBackedTab(store, alpha)
         let rows = OpenQuicklyFilter.projectRows(in: store)
         #expect(OpenQuicklyFilter.tabHintName(for: backed, projects: rows) == "Alpha")
@@ -380,27 +379,6 @@ struct OpenQuicklyActionTests {
         let plain = try #require(OpenQuicklyFilter.allResults(for: window).first { $0.sessionID == other.id })
         #expect(OpenQuicklyFilter.tabHintName(for: plain, projects: rows) == nil)
     }
-
-    @Test func withTheFlagOffOptionReturnOnATabRowIsAPlainJumpAndTheStoreIsNeverRead() throws {
-        let fixture = Fixture()
-        let store = try fixture.store(projectsEnabled: false)
-        let window = store.windows[0]
-        _ = window.addSession()
-        let first = window.sessions[0], second = window.sessions[1]
-        window.setSelectedSession(id: first.id)
-        let results = OpenQuicklyFilter.allResults(for: window)
-        let row = try #require(results.first { $0.sessionID == second.id })
-        #expect(row.projectID == nil)
-        OpenQuicklyFilter.activate(.tab(row), optionHeld: true, in: window, onAction: nil)
-        #expect(window.selectedSessionID == second.id)
-
-        window.setSelectedSession(id: first.id)
-        let forced = QuickOpenResult(sessionID: second.id, sessionTitle: row.sessionTitle, tabID: row.tabID, tabTitle: row.tabTitle, projectID: UUID())
-        OpenQuicklyFilter.activate(.tab(forced), optionHeld: true, in: window, onAction: nil)
-        #expect(window.selectedSessionID == second.id)
-        #expect(OpenQuicklyFilter.choose(.tab(forced), optionHeld: true, projectsEnabled: false, in: window) == nil)
-        #expect(!store.projectStoreIsConstructed)
-    }
 }
 
 @MainActor
@@ -408,7 +386,7 @@ struct OpenQuicklyRoutingTests {
     @Test func theChosenProjectOpensOnlyWhenTheHostPerformsTheValue() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         _ = try store.openProject(id: alpha.id, contentFactory: { _ in nil })
         let original = try #require(store.windows[0].sessions.first { $0.projectID == alpha.id })
         store.windows[0].setSelectedSession(id: store.windows[0].sessions[0].id)
@@ -416,7 +394,7 @@ struct OpenQuicklyRoutingTests {
         store.windowActivationObserver = { activated.append($0) }
 
         let rowForAlpha = try #require(OpenQuicklyFilter.projectRows(in: store).first)
-        let action = OpenQuicklyFilter.choose(.project(rowForAlpha), optionHeld: false, projectsEnabled: true, in: store.windows[0])
+        let action = OpenQuicklyFilter.choose(.project(rowForAlpha), optionHeld: false, in: store.windows[0])
         #expect(action == .openProject(alpha.id, .focusExistingOrOpen))
         #expect(activated.isEmpty)
 
@@ -431,7 +409,7 @@ struct OpenQuicklyRoutingTests {
     @Test func theTabRowActionOpensAnotherCopyOnlyWhenTheHostPerformsTheValue() throws {
         let fixture = Fixture()
         let alpha = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [alpha])
+        let store = try fixture.store(seeding: [alpha])
         _ = try store.openProject(id: alpha.id, contentFactory: { _ in nil })
         let window = store.windows[0]
         let backed = try #require(window.sessions.first { $0.projectID == alpha.id })
@@ -449,7 +427,7 @@ struct OpenQuicklyRoutingTests {
 
     @Test func aMissingProjectIsShownToThePersonWhoAskedForIt() throws {
         let fixture = Fixture()
-        let store = try fixture.store(projectsEnabled: true)
+        let store = try fixture.store()
         let missing = UUID()
         var shown: [Error] = []
         OpenQuicklyAction.openProject(missing, .focusExistingOrOpen).perform(in: store) { shown.append($0) }
@@ -463,29 +441,9 @@ struct OpenQuicklyRoutingTests {
             .terminal(tabs: [ProjectTab(title: "t", workingDirectory: ".", startupCommand: "echo hi")]),
         ])
         guarded.runStartupCommandsOnOpen = true
-        let store = try fixture.store(projectsEnabled: true, seeding: [guarded])
+        let store = try fixture.store(seeding: [guarded])
         OpenQuicklyAction.openProject(guarded.id, .focusExistingOrOpen).perform(in: store)
         #expect(store.windows[0].pendingStartupTrusts.first?.projectID == guarded.id)
     }
 }
 
-@MainActor
-struct OpenQuicklyFlagOffTests {
-    @Test func flagOffYieldsNoProjectRowsAndNeverBuildsTheStore() throws {
-        let fixture = Fixture()
-        let store = try fixture.store(projectsEnabled: false)
-
-        #expect(OpenQuicklyFilter.projectRows(in: store).isEmpty)
-        #expect(!store.projectStoreIsConstructed)
-        #expect(!FileManager.default.fileExists(atPath: fixture.projectsFile.path))
-    }
-
-    @Test func aFlagOffOpenActionStillFailsWithoutBuildingTheStore() throws {
-        let fixture = Fixture()
-        let store = try fixture.store(projectsEnabled: false)
-        var shown: [Error] = []
-        OpenQuicklyAction.openProject(UUID(), .openNew).perform(in: store) { shown.append($0) }
-        #expect((shown.first as? ProjectOpenError) == .featureDisabled)
-        #expect(!store.projectStoreIsConstructed)
-    }
-}

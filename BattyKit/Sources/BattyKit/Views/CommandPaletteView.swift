@@ -115,60 +115,59 @@ struct CommandPaletteView: View {
             action: { AboutPanel.show() }
         ))
 
-        if store.featureFlags.projects, let projectStore = store.projectStore {
+        let projectStore = store.projectStore
+        cmds.append(PaletteCommand(
+            id: "extra:openProjectPicker",
+            title: String(localized: "Open Project\u{2026}"),
+            keyHint: nil,
+            action: {
+                runAfterDismiss {
+                    presentProjectPicker?()
+                }
+            }
+        ))
+        if let session = store.keyWindowOrFirstRegistered()?.selectedSession {
+            let backing = session.projectID.flatMap { projectStore.project(id: $0) }
             cmds.append(PaletteCommand(
-                id: "extra:openProjectPicker",
-                title: String(localized: "Open Project\u{2026}"),
+                id: "extra:saveSessionAsProject",
+                title: backing == nil
+                    ? String(localized: "Save Session as Project\u{2026}")
+                    : String(localized: "Save Session as New Project\u{2026}"),
                 keyHint: nil,
                 action: {
                     runAfterDismiss {
-                        presentProjectPicker?()
+                        saveSessionAsProject(.newProject)
                     }
                 }
             ))
-            if let session = store.keyWindowOrFirstRegistered()?.selectedSession {
-                let backing = session.projectID.flatMap { projectStore.project(id: $0) }
+            if let backing {
                 cmds.append(PaletteCommand(
-                    id: "extra:saveSessionAsProject",
-                    title: backing == nil
-                        ? String(localized: "Save Session as Project\u{2026}")
-                        : String(localized: "Save Session as New Project\u{2026}"),
+                    id: "extra:updateSessionProject",
+                    title: String(localized: "Update Project: \(backing.name)"),
                     keyHint: nil,
                     action: {
                         runAfterDismiss {
-                            saveSessionAsProject(.newProject)
+                            saveSessionAsProject(.update(backing.id))
                         }
                     }
                 ))
-                if let backing {
-                    cmds.append(PaletteCommand(
-                        id: "extra:updateSessionProject",
-                        title: String(localized: "Update Project: \(backing.name)"),
-                        keyHint: nil,
-                        action: {
-                            runAfterDismiss {
-                                saveSessionAsProject(.update(backing.id))
-                            }
+            }
+        }
+        for project in ProjectRecency.ranked(projectStore.projects, openProjectIDs: store.openProjectIDs) {
+            cmds.append(PaletteCommand(
+                id: "project:\(project.id.uuidString)",
+                title: String(localized: "Open Project: \(project.name)"),
+                keyHint: nil,
+                action: {
+                    runAfterDismiss {
+                        if let openProject {
+                            openProject(project.id, .focusExistingOrOpen)
+                        } else {
+                            ProjectOpenPresenter.open(id: project.id, mode: .focusExistingOrOpen, in: store)
                         }
-                    ))
+                    }
                 }
-            }
-            for project in ProjectRecency.ranked(projectStore.projects, openProjectIDs: store.openProjectIDs) {
-                cmds.append(PaletteCommand(
-                    id: "project:\(project.id.uuidString)",
-                    title: String(localized: "Open Project: \(project.name)"),
-                    keyHint: nil,
-                    action: {
-                        runAfterDismiss {
-                            if let openProject {
-                                openProject(project.id, .focusExistingOrOpen)
-                            } else {
-                                ProjectOpenPresenter.open(id: project.id, mode: .focusExistingOrOpen, in: store)
-                            }
-                        }
-                    }
-                ))
-            }
+            ))
         }
 
         for theme in BattyThemeCatalog.allThemes {

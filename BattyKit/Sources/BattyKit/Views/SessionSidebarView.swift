@@ -34,17 +34,15 @@ public struct SessionSidebarView: View {
         return value
     }
 
-    /// The symbol whose name the row's value carries: nil for a plain Session
-    /// and whenever the Projects flag is off, so a flag-off row's value is
-    /// exactly what it was before Projects.
-    static func rowProjectSymbol(flagOn: Bool, projectID: UUID?, symbol: ProjectSymbol?) -> ProjectSymbol? {
-        guard flagOn, projectID != nil else { return nil }
+    /// The symbol whose name the row's value carries: nil for a plain Session.
+    static func rowProjectSymbol(projectID: UUID?, symbol: ProjectSymbol?) -> ProjectSymbol? {
+        guard projectID != nil else { return nil }
         return symbol ?? .default
     }
 
     /// The Project part of the row's value names the Project's symbol for
     /// VoiceOver, but not the SF Symbol itself, and says nothing about the
-    /// plain Session circle or the flag-off icon. A UI test that asserts the
+    /// plain Session circle. A UI test that asserts the
     /// drawn SF Symbol reads it from the row's value. Off unless the harness
     /// asks, so VoiceOver never speaks SF Symbol names and tests that compare
     /// the value exactly are unaffected.
@@ -53,7 +51,7 @@ public struct SessionSidebarView: View {
     private func rowIconName(for session: SessionRuntime) -> String? {
         guard Self.exposesRowIcon else { return nil }
         let symbol = session.projectID != nil ? (session.projectSymbol ?? .default) : nil
-        return SessionRowIcon.systemName(flagOn: store.featureFlags.projects, projectSymbol: symbol)
+        return SessionRowIcon.systemName(projectSymbol: symbol)
     }
 
     public var body: some View {
@@ -127,7 +125,7 @@ public struct SessionSidebarView: View {
                         }
                     )
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(flagOn: store.featureFlags.projects, projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session)))
+                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session)))
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(
@@ -156,18 +154,16 @@ public struct SessionSidebarView: View {
                 .buttonStyle(.borderless)
                 .help("New Session")
                 .accessibilityIdentifier(SidebarFooter.addSessionIdentifier)
-                if SidebarFooter.showsOpenProjectButton(featureFlags: store.featureFlags) {
-                    Button {
-                        SidebarFooter.presentProjectPicker(in: windowRuntime, featureFlags: store.featureFlags)
-                    } label: {
-                        Image(systemName: SidebarFooter.openProjectSystemName)
-                            .frame(width: 22, height: 22)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(SidebarFooter.openProjectHelp)
-                    .accessibilityLabel(SidebarFooter.openProjectLabel)
-                    .accessibilityIdentifier(SidebarFooter.openProjectIdentifier)
+                Button {
+                    SidebarFooter.presentProjectPicker(in: windowRuntime)
+                } label: {
+                    Image(systemName: SidebarFooter.openProjectSystemName)
+                        .frame(width: 22, height: 22)
                 }
+                .buttonStyle(.borderless)
+                .help(SidebarFooter.openProjectHelp)
+                .accessibilityLabel(SidebarFooter.openProjectLabel)
+                .accessibilityIdentifier(SidebarFooter.openProjectIdentifier)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -287,9 +283,8 @@ private struct SidebarRowBackground: ViewModifier {
     }
 }
 
-/// The Sidebar footer's buttons. The Open Project button exists only with the
-/// Projects flag on, and presents the picker on the window that owns the
-/// Sidebar: it writes that window's `WindowRuntime`, so no notification and no
+/// The Sidebar footer's buttons. The Open Project button presents the picker
+/// on the window that owns the Sidebar: it writes that window's `WindowRuntime`, so no notification and no
 /// key-window check is involved. It reads nothing from `AppStateStore.projectStore`.
 enum SidebarFooter {
     static let addSessionIdentifier = "session-sidebar.add-session-button"
@@ -298,32 +293,23 @@ enum SidebarFooter {
     static let openProjectHelp = "Open Project\u{2026}"
     static let openProjectLabel = "Open Project"
 
-    static func showsOpenProjectButton(featureFlags: FeatureFlags) -> Bool {
-        featureFlags.projects
-    }
-
-    static func presentProjectPicker(in windowRuntime: WindowRuntime, featureFlags: FeatureFlags) {
-        guard showsOpenProjectButton(featureFlags: featureFlags) else { return }
+    static func presentProjectPicker(in windowRuntime: WindowRuntime) {
         windowRuntime.projectPickerShown = true
     }
 }
 
 /// Which SF Symbol a Sidebar Session row draws. `projectSymbol` is nil for a
-/// plain Session. With the Projects flag off every row keeps the three-column
-/// symbol.
+/// plain Session.
 enum SessionRowIcon {
-    static let legacySystemName = "rectangle.split.3x1"
     static let plainSystemName = "circle.fill"
 
-    static func systemName(flagOn: Bool, projectSymbol: ProjectSymbol?) -> String {
-        guard flagOn else { return legacySystemName }
+    static func systemName(projectSymbol: ProjectSymbol?) -> String {
         guard let projectSymbol else { return plainSystemName }
         return projectSymbol.resolvedSystemName
     }
 }
 
 private struct SessionRowIconView: View {
-    let flagOn: Bool
     let isProjectBacked: Bool
     let projectSymbol: ProjectSymbol?
     let color: SessionColor
@@ -332,11 +318,8 @@ private struct SessionRowIconView: View {
 
     var body: some View {
         let symbol = isProjectBacked ? (projectSymbol ?? .default) : nil
-        let name = SessionRowIcon.systemName(flagOn: flagOn, projectSymbol: symbol)
-        if !flagOn {
-            Image(systemName: name)
-                .foregroundStyle(color.color)
-        } else if isProjectBacked {
+        let name = SessionRowIcon.systemName(projectSymbol: symbol)
+        if isProjectBacked {
             Image(systemName: name)
                 .foregroundStyle(color.color)
                 .frame(width: Self.width)
@@ -369,7 +352,6 @@ private struct SessionRow: View {
                     .lineLimit(1)
             } icon: {
                 SessionRowIconView(
-                    flagOn: store.featureFlags.projects,
                     isProjectBacked: session.projectID != nil,
                     projectSymbol: session.projectSymbol,
                     color: session.sessionColor
@@ -414,19 +396,18 @@ private struct SessionRow: View {
                 : String(localized: "Mute Notifications")) {
                 session.notificationsMuted.toggle()
             }
-            if let saveMenu = SaveSessionAsProject.menuModel(store: store, session: session) {
-                Divider()
-                if let target = saveMenu.updateTarget {
-                    Button(String(localized: "Update \u{201C}\(target.name)\u{201D}\u{2026}", comment: "Sidebar context menu: replace the stored Project's layout and Tabs with this Session")) {
-                        SaveSessionAsProject.begin(session: session, destination: .update(target.id), store: store)
-                    }
-                    Button("Save as New Project\u{2026}") {
-                        SaveSessionAsProject.begin(session: session, destination: .newProject, store: store)
-                    }
-                } else {
-                    Button("Save as Project\u{2026}") {
-                        SaveSessionAsProject.begin(session: session, destination: .newProject, store: store)
-                    }
+            let saveMenu = SaveSessionAsProject.menuModel(store: store, session: session)
+            Divider()
+            if let target = saveMenu.updateTarget {
+                Button(String(localized: "Update \u{201C}\(target.name)\u{201D}\u{2026}", comment: "Sidebar context menu: replace the stored Project's layout and Tabs with this Session")) {
+                    SaveSessionAsProject.begin(session: session, destination: .update(target.id), store: store)
+                }
+                Button("Save as New Project\u{2026}") {
+                    SaveSessionAsProject.begin(session: session, destination: .newProject, store: store)
+                }
+            } else {
+                Button("Save as Project\u{2026}") {
+                    SaveSessionAsProject.begin(session: session, destination: .newProject, store: store)
                 }
             }
             Divider()

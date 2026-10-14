@@ -127,7 +127,6 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     @MainActor
     func launchApp(
         projects: [[String: Any]]? = nil,
-        flagOff: Bool = false,
         script: [[String: Any]] = [],
         connectCLI: Bool = true,
         extraArguments: [String] = [],
@@ -135,7 +134,6 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     ) throws -> (app: XCUIApplication, initial: CLITopology?) {
         if let projects { try ProjectFixture.write(projects, to: storeFile) }
         var environment = [ProjectsUITestCase.projectsFileEnvVar: storeFile.path, Self.sidebarIconsEnvVar: "1"]
-        if flagOff { environment["BATTY_UI_TEST_FORCE_PROJECTS_OFF"] = "1" }
         environment.merge(extraEnvironment) { _, new in new }
         let app = BattyUITestHarness.launchBatty(script: script, extraEnvironment: environment, extraArguments: extraArguments)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
@@ -191,8 +189,8 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     }
 
     /// Palette rows are plain `Text`, which XCUITest exposes through `value`, so label,
-    /// value and title are all matched. Used by the flag-off absence check and its
-    /// flag-on control so the two cannot disagree about what a row is.
+    /// value and title are all matched. Shared by the tests that read a row so they
+    /// cannot disagree about what a row is.
     @MainActor
     func paletteRows(containing text: String, in app: XCUIApplication) -> XCUIElementQuery {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@ OR title CONTAINS %@", text, text, text))

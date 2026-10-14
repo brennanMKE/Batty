@@ -35,10 +35,9 @@ private final class Fixture {
 
     deinit { try? FileManager.default.removeItem(at: base) }
 
-    func store(projects: Bool = true) -> AppStateStore {
+    func store() -> AppStateStore {
         AppStateStore(
             nameCache: SessionNameCache(fileURL: base.appendingPathComponent("cache.json")),
-            featureFlags: FeatureFlags(projects: projects),
             projectsFileURL: projectsFile
         )
     }
@@ -89,9 +88,9 @@ struct SessionProjectRoundTripTests {
         ))
         #expect(shape(resized.tree.root).contains("0.2000"), "test setup: the Session really is resized")
 
-        let draft = try #require(SaveSessionAsProject.draft(for: resized, destination: .newProject, store: store))
+        let draft = SaveSessionAsProject.draft(for: resized, destination: .newProject, store: store)
         let saved = draft.makeProject()
-        try #require(store.projectStore).upsert(saved)
+        try store.projectStore.upsert(saved)
         let result = try store.openProject(id: saved.id, mode: .openNew, contentFactory: noContent)
 
         #expect(shape(result.session.tree.root) == "(h 0.5000 (v 0.5000 L L) L)")
@@ -107,57 +106,39 @@ struct SessionProjectRoundTripTests {
 
 @MainActor
 struct SaveSessionAsProjectEntryTests {
-    @Test func theMenuModelDependsOnTheFlagTheSessionAndTheBackingProject() {
+    @Test func theMenuModelDependsOnTheSessionAndTheBackingProject() {
         let backing = Project(name: "Backing", rootPath: "/Users/test/a")
-        #expect(SaveSessionAsProjectMenuModel.make(featureEnabled: false, hasSession: true, backingProject: backing) == nil)
-        #expect(SaveSessionAsProjectMenuModel.make(featureEnabled: false, hasSession: false, backingProject: nil) == nil)
-
-        let plain = SaveSessionAsProjectMenuModel.make(featureEnabled: true, hasSession: true, backingProject: nil)
+        let plain = SaveSessionAsProjectMenuModel.make(hasSession: true, backingProject: nil)
         #expect(plain == SaveSessionAsProjectMenuModel(isEnabled: true, updateTarget: nil))
-        #expect(SaveSessionAsProjectMenuModel.make(featureEnabled: true, hasSession: false, backingProject: nil)?.isEnabled == false)
+        #expect(SaveSessionAsProjectMenuModel.make(hasSession: false, backingProject: nil).isEnabled == false)
 
-        let updating = SaveSessionAsProjectMenuModel.make(featureEnabled: true, hasSession: true, backingProject: backing)
-        #expect(updating?.updateTarget == .init(id: backing.id, name: "Backing"))
+        let updating = SaveSessionAsProjectMenuModel.make(hasSession: true, backingProject: backing)
+        #expect(updating.updateTarget == .init(id: backing.id, name: "Backing"))
     }
 
-    @Test func withTheFlagOffNothingIsOfferedCapturedOrConstructed() throws {
-        let fixture = try Fixture()
-        let store = fixture.store(projects: false)
-        let session = fixture.session(.leaf(fixture.pane([fixture.tab()])))
-        let opened = Opened()
-
-        #expect(SaveSessionAsProject.menuModel(store: store, session: session) == nil)
-        #expect(SaveSessionAsProject.draft(for: session, destination: .newProject, store: store) == nil)
-        let began = SaveSessionAsProject.begin(session: session, destination: .newProject, store: store, open: { opened.record($1) })
-        #expect(!began)
-        #expect(opened.drafts.isEmpty)
-        #expect(!store.projectStoreIsConstructed)
-        #expect(!FileManager.default.fileExists(atPath: fixture.projectsFile.path))
-    }
-
-    @Test func withTheFlagOnTheMenuModelFindsTheBackingProject() throws {
+    @Test func theMenuModelFindsTheBackingProject() throws {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.storedProject()
-        try #require(store.projectStore).upsert(project)
+        try store.projectStore.upsert(project)
         let session = fixture.session(.leaf(fixture.pane([fixture.tab()])))
 
-        #expect(SaveSessionAsProject.menuModel(store: store, session: session)?.updateTarget == nil)
-        #expect(SaveSessionAsProject.menuModel(store: store, session: nil)?.isEnabled == false)
+        #expect(SaveSessionAsProject.menuModel(store: store, session: session).updateTarget == nil)
+        #expect(SaveSessionAsProject.menuModel(store: store, session: nil).isEnabled == false)
 
         store.windows[0].selectedSession?.projectID = project.id
         let backed = store.windows[0].selectedSession
-        #expect(SaveSessionAsProject.menuModel(store: store, session: backed)?.updateTarget?.name == "Stored")
+        #expect(SaveSessionAsProject.menuModel(store: store, session: backed).updateTarget?.name == "Stored")
 
-        try #require(store.projectStore).delete(id: project.id)
-        #expect(SaveSessionAsProject.menuModel(store: store, session: backed)?.updateTarget == nil, "a deleted Project is no longer offered")
+        try store.projectStore.delete(id: project.id)
+        #expect(SaveSessionAsProject.menuModel(store: store, session: backed).updateTarget == nil, "a deleted Project is no longer offered")
     }
 
     @Test func savingAsNewOpensTheEditorOnADraftAndStoresNothing() throws {
         let fixture = try Fixture()
         let store = fixture.store()
         let other = fixture.storedProject(name: "Website")
-        try #require(store.projectStore).upsert(other)
+        try store.projectStore.upsert(other)
         let before = try Data(contentsOf: fixture.projectsFile)
         let session = fixture.session(.leaf(fixture.pane([fixture.tab(), fixture.tab("src")])))
         let opened = Opened()
@@ -173,14 +154,14 @@ struct SaveSessionAsProjectEntryTests {
         #expect(draft.runStartupCommandsOnOpen)
         #expect(draft.layout.panes[0].tabs.map(\.workingDirectory) == [".", "src"])
         #expect(try Data(contentsOf: fixture.projectsFile) == before)
-        #expect(store.projectStore?.projects.map(\.name) == ["Website"])
+        #expect(store.projectStore.projects.map(\.name) == ["Website"])
     }
 
     @Test func updateReplacesLayoutAndTabsButKeepsCommandsAndApprovalOnlyAfterSave() throws {
         let fixture = try Fixture()
         let store = fixture.store()
         let seed = fixture.storedProject()
-        let projectStore = try #require(store.projectStore)
+        let projectStore = store.projectStore
         try projectStore.upsert(seed)
         let stored = try #require(projectStore.project(id: seed.id))
         let session = fixture.session(.leaf(fixture.pane([fixture.tab("src")])))
@@ -211,7 +192,7 @@ struct SaveSessionAsProjectEntryTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let seed = fixture.storedProject()
-        let projectStore = try #require(store.projectStore)
+        let projectStore = store.projectStore
         try projectStore.upsert(seed)
         let stored = try #require(projectStore.project(id: seed.id))
         let before = try Data(contentsOf: fixture.projectsFile)
@@ -223,13 +204,13 @@ struct SaveSessionAsProjectEntryTests {
         backed.projectID = stored.id
 
         for stale in [unbacked, other] {
-            let draft = try #require(SaveSessionAsProject.draft(for: stale, destination: .update(stored.id), store: store))
+            let draft = SaveSessionAsProject.draft(for: stale, destination: .update(stored.id), store: store)
             #expect(draft.id != stored.id, "a stale update becomes a new Project")
             #expect(draft.name == "Website")
             #expect(draft.runStartupCommandsOnOpen)
             #expect(draft.makeProject().startupCommands.isEmpty)
         }
-        let update = try #require(SaveSessionAsProject.draft(for: backed, destination: .update(stored.id), store: store))
+        let update = SaveSessionAsProject.draft(for: backed, destination: .update(stored.id), store: store)
         #expect(update.id == stored.id)
         #expect(update.makeProject().startupCommands.map(\.command) == ["make"])
         #expect(projectStore.project(id: stored.id) == stored)
@@ -242,7 +223,7 @@ struct SaveSessionAsProjectEntryTests {
         _ = store.projectStore
         let session = fixture.session(.leaf(fixture.pane([fixture.tab()])))
 
-        let draft = try #require(SaveSessionAsProject.draft(for: session, destination: .update(UUID()), store: store))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(UUID()), store: store)
         #expect(draft.name == "Website")
         #expect(draft.runStartupCommandsOnOpen)
     }
@@ -254,18 +235,12 @@ struct SaveSessionAsProjectPaletteTests {
         CommandPaletteView(isPresented: .constant(true), store: store, afterDismiss: afterDismiss, saveSession: record)
     }
 
-    @Test func theEntryExistsOnlyWithTheFlagOn() throws {
+    @Test func theEntryExists() throws {
         let fixture = try Fixture()
-        let onStore = fixture.store(projects: true)
-        let on = palette(onStore).allCommands
+        let on = palette(fixture.store()).allCommands
         #expect(on.contains { $0.id == "extra:saveSessionAsProject" && $0.title == "Save Session as Project\u{2026}" })
         #expect(!on.contains { $0.id == "extra:updateSessionProject" })
         #expect(Set(on.map(\.id)).count == on.count)
-
-        let offStore = fixture.store(projects: false)
-        let off = palette(offStore).allCommands
-        #expect(!off.contains { $0.id == "extra:saveSessionAsProject" || $0.id == "extra:updateSessionProject" })
-        #expect(!offStore.projectStoreIsConstructed)
     }
 
     @Test func withNoSelectedSessionNeitherEntryIsOffered() throws {
@@ -300,7 +275,7 @@ struct SaveSessionAsProjectPaletteTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.storedProject()
-        try #require(store.projectStore).upsert(project)
+        try store.projectStore.upsert(project)
         store.windows[0].selectedSession?.projectID = project.id
         var calls: [SaveSessionAsProject.Destination] = []
         let view = palette(store, record: { calls.append($1) })

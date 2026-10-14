@@ -686,7 +686,6 @@ public struct PaneView: View {
     }
 
     private func startupWaiting(for tab: TabRuntime) -> StartupCommandWaiting? {
-        guard appStore?.featureFlags.projects == true else { return nil }
         return tab.startupCommandWaiting
     }
 

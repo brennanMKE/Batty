@@ -413,21 +413,15 @@ struct ProjectPickerModelTests {
 
 @MainActor
 struct ProjectFileMenuModelTests {
-    @Test func absentWhileTheFlagIsOff() {
-        let model = ProjectFileMenuModel.make(
-            featureEnabled: false, projects: [project("Alpha")], openProjectIDs: [])
-        #expect(model == nil)
-    }
-
     @Test func zeroProjectsLeavesChooseAndNewWithoutALeadingDivider() {
-        let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [], openProjectIDs: [])
-        #expect(model?.items == [.chooseProject, .newProject])
+        let model = ProjectFileMenuModel.make(projects: [], openProjectIDs: [])
+        #expect(model.items == [.chooseProject, .newProject])
     }
 
     @Test func listsProjectsInRankedOrderThenDividerChooseAndNew() {
         let a = project("Zulu"), b = project("Alpha", lastOpenedAt: 50), c = project("Mike", lastOpenedAt: 90)
-        let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [a, b, c], openProjectIDs: [c.id])
-        #expect(model?.items == [
+        let model = ProjectFileMenuModel.make(projects: [a, b, c], openProjectIDs: [c.id])
+        #expect(model.items == [
             .project(id: b.id, name: "Alpha", symbol: .folder, isOpen: false),
             .project(id: a.id, name: "Zulu", symbol: .folder, isOpen: false),
             .project(id: c.id, name: "Mike", symbol: .folder, isOpen: true),
@@ -439,8 +433,8 @@ struct ProjectFileMenuModelTests {
 
     @Test func checksOnlyProjectsWithAnOpenSession() {
         let a = project("Alpha"), b = project("Beta")
-        let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [a, b], openProjectIDs: [b.id])
-        #expect(model?.items.prefix(2) == [
+        let model = ProjectFileMenuModel.make(projects: [a, b], openProjectIDs: [b.id])
+        #expect(model.items.prefix(2) == [
             .project(id: a.id, name: "Alpha", symbol: .folder, isOpen: false),
             .project(id: b.id, name: "Beta", symbol: .folder, isOpen: true),
         ])
@@ -448,7 +442,7 @@ struct ProjectFileMenuModelTests {
 
     @Test func itemIdentifiersAreDistinct() {
         let a = project("Alpha")
-        let items = ProjectFileMenuModel.make(featureEnabled: true, projects: [a], openProjectIDs: [])?.items ?? []
+        let items = ProjectFileMenuModel.make(projects: [a], openProjectIDs: []).items
         #expect(Set(items.map(\.id)).count == items.count)
     }
 }
@@ -468,13 +462,12 @@ private final class StoreFixture {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    func store(projectsEnabled: Bool, seeding projects: [Project] = []) throws -> AppStateStore {
+    func store(seeding projects: [Project] = []) throws -> AppStateStore {
         let store = AppStateStore(
             nameCache: SessionNameCache(fileURL: directory.appendingPathComponent("cache.json")),
-            featureFlags: FeatureFlags(projects: projectsEnabled),
             projectsFileURL: projectsFile
         )
-        for project in projects { try store.projectStore?.upsert(project) }
+        for project in projects { try store.projectStore.upsert(project) }
         return store
     }
 }
@@ -491,10 +484,10 @@ struct ProjectPaletteEntryTests {
         view.allCommands.filter { $0.id.hasPrefix("project:") }
     }
 
-    @Test func flagOnListsOneEntryPerProjectAndThePicker() throws {
+    @Test func listsOneEntryPerProjectAndThePicker() throws {
         let fixture = StoreFixture()
         let a = project("Alpha"), b = project("Beta")
-        let store = try fixture.store(projectsEnabled: true, seeding: [a, b])
+        let store = try fixture.store(seeding: [a, b])
         let view = CommandPaletteView(isPresented: .constant(true), store: store)
 
         let commands = view.allCommands
@@ -508,7 +501,7 @@ struct ProjectPaletteEntryTests {
         let fixture = StoreFixture()
         let a = project("Alpha", root: "/tmp"), b = project("Beta", root: "/tmp", lastOpenedAt: 100), c = project("Gamma", root: "/tmp", lastOpenedAt: 300)
         let d = project("Delta", root: "/tmp", lastOpenedAt: 200)
-        let store = try fixture.store(projectsEnabled: true, seeding: [a, b, c, d])
+        let store = try fixture.store(seeding: [a, b, c, d])
         _ = try store.openProject(id: c.id, contentFactory: { _ in nil })
         let view = CommandPaletteView(isPresented: .constant(true), store: store)
 
@@ -520,7 +513,7 @@ struct ProjectPaletteEntryTests {
     @Test func invokingAProjectEntryOpensItThroughTheSeamWithFocusMode() throws {
         let fixture = StoreFixture()
         let a = project("Alpha"), b = project("Beta")
-        let store = try fixture.store(projectsEnabled: true, seeding: [a, b])
+        let store = try fixture.store(seeding: [a, b])
         let recorder = OpenRecorder()
         let view = CommandPaletteView(
             isPresented: .constant(true), store: store,
@@ -536,7 +529,7 @@ struct ProjectPaletteEntryTests {
     @Test func opensWaitForTheSheetToFinishDismissing() throws {
         let fixture = StoreFixture()
         let a = project("Alpha")
-        let store = try fixture.store(projectsEnabled: true, seeding: [a])
+        let store = try fixture.store(seeding: [a])
         let recorder = OpenRecorder()
         var deferred: [@MainActor () -> Void] = []
         let view = CommandPaletteView(
@@ -554,7 +547,7 @@ struct ProjectPaletteEntryTests {
 
     @Test func thePickerEntryHandsTheHostADirectPresentAfterDismissInsteadOfBroadcasting() throws {
         let fixture = StoreFixture()
-        let store = try fixture.store(projectsEnabled: true)
+        let store = try fixture.store()
         var deferred: [@MainActor () -> Void] = []
         var presented = 0
         let view = CommandPaletteView(
@@ -575,22 +568,9 @@ struct ProjectPaletteEntryTests {
         #expect(posted == 0)
     }
 
-    @Test func flagOffHasNoProjectEntriesAndNeverBuildsTheStore() throws {
+    @Test func withNoProjectsStillOffersThePicker() throws {
         let fixture = StoreFixture()
-        let store = try fixture.store(projectsEnabled: false)
-        let view = CommandPaletteView(isPresented: .constant(true), store: store)
-
-        let ids = view.allCommands.map(\.id)
-
-        #expect(!ids.contains { $0.hasPrefix("project:") })
-        #expect(!ids.contains("extra:openProjectPicker"))
-        #expect(!store.projectStoreIsConstructed)
-        #expect(!FileManager.default.fileExists(atPath: fixture.projectsFile.path))
-    }
-
-    @Test func flagOnWithNoProjectsStillOffersThePicker() throws {
-        let fixture = StoreFixture()
-        let store = try fixture.store(projectsEnabled: true)
+        let store = try fixture.store()
         let view = CommandPaletteView(isPresented: .constant(true), store: store)
         #expect(projectCommands(view).isEmpty)
         #expect(view.allCommands.contains { $0.id == "extra:openProjectPicker" })
@@ -607,7 +587,7 @@ struct ProjectOpenPresenterTests {
 
     @Test func aFailedOpenIsShownToThePersonWhoAskedForIt() throws {
         let fixture = StoreFixture()
-        let store = try fixture.store(projectsEnabled: true)
+        let store = try fixture.store()
         let missing = UUID()
         var shown: [Error] = []
 
@@ -615,17 +595,6 @@ struct ProjectOpenPresenterTests {
 
         #expect(shown.count == 1)
         #expect((shown.first as? ProjectOpenError) == .unknownProject(missing))
-    }
-
-    @Test func aFlagOffOpenFailsWithoutBuildingTheStore() throws {
-        let fixture = StoreFixture()
-        let store = try fixture.store(projectsEnabled: false)
-        var shown: [Error] = []
-
-        ProjectOpenPresenter.open(id: UUID(), mode: .openNew, in: store) { shown.append($0) }
-
-        #expect((shown.first as? ProjectOpenError) == .featureDisabled)
-        #expect(!store.projectStoreIsConstructed)
     }
 }
 

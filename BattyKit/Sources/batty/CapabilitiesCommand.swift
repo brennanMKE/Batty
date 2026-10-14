@@ -72,15 +72,14 @@ struct CapabilitiesCommand: ParsableCommand {
     /// matching MCP's own default.
     static let jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema"
 
-    static func buildPayload(flags: FeatureFlags = .current) -> CapabilitiesPayload {
+    static func buildPayload() -> CapabilitiesPayload {
         CapabilitiesPayload(
             cliVersion: resolveAppVersion(),
-            verbs: Self.verbs(flags: flags),
+            verbs: Self.verbs(),
             exitCodes: CapabilitiesPayload.standardExitCodes(
                 success: ExitCode.success.rawValue,
                 failure: ExitCode.failure.rawValue,
-                validationFailure: ExitCode.validationFailure.rawValue,
-                includingProjects: flags.projects
+                validationFailure: ExitCode.validationFailure.rawValue
             ),
             jsonSchemaDialect: Self.jsonSchemaDialect
         )
@@ -93,13 +92,13 @@ struct CapabilitiesCommand: ParsableCommand {
     /// children (`session`, `pane`, `tab`) is never itself directly
     /// invocable, so only its leaves are reported (`session info`,
     /// `session focus`, `session close`, `pane split`, `pane close`, `pane
-    /// focus`, `pane hide`, `pane show`, `tab focus`, plus `project list` and
-    /// `project open` when `flags.projects` is on), joined with the noun
+    /// focus`, `pane hide`, `pane show`, `tab focus`, `project list` and
+    /// `project open`), joined with the noun
     /// as `"pane split"`. `XPCVerb.watch` is
     /// correctly absent from this list: it has no entry anywhere in
     /// `BattyCLI`'s tree because #0145 never gave it a CLI command.
-    static func verbs(flags: FeatureFlags = .current) -> [CapabilitiesVerbPayload] {
-        BattyCLI.subcommands(for: flags).flatMap { collectVerbs(from: $0, prefix: []) }
+    static func verbs() -> [CapabilitiesVerbPayload] {
+        BattyCLI.configuration.subcommands.flatMap { collectVerbs(from: $0, prefix: []) }
     }
 
     private static func collectVerbs(from type: ParsableCommand.Type, prefix: [String]) -> [CapabilitiesVerbPayload] {

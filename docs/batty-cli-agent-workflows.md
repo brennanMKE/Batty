@@ -346,16 +346,15 @@ work" rule): `tab new`, `tab close`, `session rename`, `tab rename`, and
 `pane zoom` have no CLI verb yet. Do not invent them from
 `batty-cli-design.md`'s forward-looking catalog.
 
-## Opening a saved Project (Beta only)
+## Opening a saved Project
 
-While the Projects feature flag is on (Batty Beta, until 1.3.0), a saved
-Project can be listed and started from the CLI. Use `batty-beta`; the Prod
-`batty` has no `project` noun.
+From 1.3.0 a saved Project can be listed and started from the CLI with either
+`batty` or `batty-beta`; an older install has no `project` noun.
 
 ```bash
-batty-beta project list --json          # {"projects":[{"name","rootPath","paneCount","isOpen","id"}]}
-batty-beta project open "My Project"    # Opened Session "My Project"
-batty-beta project open "My Project" --json
+batty project list --json               # {"projects":[{"name","rootPath","paneCount","isOpen","id"}]}
+batty project open "My Project"         # Opened Session "My Project"
+batty project open "My Project" --json
 # {"created": true, "name": "My Project", "paneID": "...", "sessionID": "..."}
 ```
 
@@ -391,7 +390,7 @@ batty-beta project open "My Project" --json
 | `5` | App terminated during the request | Stop or restart the complete workflow from a fresh topology snapshot. |
 | `6` | App is running but hasn't responded to the broker within the poll bound (about 12 s worst case — #0369 gave this arm its own, tighter bound than exit `3`'s ~25 s cold-launch poll) | Do not retry blindly — a retry cannot launch a duplicate, but the app may need a manual relaunch. Report stderr and ask the user to check/relaunch Batty. |
 | `7` | Couldn't determine which on-disk app bundle to target | Stop; this is a local install problem (moved/missing `Batty.app`, or multiple bundles claiming the same identifier), not something a retry fixes. Report stderr, which names the expected path and any other claimant bundles. |
-| `8` | `batty-beta project open` only: the Project's startup commands need the user's approval and the prompt in Batty went unanswered | Nothing was opened and the prompt was withdrawn. Ask the user to be at Batty and answer it, then run the command again; do not look for a way around the prompt. |
+| `8` | `project open` only: the Project's startup commands need the user's approval and the prompt in Batty went unanswered | Nothing was opened and the prompt was withdrawn. Ask the user to be at Batty and answer it, then run the command again; do not look for a way around the prompt. |
 | `64` | Invalid CLI syntax | Correct the invocation; do not retry unchanged. |
 
 **`batty new`'s exit `4` is an exception to the "retry a stale target" advice

@@ -103,12 +103,4 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         openThroughPicker("Board", in: app)
         waitForRowIcon("Board", "folder.fill", in: app)
     }
-
-    @MainActor
-    func testFlagOffRowKeepsTheThreeColumnSymbol() throws {
-        let (app, _) = try launchApp(flagOff: true, connectCLI: false)
-        defer { app.terminate() }
-
-        waitForRowIcon("Session 1", "rectangle.split.3x1", in: app)
-    }
 }

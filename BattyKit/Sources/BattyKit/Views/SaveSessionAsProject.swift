@@ -1,9 +1,6 @@
 // SaveSessionAsProject.swift
 
 import Foundation
-import OSLog
-
-nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "SaveSessionAsProject")
 
 /// The shared action behind every "Save as Project" entry point. It captures
 /// the Session, builds a draft, and opens the Project Editor on it; the
@@ -15,14 +12,12 @@ enum SaveSessionAsProject {
         case update(UUID)
     }
 
-    /// Nil with the flag off. `store.projectStore` is read only past the gate.
-    static func menuModel(store: AppStateStore, session: SessionRuntime?) -> SaveSessionAsProjectMenuModel? {
-        let enabled = ProjectEditorWindowController.isAvailable(featureFlags: store.featureFlags)
-        let backing = enabled ? session?.projectID.flatMap { store.projectStore?.project(id: $0) } : nil
-        return SaveSessionAsProjectMenuModel.make(featureEnabled: enabled, hasSession: session != nil, backingProject: backing)
+    static func menuModel(store: AppStateStore, session: SessionRuntime?) -> SaveSessionAsProjectMenuModel {
+        let backing = session?.projectID.flatMap { store.projectStore.project(id: $0) }
+        return SaveSessionAsProjectMenuModel.make(hasSession: session != nil, backingProject: backing)
     }
 
-    /// The draft for `destination`, or nil with the flag off. An update is
+    /// The draft for `destination`. An update is
     /// honored only for a Session opened from that Project, which still must
     /// exist; otherwise (a menu item gone stale after the key Window changed,
     /// or a deleted Project) it becomes a new Project.
@@ -32,12 +27,8 @@ enum SaveSessionAsProject {
         store: AppStateStore,
         gitDirectory: (@MainActor (PaneRuntime) -> String?)? = nil,
         nameForRoot: @MainActor (String) -> String? = ProjectEditorViewModel.suggestedName(forRoot:)
-    ) -> ProjectDraft? {
-        guard ProjectEditorWindowController.isAvailable(featureFlags: store.featureFlags),
-              let projectStore = store.projectStore else {
-            logger.notice("save session as project: ignored; projects feature is off")
-            return nil
-        }
+    ) -> ProjectDraft {
+        let projectStore = store.projectStore
         func capture(root: String?) -> SessionProjectCapture {
             if let gitDirectory {
                 return SessionProjectCapture.capture(session: session, root: root, gitDirectory: gitDirectory)
@@ -61,7 +52,8 @@ enum SaveSessionAsProject {
             ProjectEditorWindowController.shared.show(store: store, newDraft: draft)
         }
     ) -> Bool {
-        guard let session, let draft = draft(for: session, destination: destination, store: store) else { return false }
+        guard let session else { return false }
+        let draft = draft(for: session, destination: destination, store: store)
         open(store, draft)
         return true
     }

@@ -4,7 +4,7 @@ A **session** is a named workspace in the left sidebar. Each one has its own pan
 
 ## Creating a session
 
-- Click `+` at the bottom of the sidebar.
+- Click `+` at the bottom of the sidebar. The briefcase button next to it opens a saved Project as a new session — see [Projects](10-projects.md).
 - Or press `Cmd-N` from anywhere.
 
 New sessions inherit the **working directory** of the currently focused tab. If your active terminal is at `~/Developer/Batty`, the new session's first shell starts there too. With no focused session — for example on first launch — the new session opens at your shell's default (usually `$HOME`).

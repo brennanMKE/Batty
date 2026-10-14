@@ -6,10 +6,8 @@ import os
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "AppStateStoreQuit")
 
 extension AppStateStore {
-    /// The Project Editor's view model, or nil with the Projects flag off,
-    /// without ever touching `ProjectEditorWindowController.shared` then.
+    /// The Project Editor's view model, or nil when no editor window exists.
     func openProjectEditorModel() -> ProjectEditorViewModel? {
-        guard featureFlags.projects else { return nil }
         if let projectEditorModelOverride { return projectEditorModelOverride() }
         return ProjectEditorWindowController.shared.model
     }
@@ -18,7 +16,7 @@ extension AppStateStore {
     /// Project Editor asks its Save / Discard / Cancel question first; only
     /// when that lets the quit continue does `confirm`, the existing "Quit
     /// Batty?" alert, run, so an editor prompt never follows a confirmed
-    /// Quit. A clean editor, no editor, the flag off, or UI-test mode
+    /// Quit. A clean editor, no editor, or UI-test mode
     /// without `QuitConfirmation.promptEditorOnQuitEnvVar` skip the editor
     /// question and behave as before.
     ///

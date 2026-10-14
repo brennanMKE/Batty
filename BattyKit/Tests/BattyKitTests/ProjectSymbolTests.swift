@@ -34,7 +34,6 @@ struct ProjectSymbolCatalogTests {
             #expect(symbol.resolvedSystemName == symbol.systemName)
         }
         #expect(NSImage(systemSymbolName: SessionRowIcon.plainSystemName, accessibilityDescription: nil) != nil)
-        #expect(NSImage(systemSymbolName: SessionRowIcon.legacySystemName, accessibilityDescription: nil) != nil)
     }
 
     @Test func aNameTheSystemDoesNotShipIsNotResolved() {
@@ -153,19 +152,14 @@ struct ProjectSymbolGridCursorTests {
 }
 
 struct SessionRowIconTests {
-    @Test func flagOffAlwaysDrawsTheThreeColumnSymbol() {
-        #expect(SessionRowIcon.systemName(flagOn: false, projectSymbol: .terminal) == "rectangle.split.3x1")
-        #expect(SessionRowIcon.systemName(flagOn: false, projectSymbol: nil) == "rectangle.split.3x1")
+    @Test func drawsTheCircleForAPlainSession() {
+        #expect(SessionRowIcon.systemName(projectSymbol: nil) == "circle.fill")
     }
 
-    @Test func flagOnDrawsTheCircleForAPlainSession() {
-        #expect(SessionRowIcon.systemName(flagOn: true, projectSymbol: nil) == "circle.fill")
-    }
-
-    @Test func flagOnDrawsTheProjectsSymbol() {
-        #expect(SessionRowIcon.systemName(flagOn: true, projectSymbol: .terminal) == "terminal.fill")
+    @Test func drawsTheProjectsSymbol() {
+        #expect(SessionRowIcon.systemName(projectSymbol: .terminal) == "terminal.fill")
         for symbol in ProjectSymbol.allCases {
-            #expect(SessionRowIcon.systemName(flagOn: true, projectSymbol: symbol) == symbol.systemName)
+            #expect(SessionRowIcon.systemName(projectSymbol: symbol) == symbol.systemName)
         }
     }
 }
@@ -190,7 +184,6 @@ private final class SymbolFixture {
     func appStore() -> AppStateStore {
         AppStateStore(
             nameCache: SessionNameCache(fileURL: cacheFile),
-            featureFlags: FeatureFlags(projects: true),
             projectsFileURL: projectsFile
         )
     }
@@ -272,7 +265,7 @@ struct ProjectSymbolSessionTests {
         let fixture = try SymbolFixture()
         let store = fixture.appStore()
         let project = fixture.project("Board", symbol: .chip)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
 
         let result = try store.openProject(id: project.id, contentFactory: noContent)
 
@@ -289,7 +282,7 @@ struct ProjectSymbolSessionTests {
         let store = fixture.appStore()
         let edited = fixture.project("Edited", symbol: .chip)
         let other = fixture.project("Other", symbol: .server)
-        let projectStore = try #require(store.projectStore)
+        let projectStore = store.projectStore
         try projectStore.upsert(edited)
         try projectStore.upsert(other)
 
@@ -318,7 +311,7 @@ struct ProjectSymbolSessionTests {
         let fixture = try SymbolFixture()
         let store = fixture.appStore()
         let project = fixture.project("Pinned", symbol: .chip, color: .teal)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let session = try store.openProject(id: project.id, contentFactory: noContent).session
 
         var renamed = project
@@ -344,8 +337,8 @@ struct ProjectSymbolSurfaceTests {
 
     @Test func fileMenuItemsCarryTheSymbol() {
         let a = Project(name: "Alpha", rootPath: "/Users/test/a", symbol: .web)
-        let model = ProjectFileMenuModel.make(featureEnabled: true, projects: [a], openProjectIDs: [a.id])
-        #expect(model?.items.first == .project(id: a.id, name: "Alpha", symbol: .web, isOpen: true))
+        let model = ProjectFileMenuModel.make(projects: [a], openProjectIDs: [a.id])
+        #expect(model.items.first == .project(id: a.id, name: "Alpha", symbol: .web, isOpen: true))
     }
 }
 
@@ -381,10 +374,9 @@ struct SessionRowAccessibilityValueTests {
 
     @Test func theProjectSymbolGate() {
         let id = UUID()
-        #expect(SessionSidebarView.rowProjectSymbol(flagOn: false, projectID: id, symbol: .web) == nil)
-        #expect(SessionSidebarView.rowProjectSymbol(flagOn: true, projectID: nil, symbol: .web) == nil)
-        #expect(SessionSidebarView.rowProjectSymbol(flagOn: true, projectID: id, symbol: nil) == .default)
-        #expect(SessionSidebarView.rowProjectSymbol(flagOn: true, projectID: id, symbol: .web) == .web)
+        #expect(SessionSidebarView.rowProjectSymbol(projectID: nil, symbol: .web) == nil)
+        #expect(SessionSidebarView.rowProjectSymbol(projectID: id, symbol: nil) == .default)
+        #expect(SessionSidebarView.rowProjectSymbol(projectID: id, symbol: .web) == .web)
     }
 
     @Test func everySymbolHasADistinctProjectPart() {

@@ -26,7 +26,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
 
     /// The store the Project verbs act on. Every older verb reads
     /// `AppStateStore.shared` directly; the Project verbs go through this so
-    /// a test can supply a store with the Projects flag on.
+    /// a test can supply its own store.
     private let storeProvider: @MainActor @Sendable () -> AppStateStore
     private let clock: any SchedulingClock
 
@@ -408,13 +408,8 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         case XPCVerb.projectList:
             Task { @MainActor [pendingRequests, storeProvider] in
                 let store = storeProvider()
-                guard store.featureFlags.projects else {
-                    logger.notice("perform projectList: projects feature is off")
-                    pendingRequests.resolve(requestID, with: Self.unknownVerbResponse(decoded.verb))
-                    return
-                }
-                guard let reply = store.projectListReplyForXPC(),
-                      let replyData = try? JSONEncoder().encode(reply)
+                let reply = store.projectListReplyForXPC()
+                guard let replyData = try? JSONEncoder().encode(reply)
                 else {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to build project list")))
                     return
@@ -425,11 +420,6 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         case XPCVerb.projectOpen:
             Task { @MainActor [pendingRequests, storeProvider, clock] in
                 let store = storeProvider()
-                guard store.featureFlags.projects else {
-                    logger.notice("perform projectOpen: projects feature is off")
-                    pendingRequests.resolve(requestID, with: Self.unknownVerbResponse(decoded.verb))
-                    return
-                }
                 guard let payloadData = decoded.payload,
                       let request = try? JSONDecoder().decode(ProjectOpenRequest.self, from: payloadData)
                 else {

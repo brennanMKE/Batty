@@ -17,6 +17,7 @@ You navigate four nested things, from outside in:
 
 - **Sidebar** (left) — your session list. The `+` button adds a session. Right-click a row for Rename, Duplicate, Mute, or Close.
 - **Tab bar** (top of each pane) — drag chips to reorder, click `×` to close, right-click for more.
+- **Projects** — saved recipes that open a ready-made session: folder, layout, tabs and startup commands. The briefcase button next to `+` opens one. See [Projects](10-projects.md).
 - **Bell feed** — open with `Cmd-Shift-B` or the bell button in the toolbar. Recent bells from every tab; click an entry to jump to the source. See [Notifications](06-notifications.md).
 - **Settings** — `Cmd-,`. Shell, font, cursor, theme, paste confirmation, per-session mute. See [Themes](07-themes.md) and the full binding list in [Keyboard Shortcuts](05-shortcuts.md). Dropping a file from Finder onto a pane pastes its quoted path — see [Drag and Drop](08-drag-and-drop.md).
 

@@ -1120,33 +1120,13 @@ struct ProjectEditorMenuTargetTests {
 
 @MainActor
 struct ProjectEditorWindowTests {
-    @Test func theEntryPointFollowsTheFlag() {
-        #expect(ProjectEditorWindowController.isAvailable(featureFlags: FeatureFlags(projects: true)))
-        #expect(!ProjectEditorWindowController.isAvailable(featureFlags: FeatureFlags(projects: false)))
-    }
-
-    @Test func withTheFlagOffNoWindowModelOrStoreIsCreated() throws {
-        let fixture = try EditorFixture()
-        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), featureFlags: FeatureFlags(projects: false), projectsFileURL: fixture.projectsFile)
-        let controller = ProjectEditorWindowController()
-
-        #expect(!controller.prepare(store: store))
-        #expect(!controller.show(store: store))
-        #expect(!controller.prepare(store: store, selecting: UUID()))
-        #expect(controller.window == nil)
-        #expect(controller.model == nil)
-        #expect(store.projectStore == nil)
-        #expect(!FileManager.default.fileExists(atPath: fixture.projectsFile.path))
-        #expect(!NSApplication.shared.windows.contains { $0.identifier?.rawValue == ProjectEditorWindowController.windowIdentifier })
-    }
-
-    @Test func withTheFlagOnTheWindowIsCreatedOnDemandAndIsNotAContentWindow() throws {
+    @Test func theWindowIsCreatedOnDemandAndIsNotAContentWindow() throws {
         let fixture = try EditorFixture()
         let project = fixture.richProject()
-        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), featureFlags: FeatureFlags(projects: true), projectsFileURL: fixture.projectsFile)
-        try #require(store.projectStore).upsert(project)
+        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), projectsFileURL: fixture.projectsFile)
+        try store.projectStore.upsert(project)
         let other = fixture.simpleProject(name: "Other")
-        try #require(store.projectStore).upsert(other)
+        try store.projectStore.upsert(other)
         let controller = ProjectEditorWindowController()
         defer { controller.window?.close() }
 
@@ -1168,8 +1148,8 @@ struct ProjectEditorWindowTests {
 
     @Test func aDraftHandedToTheEditorOpensAsAnUnsavedProject() throws {
         let fixture = try EditorFixture()
-        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), featureFlags: FeatureFlags(projects: true), projectsFileURL: fixture.projectsFile)
-        try #require(store.projectStore).upsert(fixture.richProject())
+        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), projectsFileURL: fixture.projectsFile)
+        try store.projectStore.upsert(fixture.richProject())
         let controller = ProjectEditorWindowController()
         defer { controller.window?.close() }
         let draft = ProjectDraft(name: "Captured", rootPath: fixture.root.path, color: .brown, layout: .preset(.threeRows))
@@ -1182,16 +1162,16 @@ struct ProjectEditorWindowTests {
         #expect(controller.model?.requestNavigation(.closeWindow) == false)
         #expect(controller.model?.pendingNavigation == .closeWindow)
         #expect(controller.window?.delegate?.windowShouldClose?(try #require(controller.window)) == false)
-        #expect(store.projectStore?.projects.count == 1)
+        #expect(store.projectStore.projects.count == 1)
     }
 
     @Test func saveAndOpenGoesThroughTheTrustCheckNotStraightToOpen() throws {
         let fixture = try EditorFixture()
-        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), featureFlags: FeatureFlags(projects: true), projectsFileURL: fixture.projectsFile)
+        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), projectsFileURL: fixture.projectsFile)
         var project = fixture.richProject()
         project.runStartupCommandsOnOpen = true
         project.approvedCommandsHash = nil
-        try #require(store.projectStore).upsert(project)
+        try store.projectStore.upsert(project)
         let controller = ProjectEditorWindowController()
         defer { controller.window?.close() }
         #expect(controller.prepare(store: store, selecting: project.id))
@@ -1206,7 +1186,7 @@ struct ProjectEditorWindowTests {
         #expect(window.pendingStartupTrusts.count == 1)
         #expect(window.pendingStartupTrusts.first?.projectID == project.id)
         #expect(window.sessions.count == sessionsBefore)
-        #expect(store.projectStore?.project(id: project.id)?.color == .cyan)
+        #expect(store.projectStore.project(id: project.id)?.color == .cyan)
     }
 
     @Test func theEditorViewLaysOutForEveryKindAndACustomLayout() throws {

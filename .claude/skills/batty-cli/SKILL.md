@@ -237,13 +237,12 @@ actually *do* about each one — the part a schema can't encode:
 | `8` | `project open` only: the startup-command prompt in Batty went unanswered; nothing opened. Ask the human to answer it, then retry. |
 | `64` | Invalid syntax — fix the invocation. |
 
-## 8. Opening a saved Project (Beta only)
+## 8. Opening a saved Project
 
-`project list` and `project open <name>` exist only in `batty-beta` while the
-Projects feature flag is on (until 1.3.0). The Prod `batty` has no `project`
-noun, so check `capabilities --json` before using them: if `project open` is
-not in `verbs`, the build does not have the feature, and you should not try
-another spelling.
+`project list` and `project open <name>` exist in both `batty` and
+`batty-beta` from 1.3.0. An older install has no `project` noun, so check
+`capabilities --json` before using them: if `project open` is not in `verbs`,
+the build does not have the feature, and you should not try another spelling.
 
 ```bash
 "$BATTY" project list --json

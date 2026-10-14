@@ -66,10 +66,9 @@ private final class Fixture {
         try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
     }
 
-    func store(projects: Bool = true) -> AppStateStore {
+    func store() -> AppStateStore {
         let store = AppStateStore(
             nameCache: SessionNameCache(fileURL: root.deletingLastPathComponent().appendingPathComponent("cache.json")),
-            featureFlags: FeatureFlags(projects: projects),
             projectsFileURL: projectsFile
         )
         let box = sinks
@@ -154,7 +153,7 @@ struct ProjectStartupDeliveryTests {
     }
 
     @Test func composesWithAutoNamingWhicheverIsInstalledFirst() async {
-        let store = AppStateStore(featureFlags: FeatureFlags(projects: false))
+        let store = AppStateStore()
 
         let armedFirst = TabRuntime()
         let firstSink = RecordingSink()
@@ -338,7 +337,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project(runOnOpen: false)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
 
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
@@ -356,7 +355,7 @@ struct ProjectStartupOpenTests {
         let store = fixture.store()
         var project = fixture.project()
         project.approvedCommandsHash = project.startupCommandsHash
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
 
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
@@ -373,7 +372,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
@@ -391,7 +390,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
         let window = try #require(store.defaultTargetWindow())
@@ -401,7 +400,7 @@ struct ProjectStartupOpenTests {
 
         let session = try #require(try result?.get().session)
         #expect(window.pendingStartupTrusts.isEmpty)
-        #expect(store.projectStore?.project(id: project.id)?.approvedCommandsHash == project.startupCommandsHash)
+        #expect(store.projectStore.project(id: project.id)?.approvedCommandsHash == project.startupCommandsHash)
         let tab = firstTab(of: session)
         report("/work", on: tab)
         await fixture.sinks.sink(for: tab.id).waitForEvents(2)
@@ -417,7 +416,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let opened = Date(timeIntervalSince1970: 1_900_000_000)
         store.projectUsageClock = { opened }
         store.requestOpenProject(id: project.id, completion: { _ in })
@@ -425,11 +424,11 @@ struct ProjectStartupOpenTests {
         let request = try #require(window.pendingStartupTrusts.first)
         var edited = project
         edited.color = .cyan
-        try store.projectStore?.upsert(edited)
+        try store.projectStore.upsert(edited)
 
         store.resolveStartupTrust(requestID: request.id, choice: .run(rememberApproval: true))
 
-        let stored = try #require(store.projectStore?.project(id: project.id))
+        let stored = try #require(store.projectStore.project(id: project.id))
         #expect(stored.color == .cyan)
         #expect(stored.approvedCommandsHash == project.startupCommandsHash)
         #expect(stored.lastOpenedAt == opened)
@@ -439,7 +438,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
         let window = try #require(store.defaultTargetWindow())
@@ -449,7 +448,7 @@ struct ProjectStartupOpenTests {
             choice: .run(rememberApproval: false))
 
         let session = try #require(try result?.get().session)
-        #expect(store.projectStore?.project(id: project.id)?.approvedCommandsHash == nil)
+        #expect(store.projectStore.project(id: project.id)?.approvedCommandsHash == nil)
         let tab = firstTab(of: session)
         report("/work", on: tab)
         await fixture.sinks.sink(for: tab.id).waitForEvents(2)
@@ -460,7 +459,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project(approved: "stale")
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
         let window = try #require(store.defaultTargetWindow())
@@ -470,7 +469,7 @@ struct ProjectStartupOpenTests {
             choice: .openWithoutRunning)
 
         let session = try #require(try result?.get().session)
-        #expect(store.projectStore?.project(id: project.id)?.approvedCommandsHash == "stale")
+        #expect(store.projectStore.project(id: project.id)?.approvedCommandsHash == "stale")
         let tab = firstTab(of: session)
         report("/work", on: tab)
         await drainMainQueue()
@@ -481,7 +480,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
@@ -498,28 +497,17 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project(runOnOpen: false)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         _ = try store.openProject(id: project.id)
 
         var edited = project
         edited.runStartupCommandsOnOpen = true
-        try store.projectStore?.upsert(edited)
+        try store.projectStore.upsert(edited)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
 
         #expect(try result?.get().wasCreated == false)
         #expect(store.windows.allSatisfy { $0.pendingStartupTrusts.isEmpty })
-    }
-
-    @Test func flagOffIsInert() async throws {
-        let fixture = try Fixture()
-        let store = fixture.store(projects: false)
-        var result: Result<AppStateStore.ProjectOpenResult, Error>?
-        store.requestOpenProject(id: UUID(), completion: { result = $0 })
-
-        #expect(throws: ProjectOpenError.featureDisabled) { try result?.get() }
-        #expect(store.windows.allSatisfy { $0.pendingStartupTrusts.isEmpty })
-        #expect(!FileManager.default.fileExists(atPath: fixture.projectsFile.path))
     }
 
     @Test func commandsLandOnTheirOwnPaneAndTab() async throws {
@@ -533,7 +521,7 @@ struct ProjectStartupOpenTests {
             ])),
             runStartupCommandsOnOpen: true)
         project.approvedCommandsHash = project.startupCommandsHash
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
 
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
@@ -553,7 +541,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
         let window = try #require(store.defaultTargetWindow())
@@ -571,7 +559,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var results: [Result<AppStateStore.ProjectOpenResult, Error>] = []
         store.requestOpenProject(id: project.id, completion: { results.append($0) })
         let window = try #require(store.defaultTargetWindow())
@@ -581,7 +569,7 @@ struct ProjectStartupOpenTests {
         edited.layout = ProjectLayout(root: .pane(.terminal(tabs: [
             ProjectTab(title: "build", workingDirectory: ".", startupCommand: "rm -rf build"),
         ])))
-        try store.projectStore?.upsert(edited)
+        try store.projectStore.upsert(edited)
         store.resolveStartupTrust(requestID: original.id, choice: .run(rememberApproval: true))
 
         #expect(results.isEmpty)
@@ -591,7 +579,7 @@ struct ProjectStartupOpenTests {
         #expect(renewed.commandsHash == edited.startupCommandsHash)
         #expect(renewed.commandsHash != original.commandsHash)
         #expect(renewed.rows.map(\.command) == ["rm -rf build"])
-        #expect(store.projectStore?.project(id: project.id)?.approvedCommandsHash == nil)
+        #expect(store.projectStore.project(id: project.id)?.approvedCommandsHash == nil)
         #expect(store.openProjectIDs.isEmpty)
         for pane in window.sessions.flatMap({ $0.tree.allPanes }) {
             for tab in pane.tabs { report("/work", on: tab) }
@@ -604,7 +592,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var results: [Result<AppStateStore.ProjectOpenResult, Error>] = []
         store.requestOpenProject(id: project.id, completion: { results.append($0) })
         let window = try #require(store.defaultTargetWindow())
@@ -612,7 +600,7 @@ struct ProjectStartupOpenTests {
 
         var edited = project
         edited.runStartupCommandsOnOpen = false
-        try store.projectStore?.upsert(edited)
+        try store.projectStore.upsert(edited)
         store.resolveStartupTrust(requestID: original.id, choice: .run(rememberApproval: true))
 
         let session = try #require(try results.first?.get().session)
@@ -626,7 +614,7 @@ struct ProjectStartupOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var results: [Result<AppStateStore.ProjectOpenResult, Error>] = []
         store.requestOpenProject(id: project.id, completion: { results.append($0) })
         let window = try #require(store.defaultTargetWindow())
@@ -922,7 +910,7 @@ struct ProjectStartupReadinessOpenTests {
         let store = fixture.store()
         var project = fixture.project()
         project.approvedCommandsHash = project.startupCommandsHash
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
         let session = try #require(try result?.get().session)
@@ -941,7 +929,7 @@ struct ProjectStartupReadinessOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project(runOnOpen: false)
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
         let session = try #require(try result?.get().session)
@@ -957,7 +945,7 @@ struct ProjectStartupReadinessOpenTests {
         let fixture = try Fixture()
         let store = fixture.store()
         let project = fixture.project()
-        try store.projectStore?.upsert(project)
+        try store.projectStore.upsert(project)
         var result: Result<AppStateStore.ProjectOpenResult, Error>?
         store.requestOpenProject(id: project.id, completion: { result = $0 })
         let window = try #require(store.defaultTargetWindow())

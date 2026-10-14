@@ -6,7 +6,6 @@ import os
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProjectTreeBuilder")
 
 public enum ProjectOpenError: Error, Equatable, LocalizedError {
-    case featureDisabled
     case unknownProject(UUID)
     case noWindow
     case invalidRoot(String)
@@ -16,8 +15,6 @@ public enum ProjectOpenError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .featureDisabled:
-            String(localized: "Projects are not available.")
         case .unknownProject:
             String(localized: "That Project no longer exists.")
         case .noWindow:

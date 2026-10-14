@@ -19,11 +19,10 @@ private final class QuitFixture {
     var events: [String] = []
     var confirmAnswer = true
 
-    init(projects: Bool = true) throws {
+    init() throws {
         try FileManager.default.createDirectory(at: base.appendingPathComponent("root"), withIntermediateDirectories: true)
         store = AppStateStore(
             nameCache: SessionNameCache(fileURL: base.appendingPathComponent("cache.json")),
-            featureFlags: FeatureFlags(projects: projects),
             projectsFileURL: base.appendingPathComponent("projects.json")
         )
         store.terminateHandler = {}
@@ -228,28 +227,6 @@ struct ProjectEditorQuitTests {
         #expect(!QuitConfirmation.promptsEditorOnQuit(environment: [mode: "1"]))
         #expect(!QuitConfirmation.promptsEditorOnQuit(environment: [mode: "1", override: "0"]))
         #expect(QuitConfirmation.promptsEditorOnQuit(environment: [mode: "1", override: "1"]))
-    }
-
-    // MARK: - Flag off
-
-    @Test func withTheFlagOffTheQuitPathNeverReachesTheEditor() throws {
-        let f = try QuitFixture(projects: false)
-        f.dirty("Unsaved Edit")
-        var reads = 0
-        f.store.projectEditorModelOverride = {
-            reads += 1
-            return f.model
-        }
-
-        #expect(f.quit() == .terminateNow)
-        #expect(f.events == ["confirm"])
-        #expect(reads == 0)
-        #expect(f.store.holdQuitForUnsavedEditor() == false)
-        #expect(reads == 0)
-        #expect(f.store.quitWhenEditorCloses == false)
-        #expect(f.store.projectStoreIsConstructed == false)
-        #expect(ProjectEditorWindowController.shared.window == nil)
-        #expect(ProjectEditorWindowController.shared.model == nil)
     }
 
     // MARK: - Automatic quit when the last content window closes

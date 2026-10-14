@@ -73,8 +73,7 @@ public final class WindowRuntime {
     /// Whether this window's Open Project picker sheet is up. Set by three
     /// event-origin sites (the window-addressed toggle notification, the
     /// Command Palette's direct present, the Sidebar footer button); cleared by
-    /// the picker's onAction/onCancel and the sheet binding's setter. The
-    /// binding in `SessionDetailView` also requires `featureFlags.projects`.
+    /// the picker's onAction/onCancel and the sheet binding's setter.
     public var projectPickerShown: Bool = false
     /// Projects waiting on the user's answer to the startup-command trust
     /// sheet, oldest first; the sheet shows the first. Written only by

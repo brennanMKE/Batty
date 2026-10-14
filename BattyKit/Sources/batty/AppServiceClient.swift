@@ -241,9 +241,7 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
-    /// #0477. No request payload. Flag-gated app side: with the Projects
-    /// feature off the app answers `unknown verb: projectList`, which arrives
-    /// as `.requestFailed`.
+    /// #0477. No request payload.
     static func projectList(endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<ProjectListReply> {
         let outcome: Outcome<ProjectListReply> = perform(verb: XPCVerb.projectList, requestPayload: nil, endpoint: endpoint, timeout: timeout, logLabel: "projectList")
         if case .success(let reply) = outcome {

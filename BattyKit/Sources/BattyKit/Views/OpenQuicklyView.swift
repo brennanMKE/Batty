@@ -79,10 +79,9 @@ enum OpenQuicklyFilter {
         [project.rootPath, project.displayPath].contains { $0.range(of: query, options: .caseInsensitive) != nil }
     }
 
-    /// The Project rows in recency order. Returns nothing, and never reads
-    /// `store.projectStore`, while the Projects flag is off.
+    /// The Project rows in recency order.
     static func projectRows(in store: AppStateStore, homeDirectory: String = NSHomeDirectory()) -> [OpenQuicklyProjectRow] {
-        guard store.featureFlags.projects, let projectStore = store.projectStore else { return [] }
+        let projectStore = store.projectStore
         let open = store.openProjectIDs
         return ProjectRecency.ranked(projectStore.projects, openProjectIDs: open).map { project in
             OpenQuicklyProjectRow(
@@ -103,27 +102,26 @@ enum OpenQuicklyFilter {
         _ entry: OpenQuicklyEntry,
         optionHeld: Bool,
         in windowRuntime: WindowRuntime,
-        onAction: ((OpenQuicklyAction) -> Void)?
+        onAction: (OpenQuicklyAction) -> Void
     ) {
-        if let action = choose(entry, optionHeld: optionHeld, projectsEnabled: onAction != nil, in: windowRuntime) {
-            onAction?(action)
+        if let action = choose(entry, optionHeld: optionHeld, in: windowRuntime) {
+            onAction(action)
         }
     }
 
     /// Commits a row. A Tab row jumps now and returns nil; a Project row
     /// returns the action the host runs once the sheet has closed.
     /// Option-Return on a Project opens another copy. On a Tab it is Return,
-    /// except on a Tab of a Project-backed Session with the Projects flag on,
+    /// except on a Tab of a Project-backed Session,
     /// where it reports the same another-copy action and does not jump.
     static func choose(
         _ entry: OpenQuicklyEntry,
         optionHeld: Bool,
-        projectsEnabled: Bool,
         in windowRuntime: WindowRuntime
     ) -> OpenQuicklyAction? {
         switch entry {
         case .tab(let result):
-            if optionHeld, projectsEnabled, let projectID = result.projectID {
+            if optionHeld, let projectID = result.projectID {
                 return .openProject(projectID, .openNew)
             }
             logger.info("open quickly jumping to session \(result.sessionTitle, privacy: .public) tab \(result.tabTitle, privacy: .public)")
@@ -212,14 +210,13 @@ enum OpenQuicklyEntry: Identifiable, Equatable {
 
 /// The Open Quickly sheet. It only reports a Project choice through
 /// `onAction`; the host dismisses first and acts from the sheet's
-/// `onDismiss`. `projectRows` and `onAction` are nil unless the Projects
-/// flag is on, and it reads Projects live on every render so the OPEN
-/// markers follow opens and closes while the sheet is up.
+/// `onDismiss`. It reads Projects live on every render through `projectRows`
+/// so the OPEN markers follow opens and closes while the sheet is up.
 struct OpenQuicklyView: View {
     @Binding var isPresented: Bool
     let windowRuntime: WindowRuntime
-    var projectRows: (() -> [OpenQuicklyProjectRow])?
-    var onAction: ((OpenQuicklyAction) -> Void)?
+    let projectRows: () -> [OpenQuicklyProjectRow]
+    let onAction: (OpenQuicklyAction) -> Void
 
     @State private var query = ""
     @State private var selectedIndex = 0
@@ -230,7 +227,7 @@ struct OpenQuicklyView: View {
     }
 
     private var filteredEntries: [OpenQuicklyEntry] {
-        OpenQuicklyFilter.apply(query: query, tabs: allResults, projects: projectRows?() ?? [])
+        OpenQuicklyFilter.apply(query: query, tabs: allResults, projects: projectRows())
     }
 
     var body: some View {
@@ -240,7 +237,7 @@ struct OpenQuicklyView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField(projectRows == nil ? "Jump to session or tab…" : "Jump to session, tab or project…", text: $query)
+                TextField("Jump to session, tab or project…", text: $query)
                     .textFieldStyle(.plain)
                     .focused($queryFocused)
                     .onKeyPress(.upArrow) { moveSelection(-1, in: results); return .handled }
@@ -261,7 +258,7 @@ struct OpenQuicklyView: View {
                 ContentUnavailableView(
                     "No Results",
                     systemImage: "magnifyingglass",
-                    description: Text(projectRows == nil ? "No sessions or tabs match your query." : "No sessions, tabs or projects match your query.")
+                    description: Text("No sessions, tabs or projects match your query.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -345,7 +342,7 @@ struct OpenQuicklyView: View {
     }
 
     private func selectedTabHintName(in results: [OpenQuicklyEntry]) -> String? {
-        guard let projectRows, results.indices.contains(selectedIndex),
+        guard results.indices.contains(selectedIndex),
               case .tab(let result) = results[selectedIndex] else { return nil }
         return OpenQuicklyFilter.tabHintName(for: result, projects: projectRows())
     }

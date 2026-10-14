@@ -9,10 +9,9 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 
 /// Owns the Project Editor's `NSWindow`. The editor is an AppKit-managed
 /// window created only on demand, not a SwiftUI `Window` scene: a declared
-/// scene exists whether or not the flag is on, and `BattyCommands` does not
-/// replace the Window menu's list, so a scene could show Projects in Prod.
-/// With the flag off nothing here ever creates a window, a model or a
-/// `ProjectStore`.
+/// scene always exists, and `BattyCommands` does not replace the Window
+/// menu's list, so a scene would list Projects there even while the editor
+/// is closed.
 ///
 /// The window is process-global, like Settings and Help. It is never
 /// registered with `AppStateStore.registerNSWindow`, so `BattyShortcuts`
@@ -27,12 +26,6 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
     private(set) var model: ProjectEditorViewModel?
     private weak var store: AppStateStore?
 
-    /// Whether the editor may be offered or opened at all. The File menu and
-    /// `prepare` both read this.
-    static func isAvailable(featureFlags: FeatureFlags) -> Bool {
-        featureFlags.projects
-    }
-
     /// Builds the window and model without ordering the window front, or
     /// reuses the existing ones. `selecting` selects that Project; `newDraft`
     /// starts an unsaved Project from the given draft (#0476's "Save as
@@ -40,10 +33,7 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
     /// editor asks what to do before switching.
     @discardableResult
     func prepare(store: AppStateStore, selecting projectID: UUID? = nil, newDraft: ProjectDraft? = nil) -> Bool {
-        guard Self.isAvailable(featureFlags: store.featureFlags), let projectStore = store.projectStore else {
-            logger.notice("project editor: ignored; projects feature is off")
-            return false
-        }
+        let projectStore = store.projectStore
         if let model, window != nil {
             if let newDraft {
                 model.requestNavigation(.newDraft(newDraft))

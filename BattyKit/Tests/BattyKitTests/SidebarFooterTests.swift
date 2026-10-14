@@ -8,10 +8,9 @@ import Testing
 
 @MainActor
 struct SidebarFooterTests {
-    private func makeStore(projectsEnabled: Bool, in directory: URL) -> AppStateStore {
+    private func makeStore(in directory: URL) -> AppStateStore {
         AppStateStore(
             nameCache: SessionNameCache(fileURL: directory.appendingPathComponent("cache.json")),
-            featureFlags: FeatureFlags(projects: projectsEnabled),
             projectsFileURL: directory.appendingPathComponent("projects.json")
         )
     }
@@ -22,11 +21,6 @@ struct SidebarFooterTests {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         body(directory)
-    }
-
-    @Test func buttonShownOnlyWithFlagOn() {
-        #expect(SidebarFooter.showsOpenProjectButton(featureFlags: FeatureFlags(projects: true)))
-        #expect(!SidebarFooter.showsOpenProjectButton(featureFlags: FeatureFlags(projects: false)))
     }
 
     @Test func literalsArePinned() {
@@ -48,31 +42,18 @@ struct SidebarFooterTests {
 
     @Test func presentingTargetsOnlyTheClickedWindow() {
         withTempDirectory { directory in
-            let store = makeStore(projectsEnabled: true, in: directory)
+            let store = makeStore(in: directory)
             let w1 = store.windows[0]
             let w2 = store.windowRuntime(for: WindowID())
             #expect(!w1.projectPickerShown && !w2.projectPickerShown)
 
-            SidebarFooter.presentProjectPicker(in: w1, featureFlags: store.featureFlags)
+            SidebarFooter.presentProjectPicker(in: w1)
             #expect(w1.projectPickerShown)
             #expect(!w2.projectPickerShown)
 
-            SidebarFooter.presentProjectPicker(in: w2, featureFlags: store.featureFlags)
+            SidebarFooter.presentProjectPicker(in: w2)
             #expect(w1.projectPickerShown)
             #expect(w2.projectPickerShown)
-        }
-    }
-
-    @Test func flagOffPresentsNothingAndNeverConstructsTheProjectStore() {
-        withTempDirectory { directory in
-            let store = makeStore(projectsEnabled: false, in: directory)
-            let window = store.windows[0]
-
-            SidebarFooter.presentProjectPicker(in: window, featureFlags: store.featureFlags)
-
-            #expect(!window.projectPickerShown)
-            #expect(!store.projectStoreIsConstructed)
-            #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("projects.json").path))
         }
     }
 }

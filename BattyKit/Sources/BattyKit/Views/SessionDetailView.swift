@@ -54,8 +54,7 @@ public struct SessionDetailView: View {
             layoutPickerShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleProjectPicker)) { note in
-            guard store.featureFlags.projects,
-                  ProjectPickerToggle.shouldHandle(userInfo: note.userInfo, windowID: windowRuntime.id, isKeyWindow: isKeyWindow)
+            guard ProjectPickerToggle.shouldHandle(userInfo: note.userInfo, windowID: windowRuntime.id, isKeyWindow: isKeyWindow)
             else { return }
             windowRuntime.projectPickerShown.toggle()
         }
@@ -87,23 +86,19 @@ public struct SessionDetailView: View {
             )
         }
         .sheet(isPresented: $openQuicklyShown, onDismiss: runAfterOpenQuickly) {
-            if store.featureFlags.projects {
-                OpenQuicklyView(
-                    isPresented: $openQuicklyShown,
-                    windowRuntime: windowRuntime,
-                    projectRows: { OpenQuicklyFilter.projectRows(in: store) },
-                    onAction: { afterOpenQuickly = $0 }
-                )
-            } else {
-                OpenQuicklyView(isPresented: $openQuicklyShown, windowRuntime: windowRuntime)
-            }
+            OpenQuicklyView(
+                isPresented: $openQuicklyShown,
+                windowRuntime: windowRuntime,
+                projectRows: { OpenQuicklyFilter.projectRows(in: store) },
+                onAction: { afterOpenQuickly = $0 }
+            )
         }
         .sheet(isPresented: $layoutPickerShown) {
             LayoutPickerView(isPresented: $layoutPickerShown, windowRuntime: windowRuntime)
         }
         .sheet(isPresented: projectPickerBinding, onDismiss: runAfterProjectPicker) {
             ProjectPickerView(
-                projects: { store.projectStore?.projects ?? [] },
+                projects: { store.projectStore.projects },
                 openProjectIDs: { store.openProjectIDs },
                 onAction: { action in
                     afterProjectPicker = action
@@ -111,7 +106,7 @@ public struct SessionDetailView: View {
                 },
                 onSetShared: { id, shared in
                     do {
-                        try store.projectStore?.setShared(id: id, shared)
+                        try store.projectStore.setShared(id: id, shared)
                     } catch {
                         logger.error("setShared failed: \(error.localizedDescription, privacy: .public)")
                     }
@@ -321,13 +316,12 @@ public struct SessionDetailView: View {
 
     private var projectPickerBinding: Binding<Bool> {
         Binding(
-            get: { store.featureFlags.projects && windowRuntime.projectPickerShown },
+            get: { windowRuntime.projectPickerShown },
             set: { if windowRuntime.projectPickerShown != $0 { windowRuntime.projectPickerShown = $0 } }
         )
     }
 
     private func presentProjectPicker() {
-        guard store.featureFlags.projects else { return }
         windowRuntime.projectPickerShown = true
     }
 
@@ -357,7 +351,7 @@ public struct SessionDetailView: View {
     }
 
     private var startupTrustBinding: Binding<ProjectStartupTrustRequest?> {
-        let shown = store.featureFlags.projects ? windowRuntime.pendingStartupTrusts.first : nil
+        let shown = windowRuntime.pendingStartupTrusts.first
         return Binding(
             get: { shown },
             set: { newValue in

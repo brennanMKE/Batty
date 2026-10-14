@@ -2,10 +2,7 @@
 
 import Foundation
 
-/// Payloads for the `projectList` and `projectOpen` XPC verbs. Both exist
-/// only while the Projects feature flag is on; with it off the app answers
-/// them with the generic `unknown verb` failure like any other verb it does
-/// not know. `nonisolated` at the type level for the same reason as every
+/// Payloads for the `projectList` and `projectOpen` XPC verbs. `nonisolated` at the type level for the same reason as every
 /// other payload in this module.
 
 /// One saved Project as `batty project list` shows it. `rootPath` is the

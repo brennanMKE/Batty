@@ -12,6 +12,7 @@ enum HelpCatalog {
         .init(id: "06-notifications", title: String(localized: "Notifications"),      resourceName: "06-notifications"),
         .init(id: "07-themes",        title: String(localized: "Themes"),             resourceName: "07-themes"),
         .init(id: "08-drag-and-drop", title: String(localized: "Drag and Drop"),      resourceName: "08-drag-and-drop"),
+        .init(id: "10-projects",      title: String(localized: "Projects"),          resourceName: "10-projects"),
         .init(id: "09-third-party-licenses", title: String(localized: "Third-Party Licenses"), resourceName: "09-third-party-licenses"),
     ]
 }

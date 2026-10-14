@@ -200,13 +200,13 @@ struct ProjectStoreTests {
         #expect(prod.pathComponents.suffix(2) == ["Batty", "projects.json"])
     }
 
-    @Test func flagOffLeavesProjectStoreNilAndTouchesNoFile() throws {
+    @Test func neverReadingTheProjectStoreBuildsNothingAndTouchesNoFile() throws {
         let url = makeTempURL()
         defer { cleanup(url) }
         let defaults = UserDefaults(suiteName: "ProjectStoreTests-\(UUID().uuidString)")!
-        let app = AppStateStore(preferences: defaults, featureFlags: FeatureFlags(projects: false), projectsFileURL: url)
+        let app = AppStateStore(preferences: defaults, projectsFileURL: url)
         _ = app.addSession(title: "S")
-        #expect(app.projectStore == nil)
+        #expect(!app.projectStoreIsConstructed)
         #expect(!FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))
     }
 
@@ -273,12 +273,14 @@ struct ProjectStoreTests {
         }
     }
 
-    @Test func flagOnBuildsTheStoreLazilyOnInjectedPath() throws {
+    @Test func buildsTheStoreLazilyOnInjectedPath() throws {
         let url = makeTempURL()
         defer { cleanup(url) }
         let defaults = UserDefaults(suiteName: "ProjectStoreTests-\(UUID().uuidString)")!
-        let app = AppStateStore(preferences: defaults, featureFlags: FeatureFlags(projects: true), projectsFileURL: url)
-        let store = try #require(app.projectStore)
+        let app = AppStateStore(preferences: defaults, projectsFileURL: url)
+        #expect(!app.projectStoreIsConstructed)
+        let store = app.projectStore
+        #expect(app.projectStoreIsConstructed)
         #expect(store.url == url)
         #expect(app.projectStore === store)
         #expect(!FileManager.default.fileExists(atPath: url.path))

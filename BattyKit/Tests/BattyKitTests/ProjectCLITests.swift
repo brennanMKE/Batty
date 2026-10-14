@@ -6,78 +6,39 @@ import Foundation
 import Testing
 @testable import batty
 
-/// The `batty project` noun (#0477). `BattyKitTests` builds without
-/// `-DBATTY_VARIANT_BETA`, so `FeatureFlags.current` is always off here;
-/// every test that needs the noun passes the flag explicitly.
+/// The `batty project` noun (#0477).
 struct ProjectCLITests {
-    private let on = FeatureFlags(projects: true)
-    private let off = FeatureFlags(projects: false)
-
-    private func verbNames(_ flags: FeatureFlags) -> Set<String> {
-        Set(CapabilitiesCommand.verbs(flags: flags).map(\.name))
+    private func verbNames() -> Set<String> {
+        Set(CapabilitiesCommand.verbs().map(\.name))
     }
 
     // MARK: - Command tree
 
-    @Test func flagOnTreeContainsTheProjectNounWithListAndOpen() throws {
-        let noun = try #require(BattyCLI.subcommands(for: on).first { $0.configuration.commandName == "project" })
+    @Test func theTreeContainsTheProjectNounWithListAndOpen() throws {
+        let noun = try #require(BattyCLI.configuration.subcommands.first { $0.configuration.commandName == "project" })
         #expect(noun is ProjectNounCommand.Type)
         #expect(noun.configuration.subcommands.map { $0.configuration.commandName } == ["list", "open"])
     }
 
-    @Test func flagOffTreeHasNoProjectNoun() {
-        #expect(BattyCLI.subcommands(for: off).allSatisfy { $0.configuration.commandName != "project" })
-        #expect(!BattyCLI.subcommands(for: off).contains { $0 is ProjectNounCommand.Type })
+    @Test func theShippedConfigurationContainsTheProjectNoun() {
+        #expect(BattyCLI.configuration.subcommands.contains { $0 is ProjectNounCommand.Type })
     }
 
-    @Test func flagOffTreeIsExactlyTheTreeWithoutTheNoun() {
-        let withNoun = BattyCLI.subcommands(for: on).map { String(describing: $0) }
-        let without = BattyCLI.subcommands(for: off).map { String(describing: $0) }
-        #expect(withNoun.filter { $0 != "ProjectNounCommand" } == without)
-    }
-
-    @Test func theShippedConfigurationFollowsTheCompileTimeFlag() {
-        let expected = BattyCLI.subcommands(for: .current).map { String(describing: $0) }
-        #expect(BattyCLI.configuration.subcommands.map { String(describing: $0) } == expected)
-        #expect(!FeatureFlags.current.projects, "swift test builds without -DBATTY_VARIANT_BETA")
-        #expect(!BattyCLI.configuration.subcommands.contains { $0 is ProjectNounCommand.Type })
-    }
-
-    @Test func theShippedRootHelpWithTheFlagOffNeverMentionsProject() {
-        #expect(!FeatureFlags.current.projects)
-        #expect(!BattyCLI.helpMessage().lowercased().contains("project"))
-    }
-
-    @Test func theFlagOnRootTreeAdvertisesProjectInItsSubcommandHelp() {
-        let noun = BattyCLI.subcommands(for: on).first { $0 is ProjectNounCommand.Type }
+    @Test func theRootTreeAdvertisesProjectInItsSubcommandHelp() {
+        let noun = BattyCLI.configuration.subcommands.first { $0 is ProjectNounCommand.Type }
         #expect(noun?.helpMessage().contains("list") == true)
+        #expect(BattyCLI.helpMessage().lowercased().contains("project"))
     }
 
     // MARK: - Capabilities
 
-    @Test func capabilitiesReportsProjectVerbsOnlyWithTheFlagOn() {
-        #expect(verbNames(on).isSuperset(of: ["project list", "project open"]))
-        #expect(verbNames(off).isDisjoint(with: ["project list", "project open"]))
-        #expect(verbNames(on).subtracting(["project list", "project open"]) == verbNames(off))
+    @Test func capabilitiesReportsTheProjectVerbs() {
+        #expect(verbNames().isSuperset(of: ["project list", "project open"]))
     }
 
-    @Test func defaultCapabilitiesUsesTheCompileTimeFlag() {
-        #expect(CapabilitiesCommand.verbs().map(\.name) == CapabilitiesCommand.verbs(flags: .current).map(\.name))
-        #expect(verbNames(.current).isDisjoint(with: ["project list", "project open"]))
-    }
-
-    @Test func capabilitiesJSONForTheFlagOffBuildHasNoProjectText() throws {
-        let data = try JSONEncoder().encode(CapabilitiesCommand.buildPayload(flags: off))
-        let text = try #require(String(data: data, encoding: .utf8))
-        #expect(!text.lowercased().contains("project"))
-    }
-
-    @Test func awaitingConfirmationExitCodeIsListedOnlyWithTheFlagOn() {
-        let onCodes = CapabilitiesCommand.buildPayload(flags: on).exitCodes.map(\.code)
-        let offCodes = CapabilitiesCommand.buildPayload(flags: off).exitCodes.map(\.code)
-        #expect(onCodes.contains(XPCExitCode.awaitingConfirmation))
-        #expect(!offCodes.contains(XPCExitCode.awaitingConfirmation))
-        #expect(onCodes.filter { $0 != XPCExitCode.awaitingConfirmation } == offCodes)
+    @Test func awaitingConfirmationExitCodeIsListed() {
+        let codes = CapabilitiesCommand.buildPayload().exitCodes.map(\.code)
+        #expect(codes.contains(XPCExitCode.awaitingConfirmation))
         #expect(XPCExitCode.awaitingConfirmation == 8)
     }
 
@@ -89,7 +50,7 @@ struct ProjectCLITests {
         #expect(!open.readOnlyHint)
         #expect(!open.destructiveHint)
         #expect(!open.idempotentHint, "--new opens another Session every call")
-        let verb = try #require(CapabilitiesCommand.verbs(flags: on).first { $0.name == "project open" })
+        let verb = try #require(CapabilitiesCommand.verbs().first { $0.name == "project open" })
         #expect(verb.annotations == open)
         #expect(Set(verb.inputSchema.properties.keys) == ["name", "new", "json"])
     }

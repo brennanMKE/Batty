@@ -14,7 +14,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// this path. No `#if DEBUG` gate because UI tests run against the Beta build.
 @MainActor
 public enum UITestDriver {
-    public static let scriptEnvVar = FeatureFlags.uiTestEnvironmentVar
+    public static let scriptEnvVar = "BATTY_UI_TEST_SCRIPT"
     public static let errorSentinelPrefix = "batty-ui-test-driver-error-"
     public static let projectsFileEnvVar = "BATTY_UI_TEST_PROJECTS_FILE"
 
@@ -27,9 +27,8 @@ public enum UITestDriver {
     }
 
     /// Where a UI-test launch keeps `projects.json`, so a test never shares
-    /// the guest's real store. Honored only alongside the script variable,
-    /// like `FeatureFlags.uiTestForceProjectsOffVar`; an empty or relative
-    /// path is ignored.
+    /// the guest's real store. Honored only alongside the script variable;
+    /// an empty or relative path is ignored.
     static func projectsFileOverride(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
@@ -243,10 +242,7 @@ public enum UITestDriver {
             logger.info("ui-test: dropFileURLs tab=\(tab.id, privacy: .public) count=\(urls.count, privacy: .public) joinedLen=\(joined.count, privacy: .public)")
 
         case .seedProject(let json):
-            guard store.featureFlags.projects, let projectStore = store.projectStore else {
-                logger.notice("ui-test: seedProject ignored; projects feature is off")
-                return
-            }
+            let projectStore = store.projectStore
             do {
                 let project = try ProjectsFile.decoder.decode(Project.self, from: Data(json.utf8))
                 try projectStore.upsert(project)
@@ -256,10 +252,7 @@ public enum UITestDriver {
             }
 
         case .openProject(let name, let modeName):
-            guard store.featureFlags.projects, let projectStore = store.projectStore else {
-                logger.notice("ui-test: openProject ignored; projects feature is off")
-                return
-            }
+            let projectStore = store.projectStore
             guard let project = projectStore.project(named: name) else {
                 logger.notice("ui-test: openProject not-found name=\(name, privacy: .public)")
                 return

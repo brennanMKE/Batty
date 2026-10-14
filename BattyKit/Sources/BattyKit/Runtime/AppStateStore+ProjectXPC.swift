@@ -2,9 +2,6 @@
 
 import BattyXPCCore
 import Foundation
-import os
-
-nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProjectXPC")
 
 extension AppStateStore {
     public enum ProjectOpenXPCOutcome: Equatable {
@@ -12,13 +9,8 @@ extension AppStateStore {
         case failed(String)
     }
 
-    /// The `projectList` verb's reply. Nil while the Projects feature is off,
-    /// without touching `projects.json`.
-    public func projectListReplyForXPC() -> ProjectListReply? {
-        guard featureFlags.projects, let projectStore else {
-            logger.notice("projectList: ignored; projects feature is off")
-            return nil
-        }
+    /// The `projectList` verb's reply.
+    public func projectListReplyForXPC() -> ProjectListReply {
         let open = openProjectIDs
         return ProjectListReply(projects: ProjectRecency.ranked(projectStore.projects, openProjectIDs: open).map {
             ProjectListEntry(
@@ -33,18 +25,14 @@ extension AppStateStore {
     /// the Session exists or the open failed, and after the user's answer when
     /// the sheet is shown. Returns the matched Project's stored name and, while
     /// the sheet is pending, the trust request's id so the caller can withdraw
-    /// it; nil when the name matched nothing or the feature is off.
+    /// it; nil when the name matched nothing.
     @discardableResult
     public func openProjectForXPC(
         name: String,
         openNew: Bool,
         completion: @escaping (ProjectOpenXPCOutcome) -> Void
     ) -> (projectName: String, trustRequestID: UUID?)? {
-        guard featureFlags.projects, let projectStore else {
-            logger.notice("projectOpen: ignored; projects feature is off")
-            completion(.failed("unknown verb: \(XPCVerb.projectOpen)"))
-            return nil
-        }
+        let projectStore = self.projectStore
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let project = projectStore.project(named: trimmed) else {
             completion(.failed(Self.unknownProjectMessage(trimmed, names: projectStore.projects.map(\.name))))

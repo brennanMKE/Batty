@@ -449,7 +449,7 @@ only seeds it once) and lasts for the life of the process; window restoration
 is disabled (#0444), so it does not survive relaunches.
 
 The `+` button for creating a new Session lives in the Sidebar footer (a bottom
-safe-area inset), as does the Open Project button in Batty Beta. The
+safe-area inset), as does the Open Project button. The
 footer's visibility and hit-testability when the sidebar is collapsed must be explicitly
 specified and tested — `[0065]` called this out as bug-prone.
 
@@ -482,7 +482,7 @@ specified and tested — `[0065]` called this out as bug-prone.
   collapsed/expanded state.
 - `session-sidebar.add-session-button` — the `+` button in the sidebar footer.
 - `session-sidebar.open-project-button` — the Open Project (`briefcase`) button
-  beside it; built only with `FeatureFlags.projects` on (#0490).
+  beside it (#0490).
 - `session-sidebar.chevron` — the disclosure chevron; frame used to assert
   positional stability across toggle.
 
@@ -525,7 +525,7 @@ Quickly was caught as `[0150]`.
   (not a floor violation). Assertions on row counts use floors, not exact
   counts, because the action set grows as features land.
 
-**Open Quickly Project rows (#0491, Projects flag on):**
+**Open Quickly Project rows (#0491):**
 
 - One row per saved Project, in addition to one row per Tab (no de-duplication across kinds, so an
   open Project keeps its row next to its Session's Tab rows). A row shows the Project's symbol tinted
@@ -546,7 +546,6 @@ Quickly was caught as `[0150]`.
   `OpenQuicklyAction`;
   `SessionDetailView` runs it from the sheet's `onDismiss`, so the startup-command trust sheet never
   competes with a closing sheet. It is routed to this Window as a value, not by notification.
-- With the flag off there are no Project rows, no footer and no read of the Projects store.
 
 **Regression patterns:**
 
@@ -560,14 +559,14 @@ Quickly was caught as `[0150]`.
   `command-palette.row.<action>`.
 - `open-quickly.root`, `open-quickly.filter` (the field), `open-quickly.row` (every Session/Tab
   row; the old `open-quickly.filter-field` and `open-quickly.row.<target>` never existed in the
-  code) and, with the Projects flag on, `open-quickly.row.project.<Project name>`,
+  code) and `open-quickly.row.project.<Project name>`,
   `open-quickly.open-badge.<Project name>` (only while the Project has a Session in any Window;
   the row's `accessibilityValue` is "open" / "not open") and `open-quickly.hint` (the footer,
   shown only while a Project row is selected). The root is a `.contain` element so its identifier
   does not replace the rows' (#0484's caveat); tests still type into the focused field rather than
   query it.
 - `menu.file.open-quickly` — the File menu item for Open Quickly.
-- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`, then `, N unseen` while bells are unseen, then `, Project, <symbol name> symbol` (for example `selected, Project, Terminal symbol`) for a Project-backed Session with the Projects flag on (#0484); never present with the flag off. With `BATTY_UI_TEST_SIDEBAR_ICONS=1` the value also ends with `, icon <SF Symbol name>` (#0482), for example `selected, icon circle.fill`; it is how UI tests read which SF Symbol a row draws.
+- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`, then `, N unseen` while bells are unseen, then `, Project, <symbol name> symbol` (for example `selected, Project, Terminal symbol`) for a Project-backed Session (#0484). With `BATTY_UI_TEST_SIDEBAR_ICONS=1` the value also ends with `, icon <SF Symbol name>` (#0482), for example `selected, icon circle.fill`; it is how UI tests read which SF Symbol a row draws.
 - `accessibilityValue("active" / "inactive")` on `tab-chip.<title>`.
 
 ---
@@ -794,8 +793,7 @@ read-only; see `docs/design/git-status-view.md`.
 
 The Project Editor (#0474) is where a user defines Projects. It is one
 process-global AppKit window titled "Projects", created on demand by
-`ProjectEditorWindowController` from File ▸ **Edit Projects…**, and absent
-entirely when `FeatureFlags.projects` is off. It is not a content window: it is
+`ProjectEditorWindowController` from File ▸ **Edit Projects…**. It is not a content window: it is
 never registered with `AppStateStore.registerNSWindow`, so content-window
 shortcuts are off while it is key (`BattyShortcuts` declines the chord, and
 the menu items that act on a Session, Pane or Tab resolve no target, see
@@ -829,8 +827,7 @@ Pane inspector, with a footer.
   and Bell Feed. Close Tab (⌘W) closes the editor window instead.
   `AppStateStore.menuTargetWindow()` and `focusedTerminalTab` carry the rule,
   and it applies at action time only: menu enablement still reads
-  `defaultTargetWindow()`. The rule matches only the editor's window, so it
-  does nothing with the Projects flag off. XPC and CLI resolution keep using
+  `defaultTargetWindow()`. The rule matches only the editor's window. XPC and CLI resolution keep using
   `defaultTargetWindow()`.
 - Quitting with unsaved edits (#0481): Cmd-Q brings the editor front and asks the same
   Save, Discard Changes or Cancel question as closing the window (a sheet on the editor).
@@ -857,8 +854,6 @@ Pane inspector, with a footer.
   closing or switching away from it asks first.
 - Saving never overwrites the approval hash or last-opened date with the values
   loaded when the Project was selected; it takes the stored ones.
-- With the flag off there is no Edit Projects… item, no Window-menu entry and
-  no way to create the window.
 
 **Accessibility identifiers:**
 
@@ -899,9 +894,7 @@ Pane inspector, with a footer.
 
 **Not covered by unit tests (for the Tart VM suite, #0478):**
 
-- File ▸ Edit Projects… is present with the flag on and absent with
-  `BATTY_UI_TEST_FORCE_PROJECTS_OFF=1`, and the Window menu has no Projects
-  entry with the flag off.
+- File ▸ Edit Projects… is present.
 - The editor window opens and comes forward when already open. With it key,
   ⌘T adds no Tab, ⇧⌘X sends no exit and ⌘V pastes nothing into the background
   window's Terminal (⌘V still pastes into a focused editor field), while ⌘W
@@ -922,8 +915,7 @@ Layout picker, presented from `WindowRuntime.projectPickerShown` (#0490). The
 File menu's `.battyToggleProjectPicker` is guarded on `isKeyWindow` (#0242)
 unless it names a window. Its logic lives in `ProjectPickerModel`; the File menu's
 Open Project submenu is `ProjectFileMenuModel` rendered by `BattyCommands`; the
-Command Palette entries are built in `CommandPaletteView.allCommands`. All of
-them are absent with `FeatureFlags.projects` off.
+Command Palette entries are built in `CommandPaletteView.allCommands`.
 
 **Invariants:**
 
@@ -1021,8 +1013,7 @@ them are absent with `FeatureFlags.projects` off.
   `onDismiss` by calling a closure `SessionDetailView` hands it, which sets this
   window's `projectPickerShown` directly (#0483). It does not broadcast
   `.battyToggleProjectPicker`: that handler is gated on `isKeyWindow`, which is
-  not guaranteed to hold inside the palette's `onDismiss`. The closure re-checks
-  `featureFlags.projects`.
+  not guaranteed to hold inside the palette's `onDismiss`.
 - The File menu items have no key equivalents and there is no new
   `ShortcutAction`. The submenu is disabled when no window is registered.
 - Choosing a Project from the submenu while Settings, Help or the Project Editor
@@ -1046,12 +1037,7 @@ them are absent with `FeatureFlags.projects` off.
   It posts no notification and checks no key window, so it presents on the
   window it was clicked in and never on another. With no Projects it still
   presents the picker, which shows its empty state. It has no keyboard
-  shortcut. With the flag off the button is not built and nothing reads
-  `store.projectStore`.
-- With the flag off there is no Open Project submenu, no Choose Project... or
-  New Project..., no `project:` or `extra:openProjectPicker` palette ids, the
-  toggle notification is ignored, the sheet does not present, and
-  `ProjectStore` is never constructed from these paths.
+  shortcut.
 
 **Accessibility identifiers:**
 
@@ -1077,10 +1063,8 @@ them are absent with `FeatureFlags.projects` off.
 **Not covered by unit tests (for the Tart VM suite, #0478, plus the manual
 check below):**
 
-- With the flag on, File > Open Project shows each seeded Project, checks the
-  open one, and Choose Project... presents the sheet; with
-  `BATTY_UI_TEST_FORCE_PROJECTS_OFF=1` the submenu is absent and the palette
-  has no Project rows.
+- File > Open Project shows each seeded Project, checks the
+  open one, and Choose Project... presents the sheet.
 - Typing narrows the cards; arrows move the selection; Return opens and
   Option-Return opens another copy; Escape dismisses; clicking a card selects
   it and double-clicking opens it.
@@ -1095,13 +1079,13 @@ check below):**
 - Option-Return in the filter field opens another copy and does not insert a
   newline.
 - The palette's "Open Project..." row presents the picker.
-- Unit suite `SidebarFooterTests` covers the gate, the symbol, two-window
-  isolation and the flag-off no-op.
+- Unit suite `SidebarFooterTests` covers the symbol, two-window
+  isolation.
 - `ProjectsOpenTests.testSidebarOpenProjectButtonPresentsThePickerAndOpensAProject`
   and `testSidebarOpenProjectButtonWithNoProjectsShowsTheEmptyStateAndOpensTheEditor`
   (the footer button, the distinct `+` button, and the empty state's New
-  Project... button); `ProjectsFlagOffTests` checks the button is absent with
-  the flag off and present with it on. Manual check: the symbol's look at
+  Project... button); `ProjectsOpenTests.testEveryProjectsEntryPointIsPresent` checks the button
+  is present. Manual check: the symbol's look at
   footer size, light and dark, themed and unthemed Sidebars.
 
 ---
@@ -1129,8 +1113,7 @@ equal sizes, #0255), startup commands, automatic Tab titles, Process Status
 pids, and a non-Terminal Pane's placeholder Tab. A Tab or repository outside
 the root is stored as the root and flagged with a warning on its field.
 
-**Entry points** (all behind `featureFlags.projects`; none has a shortcut or a
-`ShortcutAction`):
+**Entry points** (none has a shortcut or a `ShortcutAction`):
 
 - Sidebar row context menu: "Save as Project..." (after Mute Notifications,
   before Close). Captures that row's Session.
@@ -1150,9 +1133,8 @@ the root is stored as the root and flagged with a warning on its field.
 
 **Not covered by unit tests (for the Tart VM suite, #0478):**
 
-- The Sidebar context menu item is present with the flag on and absent with
-  `BATTY_UI_TEST_FORCE_PROJECTS_OFF=1`; same for the File item and the palette
-  row. Choosing it opens the editor on a draft with the Session's Panes, Tabs
+- The Sidebar context menu item, the File item and the palette row are
+  present. Choosing it opens the editor on a draft with the Session's Panes, Tabs
   and color, and nothing is stored until Save.
 - Right-clicking a row that is not selected captures that row's Session and
   leaves the selection, drag-reorder and row identifiers alone.
@@ -1216,7 +1198,6 @@ unchanged; these are the ones they do not cover):
 | The checkbox flips without selecting, opening or dismissing; persists (#0501) | `ProjectsSharingTests.testClickingACompactCheckboxFlipsItWithoutSelectingOpeningOrDismissing` |
 | The Open now chip's own Shared toggle (#0501) | `ProjectsSharingTests.testTheOpenNowChipHasItsOwnSharedToggle` |
 | Editor Shared checkbox: dirty, Save, Cancel, new Project (#0501) | `ProjectsSharingTests.testEditorSharedCheckboxIsPartOfTheDraft` |
-| Flag off leaves a seeded shared Project's bytes unchanged (#0501) | `ProjectsFlagOffTests.testFlagOffRemovesEveryProjectsEntryPointAndWritesNothing` |
 | Record split, portable path, merge rules, store and backend routing, picker card fields, editor draft (#0501) | `ProjectSharingModelTests`, `PortablePathTests`, `ProjectSyncMergeTests`, `ProjectSharingStoreTests`, `ProjectSharingPickerTests`, `ProjectEditorSharingTests` (BattyKit) |
 | Cursor transitions, tier split, New Project card, two-step Escape, match count, relative time (#0493) | `ProjectPickerGridCursorTests`, `ProjectPickerModelTests`, `ProjectRecencyRelativeTextTests` (BattyKit) |
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
@@ -1231,11 +1212,11 @@ unchanged; these are the ones they do not cover):
 | Save Session as Project draft has the run toggle on | `ProjectsEditorTests.testSavedSessionProjectHasTheRunToggleOn` |
 | Palette Save Session as Project... | `ProjectsEditorTests.testCommandPaletteSaveSessionAsProjectOpensTheEditor` |
 | `batty project list` / `open` | `ProjectsCLITests.testProjectListShowsSeededProjectsAndOpenMarker` |
-| Flag off: File, Window, Sidebar, palette, Open Quickly (no Project row, hint or Tab-row hint, #0491, #0499), no `projects.json` | `ProjectsFlagOffTests` |
+| Every Projects entry point is present: Sidebar button, File items, palette rows | `ProjectsOpenTests.testEveryProjectsEntryPointIsPresent` |
+| Using the app with no Projects action never creates `projects.json` or `projects.json.bak` | `ProjectsOpenTests.testUsingTheAppWithoutAProjectsActionNeverCreatesProjectsJson` |
 | Plain row is a circle, Project row shows its symbol, an editor Save updates the open row; keyboard picks from the Symbol popover (#0482) | `ProjectsSymbolTests.testPlainRowIsACircleAndAProjectRowShowsItsSymbolAndFollowsAnEditorSave` |
 | Escape closes the Symbol popover without a change (#0482) | `ProjectsSymbolTests.testEscapeClosesThePopoverWithoutChangingTheSymbol` |
 | A Project with no stored symbol shows the folder (#0482) | `ProjectsSymbolTests.testAProjectWithNoSymbolShowsTheFolder` |
-| Flag off: the row keeps `rectangle.split.3x1` (#0482) | `ProjectsSymbolTests.testFlagOffRowKeepsTheThreeColumnSymbol` |
 | Cmd-Q with unsaved editor edits asks; Cancel keeps the app and the edit; Discard quits (#0481) | `ProjectsEditorQuitTests.testQuitWithUnsavedEditsAsksAndCancelKeepsTheAppAndTheEdit` |
 | Last content window closed with unsaved editor edits keeps the app; Cmd-W with no content window asks, then quits (#0481) | `ProjectsEditorQuitTests.testClosingTheLastContentWindowKeepsTheAppWhileTheEditorHasUnsavedEditsAndCmdWClosesTheEditor` |
 | Cmd-W with a sheet over the editor does nothing (#0481) | `ProjectsEditorQuitTests.testCmdWWithASheetOverTheEditorLeavesTheSheetAndTheEditorAlone` |
@@ -1249,10 +1230,9 @@ sheet command is one combined element `project-startup-trust.command.<n>` (one-b
 the Pane/Tab label and `$ <command>`. The Symbol field's inner button is `.focusable(false)`. This list is the contract. It has not yet been run in the Tart VM or
 checked with Accessibility Inspector.
 
-- A Sidebar row's value carries `, Project, <symbol name> symbol` for a Project-backed Session while the
-  Projects flag is on. `ProjectsHarness.assertProjectGlyph`
+- A Sidebar row's value carries `, Project, <symbol name> symbol` for a Project-backed Session. `ProjectsHarness.assertProjectGlyph`
   reads it. `BATTY_UI_TEST_SIDEBAR_ICONS=1` stays for the SF Symbol name, which the Project part cannot
-  carry (the plain circle versus `rectangle.split.3x1` has no spoken form).
+  carry (the plain circle versus a Project's symbol has no spoken form).
 - A File menu check mark is exposed neither as `value` nor as selection in the VM; `assertCheckMarks`
   reads it from the item's pixels. The item is a SwiftUI `Toggle` in a native `NSMenu`, so this is
   most likely how XCUITest maps `NSMenuItem` state; whether VoiceOver announces it as checked is not

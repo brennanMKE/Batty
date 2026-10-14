@@ -235,12 +235,10 @@ struct CapabilitiesInputSchemaTests {
             guard !subcommands.isEmpty else { return [type] }
             return subcommands.flatMap(leafTypes)
         }
-        for flags in [FeatureFlags(projects: false), FeatureFlags(projects: true)] {
-            let leaves = BattyCLI.subcommands(for: flags).flatMap(leafTypes)
-            #expect(!leaves.isEmpty)
-            for leaf in leaves {
-                #expect(leaf is CapabilitiesDescribable.Type, "\(leaf) has no capabilitiesInputSchema")
-            }
+        let leaves = BattyCLI.configuration.subcommands.flatMap(leafTypes)
+        #expect(!leaves.isEmpty)
+        for leaf in leaves {
+            #expect(leaf is CapabilitiesDescribable.Type, "\(leaf) has no capabilitiesInputSchema")
         }
     }
 
@@ -369,7 +367,7 @@ struct CapabilitiesInputSchemaTests {
     /// joins one — so a hypothetical new `tab close` is a brand-new,
     /// unrecognized key, never a silent match against `pane close`'s or
     /// `session close`'s `"close"` entry.
-    private func shippedVerbPaths(flags: FeatureFlags) -> Set<String> {
+    private func shippedVerbPaths() -> Set<String> {
         func verbPaths(from type: ParsableCommand.Type, prefix: [String]) -> [String] {
             let config = type.configuration
             let name = config.commandName ?? String(describing: type)
@@ -377,19 +375,14 @@ struct CapabilitiesInputSchemaTests {
             guard !config.subcommands.isEmpty else { return [path.joined(separator: " ")] }
             return config.subcommands.flatMap { verbPaths(from: $0, prefix: path) }
         }
-        return Set(BattyCLI.subcommands(for: flags).flatMap { verbPaths(from: $0, prefix: []) })
+        return Set(BattyCLI.configuration.subcommands.flatMap { verbPaths(from: $0, prefix: []) })
     }
 
-    private let projectVerbPaths: Set<String> = ["project list", "project open"]
-
-    /// The table is the superset: with the Projects flag on it matches the
-    /// shipped tree exactly, and with it off the shipped tree is the table
-    /// minus the two `project` paths, so a gated verb can neither go
-    /// unclassified nor leak into the flag-off roster.
+    /// The table matches the shipped tree exactly, so a verb can neither go
+    /// unclassified nor linger in the table after it is removed.
     @Test func leafArchetypeByVerbPathCoversExactlyTheShippedVerbPaths() {
         let keys = Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys)
-        #expect(keys == shippedVerbPaths(flags: FeatureFlags(projects: true)))
-        #expect(keys.subtracting(projectVerbPaths) == shippedVerbPaths(flags: FeatureFlags(projects: false)))
+        #expect(keys == shippedVerbPaths())
     }
 
     @Test func everyArchetypeLeafArchetypeByVerbPathPointsAtExists() {

@@ -4,8 +4,7 @@ import ArgumentParser
 import BattyXPCCore
 import Foundation
 
-/// `batty project` — the fifth noun, present only while the Projects feature
-/// flag is on (`BattyCLI.subcommands(for:)`). The CLI never reads
+/// `batty project` — the fifth noun. The CLI never reads
 /// `projects.json`; the app owns `ProjectStore` and answers both verbs over
 /// XPC. There are deliberately no `add`, `remove` or `edit` verbs: Projects
 /// are edited in the Project Editor.

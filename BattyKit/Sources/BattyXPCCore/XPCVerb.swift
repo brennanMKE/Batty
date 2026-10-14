@@ -140,15 +140,13 @@ public nonisolated enum XPCVerb {
     public static let watch = "watch"
 
     /// #0477: read-only. Replies with `ProjectListReply` (saved Projects in
-    /// store order, each with an open marker). No request payload. Handled
-    /// only while the Projects feature flag is on; otherwise the app replies
-    /// `unknown verb: projectList`.
+    /// store order, each with an open marker). No request payload.
     public static let projectList = "projectList"
 
     /// #0477: opens or focuses a Project's Session. Request payload is
     /// `ProjectOpenRequest`; the reply is `ProjectOpenReply`. A failure
     /// reply (`ok: false`) covers an unknown name (the message lists close
     /// matches), a Project whose root is gone, and a startup-command prompt
-    /// the user dismissed. Flag-gated exactly like `projectList`.
+    /// the user dismissed.
     public static let projectOpen = "projectOpen"
 }

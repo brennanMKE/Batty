@@ -71,22 +71,16 @@ public struct BattyCommands: Commands {
     /// key-window state there could stay stale.
     private var actionWindow: WindowRuntime? { store.menuTargetWindow() }
 
-    /// Nil, so the whole group is absent, while the Projects flag is off.
-    /// `store.projectStore` is read only past that gate, so a flag-off build
-    /// never constructs it from here.
-    private var projectFileMenu: ProjectFileMenuModel? {
-        let enabled = ProjectEditorWindowController.isAvailable(featureFlags: store.featureFlags)
-        return ProjectFileMenuModel.make(
-            featureEnabled: enabled,
-            projects: enabled ? (store.projectStore?.projects ?? []) : [],
-            openProjectIDs: enabled ? store.openProjectIDs : []
+    private var projectFileMenu: ProjectFileMenuModel {
+        ProjectFileMenuModel.make(
+            projects: store.projectStore.projects,
+            openProjectIDs: store.openProjectIDs
         )
     }
 
     /// The Save Session as Project items for the key Window's selected
-    /// Session. Nil (flag off) builds no item; a nil Session gives disabled
-    /// items.
-    private var saveSessionMenu: SaveSessionAsProjectMenuModel? {
+    /// Session. A nil Session gives disabled items.
+    private var saveSessionMenu: SaveSessionAsProjectMenuModel {
         SaveSessionAsProject.menuModel(store: store, session: keyWindow?.selectedSession)
     }
 
@@ -173,27 +167,23 @@ public struct BattyCommands: Commands {
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .openQuickly))
             .disabled(keyWindow?.selectedSession == nil)
 
-            if let projectMenu = projectFileMenu {
-                Divider()
+            Divider()
 
-                Menu {
-                    ForEach(projectMenu.items) { item in
-                        projectMenuItem(item)
-                    }
-                } label: {
-                    Label("Open Project", systemImage: "folder")
+            Menu {
+                ForEach(projectFileMenu.items) { item in
+                    projectMenuItem(item)
                 }
-                .disabled(keyWindow == nil)
+            } label: {
+                Label("Open Project", systemImage: "folder")
+            }
+            .disabled(keyWindow == nil)
 
-                if let saveMenu = saveSessionMenu {
-                    saveSessionMenuItems(saveMenu)
-                }
+            saveSessionMenuItems(saveSessionMenu)
 
-                Button {
-                    ProjectEditorWindowController.shared.show(store: store)
-                } label: {
-                    Label("Edit Projects\u{2026}", systemImage: "folder.badge.gearshape")
-                }
+            Button {
+                ProjectEditorWindowController.shared.show(store: store)
+            } label: {
+                Label("Edit Projects\u{2026}", systemImage: "folder.badge.gearshape")
             }
         }
 

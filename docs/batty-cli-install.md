@@ -41,9 +41,7 @@ The CLI now has four execution paths:
 - Live queries and acknowledged mutations use the broker-mediated XPC
   channel: `ping`, `status`, `list`, `session info`, `session focus`,
   `session close`, `pane split`, `pane close`, `pane focus`, `pane hide`,
-  `pane show`, `tab focus`, and `notify`. In Batty Beta builds only (Projects
-  feature flag, until 1.3.0), `project list` and `project open` use the same
-  channel.
+  `pane show`, `tab focus`, `notify`, `project list` and `project open`.
 - `id` (alias `whoami`) reads `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
   `BATTY_TAB_ID` from the environment without contacting the broker or app.
 - `capabilities` reads neither the environment nor the app: its verb roster
@@ -67,8 +65,8 @@ The CLI now has four execution paths:
 | `batty pane hide [--pane <id>]` | Hide a Pane (the eye-toggle's CLI equivalent); idempotent | XPC |
 | `batty pane show <pane-id>` | Show (un-hide) a Pane by id; idempotent; no env/focused-element fallback | XPC |
 | `batty tab focus <id>` | Select a Tab (implies focusing its containing Pane); id-based targeting only (no `<n>`) | XPC |
-| `batty-beta project list [--json]` | **Beta only (Projects flag, until 1.3.0).** List saved Projects: name, root, Pane count, and an `open` marker | XPC |
-| `batty-beta project open <name> [--new] [--json]` | **Beta only.** Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
+| `batty project list [--json]` | List saved Projects: name, root, Pane count, and an `open` marker | XPC |
+| `batty project open <name> [--new] [--json]` | Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
 | `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |
