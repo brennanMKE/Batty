@@ -57,6 +57,7 @@ struct ProjectEditorListEntry: Identifiable, Equatable {
     let color: SessionColor
     let symbol: ProjectSymbol
     let isUnsavedNew: Bool
+    var isShared = false
 }
 
 struct ProjectEditorTabSummary: Equatable {
@@ -160,7 +161,7 @@ final class ProjectEditorViewModel {
 
     var listEntries: [ProjectEditorListEntry] {
         var entries = store.projects.map {
-            ProjectEditorListEntry(id: $0.id, name: $0.name, path: Self.abbreviated($0.rootPath), color: $0.color, symbol: $0.symbol, isUnsavedNew: false)
+            ProjectEditorListEntry(id: $0.id, name: $0.name, path: Self.abbreviated($0.rootPath), color: $0.color, symbol: $0.symbol, isUnsavedNew: false, isShared: $0.isShared)
         }
         if let draft, isNewDraft {
             let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -170,7 +171,8 @@ final class ProjectEditorViewModel {
                 path: Self.abbreviated(ProjectDraft.normalizedRoot(draft.rootPath)),
                 color: draft.color,
                 symbol: draft.symbol,
-                isUnsavedNew: true
+                isUnsavedNew: true,
+                isShared: draft.isShared
             ))
         }
         return entries
@@ -521,6 +523,7 @@ final class ProjectEditorViewModel {
     func setColor(_ color: SessionColor) { draft?.color = color }
     func setSymbol(_ symbol: ProjectSymbol) { draft?.symbol = symbol }
     func setRunStartupCommandsOnOpen(_ value: Bool) { draft?.runStartupCommandsOnOpen = value }
+    func setShared(_ value: Bool) { draft?.isShared = value }
 
     // MARK: - Layout
 
@@ -720,6 +723,7 @@ final class ProjectEditorViewModel {
         if let current = store.project(id: draft.id) {
             project.approvedCommandsHash = current.approvedCommandsHash
             project.lastOpenedAt = current.lastOpenedAt
+            if draft.isShared == baseline?.isShared { project.isShared = current.isShared }
         }
         do {
             try store.upsert(project)

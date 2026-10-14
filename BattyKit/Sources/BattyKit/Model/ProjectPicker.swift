@@ -32,6 +32,8 @@ struct ProjectPickerCard: Identifiable, Equatable {
     let isOpen: Bool
     let slots: [Slot]
     let lastOpenedAt: Date?
+    let isShared: Bool
+    let rootIsMissing: Bool
 }
 
 enum ProjectPickerTier: Equatable {
@@ -70,12 +72,41 @@ struct ProjectPickerModel: Equatable {
     private var projects: [Project]
     private var openProjectIDs: Set<UUID>
     private let homeDirectory: String
+    private let rootCache: RootExistenceCache
 
-    init(projects: [Project], openProjectIDs: Set<UUID>, homeDirectory: String) {
+    /// Answers whether a root folder exists, once per root, and shares the
+    /// answers across every copy of the model (`refreshed` returns copies),
+    /// so the view's per-render path never repeats a check. It is a class
+    /// so a copy made for one render writes back to the cache the next
+    /// render reads. A folder created or deleted while the sheet is up is
+    /// not noticed.
+    final class RootExistenceCache: Equatable {
+        private let exists: (String) -> Bool
+        private var answers: [String: Bool] = [:]
+
+        init(_ exists: @escaping (String) -> Bool) { self.exists = exists }
+
+        func isMissing(_ path: String) -> Bool {
+            if let known = answers[path] { return !known }
+            let found = exists(path)
+            answers[path] = found
+            return !found
+        }
+
+        static func == (lhs: RootExistenceCache, rhs: RootExistenceCache) -> Bool { true }
+    }
+
+    init(
+        projects: [Project],
+        openProjectIDs: Set<UUID>,
+        homeDirectory: String,
+        rootExists: @escaping (String) -> Bool = { ProjectEditorViewModel.fileSystemDirectoryExists($0) }
+    ) {
         let ranked = ProjectRecency.ranked(projects, openProjectIDs: openProjectIDs)
         self.projects = ranked
         self.openProjectIDs = openProjectIDs
         self.homeDirectory = homeDirectory
+        rootCache = RootExistenceCache(rootExists)
         selectedID = ranked.first?.id
     }
 
@@ -307,7 +338,9 @@ struct ProjectPickerModel: Equatable {
             summary: Self.summary(panes: project.paneCount, tabs: project.tabCount, startupCommands: project.startupCommandCount),
             isOpen: openProjectIDs.contains(project.id),
             slots: zip(frames, panes).map { ProjectPickerCard.Slot(frame: $0, kind: $1.kind) },
-            lastOpenedAt: project.lastOpenedAt
+            lastOpenedAt: project.lastOpenedAt,
+            isShared: project.isShared,
+            rootIsMissing: rootCache.isMissing(project.rootPath)
         )
     }
 }

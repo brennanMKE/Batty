@@ -17,14 +17,20 @@ struct ProjectStoreTests {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
     }
 
-    private func project(_ name: String, id: UUID = UUID()) -> Project {
-        Project(id: id, name: name, rootPath: "/tmp/\(name)")
+    private static let stamp = Date(timeIntervalSince1970: 1_750_000_000)
+
+    private func project(_ name: String, id: UUID = UUID(), isShared: Bool = false) -> Project {
+        Project(id: id, name: name, rootPath: "/tmp/\(name)", isShared: isShared, modifiedAt: Self.stamp)
+    }
+
+    private func store(_ url: URL, backend: (any ProjectSyncBackend)? = nil) -> ProjectStore {
+        ProjectStore(fileURL: url, clock: { Self.stamp }, backend: backend, home: "/Users/test")
     }
 
     @Test func upsertDeleteAndReorderPersistThroughAFreshStore() throws {
         let url = makeTempURL()
         defer { cleanup(url) }
-        let store = ProjectStore(fileURL: url)
+        let store = store(url)
         let a = project("Alpha"), b = project("Beta"), c = project("Gamma")
         try store.upsert(a); try store.upsert(b); try store.upsert(c)
         #expect(ProjectStore(fileURL: url).projects == [a, b, c])
@@ -52,7 +58,7 @@ struct ProjectStoreTests {
     @Test func lookupByNameIsCaseInsensitive() throws {
         let url = makeTempURL()
         defer { cleanup(url) }
-        let store = ProjectStore(fileURL: url)
+        let store = store(url)
         let a = project("My App")
         try store.upsert(a)
         #expect(store.project(named: "my app")?.id == a.id)

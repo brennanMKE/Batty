@@ -203,6 +203,12 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var runStartupCommandsOnOpen: Bool
     public var approvedCommandsHash: String?
     public var lastOpenedAt: Date?
+    /// Marked to sync through iCloud. Absent in the file decodes to `false`,
+    /// so every Project written before sharing existed is local.
+    public var isShared: Bool
+    /// When the definition last changed, the last-writer-wins key for a
+    /// shared Project. Not set by opening or by storing a startup-command approval, which touch device state only.
+    public var modifiedAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -213,7 +219,9 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         layout: ProjectLayout = .preset(.singlePane),
         runStartupCommandsOnOpen: Bool = false,
         approvedCommandsHash: String? = nil,
-        lastOpenedAt: Date? = nil
+        lastOpenedAt: Date? = nil,
+        isShared: Bool = false,
+        modifiedAt: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -224,6 +232,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.runStartupCommandsOnOpen = runStartupCommandsOnOpen
         self.approvedCommandsHash = approvedCommandsHash
         self.lastOpenedAt = lastOpenedAt
+        self.isShared = isShared
+        self.modifiedAt = modifiedAt
     }
 
     public var paneCount: Int { layout.paneCount }
@@ -275,7 +285,24 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt
+        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt
+    }
+
+    /// `isShared` is written only when true, so a local Project's object is
+    /// byte-identical to one written before sharing existed.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(rootPath, forKey: .rootPath)
+        try c.encode(color, forKey: .color)
+        try c.encode(symbol, forKey: .symbol)
+        try c.encode(layout, forKey: .layout)
+        try c.encode(runStartupCommandsOnOpen, forKey: .runStartupCommandsOnOpen)
+        try c.encodeIfPresent(approvedCommandsHash, forKey: .approvedCommandsHash)
+        try c.encodeIfPresent(lastOpenedAt, forKey: .lastOpenedAt)
+        if isShared { try c.encode(true, forKey: .isShared) }
+        try c.encodeIfPresent(modifiedAt, forKey: .modifiedAt)
     }
 
     public init(from decoder: Decoder) throws {
@@ -307,6 +334,13 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         } else {
             if c.contains(.lastOpenedAt), !((try? c.decodeNil(forKey: .lastOpenedAt)) ?? false) { logger.error("unreadable project lastOpenedAt; treating the project as never opened") }
             lastOpenedAt = nil
+        }
+        isShared = (try? c.decodeIfPresent(Bool.self, forKey: .isShared)) ?? false
+        if let decoded = try? c.decodeIfPresent(Date.self, forKey: .modifiedAt) {
+            modifiedAt = decoded
+        } else {
+            if c.contains(.modifiedAt), !((try? c.decodeNil(forKey: .modifiedAt)) ?? false) { logger.error("unreadable project modifiedAt; treating the definition as undated") }
+            modifiedAt = nil
         }
     }
 }

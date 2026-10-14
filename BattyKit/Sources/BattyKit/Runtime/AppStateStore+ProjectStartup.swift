@@ -145,10 +145,8 @@ extension AppStateStore {
         completion: ((Result<ProjectOpenResult, Error>) -> Void)?
     ) {
         if let hash = outcome.hashToStore, let projectStore {
-            var approved = projectStore.project(id: project.id) ?? project
-            approved.approvedCommandsHash = hash
             do {
-                try projectStore.upsert(approved)
+                try projectStore.recordApproval(id: project.id, hash: hash)
             } catch {
                 logger.error("could not store the approval hash: \(String(describing: error), privacy: .public)")
             }

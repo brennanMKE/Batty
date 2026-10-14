@@ -36,6 +36,8 @@ nonisolated enum ProjectFixture {
         runStartupCommands: Bool = false,
         symbol: String? = nil,
         lastOpenedAt: String? = nil,
+        isShared: Bool? = nil,
+        modifiedAt: String? = nil,
         id: UUID = UUID()
     ) -> [String: Any] {
         var layoutObject: [String: Any] = ["root": layout]
@@ -50,6 +52,8 @@ nonisolated enum ProjectFixture {
         ]
         if let symbol { result["symbol"] = symbol }
         if let lastOpenedAt { result["lastOpenedAt"] = lastOpenedAt }
+        if let isShared { result["isShared"] = isShared }
+        if let modifiedAt { result["modifiedAt"] = modifiedAt }
         return result
     }
 

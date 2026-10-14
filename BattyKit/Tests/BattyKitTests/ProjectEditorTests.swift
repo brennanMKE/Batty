@@ -32,9 +32,13 @@ private final class EditorFixture {
 
     var filePath: String { base.appendingPathComponent("file.txt").path }
 
-    func store() -> ProjectStore { ProjectStore(fileURL: projectsFile) }
+    /// The store stamps every saved definition with this instant, and the
+    /// fixture Projects carry it, so a stored Project equals its fixture.
+    static let stamp = Date(timeIntervalSince1970: 1_750_000_000)
 
-    func reloaded() -> ProjectStore { ProjectStore(fileURL: projectsFile) }
+    func store() -> ProjectStore { ProjectStore(fileURL: projectsFile, clock: { Self.stamp }) }
+
+    func reloaded() -> ProjectStore { ProjectStore(fileURL: projectsFile, clock: { Self.stamp }) }
 
     /// Deliberately non-default everywhere: color, layout, kinds, Tabs,
     /// toggle, approval hash and date.
@@ -51,11 +55,11 @@ private final class EditorFixture {
         return Project(
             name: name, rootPath: root.path, color: .violet, symbol: .chip, layout: layout,
             runStartupCommandsOnOpen: false, approvedCommandsHash: approved,
-            lastOpenedAt: Date(timeIntervalSince1970: 1_700_000_000))
+            lastOpenedAt: Date(timeIntervalSince1970: 1_700_000_000), modifiedAt: Self.stamp)
     }
 
     func simpleProject(name: String) -> Project {
-        Project(name: name, rootPath: root.path, color: .teal)
+        Project(name: name, rootPath: root.path, color: .teal, modifiedAt: Self.stamp)
     }
 
     func model(
@@ -1232,5 +1236,115 @@ struct ProjectEditorWindowTests {
         model.requestNewProject()
         host.layoutSubtreeIfNeeded()
         #expect(host.fittingSize.width > 0)
+    }
+}
+
+// MARK: - Sharing
+
+@MainActor
+struct ProjectEditorSharingTests {
+    @Test func togglingSharedMakesTheDraftDirtyAndEnablesSave() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        let project = fixture.richProject()
+        try store.upsert(project)
+        let model = fixture.model(store: store, selecting: project.id)
+        #expect(!model.isDirty)
+        #expect(!model.canSave)
+
+        model.setShared(true)
+
+        #expect(model.isDirty)
+        #expect(model.canSave)
+        model.setShared(false)
+        #expect(!model.isDirty, "toggling back is not a change")
+    }
+
+    @Test func saveWritesTheFlagAndKeepsTheDeviceState() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        let project = fixture.richProject(approved: "approved-hash")
+        try store.upsert(project)
+        let model = fixture.model(store: store, selecting: project.id)
+
+        model.setShared(true)
+        let saved = try #require(model.save())
+
+        #expect(saved.isShared)
+        let reloaded = try #require(fixture.reloaded().project(id: project.id))
+        #expect(reloaded.isShared)
+        #expect(reloaded.approvedCommandsHash == "approved-hash")
+        #expect(reloaded.lastOpenedAt == project.lastOpenedAt)
+        #expect(!model.isDirty)
+    }
+
+    @Test func saveKeepsAFlagToggledElsewhereWhileTheEditorWasOpen() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        let project = fixture.richProject()
+        try store.upsert(project)
+        let model = fixture.model(store: store, selecting: project.id)
+
+        try store.setShared(id: project.id, true)
+        model.setName("Renamed")
+        let saved = try #require(model.save())
+
+        #expect(saved.isShared, "the picker's toggle survived an unrelated edit")
+        #expect(fixture.reloaded().project(id: project.id)?.isShared == true)
+    }
+
+    @Test func theEditorsOwnCheckboxChangeWinsOverTheStore() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        var project = fixture.richProject()
+        project.isShared = true
+        try store.upsert(project)
+        let model = fixture.model(store: store, selecting: project.id)
+
+        model.setShared(false)
+        try store.setShared(id: project.id, true)
+        let saved = try #require(model.save())
+
+        #expect(!saved.isShared)
+        #expect(fixture.reloaded().project(id: project.id)?.isShared == false)
+    }
+
+    @Test func cancelRevertsTheFlagAndWritesNothing() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        var project = fixture.richProject()
+        project.isShared = true
+        try store.upsert(project)
+        let before = try Data(contentsOf: fixture.projectsFile)
+        let model = fixture.model(store: store, selecting: project.id)
+        model.closeWindow = {}
+
+        model.setShared(false)
+        #expect(model.draft?.isShared == false)
+        model.cancel()
+
+        #expect(model.draft?.isShared == true)
+        #expect(try Data(contentsOf: fixture.projectsFile) == before)
+    }
+
+    @Test func aNewProjectStartsLocalAndTheListRowFollowsTheDraft() throws {
+        let fixture = try EditorFixture()
+        let model = fixture.model(store: fixture.store(), defaultRoot: fixture.root.path, suggestion: "Fresh")
+        model.requestNewProject()
+        #expect(model.draft?.isShared == false)
+        #expect(model.listEntries.last?.isShared == false)
+        model.setShared(true)
+        #expect(model.listEntries.last?.isShared == true)
+    }
+
+    @Test func theListRowShowsTheStoredFlag() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        var shared = fixture.simpleProject(name: "Shared")
+        shared.isShared = true
+        try store.upsert(shared)
+        try store.upsert(fixture.simpleProject(name: "Local"))
+        let model = fixture.model(store: store)
+        #expect(model.listEntries.map(\.isShared) == [true, false])
     }
 }

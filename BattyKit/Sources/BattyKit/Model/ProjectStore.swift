@@ -88,14 +88,37 @@ public final class ProjectStore {
     /// The bytes of a file that could not be fully loaded. Copied to
     /// `projects.json.bak` before the first save overwrites it.
     @ObservationIgnored private var unreadableOriginal: Data?
+    @ObservationIgnored private let clock: @MainActor () -> Date
+    @ObservationIgnored private let backend: (any ProjectSyncBackend)?
+    @ObservationIgnored private let home: String
+    /// Runs while a backend is present; ends when its `changes` stream does.
+    @ObservationIgnored private(set) var syncTask: Task<Void, Never>?
 
-    public init(fileURL: URL? = nil, fileManager: FileManager = .default) {
+    public init(
+        fileURL: URL? = nil,
+        fileManager: FileManager = .default,
+        clock: @escaping @MainActor () -> Date = { Date() },
+        backend: (any ProjectSyncBackend)? = nil,
+        home: String = NSHomeDirectory()
+    ) {
         self.fileManager = fileManager
+        self.clock = clock
+        self.backend = backend
+        self.home = home
         let resolved = fileURL ?? (try? Self.canonicalFileURL(fileManager: fileManager))
         self.fileURL = resolved
         let loaded = Self.load(fileURL: resolved, fileManager: fileManager)
         self.projects = loaded.projects
         self.unreadableOriginal = loaded.unreadableOriginal
+        if let backend {
+            let changes = backend.changes
+            syncTask = Task { [weak self] in
+                for await _ in changes {
+                    guard let self else { return }
+                    self.mergeRemote()
+                }
+            }
+        }
     }
 
     public static func canonicalFileURL(
@@ -134,18 +157,68 @@ public final class ProjectStore {
         if projects.contains(where: { $0.id != project.id && Self.nameKey($0.name) == key }) {
             throw ProjectStoreError.duplicateName(project.name)
         }
+        project.modifiedAt = clock()
         var updated = projects
+        let wasShared: Bool
         if let index = updated.firstIndex(where: { $0.id == project.id }) {
+            wasShared = updated[index].isShared
             updated[index] = project
         } else {
+            wasShared = false
             updated.append(project)
         }
         try commit(updated)
+        if project.isShared {
+            backend?.publish(project.syncRecord(home: home))
+        } else if wasShared {
+            backend?.withdraw(id: project.id)
+        }
     }
 
     public func delete(id: UUID) throws {
-        guard projects.contains(where: { $0.id == id }) else { throw ProjectStoreError.unknownProject(id) }
+        guard let existing = project(id: id) else { throw ProjectStoreError.unknownProject(id) }
         try commit(projects.filter { $0.id != id })
+        if existing.isShared { backend?.tombstone(id: id, deletedAt: clock()) }
+    }
+
+    /// Flips the flag and stamps `modifiedAt`, since sharing changes the
+    /// definition's membership. While the file on disk could not be fully
+    /// loaded, only memory is updated, as for `recordOpen`.
+    public func setShared(id: UUID, _ shared: Bool) throws {
+        guard let index = projects.firstIndex(where: { $0.id == id }) else { throw ProjectStoreError.unknownProject(id) }
+        var updated = projects
+        let wasShared = updated[index].isShared
+        updated[index].isShared = shared
+        updated[index].modifiedAt = clock()
+        if unreadableOriginal != nil {
+            projects = updated
+            logger.notice("setShared: projects file not fully loaded; keeping the flag in memory only")
+        } else {
+            try commit(updated)
+        }
+        if shared {
+            backend?.publish(updated[index].syncRecord(home: home))
+        } else if wasShared {
+            backend?.withdraw(id: id)
+        }
+    }
+
+    /// Applies the backend's entries to the list. This is the one write to
+    /// `projects.json` that is not a direct user action, and it runs only on
+    /// a backend change. A file that could not be fully loaded is left alone.
+    func mergeRemote() {
+        guard let backend, backend.isAvailable else { return }
+        guard unreadableOriginal == nil else {
+            logger.notice("mergeRemote: projects file not fully loaded; skipping")
+            return
+        }
+        let merged = ProjectSyncMerge.apply(remote: backend.snapshot(), to: projects, home: home, now: clock())
+        guard merged != projects else { return }
+        do {
+            try commit(merged)
+        } catch {
+            logger.error("mergeRemote: save failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Puts `ids` first in the given order; Projects not listed keep their
@@ -173,6 +246,21 @@ public final class ProjectStore {
         if unreadableOriginal != nil {
             projects = updated
             logger.notice("recordOpen: projects file not fully loaded; keeping lastOpenedAt in memory only")
+            return
+        }
+        try commit(updated)
+    }
+
+    /// Stores the startup-command approval. Device state, like `recordOpen`:
+    /// it does not stamp `modifiedAt` or reach the backend, and while the file
+    /// on disk could not be fully loaded only memory is updated.
+    public func recordApproval(id: UUID, hash: String) throws {
+        guard let index = projects.firstIndex(where: { $0.id == id }) else { throw ProjectStoreError.unknownProject(id) }
+        var updated = projects
+        updated[index].approvedCommandsHash = hash
+        if unreadableOriginal != nil {
+            projects = updated
+            logger.notice("recordApproval: projects file not fully loaded; keeping the approval in memory only")
             return
         }
         try commit(updated)

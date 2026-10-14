@@ -883,6 +883,12 @@ Pane inspector, with a footer.
   per Tab (one-based `<n>`) `project-editor.tab.<n>.title`,
   `.directory`, `.directory.choose`, `.command`, `.remove`, and for Git Status
   `project-editor.repository` and `project-editor.repository.choose`.
+- Header `Sharing` column (#0501): the `Shared` checkbox `project-editor.shared`,
+  bound to the draft (`ProjectDraft.isShared`), so toggling it makes the draft
+  dirty, Save writes it, Cancel reverts it and the unsaved-changes question
+  covers it. The Projects list row shows a small `icloud` glyph after a shared
+  Project's name (`accessibilityHidden`). New Projects, Save Session as Project
+  drafts and Copy from current Session start local.
 - Footer: `project-editor.run-commands`, `project-editor.cancel`,
   `project-editor.save`, `project-editor.save-open`, `project-editor.save-error`.
 
@@ -936,7 +942,8 @@ them are absent with `FeatureFlags.projects` off.
   ranked list inside the picker; `ProjectRecency.defaultPlacement` stays `.last`
   and every other Projects surface is unchanged. A chip shows the symbol, the
   name, a small green dot carrying the OPEN badge identifier (accessibility
-  label "Open") and a trailing `+` button; there is no text badge or caption.
+  label "Open"), the Shared toggle (an `icloud` / `icloud.fill` icon button,
+  #0501) and a trailing `+` button; there is no text badge or caption.
   Return or a double-click on a chip reports `.focusExistingOrOpen` (switch to
   the open Session); Option-Return and the `+` button
   (`project-picker.open-now.another.<name>`, help "Open another copy") report
@@ -947,6 +954,16 @@ them are absent with `FeatureFlags.projects` off.
   (`project-picker.new-project-card`, a click is the `.newProject` action; the
   keyboard cursor never lands on it) follows the last Project. With none the
   empty state shows. "Cmd-N New Project..." is always in the footer.
+- The Shared checkbox (#0501) is on every card: large cards in the summary row,
+  compact cards in the path row, Open now chips as an icon button. It is its own
+  click target: a click (or double-click, which toggles twice) writes at once
+  through `onSetShared` and does not select, open or dismiss, because it does not
+  go through `onAction` (which dismisses first). Shared cards show an `icloud`
+  glyph beside the symbol, and a card whose root folder is missing shows a
+  `Folder not found` caption in place of the path
+  (`project-picker.missing-root.<name>`; the path is its help text). The root
+  check is injected and cached per root, never called from `body`. Nothing syncs
+  until the iCloud backend ships (`design/projects-sharing.md`).
 - A non-blank filter collapses to one compact four-column grid
   (`project-picker.rest` alone; the Open now strip is hidden and open matches
   keep their OPEN badge in the grid) under an "N matches" heading. Escape clears a
@@ -1040,6 +1057,9 @@ them are absent with `FeatureFlags.projects` off.
   `project-picker.open-now` (`.contain`) with its `+` buttons
   `project-picker.open-now.another.<Project name>`; the
   `project-picker.new-project-card` button below three closed Projects.
+- Shared checkbox `project-picker.shared.<Project name>` on every card kind
+  (value `1` when shared; on a chip it is a button with value `0` or `1`);
+  `project-picker.missing-root.<Project name>` only for a missing root.
 - Cards `project-picker.card.<Project name>`; OPEN badge
   `project-picker.open-badge.<Project name>` (present only for a Project with
   an open Session).
@@ -1187,6 +1207,12 @@ unchanged; these are the ones they do not cover):
 | Open Projects fill the Open now strip; End then Return switches; the `+` button opens another copy (#0500) | `ProjectsPickerTierTests.testOpenProjectsLiveInTheOpenNowStripAndSwitchOrOpenAnotherCopy` |
 | Filtering hides the strip, Escape restores it (#0500) | `ProjectsPickerTierTests.testFilteringHidesTheOpenNowStripAndEscapeRestoresIt` |
 | Strip partition, third cursor section, `+` action (#0500) | `ProjectPickerModelTests`, `ProjectPickerGridCursorTests` (BattyKit) |
+| Shared checkbox on every card, missing-folder caption (#0501) | `ProjectsSharingTests.testEveryCardCarriesTheSharedCheckboxAndOnlyAMissingFolderShowsTheCaption` |
+| The checkbox flips without selecting, opening or dismissing; persists (#0501) | `ProjectsSharingTests.testClickingACompactCheckboxFlipsItWithoutSelectingOpeningOrDismissing` |
+| The Open now chip's own Shared toggle (#0501) | `ProjectsSharingTests.testTheOpenNowChipHasItsOwnSharedToggle` |
+| Editor Shared checkbox: dirty, Save, Cancel, new Project (#0501) | `ProjectsSharingTests.testEditorSharedCheckboxIsPartOfTheDraft` |
+| Flag off leaves a seeded shared Project's bytes unchanged (#0501) | `ProjectsFlagOffTests.testFlagOffRemovesEveryProjectsEntryPointAndWritesNothing` |
+| Record split, portable path, merge rules, store and backend routing, picker card fields, editor draft (#0501) | `ProjectSharingModelTests`, `PortablePathTests`, `ProjectSyncMergeTests`, `ProjectSharingStoreTests`, `ProjectSharingPickerTests`, `ProjectEditorSharingTests` (BattyKit) |
 | Cursor transitions, tier split, New Project card, two-step Escape, match count, relative time (#0493) | `ProjectPickerGridCursorTests`, `ProjectPickerModelTests`, `ProjectRecencyRelativeTextTests` (BattyKit) |
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
 | Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both assert that the picker presents, #0483) |

@@ -296,6 +296,15 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   before writing or rewriting any BattyKit unit test that waits on
   periodic work, a subprocess, or a deferred callback — see also
   `AGENTS.md` "Asynchronous tests (binding)".
+- [`design/projects-sharing.md`](design/projects-sharing.md) (#0501) — shared
+  versus local Projects: the definition / device-state split that is the sync
+  contract (`ProjectSyncRecord`; `lastOpenedAt` and `approvedCommandsHash` never
+  sync), the `~`-portable root, the last-writer-wins merge with the
+  tombstone-versus-withdrawal distinction, the `ProjectSyncBackend` protocol and
+  its local-only implementation, the iCloud key-value storage recommendation
+  with measured sizes and the 1 MB / 1,024-key ceiling, Prod/Beta separation, and
+  the phase (b) entitlement, profile and release-script checklist that needs the
+  user's sign-off. Read before touching `projects.json` or starting phase (b).
 - [`xpc/`](xpc/README.md) — vendored reference docs from the RemoteControl
   XPC prototype (`xpc-cli-architecture.md`, `cli-embedding-and-install.md`,
   `swift-concurrency-and-xpc.md`, `build-and-release.md`, `README.md`,

@@ -21,7 +21,7 @@ Each Projects child appends the files and symbols it gates here. Removing the fl
 
 | Site | Gate | Issue |
 |---|---|---|
-| `AppStateStore.projectStore` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore.swift`) | nil, and `projects.json` never opened, read or created, unless `featureFlags.projects` | #0471 |
+| `AppStateStore.projectStore` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore.swift`) | nil, and `projects.json` never opened, read or created, unless `featureFlags.projects`; the sync backend (#0501), when one exists, is built in the same place | #0471 |
 | `AppStateStore.openProject(id:mode:)` (`BattyKit/Sources/BattyKit/Runtime/AppStateStore.swift`) | logs and throws `ProjectOpenError.featureDisabled`; creates nothing | #0472 |
 | `UITestDriver` intents `seedProject`, `openProject` (`BattyKit/Sources/BattyKit/Testing/UITestDriver.swift`) | log and return unless `featureFlags.projects` | #0472 |
 | `SessionRow` icon (`SessionRowIcon.systemName(flagOn:projectSymbol:)` and `SessionRowIconView`, `BattyKit/Sources/BattyKit/Views/SessionSidebarView.swift`) | `circle.fill` for a plain Session and the Project's symbol for a Project-backed one only when `featureFlags.projects`; `rectangle.split.3x1` otherwise, with no frame or accessibility change | #0472, #0482 |

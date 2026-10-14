@@ -664,7 +664,7 @@ struct ProjectPickerViewTests {
         for (projects, open) in [(four, Set<UUID>()), ([project("Alpha"), project("Beta")], Set<UUID>()), ([], Set<UUID>()), (withOpen, Set([withOpen[1].id, withOpen[4].id]))] {
             let view = ProjectPickerView(
                 projects: { projects }, openProjectIDs: { open }, homeDirectory: "/Users/test",
-                onAction: { _ in }, onCancel: {})
+                onAction: { _ in }, onSetShared: { _, _ in }, onCancel: {})
             let host = NSHostingView(rootView: view)
             host.frame = NSRect(x: 0, y: 0, width: 860, height: 600)
             host.layoutSubtreeIfNeeded()
@@ -681,14 +681,15 @@ struct ProjectPickerOpenChipLayoutTests {
 
     private func chip(_ name: String) -> ProjectPickerOpenChipView {
         let card = ProjectPickerModel(projects: [project(name)], openProjectIDs: [], homeDirectory: "/Users/test").cards[0]
-        return ProjectPickerOpenChipView(card: card, isSelected: false, onSelect: {}, onSwitch: {}, onAnother: {})
+        return ProjectPickerOpenChipView(card: card, isSelected: false, onSelect: {}, onSwitch: {}, onAnother: {}, onSetShared: { _ in })
     }
 
     /// A chip is (860 - 2 * 16 padding - 3 * 10 gaps) / 4, about 199 pt wide.
-    @Test func aNineCharacterNameFitsInsideAChipWithTheFixedControls() {
+    /// The fixed part includes the Shared control, so removing it or widening it fails this.
+    @Test func aTwelveCharacterNameFitsInsideAChipWithTheSymbolDotSharedAndPlusControls() {
         let chipWidth: CGFloat = (860 - 32 - 30) / 4
         let fixed = width(of: chip(""))
-        let name = width(of: Text("Charlie W").fontWeight(.semibold).lineLimit(1).fixedSize())
+        let name = width(of: Text("Charlie Wood").fontWeight(.semibold).lineLimit(1).fixedSize())
         #expect(fixed + name + 8 <= chipWidth, "fixed \(fixed) + name \(name) must fit \(chipWidth)")
     }
 }

@@ -8,7 +8,9 @@ import XCTest
 /// #0477's unit tests; the VM runs the Beta build, so it is not asserted here.
 nonisolated final class ProjectsFlagOffTests: ProjectsUITestCase {
     private func seedProject() throws -> [String: Any] {
-        ProjectFixture.project(name: "Ghost", root: try makeDirectory("ghost-root"), layout: ProjectFixture.terminal(), preset: "singlePane")
+        ProjectFixture.project(
+            name: "Ghost", root: try makeDirectory("ghost-root"), layout: ProjectFixture.terminal(), preset: "singlePane",
+            isShared: true, modifiedAt: "2026-01-01T12:00:00Z")
     }
 
     @MainActor

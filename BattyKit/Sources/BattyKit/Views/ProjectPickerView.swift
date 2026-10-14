@@ -28,6 +28,9 @@ struct ProjectPickerView: View {
     let projects: () -> [Project]
     let openProjectIDs: () -> Set<UUID>
     let onAction: (ProjectPickerAction) -> Void
+    /// The Shared checkbox writes at once and leaves the sheet up, so it does
+    /// not go through `onAction`, which dismisses first.
+    let onSetShared: (UUID, Bool) -> Void
     let onCancel: () -> Void
 
     @State private var base: ProjectPickerModel
@@ -39,14 +42,17 @@ struct ProjectPickerView: View {
         projects: @escaping () -> [Project],
         openProjectIDs: @escaping () -> Set<UUID>,
         homeDirectory: String = NSHomeDirectory(),
+        rootExists: @escaping (String) -> Bool = { ProjectEditorViewModel.fileSystemDirectoryExists($0) },
         onAction: @escaping (ProjectPickerAction) -> Void,
+        onSetShared: @escaping (UUID, Bool) -> Void,
         onCancel: @escaping () -> Void
     ) {
         _base = State(initialValue: ProjectPickerModel(
-            projects: projects(), openProjectIDs: openProjectIDs(), homeDirectory: homeDirectory))
+            projects: projects(), openProjectIDs: openProjectIDs(), homeDirectory: homeDirectory, rootExists: rootExists))
         self.projects = projects
         self.openProjectIDs = openProjectIDs
         self.onAction = onAction
+        self.onSetShared = onSetShared
         self.onCancel = onCancel
     }
 
@@ -175,13 +181,15 @@ struct ProjectPickerView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns), spacing: spacing) {
                 ForEach(cards) { card in
-                    ProjectPickerCardView(card: card, style: style, isSelected: card.id == selectedID, now: Date())
-                        .id(card.id)
-                        .onTapGesture(count: 2) {
+                    ProjectPickerCardView(
+                        card: card, style: style, isSelected: card.id == selectedID, now: Date(),
+                        onSelect: { model.select(card.id) },
+                        onOpen: {
                             model.select(card.id)
                             if let action = model.openAction(optionHeld: false) { onAction(action) }
-                        }
-                        .onTapGesture { model.select(card.id) }
+                        },
+                        onSetShared: { onSetShared(card.id, $0) })
+                        .id(card.id)
                 }
                 if showsNewProjectCard {
                     newProjectCard
@@ -212,7 +220,8 @@ struct ProjectPickerView: View {
                         },
                         onAnother: {
                             if let action = model.anotherCopyAction(for: card.id) { onAction(action) }
-                        })
+                        },
+                        onSetShared: { onSetShared(card.id, $0) })
                 }
             }
         }
@@ -329,6 +338,9 @@ private struct ProjectPickerCardView: View {
     let style: Style
     let isSelected: Bool
     let now: Date
+    let onSelect: () -> Void
+    let onOpen: () -> Void
+    let onSetShared: (Bool) -> Void
 
     /// Invisible stand-in with a large card's vertical structure, so the New
     /// Project card is exactly as tall as the cards beside it.
@@ -349,6 +361,12 @@ private struct ProjectPickerCardView: View {
                     .foregroundStyle(card.color.color)
                     .frame(width: 16)
                     .accessibilityHidden(true)
+                if card.isShared {
+                    Image(systemName: "icloud")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
                 Text(card.name)
                     .font(style == .large ? .system(size: 14, weight: .semibold) : .body.weight(.semibold))
                     .lineLimit(1)
@@ -369,18 +387,24 @@ private struct ProjectPickerCardView: View {
                 }
             }
             .padding(.top, 10)
-            Text(card.displayPath)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.top, 2)
+            HStack(spacing: 6) {
+                pathLabel
+                if style == .compact {
+                    Spacer(minLength: 0)
+                    sharedTogglePlaceholder
+                }
+            }
+            .padding(.top, 2)
             if style == .large {
-                Text(card.summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.top, 2)
+                HStack(spacing: 6) {
+                    Text(card.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    sharedTogglePlaceholder
+                }
+                .padding(.top, 2)
             }
         }
         .padding(10)
@@ -391,10 +415,54 @@ private struct ProjectPickerCardView: View {
                 .strokeBorder(isSelected ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isSelected ? 2 : 1)
         )
         .contentShape(RoundedRectangle(cornerRadius: 9))
+        .onTapGesture(count: 2, perform: onOpen)
+        .onTapGesture(perform: onSelect)
+        .overlay(alignment: .bottomTrailing) {
+            sharedToggle.padding(10)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(card.name))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("project-picker.card.\(card.name)")
+    }
+
+    /// Reserves the checkbox's space in the last row. The live checkbox is an
+    /// overlay layered above the card's tap gestures instead of inside the
+    /// view that carries them, so it owns its clicks, double-clicks included.
+    private var sharedTogglePlaceholder: some View {
+        sharedToggle.hidden().accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var pathLabel: some View {
+        if card.rootIsMissing {
+            Label(String(localized: "Folder not found", comment: "Open Project picker: caption on a card whose root folder does not exist on this Mac"), systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .lineLimit(1)
+                .help(card.displayPath)
+                .accessibilityIdentifier("project-picker.missing-root.\(card.name)")
+        } else {
+            Text(card.displayPath)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private var sharedToggle: some View {
+        Toggle(
+            String(localized: "Shared", comment: "Open Project picker: checkbox that marks a Project as synced through iCloud"),
+            isOn: Binding(get: { card.isShared }, set: onSetShared)
+        )
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
+        .font(.caption)
+        .fixedSize()
+        .help(String(localized: "Shared Projects sync with iCloud", comment: "Project Editor and picker: help for the Shared checkbox"))
+        .accessibilityLabel(Text("Shared"))
+        .accessibilityIdentifier("project-picker.shared.\(card.name)")
     }
 
     private var thumbnail: some View {
@@ -433,10 +501,11 @@ struct ProjectPickerOpenChipView: View {
     let onSelect: () -> Void
     let onSwitch: () -> Void
     let onAnother: () -> Void
+    let onSetShared: (Bool) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 8) {
+        HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: card.symbol.resolvedSystemName)
                     .foregroundStyle(card.color.color)
                     .frame(width: 16)
@@ -451,16 +520,27 @@ struct ProjectPickerOpenChipView: View {
                     .accessibilityElement()
                     .accessibilityLabel(Text("Open"))
                     .accessibilityIdentifier("project-picker.open-badge.\(card.name)")
-                Spacer(minLength: 0)
             }
             .padding(.leading, 10)
-            .frame(maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture(count: 2, perform: onSwitch)
             .onTapGesture(perform: onSelect)
+            Button { onSetShared(!card.isShared) } label: {
+                Image(systemName: card.isShared ? "icloud.fill" : "icloud")
+                    .foregroundStyle(card.isShared ? Color.accentColor : Color.secondary)
+                    .frame(width: 18, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Shared Projects sync with iCloud", comment: "Project Editor and picker: help for the Shared checkbox"))
+            .accessibilityLabel(Text("Shared"))
+            .accessibilityValue(Text(card.isShared ? "1" : "0"))
+            .accessibilityAddTraits(.isToggle)
+            .accessibilityIdentifier("project-picker.shared.\(card.name)")
             Button(action: onAnother) {
                 Image(systemName: "plus")
-                    .frame(width: 20, height: 20)
+                    .frame(width: 18, height: 20)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -468,7 +548,7 @@ struct ProjectPickerOpenChipView: View {
             .accessibilityLabel(Text("Open another copy"))
             .accessibilityIdentifier("project-picker.open-now.another.\(card.name)")
         }
-        .padding(.trailing, 10)
+        .padding(.trailing, 8)
         .frame(height: 36)
         .background(RoundedRectangle(cornerRadius: 7).fill(Color(nsColor: isSelected ? .controlBackgroundColor : .clear)))
         .overlay(

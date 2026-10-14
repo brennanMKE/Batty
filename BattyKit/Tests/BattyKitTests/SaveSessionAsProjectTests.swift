@@ -179,9 +179,10 @@ struct SaveSessionAsProjectEntryTests {
     @Test func updateReplacesLayoutAndTabsButKeepsCommandsAndApprovalOnlyAfterSave() throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        let stored = fixture.storedProject()
+        let seed = fixture.storedProject()
         let projectStore = try #require(store.projectStore)
-        try projectStore.upsert(stored)
+        try projectStore.upsert(seed)
+        let stored = try #require(projectStore.project(id: seed.id))
         let session = fixture.session(.leaf(fixture.pane([fixture.tab("src")])))
         session.projectID = stored.id
         let opened = Opened()
@@ -209,9 +210,10 @@ struct SaveSessionAsProjectEntryTests {
     @Test func anUpdateIsHonoredOnlyForASessionOpenedFromThatProject() throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        let stored = fixture.storedProject()
+        let seed = fixture.storedProject()
         let projectStore = try #require(store.projectStore)
-        try projectStore.upsert(stored)
+        try projectStore.upsert(seed)
+        let stored = try #require(projectStore.project(id: seed.id))
         let before = try Data(contentsOf: fixture.projectsFile)
 
         let unbacked = fixture.session(.leaf(fixture.pane([fixture.tab("src")])))
@@ -378,6 +380,30 @@ struct CopyFromCurrentSessionTests {
         #expect(model.copyFromCurrentSession(confirmDiscard: true) == .noSession)
         #expect(model.draft == before)
         #expect(model.saveError != nil)
+    }
+
+    @Test func aCapturedNewDraftIsLocal() throws {
+        let fixture = try Fixture()
+        let projectStore = ProjectStore(fileURL: fixture.projectsFile)
+        let draft = capture(fixture, root: fixture.root.path).newDraft(name: "Fresh", existingNames: [])
+        #expect(!draft.isShared)
+        let model = model(fixture, projectStore) { capture(fixture, root: $0) }
+        model.requestNavigation(.newDraft(draft))
+        #expect(model.copyFromCurrentSession(confirmDiscard: true) == .applied)
+        #expect(model.draft?.isShared == false, "Copy from current Session never turns sharing on")
+    }
+
+    @Test func copyFromCurrentSessionLeavesASharedProjectsFlagAlone() throws {
+        let fixture = try Fixture()
+        let projectStore = ProjectStore(fileURL: fixture.projectsFile)
+        var stored = fixture.storedProject()
+        stored.isShared = true
+        try projectStore.upsert(stored)
+        let model = model(fixture, projectStore) { capture(fixture, root: $0) }
+
+        #expect(model.copyFromCurrentSession(confirmDiscard: true) == .applied)
+
+        #expect(model.draft?.isShared == true)
     }
 
     @Test func anEmptyRootTakesTheSessionsFolderAndAPlaceholderRootMustBeChosen() throws {

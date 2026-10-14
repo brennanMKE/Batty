@@ -21,6 +21,10 @@ struct ProjectDraft: Equatable {
     /// compares hashes at open time).
     var approvedCommandsHash: String?
     var lastOpenedAt: Date?
+    /// Edited by the Sharing checkbox, and part of dirty tracking and Save.
+    var isShared = false
+    /// Carried through untouched; the store stamps it on save.
+    var modifiedAt: Date?
     /// Messages about parts of a captured Session that could not be kept as
     /// they were (a folder outside the root), shown as warnings until the
     /// field or the structure around it is edited. Not part of the Project.
@@ -39,6 +43,8 @@ struct ProjectDraft: Equatable {
         runStartupCommandsOnOpen = project.runStartupCommandsOnOpen
         approvedCommandsHash = project.approvedCommandsHash
         lastOpenedAt = project.lastOpenedAt
+        isShared = project.isShared
+        modifiedAt = project.modifiedAt
     }
 
     init(
@@ -117,7 +123,9 @@ struct ProjectDraft: Equatable {
             layout: normalizedLayout,
             runStartupCommandsOnOpen: runStartupCommandsOnOpen,
             approvedCommandsHash: approvedCommandsHash,
-            lastOpenedAt: lastOpenedAt
+            lastOpenedAt: lastOpenedAt,
+            isShared: isShared,
+            modifiedAt: modifiedAt
         )
     }
 }

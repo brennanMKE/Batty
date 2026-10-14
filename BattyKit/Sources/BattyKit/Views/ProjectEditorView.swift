@@ -290,9 +290,17 @@ private struct ProjectListRow: View {
                 .frame(width: 18)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.name)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(entry.name)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                    if entry.isShared {
+                        Image(systemName: "icloud")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                }
                 Text(entry.path)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -390,6 +398,17 @@ private struct ProjectHeaderFields: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Symbol").font(.caption).foregroundStyle(.secondary)
                 ProjectSymbolPicker(model: model)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Sharing").font(.caption).foregroundStyle(.secondary)
+                Toggle(
+                    "Shared",
+                    isOn: Binding(get: { model.draft?.isShared ?? false }, set: { model.setShared($0) })
+                )
+                .toggleStyle(.checkbox)
+                .help(String(localized: "Shared Projects sync with iCloud", comment: "Project Editor and picker: help for the Shared checkbox"))
+                .accessibilityIdentifier("project-editor.shared")
             }
         }
         .padding(.horizontal, 20)

@@ -109,6 +109,13 @@ public struct SessionDetailView: View {
                     afterProjectPicker = action
                     windowRuntime.projectPickerShown = false
                 },
+                onSetShared: { id, shared in
+                    do {
+                        try store.projectStore?.setShared(id: id, shared)
+                    } catch {
+                        logger.error("setShared failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                },
                 onCancel: { windowRuntime.projectPickerShown = false }
             )
         }
