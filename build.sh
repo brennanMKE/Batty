@@ -20,7 +20,9 @@
 #   ./build.sh run                 build, then launch the built Batty Beta.app
 #   ./build.sh terminate           quit a running Batty Beta (never touches Prod)
 #   ./build.sh release [args]      build with the Prod scheme, for release only
-#   ./build.sh package [--sign]    package a Batty Beta.app to install alongside Prod
+#   ./build.sh package [--sign [--notarize]]
+#                                  package a Batty Beta.app to install alongside Prod;
+#                                  --sign --notarize makes a notarized dist/Batty-Beta-<sha>.dmg
 #                                  (delegates to scripts/build-beta.sh)
 #
 # Any other action is passed through to xcodebuild under the Beta scheme,

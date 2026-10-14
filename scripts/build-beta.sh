@@ -12,6 +12,12 @@
 # Usage:
 #   scripts/build-beta.sh                 build unsigned (the default), print the output path
 #   scripts/build-beta.sh --sign          build with manual Developer ID signing and the Beta profile
+#   scripts/build-beta.sh --sign --notarize
+#                                         archive + export (like release.sh), sign with the Developer ID,
+#                                         package dist/Batty-Beta-<sha>.dmg, notarize and staple it
+#   scripts/build-beta.sh --sign --notarize --no-submit
+#                                         the same up to the DMG, then stop before `notarytool submit`;
+#                                         writes dist/Batty-Beta-<sha>-unnotarized.dmg and submits nothing
 #   scripts/build-beta.sh --teardown      print the teardown steps; makes no changes
 #   scripts/build-beta.sh -h | --help     this text
 #
@@ -46,6 +52,28 @@
 #   builds for every further code change. A signed build belongs to a Beta
 #   *install*, not to routine iteration — that is what keeps signed builds
 #   rare enough not to risk another revocation.
+#
+# --notarize (#0506)
+#
+#   Valid only together with --sign. It is the same sanctioned Developer ID
+#   site as --sign, not a new one: Manual signing, the committed Beta
+#   profile, no Automatic signing, no -allowProvisioningUpdates. The plain
+#   --sign build (Debug, `xcodebuild build`) cannot be notarized -- it has
+#   get-task-allow and no secure timestamp on Xcode's own signatures or on
+#   Sparkle's nested code -- so --notarize archives the Release
+#   configuration and runs -exportArchive (method developer-id), which
+#   re-signs nested code with a timestamp, then re-signs the embedded
+#   bin/BattyBroker and bin/batty and the app (#0273), exactly as
+#   scripts/release.sh does. It checks every Mach-O for a secure timestamp,
+#   hardened runtime and no get-task-allow, runs scripts/verify-profile.sh,
+#   builds and signs the DMG, and only then submits to Apple.
+#
+#   Notarization uploads the binary to Apple: a shared-state action, run
+#   only with the user's go-ahead each time. --no-submit stops right before
+#   `notarytool submit` so everything up to it can be checked without
+#   uploading anything to the notary service. codesign --timestamp still
+#   contacts Apple's timestamp server. The mode installs nothing and never touches
+#   /Applications.
 #
 # TEARDOWN (also see docs/beta-teardown.md)
 #
@@ -89,20 +117,35 @@ print_help() {
 }
 
 SIGN=0
+NOTARIZE=0
+NO_SUBMIT=0
 TEARDOWN=0
 
 for arg in "$@"; do
     case "$arg" in
         --sign) SIGN=1 ;;
+        --notarize) NOTARIZE=1 ;;
+        --no-submit) NO_SUBMIT=1 ;;
         --teardown) TEARDOWN=1 ;;
         -h|--help) print_help; exit 0 ;;
         *)
             print -u2 "build-beta.sh: unknown flag: $arg"
-            print -u2 "usage: $0 [--sign] [--teardown] [-h|--help]"
+            print -u2 "usage: $0 [--sign [--notarize [--no-submit]]] [--teardown] [-h|--help]"
             exit 2
             ;;
     esac
 done
+
+if (( NOTARIZE && ! SIGN )); then
+    print -u2 "build-beta.sh: --notarize requires --sign (only a Developer ID signed build can be notarized)"
+    print -u2 "usage: $0 --sign --notarize [--no-submit]"
+    exit 2
+fi
+if (( NO_SUBMIT && ! NOTARIZE )); then
+    print -u2 "build-beta.sh: --no-submit is only meaningful with --sign --notarize"
+    print -u2 "usage: $0 --sign --notarize [--no-submit]"
+    exit 2
+fi
 
 if (( TEARDOWN )); then
     cat <<'EOF'
@@ -236,6 +279,232 @@ else
     print "$CURRENT_RESOLVED_HASH" > "$STAMP_FILE"
 fi
 
+notarize_flow() {
+    local TEAM_ID="XV8BAAVZ6V"
+    local SIGN_IDENTITY="Developer ID Application: Brennan Stehling ($TEAM_ID)"
+    local NOTARY_PROFILE="Batty-notary"
+    local BUNDLE_ID="co.sstools.Batty.beta"
+    local PROFILE_NAME="Batty Beta Developer ID"
+    local WORK_ROOT="$BUILD_ROOT/notarize"
+    local ARCHIVE_PATH="$WORK_ROOT/Batty Beta.xcarchive"
+    local EXPORT_DIR="$WORK_ROOT/Export"
+    local EXPORT_PLIST="$WORK_ROOT/exportOptions.plist"
+    local DIST_DIR="$REPO/dist"
+    local VOLNAME="Batty Beta"
+    local WORK_DMG="$DIST_DIR/$VOLNAME.dmg"
+    local GIT_SHA
+    GIT_SHA="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || print unknown)"
+    local FINAL_DMG="$DIST_DIR/Batty-Beta-$GIT_SHA.dmg"
+    (( NO_SUBMIT )) && FINAL_DMG="$DIST_DIR/Batty-Beta-$GIT_SHA-unnotarized.dmg"
+
+    if ! command -v create-dmg >/dev/null 2>&1; then
+        print -u2 "error: create-dmg not installed. Run: brew install create-dmg"
+        return 1
+    fi
+    if ! security find-identity -p codesigning -v | grep -q "$SIGN_IDENTITY"; then
+        print -u2 "error: signing identity not found in Keychain: $SIGN_IDENTITY"
+        return 1
+    fi
+    if (( ! NO_SUBMIT )) && ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+        print -u2 "error: notarytool keychain profile '$NOTARY_PROFILE' missing or invalid."
+        return 1
+    fi
+
+    rm -rf "$WORK_ROOT"
+    mkdir -p "$WORK_ROOT" "$DIST_DIR"
+
+    cat > "$EXPORT_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>developer-id</string>
+    <key>teamID</key>
+    <string>$TEAM_ID</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>Developer ID Application</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>$BUNDLE_ID</key>
+        <string>$PROFILE_NAME</string>
+    </dict>
+</dict>
+</plist>
+PLIST
+
+    print "==> xcodebuild archive ($SCHEME, Release)"
+    xcodebuild archive \
+        -workspace "$WORKSPACE" \
+        -scheme "$SCHEME" \
+        -configuration Release \
+        -archivePath "$ARCHIVE_PATH" \
+        -derivedDataPath "$DERIVED_DATA" \
+        -destination 'generic/platform=macOS' \
+        BATTY_SIGNING=developerid
+
+    print "==> Exporting signed app (developer-id, manual)"
+    xcodebuild -exportArchive \
+        -archivePath "$ARCHIVE_PATH" \
+        -exportPath "$EXPORT_DIR" \
+        -exportOptionsPlist "$EXPORT_PLIST"
+
+    local APP_PATH="$EXPORT_DIR/$APP_NAME"
+    if [[ ! -d "$APP_PATH" ]]; then
+        print -u2 "error: exported app not found at $APP_PATH"
+        return 1
+    fi
+
+    # Same reason as release.sh (#0273): bin/* are sealed as resources, so
+    # -exportArchive does not necessarily re-sign them.
+    print "==> Re-signing embedded agent + CLI with the Developer ID identity (#0273)"
+    local ENTITLEMENTS_PLIST="$WORK_ROOT/app-entitlements.plist"
+    codesign -d --entitlements - --xml "$APP_PATH" 2>/dev/null > "$ENTITLEMENTS_PLIST" || true
+    local rel_path bin_path
+    for rel_path in "Contents/Resources/bin/BattyBroker" "Contents/Resources/bin/batty"; do
+        bin_path="$APP_PATH/$rel_path"
+        if [[ ! -f "$bin_path" ]]; then
+            print -u2 "error: $rel_path missing from exported app"
+            return 1
+        fi
+        codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin_path"
+        print "    re-signed: $rel_path"
+    done
+    if [[ -s "$ENTITLEMENTS_PLIST" ]]; then
+        codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
+            --entitlements "$ENTITLEMENTS_PLIST" "$APP_PATH"
+    else
+        print -u2 "error: could not extract the exported app's entitlements"
+        return 1
+    fi
+    print "    re-signed: $APP_NAME (resource seal updated)"
+
+    print "==> Verifying app signature"
+    codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+    print "==> Verifying the embedded provisioning profile and iCloud entitlement (#0503)"
+    if ! "$REPO/scripts/verify-profile.sh" "$APP_PATH"; then
+        print -u2 "error: the exported app's provisioning profile or iCloud entitlement is wrong (see FAIL lines above)."
+        return 1
+    fi
+
+    # The notary service inspects every Mach-O, including those nested in
+    # Sparkle.framework, which --deep --strict does not report on.
+    print "==> Verifying every Mach-O: Developer ID Authority, hardened runtime, secure timestamp, no get-task-allow"
+    local app_authority
+    app_authority=$(codesign -dvvv "$APP_PATH" 2>&1 | awk -F= '/^Authority=/ && !seen { print $2; seen = 1 }')
+    if [[ "$app_authority" != "$SIGN_IDENTITY" ]]; then
+        print -u2 "error: exported app's Authority is '$app_authority', expected '$SIGN_IDENTITY'"
+        return 1
+    fi
+    local app_team
+    app_team=$(codesign -dv "$APP_PATH" 2>&1 | awk -F= '/^TeamIdentifier=/ { print $2 }')
+    local f cs authority team ts ftype ents count=0 bad=0
+    while IFS= read -r -d '' f; do
+        ftype=$(file -b "$f")
+        if [[ "$ftype" != *Mach-O* ]]; then
+            continue
+        fi
+        count=$((count + 1))
+        cs=$(codesign -dvv "$f" 2>&1) || { print -u2 "error: cannot read signature of ${f#$APP_PATH/}"; bad=$((bad + 1)); continue; }
+        authority=$(print -r -- "$cs" | awk -F= '/^Authority=/ && !seen { print $2; seen = 1 }')
+        team=$(print -r -- "$cs" | awk -F= '/^TeamIdentifier=/ { print $2 }')
+        ts=$(print -r -- "$cs" | awk -F= '/^Timestamp=/ { print $2 }')
+        if [[ "$authority" != "$app_authority" || "$team" != "$app_team" ]]; then
+            print -u2 "error: ${f#$APP_PATH/}: Authority '$authority' / team '$team' differ from the app's"
+            bad=$((bad + 1)); continue
+        fi
+        if ! print -r -- "$cs" | grep -q "flags=.*runtime"; then
+            print -u2 "error: ${f#$APP_PATH/}: hardened runtime is off"
+            bad=$((bad + 1)); continue
+        fi
+        if [[ -z "$ts" ]]; then
+            print -u2 "error: ${f#$APP_PATH/}: no secure timestamp -- the notary service will reject it"
+            bad=$((bad + 1)); continue
+        fi
+        ents=$(codesign -d --entitlements - "$f" 2>/dev/null || true)
+        if [[ "$ents" == *get-task-allow* ]]; then
+            print -u2 "error: ${f#$APP_PATH/}: carries com.apple.security.get-task-allow"
+            bad=$((bad + 1)); continue
+        fi
+        print "    OK: ${f#$APP_PATH/}  [Timestamp=$ts]"
+    done < <(find "$APP_PATH" -type f -print0)
+    if (( count == 0 || bad > 0 )); then
+        print -u2 "error: $bad of $count Mach-O files failed the notarization pre-check"
+        return 1
+    fi
+    print "    $count Mach-O files checked"
+
+    local APP_ICON="$APP_PATH/Contents/Resources/AppIcon.icns"
+    if [[ ! -f "$APP_ICON" ]]; then
+        print -u2 "error: AppIcon.icns not found at $APP_ICON"
+        return 1
+    fi
+
+    # Keeping the work file's name equal to the volume name avoids the
+    # Gatekeeper-triggered rename release.sh documents.
+    print "==> Creating DMG: $WORK_DMG"
+    rm -f "$WORK_DMG" "$FINAL_DMG" "$DIST_DIR"/rw.*.dmg(N)
+    # --skip-jenkins omits the Finder AppleScript layout, which fails with
+    # "Can't get disk (-1728)" when Finder is slow to see the new volume.
+    # The Applications link and volume icon are kept.
+    if ! create-dmg \
+        --skip-jenkins \
+        --volname "$VOLNAME" \
+        --volicon "$APP_ICON" \
+        --icon-size 100 \
+        --app-drop-link 425 190 \
+        --no-internet-enable \
+        "$WORK_DMG" \
+        "$APP_PATH"; then
+        rm -f "$DIST_DIR"/rw.*.dmg(N)
+        print -u2 "error: create-dmg failed"
+        return 1
+    fi
+    rm -f "$DIST_DIR"/rw.*.dmg(N)
+
+    print "==> Signing DMG"
+    codesign --force --sign "$SIGN_IDENTITY" --timestamp "$WORK_DMG"
+    codesign --verify --verbose=2 "$WORK_DMG"
+
+    if (( NO_SUBMIT )); then
+        mv "$WORK_DMG" "$FINAL_DMG"
+        print ""
+        print "==> --no-submit: stopping before notarytool submit. Nothing was uploaded to the notary service (codesign still contacts the timestamp server)."
+        print "    Signed, NOT notarized DMG: $FINAL_DMG"
+        print "    Would run next:"
+        print "      xcrun notarytool submit \"$WORK_DMG\" --keychain-profile $NOTARY_PROFILE --wait"
+        print "      xcrun stapler staple / validate, scripts/verify-dmg.sh"
+        rm -rf "$WORK_ROOT"
+        return 0
+    fi
+
+    print "==> Submitting for notarization (this can take several minutes)"
+    xcrun notarytool submit "$WORK_DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+
+    print "==> Stapling notarization ticket"
+    xcrun stapler staple "$WORK_DMG"
+    xcrun stapler validate "$WORK_DMG"
+
+    print "==> Verifying the stapled DMG (scripts/verify-dmg.sh)"
+    if ! "$REPO/scripts/verify-dmg.sh" "$WORK_DMG"; then
+        print -u2 "error: verify-dmg.sh failed (see FAIL lines above)."
+        return 1
+    fi
+
+    mv "$WORK_DMG" "$FINAL_DMG"
+    fileicon set "$FINAL_DMG" "$APP_ICON" 2>/dev/null || true
+    rm -rf "$WORK_ROOT"
+
+    print ""
+    print "==> Notarized Beta DMG: $FINAL_DMG"
+    print ""
+    print "Installing stays manual: mount the DMG and drag \"$APP_NAME\" to Applications."
+    print "Teardown steps: scripts/build-beta.sh --teardown  (also docs/beta-teardown.md)"
+}
+
 SIGN_FLAGS=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
 if (( SIGN )); then
     print "==> --sign: building with manual Developer ID signing and the Beta provisioning profile."
@@ -245,6 +514,11 @@ if (( SIGN )); then
     SIGN_FLAGS=(BATTY_SIGNING=developerid)
 else
     print "==> Building unsigned (default). Pass --sign only if launchd refuses the broker."
+fi
+
+if (( NOTARIZE )); then
+    notarize_flow
+    exit $?
 fi
 
 rm -rf "$OUT_DIR"

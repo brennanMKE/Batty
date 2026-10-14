@@ -277,7 +277,7 @@ Never do any of these, in any session or subagent:
 - Ask the user to create, revoke or "fix" a certificate in the developer portal.
 
 Developer ID signing happens in exactly two places (user decision, 2026-10-14). Both use **Manual** signing with the committed profiles in `Configuration/Profiles/`, which never contacts Apple:
-- `./build.sh package --sign`, to build the Beta the user installs;
+- `./build.sh package --sign`, to build the Beta the user installs. With `--notarize` (valid only together with `--sign`) it archives, exports and packages a notarized Beta DMG for installing on another Mac; it notarizes only with the user's go-ahead each time (`--no-submit` stops before the upload);
 - `scripts/release.sh`, only with the user's go-ahead each time. If a signing step fails, stop and report it. Never work around it.
 
 ## Restricted areas
