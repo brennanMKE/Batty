@@ -296,7 +296,7 @@ See `issues/Issues.md` for the full workflow — **read it before touching any i
 - Status: `open` → `in-progress` → `resolved` → `closed`. **Never set `closed`** — that's the user's transition after they verify.
 - **Resolving an issue is review-gated and role-split (binding, for cost and quality):**
   - All work happens on a branch `issue/NNNN`; `main` receives one squash commit after review approval. The branch is kept, never pushed or deleted.
-  - A **filer subagent pinned to the top available model** (currently Fable, `claude-fable-5`) creates new `NNNN.md` files on `main` — no branch, no review gate.
+  - A **filer subagent pinned to the top available model** (currently Opus; user directive "Use Opus, not Fable", restated 2026-10-14) creates new `NNNN.md` files on `main` — no branch, no review gate.
   - An **implementer subagent pinned to Sonnet** (`claude-sonnet-5`) does the code work and verification on the branch.
   - A **reviewer subagent pinned to Opus** (`claude-opus-4-8`) reviews `git diff main...HEAD`; approve or request-changes. Findings route back to the *same* implementer agent.
   - The **main session orchestrates only** — it dispatches the filer for new issues, creates branches, dispatches the implementer/reviewer subagents, records review/work-log commits, and squash-merges after approval. It does **not** file, implement, or review inline, even for small follow-ups; those go to the respective subagent.
