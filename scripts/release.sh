@@ -470,18 +470,32 @@ DMG_PATH="$DIST_DIR/Batty-$GIT_SHA.dmg"
 
 print "==> Creating DMG: $WORK_DMG"
 rm -f "$WORK_DMG" "$DMG_PATH"
-create-dmg \
-    --volname "Batty" \
-    --volicon "$APP_ICON" \
-    --window-pos 200 120 \
-    --window-size 600 400 \
-    --icon-size 100 \
-    --icon "$APP_NAME.app" 175 190 \
-    --hide-extension "$APP_NAME.app" \
-    --app-drop-link 425 190 \
-    --no-internet-enable \
-    "$WORK_DMG" \
-    "$APP_PATH"
+# create-dmg's Finder AppleScript layout step can fail with "Can't get disk"
+# (-1728) when Finder can't see the hidden mount; retry once unstyled.
+create_release_dmg() {
+    create-dmg \
+        --volname "Batty" \
+        --volicon "$APP_ICON" \
+        --window-pos 200 120 \
+        --window-size 600 400 \
+        --icon-size 100 \
+        --icon "$APP_NAME.app" 175 190 \
+        --hide-extension "$APP_NAME.app" \
+        --app-drop-link 425 190 \
+        --no-internet-enable \
+        "$@" \
+        "$WORK_DMG" \
+        "$APP_PATH"
+}
+if ! create_release_dmg; then
+    print -u2 "warning: styled DMG failed; retrying without the Finder layout (--skip-jenkins)"
+    rm -f "$DIST_DIR"/rw.*.dmg(N) "$WORK_DMG"
+    if ! create_release_dmg --skip-jenkins; then
+        rm -f "$DIST_DIR"/rw.*.dmg(N) "$WORK_DMG"
+        print -u2 "error: create-dmg failed twice"
+        exit 1
+    fi
+fi
 
 print "==> Signing DMG"
 codesign --force --sign "$SIGN_IDENTITY" --timestamp "$WORK_DMG"
