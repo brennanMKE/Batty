@@ -53,6 +53,11 @@ done
 # can't run for some other reason; it does not bypass any check inside
 # preflight.sh itself.
 
+# #0503: installed before the credential gate so its profile check sees the
+# repo copy, which is what the archive step uses.
+print "==> Installing the repo's provisioning profiles for manual signing (scripts/install-profiles.sh)"
+"$SCRIPT_DIR/install-profiles.sh"
+
 if (( SKIP_CREDENTIAL_CHECK )); then
     print "==> Skipping credential gate (--skip-credential-check)"
 else
@@ -123,7 +128,14 @@ cat > "$EXPORT_PLIST" <<EOF
     <key>teamID</key>
     <string>$TEAM_ID</string>
     <key>signingStyle</key>
-    <string>automatic</string>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>Developer ID Application</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>co.sstools.Batty</key>
+        <string>Batty Developer ID</string>
+    </dict>
 </dict>
 </plist>
 EOF
@@ -135,6 +147,7 @@ xcodebuild archive \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
     -destination 'generic/platform=macOS' \
+    BATTY_SIGNING=developerid \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 # #0312: fail fast, before the slow export/notarize round trip, if this
@@ -207,6 +220,18 @@ print "    re-signed: $APP_NAME.app (resource seal updated)"
 
 print "==> Verifying app signature"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+# #0503: the iCloud key-value entitlement is restricted, so it is valid only
+# when the embedded profile authorizes it. The re-sign above keeps
+# Contents/embedded.provisionprofile (a bundle file, resealed with the rest);
+# assert that, and that the entitlement and the signing certificate match the
+# profile, before spending the notarization round trip. Prints the profile's
+# ExpirationDate. The Gatekeeper check on the DMG is the spctl step below.
+print "==> Verifying the embedded provisioning profile and iCloud entitlement (#0503)"
+if ! "$SCRIPT_DIR/verify-profile.sh" "$APP_PATH"; then
+    print -u2 "error: the exported app's provisioning profile or iCloud entitlement is wrong (see FAIL lines above)."
+    exit 1
+fi
 
 # Contents/Resources/bin is sealed as a *resource*, not nested code, so
 # --deep --strict above never inspects either binary dropped there — an

@@ -31,6 +31,7 @@ struct ProjectPickerView: View {
     /// The Shared checkbox writes at once and leaves the sheet up, so it does
     /// not go through `onAction`, which dismisses first.
     let onSetShared: (UUID, Bool) -> Void
+    let syncError: () -> String?
     let onCancel: () -> Void
 
     @State private var base: ProjectPickerModel
@@ -45,6 +46,7 @@ struct ProjectPickerView: View {
         rootExists: @escaping (String) -> Bool = { ProjectEditorViewModel.fileSystemDirectoryExists($0) },
         onAction: @escaping (ProjectPickerAction) -> Void,
         onSetShared: @escaping (UUID, Bool) -> Void,
+        syncError: @escaping () -> String? = { nil },
         onCancel: @escaping () -> Void
     ) {
         _base = State(initialValue: ProjectPickerModel(
@@ -53,11 +55,12 @@ struct ProjectPickerView: View {
         self.openProjectIDs = openProjectIDs
         self.onAction = onAction
         self.onSetShared = onSetShared
+        self.syncError = syncError
         self.onCancel = onCancel
     }
 
     private var model: ProjectPickerModel {
-        get { base.refreshed(projects: projects(), openProjectIDs: openProjectIDs()) }
+        get { base.refreshed(projects: projects(), openProjectIDs: openProjectIDs(), syncError: syncError()) }
         nonmutating set { base = newValue }
     }
 
@@ -84,6 +87,16 @@ struct ProjectPickerView: View {
                 if !tiers.openNow.isEmpty {
                     openNowStrip(tiers.openNow, selectedID: current.selectedID)
                 }
+            }
+
+            if let message = current.syncError {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .accessibilityIdentifier("project-picker.sync-error")
             }
 
             footer

@@ -210,6 +210,44 @@ struct ProjectStoreTests {
         #expect(!FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))
     }
 
+    @Test func withoutTheEntitlementTheStoreHasNoSyncState() {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let defaults = UserDefaults(suiteName: "ProjectStoreTests-\(UUID().uuidString)")!
+        let app = AppStateStore(preferences: defaults, projectsFileURL: url)
+        #expect(!ProjectSyncEntitlement.isPresent(), "unit-test builds are signed without the iCloud entitlement")
+        #expect(app.projectStore.syncTask == nil)
+    }
+
+    @Test func theDefaultFactoryNeverBuildsTheICloudBackendInATestProcess() {
+        #expect(ProjectSyncEntitlement.isTestProcess())
+        var made = 0
+        let make: () -> any ProjectSyncBackend = { made += 1; return LocalOnlyProjectSyncBackend() }
+        #expect(AppStateStore.defaultProjectSyncBackend(isTestProcess: true, hasEntitlement: true, make: make) == nil)
+        #expect(AppStateStore.defaultProjectSyncBackend(isTestProcess: false, hasEntitlement: false, make: make) == nil)
+        #expect(made == 0)
+        #expect(AppStateStore.defaultProjectSyncBackend(isTestProcess: false, hasEntitlement: true, make: make) != nil)
+        #expect(made == 1)
+
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let defaults = UserDefaults(suiteName: "ProjectStoreTests-\(UUID().uuidString)")!
+        let app = AppStateStore(preferences: defaults, projectsFileURL: url)
+        #expect(app.projectSyncBackendFactory() == nil)
+    }
+
+    @Test func theStoreBuildsTheBackendFromTheFactoryOnce() {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let defaults = UserDefaults(suiteName: "ProjectStoreTests-\(UUID().uuidString)")!
+        let app = AppStateStore(preferences: defaults, projectsFileURL: url)
+        var built = 0
+        app.projectSyncBackendFactory = { built += 1; return LocalOnlyProjectSyncBackend() }
+        #expect(app.projectStore.syncTask != nil)
+        _ = app.projectStore
+        #expect(built == 1)
+    }
+
     @Test func aMalformedLastOpenedAtOnDiskKeepsEveryProject() throws {
         let url = makeTempURL()
         defer { cleanup(url) }

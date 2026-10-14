@@ -34,7 +34,7 @@ If a tab's shell never reports its directory, Batty can't tell it is ready and s
 
 ## Shared
 
-The **Shared** checkbox marks a Project as one you intend to sync. Today a Shared Project is stored on this Mac only; it is not copied to iCloud or any other Mac.
+The **Shared** checkbox syncs a Project through iCloud to your other Macs signed into the same Apple ID. Its name, folder, color, symbol, layout and startup commands sync; which Projects you opened last and which startup commands you approved stay on each Mac. The folder path must exist on each Mac, or the Project is listed with a "Folder not found" note until it does. If iCloud cannot take the Project (for example it is over iCloud's size limit), Batty says why and leaves the Project unshared.
 
 ## From the command line
 

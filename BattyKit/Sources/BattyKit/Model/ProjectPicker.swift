@@ -69,6 +69,8 @@ struct ProjectPickerModel: Equatable {
 
     private(set) var query = ""
     private(set) var selectedID: UUID?
+    /// Why the last share was refused, shown as a caption under the cards.
+    private(set) var syncError: String?
     private var projects: [Project]
     private var openProjectIDs: Set<UUID>
     private let homeDirectory: String
@@ -113,8 +115,9 @@ struct ProjectPickerModel: Equatable {
     /// The same query and selection over current data, for a view that reads
     /// Projects and open Sessions live. The selection stays on its Project by
     /// id; if that Project is gone or filtered out, the best match is chosen.
-    func refreshed(projects: [Project], openProjectIDs: Set<UUID>) -> ProjectPickerModel {
+    func refreshed(projects: [Project], openProjectIDs: Set<UUID>, syncError: String? = nil) -> ProjectPickerModel {
         var copy = self
+        copy.syncError = syncError
         copy.projects = ProjectRecency.ranked(projects, openProjectIDs: openProjectIDs)
         copy.openProjectIDs = openProjectIDs
         if let selectedID, copy.filtered.contains(where: { $0.id == selectedID }) { return copy }

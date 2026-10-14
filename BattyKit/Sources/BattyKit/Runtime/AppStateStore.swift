@@ -89,11 +89,33 @@ public final class AppStateStore {
     /// Projects surface reads it.
     public var projectStore: ProjectStore {
         if let existing = projectStoreStorage { return existing }
-        let store = ProjectStore(fileURL: projectsFileURL)
+        let store = ProjectStore(fileURL: projectsFileURL, backend: projectSyncBackendFactory())
         projectStoreStorage = store
         return store
     }
     @ObservationIgnored private var projectStoreStorage: ProjectStore?
+    /// Builds the sync backend for the Project store. Production
+    /// returns one only when the binary carries the iCloud key-value
+    /// entitlement and is not a test process; builds signed without a
+    /// provisioning profile have no entitlement, and then Projects stay on
+    /// this Mac. A test process never gets the real backend, even when the
+    /// host is signed with the entitlement (Xcode's Test Navigator), because
+    /// the backend would read and merge the developer's real iCloud store.
+    @ObservationIgnored var projectSyncBackendFactory: @MainActor () -> (any ProjectSyncBackend)? = {
+        AppStateStore.defaultProjectSyncBackend(
+            isTestProcess: ProjectSyncEntitlement.isTestProcess(),
+            hasEntitlement: ProjectSyncEntitlement.isPresent(),
+            make: { ICloudKeyValueProjectSyncBackend() })
+    }
+
+    static func defaultProjectSyncBackend(
+        isTestProcess: Bool,
+        hasEntitlement: Bool,
+        make: () -> any ProjectSyncBackend
+    ) -> (any ProjectSyncBackend)? {
+        guard !isTestProcess, hasEntitlement else { return nil }
+        return make()
+    }
     @ObservationIgnored private let projectsFileURL: URL?
     @ObservationIgnored var pendingStartupOpens: [UUID: PendingStartupOpen] = [:]
     /// Test seam: observes every request to bring a Window forward, including

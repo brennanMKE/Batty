@@ -82,6 +82,8 @@ public final class ProjectStore {
     public static let backupFileName = "projects.json.bak"
 
     public private(set) var projects: [Project]
+    /// Why the last attempt to share failed, until a publish succeeds.
+    public private(set) var syncError: String?
 
     private let fileURL: URL?
     @ObservationIgnored private let fileManager: FileManager
@@ -111,6 +113,9 @@ public final class ProjectStore {
         self.projects = loaded.projects
         self.unreadableOriginal = loaded.unreadableOriginal
         if let backend {
+            backend.onSyncError = { [weak self] error in
+                self?.syncError = error.localizedDescription
+            }
             let changes = backend.changes
             syncTask = Task { [weak self] in
                 for await _ in changes {
@@ -167,11 +172,22 @@ public final class ProjectStore {
             wasShared = false
             updated.append(project)
         }
+        if project.isShared { try publish(project) }
         try commit(updated)
-        if project.isShared {
-            backend?.publish(project.syncRecord(home: home))
-        } else if wasShared {
+        if !project.isShared, wasShared {
             backend?.withdraw(id: project.id)
+        }
+    }
+
+    /// Runs before the local commit, so a refused share changes nothing.
+    private func publish(_ project: Project) throws {
+        guard let backend else { return }
+        do {
+            try backend.publish(project.syncRecord(home: home))
+            syncError = nil
+        } catch {
+            syncError = error.localizedDescription
+            throw error
         }
     }
 
@@ -190,15 +206,14 @@ public final class ProjectStore {
         let wasShared = updated[index].isShared
         updated[index].isShared = shared
         updated[index].modifiedAt = clock()
+        if shared { try publish(updated[index]) }
         if unreadableOriginal != nil {
             projects = updated
             logger.notice("setShared: projects file not fully loaded; keeping the flag in memory only")
         } else {
             try commit(updated)
         }
-        if shared {
-            backend?.publish(updated[index].syncRecord(home: home))
-        } else if wasShared {
+        if !shared, wasShared {
             backend?.withdraw(id: id)
         }
     }
@@ -212,7 +227,9 @@ public final class ProjectStore {
             logger.notice("mergeRemote: projects file not fully loaded; skipping")
             return
         }
-        let merged = ProjectSyncMerge.apply(remote: backend.snapshot(), to: projects, home: home, now: clock())
+        let merged = ProjectSyncMerge.apply(
+            remote: backend.snapshot(), to: projects, home: home, now: clock(),
+            withdrawAbsent: backend.snapshotIsAuthoritative)
         guard merged != projects else { return }
         do {
             try commit(merged)

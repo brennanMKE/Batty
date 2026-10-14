@@ -19,8 +19,8 @@ All signing is under one team: **`XV8BAAVZ6V`** (`DEVELOPMENT_TEAM` in
 
 | Identity | Signs | Where it comes from |
 |---|---|---|
-| **Developer ID Application: Brennan Stehling (XV8BAAVZ6V)** | Release builds: the exported `Batty.app`, its embedded `batty` CLI and `BattyBroker`, and the DMG | `scripts/release.sh` (`SIGN_IDENTITY`) |
-| **Apple Development: Brennan Stehling (6T3DM4QG9S)** | Ordinary Debug/Beta builds from `./build.sh` and Xcode | `CODE_SIGN_STYLE = Automatic` resolves `CODE_SIGN_IDENTITY = Apple Development` |
+| **Developer ID Application: Brennan Stehling (XV8BAAVZ6V)** | Only `./build.sh package --sign` (Beta) and `scripts/release.sh`, the latter covering the exported `Batty.app`, its embedded `batty` CLI and `BattyBroker`, and the DMG. Both pass `BATTY_SIGNING=developerid` (Manual signing, the committed profile, the iCloud entitlement); no routine build uses it. | `Configuration/App.xcconfig`; `scripts/build-beta.sh`; `scripts/release.sh` (`SIGN_IDENTITY`) |
+| **Apple Development: Brennan Stehling (6T3DM4QG9S)** | Every routine build: `./build.sh`, `run`, `unit`, `release`, Xcode workspace builds (Automatic signing, `BATTY_SIGNING=routine`), with `Batty-local.entitlements` and no profile | `CODE_SIGN_STYLE = Automatic` resolves it |
 | Ad-hoc (`-`) | The UI-test runner, and the embedded binaries in an unsigned build | `scripts/run-ui-tests.sh`; `swift build` ad-hoc signs any arm64 binary it links |
 | None | `./build.sh package` without `--sign` (the app bundle itself) | `CODE_SIGNING_ALLOWED=NO` in `scripts/build-beta.sh` |
 
@@ -62,17 +62,20 @@ does not qualify: same `TeamIdentifier`, wrong certificate type.
 
 `scripts/release.sh` signs in this order:
 
-1. `xcodebuild archive` (Prod scheme, Release) followed by `-exportArchive`
-   with `method = developer-id`, `teamID = XV8BAAVZ6V`,
-   `signingStyle = automatic`.
+1. `scripts/install-profiles.sh`, then `xcodebuild archive` (Prod scheme,
+   Release, `BATTY_SIGNING=developerid`) followed by `-exportArchive` with `method = developer-id`,
+   `teamID = XV8BAAVZ6V`, `signingStyle = manual`,
+   `signingCertificate = Developer ID Application` and
+   `provisioningProfiles = { co.sstools.Batty = Batty Developer ID }`.
 2. It re-signs `Contents/Resources/bin/batty` and
    `Contents/Resources/bin/BattyBroker` with the Developer ID identity,
    `--options runtime --timestamp`. It then re-signs the app bundle with its
    extracted entitlements, so the resource seal matches the changed files.
-3. It verifies: `codesign --verify --deep --strict`, then checks each embedded
-   binary for the same `Authority` as the app, hardened runtime and a secure
-   timestamp. `--deep` does not inspect them (see below), so they are checked
-   one by one.
+3. It verifies: `codesign --verify --deep --strict`, then
+   `scripts/verify-profile.sh` on the app (see "Provisioning profiles"), then
+   checks each embedded binary for the same `Authority` as the app, hardened
+   runtime and a secure timestamp. `--deep` does not inspect them (see below),
+   so they are checked one by one.
 4. It builds the DMG with `create-dmg` and signs it:
    `codesign --sign "$SIGN_IDENTITY" --timestamp`.
 5. `notarytool submit --keychain-profile Batty-notary --wait`, then
@@ -80,7 +83,8 @@ does not qualify: same `TeamIdentifier`, wrong certificate type.
 
 `scripts/verify-dmg.sh <dmg>` checks the finished DMG from the recipient's
 side: stapled ticket, `source=Notarized Developer ID`, DMG signature, a
-simulated Safari-quarantined copy, and a deep verify of the app inside.
+simulated Safari-quarantined copy, a deep verify of the app inside, and the
+same profile and entitlement assertions on the inner app.
 
 Never run `scripts/release.sh` without an explicit go-ahead. Notarization
 uploads the binary to Apple.
@@ -89,11 +93,13 @@ uploads the binary to Apple.
 
 | Command | Signing |
 |---|---|
-| `./build.sh` / `./build.sh unit` / `./build.sh run` | Apple Development (Automatic). Never passes `-allowProvisioningUpdates`, so it cannot create or revoke certificates. |
-| `./build.sh ui` | Ad-hoc. `run-ui-tests.sh` builds with `CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=NO`, then re-signs the test runner ad hoc so Gatekeeper doesn't move it to the Trash. |
-| `./build.sh package` | Unsigned app bundle; the embedded binaries keep `swift build`'s ad-hoc signature. |
-| `./build.sh package --sign` | Automatic signing. Meant for about once per Beta install, not once per code change. |
-| `./build.sh release …` / `scripts/release.sh` | Developer ID Application. |
+| `./build.sh` / `./build.sh run` | Apple Development, Automatic, `Batty-local.entitlements`, no profile: no Developer ID authority, no iCloud key, no embedded profile. Never passes `-allowProvisioningUpdates`. |
+| `./build.sh unit` | The same routine signing; the test host carries no iCloud key and no embedded profile. |
+| `./build.sh ui` | Ad-hoc, no profile, `Batty-local.entitlements`. `tools/run-ui-tests-vm.sh` and `run-ui-tests.sh` build with `CODE_SIGN_IDENTITY=-` (or `CODE_SIGNING_ALLOWED=NO`) plus `BATTY_ENTITLEMENTS=Batty/Batty-local.entitlements PROVISIONING_PROFILE_SPECIFIER=`; the runner is then re-signed ad hoc so Gatekeeper doesn't move it to the Trash. |
+| `./build.sh package` | Unsigned app bundle, which needs no profile; the embedded binaries keep `swift build`'s ad-hoc signature. |
+| `./build.sh package --sign` | Developer ID Application, Manual (`BATTY_SIGNING=developerid`), the Beta profile and the full entitlements. Installs the profiles first. Meant for about once per Beta install, not once per code change. |
+| `./build.sh release …` | Routine: Apple Development, Automatic, `Batty-local.entitlements`, no profile. This is the `-O` compile check agents run (`archive -configuration Release`); it signs with no Developer ID, carries no iCloud key and embeds no profile. |
+| `scripts/release.sh` | Developer ID Application, Manual (`BATTY_SIGNING=developerid`), the Prod profile; only with the user's go-ahead each time. |
 | `cd BattyKit && swift test` | None. SwiftPM ad-hoc signs test binaries automatically. |
 
 ## Hardened runtime and entitlements
@@ -102,16 +108,97 @@ uploads the binary to Apple.
 The app is not sandboxed (`ENABLE_APP_SANDBOX = NO`), because a terminal has
 to run arbitrary user processes.
 
-`Batty/Batty.entitlements` grants two hardened-runtime exceptions that child
-processes inherit through the shell:
+Until #0503 `CODE_SIGN_ENTITLEMENTS` was set nowhere, so
+`Batty/Batty.entitlements` was never part of a signature, and the
+`allow-jit` and `allow-dyld-environment-variables` keys it then listed were
+never granted. Prod 1.2.0 was signed without them; the file no longer
+lists them, because adding them would loosen the hardened runtime for no
+observed need.
 
-- `com.apple.security.cs.allow-jit` — for JIT runtimes (Node, JVMs, modern
-  Python).
-- `com.apple.security.cs.allow-dyld-environment-variables` — so
-  `DYLD_LIBRARY_PATH`, sanitizers and similar tools work in a Batty shell.
+There are two entitlements files, chosen by the build setting
+`BATTY_ENTITLEMENTS`, which `Configuration/App.xcconfig` derives from
+`BATTY_SIGNING` (`routine` by default, `developerid` on the command line); the
+app target maps it to `CODE_SIGN_ENTITLEMENTS`:
+
+| File | Holds | Used by |
+|---|---|---|
+| `Batty/Batty.entitlements` | `com.apple.developer.ubiquity-kvstore-identifier = $(TeamIdentifierPrefix)$(CFBundleIdentifier)`, i.e. `XV8BAAVZ6V.co.sstools.Batty` (Prod) and `XV8BAAVZ6V.co.sstools.Batty.beta` (Beta) | Developer ID builds (`BATTY_SIGNING=developerid`), which embed a profile |
+| `Batty/Batty-local.entitlements` (default) | Nothing | Every routine build, `./build.sh unit` and the UI-test builds |
+
+The kvstore key is **restricted**: valid only in a signature whose embedded
+provisioning profile authorizes it. Without one the system kills the app at
+launch (AMFI "restricted entitlements"), and `xcodebuild` itself refuses to
+sign the target (`"Batty" requires a provisioning profile`). That is why only a
+Developer ID build, which has a profile, gets the file with the key, and why the app builds
+a sync backend only when its own signature carries the key
+(`ProjectSyncEntitlement.isPresent()`).
 
 Adding an entitlement changes what notarization accepts and what the signature
 promises. Treat it as a reviewed change.
+
+## Provisioning profiles
+
+The iCloud key-value entitlement needs a **Developer ID provisioning
+profile** embedded in the app at `Contents/embedded.provisionprofile`. Two are
+tracked in `Configuration/Profiles/`; they hold certificates and entitlements,
+no secrets:
+
+| Profile | Name | App ID | UUID |
+|---|---|---|---|
+| `Batty.provisionprofile` | `Batty Developer ID` | `XV8BAAVZ6V.co.sstools.Batty` | `11662ab9-522a-4d42-b7ce-d6d278aea0ee` |
+| `Batty_Beta.provisionprofile` | `Batty Beta Developer ID` | `XV8BAAVZ6V.co.sstools.Batty.beta` | `ddd8d7ec-3279-4888-873c-6c36f3aa2aab` |
+
+- **Where they come from.** Created in the developer portal by a person
+  (Certificates, Identifiers & Profiles, Developer ID distribution), then
+  copied here. When creating one you choose which Developer ID Application
+  certificate it authorizes; **it must be the certificate this Mac signs
+  with**. The profiles first committed (named `Batty` and `Batty Beta`) listed a
+  different certificate (SHA-1 `4CDDC1D0...`, serial `67D6C92434FAAED2`) whose
+  private key the release Mac does not hold, and `xcodebuild` stopped with
+  `Provisioning profile "Batty" doesn't include signing certificate`. They
+  were replaced by the `... Developer ID` profiles, which list only serial
+  `5DAD92F9908AF699` (SHA-1 `B3D61A34...`), the certificate this Mac signs
+  with. Importing the other certificate's .p12
+  instead would leave two identities with the same name, which makes
+  `codesign --sign "<name>"` ambiguous in `release.sh`. `scripts/preflight.sh`
+  and `scripts/verify-profile.sh` check it.
+- **Evaluated at every launch.** The system checks the embedded profile each
+  time the app starts, and an expired profile stops it launching. These were
+  created 2026-10-13 and expire in 2044 (18 years); `preflight.sh` and
+  `verify-profile.sh` print the exact date.
+  `scripts/preflight.sh` warns inside a year of expiry and fails on an expired
+  one.
+- **Regenerate on a capability change.** Enabling or disabling a capability on
+  an App ID invalidates its profiles. Adding `icloud-services` or a container
+  later means new profiles; the current ones already allow them, but Batty
+  requests only the kvstore key.
+- **Selection.** `Configuration/App.xcconfig` (Prod) and `Beta.xcconfig` set
+  `BATTY_DEVELOPER_ID_PROFILE` (`Batty Developer ID`, `Batty Beta Developer ID`),
+  which becomes `PROVISIONING_PROFILE_SPECIFIER` only when `BATTY_SIGNING` is
+  `developerid`. `BattyTests` shares `App.xcconfig`, so its target settings pin
+  Automatic, Apple Development and no profile; it never picks up the app's. The switch is a variable read in the xcconfig, not a command-line
+  `CODE_SIGN_*` override, because a command-line profile specifier or signing
+  style would reach the Swift package targets, which cannot take a profile. `xcodebuild` finds a profile by name
+  only among installed ones, so `scripts/install-profiles.sh` copies the repo
+  copies to `~/Library/Developer/Xcode/UserData/Provisioning Profiles/<UUID>.provisionprofile`
+  (the directory this Xcode reads: it resolved `Batty Beta Developer ID` from there). It is
+  idempotent, a plain file copy that contacts nobody, removes an installed
+  profile only when it has the same Name as a repo profile but a different
+  UUID, or is one of the two retired profiles named `Batty` and `Batty Beta`
+  (so the specifier cannot pick a stale one), and `./build.sh package --sign`,
+  `scripts/release.sh` run it. No `xcodebuild`
+  call in the repo passes `-allowProvisioningUpdates`.
+- **Manual signing.** A Developer ID build uses `CODE_SIGN_STYLE = Manual`,
+  which never contacts Apple, so it cannot create or revoke certificates; the
+  #0265 incident came from Automatic signing managing them. Routine builds
+  stay Automatic but never use the Developer ID identity and never carry a
+  restricted entitlement.
+- **Checks.** `scripts/verify-profile.sh <app>` asserts that the profile is
+  embedded, that its application identifier is `<team>.<bundle id>`, that the
+  app's signature carries the kvstore key with that value, that the signing
+  certificate is one the profile lists, and that the profile has not expired;
+  it prints the `ExpirationDate`. `release.sh` runs it after the re-sign and
+  `verify-dmg.sh` on the inner app of the finished DMG.
 
 ## Embedded binaries
 
@@ -200,9 +287,15 @@ shows up as `errSecInternalComponent` or `User interaction is not allowed`.
 - **Never create, revoke, renew or delete certificates or profiles from a
   script or agent session.** Signing identity changes are made by a person,
   in Xcode or the developer portal, deliberately.
-- **Don't change `CODE_SIGN_STYLE`, `DEVELOPMENT_TEAM` or
-  `CODE_SIGN_IDENTITY` in the project to fix a signing error.**
-  `Configuration/Build.xcconfig` is a restricted file. Command-line overrides
+  This is about the Apple Developer account and the keychain. Copying the
+  repo's profiles into the local profiles directory, and removing a stale local
+  copy of a profile with the same name (`scripts/install-profiles.sh`), are
+  local file operations and are allowed.
+- **Don't change `CODE_SIGN_STYLE`, `DEVELOPMENT_TEAM`, `CODE_SIGN_IDENTITY`
+  or the provisioning profile settings in the project to fix a signing
+  error.**
+  `Configuration/` is a restricted area; signing is switched in
+  `Configuration/App.xcconfig` (`BATTY_SIGNING`). Command-line overrides
   for a one-off build are fine.
 - **Build unsigned when signing isn't what's being tested.** Use
   `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO` or `swift test`.

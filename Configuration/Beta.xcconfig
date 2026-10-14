@@ -12,6 +12,10 @@ PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty.beta
 // BattyTests' TEST_HOST reads the same variable (review round 1).
 APP_PRODUCT_NAME = Batty Beta
 
+// Authorizes the kvstore identifier XV8BAAVZ6V.co.sstools.Batty.beta in a
+// Developer ID build (BATTY_SIGNING=developerid).
+BATTY_DEVELOPER_ID_PROFILE = Batty Beta Developer ID
+
 // Sparkle disabled for dev builds — no update prompts during development.
 SU_FEED_URL =
 SU_PUBLIC_ED_KEY =

@@ -73,18 +73,49 @@ public enum ProjectSyncEntry: Sendable, Equatable {
     case tombstone(deletedAt: Date)
 }
 
-/// Where shared Project records go. Phase (a) ships only the local-only
-/// implementation; an iCloud backend plugs in behind the same protocol.
+/// Why a backend refused or could not keep a write.
+public enum ProjectSyncError: Error, Sendable, Equatable, LocalizedError {
+    public enum QuotaReason: Sendable, Equatable {
+        case recordTooLarge
+        case totalTooLarge
+        case tooManyKeys
+    }
+
+    case quotaExceeded(reason: QuotaReason)
+
+    public var errorDescription: String? {
+        switch self {
+        case .quotaExceeded(.recordTooLarge):
+            String(localized: "This Project is too large to share through iCloud.", comment: "Shared Projects: a single record exceeds the iCloud key-value size limit")
+        case .quotaExceeded(.totalTooLarge):
+            String(localized: "Sharing this Project would exceed Batty\u{2019}s iCloud storage limit. Unshare another Project first.", comment: "Shared Projects: the total iCloud key-value quota would be exceeded")
+        case .quotaExceeded(.tooManyKeys):
+            String(localized: "Batty already shares as many Projects through iCloud as it can. Unshare another Project first.", comment: "Shared Projects: the iCloud key-value key-count limit would be exceeded")
+        }
+    }
+}
+
+/// Where shared Project records go. `LocalOnlyProjectSyncBackend` keeps them
+/// in memory; `ICloudKeyValueProjectSyncBackend` writes them to iCloud.
 @MainActor
 public protocol ProjectSyncBackend: AnyObject {
     var isAvailable: Bool { get }
     func snapshot() -> [UUID: ProjectSyncEntry]
-    func publish(_ record: ProjectSyncRecord)
+    /// Throws, writing nothing, when the record cannot be kept (a quota).
+    func publish(_ record: ProjectSyncRecord) throws
     /// Unshare: the entry is removed and other Macs keep their copy as local.
     func withdraw(id: UUID)
     /// Delete: the entry becomes a tombstone other Macs apply.
     func tombstone(id: UUID, deletedAt: Date)
     var changes: AsyncStream<Void> { get }
+    /// Whether an absent entry may be read as "withdrawn elsewhere" (merge
+    /// rule 4). False until the backend has seen a server or initial-sync
+    /// change, since before that an empty snapshot may only mean the local
+    /// cache has not been filled yet.
+    var snapshotIsAuthoritative: Bool { get }
+    /// Reports a failure that no user action caused, such as the store
+    /// rejecting data after the fact. Set by `ProjectStore`.
+    var onSyncError: (@MainActor (ProjectSyncError) -> Void)? { get set }
 }
 
 /// Keeps entries in memory and never touches disk or the network.
@@ -96,6 +127,8 @@ public final class LocalOnlyProjectSyncBackend: ProjectSyncBackend {
         case tombstone(UUID, Date)
     }
 
+    public var onSyncError: (@MainActor (ProjectSyncError) -> Void)?
+    public var snapshotIsAuthoritative = true
     public private(set) var calls: [Call] = []
     private var entries: [UUID: ProjectSyncEntry] = [:]
     public let changes: AsyncStream<Void>
@@ -146,7 +179,8 @@ public enum ProjectSyncMerge {
         remote: [UUID: ProjectSyncEntry],
         to local: [Project],
         home: String,
-        now: Date
+        now: Date,
+        withdrawAbsent: Bool = true
     ) -> [Project] {
         var result: [Project] = []
         var handled = Set<UUID>()
@@ -155,7 +189,7 @@ public enum ProjectSyncMerge {
             guard let entry = remote[project.id] else {
                 // Absent from the remote set: withdrawn elsewhere. Kept as local, never deleted.
                 var kept = project
-                if kept.isShared { kept.isShared = false }
+                if kept.isShared, withdrawAbsent { kept.isShared = false }
                 result.append(kept)
                 continue
             }

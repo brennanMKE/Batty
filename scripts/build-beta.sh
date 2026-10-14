@@ -11,7 +11,7 @@
 #
 # Usage:
 #   scripts/build-beta.sh                 build unsigned (the default), print the output path
-#   scripts/build-beta.sh --sign          build with Automatic (Developer ID) signing
+#   scripts/build-beta.sh --sign          build with manual Developer ID signing and the Beta profile
 #   scripts/build-beta.sh --teardown      print the teardown steps; makes no changes
 #   scripts/build-beta.sh -h | --help     this text
 #
@@ -24,11 +24,13 @@
 #   is unsigned.
 #
 #   The project's Developer ID certificate was revoked once already by
-#   repeated *signed* local builds against CODE_SIGN_STYLE = Automatic
-#   (Configuration/Build.xcconfig) — see issues/0265.md. This script
-#   defaults to NOT signing so iterating on Beta builds can never repeat
-#   that.
-#
+#   repeated *signed* local builds against CODE_SIGN_STYLE = Automatic —
+#   see issues/0265.md. This script defaults to NOT signing. --sign is the
+#   one place besides scripts/release.sh that signs with the Developer ID
+#   (#0503): Manual signing with the committed Beta profile, which never
+#   contacts Apple, and the full entitlements including the iCloud key.
+#   The unsigned build carries no signature and so no entitlements.
+
 #   #0270 separately found that launchd refuses to start an improperly
 #   signed LaunchAgent. Whether the ad-hoc signature this script's default
 #   build leaves on the broker is enough for SMAppService registration and
@@ -236,10 +238,11 @@ fi
 
 SIGN_FLAGS=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
 if (( SIGN )); then
-    print "==> --sign: building with Automatic (Developer ID) signing."
+    print "==> --sign: building with manual Developer ID signing and the Beta provisioning profile."
+    "$REPO/scripts/install-profiles.sh" --quiet
     print "    This should be rare — once per Beta install, not per code change."
     print "    Repeated signed local builds are what revoked the cert before (see issues/0265.md)."
-    SIGN_FLAGS=()
+    SIGN_FLAGS=(BATTY_SIGNING=developerid)
 else
     print "==> Building unsigned (default). Pass --sign only if launchd refuses the broker."
 fi
@@ -273,7 +276,7 @@ print ""
 print "==> Built: $OUT_DIR/$APP_NAME"
 print ""
 if (( SIGN )); then
-    print "Signed with Developer ID (Automatic signing)."
+    print "Signed with Developer ID (manual signing, Beta provisioning profile)."
 else
     print "Unsigned — ad-hoc arm64 signature on the embedded CLI/broker only, no"
     print "signature on the app bundle itself. Whether that's enough for launchd to"

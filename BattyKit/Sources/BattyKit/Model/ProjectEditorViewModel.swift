@@ -730,6 +730,9 @@ final class ProjectEditorViewModel {
         } catch let error as ProjectStoreError {
             saveError = Self.message(for: error)
             return nil
+        } catch let error as ProjectSyncError {
+            saveError = error.localizedDescription
+            return nil
         } catch {
             logger.error("project save failed: \(error.localizedDescription, privacy: .public)")
             saveError = String(localized: "Could not save the Project: \(error.localizedDescription)", comment: "Project Editor")

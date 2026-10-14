@@ -126,6 +126,7 @@ select_variant() {
     "$REPO/scripts/set-environment.sh" "$1" >/dev/null
 }
 
+
 case "$ACTION" in
     ui|test)
         # #0412: UI tests never run on this host -- XCTAutomationSupport

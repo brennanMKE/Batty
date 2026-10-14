@@ -959,8 +959,8 @@ Command Palette entries are built in `CommandPaletteView.allCommands`.
   glyph beside the symbol, and a card whose root folder is missing shows a
   `Folder not found` caption in place of the path
   (`project-picker.missing-root.<name>`; the path is its help text). The root
-  check is injected and cached per root, never called from `body`. Nothing syncs
-  until the iCloud backend ships (`design/projects-sharing.md`).
+  check is injected and cached per root, never called from `body`. A shared
+  Project syncs through iCloud (`design/projects-sharing.md`).
 - A non-blank filter collapses to one compact four-column grid
   (`project-picker.rest` alone; the Open now strip is hidden and open matches
   keep their OPEN badge in the grid) under an "N matches" heading. Escape clears a
@@ -1198,6 +1198,8 @@ unchanged; these are the ones they do not cover):
 | The checkbox flips without selecting, opening or dismissing; persists (#0501) | `ProjectsSharingTests.testClickingACompactCheckboxFlipsItWithoutSelectingOpeningOrDismissing` |
 | The Open now chip's own Shared toggle (#0501) | `ProjectsSharingTests.testTheOpenNowChipHasItsOwnSharedToggle` |
 | Editor Shared checkbox: dirty, Save, Cancel, new Project (#0501) | `ProjectsSharingTests.testEditorSharedCheckboxIsPartOfTheDraft` |
+| The UI-test build has no iCloud entitlement and no embedded profile; sharing shows no `project-picker.sync-error` caption (#0503) | `ProjectsSyncEntitlementTests.testTheUITestBuildHasNoICloudEntitlementAndNoEmbeddedProfile`, `...testSharingAProjectShowsNoSyncErrorCaption` |
+| iCloud key-value backend: keys, limits, change notifications, pruning; refused share leaves the flag and file; picker and editor error (#0503) | `ICloudKeyValueProjectSyncBackendTests`, `ProjectSharingStoreTests`, `ProjectSharingPickerTests`, `ProjectEditorSharingTests` (BattyKit) |
 | Record split, portable path, merge rules, store and backend routing, picker card fields, editor draft (#0501) | `ProjectSharingModelTests`, `PortablePathTests`, `ProjectSyncMergeTests`, `ProjectSharingStoreTests`, `ProjectSharingPickerTests`, `ProjectEditorSharingTests` (BattyKit) |
 | Cursor transitions, tier split, New Project card, two-step Escape, match count, relative time (#0493) | `ProjectPickerGridCursorTests`, `ProjectPickerModelTests`, `ProjectRecencyRelativeTextTests` (BattyKit) |
 | OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |

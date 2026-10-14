@@ -972,9 +972,11 @@ Mechanism, exactly:
   `Configuration/Build.xcconfig`), so unlike a sandboxed app this does
   *not* need the `com.apple.security.automation.apple-events` entitlement
   for `NSAppleScript`'s `do shell script` to work — confirmed by reading
-  `Batty/Batty.entitlements` (only `com.apple.security.cs.allow-jit` and
-  `com.apple.security.cs.allow-dyld-environment-variables` are present; no
-  automation entitlement, no sandbox key at all).
+  `Batty/Batty.entitlements` (only
+  `com.apple.developer.ubiquity-kvstore-identifier` is present since #0503; no
+  automation entitlement, no sandbox key at all). Before #0503 that file listed
+  `allow-jit` and `allow-dyld-environment-variables`, but no build setting
+  referenced it, so neither was ever granted.
 
 **UI surface:** Settings → **Advanced** tab
 (`BattyKit/Sources/BattyKit/Views/SettingsView.swift`). `SettingsView`'s

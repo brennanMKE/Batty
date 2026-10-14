@@ -502,6 +502,7 @@ run_guest_step 1500 "
   $GUEST_TMO 1200 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
     -destination 'platform=macOS' -derivedDataPath $GUEST_DD \
     CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+    BATTY_ENTITLEMENTS=Batty/Batty-local.entitlements PROVISIONING_PROFILE_SPECIFIER= \
     build-for-testing 2>&1 | tee $GUEST_RESULTS/xcodebuild-build.log
   exit \${pipestatus[1]}"
 build_rc=$step_rc
@@ -521,6 +522,7 @@ else
       -resultBundlePath $GUEST_RESULTS/UITests.xcresult \
       ${TEST_FILTER_ARGS[*]} \
       CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+      BATTY_ENTITLEMENTS=Batty/Batty-local.entitlements PROVISIONING_PROFILE_SPECIFIER= \
       test-without-building 2>&1 | tee $GUEST_RESULTS/xcodebuild.log
     exit \${pipestatus[1]}"
   test_rc=$step_rc

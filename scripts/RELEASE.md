@@ -17,6 +17,13 @@ refuses to start on a machine that fails it — see "Gate" in that doc.
 - **Apple Developer account** with a Developer ID Application certificate
   installed in your login keychain. Team ID: `XV8BAAVZ6V`
   (`Configuration/Build.xcconfig:DEVELOPMENT_TEAM`).
+- **Provisioning profiles.** `Configuration/Profiles/` holds the Developer ID
+  provisioning profiles that authorize the iCloud key-value entitlement.
+  `scripts/install-profiles.sh` copies them where `xcodebuild` finds them
+  (`release.sh` and `./build.sh package --sign` run it). Each profile must list the Developer
+  ID Application certificate this Mac signs with; `scripts/preflight.sh`
+  checks that, the install state and the expiry. See `docs/code-signing.md`,
+  "Provisioning profiles".
 - **Notary keychain profile.** Run `scripts/setup-keys.sh` and follow the
   prompts. This stores an app-specific Apple ID password under the
   `Batty-notary` profile that `notarytool` looks for.
@@ -119,7 +126,10 @@ private key) in one pair of commands, non-destructively.
    ```
 
    Confirms signing, notarization, stapling, and Gatekeeper acceptance under
-   quarantine. Should print all checks passing.
+   quarantine. Should print all checks passing, including the inner app's
+   embedded provisioning profile, its application identifier, the iCloud
+   key-value entitlement, and the profile's `ExpirationDate`
+   (`scripts/verify-profile.sh`).
 
 5. **Smoke-test on a clean Mac**
 

@@ -122,6 +122,16 @@ else
         print "    Bundle identifier: $IDENT"
         print "    Authority: $APP_AUTHORITY"
 
+        step "Provisioning profile + iCloud entitlement (inner app)"
+        PROFILE_OUT=$("${0:A:h}/verify-profile.sh" "$APP" 2>&1)
+        PROFILE_RC=$?
+        print "$PROFILE_OUT" | sed 's/^/    /'
+        if (( PROFILE_RC == 0 )); then
+            pass "embedded profile authorizes the iCloud entitlement"
+        else
+            fail "embedded profile or iCloud entitlement is wrong"
+        fi
+
         step "Gatekeeper assessment (inner app)"
         if spctl --assess --type execute --verbose=4 "$APP" 2>&1 | grep -q "source=Notarized Developer ID"; then
             pass "app accepted by Gatekeeper"

@@ -21,6 +21,30 @@ PRODUCT_BUNDLE_IDENTIFIER = co.sstools.Batty
 // INFOPLIST_FILE = "" (project.pbxproj) empties the inherited value so
 // GENERATE_INFOPLIST_FILE produces a clean plist instead of merging.
 APP_PRODUCT_NAME = Batty
+
+// Signing mode (#0503). Routine builds (./build.sh, Xcode, unit tests, the
+// UI-test VM) sign Automatically with no profile and the entitlements file
+// that holds no restricted key. A Developer ID build passes
+// BATTY_SIGNING=developerid on the command line (build.sh package --sign and
+// scripts/release.sh only) and gets Manual signing, the Developer
+// ID identity, the iCloud entitlement and the committed profile for its variant.
+// The command-line flag is read here, so it reaches this project's targets
+// only; Swift package targets, which cannot take a profile, never see it.
+// BattyTests shares this file, so its target settings pin the routine values.
+BATTY_SIGNING = routine
+BATTY_CODE_SIGN_STYLE_routine = Automatic
+BATTY_CODE_SIGN_STYLE_developerid = Manual
+BATTY_CODE_SIGN_IDENTITY_routine = Apple Development
+BATTY_CODE_SIGN_IDENTITY_developerid = Developer ID Application
+BATTY_ENTITLEMENTS_routine = Batty/Batty-local.entitlements
+BATTY_ENTITLEMENTS_developerid = Batty/Batty.entitlements
+BATTY_PROFILE_routine =
+BATTY_PROFILE_developerid = $(BATTY_DEVELOPER_ID_PROFILE)
+BATTY_DEVELOPER_ID_PROFILE = Batty Developer ID
+CODE_SIGN_STYLE = $(BATTY_CODE_SIGN_STYLE_$(BATTY_SIGNING))
+CODE_SIGN_IDENTITY = $(BATTY_CODE_SIGN_IDENTITY_$(BATTY_SIGNING))
+BATTY_ENTITLEMENTS = $(BATTY_ENTITLEMENTS_$(BATTY_SIGNING))
+PROVISIONING_PROFILE_SPECIFIER = $(BATTY_PROFILE_$(BATTY_SIGNING))
 PRODUCT_NAME = $(APP_PRODUCT_NAME)
 MARKETING_VERSION = 1.2.0
 CURRENT_PROJECT_VERSION = 1

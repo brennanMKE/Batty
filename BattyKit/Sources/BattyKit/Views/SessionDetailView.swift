@@ -111,6 +111,7 @@ public struct SessionDetailView: View {
                         logger.error("setShared failed: \(error.localizedDescription, privacy: .public)")
                     }
                 },
+                syncError: { store.projectStore.syncError },
                 onCancel: { windowRuntime.projectPickerShown = false }
             )
         }

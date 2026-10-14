@@ -101,6 +101,25 @@ struct ProjectSharingModelTests {
     }
 }
 
+/// Accepts or refuses `publish` on demand, recording what it kept.
+@MainActor
+final class SwitchableProjectSyncBackend: ProjectSyncBackend {
+    var refusal: ProjectSyncError?
+    private(set) var published: [ProjectSyncRecord] = []
+    let isAvailable = true
+    let snapshotIsAuthoritative = true
+    let changes = AsyncStream<Void>.makeStream().stream
+    var onSyncError: (@MainActor (ProjectSyncError) -> Void)?
+
+    func snapshot() -> [UUID: ProjectSyncEntry] { [:] }
+    func publish(_ record: ProjectSyncRecord) throws {
+        if let refusal { throw refusal }
+        published.append(record)
+    }
+    func withdraw(id: UUID) {}
+    func tombstone(id: UUID, deletedAt: Date) {}
+}
+
 @MainActor
 struct ProjectSharingStoreTests {
     private final class Clock {
@@ -255,6 +274,112 @@ struct ProjectSharingStoreTests {
         p.isShared = false
         try store.upsert(p)
         #expect(backend.calls.last == .withdraw(p.id))
+    }
+
+    @Test func aRefusedShareLeavesTheFlagAndTheFileUntouchedAndSetsSyncError() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let backend = SwitchableProjectSyncBackend()
+        let store = store(url, Clock(Date(timeIntervalSince1970: 1_700_000_000)), backend: backend)
+        let local = project("Local")
+        try store.upsert(local)
+        let before = try Data(contentsOf: url)
+        backend.refusal = .quotaExceeded(reason: .totalTooLarge)
+
+        #expect(throws: ProjectSyncError.quotaExceeded(reason: .totalTooLarge)) { try store.setShared(id: local.id, true) }
+
+        #expect(store.project(id: local.id)?.isShared == false)
+        #expect(try Data(contentsOf: url) == before, "projects.json is byte-identical")
+        #expect(store.syncError == ProjectSyncError.quotaExceeded(reason: .totalTooLarge).localizedDescription)
+        #expect(backend.published.isEmpty)
+    }
+
+    @Test func aRefusedUpsertOfASharedProjectAddsNothing() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let backend = SwitchableProjectSyncBackend()
+        backend.refusal = .quotaExceeded(reason: .recordTooLarge)
+        let store = store(url, Clock(Date(timeIntervalSince1970: 1_700_000_000)), backend: backend)
+
+        #expect(throws: ProjectSyncError.quotaExceeded(reason: .recordTooLarge)) { try store.upsert(project("Big", shared: true)) }
+
+        #expect(store.projects.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(store.syncError != nil)
+    }
+
+    @Test func anAcceptedShareCommitsTheFlagAndClearsSyncError() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let backend = SwitchableProjectSyncBackend()
+        let store = store(url, Clock(Date(timeIntervalSince1970: 1_700_000_000)), backend: backend)
+        let local = project("Local")
+        try store.upsert(local)
+        backend.refusal = .quotaExceeded(reason: .tooManyKeys)
+        #expect(throws: ProjectSyncError.self) { try store.setShared(id: local.id, true) }
+        #expect(store.syncError != nil)
+        backend.refusal = nil
+
+        try store.setShared(id: local.id, true)
+
+        #expect(store.project(id: local.id)?.isShared == true)
+        #expect(ProjectStore(fileURL: url).project(id: local.id)?.isShared == true)
+        #expect(store.syncError == nil)
+        #expect(backend.published.map(\.id) == [local.id])
+    }
+
+    @Test func aBackendReportedErrorSurfacesAsSyncError() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend()
+        let store = store(url, Clock(Date(timeIntervalSince1970: 1_700_000_000)), backend: backend)
+        #expect(store.syncError == nil)
+
+        backend.onSyncError?(.quotaExceeded(reason: .totalTooLarge))
+
+        #expect(store.syncError == ProjectSyncError.quotaExceeded(reason: .totalTooLarge).localizedDescription)
+    }
+
+    @Test func theLocalOnlyBackendNeverRefuses() throws {
+        let backend = LocalOnlyProjectSyncBackend()
+        let huge = ProjectSyncRecord(
+            id: UUID(), name: String(repeating: "n", count: 2_000_000), rootPath: "~/x", color: .teal, symbol: .chip,
+            layout: .preset(.singlePane), runStartupCommandsOnOpen: true, modifiedAt: nil)
+        try backend.publish(huge)
+        #expect(backend.calls == [.publish(huge)])
+    }
+
+    @Test func aNonAuthoritativeBackendNeverWithdrawsASharedProjectButStillAppliesRecords() async throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        backend.snapshotIsAuthoritative = false
+        let store = store(url, Clock(Date(timeIntervalSince1970: 1_700_000_000)), backend: backend)
+        let mine = project("Mine", shared: true, modified: Date(timeIntervalSince1970: 1_000))
+        try store.upsert(mine)
+        let fresh = UUID()
+        backend.receive([fresh: .record(ProjectSyncRecord(
+            id: fresh, name: "Arrived", rootPath: "~/Arrived", color: .violet, symbol: .chip,
+            layout: .preset(.singlePane), runStartupCommandsOnOpen: false,
+            modifiedAt: Date(timeIntervalSince1970: 1_600_000_000)))])
+        backend.finishChanges()
+        await store.syncTask?.value
+
+        #expect(store.project(id: mine.id)?.isShared == true, "an empty-for-this-id snapshot before the first server change must not unshare")
+        #expect(store.project(id: fresh)?.name == "Arrived")
+    }
+
+    @Test func anAuthoritativeBackendWithdrawsASharedProjectAbsentFromTheSnapshot() async throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = store(url, Clock(Date(timeIntervalSince1970: 1_700_000_000)), backend: backend)
+        let mine = project("Mine", shared: true, modified: Date(timeIntervalSince1970: 1_000))
+        try store.upsert(mine)
+        backend.receive([:])
+        backend.finishChanges()
+        await store.syncTask?.value
+        #expect(store.project(id: mine.id)?.isShared == false)
     }
 
     @Test func aStoreWithNoBackendHasNoSyncState() throws {
@@ -452,6 +577,16 @@ struct ProjectSharingPickerTests {
         host.frame = NSRect(x: 0, y: 0, width: 860, height: 600)
         host.layoutSubtreeIfNeeded()
         #expect(host.fittingSize.width > 0)
+    }
+
+    @Test func theModelCarriesTheSyncErrorOnlyForTheRefreshThatPassesItAndClearsOnTheNext() {
+        let projects = [project("Alpha"), project("Beta", shared: true)]
+        let model = ProjectPickerModel(projects: projects, openProjectIDs: [], homeDirectory: home, rootExists: { _ in true })
+        #expect(model.syncError == nil)
+
+        let failed = model.refreshed(projects: projects, openProjectIDs: [], syncError: "Too big")
+        #expect(failed.syncError == "Too big")
+        #expect(failed.refreshed(projects: projects, openProjectIDs: []).syncError == nil, "a successful publish clears it")
     }
 
     @Test func aSharedChipFitsAsNarrowlyAsAnUnsharedOne() {

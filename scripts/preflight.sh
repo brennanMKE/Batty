@@ -237,6 +237,79 @@ elif [[ -n "$SIGN_IDENTITY" ]]; then
     warn "openssl not on PATH — skipping cert expiry check"
 fi
 
+# Developer ID provisioning profile (#0503): the iCloud key-value entitlement
+# is valid only with the profile embedded, and the profile lists the exact
+# certificates it authorizes. The repo copy is what release.sh installs (it
+# does so before running this gate); check that the installed copy matches it
+# by UUID and bytes, that it has not expired, and that this Mac holds the
+# private key of a certificate it lists.
+#
+# check_prod_profile <repo profile file> <decoded profile plist> <installed dir>
+# <local certificate SHA-1, upper case, or empty>
+check_prod_profile() {
+    local prod_profile="$1" plist="$2" installed_dir="$3" local_sha1="$4"
+    local uuid installed expiry expiry_epoch days_left index cert_sha listed=0
+    uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$plist" 2>/dev/null)
+    installed="$installed_dir/$uuid.provisionprofile"
+    if [[ -f "$installed" ]] && cmp -s "$prod_profile" "$installed"; then
+        cred_pass "Prod provisioning profile installed and identical to the repo copy (UUID $uuid)" "prod_profile"
+    elif [[ -f "$installed" ]]; then
+        cred_fail "installed profile $uuid differs from Configuration/Profiles/Batty.provisionprofile — run scripts/install-profiles.sh" "prod_profile"
+    else
+        cred_fail "Prod provisioning profile (UUID $uuid) not installed — run scripts/install-profiles.sh" "prod_profile"
+    fi
+
+    expiry=$(/usr/libexec/PlistBuddy -x -c 'Print :ExpirationDate' "$plist" 2>/dev/null | sed -n 's/.*<date>\(.*\)<\/date>.*/\1/p')
+    expiry_epoch=$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$expiry" +%s 2>/dev/null || echo "")
+    if [[ -z "$expiry_epoch" ]]; then
+        warn "could not read the Prod provisioning profile's ExpirationDate"
+    else
+        days_left=$(( (expiry_epoch - $(date +%s)) / 86400 ))
+        if (( days_left < 0 )); then
+            cred_fail "Prod provisioning profile EXPIRED on $expiry — an app embedding it does not launch. Regenerate it in the developer portal and replace Configuration/Profiles/Batty.provisionprofile" "prod_profile_expiry"
+        elif (( days_left < 365 )); then
+            cred_warn "Prod provisioning profile expires in $days_left day(s) ($expiry)" "prod_profile_expiry"
+        else
+            cred_pass "Prod provisioning profile valid for $days_left more day(s) (expires $expiry)" "prod_profile_expiry"
+        fi
+    fi
+
+    if [[ -n "$local_sha1" ]]; then
+        index=0
+        while true; do
+            cert_sha=$(/usr/libexec/PlistBuddy -c "Print :DeveloperCertificates:$index" "$plist" 2>/dev/null \
+                | perl -0pe 's/\n\z//' | shasum | awk '{ print toupper($1) }')
+            [[ "$cert_sha" == "DA39A3EE5E6B4B0D3255BFEF95601890AFD80709" ]] && break
+            [[ "$cert_sha" == "$local_sha1" ]] && listed=1
+            index=$((index + 1))
+        done
+        if (( listed )); then
+            cred_pass "the Prod provisioning profile lists this Mac's Developer ID Application certificate" "prod_profile_cert"
+        else
+            cred_fail "the Prod provisioning profile does not list this Mac's Developer ID Application certificate ($local_sha1); xcodebuild refuses to sign with it. Regenerate the profile selecting this certificate (the one whose SHA-1 is shown here). Do not import a second identity with the same name: codesign --sign \"<name>\" then becomes ambiguous" "prod_profile_cert"
+        fi
+    fi
+}
+
+PROFILES_DIR="${BATTY_PROFILES_REPO_DIR:-$REPO_ROOT/Configuration/Profiles}"
+INSTALLED_PROFILES_DIR="${BATTY_PROFILES_INSTALL_DIR:-$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles}"
+PROD_PROFILE="$PROFILES_DIR/Batty.provisionprofile"
+if [[ ! -f "$PROD_PROFILE" ]]; then
+    cred_fail "Configuration/Profiles/Batty.provisionprofile missing from the repo" "prod_profile"
+else
+    PROFILE_PLIST="$(mktemp "${TMPDIR:-/tmp}/batty-preflight-profile.XXXXXX")"
+    if ! security cms -D -i "$PROD_PROFILE" > "$PROFILE_PLIST" 2>/dev/null; then
+        cred_fail "Configuration/Profiles/Batty.provisionprofile could not be decoded" "prod_profile"
+    else
+        LOCAL_CERT_SHA1=""
+        if [[ -n "$SIGN_IDENTITY" ]]; then
+            LOCAL_CERT_SHA1=$(security find-certificate -c "$SIGN_IDENTITY" -Z 2>/dev/null | awk '/^SHA-1 hash:/ { print toupper($3); exit }')
+        fi
+        check_prod_profile "$PROD_PROFILE" "$PROFILE_PLIST" "$INSTALLED_PROFILES_DIR" "$LOCAL_CERT_SHA1"
+    fi
+    rm -f "$PROFILE_PLIST"
+fi
+
 NOTARY_PROFILE_OK=0
 if xcrun notarytool history --keychain-profile Batty-notary >/dev/null 2>&1; then
     NOTARY_PROFILE_OK=1
@@ -365,6 +438,14 @@ fi
 # --- Build gates -------------------------------------------------------------
 
 section "Build gates"
+
+for profile in Batty.provisionprofile Batty_Beta.provisionprofile; do
+    if [[ -f "$REPO_ROOT/Configuration/Profiles/$profile" ]]; then
+        pass "Configuration/Profiles/$profile present"
+    else
+        fail "Configuration/Profiles/$profile missing (#0503) — the signed app cannot carry the iCloud entitlement without it"
+    fi
+done
 
 if (( SKIP_BUILD )); then
     pass "build/test skipped (--skip-build)"

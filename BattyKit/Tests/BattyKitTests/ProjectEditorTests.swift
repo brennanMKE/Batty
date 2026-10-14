@@ -1289,6 +1289,25 @@ struct ProjectEditorSharingTests {
         #expect(fixture.reloaded().project(id: project.id)?.isShared == false)
     }
 
+    @Test func aRefusedShareFailsSaveWithTheBackendsMessageAndWritesNothing() throws {
+        let fixture = try EditorFixture()
+        let backend = SwitchableProjectSyncBackend()
+        let store = ProjectStore(fileURL: fixture.projectsFile, clock: { EditorFixture.stamp }, backend: backend)
+        let project = fixture.richProject(approved: "approved-hash")
+        try store.upsert(project)
+        let before = try Data(contentsOf: fixture.projectsFile)
+        let model = fixture.model(store: store, selecting: project.id)
+        backend.refusal = .quotaExceeded(reason: .totalTooLarge)
+
+        model.setShared(true)
+        #expect(model.save() == nil)
+
+        #expect(model.saveError == ProjectSyncError.quotaExceeded(reason: .totalTooLarge).localizedDescription)
+        #expect(try Data(contentsOf: fixture.projectsFile) == before)
+        #expect(store.project(id: project.id)?.isShared == false)
+        #expect(model.isDirty, "the draft keeps the unsaved checkbox")
+    }
+
     @Test func cancelRevertsTheFlagAndWritesNothing() throws {
         let fixture = try EditorFixture()
         let store = fixture.store()

@@ -1,8 +1,12 @@
 # Shared and local Projects (#0501)
 
-Status: phase (a) is implemented; phase (b), the iCloud backend, is not.
-Until phase (b) lands the Shared flag is stored and shown but **nothing
-leaves the Mac**.
+Status: phase (a) (#0501) and phase (b) (#0503), the iCloud key-value backend,
+are implemented. A Shared Project syncs only in a build whose signature carries
+the iCloud key-value entitlement (a Prod or Beta build signed with its
+provisioning profile) and is not running tests. In any other build, and in
+any test process even when the host is signed with the entitlement, no
+backend is built and the Shared flag on a Project is stored and shown but **nothing leaves the
+Mac**. Two-Mac sync has not been verified by an agent.
 
 A Project is **local** by default. The user can mark it **Shared** with a
 checkbox on every picker card and in the Project Editor, meaning "sync this
@@ -84,8 +88,8 @@ leaves a tombstone other Macs apply. A tombstone is meant to be pruned after
 ## Backend protocol
 
 `ProjectSyncBackend` (`@MainActor`): `isAvailable`, `snapshot()`,
-`publish(_:)`, `withdraw(id:)`, `tombstone(id:deletedAt:)` and
-`changes: AsyncStream<Void>`. `ProjectStore(fileURL:fileManager:clock:backend:home:)`
+`publish(_:) throws`, `withdraw(id:)`, `tombstone(id:deletedAt:)`,
+`changes: AsyncStream<Void>` and `onSyncError`. `ProjectStore(fileURL:fileManager:clock:backend:home:)`
 takes an optional backend. With `nil` (production in phase (a)) none of the
 sync code runs. With one, `upsert` and `setShared(true)` of a shared Project
 `publish`, an unshare `withdraw`s, and `delete` of a shared Project
@@ -98,8 +102,63 @@ phase (b) must also only yield `changes` after a real remote read: rule 4 treats
 so a backend that yields before its first sync would turn every shared Project
 local.
 
-`LocalOnlyProjectSyncBackend` is the only implementation here. It reports
-`isAvailable == false`, keeps entries in memory and logs its calls for tests.
+`LocalOnlyProjectSyncBackend` keeps entries in memory and logs its calls for
+tests; it never throws. `ICloudKeyValueProjectSyncBackend` is the production
+implementation (next section).
+
+## The iCloud key-value backend (phase b, #0503)
+
+`ICloudKeyValueProjectSyncBackend` (`Model/ICloudKeyValueProjectSyncBackend.swift`)
+takes a `KeyValueStoring` (`NSUbiquitousKeyValueStore` in production, a fake in
+tests) and a `NotificationCenter`.
+
+- **Keys.** `project.<uuid>`, value compact JSON (`.sortedKeys`, no pretty
+  printing, ISO 8601 dates with fractional seconds). A record is a
+  `ProjectSyncRecord`; a tombstone is `{"deletedAt": "..."}`. `withdraw`
+  removes the key. `snapshot()` skips and logs a value it cannot decode, or
+  whose record id differs from its key, and never deletes it.
+- **Changes.** `didChangeExternallyNotification` for the backend's store:
+  `ServerChange` and `InitialSyncChange` yield `changes` unless every changed
+  key is outside the `project.` prefix; `AccountChange` yields;
+  `QuotaViolationChange` never yields, sets `lastError` and calls `onSyncError`.
+  Construction calls `synchronize()` and yields once, so the store merges what
+  the system cache already holds at launch.
+- **The authority guard.** An empty snapshot means "everything withdrawn"
+  (merge rule 4), but the launch merge and the merge after an account change
+  read a cache that may not be filled yet. `snapshotIsAuthoritative` is false
+  from construction and again after an `AccountChange`, and true after a
+  `ServerChange` or `InitialSyncChange`; the store passes it to the merge as
+  `withdrawAbsent`, so rule 4 applies only after one of those two follows.
+  Records and tombstones apply either way.
+- **Availability.** `isAvailable` is the entitlement alone: key-value
+  storage can work while `ubiquityIdentityToken` stays nil for an app with no
+  ubiquity container. Construction logs once at info level whether the
+  entitlement and the token are present. The store ignores `changes` while
+  `isAvailable` is false.
+- **Limits, enforced before writing.** A value over 1,000,000 bytes, a key
+  count that would pass 1,024 (any key in the store counts), or project values
+  that would total over 1,000,000 bytes make `publish` throw
+  `ProjectSyncError.quotaExceeded(reason:)` and write nothing. Apple states the
+  size limits as 1 MB; the decimal reading is the conservative one.
+- **Store order.** `ProjectStore.upsert` and `setShared(true)` call `publish`
+  before the local commit, so a refused share leaves `isShared` false and
+  `projects.json` untouched, and the error reaches the caller. The store keeps
+  the message in `syncError` until the next successful publish.
+- **Where the error shows.** The picker shows `syncError` as a caption under
+  the cards (`project-picker.sync-error`) and the checkbox stays unchecked;
+  the editor shows it as `saveError`, and Save fails.
+- **Tombstone pruning.** Each `snapshot()` removes tombstones older than 30
+  days using the injected clock. It is the only write no user action caused.
+- **Wiring.** `AppStateStore.projectStore` builds the backend only with
+  the entitlement present
+  (`ProjectSyncEntitlement.isPresent()`, via `projectSyncBackendFactory`) and
+  the process is not a test (`ProjectSyncEntitlement.isTestProcess()`: the
+  environment has `XCTestConfigurationFilePath`, or `XCTestCase` is loaded);
+  otherwise the store gets `nil`.
+- **Local suffix.** A name suffixed by merge rule 5 (`Name 2`) is published on
+  the next `upsert` of that Project and then propagates. That is wanted.
+
+Signing, profiles and the two entitlements files: `docs/code-signing.md`.
 
 ## Where the checkbox is
 
@@ -146,45 +205,42 @@ independent stores, as Application Support is already split per variant
 (#0279). A Beta build never writes into the set a Prod build reads. Both App
 IDs need the capability.
 
-## Phase (b) checklist (needs user sign-off; not agent work)
+## Phase (b) checklist
 
-`Configuration/` and `scripts/` are restricted areas and the account steps are
-the user's.
+Done in #0503 unless marked otherwise; `Configuration/` and `scripts/` are
+restricted areas and the account steps were the user's.
 
-1. Apple developer account: enable iCloud (key-value storage) on
-   `co.sstools.Batty` and `co.sstools.Batty.beta`; create a Developer ID
-   provisioning profile for the Prod App ID; regenerate the Beta development
-   profile. Enabling the capability invalidates existing profiles.
-2. `Batty/Batty.entitlements`: add the `ubiquity-kvstore-identifier` key. The
-   file is shared by both variants; the `$(…)` form keeps one file.
-3. `Batty.xcodeproj/project.pbxproj`: the capability under `SystemCapabilities`.
-   This is meant to be committed, unlike the product-name residue.
-4. `Configuration/Build.xcconfig`: possibly nothing under automatic signing;
-   otherwise `PROVISIONING_PROFILE_SPECIFIER` for Release. Decide by inspecting
-   the exported app for `Contents/embedded.provisionprofile`.
-5. `scripts/release.sh`, `verify-dmg.sh`, `preflight.sh`: keep the profile and
-   entitlement through the re-sign step, and assert both are present and report
-   the profile's expiry.
-6. `scripts/run-ui-tests.sh` and the VM: the runner ad-hoc signs, and a
-   restricted entitlement without an authorizing profile can get the app killed
-   at launch. **Unverified** whether it launches in the VM; check first. The
-   likely fix is a UI-test entitlements file without the iCloud key, which also
-   keeps the VM (no iCloud account) honest: `isAvailable == false`.
-7. `docs/code-signing.md`: a Developer ID provisioning profile section.
+1. Apple developer account: iCloud (key-value storage) on both App IDs and a
+   Developer ID provisioning profile for each (`Batty Developer ID`,
+   `Batty Beta Developer ID`, in `Configuration/Profiles/`, listing only the
+   certificate this Mac signs with). Done by the user.
+2. `Batty/Batty.entitlements`: the `ubiquity-kvstore-identifier` key only
+   (`$(TeamIdentifierPrefix)$(CFBundleIdentifier)`), with
+   `Batty-local.entitlements` for builds without a profile. Done.
+3. `Batty.xcodeproj/project.pbxproj`: no `SystemCapabilities` entry was added;
+   the app target maps `CODE_SIGN_ENTITLEMENTS` and
+   `PROVISIONING_PROFILE_SPECIFIER` from xcconfig variables. Done.
+4. `Configuration/*.xcconfig`: `BATTY_SIGNING` selects routine (Automatic, no
+   profile, no iCloud key) or Developer ID (Manual, the variant's profile, the
+   iCloud key); only `package --sign` and the release pipeline pass
+   `developerid`. Done.
+5. `scripts/release.sh`, `verify-dmg.sh`, `preflight.sh`: profile and
+   entitlement assertions and the profile's expiry, through
+   `scripts/verify-profile.sh`. Done; not run end to end (needs a release
+   run and notarization).
+6. `scripts/run-ui-tests.sh` and the VM: builds pass the
+   `Batty-local.entitlements` override, so the app has no entitlement and no
+   backend; `ProjectsSyncEntitlementTests` checks it. Done; the VM run is the
+   orchestrator's.
+7. `docs/code-signing.md`: a Developer ID provisioning profile section. Done.
 
-Phase (b) must also:
+Still open after #0503:
 
-- publish a locally suffixed name (`Name 2`, from merge rule 5) on the next
-  `upsert` of that Project, which then propagates the suffix; decide whether
-  that is wanted before shipping.
-
-Phase (b) itself: `KeyValueProjectSyncBackend` over `NSUbiquitousKeyValueStore`
-(`didChangeExternallyNotification` mapped to `changes`, quota and account-change
-handling, `isAvailable` from `ubiquityIdentityToken`, 30-day tombstone pruning),
-a sync status in the picker, optionally `"shared"` in `batty project list --json`,
-and UI tests driving the backend through a fake. Its first task is to verify, on
-a notarized Developer ID build, that the entitlement plus profile launches and
-syncs between two Macs.
+- The sync status glyph in the picker (`icloud.slash` with no account) and
+  `"shared"` in `batty project list --json`.
+- Two-Mac sync on a notarized Developer ID build, by hand, including: sign
+  out and in of iCloud, and an edit on one Mac while Batty on the other is
+  quit, then launching it.
 
 ## Sources
 

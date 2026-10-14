@@ -83,6 +83,8 @@ xcodebuild \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO \
+    BATTY_ENTITLEMENTS=Batty/Batty-local.entitlements \
+    PROVISIONING_PROFILE_SPECIFIER= \
     build-for-testing 2>&1 | tail -3
 
 # Locate the freshly built products. Both apps live next to each other
@@ -127,4 +129,6 @@ xcodebuild \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO \
+    BATTY_ENTITLEMENTS=Batty/Batty-local.entitlements \
+    PROVISIONING_PROFILE_SPECIFIER= \
     test-without-building
