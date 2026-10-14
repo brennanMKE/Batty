@@ -27,6 +27,30 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.3.0</title>
+      <pubDate>Wed, 14 Oct 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-3-0</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <h2>Projects</h2>
+        <p>Save a session's layout, panes, tabs and startup commands once, then reopen it ready to work. Open Projects from the File menu, the sidebar's briefcase button, the Command Palette or Open Quickly. Shared Projects sync through iCloud to your other Macs.</p>
+        <ul>
+          <li>Project Editor: create, change, reorder and delete Projects.</li>
+          <li>Startup commands per tab, with a confirmation before they run.</li>
+          <li>Open now strip: switch to an open Project or open another copy.</li>
+          <li><code>batty project list</code> and <code>batty project open</code>.</li>
+          <li>Git Status Panes list the repository's worktrees.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.3.0.dmg"
+        sparkle:version="20261014"
+        sparkle:shortVersionString="1.3.0"
+        sparkle:edSignature="DMtJZ5ET6tFIaOUmBHPRGJZA3aM+o36DyxKCG8/IXZjNpQjTUpHqzth3BoxQQi/jlGw25vPFOimNt747val8Ag=="
+        length="26620473"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.2.1</title>
       <pubDate>Tue, 13 Oct 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
