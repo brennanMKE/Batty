@@ -217,6 +217,6 @@ extension ProjectOpenCommand: CapabilitiesDescribable {
             "name": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Name of the saved Project (case-insensitive).", required: true),
             "new": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--new"], type: "boolean", description: "Open another Session even if one from this Project is already open.", required: false, defaultValue: "false"),
             "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (sessionID, paneID, created, name) instead of a sentence.", required: false, defaultValue: "false"),
-        ])
+        ], required: ["name"])
     }
 }
