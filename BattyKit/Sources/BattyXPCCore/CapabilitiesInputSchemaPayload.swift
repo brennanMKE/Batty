@@ -54,6 +54,17 @@ public nonisolated struct CapabilitiesPropertyPayload: Codable, Sendable, Equata
     /// JSON Schema `type`: `"string"`, `"boolean"`, or `"integer"`.
     public let type: String
     public let description: String
+    /// Whether this parameter must be supplied. Emitted as `cliRequired`,
+    /// **not** `required` (#0511): a `properties` value is itself a JSON
+    /// Schema, and `required` is a reserved keyword there whose value must
+    /// be an array of property names. A boolean under that key made every
+    /// advertised schema fail validation against the very dialect
+    /// `CapabilitiesPayload.jsonSchemaDialect` declares. The `cliKind`
+    /// naming precedent applies: a key this payload invents, outside the
+    /// standard's vocabulary, is prefixed rather than overloaded. The
+    /// standards-correct statement of the same fact is the object-level
+    /// `CapabilitiesInputSchemaPayload.required` array, which is what a
+    /// schema validator reads.
     public let required: Bool
     /// JSON Schema `enum` — populated for every enum-backed parameter
     /// (`pane split --view`, `pane split --direction`, `list`'s positional
@@ -81,7 +92,7 @@ public nonisolated struct CapabilitiesPropertyPayload: Codable, Sendable, Equata
         case names
         case type
         case description
-        case required
+        case required = "cliRequired"
         case enumValues = "enum"
         case enumValueNames
         case defaultValue = "default"
