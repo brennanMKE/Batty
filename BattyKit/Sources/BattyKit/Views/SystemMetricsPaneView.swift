@@ -22,10 +22,16 @@ public struct SystemMetricsPaneView: View {
         case memory = "Memory"
     }
 
+    @Environment(\.themeChrome) private var themeChrome
+
     let content: SystemMetricsPaneContent
 
     @State private var sortField: SortField = .memory
     @State private var sortAscending = false
+
+    private var colors: SystemMetricsColors {
+        SystemMetricsColors(palette: themeChrome?.palette)
+    }
 
     public init(content: SystemMetricsPaneContent) {
         self.content = content
@@ -239,7 +245,7 @@ public struct SystemMetricsPaneView: View {
                 Spacer(minLength: 0)
                 if let percent {
                     RoundedRectangle(cornerRadius: 1)
-                        .fill(percent >= 80 ? Color.orange : Color.accentColor)
+                        .fill(percent >= 80 ? Color.orange : colors.accent)
                         .frame(height: max(1, proxy.size.height * CGFloat(min(max(percent, 0), 100)) / 100))
                 }
             }
@@ -255,7 +261,7 @@ public struct SystemMetricsPaneView: View {
         return VStack(alignment: .leading, spacing: 6) {
             GeometryReader { proxy in
                 HStack(spacing: 0) {
-                    Rectangle().fill(Color.accentColor)
+                    Rectangle().fill(colors.accent)
                         .frame(width: proxy.size.width * CGFloat(memory.activeBytes) / CGFloat(total))
                     Rectangle().fill(Color.purple)
                         .frame(width: proxy.size.width * CGFloat(memory.wiredBytes) / CGFloat(total))
@@ -268,7 +274,7 @@ public struct SystemMetricsPaneView: View {
             .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.06)))
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 136), spacing: 14, alignment: .leading)], alignment: .leading, spacing: 4) {
-                memoryLegendItem(color: .accentColor, label: "Active", bytes: memory.activeBytes)
+                memoryLegendItem(color: colors.accent, label: "Active", bytes: memory.activeBytes)
                 memoryLegendItem(color: .purple, label: "Wired", bytes: memory.wiredBytes)
                 memoryLegendItem(color: .orange, label: "Compressed", bytes: memory.compressedBytes)
                 memoryLegendItem(color: .secondary.opacity(0.3), label: "Free", bytes: memory.freeBytes)
@@ -388,8 +394,11 @@ public struct SystemMetricsPaneView: View {
                 .contextMenu { processContextMenu(for: row) }
         }
         .listStyle(.plain)
+        .scrollContentBackground(colors.tableBackground == nil ? .automatic : .hidden)
+        .background(colors.tableBackground ?? Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
         .frame(minHeight: 260, idealHeight: 420, maxHeight: 460)
-        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.primary.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(colors.border))
     }
 
     private func processRow(_ row: ProcessRow) -> some View {
@@ -402,7 +411,7 @@ public struct SystemMetricsPaneView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(verbatim: String(row.pid))
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(colors.mutedForeground.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tertiary))
                 .frame(width: Self.pidColumnWidth, alignment: .trailing)
             Text(row.cpuPercent.map { SystemMetricsFormatting.percent($0) } ?? "\u{2014}")
                 .monospacedDigit()
@@ -412,11 +421,20 @@ public struct SystemMetricsPaneView: View {
                 .frame(width: Self.memoryColumnWidth, alignment: .trailing)
         }
         .font(.system(size: 12))
-        .foregroundStyle(denied ? .tertiary : .primary)
+        .foregroundStyle(denied ? mutedRowStyle : primaryRowStyle)
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.visible)
+        .listRowSeparatorTint(colors.separator)
+    }
+
+    private var primaryRowStyle: AnyShapeStyle {
+        colors.foreground.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary)
+    }
+
+    private var mutedRowStyle: AnyShapeStyle {
+        colors.mutedForeground.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tertiary)
     }
 
     @ViewBuilder
