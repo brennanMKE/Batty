@@ -80,13 +80,26 @@ private actor ThreadRecordingSampler: SystemMetricsSampling {
 /// captured `generation` before the same hide/teardown/reshow event this
 /// gate exists to straddle, so they all reach the same discard-or-apply
 /// verdict once released; which one a test happens to `await` doesn't
-/// change the outcome it observes.
+/// change the outcome it observes. That holds for a caller arriving
+/// *after* `release()` too, which is why the release can safely be a
+/// latch (#0510) rather than a one-shot broadcast.
 private actor GatedSampler: SystemMetricsSampling {
     private let result: SystemMetricsSnapshot
     private(set) var callCount = 0
     private var startedContinuations: [CheckedContinuation<Void, Never>] = []
     private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
     private var hasStarted = false
+    /// #0510: `release()` is a latch, not a one-shot broadcast. Resuming
+    /// only the continuations parked at that instant left a legal
+    /// interleaving that hangs the suite: the periodic tick enters first
+    /// and parks, `waitUntilStarted()` returns on *its* arrival, the test
+    /// releases it, and the test's own `tickTask` then enters and parks
+    /// with nobody left to resume it. `await tickTask.value` has no
+    /// timeout, and cancelling a task does not resume a
+    /// `withCheckedContinuation`, so the run stops dead instead of
+    /// failing. Latching it means a caller arriving after the release
+    /// sails straight through.
+    private var isReleased = false
 
     init(result: SystemMetricsSnapshot) {
         self.result = result
@@ -98,6 +111,7 @@ private actor GatedSampler: SystemMetricsSampling {
         let waiters = startedContinuations
         startedContinuations.removeAll()
         for waiter in waiters { waiter.resume() }
+        guard !isReleased else { return result }
         await withCheckedContinuation { releaseContinuations.append($0) }
         return result
     }
@@ -108,6 +122,7 @@ private actor GatedSampler: SystemMetricsSampling {
     }
 
     func release() {
+        isReleased = true
         let waiters = releaseContinuations
         releaseContinuations.removeAll()
         for waiter in waiters { waiter.resume() }
