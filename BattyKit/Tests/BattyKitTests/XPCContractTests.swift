@@ -229,6 +229,34 @@ struct XPCContractTests {
 
     // MARK: - StatusPayload (#0271) round trips
 
+    /// #0508: the app encodes and the CLI decodes, and they are not
+    /// guaranteed to be the same build — a stale running app is the exact
+    /// case `bundlePath` was added to diagnose, and the envelope carries no
+    /// protocol version to negotiate with. A pre-#0361 app's five-field
+    /// reply must degrade to an explicit unknown, not throw.
+    @Test func statusPayloadDecodesAPreBundlePathReplyWithUnknownFallbacks() throws {
+        let legacy = Data(#"{"pid":4242,"uptimeSeconds":12.5,"windowCount":1,"sessionCount":3,"tabCount":5}"#.utf8)
+        let decoded = try JSONDecoder().decode(StatusPayload.self, from: legacy)
+        #expect(decoded.pid == 4242)
+        #expect(decoded.uptimeSeconds == 12.5)
+        #expect(decoded.windowCount == 1)
+        #expect(decoded.sessionCount == 3)
+        #expect(decoded.tabCount == 5)
+        #expect(decoded.bundlePath == StatusPayload.unknownField)
+        #expect(decoded.appVersion == StatusPayload.unknownField)
+    }
+
+    /// The five original fields stay mandatory — an app that cannot supply
+    /// those is not a Batty this CLI can talk to, and silently defaulting
+    /// them would report invented state.
+    @Test func statusPayloadStillRejectsAReplyMissingAnOriginalField() {
+        let truncated = Data(#"{"pid":1,"uptimeSeconds":0,"windowCount":0,"sessionCount":0}"#.utf8)
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(StatusPayload.self, from: truncated)
+        }
+    }
+
+
     @Test func statusPayloadRoundTrips() throws {
         let payload = StatusPayload(pid: 4242, uptimeSeconds: 12.5, windowCount: 1, sessionCount: 3, tabCount: 5, bundlePath: "/Applications/Batty.app", appVersion: "1.1.0")
         let data = try JSONEncoder().encode(payload)

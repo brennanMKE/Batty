@@ -40,4 +40,33 @@ public nonisolated struct StatusPayload: Codable, Sendable, Equatable {
         self.bundlePath = bundlePath
         self.appVersion = appVersion
     }
+
+    /// The value `bundlePath`/`appVersion` take when the answering app did
+    /// not send them — the same sentinel `appVersion`'s own doc comment
+    /// already names for an unresolvable version.
+    public static let unknownField = "unknown"
+
+    /// #0508: hand-written so the two fields #0361 added decode as absent
+    /// rather than as a hard failure. The app encodes and the CLI decodes,
+    /// and they are not guaranteed to be the same build — a stale running
+    /// app is the exact situation `bundlePath` was added to diagnose, and
+    /// there is no protocol-version field in `XPCRequest`/`XPCResponse` to
+    /// negotiate with. With synthesized `Decodable`, a pre-#0361 app's
+    /// five-field reply threw, so `batty status` reported a generic error
+    /// instead of naming the old app answering on `co.sstools.Batty`.
+    ///
+    /// The five original fields stay required: an app that cannot supply
+    /// those is not a Batty this CLI can talk to at all. Encoding is
+    /// unchanged — an old CLI reading a new app's reply already ignores
+    /// unknown keys.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pid = try container.decode(Int32.self, forKey: .pid)
+        uptimeSeconds = try container.decode(Double.self, forKey: .uptimeSeconds)
+        windowCount = try container.decode(Int.self, forKey: .windowCount)
+        sessionCount = try container.decode(Int.self, forKey: .sessionCount)
+        tabCount = try container.decode(Int.self, forKey: .tabCount)
+        bundlePath = try container.decodeIfPresent(String.self, forKey: .bundlePath) ?? Self.unknownField
+        appVersion = try container.decodeIfPresent(String.self, forKey: .appVersion) ?? Self.unknownField
+    }
 }
