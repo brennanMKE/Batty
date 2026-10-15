@@ -1,0 +1,44 @@
+{
+  "title": "SPLITS",
+  "titleHold": 0.6,
+  "callouts": {
+    "layout": {
+      "text": "Layout presets",
+      "duration": 1.6,
+      "keys": [
+        "⌘",
+        "⇧",
+        "L"
+      ]
+    },
+    "divider": {
+      "text": "Drag dividers",
+      "duration": 1.5
+    },
+    "tabs": {
+      "text": "Tabs",
+      "duration": 1.4,
+      "keys": [
+        "⌘",
+        "T"
+      ]
+    },
+    "split": {
+      "text": "Split",
+      "duration": 1.3,
+      "keys": [
+        "⌘",
+        "D"
+      ]
+    },
+    "focus": {
+      "text": "Move focus",
+      "duration": 1.8,
+      "keys": [
+        "⌘",
+        "⌥",
+        "←→"
+      ]
+    }
+  }
+}

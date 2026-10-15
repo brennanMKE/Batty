@@ -1,0 +1,23 @@
+{
+  "title": "THEMES",
+  "titleHold": 0.6,
+  "callouts": {
+    "selector": {
+      "text": "Live preview",
+      "duration": 1.9,
+      "keys": [
+        "⌘",
+        "⇧",
+        "T"
+      ]
+    },
+    "sessiontheme": {
+      "text": "Per-Session Theme",
+      "duration": 2.0
+    },
+    "globalagain": {
+      "text": "Others unchanged",
+      "duration": 1.8
+    }
+  }
+}

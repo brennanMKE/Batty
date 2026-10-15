@@ -1,0 +1,33 @@
+{
+  "title": "PROJECTS",
+  "titleHold": 0.6,
+  "callouts": {
+    "picker": {
+      "text": "Saved Projects",
+      "duration": 1.4
+    },
+    "shared": {
+      "text": "Share via iCloud",
+      "duration": 1.5
+    },
+    "opened": {
+      "text": "Full layout, one key",
+      "duration": 2.0,
+      "keys": [
+        "↩"
+      ]
+    },
+    "opennow": {
+      "text": "Open now",
+      "duration": 1.4
+    },
+    "another": {
+      "text": "Another copy",
+      "duration": 1.8,
+      "keys": [
+        "⌥",
+        "↩"
+      ]
+    }
+  }
+}

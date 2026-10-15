@@ -76,6 +76,14 @@
 #
 #   BATTY_UI_KEEP_RECORDINGS=1 tools/run-ui-tests-vm.sh ...   # keep recordings of passing tests (#0448)
 #
+#   BATTY_UI_DEMO=1 tools/run-ui-tests-vm.sh BattyUITests/DemoSceneTests[/testName]
+#       demo mode (#0505): the clone's display is set to 1920x1080 before boot,
+#       tools/demo/guest-setup.sh clones the demo repos and installs the tools
+#       in the guest before the build, recordings are kept, and the class's
+#       gate (TEST_RUNNER_BATTY_UI_DEMO) is opened. Used by tools/demo/make-demos.sh.
+#   BATTY_UI_DEMO_SETUP_ONLY=1 stops after the guest setup step (no build, no tests).
+#   BATTY_UI_DEMO_REPOS="owner/repo ..." limits what the setup clones.
+#
 # Run it in the foreground of a shell: a dropped session costs a clone,
 # not a work session.
 
@@ -104,6 +112,18 @@ RESULTS_DIR="$REPO/build/ui-tests/$RUN_ID"
 BOOT_TIMEOUT_SECS=120
 # Keep in sync with the golden image's memory (`tart set --memory`).
 GUEST_MEM_MB=12288
+
+# Demo mode (#0505). Everything below is inert unless BATTY_UI_DEMO=1.
+DEMO=0
+DEMO_DISPLAY="${BATTY_UI_DEMO_DISPLAY:-1920x1080}"
+TEST_GUEST_SECS=2400
+TEST_HOST_SECS=2700
+if [[ "${BATTY_UI_DEMO:-}" == "1" ]]; then
+  DEMO=1
+  export BATTY_UI_KEEP_RECORDINGS=1
+  TEST_GUEST_SECS=4500
+  TEST_HOST_SECS=4800
+fi
 
 log()  { print -r -- "==> $*"; }
 fail() { print -r -- "!! $*" >&2; exit 1; }
@@ -350,6 +370,12 @@ mkdir -p "$RESULTS_DIR"
 log "Cloning $GOLDEN → $CLONE"
 tart clone "$GOLDEN" "$CLONE"
 
+if (( DEMO )); then
+  # The disposable clone only; the golden image is never touched.
+  log "Demo mode: setting $CLONE's display to $DEMO_DISPLAY"
+  tart set "$CLONE" --display "$DEMO_DISPLAY" || fail "tart set --display failed"
+fi
+
 log "Booting $CLONE (headless, muted, export mounted read-only)"
 boot_start=$SECONDS
 # --no-audio: without it Tart routes guest audio to the host output (e.g. the
@@ -416,6 +442,13 @@ for spec in "$@"; do
   [[ "$spec" == *ViewGalleryTests* ]] && GALLERY_ENV="TEST_RUNNER_BATTY_UI_GALLERY=1"
 done
 
+DEMO_ENV=""
+if (( DEMO )); then
+  for spec in "$@"; do
+    [[ "$spec" == *DemoSceneTests* ]] && DEMO_ENV="TEST_RUNNER_BATTY_UI_DEMO=1"
+  done
+fi
+
 log "Running UI tests in the guest (this runs XCUITest inside the VM only)"
 # The "Batty UI Tests" scheme's Test action holds only BattyUITests -- the
 # "Batty (Beta)" scheme's own Test action was deliberately narrowed to
@@ -480,6 +513,7 @@ pull_results() {
   local tarball="$EXPORT/pull.tar"
   local guest_secs=90 host_secs=120
   (( KEEP_RECORDINGS )) && { guest_secs=600; host_secs=660 }
+  (( DEMO )) && { guest_secs=1500; host_secs=1560 }
   tart exec "$CLONE" /bin/zsh -lc "$GUEST_TMO $guest_secs tar -C $GUEST_RESULTS -cf - ." > "$tarball" 2>/dev/null &
   TEST_PID=$!
   wait_bounded $host_secs "result pull"
@@ -488,6 +522,17 @@ pull_results() {
 }
 
 set +e
+if (( DEMO )); then
+  log "Demo mode: guest setup (repos, toolchains, shell) -- network heavy"
+  run_guest_step 2700 "
+    $GUEST_TMO 2600 /bin/zsh $GUEST_BATTY/tools/demo/guest-setup.sh '$GUEST_APP' ${BATTY_UI_DEMO_REPOS:-} < /dev/null 2>&1 | tee $GUEST_RESULTS/demo-setup.log
+    exit 0"
+  pull_results
+  if [[ "${BATTY_UI_DEMO_SETUP_ONLY:-}" == "1" ]]; then
+    log "BATTY_UI_DEMO_SETUP_ONLY=1: stopping after the guest setup; log in $RESULTS_DIR/demo-setup.log"
+    exit 0
+  fi
+fi
 # SwiftPM's repository cache occasionally fails on a fresh clone (exit 74); one
 # bounded retry. A persistent failure still surfaces in the build step below.
 run_guest_step 700 "
@@ -515,9 +560,9 @@ else
     $GUEST_TMO 90 /bin/zsh $GUEST_BATTY/tools/vm-guest-broker.sh '$GUEST_APP' $GUEST_RESULTS/broker-diagnostics.log < /dev/null >> $GUEST_RESULTS/broker-bootstrap.out 2>&1
     print -r -- \"bootstrap script rc=\$?\" >> $GUEST_RESULTS/broker-bootstrap.out"
   pull_results
-  run_guest_step 2700 "
+  run_guest_step $TEST_HOST_SECS "
     cd $GUEST_BATTY
-    /usr/bin/env $GALLERY_ENV $GUEST_TMO 2400 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
+    /usr/bin/env $GALLERY_ENV $DEMO_ENV $GUEST_TMO $TEST_GUEST_SECS xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
       -destination 'platform=macOS' -derivedDataPath $GUEST_DD \
       -resultBundlePath $GUEST_RESULTS/UITests.xcresult \
       ${TEST_FILTER_ARGS[*]} \

@@ -1,0 +1,23 @@
+{
+  "title": "BATTY CLI",
+  "titleHold": 0.6,
+  "callouts": {
+    "type": {
+      "text": "Script it",
+      "duration": 1.5
+    },
+    "view": {
+      "text": "Window reacts",
+      "duration": 1.7
+    },
+    "notify": {
+      "text": "Notify",
+      "duration": 1.6
+    }
+  },
+  "speed": {
+    "typing": 4,
+    "typing2": 4
+  },
+  "maxSpeedSeconds": 1.6
+}

@@ -1,0 +1,31 @@
+{
+  "title": "BELL FEED",
+  "titleHold": 0.6,
+  "callouts": {
+    "background": {
+      "text": "Long job, other Session",
+      "duration": 1.8
+    },
+    "bell": {
+      "text": "Bell rings",
+      "duration": 1.5
+    },
+    "feed": {
+      "text": "Every bell, one feed",
+      "duration": 1.7,
+      "keys": [
+        "⌘",
+        "⇧",
+        "B"
+      ]
+    },
+    "jump": {
+      "text": "Click to jump",
+      "duration": 1.8
+    }
+  },
+  "speed": {
+    "wait": 10
+  },
+  "maxSpeedSeconds": 2.5
+}

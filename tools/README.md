@@ -370,3 +370,17 @@ so opening/closing 20 Tabs or driving Tab content doesn't touch the user's
 release-instance sessions. Passive sampling (`sample`, `invariants`) of the
 release instance is read-only and safe to run any time — just never target
 it for the driven experiments.
+
+## demo/ (#0505)
+
+`tools/demo/make-demos.sh all` regenerates the nine website demo clips end to end:
+it records `BattyUITests/DemoSceneTests` in the Tart VM (`BATTY_UI_DEMO=1
+tools/run-ui-tests-vm.sh`, which sets the clone's display to 1920x1080, runs
+`tools/demo/guest-setup.sh` to clone the repos and install Rust and Neovim, and keeps
+the recordings), exports the recordings and cue sheets from the xcresult, cuts each
+with `tools/demo/DemoCut` (trim, speed ramps, zoom punch-ins, overlays from
+`tools/demo/overlays/NN-*.json`, H.264 MP4 plus a poster) and checks that every clip is
+5-15 s. Output is `build/demo/<run-id>/` (gitignored); `make-demos.sh stage <run-id>`
+copies a set into `website/demo/` (also gitignored). It never deploys. Commit before
+recording: the VM tests `git archive HEAD`. Each stage re-runs alone
+(`record 04`, `export <run-id>`, `cut <run-id>`, `check <run-id>`).

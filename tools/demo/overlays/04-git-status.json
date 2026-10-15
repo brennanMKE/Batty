@@ -1,0 +1,18 @@
+{
+  "title": "GIT STATUS",
+  "titleHold": 0.6,
+  "callouts": {
+    "edit": {
+      "text": "Edit and save",
+      "duration": 1.6
+    },
+    "live": {
+      "text": "It updates live",
+      "duration": 2.0
+    },
+    "diff": {
+      "text": "Diff peek",
+      "duration": 1.6
+    }
+  }
+}

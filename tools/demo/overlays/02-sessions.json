@@ -1,0 +1,22 @@
+{
+  "title": "SESSIONS",
+  "titleHold": 0.6,
+  "callouts": {
+    "switch": {
+      "text": "Instant switching",
+      "duration": 1.9,
+      "keys": [
+        "⌘",
+        "1–9"
+      ]
+    },
+    "color": {
+      "text": "Pick a color",
+      "duration": 1.6
+    },
+    "reorder": {
+      "text": "Drag to reorder",
+      "duration": 1.8
+    }
+  }
+}

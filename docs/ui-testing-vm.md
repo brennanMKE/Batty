@@ -644,3 +644,15 @@ through `tools/vm-guest-cli-relay.sh`, outside the sandbox. Tests send one line 
 tab-separated arguments with `nc` and read back the output plus a final `__EXIT__ <status>`
 line. The loopback listener exists
 only in the disposable guest.
+
+## Demo mode (#0505)
+
+`BATTY_UI_DEMO=1 tools/run-ui-tests-vm.sh BattyUITests/DemoSceneTests` is the recording path for the
+website demo clips (`tools/demo/make-demos.sh` drives it). Demo mode is off by default and a plain run
+is unchanged. It sets the clone's display (`tart set --display 1920x1080`, clone only), runs
+`tools/demo/guest-setup.sh` in the guest before the build (shallow clones under `~/Developer`, Rust,
+Neovim, GNU Make and an `ld` shim for `make defconfig`, a `~/.zshrc` with the `batty` alias and a
+`preexec` hook the scenes wait on), keeps recordings, widens the test and pull bounds, and forwards
+`TEST_RUNNER_BATTY_UI_DEMO=1` only when a filter names `DemoSceneTests`.
+`BATTY_UI_DEMO_SETUP_ONLY=1` stops after the setup step; `BATTY_UI_DEMO_REPOS="owner/repo ..."`
+limits what it clones. See issue #0505 "Gotchas" for what the guest needed.

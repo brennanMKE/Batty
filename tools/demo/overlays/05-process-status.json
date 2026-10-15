@@ -1,0 +1,26 @@
+{
+  "title": "PROCESS STATUS",
+  "titleHold": 0.6,
+  "callouts": {
+    "picker": {
+      "text": "Pick a process",
+      "duration": 1.5
+    },
+    "follow": {
+      "text": "Follow by name",
+      "duration": 1.6
+    },
+    "waiting": {
+      "text": "Run ends: it waits",
+      "duration": 1.6
+    },
+    "restart": {
+      "text": "New run: it follows",
+      "duration": 2.0
+    }
+  },
+  "speed": {
+    "wait": 6
+  },
+  "maxSpeedSeconds": 2.5
+}

@@ -13,3 +13,7 @@ Demo.jpg
 Demo.mp4
 tools/memsamples/
 scripts/.release-integrity-state
+
+# Website demo clips (#0505): built by tools/demo/make-demos.sh, staged by hand, never committed
+website/demo/*.mp4
+website/demo/*.jpg

@@ -4,39 +4,70 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Demo — Batty</title>
-    <meta name="description" content="Watch Batty in action: sessions, splits, tabs, and the unified bell feed.">
+    <meta name="description" content="Nine short demos of Batty: Projects, Sessions, splits, Git Status, Process Status, the Bell Feed, Open Quickly, Themes and the batty CLI.">
 
     <meta property="og:title" content="Batty Demo">
-    <meta property="og:description" content="Watch Batty in action: sessions, splits, tabs, and the unified bell feed.">
-    <meta property="og:image" content="https://batty.sstools.co/Demo.jpg">
+    <meta property="og:description" content="Nine short demos of Batty: Projects, Sessions, splits, Git Status, Process Status, the Bell Feed, Open Quickly, Themes and the batty CLI.">
+    <meta property="og:image" content="https://batty.sstools.co/demo/01-projects.jpg">
     <meta property="og:url" content="https://batty.sstools.co/demo.html">
     <meta property="og:type" content="website">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Batty Demo">
-    <meta name="twitter:description" content="Watch Batty in action: sessions, splits, tabs, and the unified bell feed.">
-    <meta name="twitter:image" content="https://batty.sstools.co/Demo.jpg">
+    <meta name="twitter:description" content="Nine short demos of Batty: Projects, Sessions, splits, Git Status, Process Status, the Bell Feed, Open Quickly, Themes and the batty CLI.">
+    <meta name="twitter:image" content="https://batty.sstools.co/demo/01-projects.jpg">
 
     <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
     <link rel="icon" href="assets/batty-icon.png" type="image/png">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="stylesheet" href="css/style.css">
     <style>
+        .demo-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 0 40px;
+        }
+
+        .demo-nav a {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--bg-card);
+            color: var(--fg-muted);
+            font-size: 14px;
+        }
+
+        .demo-nav a:hover {
+            color: var(--accent-strong);
+            border-color: var(--accent);
+            text-decoration: none;
+        }
+
+        .demo-clip {
+            margin: 0 0 56px;
+            scroll-margin-top: 24px;
+        }
+
         .demo-video {
+            display: block;
             width: 100%;
             max-width: 100%;
+            aspect-ratio: 16 / 9;
             border-radius: 12px;
             border: 1px solid var(--border);
             background: #000;
-            display: block;
-            margin: 0 auto;
         }
 
-        .demo-caption {
+        .demo-clip figcaption h2 {
+            margin: 20px 0 8px;
+            font-size: 24px;
+            color: var(--accent-strong);
+        }
+
+        .demo-clip figcaption p {
+            margin: 0;
             color: var(--fg-muted);
-            font-size: 14px;
-            text-align: center;
-            margin: 12px 0 0;
         }
 
         .demo-cta {
@@ -49,6 +80,12 @@
             margin: 12px 0 0;
             font-size: 14px;
         }
+
+        @media (max-width: 720px) {
+            .prose { padding-left: 16px; padding-right: 16px; }
+            .page-header { padding-left: 16px; padding-right: 16px; }
+            .demo-clip { margin-bottom: 44px; }
+        }
     </style>
 </head>
 <body class="page">
@@ -58,19 +95,181 @@
     </header>
 
     <main class="prose">
-        <p class="meta">Batty in action — sessions, splits, tabs, and the unified bell feed.</p>
+        <p class="meta">Nine short clips of Batty in action, one for each thing worth seeing.</p>
 
-        <video
-            class="demo-video"
-            controls
-            preload="none"
-            poster="Demo.jpg"
-        >
-            <source src="Demo.mp4" type="video/mp4">
-            Your browser does not support the video element.
-        </video>
+        <nav class="demo-nav" aria-label="Demo clips">
+            <a href="#01-projects">Projects</a>
+            <a href="#02-sessions">Sessions &amp; Sidebar</a>
+            <a href="#03-splits">Splits, Tabs &amp; Layouts</a>
+            <a href="#04-git-status">Git Status</a>
+            <a href="#05-process-status">Process Status</a>
+            <a href="#06-bell-feed">Bell Feed</a>
+            <a href="#07-quick-open">Open Quickly &amp; Command Palette</a>
+            <a href="#08-themes">Themes</a>
+            <a href="#09-cli">The batty CLI</a>
+        </nav>
 
-        <p class="demo-caption">A single-window session with sidebar, recursive splits, and tab strips per pane.</p>
+        <figure class="demo-clip" id="01-projects">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/01-projects.jpg"
+            >
+                <source src="demo/01-projects.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Projects</h2>
+                <p>Save a workspace once and open it any time. A Project remembers its folder, split layout, named Tabs, startup commands and Git Status Pane. The Open Project picker lists recent Projects first and keeps the ones you already have open in an Open now strip: Return switches to the open Session and ⌥↩ opens another copy. Tick Shared and the Project syncs to your other Macs through iCloud.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="02-sessions">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/02-sessions.jpg"
+            >
+                <source src="demo/02-sessions.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Sessions &amp; Sidebar</h2>
+                <p>Every project gets its own Session, named from its folder or git branch, with a color you choose. Rename a Session once and Batty remembers the name for that folder. Drag rows in the Sidebar to reorder them, and jump between Sessions with ⌘1 through ⌘9.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="03-splits">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/03-splits.jpg"
+            >
+                <source src="demo/03-splits.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Splits, Tabs &amp; Layouts</h2>
+                <p>Apply a layout preset to turn one Pane into a grid, columns or a main-plus-two arrangement, with every new Pane starting in the same folder. Drag a divider to resize, move focus between Panes with ⌘⌥ and the arrow keys, add Tabs to any Pane with ⌘T, and split again with ⌘D.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="04-git-status">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/04-git-status.jpg"
+            >
+                <source src="demo/04-git-status.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Git Status</h2>
+                <p>A Git Status Pane shows the repository's working tree beside your shell and updates the moment a file changes. Edit and save in Neovim and the change appears, with an inline diff one click away. A split from the Git Status Pane opens a terminal in the repository folder.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="05-process-status">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/05-process-status.jpg"
+            >
+                <source src="demo/05-process-status.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Process Status</h2>
+                <p>A Process Status Pane shows CPU, memory and open files for one process. Pick a running process and tick Follow by name, and the Pane keeps following that name: when a cargo build finishes it waits, and when you run it again it picks the new process up on its own.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="06-bell-feed">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/06-bell-feed.jpg"
+            >
+                <source src="demo/06-bell-feed.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Bell Feed</h2>
+                <p>Start a long command in its own Session, ending with a bell, and keep working somewhere else. When it finishes, the Session's Sidebar row shows a badge and the Bell Feed lists the event. Click the entry and Batty jumps straight to that Pane.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="07-quick-open">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/07-quick-open.jpg"
+            >
+                <source src="demo/07-quick-open.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Open Quickly &amp; Command Palette</h2>
+                <p>Open Quickly (⌘⇧O) fuzzy-searches every Tab in every Session and every saved Project, so a few letters take you anywhere. The Command Palette (⌘⇧P) runs any Batty action by name, such as splitting a Pane or opening Git Status, without a trip to the menu.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="08-themes">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/08-themes.jpg"
+            >
+                <source src="demo/08-themes.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>Themes</h2>
+                <p>Pick from hundreds of terminal color schemes with ⌘⇧T; the arrow keys preview each one live across every Session. A Session can also have its own Theme, set from its Sidebar menu, which stays put when you change the global Theme.</p>
+            </figcaption>
+        </figure>
+
+        <figure class="demo-clip" id="09-cli">
+            <video
+                class="demo-video"
+                controls
+                muted
+                playsinline
+                preload="none"
+                poster="demo/09-cli.jpg"
+            >
+                <source src="demo/09-cli.mp4" type="video/mp4">
+                Your browser does not support the video element.
+            </video>
+            <figcaption>
+                <h2>The batty CLI</h2>
+                <p>The batty command-line tool drives the running app from any shell, script or agent: check status, list Sessions, split a Pane with a command, open a Git Status view, send a notification to the Bell Feed, or create a Session in any folder.</p>
+            </figcaption>
+        </figure>
 
         <div class="demo-cta">
             <a class="cta" href="index.html#download">Download Batty ↓</a>

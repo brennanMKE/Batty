@@ -1,0 +1,28 @@
+{
+  "title": "OPEN QUICKLY",
+  "titleHold": 0.6,
+  "callouts": {
+    "oq": {
+      "text": "Fuzzy jump",
+      "duration": 1.5,
+      "keys": [
+        "⌘",
+        "⇧",
+        "O"
+      ]
+    },
+    "palette": {
+      "text": "Command Palette",
+      "duration": 1.6,
+      "keys": [
+        "⌘",
+        "⇧",
+        "P"
+      ]
+    },
+    "palettegit": {
+      "text": "Any action",
+      "duration": 1.6
+    }
+  }
+}
