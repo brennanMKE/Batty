@@ -447,15 +447,56 @@ struct CapabilitiesInputSchemaTests {
         }
     }
 
-    @Test func notifyTitleIsTheOnlyRequiredParameterAcrossAllVerbs() {
-        // The full roster's only two truly-required parameters: `notify
-        // --title` and `pane show <id>` — everything else is optional or
-        // defaulted, matching each command's own Swift type (Optional or a
-        // default expression).
+    @Test func everyRequiredParameterAcrossAllVerbsIsDeclaredInItsSchemasRequiredArray() {
+        // The full roster's only three truly-required parameters: `notify
+        // --title`, `pane show <id>` and `project open <name>` —
+        // everything else is optional or defaulted, matching each
+        // command's own Swift type (Optional or a default expression).
+        //
+        // #0511: `project open`'s `name` used to be declared `required:
+        // true` on the property and absent from the object-level array, so
+        // the standard field a schema validator actually reads said the
+        // verb had no required parameters at all.
         let notify = CapabilitiesCommand.verbs().first { $0.name == "notify" }
         #expect(notify?.inputSchema.required == ["title"])
         let paneShow = CapabilitiesCommand.verbs().first { $0.name == "pane show" }
         #expect(paneShow?.inputSchema.required == ["id"])
+        let projectOpen = CapabilitiesCommand.verbs().first { $0.name == "project open" }
+        #expect(projectOpen?.inputSchema.required == ["name"])
+    }
+
+    /// #0511's general form: the per-property `cliRequired` flag and the
+    /// object-level `required` array must agree for every verb, so an
+    /// agent reading the standard array and an agent reading the CLI hint
+    /// never disagree about what is mandatory. The pre-#0511 `project
+    /// open` drift is the reason this exists as a roster-wide check rather
+    /// than one more hand-written case.
+    @Test func everyVerbsRequiredArrayMatchesItsPerPropertyFlags() {
+        for verb in CapabilitiesCommand.verbs() {
+            let flagged = verb.inputSchema.properties.filter(\.value.required).keys.sorted()
+            #expect(
+                verb.inputSchema.required.sorted() == flagged,
+                "\(verb.name): required array \(verb.inputSchema.required.sorted()) != cliRequired properties \(flagged)"
+            )
+        }
+    }
+
+    /// #0511: `properties` values are themselves JSON Schemas, so they must
+    /// not carry a reserved keyword with a non-conforming type. `required`
+    /// is the one that bit — a boolean where the dialect demands an array
+    /// of property names. Encoding and checking the real key set is what
+    /// catches a reintroduction; asserting on the Swift property name would
+    /// not, because the Swift name is still `required`.
+    @Test func noPropertySubschemaUsesAReservedJSONSchemaKeywordWithTheWrongType() throws {
+        let reserved: Set<String> = ["required", "properties", "items", "allOf", "anyOf", "oneOf", "$ref"]
+        for verb in CapabilitiesCommand.verbs() {
+            for (name, property) in verb.inputSchema.properties {
+                let data = try JSONEncoder().encode(property)
+                let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+                let collisions = Set(object.keys).intersection(reserved)
+                #expect(collisions.isEmpty, "\(verb.name).\(name) emits reserved keyword(s) \(collisions.sorted())")
+            }
+        }
     }
 
     // N1 (round-1 review): decode and compare exact values instead of a
