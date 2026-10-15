@@ -591,8 +591,25 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         // child blocks on a full write and the parent blocks on
         // waitUntilExit(), a classic Process deadlock. Reading to EOF first
         // (which happens when the child exits and closes its end) avoids it.
-        let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        //
+        // #0512: both pipes must be drained *concurrently*, not one after
+        // the other. Draining stdout to EOF first still deadlocks whenever
+        // the child fills stderr's buffer (64 KB on Darwin) before closing
+        // stdout — git itself is quiet on stderr, but a configured
+        // fsmonitor or credential helper need not be. Two queues, joined
+        // before waitUntilExit(), close that case while keeping this
+        // function synchronous for its callers.
+        let group = DispatchGroup()
+        nonisolated(unsafe) var outData = Data()
+        nonisolated(unsafe) var errData = Data()
+        let drainQueue = DispatchQueue(label: "co.sstools.Batty.git-status-drain", attributes: .concurrent)
+        drainQueue.async(group: group) {
+            outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        }
+        drainQueue.async(group: group) {
+            errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        }
+        group.wait()
         process.waitUntilExit()
 
         return ProcessOutcome(
