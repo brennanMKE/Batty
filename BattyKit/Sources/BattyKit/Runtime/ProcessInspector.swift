@@ -2,6 +2,9 @@
 
 import Darwin
 import Foundation
+import os
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProcessInspector")
 
 /// Thin wrapper over the libproc/sysctl calls `#0305`'s phase-1 spike
 /// proved obtainable for a same-uid process without a Mach task port
@@ -439,30 +442,68 @@ public enum ProcessInspector {
     // MARK: - Shared low-level helpers
 
     private static func allPids() -> [pid_t] {
-        errno = 0
-        let probeCount = proc_listallpids(nil, 0)
+        allPids(listAllPIDs: { buffer, bufferSize in
+            errno = 0
+            return proc_listallpids(buffer, bufferSize)
+        })
+    }
+
+    /// How many times `allPids` will grow its buffer before giving up and
+    /// returning what it has. Each attempt doubles, so five attempts cover
+    /// a process table that octupled mid-call; a machine churning that
+    /// hard has worse problems than a short pid list.
+    private static let allPidsMaxAttempts = 5
+
+    /// `listAllPIDs` is a seam for `ProcessInspectorAllPidsTests`, not a
+    /// production variation point — the only caller above passes the real
+    /// `proc_listallpids`.
+    ///
+    /// #0516: a saturated buffer is indistinguishable from a complete
+    /// list. `proc_listallpids` reports no error and sets no `errno` when
+    /// the pids it has do not fit; it just fills what you gave it and
+    /// returns that count. Sizing once from a probe plus fixed headroom
+    /// therefore silently drops the tail whenever the host starts more
+    /// processes than the headroom between the two calls — a race, not a
+    /// sizing error, so no fixed headroom fixes it. Every caller
+    /// (`children(ofPid:)`, `allSameUserProcesses()`,
+    /// `firstSameUserProcess(named:)`) reads a truncated list as "those
+    /// processes do not exist", which is how a Mode C pane ended up
+    /// reporting a live child missing between two adjacent enumerations.
+    /// A full buffer is now treated as suspect and retried larger.
+    static func allPids(listAllPIDs: (UnsafeMutableRawPointer?, Int32) -> Int32) -> [pid_t] {
+        let probeCount = listAllPIDs(nil, 0)
         guard probeCount > 0 else { return [] }
-        var pids = [pid_t](repeating: 0, count: Int(probeCount) + 64)
-        let capacityBytes = Int32(pids.count * MemoryLayout<pid_t>.stride)
-        // `proc_listallpids`'s return value is a *count of pids*, not a
-        // byte count — unlike `proc_pidinfo`'s flavors. Re-verified while
-        // implementing this: dividing by `MemoryLayout<pid_t>.stride` here
-        // (the natural-looking mistake, matching every other call in this
-        // file) silently truncated the list to roughly a quarter of its
-        // real size.
-        errno = 0
-        let actualCount = proc_listallpids(&pids, capacityBytes)
-        guard actualCount > 0 else { return [] }
-        // Round 2: keeps pid 0 (`kernel_task`), matching `#0314`'s
-        // `ProcessMetricsReader.listAllPIDs()` exactly, rather than
-        // filtering it out here — confirmed lossless for all callers of
-        // this function (`children(ofPid:)`/`allSameUserProcesses()`/
-        // `firstSameUserProcess(named:)`):
-        // pid 0 is root-owned with ppid 0, so `bsdInfo(pid: 0)` fails
-        // (matching `ProcessMetricsReader`'s own doc comment that
-        // `proc_pidinfo` fails for pid 0 on real hardware) and it never
-        // matches either call site's filter anyway.
-        return Array(pids.prefix(Int(actualCount)))
+        var capacity = Int(probeCount) + 64
+        for attempt in 1...allPidsMaxAttempts {
+            var pids = [pid_t](repeating: 0, count: capacity)
+            // `proc_listallpids`'s return value is a *count of pids*, not a
+            // byte count — unlike `proc_pidinfo`'s flavors. Re-verified while
+            // implementing this: dividing by `MemoryLayout<pid_t>.stride` here
+            // (the natural-looking mistake, matching every other call in this
+            // file) silently truncated the list to roughly a quarter of its
+            // real size.
+            let capacityBytes = Int32(pids.count * MemoryLayout<pid_t>.stride)
+            let actualCount = pids.withUnsafeMutableBytes { listAllPIDs($0.baseAddress, capacityBytes) }
+            guard actualCount > 0 else { return [] }
+            // Round 2: keeps pid 0 (`kernel_task`), matching `#0314`'s
+            // `ProcessMetricsReader.listAllPIDs()` exactly, rather than
+            // filtering it out here — confirmed lossless for all callers of
+            // this function (`children(ofPid:)`/`allSameUserProcesses()`/
+            // `firstSameUserProcess(named:)`):
+            // pid 0 is root-owned with ppid 0, so `bsdInfo(pid: 0)` fails
+            // (matching `ProcessMetricsReader`'s own doc comment that
+            // `proc_pidinfo` fails for pid 0 on real hardware) and it never
+            // matches either call site's filter anyway.
+            if Int(actualCount) < pids.count {
+                return Array(pids.prefix(Int(actualCount)))
+            }
+            if attempt == allPidsMaxAttempts {
+                logger.error("allPids: list still filled a \(pids.count, privacy: .public)-pid buffer after \(attempt, privacy: .public) attempts; returning a possibly truncated list")
+                return Array(pids.prefix(Int(actualCount)))
+            }
+            capacity *= 2
+        }
+        return []
     }
 
     private static func bsdInfo(pid: pid_t) -> proc_bsdinfo? {
