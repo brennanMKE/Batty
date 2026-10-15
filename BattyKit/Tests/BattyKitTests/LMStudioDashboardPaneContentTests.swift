@@ -774,6 +774,74 @@ struct LMStudioDashboardPaneContentTests {
         #expect(runtime.isRunning == false)
     }
 
+    /// #0513: a hide/show pair spawns a replacement stream before the
+    /// terminated one's `terminationHandler` — which hops to the main
+    /// actor through a `Task` — has been handled. The handler must not
+    /// clear the replacement's handle on its way out.
+    ///
+    /// The race is made deterministic rather than raced: `setUp`,
+    /// `setVisible(false)` and `setVisible(true)` all run to completion on
+    /// the main actor with no `await` between them, so generation one's
+    /// termination `Task` provably cannot run until generation two is
+    /// already spawned and stored.
+    @Test func aStreamRespawnedBeforeTheOldExitIsHandledStaysTracked() async throws {
+        final class ProcessBox {
+            var models: [Process] = []
+            var runtimes: [Process] = []
+        }
+        let box = ProcessBox()
+
+        let content = LMStudioDashboardPaneContent()
+        content.clock = TestClock()
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { self.emptyModelsResponse() }
+        content.teardownWaitBound = 0.2
+        content.makeModelStreamProcess = { url in
+            let process = self.makeSleepForeverProcess(url)
+            box.models.append(process)
+            return process
+        }
+        content.makeRuntimeStreamProcess = { url in
+            let process = self.makeSleepForeverProcess(url)
+            box.runtimes.append(process)
+            return process
+        }
+        // Under the regression this test pins, the replacement children are
+        // exactly what nothing is left holding — so clean them up here
+        // whatever happens below.
+        defer {
+            for process in box.models + box.runtimes { killAndReap(process) }
+        }
+
+        let terminationHandled = EventCounter(content.streamTerminationHandledEventsForTesting())
+
+        content.setUp(visible: true)
+        content.setVisible(false)
+        content.setVisible(true)
+
+        #expect(box.models.count == 2)
+        #expect(box.runtimes.count == 2)
+
+        guard await terminationHandled.awaitCount(2) else {
+            Issue.record("did not observe generation one's two terminations being handled")
+            content.tearDown()
+            return
+        }
+
+        let replacementModel = try #require(box.models.last)
+        let replacementRuntime = try #require(box.runtimes.last)
+        #expect(replacementModel.isRunning)
+        #expect(replacementRuntime.isRunning)
+
+        // The real assertion: teardown can still reach generation two. If
+        // generation one's handler nilled the stored handles, these two
+        // children outlive the pane with nothing able to terminate them.
+        content.tearDown()
+        await content.awaitPendingTeardownReapsForTesting()
+        #expect(replacementModel.isRunning == false)
+        #expect(replacementRuntime.isRunning == false)
+    }
+
     /// Same proof for the `setVisible(false)` (hide) path, which tears
     /// down subprocesses without the bounded wait `tearDown()` uses — this
     /// checks that `SIGTERM` alone (no explicit poll) is still enough to
