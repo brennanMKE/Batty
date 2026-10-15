@@ -79,12 +79,20 @@ public nonisolated enum HIDThermalReader {
             guard let services = symbols.copyServices(client)?.takeRetainedValue() as? [CFTypeRef],
                   !services.isEmpty
             else { return .failure(.noServices) }
-            var seen = Set<String>()
+            // #0509: every CPU-die service is kept, including the
+            // duplicates that share a `Product` name (three per name on an
+            // M4 Pro). Deduplicating here retained whichever service was
+            // enumerated first and silently discarded its siblings, which
+            // defeats `CPUTemperatureAggregation.aggregate` — that function
+            // exists to fold duplicate names and take the hottest
+            // *plausible* reading, and it was never shown any. A first
+            // service that returns no event, or the implausible value the
+            // `isPlausible` guard was written for, dropped its whole sensor
+            // name for the life of the session.
             var sensors: [(name: String, service: CFTypeRef)] = []
             for service in services {
                 guard let name = symbols.copyProperty(service, "Product" as CFString)?.takeRetainedValue() as? String,
-                      CPUTemperatureAggregation.isCPUDieSensor(name),
-                      seen.insert(name).inserted
+                      CPUTemperatureAggregation.isCPUDieSensor(name)
                 else { continue }
                 sensors.append((name, service))
             }
