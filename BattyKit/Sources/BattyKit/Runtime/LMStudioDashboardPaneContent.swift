@@ -173,8 +173,17 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     private var runtimeStreamProcess: Process?
     private var modelStreamBuffer = NDJSONLineBuffer()
     private var runtimeStreamBuffer = NDJSONLineBuffer()
-    private var expectingModelStreamExit = false
-    private var expectingRuntimeStreamExit = false
+    /// #0513: the processes this type deliberately terminated, keyed by
+    /// identity rather than a per-stream `Bool`. A `Process`'s
+    /// `terminationHandler` hops to the main actor through a `Task`, so an
+    /// old stream's exit can be handled *after* a replacement has already
+    /// been spawned and stored. A shared boolean is consumed by whichever
+    /// exit arrives first, which is not necessarily the one it was set
+    /// for; a set is consumed by the exit it actually describes. Entries
+    /// cannot accumulate: a handle is only stored after `try process.run()`
+    /// succeeds, so every registered process fires its handler exactly once
+    /// and removes itself in `handle…StreamTermination`.
+    private var deliberatelyTerminatedStreams: Set<ObjectIdentifier> = []
 
     private var modelsPollTask: Task<Void, Never>?
     private var psPollTask: Task<Void, Never>?
@@ -261,9 +270,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         modelsPollTask?.cancel()
         modelsPollTask = nil
         stopPsPollTask()
-        // `terminateModelStream`/`terminateRuntimeStream` set their own
-        // `expecting…StreamExit` flag internally, only when there's an
-        // actual process to terminate (review round 1, S2) — not set here.
+        // `terminateModelStream`/`terminateRuntimeStream` record their own
+        // deliberate-exit expectation internally, only when there's an
+        // actual process to terminate (review round 1, S2; #0513) — not
+        // recorded here.
         terminateModelStream(boundedWait: boundedWait)
         terminateRuntimeStream(boundedWait: boundedWait)
         isReconnectingStream = false
@@ -467,7 +477,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         }
         process.terminationHandler = { [weak self] proc in
             Task { @MainActor [weak self] in
-                self?.handleModelStreamTermination(status: proc.terminationStatus)
+                self?.handleModelStreamTermination(process: proc, status: proc.terminationStatus)
             }
         }
         do {
@@ -482,15 +492,18 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func terminateModelStream(boundedWait: Bool) {
         guard let process = modelStreamProcess else { return }
-        // Review round 1, S2: this flag must be set here, after the guard
-        // — not by the caller before calling this function. If it were set
-        // unconditionally by the caller and this guard then early-returned
-        // (process already nil — already terminated, or never spawned),
-        // the flag would stick `true` forever with nothing left to consume
-        // it, silently misreading the *next* genuine unexpected exit as
-        // expected: no respawn, no `.reconnecting`, pill still reads
-        // "Connected", live feed silently dead until hide/show.
-        expectingModelStreamExit = true
+        // Review round 1, S2: the expectation is recorded here, after the
+        // guard — not by the caller before calling this function. A caller
+        // that recorded it unconditionally, with this guard then early-
+        // returning (process already nil — already terminated, or never
+        // spawned), would leave an expectation with nothing to consume it.
+        // Under #0513's identity-keyed set that is a stale entry rather
+        // than S2's original "silently misread the *next* genuine
+        // unexpected exit as expected" (no respawn, no `.reconnecting`,
+        // pill still reads "Connected", live feed dead until hide/show) —
+        // but recording it here keeps the set exactly as long as the
+        // processes it describes.
+        deliberatelyTerminatedStreams.insert(ObjectIdentifier(process))
         // Clear both handlers explicitly rather than waiting for EOF to
         // arrive asynchronously after `terminate()` — belt-and-suspenders
         // alongside the EOF-based clearing in the readabilityHandler
@@ -616,13 +629,15 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         for id in staleIDs { pendingPrompts.removeValue(forKey: id) }
     }
 
-    private func handleModelStreamTermination(status: Int32) {
-        modelStreamProcess = nil
+    private func handleModelStreamTermination(process: Process, status: Int32) {
         defer { emitStreamTerminationHandled() }
-        guard !expectingModelStreamExit else {
-            expectingModelStreamExit = false
-            return
-        }
+        let wasDeliberate = deliberatelyTerminatedStreams.remove(ObjectIdentifier(process)) != nil
+        // #0513: only clear the stored handle if it still refers to *this*
+        // process. A hide/show pair can spawn a replacement before this
+        // callback runs, and nilling it here would strand a live `lms`
+        // child that teardown can then never terminate.
+        if modelStreamProcess === process { modelStreamProcess = nil }
+        guard !wasDeliberate else { return }
         logger.notice("model-stream exited unexpectedly status=\(status, privacy: .public)")
         scheduleRespawn(of: .model)
     }
@@ -666,7 +681,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         }
         process.terminationHandler = { [weak self] proc in
             Task { @MainActor [weak self] in
-                self?.handleRuntimeStreamTermination(status: proc.terminationStatus)
+                self?.handleRuntimeStreamTermination(process: proc, status: proc.terminationStatus)
             }
         }
         do {
@@ -680,9 +695,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     private func terminateRuntimeStream(boundedWait: Bool) {
         guard let process = runtimeStreamProcess else { return }
-        // See terminateModelStream's comment (review round 1, S2): this
-        // flag must be set here, after the guard, not by the caller.
-        expectingRuntimeStreamExit = true
+        // See terminateModelStream's comment (review round 1, S2, #0513):
+        // the expectation is recorded here, after the guard, not by the
+        // caller.
+        deliberatelyTerminatedStreams.insert(ObjectIdentifier(process))
         // See terminateModelStream's comment: both handlers must be
         // cleared explicitly, not just stdout's.
         process.standardOutput.map { ($0 as? Pipe)?.fileHandleForReading.readabilityHandler = nil }
@@ -726,13 +742,12 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         }
     }
 
-    private func handleRuntimeStreamTermination(status: Int32) {
-        runtimeStreamProcess = nil
+    private func handleRuntimeStreamTermination(process: Process, status: Int32) {
         defer { emitStreamTerminationHandled() }
-        guard !expectingRuntimeStreamExit else {
-            expectingRuntimeStreamExit = false
-            return
-        }
+        let wasDeliberate = deliberatelyTerminatedStreams.remove(ObjectIdentifier(process)) != nil
+        // See `handleModelStreamTermination`'s identical comment (#0513).
+        if runtimeStreamProcess === process { runtimeStreamProcess = nil }
+        guard !wasDeliberate else { return }
         logger.notice("runtime-stream exited unexpectedly status=\(status, privacy: .public)")
         scheduleRespawn(of: .runtime)
     }
