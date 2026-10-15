@@ -546,6 +546,24 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 }
                 return
             }
+            // #0507: a `.followingTab` target must not tombstone here.
+            // `resolveTarget()` reads `tab.terminalNSView?.foregroundPid`
+            // and `coreMetricsProvider(pid)` runs after it, so a foreground
+            // command that finishes in that window yields `ESRCH` against a
+            // Tab that is still very much alive. `Target.followingTab`'s own
+            // rule is that only the Tab disappearing tombstones the pane —
+            // which `performSample()`'s `.sourceTabGone` branch already
+            // handles. Tombstoning here was permanent: `startSampling()`
+            // refuses to restart from `.exited`, so hide/show could not
+            // recover and no later command in that Tab was ever followed.
+            // `.waiting` is the state Mode C already uses for "target known,
+            // nothing live to sample right now," and the sampling `Task` is
+            // left running so the next tick re-resolves.
+            if case .followingTab = target {
+                logger.info("process-status: followed tab's pid=\(pid, privacy: .public) exited, waiting for the next foreground process")
+                runState = .waiting
+                return
+            }
             logger.info("process-status: pid=\(pid, privacy: .public) exited")
             runState = .exited
             samplingTask?.cancel()

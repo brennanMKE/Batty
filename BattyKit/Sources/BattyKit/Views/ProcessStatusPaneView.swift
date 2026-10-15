@@ -472,21 +472,30 @@ struct ProcessStatusPaneView: View {
         HStack(spacing: 8) {
             Image(systemName: "hourglass")
                 .foregroundStyle(.orange)
-            if case .followingName(let name) = content.target {
-                if let capturedAt = content.snapshot?.capturedAt {
-                    Text("Waiting for “\(name)” — no matching process is running — last seen \(capturedAt.formatted(date: .omitted, time: .standard))")
-                        .font(.callout)
-                } else {
-                    Text("Waiting for “\(name)” — no matching process is running")
-                        .font(.callout)
-                }
-            }
+            Text(waitingBannerText)
+                .font(.callout)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("process-status.waiting-banner")
+    }
+
+    /// #0507: `.waiting` is reachable from a `.followingTab` target too
+    /// (the Tab's foreground command exited; the Tab itself is still
+    /// there), not only from Mode C. Before that it was Mode C's state
+    /// alone, so this banner rendered a bare hourglass with no text for
+    /// any other target.
+    private var waitingBannerText: String {
+        let lastSeen = content.snapshot?.capturedAt.formatted(date: .omitted, time: .standard)
+        let base: String
+        if case .followingName(let name) = content.target {
+            base = "Waiting for “\(name)” — no matching process is running"
+        } else {
+            base = "Waiting — no foreground process in the followed tab"
+        }
+        return lastSeen.map { "\(base) — last seen \($0)" } ?? base
     }
 
     private var permissionDeniedBanner: some View {
