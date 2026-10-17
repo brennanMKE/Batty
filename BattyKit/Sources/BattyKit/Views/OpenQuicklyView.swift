@@ -91,6 +91,8 @@ enum OpenQuicklyFilter {
                 displayPath: ProjectPickerModel.abbreviate(path: project.rootPath, homeDirectory: homeDirectory),
                 color: project.color,
                 symbol: project.symbol,
+                customColorHex: project.customColorHex,
+                customSymbolName: project.customSymbolName,
                 isOpen: open.contains(project.id)
             )
         }
@@ -191,7 +193,12 @@ struct OpenQuicklyProjectRow: Identifiable, Equatable {
     let displayPath: String
     let color: SessionColor
     let symbol: ProjectSymbol
+    var customColorHex: String? = nil
+    var customSymbolName: String? = nil
     let isOpen: Bool
+
+    var drawnColor: Color { ProjectAppearance.color(palette: color, customHex: customColorHex) }
+    var systemName: String { ProjectAppearance.systemName(symbol: symbol, customName: customSymbolName) }
 
     var hint: String { ProjectPickerModel.hint(name: name, isOpen: isOpen) }
 }
@@ -397,8 +404,8 @@ private struct QuickOpenProjectRowView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: row.symbol.resolvedSystemName)
-                .foregroundStyle(row.color.color)
+            Image(systemName: row.systemName)
+                .foregroundStyle(row.drawnColor)
                 .frame(width: 18)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {

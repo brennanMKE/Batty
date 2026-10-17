@@ -49,6 +49,9 @@ public final class SessionRuntime: Identifiable {
     /// Project is saved. In-memory only, like `projectID`; the Sidebar row
     /// reads this rather than looking the Project up from `body`.
     public internal(set) var projectSymbol: ProjectSymbol?
+    /// The backing Project's arbitrary SF Symbol name, when it has one;
+    /// wins over `projectSymbol` when drawing.
+    public internal(set) var projectSymbolName: String?
     @ObservationIgnored public let paneFrames: PaneFrameTracker
 
     /// Clipboard-read confirmation awaiting the user's answer, shown via

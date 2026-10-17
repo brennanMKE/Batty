@@ -1291,6 +1291,7 @@ public final class AppStateStore {
     func applyProjectSymbol(of project: Project) {
         for session in windows.flatMap(\.sessions) where session.projectID == project.id {
             session.projectSymbol = project.symbol
+            session.projectSymbolName = project.customSymbolName
         }
     }
 

@@ -23,7 +23,7 @@ public enum SessionColor: Int, CaseIterable, Sendable {
     case cyan
     case brown
 
-    private var hex: String {
+    var hexString: String {
         switch self {
         case .blue: "#3E63DD"
         case .orange: "#F76B15"
@@ -41,7 +41,7 @@ public enum SessionColor: Int, CaseIterable, Sendable {
     /// Tint for the Session row's symbol — full palette strength, not a
     /// reduced-opacity or hierarchical variant (#0335 open question).
     public var color: Color {
-        (RGBColor(hex: hex) ?? RGBColor(red: 0.5, green: 0.5, blue: 0.5)).swiftUIColor
+        (RGBColor(hex: hexString) ?? RGBColor(red: 0.5, green: 0.5, blue: 0.5)).swiftUIColor
     }
 
     /// Accessible / user-facing name, for VoiceOver labels on a future

@@ -4,6 +4,7 @@ import BattyXPCCore
 import Foundation
 import Observation
 import os
+import SwiftUI
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProjectEditorViewModel")
 
@@ -58,6 +59,11 @@ struct ProjectEditorListEntry: Identifiable, Equatable {
     let symbol: ProjectSymbol
     let isUnsavedNew: Bool
     var isShared = false
+    var customColorHex: String? = nil
+    var customSymbolName: String? = nil
+
+    var drawnColor: Color { ProjectAppearance.color(palette: color, customHex: customColorHex) }
+    var systemName: String { ProjectAppearance.systemName(symbol: symbol, customName: customSymbolName) }
 }
 
 struct ProjectEditorTabSummary: Equatable {
@@ -161,7 +167,7 @@ final class ProjectEditorViewModel {
 
     var listEntries: [ProjectEditorListEntry] {
         var entries = store.projects.map {
-            ProjectEditorListEntry(id: $0.id, name: $0.name, path: Self.abbreviated($0.rootPath), color: $0.color, symbol: $0.symbol, isUnsavedNew: false, isShared: $0.isShared)
+            ProjectEditorListEntry(id: $0.id, name: $0.name, path: Self.abbreviated($0.rootPath), color: $0.color, symbol: $0.symbol, isUnsavedNew: false, isShared: $0.isShared, customColorHex: $0.customColorHex, customSymbolName: $0.customSymbolName)
         }
         if let draft, isNewDraft {
             let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -172,7 +178,9 @@ final class ProjectEditorViewModel {
                 color: draft.color,
                 symbol: draft.symbol,
                 isUnsavedNew: true,
-                isShared: draft.isShared
+                isShared: draft.isShared,
+                customColorHex: draft.customColorHex,
+                customSymbolName: draft.customSymbolName
             ))
         }
         return entries
@@ -520,8 +528,39 @@ final class ProjectEditorViewModel {
         saveError = nil
     }
 
-    func setColor(_ color: SessionColor) { draft?.color = color }
-    func setSymbol(_ symbol: ProjectSymbol) { draft?.symbol = symbol }
+    /// A palette swatch. Clears any custom color.
+    func setColor(_ color: SessionColor) {
+        guard draft?.color != color || draft?.customColorHex != nil else { return }
+        draft?.color = color
+        draft?.customColorHex = nil
+    }
+
+    /// A color from the system color panel, as `#RRGGBB`. A value equal to a
+    /// palette entry is stored as that entry. Ignores a malformed or
+    /// unchanged value, because every write notifies observers.
+    func setCustomColor(hex: String) {
+        guard let draft, let normalized = ProjectAppearance.normalizedHex(hex) else { return }
+        let resolved = ProjectAppearance.resolve(color: draft.color, customHex: normalized)
+        guard resolved.color != draft.color || resolved.customHex != draft.customColorHex else { return }
+        self.draft?.color = resolved.color
+        self.draft?.customColorHex = resolved.customHex
+    }
+
+    /// A legacy symbol. Clears any custom symbol name.
+    func setSymbol(_ symbol: ProjectSymbol) {
+        guard draft?.symbol != symbol || draft?.customSymbolName != nil else { return }
+        draft?.symbol = symbol
+        draft?.customSymbolName = nil
+    }
+
+    /// Any SF Symbol name; one that matches a legacy symbol is stored as it.
+    func setSymbolName(_ name: String) {
+        guard let draft else { return }
+        let resolved = ProjectAppearance.resolve(symbol: draft.symbol, customName: name)
+        guard resolved.symbol != draft.symbol || resolved.customName != draft.customSymbolName else { return }
+        self.draft?.symbol = resolved.symbol
+        self.draft?.customSymbolName = resolved.customName
+    }
     func setRunStartupCommandsOnOpen(_ value: Bool) { draft?.runStartupCommandsOnOpen = value }
     func setShared(_ value: Bool) { draft?.isShared = value }
 
