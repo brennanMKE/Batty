@@ -19,10 +19,15 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
     public var layout: ProjectLayout
     public var runStartupCommandsOnOpen: Bool
     public var modifiedAt: Date?
+    /// Optional keys, absent in records from older Batty versions, whose
+    /// decoder ignores them and reads the legacy `color` and `symbol`.
+    public var customColor: String?
+    public var symbolName: String?
 
     public init(
         id: UUID, name: String, rootPath: String, color: SessionColor, symbol: ProjectSymbol,
-        layout: ProjectLayout, runStartupCommandsOnOpen: Bool, modifiedAt: Date?
+        layout: ProjectLayout, runStartupCommandsOnOpen: Bool, modifiedAt: Date?,
+        customColor: String? = nil, symbolName: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -32,6 +37,8 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
         self.layout = layout
         self.runStartupCommandsOnOpen = runStartupCommandsOnOpen
         self.modifiedAt = modifiedAt
+        self.customColor = customColor
+        self.symbolName = symbolName
     }
 }
 
@@ -42,7 +49,8 @@ extension Project {
             rootPath: PortablePath.encode(absolute: rootPath, home: home),
             color: color, symbol: symbol, layout: layout,
             runStartupCommandsOnOpen: runStartupCommandsOnOpen,
-            modifiedAt: modifiedAt)
+            modifiedAt: modifiedAt,
+            customColor: customColorHex, symbolName: customSymbolName)
     }
 
     /// A shared Project with no device state. A root that does not decode to
@@ -56,7 +64,8 @@ extension Project {
             color: record.color, symbol: record.symbol, layout: record.layout,
             runStartupCommandsOnOpen: record.runStartupCommandsOnOpen,
             approvedCommandsHash: nil, lastOpenedAt: nil,
-            isShared: true, modifiedAt: record.modifiedAt)
+            isShared: true, modifiedAt: record.modifiedAt,
+            customColorHex: record.customColor, customSymbolName: record.symbolName)
     }
 
     fileprivate func replacingDefinition(with record: ProjectSyncRecord, name: String, home: String) -> Project {

@@ -370,8 +370,8 @@ private struct ProjectPickerCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             thumbnail
             HStack(spacing: 8) {
-                Image(systemName: card.symbol.resolvedSystemName)
-                    .foregroundStyle(card.color.color)
+                Image(systemName: card.systemName)
+                    .foregroundStyle(card.drawnColor)
                     .frame(width: 16)
                     .accessibilityHidden(true)
                 if card.isShared {
@@ -519,8 +519,8 @@ struct ProjectPickerOpenChipView: View {
     var body: some View {
         HStack(spacing: 4) {
             HStack(spacing: 6) {
-                Image(systemName: card.symbol.resolvedSystemName)
-                    .foregroundStyle(card.color.color)
+                Image(systemName: card.systemName)
+                    .foregroundStyle(card.drawnColor)
                     .frame(width: 16)
                     .accessibilityHidden(true)
                 Text(card.name)

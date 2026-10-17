@@ -25,11 +25,12 @@ public struct SessionSidebarView: View {
         for session: SessionRuntime,
         isSelected: Bool,
         projectSymbol: ProjectSymbol? = nil,
-        iconName: String? = nil
+        iconName: String? = nil,
+        projectSymbolName: String? = nil
     ) -> String {
         var value = isSelected ? "selected" : "unselected"
         if session.unseenBellCount > 0 { value += ", \(session.unseenBellCount) unseen" }
-        if let projectSymbol { value += ", Project, \(projectSymbol.displayName) symbol" }
+        if let projectSymbol { value += ", Project, \(ProjectAppearance.displayName(symbol: projectSymbol, customName: projectSymbolName)) symbol" }
         if let iconName { value += ", icon \(iconName)" }
         return value
     }
@@ -51,7 +52,7 @@ public struct SessionSidebarView: View {
     private func rowIconName(for session: SessionRuntime) -> String? {
         guard Self.exposesRowIcon else { return nil }
         let symbol = session.projectID != nil ? (session.projectSymbol ?? .default) : nil
-        return SessionRowIcon.systemName(projectSymbol: symbol)
+        return SessionRowIcon.systemName(projectSymbol: symbol, customName: session.projectSymbolName)
     }
 
     public var body: some View {
@@ -125,7 +126,7 @@ public struct SessionSidebarView: View {
                         }
                     )
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session)))
+                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session), projectSymbolName: session.projectSymbolName))
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(
@@ -303,22 +304,23 @@ enum SidebarFooter {
 enum SessionRowIcon {
     static let plainSystemName = "circle.fill"
 
-    static func systemName(projectSymbol: ProjectSymbol?) -> String {
+    static func systemName(projectSymbol: ProjectSymbol?, customName: String? = nil) -> String {
         guard let projectSymbol else { return plainSystemName }
-        return projectSymbol.resolvedSystemName
+        return ProjectAppearance.systemName(symbol: projectSymbol, customName: customName)
     }
 }
 
 private struct SessionRowIconView: View {
     let isProjectBacked: Bool
     let projectSymbol: ProjectSymbol?
+    let projectSymbolName: String?
     let color: SessionColor
 
     private static let width: CGFloat = 18
 
     var body: some View {
         let symbol = isProjectBacked ? (projectSymbol ?? .default) : nil
-        let name = SessionRowIcon.systemName(projectSymbol: symbol)
+        let name = SessionRowIcon.systemName(projectSymbol: symbol, customName: projectSymbolName)
         if isProjectBacked {
             Image(systemName: name)
                 .foregroundStyle(color.color)
@@ -354,6 +356,7 @@ private struct SessionRow: View {
                 SessionRowIconView(
                     isProjectBacked: session.projectID != nil,
                     projectSymbol: session.projectSymbol,
+                    projectSymbolName: session.projectSymbolName,
                     color: session.sessionColor
                 )
             }

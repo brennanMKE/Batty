@@ -285,8 +285,8 @@ private struct ProjectListRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: entry.symbol.resolvedSystemName)
-                .foregroundStyle(entry.color.color)
+            Image(systemName: entry.systemName)
+                .foregroundStyle(entry.drawnColor)
                 .frame(width: 18)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
@@ -425,9 +425,23 @@ private struct ProjectColorSwatches: View {
     @FocusState private var isFocused: Bool
 
     private var selected: SessionColor { model.draft?.color ?? .blue }
+    private var hasCustomColor: Bool { model.draft?.customColorHex != nil }
+
+    private var panelColor: Binding<Color> {
+        Binding(
+            get: { ProjectAppearance.color(palette: selected, customHex: model.draft?.customColorHex) },
+            set: { newValue in
+                guard let rgb = NSColor(newValue).usingColorSpace(.sRGB) else { return }
+                model.setCustomColor(hex: ProjectAppearance.hex(red: rgb.redComponent, green: rgb.greenComponent, blue: rgb.blueComponent))
+            }
+        )
+    }
 
     var body: some View {
         HStack(spacing: 6) {
+            ColorPicker("Custom color", selection: panelColor, supportsOpacity: false)
+                .labelsHidden()
+                .accessibilityIdentifier("project-editor.color.custom")
             ForEach(SessionColor.allCases, id: \.rawValue) { color in
                 Button {
                     model.setColor(color)
@@ -435,7 +449,7 @@ private struct ProjectColorSwatches: View {
                 } label: {
                     ZStack {
                         Circle().fill(color.color).frame(width: 18, height: 18)
-                        if color == selected {
+                        if color == selected && !hasCustomColor {
                             Circle().strokeBorder(Color.primary, lineWidth: 2).frame(width: 24, height: 24)
                         }
                     }
@@ -444,7 +458,7 @@ private struct ProjectColorSwatches: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(color.displayName))
-                .accessibilityAddTraits(color == selected ? .isSelected : [])
+                .accessibilityAddTraits(color == selected && !hasCustomColor ? .isSelected : [])
                 .accessibilityIdentifier("project-editor.color.\(String(describing: color))")
             }
         }

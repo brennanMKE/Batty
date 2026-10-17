@@ -3,6 +3,7 @@
 import BattyXPCCore
 import CoreGraphics
 import Foundation
+import SwiftUI
 
 /// What the Open Project picker asks its host to do once the sheet has
 /// closed. Opening runs after dismissal so the startup-command trust sheet,
@@ -27,6 +28,8 @@ struct ProjectPickerCard: Identifiable, Equatable {
     let name: String
     let color: SessionColor
     let symbol: ProjectSymbol
+    var customColorHex: String? = nil
+    var customSymbolName: String? = nil
     let displayPath: String
     let summary: String
     let isOpen: Bool
@@ -34,6 +37,9 @@ struct ProjectPickerCard: Identifiable, Equatable {
     let lastOpenedAt: Date?
     let isShared: Bool
     let rootIsMissing: Bool
+
+    var drawnColor: Color { ProjectAppearance.color(palette: color, customHex: customColorHex) }
+    var systemName: String { ProjectAppearance.systemName(symbol: symbol, customName: customSymbolName) }
 }
 
 enum ProjectPickerTier: Equatable {
@@ -337,6 +343,8 @@ struct ProjectPickerModel: Equatable {
             name: project.name,
             color: project.color,
             symbol: project.symbol,
+            customColorHex: project.customColorHex,
+            customSymbolName: project.customSymbolName,
             displayPath: Self.abbreviate(path: project.rootPath, homeDirectory: homeDirectory),
             summary: Self.summary(panes: project.paneCount, tabs: project.tabCount, startupCommands: project.startupCommandCount),
             isOpen: openProjectIDs.contains(project.id),

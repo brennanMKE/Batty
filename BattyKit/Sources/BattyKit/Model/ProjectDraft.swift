@@ -13,7 +13,12 @@ struct ProjectDraft: Equatable {
     var name: String
     var rootPath: String
     var color: SessionColor
+    /// `#RRGGBB` for a color outside the palette; `color` then holds the
+    /// nearest palette entry.
+    var customColorHex: String?
     var symbol: ProjectSymbol
+    /// An SF Symbol outside the legacy set; `symbol` is then `.folder`.
+    var customSymbolName: String?
     var layout: ProjectLayout
     var runStartupCommandsOnOpen: Bool
     /// Carried through untouched: editing commands never clears it, so
@@ -38,7 +43,9 @@ struct ProjectDraft: Equatable {
         name = project.name
         rootPath = project.rootPath
         color = project.color
+        customColorHex = project.customColorHex
         symbol = project.symbol
+        customSymbolName = project.customSymbolName
         layout = project.layout
         runStartupCommandsOnOpen = project.runStartupCommandsOnOpen
         approvedCommandsHash = project.approvedCommandsHash
@@ -54,8 +61,12 @@ struct ProjectDraft: Equatable {
         color: SessionColor,
         symbol: ProjectSymbol = .folder,
         layout: ProjectLayout = .preset(.singlePane),
-        runStartupCommandsOnOpen: Bool = true
+        runStartupCommandsOnOpen: Bool = true,
+        customColorHex: String? = nil,
+        customSymbolName: String? = nil
     ) {
+        self.customColorHex = customColorHex
+        self.customSymbolName = customSymbolName
         self.id = id
         self.name = name
         self.rootPath = rootPath
@@ -131,7 +142,9 @@ struct ProjectDraft: Equatable {
             approvedCommandsHash: approvedCommandsHash,
             lastOpenedAt: lastOpenedAt,
             isShared: isShared,
-            modifiedAt: modifiedAt
+            modifiedAt: modifiedAt,
+            customColorHex: customColorHex,
+            customSymbolName: customSymbolName
         )
     }
 }

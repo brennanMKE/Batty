@@ -3,6 +3,7 @@
 import BattyXPCCore
 import Foundation
 import os
+import SwiftUI
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "Project")
 
@@ -196,9 +197,21 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     /// Absolute and lexically standardized. A non-absolute value is rejected
     /// at decode and resolves no paths.
     public var rootPath: String
+    /// The legacy palette color: the exact entry that was picked, or the
+    /// entry nearest `customColorHex`. Always written, so older Batty
+    /// versions read a valid color.
     public var color: SessionColor
+    /// `#RRGGBB` for a color picked outside the palette. Wins over `color`
+    /// when drawing. Older Batty versions ignore and, on their next save,
+    /// drop it.
+    public var customColorHex: String?
     /// Absent in files written before symbols existed; decodes to `.folder`.
+    /// For an arbitrary SF Symbol this is `.folder`, the legacy fallback.
     public var symbol: ProjectSymbol
+    /// The SF Symbol name for a symbol outside the 36 legacy cases. Wins over
+    /// `symbol` when drawing. Older Batty versions ignore and, on their next
+    /// save, drop it.
+    public var customSymbolName: String?
     public var layout: ProjectLayout
     public var runStartupCommandsOnOpen: Bool
     public var approvedCommandsHash: String?
@@ -221,13 +234,19 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         approvedCommandsHash: String? = nil,
         lastOpenedAt: Date? = nil,
         isShared: Bool = false,
-        modifiedAt: Date? = nil
+        modifiedAt: Date? = nil,
+        customColorHex: String? = nil,
+        customSymbolName: String? = nil
     ) {
+        let resolvedColor = ProjectAppearance.resolve(color: color, customHex: customColorHex)
+        let resolvedSymbol = ProjectAppearance.resolve(symbol: symbol, customName: customSymbolName)
         self.id = id
         self.name = name
         self.rootPath = Project.standardizedRoot(rootPath)
-        self.color = color
-        self.symbol = symbol
+        self.color = resolvedColor.color
+        self.customColorHex = resolvedColor.customHex
+        self.symbol = resolvedSymbol.symbol
+        self.customSymbolName = resolvedSymbol.customName
         self.layout = layout
         self.runStartupCommandsOnOpen = runStartupCommandsOnOpen
         self.approvedCommandsHash = approvedCommandsHash
@@ -235,6 +254,11 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.isShared = isShared
         self.modifiedAt = modifiedAt
     }
+
+    /// The color to draw: the custom color, else the palette entry.
+    public var displayColor: Color { ProjectAppearance.color(palette: color, customHex: customColorHex) }
+    /// The SF Symbol to draw; never a name this OS cannot draw.
+    public var displaySystemName: String { ProjectAppearance.systemName(symbol: symbol, customName: customSymbolName) }
 
     public var paneCount: Int { layout.paneCount }
     public var tabCount: Int { layout.tabCount }
@@ -285,7 +309,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt
+        case id, name, rootPath, color, customColor, symbol, symbolName, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt
     }
 
     /// `isShared` is written only when true, so a local Project's object is
@@ -296,7 +320,9 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         try c.encode(name, forKey: .name)
         try c.encode(rootPath, forKey: .rootPath)
         try c.encode(color, forKey: .color)
+        try c.encodeIfPresent(customColorHex, forKey: .customColor)
         try c.encode(symbol, forKey: .symbol)
+        try c.encodeIfPresent(customSymbolName, forKey: .symbolName)
         try c.encode(layout, forKey: .layout)
         try c.encode(runStartupCommandsOnOpen, forKey: .runStartupCommandsOnOpen)
         try c.encodeIfPresent(approvedCommandsHash, forKey: .approvedCommandsHash)
@@ -326,6 +352,17 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
             if c.contains(.symbol) { logger.error("unrecognized project symbol; using the default") }
             symbol = .folder
         }
+        let decodedCustomColor = (try? c.decodeIfPresent(String.self, forKey: .customColor)) ?? nil
+        if c.contains(.customColor), ProjectAppearance.normalizedHex(decodedCustomColor) == nil {
+            logger.error("unreadable project custom color; using the palette color")
+        }
+        let resolvedColor = ProjectAppearance.resolve(color: color, customHex: decodedCustomColor)
+        color = resolvedColor.color
+        customColorHex = resolvedColor.customHex
+        let decodedSymbolName = (try? c.decodeIfPresent(String.self, forKey: .symbolName)) ?? nil
+        let resolvedSymbol = ProjectAppearance.resolve(symbol: symbol, customName: decodedSymbolName)
+        symbol = resolvedSymbol.symbol
+        customSymbolName = resolvedSymbol.customName
         layout = try c.decode(ProjectLayout.self, forKey: .layout)
         runStartupCommandsOnOpen = try c.decodeIfPresent(Bool.self, forKey: .runStartupCommandsOnOpen) ?? false
         approvedCommandsHash = try c.decodeIfPresent(String.self, forKey: .approvedCommandsHash)

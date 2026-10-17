@@ -16,9 +16,9 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
     }
 
     @MainActor
-    private func popoverDiagnostics(_ app: XCUIApplication) -> String {
+    private func pickerDiagnostics(_ app: XCUIApplication) -> String {
         let ids = BattyScreen.identifiers(withPrefix: "project-editor.symbol", in: app).sorted()
-        return "ids=\(ids) popovers=\(app.popovers.count) tree=\(app.popovers.firstMatch.debugDescription)"
+        return "ids=\(ids) sheets=\(app.sheets.count) tree=\(app.sheets.firstMatch.debugDescription)"
     }
 
     @MainActor
@@ -40,13 +40,13 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         XCTAssertEqual(button.value as? String, "Terminal")
         dismissBanners()
         button.click()
-        XCTAssertTrue(element("project-editor.symbol.chip", in: app).waitForExistence(timeout: 5), "the Symbol popover did not open \(popoverDiagnostics(app))")
+        XCTAssertTrue(element("project-editor.symbol.chip", in: app).waitForExistence(timeout: 5), "the Symbol picker did not open \(pickerDiagnostics(app))")
 
-        // Terminal is cell 1 of 36 in a 6-wide grid; Chip is cell 18, three rows down in column 0.
+        // Terminal is cell 1 of the Suggested symbols in a 9-wide grid; Chip is cell 18, two rows down in column 0.
         app.typeKey(XCUIKeyboardKey.leftArrow.rawValue, modifierFlags: [])
-        for _ in 0..<3 { app.typeKey(XCUIKeyboardKey.downArrow.rawValue, modifierFlags: []) }
+        for _ in 0..<2 { app.typeKey(XCUIKeyboardKey.downArrow.rawValue, modifierFlags: []) }
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
-        XCTAssertTrue(waitFor({ !self.element("project-editor.symbol.chip", in: app).exists }, timeout: 5), "Return did not close the popover")
+        XCTAssertTrue(waitFor({ !self.element("project-editor.symbol.chip", in: app).exists }, timeout: 5), "Return did not close the picker")
         XCTAssertTrue(waitFor({ (button.value as? String) == "Chip" }, timeout: 5), "the Symbol button reads \(String(describing: button.value))")
 
         waitForRowIcon("Board", "terminal.fill", in: app)
@@ -58,7 +58,7 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
     }
 
     @MainActor
-    func testEscapeClosesThePopoverWithoutChangingTheSymbol() throws {
+    func testEscapeClosesThePickerWithoutChangingTheSymbol() throws {
         let (app, _) = try launchApp(projects: try seed(symbol: "terminal"))
         defer { app.terminate() }
 
@@ -71,12 +71,12 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         app.typeKey(XCUIKeyboardKey.downArrow.rawValue, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
 
-        XCTAssertTrue(waitFor({ !self.element("project-editor.symbol.chip", in: app).exists }, timeout: 5), "Escape did not close the popover")
+        XCTAssertTrue(waitFor({ !self.element("project-editor.symbol.chip", in: app).exists }, timeout: 5), "Escape did not close the picker")
         XCTAssertEqual(button.value as? String, "Terminal")
     }
 
     @MainActor
-    func testReturnOnTheFocusedSymbolButtonOpensThePopover() throws {
+    func testReturnOnTheFocusedSymbolButtonOpensThePicker() throws {
         let (app, _) = try launchApp(projects: try seed(symbol: "terminal"))
         defer { app.terminate() }
 
@@ -90,9 +90,32 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
         XCTAssertTrue(waitFor({ !self.element("project-editor.symbol.chip", in: app).exists }, timeout: 5))
 
-        // Escape returns focus to the button, so Return reopens the popover.
+        // Escape returns focus to the button, so Return reopens the picker.
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
-        XCTAssertTrue(element("project-editor.symbol.chip", in: app).waitForExistence(timeout: 5), "Return on the focused Symbol button did not open the popover")
+        XCTAssertTrue(element("project-editor.symbol.chip", in: app).waitForExistence(timeout: 5), "Return on the focused Symbol button did not open the picker")
+    }
+
+    @MainActor
+    func testTypingAFullSymbolNameAndPressingReturnChoosesItAndSavesTheName() throws {
+        let (app, _) = try launchApp(projects: try seed(symbol: "terminal"))
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.list.row.Board", in: app)
+        let button = element("project-editor.symbol", in: app)
+        XCTAssertTrue(button.waitForExistence(timeout: 5))
+        dismissBanners()
+        button.click()
+        XCTAssertTrue(element("project-editor.symbol.chip", in: app).waitForExistence(timeout: 5), "the Symbol picker did not open \(pickerDiagnostics(app))")
+
+        app.typeText("flame.circle.fill\n")
+        XCTAssertTrue(waitFor({ !self.element("project-editor.symbol.chip", in: app).exists }, timeout: 5), "Return did not close the picker")
+        XCTAssertTrue(waitFor({ (button.value as? String) == "flame.circle.fill" }, timeout: 5), "the Symbol button reads \(String(describing: button.value))")
+
+        click("project-editor.save", in: app)
+        let stored = try XCTUnwrap(ProjectFixture.read(storeFile)?.first)
+        XCTAssertEqual(stored["symbolName"] as? String, "flame.circle.fill")
+        XCTAssertEqual(stored["symbol"] as? String, "folder")
     }
 
     @MainActor
