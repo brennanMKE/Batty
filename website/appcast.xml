@@ -27,6 +27,29 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.3.1</title>
+      <pubDate>Sun, 18 Oct 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-3-1</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <h2>Pick any symbol and color for a Project</h2>
+        <p>The Project Editor can now choose any SF Symbol, filtered by name, and any color from the standard color picker.</p>
+        <ul>
+          <li>System Metrics follows the Theme.</li>
+          <li>Process Status and follow-by-name fixes.</li>
+          <li>Git Status can no longer hang on noisy git output.</li>
+          <li><code>batty status</code> and <code>batty capabilities --json</code> fixes.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.3.1.dmg"
+        sparkle:version="20261018"
+        sparkle:shortVersionString="1.3.1"
+        sparkle:edSignature="v12z0PAybi6SQEPgKoob1HmcvLdTP0by1Y9CTu36ADCeoMLssDTur8ZW4K2a8zkUexTn8NqgMy8eBd9XbGvHAA=="
+        length="26765382"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.3.0</title>
       <pubDate>Wed, 14 Oct 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
