@@ -134,6 +134,20 @@ public final class AppStateStore {
     /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
     /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
     @ObservationIgnored private var summarizationTasksForTesting: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var bellCaptureWriterStorage: BellCaptureWriter?
+    /// Writer for the opt-in Bell Feed capture log (#0523). Created on first
+    /// use; tests assign one pointed at a temporary directory beforehand.
+    /// Touching this does no file I/O: the file and its directory are only
+    /// created by the first enqueued record.
+    public var bellCaptureWriter: BellCaptureWriter? {
+        get {
+            if bellCaptureWriterStorage == nil, let dir = BellCaptureWriter.defaultDirectory() {
+                bellCaptureWriterStorage = BellCaptureWriter(directory: dir)
+            }
+            return bellCaptureWriterStorage
+        }
+        set { bellCaptureWriterStorage = newValue }
+    }
     /// Called by `BattyShortcuts` (the NSEvent-monitor path) to open a new
     /// content window. The app delegate wires this to SwiftUI's captured
     /// `OpenWindowAction` — same wiring style as `onAllSessionsClosed`. Nil
@@ -1873,13 +1887,7 @@ public final class AppStateStore {
                 if !effectivelySeen {
                     window.propagateUnseenForced(at: location)
                 }
-                switch outcome {
-                case .recorded:
-                    postNotification(for: entry, at: location, trigger: .bel)
-                    scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
-                case .collapsed:
-                    recordCollapsedNotificationDecision(for: entry, at: location, trigger: .bel)
-                }
+                handleBellOutcome(outcome, incoming: entry, at: location, trigger: .bel)
             }
             return
         }
@@ -1913,13 +1921,7 @@ public final class AppStateStore {
             if !effectivelySeen {
                 window.propagateUnseenForced(at: location)
             }
-            switch outcome {
-            case .recorded:
-                postNotification(for: entry, at: location, trigger: .oscNotification)
-                scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
-            case .collapsed:
-                recordCollapsedNotificationDecision(for: entry, at: location, trigger: .oscNotification)
-            }
+            handleBellOutcome(outcome, incoming: entry, at: location, trigger: .oscNotification)
             return
         }
     }
@@ -1982,13 +1984,7 @@ public final class AppStateStore {
             if !effectivelySeen {
                 window.propagateUnseenForced(at: location)
             }
-            switch outcome {
-            case .recorded:
-                postNotification(for: entry, at: location, trigger: .cliNotification, playSound: playSound)
-                scheduleSummarization(for: entry, tabTitle: location.tab.terminal.title, sessionTitle: location.session.title)
-            case .collapsed:
-                recordCollapsedNotificationDecision(for: entry, at: location, trigger: .cliNotification)
-            }
+            handleBellOutcome(outcome, incoming: entry, at: location, trigger: .cliNotification, playSound: playSound)
             return .posted
         }
         return .unknownTab
@@ -2488,6 +2484,41 @@ public final class AppStateStore {
         windows.flatMap(\.sessions).first { $0.id == sessionID }
     }
 
+    /// Shared tail of the three record paths: posts or collapses, schedules the
+    /// summary, then hands the capture log (#0523) one snapshot taken from the
+    /// same decision record the history just received.
+    ///
+    /// Ordering: the summarization `Task` is main-actor isolated and cannot
+    /// start until this synchronous method returns, so the `event` record is
+    /// always enqueued before any `summary` record for the same entry.
+    private func handleBellOutcome(
+        _ outcome: BellFeedStore.RecordOutcome,
+        incoming entry: BellFeedEntry,
+        at location: WindowRuntime.BellLocation,
+        trigger: BellTriggerKind,
+        playSound: Bool = true
+    ) {
+        let capturing = isBellCaptureEnabled
+        switch outcome {
+        case .recorded:
+            let decision = postNotification(for: entry, at: location, trigger: trigger, playSound: playSound)
+            let summarization = scheduleSummarization(
+                for: entry,
+                tabTitle: location.tab.terminal.title,
+                sessionTitle: location.session.title,
+                capturing: capturing
+            )
+            if capturing {
+                captureBellEvent(entry: entry, at: location, decision: decision, collapsed: false, summarization: summarization)
+            }
+        case .collapsed(let surviving):
+            let decision = recordCollapsedNotificationDecision(for: entry, at: location, trigger: trigger)
+            if capturing {
+                captureBellEvent(entry: surviving, at: location, decision: decision, collapsed: true, summarization: .notApplicableCollapsed)
+            }
+        }
+    }
+
     /// #0297's single choke point: every real-tab bell path (BEL, OSC
     /// 9/777, CLI `notify`) — `recordBellTick`, `recordDesktopNotification`,
     /// `recordCLINotification` — calls this exactly once per entry, so
@@ -2507,16 +2538,18 @@ public final class AppStateStore {
     /// a human-scale, discrete event, not a hot path — so paying this cost
     /// every time, including on the nil-notifier/muted-session cases below
     /// that return early, is negligible.
+    @discardableResult
     private func postNotification(
         for entry: BellFeedEntry,
         at location: WindowRuntime.BellLocation,
         trigger: BellTriggerKind,
         playSound: Bool = true
-    ) {
-        bellDecisionHistory.record(makeBellDecisionRecord(for: entry, at: location, trigger: trigger))
+    ) -> BellDecisionRecord {
+        let decision = makeBellDecisionRecord(for: entry, at: location, trigger: trigger)
+        bellDecisionHistory.record(decision)
 
-        guard let notifier else { return }
-        guard !location.session.notificationsMuted else { return }
+        guard let notifier else { return decision }
+        guard !location.session.notificationsMuted else { return decision }
         let paneIndex = (location.session.tree.allPanes.firstIndex { $0.id == location.pane.id } ?? 0) + 1
         let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
         notifier.post(
@@ -2526,13 +2559,14 @@ public final class AppStateStore {
             tabLabel: Self.tabLabel(for: location.tab, tabIndex: tabIndex),
             playSound: playSound
         )
+        return decision
     }
 
     /// Override → terminal title → "Tab N" fallback, shared by the real
     /// notification content (`postNotification`) and the #0297 decision
     /// record (`makeBellDecisionRecord`) so the two can never disagree
     /// about what a Tab is called.
-    private static func tabLabel(for tab: TabRuntime, tabIndex: Int) -> String {
+    static func tabLabel(for tab: TabRuntime, tabIndex: Int) -> String {
         if let override = tab.titleOverride, !override.isEmpty {
             return override
         }
@@ -2614,10 +2648,10 @@ public final class AppStateStore {
         for entry: BellFeedEntry,
         at location: WindowRuntime.BellLocation,
         trigger: BellTriggerKind
-    ) {
-        bellDecisionHistory.record(
-            makeBellDecisionRecord(for: entry, at: location, trigger: trigger, forcedOutcome: .suppressed(.collapsedIntoUnread))
-        )
+    ) -> BellDecisionRecord {
+        let decision = makeBellDecisionRecord(for: entry, at: location, trigger: trigger, forcedOutcome: .suppressed(.collapsedIntoUnread))
+        bellDecisionHistory.record(decision)
+        return decision
     }
 
     /// Kicks off async AI summarization for a newly-recorded bell entry.
@@ -2637,33 +2671,56 @@ public final class AppStateStore {
     /// longer present in `bellFeed.entries` — `BellFeedStore` already caps
     /// how many entries it retains, so this bounds the dictionary the same
     /// way instead of growing it for the life of the app. This is
-    /// deliberately not a `defer` inside the `Task` itself: a summarizer
-    /// with no real `await` inside it can let the `Task` run to completion
-    /// (and remove its own entry) before the caller that just scheduled it
-    /// gets a chance to look the entry up, which would make "was one
-    /// scheduled" indistinguishable from "already finished". Pruning by
+    /// deliberately not a `defer` inside the `Task` itself: a `Task` that
+    /// removed its own entry on completion would make "was one scheduled"
+    /// indistinguishable from "already finished" for any caller that looks
+    /// the entry up after the `Task` ended. Pruning by
     /// feed membership instead can never remove the entry this call is
     /// about to add — it was just recorded into `bellFeed` by the caller.
-    private func scheduleSummarization(for entry: BellFeedEntry, tabTitle: String, sessionTitle: String) {
-        guard let summarizer = notificationSummarizer else { return }
-        guard SettingsPreference.resolvedSummarizeNotificationsWithAI(defaults: preferences) else { return }
+    private func scheduleSummarization(
+        for entry: BellFeedEntry,
+        tabTitle: String,
+        sessionTitle: String,
+        capturing: Bool
+    ) -> BellCaptureSummarization {
+        guard let summarizer = notificationSummarizer else { return .skippedNoSummarizer }
+        guard SettingsPreference.resolvedSummarizeNotificationsWithAI(defaults: preferences) else { return .skippedDisabled }
         let entryID = entry.id
         let message = entry.message
         let tabTitleCopy = tabTitle
         let sessionTitleCopy = sessionTitle
+        let writer = capturing ? bellCaptureWriter : nil
+        let generation = writer?.generation
         let task = Task { [weak self] in
-            let raw = await summarizer.summarize(
+            let start = ContinuousClock.now
+            let result = await summarizer.summarize(
                 message: message,
                 tabTitle: tabTitleCopy.isEmpty ? nil : tabTitleCopy,
                 sessionTitle: sessionTitleCopy.isEmpty ? nil : sessionTitleCopy
             )
-            guard let self, !Task.isCancelled else { return }
-            guard let summary = raw.flatMap(NotificationSummary.sanitize) else { return }
-            self.bellFeed.updateSummary(summary, forEntryID: entryID)
+            let elapsed = start.duration(to: .now)
+            let elapsedSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+            let cancelled = Task.isCancelled
+            let sanitized = cancelled ? nil : result.rawReply.flatMap(NotificationSummary.sanitize)
+            if let self, let sanitized {
+                self.bellFeed.updateSummary(sanitized, forEntryID: entryID)
+            }
+            if let writer {
+                let rowText = self?.bellFeed.entries.first(where: { $0.id == entryID })?.displayText
+                writer.enqueue(Self.makeCaptureSummary(
+                    entryID: entryID,
+                    result: result,
+                    cancelled: cancelled,
+                    sanitized: sanitized,
+                    elapsedSeconds: elapsedSeconds,
+                    feedRowText: rowText
+                ), generation: generation)
+            }
         }
         let liveIDs = Set(bellFeed.entries.map(\.id))
         summarizationTasksForTesting = summarizationTasksForTesting.filter { liveIDs.contains($0.key) }
         summarizationTasksForTesting[entryID] = task
+        return .scheduled
     }
 
     /// Test-only. The summarization `Task` `scheduleSummarization` started

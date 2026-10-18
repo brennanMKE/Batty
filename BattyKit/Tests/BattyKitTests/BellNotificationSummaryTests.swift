@@ -14,9 +14,9 @@ private final class RecordingSummarizer: NotificationSummarizing {
         self.result = result
     }
 
-    func summarize(message: String?, tabTitle: String?, sessionTitle: String?) async -> String? {
+    func summarize(message: String?, tabTitle: String?, sessionTitle: String?) async -> NotificationSummarizationResult {
         calls.append((message: message, tabTitle: tabTitle, sessionTitle: sessionTitle))
-        return result
+        return NotificationSummarizationResult(instructions: "stub instructions", prompt: "stub prompt", rawReply: result)
     }
 }
 
@@ -307,11 +307,11 @@ final class AppStateStoreSummarizationTests {
         // Use a message-keyed summarizer so the two concurrent tasks return
         // distinct values regardless of completion order.
         final class MessageKeyedSummarizer: NotificationSummarizing {
-            func summarize(message: String?, tabTitle: String?, sessionTitle: String?) async -> String? {
-                guard let message else { return nil }
-                if message.contains("ci-passed") { return "ci passed" }
-                if message.contains("tests-failed") { return "tests failed" }
-                return nil
+            func summarize(message: String?, tabTitle: String?, sessionTitle: String?) async -> NotificationSummarizationResult {
+                guard let message else { return NotificationSummarizationResult() }
+                if message.contains("ci-passed") { return NotificationSummarizationResult(rawReply: "ci passed") }
+                if message.contains("tests-failed") { return NotificationSummarizationResult(rawReply: "tests failed") }
+                return NotificationSummarizationResult()
             }
         }
         let summarizer = MessageKeyedSummarizer()

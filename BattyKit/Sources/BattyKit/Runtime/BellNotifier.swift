@@ -80,8 +80,8 @@ public final class BellNotifier: BellNotifying {
         guard SettingsPreference.resolvedSystemNotifications() else { return }
         guard shouldPost(for: entry) else { return }
         let content = UNMutableNotificationContent()
-        content.title = String(localized: "Batty — \(sessionTitle) › Pane \(paneIndex) › \(tabLabel)")
-        content.body = entry.message?.isEmpty == false ? entry.message! : String(localized: "Bell")
+        content.title = Self.notificationTitle(sessionTitle: sessionTitle, paneIndex: paneIndex, tabLabel: tabLabel)
+        content.body = Self.notificationBody(for: entry)
         if playSound && SettingsPreference.resolvedBellSound() {
             content.sound = .default
         }
@@ -93,6 +93,14 @@ public final class BellNotifier: BellNotifying {
             trigger: nil
         )
         center.add(request, withCompletionHandler: nil)
+    }
+
+    static func notificationTitle(sessionTitle: String, paneIndex: Int, tabLabel: String) -> String {
+        String(localized: "Batty — \(sessionTitle) › Pane \(paneIndex) › \(tabLabel)")
+    }
+
+    static func notificationBody(for entry: BellFeedEntry) -> String {
+        entry.message?.isEmpty == false ? entry.message! : String(localized: "Bell")
     }
 
     private func shouldPost(for entry: BellFeedEntry) -> Bool {

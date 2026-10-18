@@ -239,6 +239,7 @@ The unified, app-wide list of recent **Bell events** across every Terminal Sessi
   5. Mark the entry seen and decrement unseen counters at every level.
 - **Same flow** is invoked when the user taps a System notification posted by Batty.
 - **Lifetime:** in-memory only; does not survive a relaunch.
+- **Capture log (opt-in):** Settings → Advanced → Diagnostics → "Capture Bell Feed data" appends each Bell event's raw input and the text shown for it to a local JSON Lines file. Off by default; see `docs/bell-feed-capture.md`.
 
 ---
 

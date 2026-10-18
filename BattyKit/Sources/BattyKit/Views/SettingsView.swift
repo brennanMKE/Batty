@@ -312,6 +312,7 @@ private struct AdvancedSettingsView: View {
             }
             Section("Diagnostics") {
                 BellDecisionExportRow(store: store)
+                BellCaptureRow(store: store)
             }
         }
         .formStyle(.grouped)
@@ -402,6 +403,63 @@ private struct BellDecisionExportRow: View {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         return formatter.string(from: Date())
+    }
+}
+
+/// #0523: opt-in capture log of each Bell event's raw input and the text
+/// Batty showed for it. Off by default; the file never leaves this Mac. File
+/// existence is checked off the main thread (`BellCaptureWriter`'s queue).
+private struct BellCaptureRow: View {
+    let store: AppStateStore?
+
+    @AppStorage(SettingsPreference.captureBellFeedDataKey)
+    private var capture: Bool = SettingsPreference.defaultCaptureBellFeedData
+    @State private var fileExists = false
+    @State private var confirmingClear = false
+
+    var body: some View {
+        Toggle("Capture Bell Feed data", isOn: $capture)
+            .accessibilityIdentifier("settings.bellCapture.toggle")
+        Text("Records each bell and notification to a file on this Mac: the notification text, Tab and Session titles, working directory, and the AI summary exchange. Terminal output can contain secrets such as tokens, passwords and keys, so review the file before sharing it. The file stays on this Mac and is never sent anywhere. It keeps about the last 2,000 records.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        HStack {
+            Button("Reveal Capture File in Finder") {
+                if let url = store?.bellCaptureWriter?.currentFileURL {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            }
+            .disabled(!fileExists)
+            Spacer()
+            if confirmingClear {
+                Text("Delete all captured records?")
+                    .font(.caption)
+                Button("Delete", role: .destructive) {
+                    store?.bellCaptureWriter?.clear()
+                    confirmingClear = false
+                    Task { await refresh() }
+                }
+                Button("Cancel") { confirmingClear = false }
+            } else {
+                Button("Clear Capture", role: .destructive) { confirmingClear = true }
+            }
+        }
+        .task { await refresh() }
+        .onChange(of: capture) { _, _ in Task { await refresh() } }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refresh() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            Task { await refresh() }
+        }
+    }
+
+    private func refresh() async {
+        guard let writer = store?.bellCaptureWriter else {
+            fileExists = false
+            return
+        }
+        fileExists = await writer.currentFileExists()
     }
 }
 
