@@ -8,7 +8,10 @@
 Cache read/write counts are exact. Output tokens are estimated (assistant characters / 4) because the transcript's
 `usage` is the stream-start snapshot. Wall is first to last timestamp; VM is every Bash call that runs
 tools/run-ui-tests-vm.sh or `./build.sh ui`, from tool_use to its tool_result (or, for a background run, to its task
-notification). Stdlib only.
+notification). Build and Unit time `./build.sh` (build), `./build.sh ui-typecheck` and `./build.sh unit` runs the same
+way; a foreground run counts only when its result has a `CHECK <STAGE>:` line, which also names its stage. Haiku counts
+and sums the `claude -p --model haiku` failure summaries recorded in the shared build/checks/haiku-usage.jsonl whose log
+path this transcript printed; Cost is model cost plus that Haiku cost. Stdlib only.
 """
 import argparse
 import collections
@@ -22,11 +25,61 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 PRICING = ROOT / "issues" / "model-pricing.json"
 # A command that runs the VM runner (optionally after `cd … &&` or env assignments), not one that greps or reads it.
 VM_COMMAND = re.compile(
-    r"(^|&&|;|\|\||\n|\bdo)\s*(cd \S+\s*&&\s*)?([A-Z_]+=\S+\s+)*((\S*/)?tools/run-ui-tests-vm\.sh|(\S*/)?build\.sh ui)\b")
+    r"(^|&&|;|\|\||\n|\bdo)\s*(cd \S+\s*&&\s*)?([A-Z_]+=\S+\s+)*((\S*/)?tools/run-ui-tests-vm\.sh\b|(\S*/)?build\.sh ui(?=[\s;&|)]|$))")
 # Only a real run prints the runner's result line; --help, syntax checks and heredocs don't.
-VM_SUMMARY = re.compile(r"==> RESULT:|Executed \d+ tests?")
+VM_SUMMARY = re.compile(r"==> RESULT:|Executed \d+ tests?|CHECK UI:")
+# A command that runs build.sh with no action, `build`, `unit` or `ui-typecheck` (same prefix tolerance as VM_COMMAND).
+CHECK_COMMAND = re.compile(
+    r"(^|&&|;|\|\||\n|\bdo)\s*(cd \S+\s*&&\s*)?([A-Z_]+=\S+\s+)*(\S*/)?build\.sh"
+    r"(\s+--verbose)*(?P<action>\s+(build|unit|ui-typecheck)\b|\s*($|[;&|\n)]))")
+CHECK_RESULT = re.compile(r"CHECK (BUILD|UNIT|UI-TYPECHECK|UI): (PASSED|FAILED|ERROR)")
+CHECK_LOG = re.compile(r"build/checks/[\w.-]+?\.log\b")
 BACKGROUND_ID = re.compile(r"background with ID: (\w+)")
 DEFAULT_DIR = pathlib.Path.home() / ".claude" / "projects" / "-Users-brennan-Developer-brennanMKE-Batty"
+
+
+def check_stage(command):
+    match = CHECK_COMMAND.search(command)
+    if not match:
+        return None
+    return "unit" if "unit" in (match.group("action") or "") else "build"
+
+
+def command_stages(command):
+    """The CHECK stages a Bash command runs, so a CHECK line from anything else
+    in the same call (an offline tools/check-report.py, a cat) earns no credit."""
+    stages = {"UI"} if VM_COMMAND.search(command) else set()
+    for match in CHECK_COMMAND.finditer(command):
+        action = (match.group("action") or "").strip()
+        stages.add({"unit": "UNIT", "ui-typecheck": "UI-TYPECHECK"}.get(action, "BUILD"))
+    return stages
+
+
+def shared_checks_dir():
+    import subprocess
+    try:
+        common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                capture_output=True, text=True).stdout.strip()
+    except OSError:
+        common = ""
+    base = pathlib.Path(common).parent if common else ROOT
+    return base / "build" / "checks"
+
+
+def haiku_usage(logs):
+    usage = shared_checks_dir() / "haiku-usage.jsonl"
+    runs, cost = 0, 0.0
+    if not logs or not usage.exists():
+        return runs, cost
+    for line in open(usage, encoding="utf-8"):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if any(str(record.get("log", "")).endswith(log) for log in logs):
+            runs += 1
+            cost += record.get("cost_usd") or 0
+    return runs, cost
 
 
 def ts(value):
@@ -39,11 +92,12 @@ def measure(path, pricing):
     requests = {}
     chars = 0
     first = last = None
-    vm_calls = {}
-    vm_runs = []
-    vm_background_calls = {}
-    vm_tasks = {}
-    vm_background = 0  # background runs whose end was not found
+    calls = {}  # tool_use id -> (kind, started); kind is "vm", "build" or "unit"
+    background_calls = {}
+    tasks = {}
+    runs = {"vm": [], "build": [], "unit": []}
+    unfinished = collections.Counter()  # background runs whose end was not found
+    logs = set()
     for line in open(path, encoding="utf-8"):
         try:
             entry = json.loads(line)
@@ -75,33 +129,45 @@ def measure(path, pricing):
                     tool_input = block.get("input", {})
                     chars += len(json.dumps(tool_input))
                     command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
-                    if block.get("name") == "Bash" and VM_COMMAND.search(command):
-                        if tool_input.get("run_in_background"):
-                            vm_background_calls[block.get("id")] = when
-                        else:
-                            vm_calls[block.get("id")] = when
+                    kind = None
+                    if block.get("name") == "Bash":
+                        kind = "vm" if VM_COMMAND.search(command) else check_stage(command)
+                    if kind:
+                        target = background_calls if tool_input.get("run_in_background") else calls
+                        target[block.get("id")] = (kind, when, command_stages(command))
         elif entry.get("type") == "user":
             for block in content:
                 if not isinstance(block, dict) or block.get("type") != "tool_result":
                     continue
-                if block.get("tool_use_id") in vm_calls:
-                    started = vm_calls.pop(block["tool_use_id"])
-                    if VM_SUMMARY.search(json.dumps(block.get("content", ""))):
-                        vm_runs.append((when - started).total_seconds())
-                elif block.get("tool_use_id") in vm_background_calls:
-                    # "Command running in background with ID: <task>"; timed until that task's notification.
-                    found = BACKGROUND_ID.search(json.dumps(block.get("content", "")))
-                    started = vm_background_calls.pop(block["tool_use_id"])
-                    if found:
-                        vm_tasks[found.group(1)] = started
+                text = json.dumps(block.get("content", ""), ensure_ascii=False)
+                logs.update(CHECK_LOG.findall(text))
+                if block.get("tool_use_id") in calls:
+                    kind, started, allowed = calls.pop(block["tool_use_id"])
+                    if kind == "vm":
+                        if VM_SUMMARY.search(text):
+                            runs["vm"].append((when - started).total_seconds())
                     else:
-                        vm_background += 1
+                        stages = [r for r in CHECK_RESULT.findall(text) if r[0] in allowed]
+                        for stage, _ in stages:
+                            key = "vm" if stage == "UI" else "unit" if stage == "UNIT" else "build"
+                            runs[key].append((when - started).total_seconds() / len(stages))
+                elif block.get("tool_use_id") in background_calls:
+                    # "Command running in background with ID: <task>"; timed until that task's notification.
+                    found = BACKGROUND_ID.search(text)
+                    kind, started, _ = background_calls.pop(block["tool_use_id"])
+                    if found:
+                        tasks[found.group(1)] = (kind, started)
+                    else:
+                        unfinished[kind] += 1
         # A background run ends at its task notification, delivered as a user message or a queued-command attachment.
-        if vm_tasks and entry.get("type") in ("user", "attachment") and stamp:
+        if tasks and entry.get("type") in ("user", "attachment") and stamp:
             text = json.dumps(entry)
-            for task in [t for t in vm_tasks if f"<task-id>{t}</task-id>" in text]:
-                vm_runs.append((when - vm_tasks.pop(task)).total_seconds())
-    vm_background += len(vm_tasks) + len(vm_background_calls)
+            for task in [t for t in tasks if f"<task-id>{t}</task-id>" in text]:
+                kind, started = tasks.pop(task)
+                runs[kind].append((when - started).total_seconds())
+    for kind, *_ in list(tasks.values()) + list(background_calls.values()):
+        unfinished[kind] += 1
+    haiku_runs, haiku_cost = haiku_usage(logs)
 
     cache_read = sum(u.get("cache_read_input_tokens", 0) for u in requests.values())
     write_5m = write_1h = 0
@@ -131,14 +197,23 @@ def measure(path, pricing):
         "model": name,
         "effort": effort.most_common(1)[0][0] if effort else None,
         "wall_s": (last - first).total_seconds() if first else 0,
-        "vm_runs": len(vm_runs),
-        "vm_s": sum(vm_runs),
-        "vm_background": vm_background,
+        "vm_runs": len(runs["vm"]),
+        "vm_s": sum(runs["vm"]),
+        "vm_background": unfinished["vm"],
+        "build_runs": len(runs["build"]),
+        "build_s": sum(runs["build"]),
+        "build_background": unfinished["build"],
+        "unit_runs": len(runs["unit"]),
+        "unit_s": sum(runs["unit"]),
+        "unit_background": unfinished["unit"],
+        "haiku_runs": haiku_runs,
+        "haiku_cost": haiku_cost,
         "turns": len(requests),
         "output_est": output,
         "cache_read": cache_read,
         "cache_write": write_5m + write_1h,
         "cost": cost,
+        "total_cost": None if cost is None else cost + haiku_cost,
         "pricing_fetched": pricing.get("fetched"),
     }
 
@@ -147,13 +222,20 @@ def minutes(seconds):
     return f"{seconds / 60:.0f}m" if seconds >= 60 else f"{seconds:.0f}s"
 
 
+def timed(m, kind):
+    cell = "—" if not m[f"{kind}_runs"] else f"{m[f'{kind}_runs']} ({m[f'{kind}_s'] / 60:.1f}m)"
+    if m[f"{kind}_background"]:
+        cell += f" +{m[f'{kind}_background']} bg"
+    return cell
+
+
 def row(m, phase, outcome):
-    vm = "—" if not m["vm_runs"] else f"{m['vm_runs']} ({m['vm_s'] / 60:.1f}m)"
-    if m["vm_background"]:
-        vm += f" +{m['vm_background']} bg"
-    cost = "—" if m["cost"] is None else f"${m['cost']:.2f}"
-    return (f"| {m['date']} | {phase} | {m['model']} | {m['effort'] or '—'} | {minutes(m['wall_s'])} | {vm} | "
-            f"{m['turns']} | ~{m['output_est']:,} | {m['cache_read']:,} | {m['cache_write']:,} | {cost} | {outcome} |")
+    cost = "—" if m["total_cost"] is None else f"${m['total_cost']:.2f}"
+    haiku = "—" if not m["haiku_runs"] else f"{m['haiku_runs']} (${m['haiku_cost']:.3f})"
+    return (f"| {m['date']} | {phase} | {m['model']} | {m['effort'] or '—'} | {minutes(m['wall_s'])} | "
+            f"{timed(m, 'build')} | {timed(m, 'unit')} | {timed(m, 'vm')} | "
+            f"{m['turns']} | ~{m['output_est']:,} | {m['cache_read']:,} | {m['cache_write']:,} | {haiku} | {cost} | "
+            f"{outcome} |")
 
 
 def main():

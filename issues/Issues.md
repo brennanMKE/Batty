@@ -222,11 +222,12 @@ You start with fresh context on the issue branch (`issue/NNNN`, in its worktree)
 1. **Orient.** Read `issues/Issues.md` (this file — authoritative for the issue workflow), `AGENTS.md` (binding for code and repo conventions), and `issues/NNNN.md` in full, **including its `## Plan`**. Read `PRD.md` / `Concepts.md` only as the plan requires; use the `Concepts.md` vocabulary exactly.
 2. **Set status to `in-progress`** and commit it on the branch (`#NNNN Claim`).
 3. **Make the changes the plan describes.** If you deviate, say why in `## Fix`. Commit checkpoints freely, messages prefixed `#NNNN`.
-4. **Build first:** `./build.sh`. Fix compile errors before any test run. If you changed `BattyUITests`, also run `./build.sh ui-typecheck`, which type-checks the UI tests on the host in seconds; a UI-test compile error must never reach the daily run.
-5. **Run the fast tier and read the output** (see "Verification tiers"). Mandatory; cannot be shortcutted.
-   - **Compilation is not verification.** Tests must actually run. A green build with zero tests run is a failure of this step.
-   - **Tests you added or changed must appear by name in the output as passed**, and the count must have gone up.
-   - **Read the output, don't just check the exit code.** "0 tests", "skipped", "no tests found", or a build line with no test summary are red flags at exit 0.
+4. **Build first:** `./build.sh`. Fix compile errors before any test run. If you changed `BattyUITests`, also run `./build.sh ui-typecheck`, which type-checks the UI tests on the host in seconds; a UI-test compile error must never reach the daily run. Both print only a short tail: act on the exit code and the final `CHECK …` line, and on FAILED fix from the printed summary or digest.
+5. **Run the fast tier** (see "Verification tiers"). Mandatory; cannot be shortcutted. `./build.sh unit` captures the log and prints a short tail; that tail is the output contract:
+   - Exit **0** and `CHECK UNIT: PASSED (N tests)`; exit **1** and `CHECK UNIT: FAILED (…)`; exit **2** and `CHECK UNIT: ERROR (…)` (could not run).
+   - **Never `cat`, `grep` or `tail` the full log under `build/checks/`.** On failure read the printed Haiku summary or raw digest, or `<log>.failures.txt` when the printed digest was cut off.
+   - **Compilation is not verification.** Zero tests run is exit 2 and `CHECK UNIT: ERROR (no tests ran)`, enforced by the script.
+   - **Confirm tests you added or changed by name** with a filtered run, `./build.sh unit <Suite>` or `./build.sh unit <Suite>/<test>()`, which must print `PASSED (k tests)` with the expected `k`; then the full `./build.sh unit` for the count, which must have gone up.
    - **If verification can't run** (a VM precondition fails on a UI confirmation issue, hardware, the user's Mac), you have not verified the change — bail per "When a phase can't finish", naming the step.
    - **If the build was already failing before you started**, note it and bail — don't fix unrelated breakage.
 6. **Commit the code** on the branch: `#NNNN <verb> <title>` — the verb that fits (`Fix`, `Add`, `Refactor`, `Update`, `Remove`, …). Discard expected `project.pbxproj` / `.xcscheme` residue (`git checkout --`); never commit it.
@@ -244,7 +245,7 @@ The reviewer is the gate between "code on the branch" and "issue resolved". It o
 
 1. **Orient** the same way (this file, `AGENTS.md`, `issues/NNNN.md` with its `## Plan` and drafted resolution sections), then read `git diff main...HEAD` in the issue's worktree — exactly the diff the squash will land.
 2. **Judge the diff** against the issue's expected behavior (and its umbrella's acceptance criteria), the plan, the project's conventions and binding docs (`docs/view-hierarchy.md`, `docs/terminal-pane-requirements.md`, `docs/swiftui-observation-rules.md` where the diff touches those paths), and downstream impact. Grep every factual claim in new comments.
-3. **Re-run the verification yourself** — the same tier (and, for a UI confirmation issue, the same failing-test filters) the plan names — and read the output. Don't trust the drafted `## Verification`. This independent run is the core of the review.
+3. **Re-run the verification yourself** — the same tier (and, for a UI confirmation issue, the same failing-test filters) the plan names — and act on the exit code, the final `CHECK …` line and any printed digest, as in Phase 2 step 5. Never read the full log under `build/checks/`. Don't trust the drafted `## Verification`. This independent run is the core of the review.
 4. **Decide, and commit on the branch:**
    - **Resolve** (correct, verified): set Status `resolved`; add `**Closed**` (today) and `**Branch**` (`issue/NNNN`) rows — no `**Commit**` row; the landing commit is found with `git log --oneline --grep='#NNNN'`. Add `## Resolution notes` (`> 🟢 Resolved YYYY-MM-DD — <one sentence>.`) and `## Review` (rounds, what review changed or "approved first pass"); correct the drafted sections where your run differs, and add your run to `## Verification`. If the issue is a child of an umbrella, update its row in the umbrella's Children table. Commit: `#NNNN Resolve: <title>`.
    - **Bounce** (verification failed, fix wrong, scope off): set Status back to `open`; add `## Review notes` stating exactly what failed and what the next implementation must change (file, problem, what would satisfy it). Commit: `#NNNN Review: <reason>`.
@@ -260,14 +261,15 @@ Builds and unit tests run on the host; **UI tests run only in the Tart VM** (`AG
 
 | Stage | When | What runs |
 |---|---|---|
-| **Build** | Implementer, after editing, before any test run | `./build.sh`. Stops early on compile errors. Never counts as verification. |
-| **UI type-check** | Implementer and reviewer, whenever `BattyUITests` changed | `./build.sh ui-typecheck` — type-checks `BattyUITests` on the host in seconds without building or running it. Never counts as verification. |
-| **Fast tier** (every issue) | Every implementation and every review | `./build.sh unit`. No VM run. |
+| **Build** | Implementer, after editing, before any test run | `./build.sh` → `CHECK BUILD: PASSED`. Stops early on compile errors. Never counts as verification. |
+| **UI type-check** | Implementer and reviewer, whenever `BattyUITests` changed | `./build.sh ui-typecheck` → `CHECK UI-TYPECHECK: PASSED` — type-checks `BattyUITests` on the host in seconds without building or running it. Never counts as verification. |
+| **Fast tier** (every issue) | Every implementation and every review | `./build.sh unit` → `CHECK UNIT: PASSED (N tests)`. No VM run. |
 | **UI confirmation** | Issues filed from a daily UI run failure | The fast tier, plus `tools/run-ui-tests-vm.sh` with only the failing `BattyUITests/<Class>/<test>` filters recorded in the issue. The issue isn't resolved until those tests pass in the VM. |
 | **Release** | Before any release (`AGENTS.md`), from the branch being released | All tests: the unit tests including slow ones, the **whole** `BattyUITests` suite in the VM in sequential shards each under the guest's 40-minute bound (#0518), and the Release archive check (`./build.sh release archive …`). |
 
 - **UI-visible changes** still add or update UI tests, type-checked with `./build.sh ui-typecheck`. Their first VM run is the next daily run; the plan names them and `## Gotchas` says they haven't run in the VM yet. Visual sign-off stays with the user.
-- **Quote evidence, not exit codes:** `## Verification` quotes the unit `Test run with N tests … passed` line and, for each VM run, its run id, the `Executed N tests, with M failures` line and the `==> RESULT:` line.
+- **Quote evidence from the tail:** `## Verification` quotes the ALL-CAPS `CHECK …` line, the `==> unit:` counts line and the log path; for each VM run, its run id, the `==> RESULT:` line and the `CHECK UI:` line.
+- **Switches:** `--verbose` or `BATTY_CHECK_VERBOSE=1` streams the full log as well (for humans only); `BATTY_CHECK_SUMMARY=0` prints the raw digest instead of the Haiku summary; `BATTY_CHECK_SUMMARY_TIMEOUT` (seconds, default 90) bounds the Haiku call. Exit codes and the `CHECK` line never depend on Haiku.
 - **Run the VM runner in the foreground or with the Bash tool's `run_in_background`** — not with `&`, `nohup` or a redirect to a file — so its time is measurable for the work log. One VM at a time.
 - **Known flaky tests** may fail on unrelated changes. None are listed at present; add a test here only with the run ids that show it flaking, and file an issue to fix it.
 - Unit tests follow `AGENTS.md` "Asynchronous tests" — never pass by waiting.
@@ -276,7 +278,7 @@ Builds and unit tests run on the host; **UI tests run only in the Tart VM** (`AG
 
 Once a day, the orchestrator (or a scheduled session) runs the whole `BattyUITests` suite in the VM against the current `main`, in shards as in the Release tier. It is the only routine UI-test run.
 
-1. Record each shard's run id, the `Executed N tests, with M failures` line and the `==> RESULT:` line.
+1. Record each shard's run id, the `Executed N tests, with M failures` line, the `==> RESULT:` line and the `CHECK UI:` line.
 2. **Re-run each failing test once** with its own `BattyUITests/<Class>/<test>` filter to separate real failures from flakes. A test that passes on the re-run goes under "Known flaky tests" with both run ids, and gets an issue to fix the flakiness.
 3. **File an issue for each real failure** through a filer subagent, one per root cause. Several tests failing on the same cause share one issue. Before filing, check for an open issue that already covers the test. The issue records the run id, the failure message, the exact `BattyUITests/<Class>/<test>` filters, and the commits that landed on `main` since the last green daily run, which are the likely cause.
 4. Those issues go through plan → implement → review like any other, with the **UI confirmation** tier: the implementer and the reviewer each re-run only the failing tests.
@@ -328,8 +330,9 @@ It prints a ready work-log row. What it measures:
 - **Cache read / cache write** — exact, from `message.usage`, deduped by `requestId` (one response can span several JSONL lines).
 - **Output** — *estimated* as assistant characters ÷ 4 and marked `~`: the transcript's `usage` is the stream-start snapshot, so `output_tokens` is near zero on every line.
 - **Effort** — the `effort` field on assistant lines. **Turns** — API requests.
-- **Wall** — first to last timestamp. **VM** — count and total minutes of `tools/run-ui-tests-vm.sh` / `./build.sh ui` runs (foreground, or `run_in_background` timed to the task notification). Model time is Wall − VM.
-- **Cost** — from `issues/model-pricing.json`.
+- **Wall** — first to last timestamp. **UI** — count and total minutes of `tools/run-ui-tests-vm.sh` / `./build.sh ui` runs (foreground, or `run_in_background` timed to the task notification). **Build** and **Unit** — the same for `./build.sh` / `./build.sh ui-typecheck` and `./build.sh unit`; a foreground run counts when its result has a `CHECK …` line. Model time is Wall − Build − Unit − UI.
+- **Haiku** — count and cost of the failure summaries: records in the main checkout's `build/checks/haiku-usage.jsonl` whose log path the transcript printed.
+- **Cost** — model cost from `issues/model-pricing.json`, plus the Haiku cost.
 
 `tools/worklog.py --scan` measures every transcript in the project, which is how baselines are built. If no transcript is available, record what the harness reported, or `—`. Never fabricate counts.
 
@@ -340,11 +343,11 @@ One row per phase and round, conventionally the last section of the issue file (
 ```markdown
 ## Work log
 
-| Date | Phase | Model | Effort | Wall | VM | Turns | Output | Cache read | Cache write | Cost | Outcome |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2026-10-20 | plan | claude-opus-5-5 | medium | 9m | — | 20 | ~29,400 | 2,088,496 | 157,531 | $1.80 | planned |
-| 2026-10-20 | implement | claude-opus-5-5 | low | 18m | 2 (9.2m) | 41 | ~46,000 | 4,100,000 | 190,000 | $2.10 | reviewed |
-| 2026-10-20 | review | claude-opus-5-5 | medium | 7m | 1 (3.0m) | 27 | ~4,800 | 2,431,182 | 117,810 | $0.95 | resolved |
+| Date | Phase | Model | Effort | Wall | Build | Unit | UI | Turns | Output | Cache read | Cache write | Haiku | Cost | Outcome |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-20 | plan | claude-opus-5-5 | medium | 9m | — | — | — | 20 | ~29,400 | 2,088,496 | 157,531 | — | $1.80 | planned |
+| 2026-10-20 | implement | claude-opus-5-5 | low | 18m | 2 (0.4m) | 3 (2.1m) | — | 41 | ~46,000 | 4,100,000 | 190,000 | 1 ($0.003) | $2.10 | reviewed |
+| 2026-10-20 | review | claude-opus-5-5 | medium | 7m | 1 (0.2m) | 1 (0.7m) | — | 27 | ~4,800 | 2,431,182 | 117,810 | — | $0.95 | resolved |
 
 **Total: $4.85**
 ```

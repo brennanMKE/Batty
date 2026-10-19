@@ -59,6 +59,8 @@ release builds only.
 
 # Run BattyKit unit tests — fast, no UI, runs before every commit
 ./build.sh unit
+./build.sh unit <Suite>                           # one suite (Swift Testing)
+./build.sh unit '<Suite>/<test>()'                # one test
 
 # Run UI tests -- ONLY inside the Tart VM, never on a host Mac (see below)
 ./build.sh ui                                     # all UI tests
@@ -77,6 +79,15 @@ release builds only.
 open Batty.xcworkspace
 ```
 
+**Build, unit and ui-typecheck output is captured, not streamed.** The full log goes to
+`build/checks/<stage>-<timestamp>.log`; the terminal gets a short tail ending in one ALL-CAPS
+line, `CHECK <STAGE>: PASSED|FAILED|ERROR [(detail)]`, and the exit code is 0 (passed), 1 (build
+or test failure) or 2 (could not run: no tests ran, no test summary, missing tool, interrupted).
+On failure a digest of the error lines is printed, summarized by Haiku by default
+(`BATTY_CHECK_SUMMARY=0` prints the raw digest instead). `--verbose` or `BATTY_CHECK_VERBOSE=1`
+also streams the full log, for humans. Agents act on the exit code, the `CHECK` line and the
+digest, and never read the full log. The VM runner ends with the same `CHECK UI:` line.
+
 Any other action passes through to `xcodebuild` under the Beta scheme, so
 `./build.sh archive`, `./build.sh analyze`, and friends still work.
 
@@ -90,7 +101,7 @@ Always confirm the headless `./build.sh` invocation passes before committing —
 
 **Never invoke `xcodebuild` directly for a build you intend to trust, and never override the scheme by hand.** Prod vs Beta is selected by `Configuration/Active.xcconfig`, a gitignored file that `#include`s either `Prod.xcconfig` or `Beta.xcconfig`. The `Batty (Beta)` scheme has a pre-action that points it at Beta via `scripts/set-environment.sh`, but that pre-action runs **after** `xcodebuild` has already resolved build settings — so it only takes effect on the *next* invocation (#0280). That lag is why a hand-rolled `xcodebuild` invocation can silently build the other variant while reporting the scheme you asked for.
 
-`./build.sh`, `./build.sh package`, and `scripts/run-ui-tests.sh` each snapshot `Active.xcconfig` on entry, select the variant they need *before* invoking `xcodebuild`, and restore what they found on every exit path — including Ctrl-C and failures. Use them and the problem does not arise.
+`./build.sh`, `./build.sh package`, and `scripts/run-ui-tests.sh` each snapshot `Active.xcconfig` on entry, select the variant they need *before* invoking `xcodebuild`, and restore what they found on every exit path — including Ctrl-C and failures (`build.sh` traps INT/TERM/HUP into plain exits, since zsh skips an `EXIT` trap on an uncaught signal). Use them and the problem does not arise.
 
 If a build ever looks wrong, check the environment first:
 

@@ -138,6 +138,15 @@ tart clone changeover-uitest-golden batty-uitest-golden
 
 ## Running the tests
 
+**Result contract.** The runner keeps its `==> RESULT: TEST SUCCEEDED|FAILED (exit N)` line, then
+prints a digest of failing tests read from `UITests.xcresult` (`tools/check-report.py --stage ui`,
+summarized by Haiku on failure; this replaced the old `grep … | tail -20` of the test log), and
+always ends with `CHECK UI: PASSED (N tests)`, `CHECK UI: FAILED (…)` or `CHECK UI: ERROR (…)`. It
+exits 0 on pass, 1 on a test or build failure, and 2 when a host precondition fails or any step
+aborts the script (a `set -e` failure in `git archive`, `tart-lease`, `tart clone`, …, reported as
+`CHECK UI: ERROR (aborted, exit N)`), so a caller can tell "could not run" from "tests failed". An
+interrupted run prints `CHECK UI: ERROR (interrupted)` and keeps its signal status (129/130/143).
+
 ```sh
 ./build.sh ui                                          # full BattyUITests suite
 ./build.sh ui BattyUITests/TabRenameTests               # one class

@@ -55,6 +55,11 @@
 #      (written directly to this results dir, created before boot, so it
 #      survives cleanup). Results are also pulled after the build and
 #      bootstrap steps, so a later hang or timeout still returns them.
+#      The run ends with `==> RESULT: ...`, a digest of failing tests from
+#      UITests.xcresult (tools/check-report.py --stage ui, Haiku-summarized
+#      on failure), and a final `CHECK UI: ...` line on every exit path;
+#      exit 0 passed, 1 test or build failure, 2 precondition failure or
+#      other abort, 129/130/143 interrupted.
 #   6. Cleanup on EXIT (trap): bounded-kill the local `tart exec` test
 #      process if still running, `tart stop --timeout 30` the clone (tart's
 #      own bound on graceful-then-forceful termination), bounded-kill the
@@ -93,11 +98,50 @@ set -euo pipefail
 # A hardcoded image name is exactly how seven 68 GB goldens (477 GB) appeared on
 # cameron; see Homelab protocols/tart-golden/PROTOCOL.md. `require` asserts the
 # Xcode floor and fails in one second, not twenty minutes into a build.
+# Exit codes: 0 passed, 1 test or build failure, 2 could not run (a host
+# precondition or any other abort; interrupted runs keep 129/130/143). The
+# last line printed is always `CHECK UI: PASSED|FAILED|ERROR [(detail)]` (see
+# tools/check-report.py); finish_check_line enforces it on every exit path.
+CHECK_LINE=""
+INTERRUPTED=0
+# A non-zero exit that set no CHECK_LINE (a `set -e` abort in git archive,
+# tart-lease, tart clone, ...) could not run the tests: report it as ERROR and
+# exit 2. Interrupts keep their 129/130/143 status; they are told apart by
+# INTERRUPTED, not the status, because git exits 129 on a usage error.
+finish_check_line() {
+  local rc=$1
+  if [[ -z "$CHECK_LINE" ]] && (( rc != 0 )); then
+    if (( INTERRUPTED )); then
+      CHECK_LINE="CHECK UI: ERROR (interrupted)"
+    else
+      CHECK_LINE="CHECK UI: ERROR (aborted, exit $rc)"
+      rc=2
+    fi
+  fi
+  [[ -n "$CHECK_LINE" ]] && print -r -- "$CHECK_LINE"
+  return $rc
+}
+# Until cleanup() takes over below.
+early_exit() {
+  local rc=$?
+  set +e
+  trap - EXIT
+  finish_check_line $rc
+  exit $?
+}
+trap early_exit EXIT
+trap 'INTERRUPTED=1; exit 129' HUP
+trap 'INTERRUPTED=1; exit 130' INT
+trap 'INTERRUPTED=1; exit 143' TERM
 command -v tart-golden >/dev/null 2>&1 || {
   echo "tart-golden not found on PATH (MacRoot Root/bin) -- see Homelab protocols/tart-golden/PROTOCOL.md" >&2
-  exit 1
+  CHECK_LINE="CHECK UI: ERROR (tart-golden not found)"
+  exit 2
 }
-GOLDEN="$(tart-golden require --xcode 27.0)"
+GOLDEN="$(tart-golden require --xcode 27.0)" || {
+  CHECK_LINE="CHECK UI: ERROR (tart-golden require --xcode 27.0 failed)"
+  exit 2
+}
 PREFIX="batty-uitest"
 REPO="${0:A:h:h}"
 SLIDINGTABS_REPO="${REPO:h}/SlidingTabs"
@@ -126,7 +170,7 @@ if [[ "${BATTY_UI_DEMO:-}" == "1" ]]; then
 fi
 
 log()  { print -r -- "==> $*"; }
-fail() { print -r -- "!! $*" >&2; exit 1; }
+fail() { print -r -- "!! $*" >&2; CHECK_LINE="CHECK UI: ERROR ($*)"; exit 2; }
 
 # Kill $1, waiting up to ~30s (polling kill -0) for it to actually go away
 # before escalating to KILL -- never an unbounded `wait`, so cleanup can't
@@ -157,7 +201,8 @@ bounded_kill() {
 # zsh does not run an EXIT trap when the process is killed by an uncaught
 # INT/TERM/HUP -- the shell terminates directly on the default signal
 # disposition (exit code 130/143/129) without ever reaching the `exit`
-# builtin that EXIT traps hook. Trapping each signal explicitly and calling
+# builtin that EXIT traps hook. Trapping each signal explicitly (next to
+# early_exit, above) and calling
 # `exit <code>` from inside it converts that into a real `exit`, which does
 # run the EXIT trap -- so cleanup fires either way. cleanup() is written to
 # be idempotent (every step is guarded and best-effort).
@@ -213,12 +258,13 @@ cleanup() {
     tart delete "$CLONE" >/dev/null 2>&1 || true
   fi
   [[ -n "${EXPORT:-}" ]] && rm -rf "$EXPORT"
+  # Printed last, after the cleanup log lines, so the ALL-CAPS result line
+  # stays the final line of output.
+  finish_check_line $rc
+  exit $?
 }
 LEASE_ID=""
 trap cleanup EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
 # --- Preflight ---------------------------------------------------------------
 
@@ -418,7 +464,7 @@ if [[ "${BATTY_UI_KEEP_RECORDINGS:-}" == "1" ]]; then
     f='$GUEST_BATTY/Batty.xcodeproj/xcshareddata/xcschemes/Batty UI Tests.xcscheme'
     /usr/bin/sed -i '' 's|<TestAction\$|<TestAction systemAttachmentLifetime = \"keepAlways\" userAttachmentLifetime = \"keepAlways\"|' \"\$f\"
     [[ \$(/usr/bin/grep -c 'systemAttachmentLifetime = \"keepAlways\"' \"\$f\") == 1 ]]" \
-    || { log "Could not enable recording retention in the guest scheme"; exit 1; }
+    || { log "Could not enable recording retention in the guest scheme"; CHECK_LINE="CHECK UI: ERROR (could not enable recording retention)"; exit 2; }
 fi
 
 # Build the -only-testing args. Default to the UI target only, so this
@@ -637,7 +683,6 @@ else
 fi
 summary_log="$RESULTS_DIR/xcodebuild.log"
 [[ -f "$summary_log" ]] || summary_log="$RESULTS_DIR/xcodebuild-build.log"
-grep -E "Test case .* (passed|failed|skipped)|Executed|TEST (SUCCEEDED|FAILED)|TEST (BUILD|EXECUTE) (SUCCEEDED|FAILED)|error:" "$summary_log" | tail -20 || true
 crashes=( "$RESULTS_DIR"/crashes/*.ips(N) )
 (( ${#crashes} )) && log "CRASH REPORTS: ${#crashes} in $RESULTS_DIR/crashes/"
 warnings="$(grep -c -i -E "modifying state during view update|multiple times per frame|attributegraph: cycle|publishing changes from within view updates|geometry action is cycling|constraint|exception" "$RESULTS_DIR/app-warnings.log" 2>/dev/null || true)"
@@ -647,4 +692,16 @@ print ""
 log "Result bundle: $RESULTS_DIR/UITests.xcresult"
 log "Full log:      $summary_log"
 
-exit "$test_rc"
+set +e
+check_out="$(python3 "$REPO/tools/check-report.py" --stage ui --log "$summary_log" \
+  --rc "$test_rc" --xcresult "$RESULTS_DIR/UITests.xcresult" --duration "$SECONDS")"
+check_rc=$?
+set -e
+if [[ -z "$check_out" ]]; then
+  CHECK_LINE="CHECK UI: ERROR (check-report.py produced no output, exit $check_rc)"
+  exit 2
+fi
+check_lines=( "${(@f)check_out}" )
+(( ${#check_lines} > 1 )) && print -rl -- "${(@)check_lines[1,-2]}"
+CHECK_LINE="${check_lines[-1]}"
+exit "$check_rc"

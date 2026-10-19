@@ -8,9 +8,11 @@
 # only via the `release` action below.
 #
 # Usage:
-#   ./build.sh                     build (Beta)
+#   ./build.sh [--verbose]         build (Beta)
 #   ./build.sh clean               clean (Beta)
-#   ./build.sh unit                BattyKitTests only — fast, no UI, no machine lock
+#   ./build.sh unit [Suite[/test()] ...]
+#                                  BattyKitTests only — fast, no UI, no machine lock;
+#                                  optional filters become -only-testing:BattyKitTests/<F>
 #   ./build.sh ui [target ...]     UI tests — ONLY inside a disposable Tart VM
 #                                  (delegates to tools/run-ui-tests-vm.sh, #0412)
 #   ./build.sh ui-typecheck        type-check BattyUITests on the host with
@@ -24,6 +26,19 @@
 #                                  package a Batty Beta.app to install alongside Prod;
 #                                  --sign --notarize makes a notarized dist/Batty-Beta-<sha>.dmg
 #                                  (delegates to scripts/build-beta.sh)
+#
+# Result contract (build, unit, ui-typecheck):
+#
+#   Full tool output is captured to build/checks/<stage>-<timestamp>.log, not
+#   the terminal. tools/check-report.py prints a short tail ending in one
+#   ALL-CAPS line, `CHECK <STAGE>: PASSED|FAILED|ERROR [(detail)]`, and the
+#   script exits 0 (passed), 1 (build or test failure) or 2 (could not run:
+#   no tests ran, no test summary, missing tool, interrupted). On FAILED a
+#   digest goes to <log>.failures.txt and is summarized by Haiku.
+#
+#   --verbose / BATTY_CHECK_VERBOSE=1   also stream the full log (for humans)
+#   BATTY_CHECK_SUMMARY=0               print the raw digest, skip Haiku
+#   BATTY_CHECK_SUMMARY_TIMEOUT=<secs>  Haiku timeout (default 90)
 #
 # Any other action is passed through to xcodebuild under the Beta scheme,
 # so `./build.sh archive`, `./build.sh analyze`, etc. still work.
@@ -50,7 +65,64 @@ BETA_SCHEME="Batty (Beta)"
 PROD_SCHEME="Batty (Prod)"
 BETA_APP_NAME="Batty Beta"
 
+zmodload zsh/datetime
+
+VERBOSE=0
+[[ "${BATTY_CHECK_VERBOSE:-0}" == "1" ]] && VERBOSE=1
+typeset -a ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" == "--verbose" ]]; then
+        VERBOSE=1
+    else
+        ARGS+=("$arg")
+    fi
+done
+set -- "${ARGS[@]}"
+
 ACTION="${1:-build}"
+
+# Set while run_check owns a stage, so a signal still ends the output with
+# that stage's CHECK line. zsh does not run an EXIT trap on an uncaught fatal
+# signal; turning these into plain exits also makes the Active.xcconfig
+# restore below run on Ctrl-C (same pattern as tools/run-ui-tests-vm.sh).
+CHECK_STAGE=""
+on_signal() {
+    [[ -n "$CHECK_STAGE" ]] && print "CHECK ${(U)CHECK_STAGE}: ERROR (interrupted)"
+    exit "$1"
+}
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+
+# run_check <stage> <xcresult-or-empty> <cmd...>: run cmd with its output
+# captured to build/checks/, then let tools/check-report.py print the tail and
+# decide the 0/1/2 status.
+run_check() {
+    local stage="$1" xcresult="$2"
+    shift 2
+    local stage_upper="${(U)stage}"
+    if ! command -v python3 >/dev/null 2>&1; then
+        print "CHECK $stage_upper: ERROR (python3 not found)"
+        return 2
+    fi
+    mkdir -p "$REPO/build/checks"
+    local log="$REPO/build/checks/$stage-$(date +%Y%m%d-%H%M%S)-$$.log"
+    local start=$EPOCHREALTIME rc=0
+    CHECK_STAGE="$stage"
+    if (( VERBOSE )); then
+        "$@" 2>&1 | tee "$log" || rc=$?
+    else
+        "$@" >"$log" 2>&1 || rc=$?
+    fi
+    local duration=$(( EPOCHREALTIME - start ))
+    local -a extra=()
+    [[ -n "$xcresult" ]] && extra=(--xcresult "$xcresult")
+    local check_rc=0
+    python3 "$REPO/tools/check-report.py" --stage "$stage" --log "$log" \
+        --rc "$rc" --duration "$duration" "${extra[@]}" || check_rc=$?
+    CHECK_STAGE=""
+    return $check_rc
+}
 
 if [[ "$ACTION" == "ui-typecheck" ]]; then
     # #0442: the BattyUITests target refuses to build outside a Tart VM
@@ -71,18 +143,18 @@ if [[ "$ACTION" == "ui-typecheck" ]]; then
     # falling through to that trap would rewrite Active.xcconfig's mtime on
     # every run and could clobber a concurrent variant switch.
     if ! command -v xcrun >/dev/null 2>&1; then
-        print -u2 "build.sh: xcrun not found -- install Xcode command line tools"
-        exit 1
+        print "CHECK UI-TYPECHECK: ERROR (xcrun not found -- install Xcode command line tools)"
+        exit 2
     fi
     print "==> type-checking BattyUITests on the host (swiftc -typecheck)"
     PLATFORM_PATH="$(xcrun --sdk macosx --show-sdk-platform-path)"
     SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
     SOURCES=(BattyUITests/**/*.swift(N))
     if (( ${#SOURCES} == 0 )); then
-        print -u2 "build.sh: no BattyUITests/**/*.swift sources found"
-        exit 1
+        print "CHECK UI-TYPECHECK: ERROR (no BattyUITests/**/*.swift sources found)"
+        exit 2
     fi
-    xcrun swiftc -typecheck \
+    run_check ui-typecheck "" xcrun swiftc -typecheck \
         -swift-version 6 \
         -default-isolation MainActor \
         -strict-concurrency=complete \
@@ -94,8 +166,8 @@ if [[ "$ACTION" == "ui-typecheck" ]]; then
         -sdk "$SDK_PATH" \
         -F "$PLATFORM_PATH/Developer/Library/Frameworks" \
         -I "$PLATFORM_PATH/Developer/usr/lib" \
-        "${SOURCES[@]}"
-    exit
+        "${SOURCES[@]}" || exit $?
+    exit 0
 fi
 
 # Snapshot Active.xcconfig exactly as found (including "absent" -- a fresh
@@ -148,14 +220,43 @@ case "$ACTION" in
         exec "$REPO/scripts/build-beta.sh" "$@"
         ;;
 
-    unit)
+    build)
+        (( $# > 0 )) && shift
         select_variant Beta
-        print "==> xcodebuild test (BattyKitTests, Beta)"
-        xcodebuild test \
+        print "==> xcodebuild build (Beta) — output captured"
+        run_check build "" xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$BETA_SCHEME" \
             -destination "$DESTINATION" \
-            -only-testing:BattyKitTests
+            build "$@" || exit $?
+        exit 0
+        ;;
+
+    unit)
+        shift
+        # Dash options are reserved (e.g. #0528's --full); everything else
+        # is a test filter.
+        typeset -a FILTERS=()
+        for f in "$@"; do
+            if [[ "$f" == -* ]]; then
+                print "CHECK UNIT: ERROR (unknown option $f)"
+                exit 2
+            fi
+            FILTERS+=("-only-testing:BattyKitTests/${f#BattyKitTests/}")
+        done
+        (( ${#FILTERS} == 0 )) && FILTERS=(-only-testing:BattyKitTests)
+        select_variant Beta
+        mkdir -p "$REPO/build/checks"
+        XCRESULT="$REPO/build/checks/unit-$(date +%Y%m%d-%H%M%S)-$$.xcresult"
+        rm -rf "$XCRESULT"
+        print "==> xcodebuild test (BattyKitTests, Beta) — output captured"
+        run_check unit "$XCRESULT" xcodebuild test \
+            -workspace "$WORKSPACE" \
+            -scheme "$BETA_SCHEME" \
+            -destination "$DESTINATION" \
+            -resultBundlePath "$XCRESULT" \
+            "${FILTERS[@]}" || exit $?
+        exit 0
         ;;
 
     release)
