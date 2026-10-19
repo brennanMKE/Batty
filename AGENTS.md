@@ -294,13 +294,15 @@ See `issues/Issues.md` for the full workflow — **read it before touching any i
 
 - Each issue is `issues/NNNN.md` with a metadata table at the top.
 - Status: `open` → `in-progress` → `resolved` → `closed`. **Never set `closed`** — that's the user's transition after they verify.
-- **Resolving an issue is review-gated and role-split (binding, for cost and quality):**
-  - All work happens on a branch `issue/NNNN`; `main` receives one squash commit after review approval. The branch is kept, never pushed or deleted.
-  - A **filer subagent pinned to the top available model** (currently Opus; user directive "Use Opus, not Fable", restated 2026-10-14) creates new `NNNN.md` files on `main` — no branch, no review gate.
-  - An **implementer subagent pinned to Sonnet** (`claude-sonnet-5`) does the code work and verification on the branch.
-  - A **reviewer subagent pinned to Opus** (`claude-opus-4-8`) reviews `git diff main...HEAD`; approve or request-changes. Findings route back to the *same* implementer agent.
-  - The **main session orchestrates only** — it dispatches the filer for new issues, creates branches, dispatches the implementer/reviewer subagents, records review/work-log commits, and squash-merges after approval. It does **not** file, implement, or review inline, even for small follow-ups; those go to the respective subagent.
-  - `resolved` is set only after the reviewer approves. Metadata gets a `**Branch**` row (no `**Commit**` row); the issue file carries per-round `## Work log` cost rows.
+- **Resolving an issue is a three-phase, review-gated pipeline (binding, for cost and quality):**
+  - All work happens on a branch `issue/NNNN` in its own worktree; `main` receives one squash commit after the reviewer resolves it. The branch is kept, never pushed or deleted.
+  - A **filer subagent on Opus** (user directive "Use Opus, not Fable", restated 2026-10-14) creates new `NNNN.md` files on `main` — no branch, no review gate.
+  - **Plan** — a fresh Opus subagent at **medium** effort writes `## Plan` (files, approach, tests by name, verification tier and UI test filters) the day the issue is worked. No code.
+  - **Implement** — a fresh Opus subagent at **low** effort (medium after a bounce or bail) follows the plan, builds, runs the fast tier, commits, and drafts the resolution sections.
+  - **Review** — a fresh Opus subagent at **medium** effort reads `git diff main...HEAD`, re-runs the verification itself, then resolves (sets `resolved`) or bounces back to `open` with `## Review notes`.
+  - `model` and `effort` are passed explicitly on every dispatch. Fable only when the user asks.
+  - The **main session orchestrates only** — it dispatches the filer and the three phases, records `## Work log` rows (`tools/worklog.py`), and squash-merges. It does **not** file, plan, implement, or review inline, even for small follow-ups.
+  - Verification is tiered (fast per issue; full — slow unit tests, the whole VM UI suite, the Release archive — for risky areas, umbrella completion and release preflight). See "Verification tiers" in `issues/Issues.md`.
 - Module names are listed in `issues/Issues.md` under "Module conventions for this project". Don't invent new ones ad-hoc.
 
 ## Authoring rules
