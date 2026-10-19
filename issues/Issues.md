@@ -222,7 +222,7 @@ You start with fresh context on the issue branch (`issue/NNNN`, in its worktree)
 1. **Orient.** Read `issues/Issues.md` (this file — authoritative for the issue workflow), `AGENTS.md` (binding for code and repo conventions), and `issues/NNNN.md` in full, **including its `## Plan`**. Read `PRD.md` / `Concepts.md` only as the plan requires; use the `Concepts.md` vocabulary exactly.
 2. **Set status to `in-progress`** and commit it on the branch (`#NNNN Claim`).
 3. **Make the changes the plan describes.** If you deviate, say why in `## Fix`. Commit checkpoints freely, messages prefixed `#NNNN`.
-4. **Build first:** `./build.sh`. Fix compile errors before any test run. UI-test code doesn't compile on the host (the `BattyUITests` guard refuses), so if you changed `BattyUITests`, run the VM build-only stage before a full VM test run (see "Verification tiers").
+4. **Build first:** `./build.sh`. Fix compile errors before any test run. If you changed `BattyUITests`, also run `./build.sh ui-typecheck`, which type-checks the UI tests on the host in seconds; a UI-test compile error must never cost a VM run.
 5. **Run the fast tier and read the output** (see "Verification tiers"). Mandatory; cannot be shortcutted.
    - **Compilation is not verification.** Tests must actually run. A green build with zero tests run is a failure of this step.
    - **Tests you added or changed must appear by name in the output as passed**, and the count must have gone up.
@@ -261,7 +261,7 @@ Builds and unit tests run on the host; **UI tests run only in the Tart VM** (`AG
 | Stage | When | What runs |
 |---|---|---|
 | **Build** | Implementer, after editing, before any test run | `./build.sh`. Stops early on compile errors. Never counts as verification. |
-| **VM build-only** | Implementer, after changing `BattyUITests`, before a VM test run | The VM runner's build-for-testing step only, so UI-test compile errors don't cost a full VM run. (Until the runner has a `--build-only` flag, run the one smallest affected class instead.) |
+| **UI type-check** | Implementer and reviewer, whenever `BattyUITests` changed, before any VM run | `./build.sh ui-typecheck` — type-checks `BattyUITests` on the host without building or running it. Never counts as verification. |
 | **Fast tier** (default) | Every implementation and every review | `./build.sh unit` (the fast unit tests), plus — for any UI-visible change — `tools/run-ui-tests-vm.sh` with the `BattyUITests/<Class>` filters the plan names. |
 | **Full tier** | An issue that touches what the slow tests guard; release preflight (`AGENTS.md`); once when an umbrella's last child resolves | The fast tier, plus the slow unit tests, plus the **whole** `BattyUITests` suite in the VM, split into sequential shards each under the guest's 40-minute bound (#0518), plus the Release archive check (`./build.sh release archive …`). |
 
