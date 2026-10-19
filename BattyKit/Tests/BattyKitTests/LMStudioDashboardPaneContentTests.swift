@@ -704,6 +704,8 @@ struct LMStudioDashboardPaneContentTests {
         content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
         content.fetchModels = { self.emptyModelsResponse() }
         content.teardownWaitBound = 0.2
+        let graceClock = TestClock()
+        content.teardownClock = graceClock
         content.makeModelStreamProcess = { _ in
             let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: modelReadyURL)
             box.model = process
@@ -764,8 +766,16 @@ struct LMStudioDashboardPaneContentTests {
         // moved off the main actor, not just made faster.
         #expect(model.isRunning)
         #expect(runtime.isRunning)
+        // The grace period hasn't started while the gate is closed.
+        #expect(graceClock.pendingCount == 0)
 
         gate.open()
+        // Both reaps are now inside the grace period, and nothing is
+        // SIGKILLed before it elapses.
+        #expect(await graceClock.waitForSleepers(2))
+        #expect(model.isRunning)
+        #expect(runtime.isRunning)
+        #expect(await graceClock.advance(by: .milliseconds(200)) == 2)
         await content.awaitPendingTeardownReapsForTesting()
 
         // Eventually killed/reaped via the SIGKILL escalation, even though

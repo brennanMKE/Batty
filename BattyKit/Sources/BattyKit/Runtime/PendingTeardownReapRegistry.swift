@@ -50,6 +50,7 @@ public nonisolated final class PendingTeardownReapRegistry: @unchecked Sendable 
         let process: Process
         let label: String
         let bound: TimeInterval
+        let clock: SchedulingClock
     }
 
     private let lock = NSLock()
@@ -66,10 +67,10 @@ public nonisolated final class PendingTeardownReapRegistry: @unchecked Sendable 
     /// starts — `drainSynchronously()` can finish that wait itself either
     /// way.
     @discardableResult
-    func register(process: Process, label: String, bound: TimeInterval) -> UUID {
+    func register(process: Process, label: String, bound: TimeInterval, clock: SchedulingClock = SystemClock()) -> UUID {
         let token = UUID()
         lock.lock()
-        entries[token] = Entry(process: process, label: label, bound: bound)
+        entries[token] = Entry(process: process, label: label, bound: bound, clock: clock)
         lock.unlock()
         return token
     }
@@ -91,7 +92,7 @@ public nonisolated final class PendingTeardownReapRegistry: @unchecked Sendable 
     /// that point — so this routinely finds entries the walk already
     /// handled, alongside any it couldn't reach at all (content already
     /// outside the model, #0425's actual gap). Both are fine to re-reap:
-    /// `reapAfterTerminate` on an already-exited process observes that and
+    /// `TeardownReaper` on an already-exited process observes that and
     /// returns immediately. Racing a process still alive is also fine, just
     /// not free — two callers can each independently reach the `SIGKILL`
     /// branch for the same process, which (if it also survives `SIGKILL`,
@@ -110,34 +111,7 @@ public nonisolated final class PendingTeardownReapRegistry: @unchecked Sendable 
         guard !pending.isEmpty else { return }
         logger.notice("drainSynchronously: \(pending.count, privacy: .public) pending reap(s)")
         for entry in pending {
-            Self.reapAfterTerminate(entry.process, bound: entry.bound, label: entry.label)
-        }
-    }
-
-    /// Same shape as `LMStudioDashboardPaneContent.reapAfterTerminate`/
-    /// `ProcessGitStatusScanner.reapAfterTerminate` (#0354, #0422): poll
-    /// `Process.isRunning` for at most `bound`, then `SIGKILL` and re-poll
-    /// if the child is still alive, so completion means the child has
-    /// actually exited, not just been signaled.
-    nonisolated private static func reapAfterTerminate(_ process: Process, bound: TimeInterval, label: String) {
-        let deadline = Date().addingTimeInterval(bound)
-        while process.isRunning, Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        guard process.isRunning else {
-            logger.info("drainSynchronously: \(label, privacy: .public) exited within bound")
-            return
-        }
-        logger.error("drainSynchronously: \(label, privacy: .public) did not exit within \(bound, privacy: .public)s bound; sending SIGKILL")
-        kill(process.processIdentifier, SIGKILL)
-        let killDeadline = Date().addingTimeInterval(min(bound, 0.5))
-        while process.isRunning, Date() < killDeadline {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        if process.isRunning {
-            logger.error("drainSynchronously: \(label, privacy: .public) still running after SIGKILL")
-        } else {
-            logger.info("drainSynchronously: \(label, privacy: .public) exited after SIGKILL")
+            TeardownReaper.reapBlocking(entry.process, bound: entry.bound, label: entry.label, clock: entry.clock, logger: logger, logPrefix: "drainSynchronously")
         }
     }
 

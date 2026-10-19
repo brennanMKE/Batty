@@ -343,8 +343,9 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     /// (`docs/pane-view-lifecycle.md` §5) does not depend on the child's
     /// own cooperation with `SIGTERM`. A second bounded poll after
     /// `SIGKILL` closes the gap between "signal sent" and "child actually
-    /// exited" — mirrors `LMStudioDashboardPaneContent.reapAfterTerminate`
-    /// (#0354) exactly.
+    /// exited". Same SIGTERM → bound → SIGKILL → bounded-poll shape as
+    /// `TeardownReaper.reap` (#0354), but the grace period here is measured
+    /// with `Date()` and `Thread.sleep` rather than an injected clock.
     nonisolated private static func reapAfterTerminate(_ process: Process, bound: TimeInterval, label: String) {
         let deadline = Date().addingTimeInterval(bound)
         while process.isRunning, Date() < deadline {

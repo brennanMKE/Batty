@@ -112,6 +112,18 @@ mutation that actually exercises this test removes both; the mutant loop is
 allowed to busy-spin once cancelled, since `register` resumes an
 already-cancelled task immediately).
 
+The `SIGTERM` → `SIGKILL` grace period of `LMStudioDashboardPaneContent`
+and `PendingTeardownReapRegistry` runs through `SchedulingClock` too
+(`TeardownReaper`, #0529): the content's `teardownClock`, and the clock a
+registry entry was registered with (`register(…, clock:)`, defaulting to
+`SystemClock()`). The synchronous quit and drain paths block on the async
+reap through `TeardownReaper.reapBlocking`, so a test drives the grace
+period from a detached driver task (`waitForSleepers`, then `advance`)
+while the main actor is blocked. Proving uses:
+`LMStudioDashboardPaneContentTests.tearDownReturnsPromptlyEvenWhenBothChildrenIgnoreSIGTERM`,
+`LMStudioDashboardWiringTests.tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess`
+and `LMStudioDashboardWiringTests.registryDrainReapsATermIgnoringSubprocessLeftByAClosedPane`.
+
 ## 2. Shared child-process readiness — `ChildProcessReadiness`
 
 `BattyKit/Tests/BattyKitTests/ChildProcessReadiness.swift` (test-only).
@@ -325,11 +337,13 @@ re-deriving them.
    all agreed to within a single tick's rounding (0-166ns). Owner #0431 can
    compare two `CLOCK_UPTIME_RAW` reads directly with no interval needed.
 3. **When `Process.isRunning` flips after a reap.** Once a
-   `Process.isRunning`-polling reap loop (`reapAfterTerminate`,
-   `drainSynchronously`) returns, has the child already been `waitpid`-ed,
-   so `kill(pid, 0)` fails immediately with no extra wait? **Yes**: a
-   standalone experiment mirroring `PendingTeardownReapRegistry.reapAfterTerminate`
-   exactly (SIGTERM a trap-installing child, run the same poll-then-SIGKILL
+   `Process.isRunning`-polling reap loop (`ProcessGitStatusScanner`'s
+   `reapAfterTerminate`, `TeardownReaper.reap`, which `drainSynchronously`
+   runs) returns, has the child already been `waitpid`-ed, so
+   `kill(pid, 0)` fails immediately with no extra wait? **Yes**: a
+   standalone experiment mirroring the registry's then-`reapAfterTerminate`,
+   whose poll-then-SIGKILL loop now lives in `TeardownReaper.reap`
+   (SIGTERM a trap-installing child, run the same poll-then-SIGKILL
    loop, then check `kill(pid, 0)` once with no wait) agreed 10/10 —
    `isRunning == false` and `kill(pid, 0) == -1, errno == ESRCH` held
    together every time. Owners #0430 (`ProcessGitStatusScannerTests

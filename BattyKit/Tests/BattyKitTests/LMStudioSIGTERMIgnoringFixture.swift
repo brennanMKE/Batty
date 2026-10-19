@@ -5,7 +5,7 @@ import Foundation
 /// Shared by `LMStudioDashboardPaneContentTests` and
 /// `LMStudioDashboardWiringTests` (#0424): both suites need a `/bin/sh`
 /// child that ignores `SIGTERM` (`trap '' TERM`) to exercise the `SIGKILL`
-/// escalation in `LMStudioDashboardPaneContent.reapAfterTerminate`. Kept in
+/// escalation in `TeardownReaper.reap`. Kept in
 /// one place so the two suites' fixtures can't drift back into the
 /// fixed-sleep race #0424 fixed in one file but not the other.
 ///

@@ -66,6 +66,11 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     /// without blocking on the reap, structurally, rather than by timing
     /// the call.
     public var reapGate: TeardownReapGate = OpenTeardownReapGate()
+    /// Where the `SIGTERM` → `SIGKILL` grace period of `teardownWaitBound`
+    /// is measured (`TeardownReaper`, `docs/async-test-seams.md` §1) —
+    /// defaults to the real clock. Separate from `clock` so a test's
+    /// grace-period sleepers never mix with the poll loops' sleepers.
+    public var teardownClock: SchedulingClock = SystemClock()
 
     // MARK: - Tunables
 
@@ -796,54 +801,15 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         let bound = teardownWaitBound
         pendingTeardownReaps.append((process, label))
         let registry = teardownReapRegistry
-        let token = registry.register(process: process, label: label, bound: bound)
+        let teardownClock = teardownClock
+        let token = registry.register(process: process, label: label, bound: bound, clock: teardownClock)
         let gate = reapGate
         let task = Task.detached(priority: .utility) {
             await gate.waitUntilOpen()
-            Self.reapAfterTerminate(process, bound: bound, label: label)
+            await TeardownReaper.reap(process, bound: bound, label: label, clock: teardownClock, logger: logger, logPrefix: "teardown")
             registry.deregister(token)
         }
         pendingTeardownReapTasks.append(task)
-    }
-
-    /// Runs entirely off the main actor (or, via `waitForDeferredTeardown()`,
-    /// synchronously on whatever thread calls it — this function itself has
-    /// no actor affinity). Polls `Process.isRunning` for at most `bound` —
-    /// `Process` has no async "did it exit" API — then sends `SIGKILL` if
-    /// the child is still alive, so the "actually reaped" guarantee
-    /// (`docs/pane-view-lifecycle.md` §5) does not depend on the child's
-    /// own cooperation with `SIGTERM`. `lms` is a normal CLI process
-    /// expected to die promptly on `SIGTERM` — the escalation is for the
-    /// case where it doesn't, not the expected path.
-    ///
-    /// Returns only after the child is observed exited, not just signaled:
-    /// `SIGKILL` only requests the exit, and `Process.isRunning` flips only
-    /// once Foundation's own exit-monitoring source observes it (`waitpid`
-    /// internally — never called directly here, Foundation owns that). The
-    /// second bounded poll after `SIGKILL` below is what makes that true;
-    /// without it, a caller finishing on this function (or the `Task`
-    /// wrapping it) could observe completion before the child had actually
-    /// exited.
-    nonisolated private static func reapAfterTerminate(_ process: Process, bound: TimeInterval, label: String) {
-        let deadline = Date().addingTimeInterval(bound)
-        while process.isRunning, Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        guard process.isRunning else {
-            logger.info("teardown: \(label, privacy: .public) exited within bound")
-            return
-        }
-        logger.error("teardown: \(label, privacy: .public) did not exit within \(bound, privacy: .public)s bound; sending SIGKILL")
-        kill(process.processIdentifier, SIGKILL)
-        let killDeadline = Date().addingTimeInterval(min(bound, 0.5))
-        while process.isRunning, Date() < killDeadline {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-        if process.isRunning {
-            logger.error("teardown: \(label, privacy: .public) still running after SIGKILL")
-        } else {
-            logger.info("teardown: \(label, privacy: .public) exited after SIGKILL")
-        }
     }
 
     // MARK: - Test support
@@ -1037,7 +1003,7 @@ extension LMStudioDashboardPaneContent: DeferredTeardownWaiting {
         pendingTeardownReaps.removeAll()
         pendingTeardownReapTasks.removeAll()
         for (process, label) in pending {
-            Self.reapAfterTerminate(process, bound: teardownWaitBound, label: label)
+            TeardownReaper.reapBlocking(process, bound: teardownWaitBound, label: label, clock: teardownClock, logger: logger, logPrefix: "teardown")
         }
     }
 }

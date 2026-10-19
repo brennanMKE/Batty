@@ -246,6 +246,13 @@ struct LMStudioDashboardWiringTests {
         content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
         content.fetchModels = { LMStudioModelsResponse(models: []) }
         content.teardownWaitBound = 0.2
+        let graceClock = TestClock()
+        content.teardownClock = graceClock
+        // Held closed so `tearDown()`'s own detached reaps park instead of
+        // racing the synchronous path under test.
+        let gate = TestTeardownReapGate()
+        content.reapGate = gate
+        content.teardownReapRegistry = PendingTeardownReapRegistry()
         content.makeModelStreamProcess = { _ in
             let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: modelReadyURL)
             box.model = process
@@ -265,6 +272,7 @@ struct LMStudioDashboardWiringTests {
         // even after the success path's own assertions already confirm
         // both children are dead.
         defer {
+            gate.open()
             killAndReap(box.model)
             killAndReap(box.runtime)
         }
@@ -285,6 +293,17 @@ struct LMStudioDashboardWiringTests {
         #expect(model.isRunning)
         #expect(runtime.isRunning)
 
+        // The sync path reaps the two streams one after the other, so
+        // exactly one grace-period sleeper is registered at a time. Driven
+        // from a detached task because the main actor is blocked below.
+        let driver = Task.detached {
+            for _ in 0..<2 {
+                guard await graceClock.waitForSleepers(1) else { return false }
+                guard await graceClock.advance(by: .milliseconds(200)) == 1 else { return false }
+            }
+            return true
+        }
+
         window.tearDownAllPaneContentSynchronouslyForQuit()
 
         // No `await` at all here — the quit variant has already blocked
@@ -292,6 +311,7 @@ struct LMStudioDashboardWiringTests {
         #expect(model.isRunning == false)
         #expect(runtime.isRunning == false)
         #expect(content.lifecyclePhase == .tornDown)
+        #expect(await driver.value)
     }
 
     // MARK: - #0425: a reap left by a pane already gone from the model
@@ -304,16 +324,11 @@ struct LMStudioDashboardWiringTests {
     /// through `PendingTeardownReapRegistry`, independent of the model
     /// entirely (#0425). This pins that: close the pane (tearing down and
     /// removing it from the model), then drain the same registry
-    /// `applicationWillTerminate` drains. It does not prove
-    /// `drainSynchronously()` is the one that sends the killing `SIGKILL` —
-    /// `tearDown()`'s own detached task starts with the same bound and may
-    /// get there first. What it proves is that `drainSynchronously()`
-    /// doesn't return until both children are actually dead: the assertions
-    /// run immediately after it returns, with no `await` or extra wait of
-    /// their own, so passing requires `drainSynchronously()`'s own blocking
-    /// wait to have covered the outcome — the detached task alone, left to
-    /// run on its own schedule, cannot guarantee that within this
-    /// assertion window.
+    /// `applicationWillTerminate` drains. `tearDown()`'s own detached reaps
+    /// are parked on a closed `TestTeardownReapGate`, so the killing
+    /// `SIGKILL` can only come from `drainSynchronously()`, and the
+    /// assertions run immediately after it returns with no `await` of
+    /// their own.
     ///
     /// A temp-file readiness handshake, not a stdout `Pipe` (#0424's
     /// caveat): `spawnModelStream`/`spawnRuntimeStream` replace the
@@ -344,6 +359,12 @@ struct LMStudioDashboardWiringTests {
         content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
         content.fetchModels = { LMStudioModelsResponse(models: []) }
         content.teardownWaitBound = 0.2
+        let graceClock = TestClock()
+        content.teardownClock = graceClock
+        // Held closed so `tearDown()`'s own detached reaps park instead of
+        // racing the synchronous path under test.
+        let gate = TestTeardownReapGate()
+        content.reapGate = gate
         content.teardownReapRegistry = registry
         content.makeModelStreamProcess = { _ in
             let process = LMStudioSIGTERMIgnoringFixture.makeProcess(readyFileURL: modelReadyURL)
@@ -368,6 +389,7 @@ struct LMStudioDashboardWiringTests {
         // assertions, so it covers them too. Killing an already-dead
         // process is a harmless no-op.
         defer {
+            gate.open()
             killAndReap(box.model)
             killAndReap(box.runtime)
         }
@@ -392,10 +414,22 @@ struct LMStudioDashboardWiringTests {
         #expect(outcome == .closed)
         #expect(!session.tree.allPanes.contains { $0.id == pane.id }, "sanity check: the pane must actually be gone from the model, or this isn't exercising the #0425 gap")
 
+        // The sync path reaps the two streams one after the other, so
+        // exactly one grace-period sleeper is registered at a time. Driven
+        // from a detached task because the main actor is blocked below.
+        let driver = Task.detached {
+            for _ in 0..<2 {
+                guard await graceClock.waitForSleepers(1) else { return false }
+                guard await graceClock.advance(by: .milliseconds(200)) == 1 else { return false }
+            }
+            return true
+        }
+
         registry.drainSynchronously()
 
         #expect(model.isRunning == false)
         #expect(runtime.isRunning == false)
+        #expect(await driver.value)
     }
 
     @Test func terminalPanesAreUnaffectedByTearDownAllPaneContent() {

@@ -7,7 +7,7 @@
 /// synchronously, then hand the bounded wait/`SIGKILL` escalation to a
 /// detached task so the caller (`tearDown()`) returns immediately. A test
 /// holds this gate closed before triggering that path, so the detached
-/// task's `reapAfterTerminate` call can't even start; the caller returning
+/// task's `TeardownReaper.reap` call can't even start; the caller returning
 /// while the child is still alive and the gate is still closed is the
 /// proof it didn't wait on the reap — not an `elapsed < .milliseconds(50)`
 /// guess. The test then opens the gate and awaits the scanner's own
