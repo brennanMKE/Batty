@@ -171,6 +171,13 @@ public final class BellFeedStore {
 
     public internal(set) var entries: [BellFeedEntry] = []
 
+    /// Entry ids that have an `event` record in the capture log (#0523), and
+    /// the latest verdict given to each this launch (#0524). In-memory only:
+    /// nothing reads the capture file back. Both are pruned whenever an entry
+    /// leaves the feed.
+    public internal(set) var capturedEntryIDs: Set<UUID> = []
+    public internal(set) var ratingVerdicts: [UUID: BellRatingVerdict] = [:]
+
     public init(entries: [BellFeedEntry] = []) {
         self.entries = entries.sorted { $0.timestamp > $1.timestamp }
         if self.entries.count > Self.cap {
@@ -183,8 +190,34 @@ public final class BellFeedStore {
         entries.insert(entry, at: 0)
         if entries.count > Self.cap {
             entries.removeLast(entries.count - Self.cap)
+            pruneRatingState()
         }
         return entry
+    }
+
+    func markCaptured(_ id: UUID) {
+        if !capturedEntryIDs.contains(id) { capturedEntryIDs.insert(id) }
+    }
+
+    /// Idempotent: re-asserting the current verdict does not write, because
+    /// `@Observable` notifies on equal-value writes.
+    func setVerdict(_ verdict: BellRatingVerdict?, for id: UUID) {
+        guard ratingVerdicts[id] != verdict else { return }
+        ratingVerdicts[id] = verdict
+    }
+
+    func resetCaptureState() {
+        if !capturedEntryIDs.isEmpty { capturedEntryIDs = [] }
+        if !ratingVerdicts.isEmpty { ratingVerdicts = [:] }
+    }
+
+    private func pruneRatingState() {
+        guard !capturedEntryIDs.isEmpty || !ratingVerdicts.isEmpty else { return }
+        let live = Set(entries.map(\.id))
+        let captured = capturedEntryIDs.intersection(live)
+        if captured.count != capturedEntryIDs.count { capturedEntryIDs = captured }
+        let verdicts = ratingVerdicts.filter { live.contains($0.key) }
+        if verdicts.count != ratingVerdicts.count { ratingVerdicts = verdicts }
     }
 
     /// #0298: records `entry` unless it is a redundant repeat of an
@@ -291,6 +324,7 @@ public final class BellFeedStore {
         guard !tabIDs.isEmpty else { return [] }
         let removed = entries.filter { tabIDs.contains($0.tabID) }
         entries.removeAll { tabIDs.contains($0.tabID) }
+        if !removed.isEmpty { pruneRatingState() }
         return removed
     }
 }

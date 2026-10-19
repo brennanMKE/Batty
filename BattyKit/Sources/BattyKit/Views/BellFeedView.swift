@@ -8,6 +8,7 @@ public struct BellFeedView: View {
     let onDismiss: (() -> Void)?
 
     @State private var selectedEntryID: UUID?
+    @State private var suggestion: SuggestionTarget?
 
     public init(
         store: AppStateStore,
@@ -23,7 +24,19 @@ public struct BellFeedView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if store.bellFeed.entries.isEmpty {
+            if let target = suggestion,
+               let entry = store.bellFeed.entries.first(where: { $0.id == target.id }) {
+                let id = target.id
+                BellSuggestionEditor(
+                    initialText: entry.displayText ?? "",
+                    onSave: { text in
+                        store.suggestBellText(id: id, text: text, snapshot: target.snapshot)
+                        suggestion = nil
+                    },
+                    onCancel: { suggestion = nil }
+                )
+                .id(id)
+            } else if store.bellFeed.entries.isEmpty {
                 ContentUnavailableView(
                     "No bell events",
                     systemImage: "bell.slash",
@@ -42,6 +55,7 @@ public struct BellFeedView: View {
                         .onTapGesture { handleJump(to: entry) }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("bell-feed-entry.\(entry.id.uuidString)")
+                        .contextMenu { ratingMenu(for: entry) }
                     }
                 }
                 .accessibilityIdentifier("bell-feed.list")
@@ -71,6 +85,39 @@ public struct BellFeedView: View {
         .onAppear {
             if selectedEntryID == nil {
                 selectedEntryID = store.bellFeed.entries.first?.id
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func ratingMenu(for entry: BellFeedEntry) -> some View {
+        let availability = store.bellRatingAvailability(for: entry)
+        if availability != .hidden {
+            let enabled = availability == .available
+            let verdict = store.bellFeed.ratingVerdicts[entry.id]
+            Toggle("Good Summary", isOn: Binding(
+                get: { verdict == .good },
+                set: { _ in store.rateBellEntry(id: entry.id, verdict: .good) }
+            ))
+            .disabled(!enabled)
+            .accessibilityIdentifier(verdict == .good ? "bell-feed.rating.good.selected" : "bell-feed.rating.good")
+            Toggle("Bad Summary", isOn: Binding(
+                get: { verdict == .bad },
+                set: { _ in store.rateBellEntry(id: entry.id, verdict: .bad) }
+            ))
+            .disabled(!enabled)
+            .accessibilityIdentifier(verdict == .bad ? "bell-feed.rating.bad.selected" : "bell-feed.rating.bad")
+            Button("Suggest Better Text…") {
+                suggestion = store.bellRatingSnapshot(forEntryID: entry.id)
+                    .map { SuggestionTarget(id: entry.id, snapshot: $0) }
+            }
+                .disabled(!enabled)
+                .accessibilityIdentifier("bell-feed.rating.suggest")
+            Button("Clear Rating") { store.rateBellEntry(id: entry.id, verdict: .cleared) }
+                .disabled(!enabled || verdict == nil)
+                .accessibilityIdentifier("bell-feed.rating.clear")
+            if !enabled {
+                Text("Not captured: this entry arrived before capture was turned on or the capture log was cleared.")
             }
         }
     }
@@ -142,6 +189,9 @@ private struct BellFeedRow: View {
                 .fill(entry.seen ? Color.clear : Color.accentColor)
                 .frame(width: 8, height: 8)
                 .padding(.top, 5)
+                .accessibilityElement()
+                .accessibilityLabel(entry.seen ? "Seen" : "Unseen")
+                .accessibilityIdentifier("bell-feed-\(entry.seen ? "seen" : "unseen").\(entry.id.uuidString)")
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(path)
@@ -171,5 +221,71 @@ private struct BellFeedRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+private struct SuggestionTarget {
+    let id: UUID
+    let snapshot: BellRatingSnapshot
+}
+
+private struct BellSuggestionEditor: View {
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var draft: String
+    @FocusState private var fieldFocused: Bool
+
+    init(initialText: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        _draft = State(initialValue: initialText)
+        self.onSave = onSave
+        self.onCancel = onCancel
+    }
+
+    private var canSave: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Suggest Better Text")
+                .font(.headline)
+            Text("Return saves.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("Better text", text: $draft, axis: .vertical)
+                .lineLimit(4...10)
+                .textFieldStyle(.roundedBorder)
+                .focused($fieldFocused)
+                .onSubmit { if canSave { onSave(draft) } }
+                .onKeyPress(.escape) {
+                    onCancel()
+                    return .handled
+                }
+                .onKeyPress(keys: [.return]) { press in
+                    guard press.modifiers.isEmpty else { return .ignored }
+                    guard canSave else { return .handled }
+                    onSave(draft)
+                    return .handled
+                }
+                .accessibilityIdentifier("bell-feed.suggest.field")
+            Spacer(minLength: 0)
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("bell-feed.suggest.cancel")
+                Button("Save") { onSave(draft) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!canSave)
+                    .accessibilityIdentifier("bell-feed.suggest.save")
+            }
+        }
+        .padding(12)
+        .onAppear { fieldFocused = true }
+        .onKeyPress(.escape) {
+            onCancel()
+            return .handled
+        }
     }
 }

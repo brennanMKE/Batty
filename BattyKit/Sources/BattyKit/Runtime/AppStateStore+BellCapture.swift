@@ -83,6 +83,100 @@ extension AppStateStore {
             feedRowText: entry.displayText,
             summarization: summarization
         ))
+        bellFeed.markCaptured(entry.id)
+    }
+
+    /// Deletes the capture files and forgets which entries were captured and
+    /// rated, so the Bell Feed offers no rating for an entry whose `event`
+    /// record is gone.
+    public func clearBellCapture() {
+        bellCaptureWriter?.clear()
+        bellFeed.resetCaptureState()
+    }
+
+    public enum BellRatingAvailability: Equatable, Sendable {
+        /// Capture is off, or the entry is the memory-footprint warning.
+        case hidden
+        /// Capture is on but this entry has no `event` record.
+        case notCaptured
+        case available
+    }
+
+    public func bellRatingAvailability(for entry: BellFeedEntry) -> BellRatingAvailability {
+        guard entry.sessionID != BellFeedEntry.systemID, isBellCaptureEnabled else { return .hidden }
+        return bellFeed.capturedEntryIDs.contains(entry.id) ? .available : .notCaptured
+    }
+
+    /// Appends a `verdict` rating for `entryID`. Choosing the verdict an entry
+    /// already has is a no-op: no record and no state write. `.cleared` on an
+    /// entry with no verdict is likewise a no-op. Returns whether a record was
+    /// enqueued.
+    @discardableResult
+    public func rateBellEntry(id entryID: UUID, verdict: BellRatingVerdict) -> Bool {
+        let current = bellFeed.ratingVerdicts[entryID]
+        if verdict == .cleared ? current == nil : current == verdict { return false }
+        guard let entry = ratableEntry(id: entryID), let writer = bellCaptureWriter else { return false }
+        writer.enqueue(Self.makeRating(snapshot: BellRatingSnapshot(entry), entryID: entryID, kind: .verdict, verdict: verdict, suggestedText: nil))
+        bellFeed.setVerdict(verdict == .cleared ? nil : verdict, for: entryID)
+        return true
+    }
+
+    /// What the row showed when the user picked Suggest Better Text…, taken
+    /// then so the record describes what the suggestion was written against
+    /// even if a summary lands while the editor is open. Nil when the entry
+    /// can't be rated.
+    public func bellRatingSnapshot(forEntryID entryID: UUID) -> BellRatingSnapshot? {
+        ratableEntry(id: entryID).map(BellRatingSnapshot.init)
+    }
+
+    /// Appends a `suggestion` rating. Whitespace-only text is rejected; the
+    /// text is stored trimmed. Each save appends a record; the latest wins.
+    /// `snapshot` is the state captured when the editor opened; without one
+    /// the entry's current state is used.
+    @discardableResult
+    public func suggestBellText(id entryID: UUID, text: String, snapshot: BellRatingSnapshot? = nil) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let entry = ratableEntry(id: entryID), let writer = bellCaptureWriter else { return false }
+        writer.enqueue(Self.makeRating(
+            snapshot: snapshot ?? BellRatingSnapshot(entry),
+            entryID: entryID,
+            kind: .suggestion,
+            verdict: nil,
+            suggestedText: trimmed
+        ))
+        return true
+    }
+
+    private func ratableEntry(id entryID: UUID) -> BellFeedEntry? {
+        guard isBellCaptureEnabled,
+              bellFeed.capturedEntryIDs.contains(entryID),
+              let entry = bellFeed.entries.first(where: { $0.id == entryID }),
+              entry.sessionID != BellFeedEntry.systemID
+        else { return nil }
+        return entry
+    }
+
+    static func makeRating(
+        snapshot: BellRatingSnapshot,
+        entryID: UUID,
+        kind: BellRatingKind,
+        verdict: BellRatingVerdict?,
+        suggestedText: String?,
+        now: Date = Date()
+    ) -> BellCaptureRating {
+        func capped(_ text: String?) -> String? {
+            text.map { String($0.prefix(BellCaptureSchema.maxMessageCharacters)) }
+        }
+        return BellCaptureRating(
+            entryID: entryID,
+            ratedAt: now,
+            kind: kind,
+            verdict: verdict,
+            suggestedText: capped(suggestedText),
+            shownText: capped(snapshot.shownText),
+            summaryAtRating: capped(snapshot.summary),
+            messageAtRating: capped(snapshot.message)
+        )
     }
 
     static func makeCaptureSummary(

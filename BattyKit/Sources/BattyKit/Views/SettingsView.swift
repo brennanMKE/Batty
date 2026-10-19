@@ -435,7 +435,7 @@ private struct BellCaptureRow: View {
                 Text("Delete all captured records?")
                     .font(.caption)
                 Button("Delete", role: .destructive) {
-                    store?.bellCaptureWriter?.clear()
+                    store?.clearBellCapture()
                     confirmingClear = false
                     Task { await refresh() }
                 }

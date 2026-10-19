@@ -2,7 +2,7 @@
 
 An opt-in, local-only log of every Bell event's raw input next to the text
 Batty showed for it, so the Bell Feed can be tuned on real data (#0523).
-#0524 adds `rating` records to the same file.
+Rating a Bell Feed row (#0524) adds `rating` records to the same file.
 
 ## Turning it on
 
@@ -34,9 +34,10 @@ generations survive.
 ## Schema
 
 Every record has `schema` (integer, currently `1`), `type`, `recordID`
-(fresh UUID), `entryID` and `capturedAt` (ISO 8601 UTC). **Bump `schema` on
+(fresh UUID) and `entryID`, plus a timestamp: `capturedAt` (ISO 8601 UTC) on
+`event` and `summary`, `ratedAt` on `rating`. **Bump `schema` on
 any breaking change** (removed or retyped field, changed meaning); adding a
-field is not breaking. Optional fields are always present, as explicit `null`.
+field or a record type (`rating` joined schema 1 this way) is not breaking. Optional fields are always present, as explicit `null`.
 
 ### Join rules
 
@@ -97,6 +98,44 @@ in-memory decision history; the gates are not recomputed.
 
 An app quit before the model replies leaves an `event` with no `summary`.
 That is expected.
+
+### `type: "rating"` (one per menu action, appended when the user rates a row)
+
+Written by the Bell Feed row context menu (right-click a row): **Good
+Summary**, **Bad Summary**, **Clear Rating** and **Suggest Better Text…**.
+The items are hidden while capture is off and disabled for an entry with no
+`event` record (it arrived before capture was turned on, or before a Clear
+Capture). Footprint-warning rows have no menu. Suggest Better Text… replaces
+the list inside the popover with a small editor prefilled with the row text;
+Return or Command-Return saves, Escape or Cancel appends nothing.
+
+| Field | Type | Notes |
+|---|---|---|
+| `ratedAt` | ISO date | |
+| `kind` | string | `verdict` or `suggestion` |
+| `verdict` | string, null | `good`, `bad` or `cleared` for a `verdict`; null for a `suggestion` |
+| `suggestedText` | string, null | The suggestion, trimmed, capped at 16384 characters; null for a `verdict` |
+| `shownText` | string, null | The row text (`summary ?? message`) at the moment of rating; null when the row showed nothing |
+| `summaryAtRating`, `messageAtRating` | string, null | The entry's `summary` and `message` at that moment. Each capped at 16384 characters |
+
+**Processing rule:** for each `entryID`, the latest `verdict` record wins
+(`cleared` means no verdict) and the latest `suggestion` record wins. The two
+are independent: an entry can be `bad` and also carry a suggestion. Order by
+file position, which is enqueue order.
+
+Choosing the verdict an entry already has appends nothing; neither does
+Clear Rating on an entry with no verdict. Saving a suggestion twice appends
+two records. A rating is written only if capture is on and the entry has an
+`event` record in the current run; the Bell Feed forgets captured entries and
+verdicts on Clear Capture and when an entry leaves the feed. The checkmark
+in the menu is in-memory state for this launch; the file is never read back.
+
+A `suggestion` record's `shownText`, `summaryAtRating` and `messageAtRating`
+are taken when Suggest Better Text… is picked, not when Save is pressed, so
+they describe what the user was shown and what the editor was prefilled
+with. A `rating` can outlive its `event` after rotation past two generations
+(as a `summary` can); analysis should ignore a `rating` with no matching
+`event`.
 
 ### Screen text
 

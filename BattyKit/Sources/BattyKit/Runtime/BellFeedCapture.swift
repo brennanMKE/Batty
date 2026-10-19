@@ -297,6 +297,90 @@ public nonisolated struct BellCaptureSummary: Codable, Sendable, Equatable {
     }
 }
 
+public nonisolated enum BellRatingVerdict: String, Codable, Sendable, Equatable {
+    case good
+    case bad
+    case cleared
+}
+
+public nonisolated enum BellRatingKind: String, Codable, Sendable, Equatable {
+    case verdict
+    case suggestion
+}
+
+/// An entry's row text, summary and message at one moment.
+public nonisolated struct BellRatingSnapshot: Sendable, Equatable {
+    public var shownText: String?
+    public var summary: String?
+    public var message: String?
+
+    @MainActor init(_ entry: BellFeedEntry) {
+        shownText = entry.displayText
+        summary = entry.summary
+        message = entry.message
+    }
+}
+
+/// A user's judgment of the text a Bell Feed row showed, joined to the
+/// `event` record by `entryID`. `shownText`, `summaryAtRating` and
+/// `messageAtRating` are the entry's state at the moment of rating, because
+/// the summary can still change afterwards.
+public nonisolated struct BellCaptureRating: Codable, Sendable, Equatable {
+    public var schema: Int = BellCaptureSchema.version
+    public var type: String = "rating"
+    public var recordID: UUID
+    public var entryID: UUID
+    public var ratedAt: Date
+    public var kind: BellRatingKind
+    public var verdict: BellRatingVerdict?
+    public var suggestedText: String?
+    public var shownText: String?
+    public var summaryAtRating: String?
+    public var messageAtRating: String?
+
+    public init(
+        recordID: UUID = UUID(),
+        entryID: UUID,
+        ratedAt: Date,
+        kind: BellRatingKind,
+        verdict: BellRatingVerdict?,
+        suggestedText: String?,
+        shownText: String?,
+        summaryAtRating: String?,
+        messageAtRating: String?
+    ) {
+        self.recordID = recordID
+        self.entryID = entryID
+        self.ratedAt = ratedAt
+        self.kind = kind
+        self.verdict = verdict
+        self.suggestedText = suggestedText
+        self.shownText = shownText
+        self.summaryAtRating = summaryAtRating
+        self.messageAtRating = messageAtRating
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schema, type, recordID, entryID, ratedAt, kind, verdict, suggestedText
+        case shownText, summaryAtRating, messageAtRating
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(schema, forKey: .schema)
+        try c.encode(type, forKey: .type)
+        try c.encode(recordID, forKey: .recordID)
+        try c.encode(entryID, forKey: .entryID)
+        try c.encode(ratedAt, forKey: .ratedAt)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(verdict, forKey: .verdict)
+        try c.encode(suggestedText, forKey: .suggestedText)
+        try c.encode(shownText, forKey: .shownText)
+        try c.encode(summaryAtRating, forKey: .summaryAtRating)
+        try c.encode(messageAtRating, forKey: .messageAtRating)
+    }
+}
+
 /// Serial, off-main JSON Lines writer for the capture log. Callers on the
 /// main actor only hand over a `Sendable` record: encoding, rotation and all
 /// file I/O happen on a private serial queue, so records are appended in

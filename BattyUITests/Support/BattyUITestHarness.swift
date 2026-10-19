@@ -21,11 +21,12 @@ nonisolated enum BattyUITestHarness {
     /// Build a configured `XCUIApplication`, set the bypass flag, and
     /// launch it. Callers receive a launched app ready to assert against.
     @MainActor
-    static func launchBatty() -> XCUIApplication {
+    static func launchBatty(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment[testModeEnvVar] = "1"
         app.launchEnvironment["BATTY_UI_TEST_TEMP_HOME"] = NSTemporaryDirectory()
         app.launchArguments += Self.stateIsolationArguments
+        app.launchArguments += extraArguments
         app.launch()
         return app
     }
