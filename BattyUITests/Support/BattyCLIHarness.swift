@@ -261,8 +261,8 @@ nonisolated enum BattyCLI {
 
     /// Launches Batty, waits for its window, and connects the CLI to it.
     @MainActor
-    static func launchConnected(from testClass: AnyClass) throws -> (app: XCUIApplication, appURL: URL, initial: CLITopology) {
-        let app = BattyUITestHarness.launchBatty()
+    static func launchConnected(from testClass: AnyClass, extraArguments: [String] = []) throws -> (app: XCUIApplication, appURL: URL, initial: CLITopology) {
+        let app = BattyUITestHarness.launchBatty(extraArguments: extraArguments)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
         let (appURL, initial) = try connect(to: app, from: testClass)
         return (app, appURL, initial)
