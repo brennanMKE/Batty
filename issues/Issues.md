@@ -171,7 +171,7 @@ Ad-hoc edits (a note, a screenshot, a manual field change) happen on `main`. Edi
 
 | Phase | Model · effort | Does | Status after |
 |---|---|---|---|
-| **1. Plan** | Opus · medium | Reads the issue and the code as it stands, writes `## Plan`: files, approach, tests by name, which verification tier and which UI test classes, a user checklist. No code. | `open` |
+| **1. Plan** | Opus · medium | Reads the issue and the code as it stands, writes `## Plan`: files, approach, tests by name, which verification tier, a user checklist. No code. | `open` |
 | **2. Implement** | **Opus · low** (medium after a bounce or bail) | Follows the plan, builds, runs the fast tier, commits on the branch, drafts Root cause / Fix / Verification / Files changed / Gotchas. | `in-progress` |
 | **3. Review** | Opus · medium | Reads the diff, **re-runs the verification itself**, then resolves or bounces. Only the reviewer sets `resolved`. | `resolved` or `open` |
 
@@ -200,7 +200,7 @@ Issues are worked **one at a time, in ascending order**. Every branch is cut fro
     ```
 
     One commit, one simple one-line message — the issue file carries the detail. **Do not delete the branch** (`git log main..issue/NNNN` keeps the round-by-round history). Don't push branches unless the user asks.
-9. If the issue was the last open child of an umbrella, or this is release preflight, run the **full tier** once on that commit (see "Verification tiers").
+9. UI tests are not run per issue; the daily UI run covers the merged change (see "Daily UI run").
 10. Move on to the next open issue, or stop if only one was requested.
 
 ### Phase 1 — Plan (Opus, medium)
@@ -210,7 +210,7 @@ Issues are worked **one at a time, in ascending order**. Every branch is cut fro
 3. **Write `## Plan`** into `issues/NNNN.md`, after `## Description`:
    - **Files** to change or add, and the approach in each.
    - **Tests** to add or change, by suite and test name, and which existing tests guard the area.
-   - **Verification:** the tier (fast or full, with the reason) and, for UI-visible changes, the exact `BattyUITests/<Class>` filters to run in the VM.
+   - **Verification:** the tier (fast or UI confirmation, with the reason). For a UI confirmation issue, the exact failing `BattyUITests/<Class>/<test>` filters from the daily run. For a UI-visible change, which existing or new UI tests the daily run will exercise.
    - **User checklist:** what the user should check by hand before closing.
    - Open questions that need a user decision. If one blocks the work, say so and stop — the orchestrator asks the user.
 4. Write no code. Leave status `open`. Commit the plan on the branch: `#NNNN Plan`.
@@ -222,12 +222,12 @@ You start with fresh context on the issue branch (`issue/NNNN`, in its worktree)
 1. **Orient.** Read `issues/Issues.md` (this file — authoritative for the issue workflow), `AGENTS.md` (binding for code and repo conventions), and `issues/NNNN.md` in full, **including its `## Plan`**. Read `PRD.md` / `Concepts.md` only as the plan requires; use the `Concepts.md` vocabulary exactly.
 2. **Set status to `in-progress`** and commit it on the branch (`#NNNN Claim`).
 3. **Make the changes the plan describes.** If you deviate, say why in `## Fix`. Commit checkpoints freely, messages prefixed `#NNNN`.
-4. **Build first:** `./build.sh`. Fix compile errors before any test run. If you changed `BattyUITests`, also run `./build.sh ui-typecheck`, which type-checks the UI tests on the host in seconds; a UI-test compile error must never cost a VM run.
+4. **Build first:** `./build.sh`. Fix compile errors before any test run. If you changed `BattyUITests`, also run `./build.sh ui-typecheck`, which type-checks the UI tests on the host in seconds; a UI-test compile error must never reach the daily run.
 5. **Run the fast tier and read the output** (see "Verification tiers"). Mandatory; cannot be shortcutted.
    - **Compilation is not verification.** Tests must actually run. A green build with zero tests run is a failure of this step.
    - **Tests you added or changed must appear by name in the output as passed**, and the count must have gone up.
    - **Read the output, don't just check the exit code.** "0 tests", "skipped", "no tests found", or a build line with no test summary are red flags at exit 0.
-   - **If verification can't run** (VM precondition fails, hardware, the user's Mac), you have not verified the change — bail per "When a phase can't finish", naming the step.
+   - **If verification can't run** (a VM precondition fails on a UI confirmation issue, hardware, the user's Mac), you have not verified the change — bail per "When a phase can't finish", naming the step.
    - **If the build was already failing before you started**, note it and bail — don't fix unrelated breakage.
 6. **Commit the code** on the branch: `#NNNN <verb> <title>` — the verb that fits (`Fix`, `Add`, `Refactor`, `Update`, `Remove`, …). Discard expected `project.pbxproj` / `.xcscheme` residue (`git checkout --`); never commit it.
 7. **Draft the resolution sections** in `issues/NNNN.md`, after `## Description`, and commit them on the branch (`#NNNN Draft resolution`). Leave Status `in-progress`; don't set `resolved`.
@@ -244,7 +244,7 @@ The reviewer is the gate between "code on the branch" and "issue resolved". It o
 
 1. **Orient** the same way (this file, `AGENTS.md`, `issues/NNNN.md` with its `## Plan` and drafted resolution sections), then read `git diff main...HEAD` in the issue's worktree — exactly the diff the squash will land.
 2. **Judge the diff** against the issue's expected behavior (and its umbrella's acceptance criteria), the plan, the project's conventions and binding docs (`docs/view-hierarchy.md`, `docs/terminal-pane-requirements.md`, `docs/swiftui-observation-rules.md` where the diff touches those paths), and downstream impact. Grep every factual claim in new comments.
-3. **Re-run the verification yourself** — the same tier and UI filters the plan names — and read the output. Don't trust the drafted `## Verification`. This independent run is the core of the review.
+3. **Re-run the verification yourself** — the same tier (and, for a UI confirmation issue, the same failing-test filters) the plan names — and read the output. Don't trust the drafted `## Verification`. This independent run is the core of the review.
 4. **Decide, and commit on the branch:**
    - **Resolve** (correct, verified): set Status `resolved`; add `**Closed**` (today) and `**Branch**` (`issue/NNNN`) rows — no `**Commit**` row; the landing commit is found with `git log --oneline --grep='#NNNN'`. Add `## Resolution notes` (`> 🟢 Resolved YYYY-MM-DD — <one sentence>.`) and `## Review` (rounds, what review changed or "approved first pass"); correct the drafted sections where your run differs, and add your run to `## Verification`. If the issue is a child of an umbrella, update its row in the umbrella's Children table. Commit: `#NNNN Resolve: <title>`.
    - **Bounce** (verification failed, fix wrong, scope off): set Status back to `open`; add `## Review notes` stating exactly what failed and what the next implementation must change (file, problem, what would satisfy it). Commit: `#NNNN Review: <reason>`.
@@ -256,20 +256,31 @@ Status flow: `open` (with `## Plan`) → `in-progress` → `resolved`, or bounce
 
 ### Verification tiers
 
-Builds and unit tests run on the host; **UI tests run only in the Tart VM** (`AGENTS.md`, `docs/ui-testing-vm.md`). The VM runner tests `git archive HEAD`, so commit before any VM run.
+Builds and unit tests run on the host; **UI tests run only in the Tart VM** (`AGENTS.md`, `docs/ui-testing-vm.md`). A VM run costs minutes of fixed overhead before the first test and the whole suite takes over half an hour, so **UI tests are not part of per-issue verification.** They run once a day against `main` (below), failures become issues, and those issues are confirmed by re-running only the tests that failed.
 
 | Stage | When | What runs |
 |---|---|---|
 | **Build** | Implementer, after editing, before any test run | `./build.sh`. Stops early on compile errors. Never counts as verification. |
-| **UI type-check** | Implementer and reviewer, whenever `BattyUITests` changed, before any VM run | `./build.sh ui-typecheck` — type-checks `BattyUITests` on the host without building or running it. Never counts as verification. |
-| **Fast tier** (default) | Every implementation and every review | `./build.sh unit` (the fast unit tests), plus — for any UI-visible change — `tools/run-ui-tests-vm.sh` with the `BattyUITests/<Class>` filters the plan names. |
-| **Full tier** | An issue that touches what the slow tests guard; release preflight (`AGENTS.md`); once when an umbrella's last child resolves | The fast tier, plus the slow unit tests, plus the **whole** `BattyUITests` suite in the VM, split into sequential shards each under the guest's 40-minute bound (#0518), plus the Release archive check (`./build.sh release archive …`). |
+| **UI type-check** | Implementer and reviewer, whenever `BattyUITests` changed | `./build.sh ui-typecheck` — type-checks `BattyUITests` on the host in seconds without building or running it. Never counts as verification. |
+| **Fast tier** (every issue) | Every implementation and every review | `./build.sh unit`. No VM run. |
+| **UI confirmation** | Issues filed from a daily UI run failure | The fast tier, plus `tools/run-ui-tests-vm.sh` with only the failing `BattyUITests/<Class>/<test>` filters recorded in the issue. The issue isn't resolved until those tests pass in the VM. |
+| **Release** | Before any release (`AGENTS.md`), from the branch being released | All tests: the unit tests including slow ones, the **whole** `BattyUITests` suite in the VM in sequential shards each under the guest's 40-minute bound (#0518), and the Release archive check (`./build.sh release archive …`). |
 
-- **When the full tier is due for one issue:** the change touches the terminal-host path (`docs/view-hierarchy.md`), window/Session/Pane/Tab lifecycle, focus routing, the broker or CLI transport, Projects persistence or sync, or shared UI-test infrastructure (`BattyUITests` helpers, the VM runner). When unsure, run it. The plan says which tier.
+- **UI-visible changes** still add or update UI tests, type-checked with `./build.sh ui-typecheck`. Their first VM run is the next daily run; the plan names them and `## Gotchas` says they haven't run in the VM yet. Visual sign-off stays with the user.
 - **Quote evidence, not exit codes:** `## Verification` quotes the unit `Test run with N tests … passed` line and, for each VM run, its run id, the `Executed N tests, with M failures` line and the `==> RESULT:` line.
 - **Run the VM runner in the foreground or with the Bash tool's `run_in_background`** — not with `&`, `nohup` or a redirect to a file — so its time is measurable for the work log. One VM at a time.
-- **Known flaky tests** may fail on unrelated changes. If one listed here is the only failure, re-run that class once and record both runs. None are listed at present; add a test here only with the run ids that show it flaking, and file an issue to fix it.
+- **Known flaky tests** may fail on unrelated changes. None are listed at present; add a test here only with the run ids that show it flaking, and file an issue to fix it.
 - Unit tests follow `AGENTS.md` "Asynchronous tests" — never pass by waiting.
+
+### Daily UI run
+
+Once a day, the orchestrator (or a scheduled session) runs the whole `BattyUITests` suite in the VM against the current `main`, in shards as in the Release tier. It is the only routine UI-test run.
+
+1. Record each shard's run id, the `Executed N tests, with M failures` line and the `==> RESULT:` line.
+2. **Re-run each failing test once** with its own `BattyUITests/<Class>/<test>` filter to separate real failures from flakes. A test that passes on the re-run goes under "Known flaky tests" with both run ids, and gets an issue to fix the flakiness.
+3. **File an issue for each real failure** through a filer subagent, one per root cause. Several tests failing on the same cause share one issue. Before filing, check for an open issue that already covers the test. The issue records the run id, the failure message, the exact `BattyUITests/<Class>/<test>` filters, and the commits that landed on `main` since the last green daily run, which are the likely cause.
+4. Those issues go through plan → implement → review like any other, with the **UI confirmation** tier: the implementer and the reviewer each re-run only the failing tests.
+5. If the run can't start (a VM precondition fails), report it to the user rather than working around it.
 
 ### When a phase can't finish
 
