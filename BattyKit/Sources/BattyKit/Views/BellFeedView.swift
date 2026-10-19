@@ -9,6 +9,7 @@ public struct BellFeedView: View {
 
     @State private var selectedEntryID: UUID?
     @State private var suggestion: SuggestionTarget?
+    @FocusState private var focusedRegion: FocusRegion?
 
     public init(
         store: AppStateStore,
@@ -28,6 +29,7 @@ public struct BellFeedView: View {
                let entry = store.bellFeed.entries.first(where: { $0.id == target.id }) {
                 let id = target.id
                 BellSuggestionEditor(
+                    focus: $focusedRegion,
                     initialText: entry.displayText ?? "",
                     onSave: { text in
                         store.suggestBellText(id: id, text: text, snapshot: target.snapshot)
@@ -110,6 +112,7 @@ public struct BellFeedView: View {
             Button("Suggest Better Text…") {
                 suggestion = store.bellRatingSnapshot(forEntryID: entry.id)
                     .map { SuggestionTarget(id: entry.id, snapshot: $0) }
+                if suggestion != nil { focusedRegion = .suggestionField }
             }
                 .disabled(!enabled)
                 .accessibilityIdentifier("bell-feed.rating.suggest")
@@ -224,19 +227,24 @@ private struct BellFeedRow: View {
     }
 }
 
+private enum FocusRegion: Hashable {
+    case suggestionField
+}
+
 private struct SuggestionTarget {
     let id: UUID
     let snapshot: BellRatingSnapshot
 }
 
 private struct BellSuggestionEditor: View {
+    let focus: FocusState<FocusRegion?>.Binding
     let onSave: (String) -> Void
     let onCancel: () -> Void
 
     @State private var draft: String
-    @FocusState private var fieldFocused: Bool
 
-    init(initialText: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+    init(focus: FocusState<FocusRegion?>.Binding, initialText: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.focus = focus
         _draft = State(initialValue: initialText)
         self.onSave = onSave
         self.onCancel = onCancel
@@ -256,8 +264,7 @@ private struct BellSuggestionEditor: View {
             TextField("Better text", text: $draft, axis: .vertical)
                 .lineLimit(4...10)
                 .textFieldStyle(.roundedBorder)
-                .focused($fieldFocused)
-                .onSubmit { if canSave { onSave(draft) } }
+                .focused(focus, equals: .suggestionField)
                 .onKeyPress(.escape) {
                     onCancel()
                     return .handled
@@ -282,7 +289,6 @@ private struct BellSuggestionEditor: View {
             }
         }
         .padding(12)
-        .onAppear { fieldFocused = true }
         .onKeyPress(.escape) {
             onCancel()
             return .handled
