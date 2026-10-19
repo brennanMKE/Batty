@@ -6,6 +6,11 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
 
 ## Available
 
+- [`bell-feed-capture.md`](bell-feed-capture.md) — the opt-in Bell Feed
+  capture log (#0523): `bell-feed-capture.jsonl` in Application Support,
+  one JSON Lines record per Bell event plus a later `summary` record, the
+  field list, schema versioning, the `entryID` join rules (shared with
+  #0524's `rating` records), rotation, and example `jq` queries.
 - [`ui-testing-vm.md`](ui-testing-vm.md) — why `BattyUITests` only ever runs
   inside a disposable Tart VM (#0412, mitigating #0409's external-XCUITest
   crash of the user's running Prod Batty), the golden image and its

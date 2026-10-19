@@ -118,6 +118,20 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+extension BellFeedEntry {
+    /// The row's body text: the AI summary if present, else the raw message,
+    /// and nil when that is empty (`BellFeedRow` omits the line then).
+    var displayText: String? {
+        guard let text = summary ?? message, !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// The row's path label, shared by `BellFeedView` and the capture log.
+    static func pathLabel(sessionTitle: String, paneIndex: Int, tabLabel: String) -> String {
+        String(localized: "\(sessionTitle) › Pane \(paneIndex) › \(tabLabel)")
+    }
+}
+
 @Observable
 @MainActor
 public final class BellFeedStore {

@@ -17,6 +17,7 @@ public enum SettingsPreference {
     public static let autoNameWithAIKey = "co.sstools.Batty.autoNameWithAI"
     public static let summarizeNotificationsWithAIKey = "co.sstools.Batty.summarizeNotificationsWithAI"
     public static let footprintSoftLimitGBKey = "co.sstools.Batty.footprintSoftLimitGB"
+    public static let captureBellFeedDataKey = "co.sstools.Batty.captureBellFeedData"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -29,6 +30,7 @@ public enum SettingsPreference {
     public static let defaultAutoNameFromFiles: Bool = true
     public static let defaultAutoNameWithAI: Bool = true
     public static let defaultSummarizeNotificationsWithAI: Bool = true
+    public static let defaultCaptureBellFeedData: Bool = false
     /// #0285's field measurements put graphics cost at ~42-56 MB per open
     /// Terminal Session. 4 GB gives comfortable headroom for the sizes of
     /// workspace people actually run (dozens of sessions) while still
@@ -139,6 +141,13 @@ public enum SettingsPreference {
             return defaultSummarizeNotificationsWithAI
         }
         return defaults.bool(forKey: summarizeNotificationsWithAIKey)
+    }
+
+    static func resolvedCaptureBellFeedData(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: captureBellFeedDataKey) == nil {
+            return defaultCaptureBellFeedData
+        }
+        return defaults.bool(forKey: captureBellFeedDataKey)
     }
 
     static func resolvedFootprintSoftLimitGB(defaults: UserDefaults) -> Double {

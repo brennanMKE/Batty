@@ -128,7 +128,7 @@ public struct BellFeedView: View {
         } else {
             tabLabel = String(localized: "Tab \(tabIndex)")
         }
-        return String(localized: "\(session.title) › Pane \(paneIndex) › \(tabLabel)")
+        return BellFeedEntry.pathLabel(sessionTitle: session.title, paneIndex: paneIndex, tabLabel: tabLabel)
     }
 }
 
@@ -161,7 +161,7 @@ private struct BellFeedRow: View {
                         .foregroundStyle(.secondary)
                         .help(entry.timestamp.formatted(date: .abbreviated, time: .standard))
                 }
-                if let display = entry.summary ?? entry.message, !display.isEmpty {
+                if let display = entry.displayText {
                     Text(display)
                         .font(.caption)
                         .foregroundStyle(.secondary)
