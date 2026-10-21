@@ -8,7 +8,9 @@
 # Usage (in the guest):
 #   guest-setup.sh <path-to-built-Batty-Beta.app> [owner/repo ...]
 #
-# With no repos it clones the full demo set. Everything is best effort and
+# With no repos it clones the full demo set. Whatever the repos, it also
+# creates the small local repos under ~/Developer/demo that the demo
+# Projects open (no network needed). Everything is best effort and
 # logged: a repo or tool that fails is reported on the last lines and the
 # run continues, so the scene that needs it fails by name, not the setup.
 
@@ -100,6 +102,98 @@ clone() {
 for slug in $REPOS; do clone "$slug" & done
 wait
 for slug in $REPOS; do [[ -d "$DEV/$slug/.git" ]] || FAILED+=("clone:$slug"); done
+
+# --- Local demo Projects ----------------------------------------------------------
+# Small made-up repos for the AWS, Home Assistant and Music Projects the scenes
+# seed. No real hosts, keys or accounts.
+
+local_repo() {
+  local name="$1" dest="$DEV/demo/$1"
+  if [[ -d "$dest/.git" ]]; then log "demo/$name already present"; return 0; fi
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  case "$name" in
+    aws-infra)
+      print -r -- "# aws-infra
+
+Terraform for the static site's asset bucket." > "$dest/README.md"
+      cat > "$dest/main.tf" <<'TF'
+provider "aws" {
+  region = var.region
+}
+
+resource "aws_s3_bucket" "assets" {
+  bucket = "${var.prefix}-assets"
+}
+TF
+      cat > "$dest/variables.tf" <<'TF'
+variable "region" {
+  default = "us-west-2"
+}
+
+variable "prefix" {
+  default = "demo"
+}
+TF
+      ;;
+    home-assistant)
+      print -r -- "# home-assistant
+
+Configuration for the house." > "$dest/README.md"
+      cat > "$dest/configuration.yaml" <<'YAML'
+homeassistant:
+  name: Home
+  unit_system: metric
+
+automation: !include automations.yaml
+YAML
+      cat > "$dest/automations.yaml" <<'YAML'
+- alias: Lights on at sunset
+  trigger:
+    - platform: sun
+      event: sunset
+  action:
+    - service: light.turn_on
+      target:
+        area_id: living_room
+YAML
+      ;;
+    music-app)
+      print -r -- "# MusicApp
+
+A small music player." > "$dest/README.md"
+      cat > "$dest/Package.swift" <<'SWIFT'
+// swift-tools-version:6.0
+import PackageDescription
+
+let package = Package(
+    name: "MusicApp",
+    targets: [.executableTarget(name: "MusicApp")]
+)
+SWIFT
+      mkdir -p "$dest/Sources/MusicApp"
+      cat > "$dest/Sources/MusicApp/Player.swift" <<'SWIFT'
+struct Player {
+    var queue: [String] = []
+    var isPlaying = false
+
+    mutating func play() { isPlaying = !queue.isEmpty }
+}
+SWIFT
+      ;;
+  esac
+  if (cd "$dest" && git init -q && git add -A && git commit -qm "Initial commit"); then
+    [[ "$name" == aws-infra ]] && print -r -- '
+variable "environment" {
+  default = "staging"
+}' >> "$dest/variables.tf"
+    log "created demo/$name"
+  else
+    FAILED+=("local:$name")
+  fi
+}
+
+for name in aws-infra home-assistant music-app; do local_repo "$name"; done
 
 # --- Toolchains -----------------------------------------------------------------
 

@@ -66,7 +66,7 @@ struct ProjectAppearanceTests {
     }
 
     @Test func everyLegacyCaseMapsToItsSystemNameAndBack() {
-        #expect(ProjectSymbol.allCases.count == 36)
+        #expect(ProjectSymbol.allCases.count == 37)
         for symbol in ProjectSymbol.allCases {
             #expect(ProjectAppearance.legacySymbol(forSystemName: symbol.systemName) == symbol)
             #expect(Project(name: "P", rootPath: "/tmp/p", symbol: symbol, customSymbolName: symbol.systemName).customSymbolName == nil)
@@ -285,7 +285,7 @@ struct SFSymbolCatalogTests {
     @Test func anEmptyFilterListsSuggestedFirstThenTheRestWithoutDuplicates() {
         let catalog = SFSymbolCatalog(names: ["flame", "folder.fill", "sparkles"], isAvailable: { _ in true })
         let listing = catalog.listing(for: "")
-        #expect(listing.suggestedCount == 36)
+        #expect(listing.suggestedCount == 37)
         #expect(listing.names.first == "folder.fill")
         #expect(listing.names.last == "flame")
         #expect(Set(listing.names).count == listing.names.count)

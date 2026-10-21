@@ -13,19 +13,20 @@ private let pinnedKeys = [
     "chip", "wireless", "light", "home", "art", "grid",
     "craft", "video", "game", "document", "learning", "chart",
     "calendar", "social", "community", "ai", "model", "map",
+    "music",
 ]
 
 @MainActor
 struct ProjectSymbolCatalogTests {
-    @Test func catalogHasThirtySixCasesInTheDeclaredOrder() {
-        #expect(ProjectSymbol.allCases.count == 36)
+    @Test func catalogHasThirtySevenCasesInTheDeclaredOrder() {
+        #expect(ProjectSymbol.allCases.count == 37)
         #expect(ProjectSymbol.allCases.map(\.rawValue) == pinnedKeys)
     }
 
     @Test func keysAndSystemNamesAreUnique() {
-        #expect(Set(ProjectSymbol.allCases.map(\.rawValue)).count == 36)
-        #expect(Set(ProjectSymbol.allCases.map(\.systemName)).count == 36)
-        #expect(Set(ProjectSymbol.allCases.map(\.displayName)).count == 36)
+        #expect(Set(ProjectSymbol.allCases.map(\.rawValue)).count == 37)
+        #expect(Set(ProjectSymbol.allCases.map(\.systemName)).count == 37)
+        #expect(Set(ProjectSymbol.allCases.map(\.displayName)).count == 37)
     }
 
     @Test func everySymbolResolvesToAnImageOnThisSystem() {
@@ -121,33 +122,6 @@ struct ProjectSymbolTrustTests {
         #expect(project.startupCommandsHash == hashBefore)
         #expect(project.approvedCommandsHash == hashBefore)
         #expect(ProjectStartupTrust.decide(project) == .runWithoutPrompt)
-    }
-}
-
-struct ProjectSymbolGridCursorTests {
-    @Test(arguments: 0..<36, ProjectSymbolGridCursor.Direction.allCases)
-    func everyTransitionClampsAndPreservesTheOtherAxis(index: Int, direction: ProjectSymbolGridCursor.Direction) {
-        let row = index / 6, column = index % 6
-        var expectedRow = row, expectedColumn = column
-        switch direction {
-        case .left: expectedColumn = max(column - 1, 0)
-        case .right: expectedColumn = min(column + 1, 5)
-        case .up: expectedRow = max(row - 1, 0)
-        case .down: expectedRow = min(row + 1, 5)
-        }
-        let moved = ProjectSymbolGridCursor(index).moved(direction)
-        #expect(moved.index == expectedRow * 6 + expectedColumn)
-    }
-
-    @Test func theCursorStartsOnTheSelectedSymbolAndNamesIt() {
-        for symbol in ProjectSymbol.allCases {
-            #expect(ProjectSymbolGridCursor(symbol).symbol == symbol)
-        }
-        #expect(ProjectSymbolGridCursor(ProjectSymbol.chip).index == 18)
-    }
-
-    @Test func gridShapeMatchesTheCatalog() {
-        #expect(ProjectSymbolGridCursor.columns * ProjectSymbolGridCursor.rows == ProjectSymbol.allCases.count)
     }
 }
 

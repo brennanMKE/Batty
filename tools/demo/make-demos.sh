@@ -73,7 +73,7 @@ record() {
   else
     filters=("BattyUITests/DemoSceneTests")
   fi
-  git -C "$REPO" diff --quiet HEAD -- BattyUITests tools BattyKit Batty || fail "uncommitted changes: the VM runner tests 'git archive HEAD'; commit first"
+  [[ -z "$(git -C "$REPO" status --porcelain -- BattyUITests tools BattyKit Batty)" ]] || fail "uncommitted changes: the VM runner tests 'git archive HEAD'; commit first"
   local log_file="$(mktemp "${TMPDIR:-/tmp}/make-demos-record.XXXXXX")"
   log "Recording in the Tart VM: ${filters[*]}"
   set +e
@@ -144,12 +144,12 @@ cut_clips() {
 }
 
 check() {
-  local run="$(resolve_run "$1")" bad=0 f ov nn slug json secs bytes w h audio count=0
+  local run="$(resolve_run "$1")" bad=0 nbad=0 f ov nn slug json secs bytes w h audio count=0
   [[ -x "$CUT" ]] || build_cut
   for ov in $(overlay_files); do
     nn="${${ov:t}[1,2]}"; slug="${${ov:t:r}#??-}"
     f="$OUT_ROOT/$run/$nn-$slug.mp4"
-    if [[ ! -f "$f" ]]; then print -r -- "FAIL $nn-$slug: missing"; bad=1; continue; fi
+    if [[ ! -f "$f" ]]; then print -r -- "FAIL $nn-$slug: missing"; bad=1; nbad=$(( nbad + 1 )); continue; fi
     json="$("$CUT" info "$f")"
     secs="$(print -r -- "$json" | /usr/bin/python3 -I -c 'import json,sys; print(json.load(sys.stdin)["seconds"])')"
     bytes="$(print -r -- "$json" | /usr/bin/python3 -I -c 'import json,sys; print(json.load(sys.stdin)["bytes"])')"
@@ -160,11 +160,16 @@ check() {
     (( bytes <= MAX_BYTES )) || verdict="FAIL size"
     (( audio == 0 )) || verdict="FAIL audio"
     [[ -f "${f:r}.jpg" ]] || verdict="FAIL poster"
-    [[ "$verdict" == ok ]] || bad=1
+    [[ "$verdict" == ok ]] || { bad=1; nbad=$(( nbad + 1 )); }
     printf '%-26s %6.1f s  %5.1f MB  %sw  %s\n' "$nn-$slug" "$secs" "$(( bytes / 1048576.0 ))" "$w" "$verdict"
     count=$(( count + 1 ))
   done
   (( count == 9 )) || { print -r -- "FAIL: $count of 9 clips"; bad=1; }
+  if (( bad )); then
+    print -r -- "CHECK DEMOS: FAILED ($nbad bad)"
+  else
+    print -r -- "CHECK DEMOS: PASSED ($count clips)"
+  fi
   return $bad
 }
 

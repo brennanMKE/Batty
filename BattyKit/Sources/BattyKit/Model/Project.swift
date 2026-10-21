@@ -208,7 +208,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     /// Absent in files written before symbols existed; decodes to `.folder`.
     /// For an arbitrary SF Symbol this is `.folder`, the legacy fallback.
     public var symbol: ProjectSymbol
-    /// The SF Symbol name for a symbol outside the 36 legacy cases. Wins over
+    /// The SF Symbol name for a symbol outside the 37 curated cases. Wins over
     /// `symbol` when drawing. Older Batty versions ignore and, on their next
     /// save, drop it.
     public var customSymbolName: String?

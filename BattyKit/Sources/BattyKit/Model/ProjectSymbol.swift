@@ -2,7 +2,7 @@
 
 import AppKit
 
-/// The curated set of 36 SF Symbols a Project can carry, shown on its
+/// The curated set of 37 SF Symbols a Project can carry, shown on its
 /// Sessions' Sidebar rows, the picker cards, the File menu and the Project
 /// Editor. Append-only, like `SessionColor`: the raw value is persisted in
 /// `projects.json` and is a stable key, not the SF Symbol name, so
@@ -49,6 +49,7 @@ import AppKit
 /// - `ai`: `sparkles`, macOS 10.15
 /// - `model`: `brain`, macOS 12.0
 /// - `map`: `map.fill`, macOS 10.15
+/// - `music`: `music.note`, macOS 10.15
 public enum ProjectSymbol: String, CaseIterable, Codable, Sendable, Hashable {
     case folder
     case terminal
@@ -86,6 +87,7 @@ public enum ProjectSymbol: String, CaseIterable, Codable, Sendable, Hashable {
     case ai
     case model
     case map
+    case music
 
     public static let `default`: ProjectSymbol = .folder
 
@@ -127,6 +129,7 @@ public enum ProjectSymbol: String, CaseIterable, Codable, Sendable, Hashable {
         case .ai: "sparkles"
         case .model: "brain"
         case .map: "map.fill"
+        case .music: "music.note"
         }
     }
 
@@ -168,6 +171,7 @@ public enum ProjectSymbol: String, CaseIterable, Codable, Sendable, Hashable {
         case .ai: String(localized: "AI", comment: "Project symbol name")
         case .model: String(localized: "Model", comment: "Project symbol name")
         case .map: String(localized: "Map", comment: "Project symbol name")
+        case .music: String(localized: "Music", comment: "Project symbol name")
         }
     }
 

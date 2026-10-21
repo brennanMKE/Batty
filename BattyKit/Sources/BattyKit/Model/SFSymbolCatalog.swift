@@ -48,7 +48,7 @@ nonisolated struct SFSymbolCatalog: Sendable, Equatable {
     }
 
     /// Filters by version only, with no per-symbol probing, so it is cheap
-    /// enough for the main actor. The 36 legacy glyph names are always kept.
+    /// enough for the main actor. The 37 curated glyph names are always kept.
     @MainActor
     static func bundled(
         osMajor: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion,

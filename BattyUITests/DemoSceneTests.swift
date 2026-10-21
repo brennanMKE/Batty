@@ -226,8 +226,25 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
     }
 
     /// A real Project record for a clone under `~/Developer`.
-    private func project(_ name: String, slug: String, layout: [String: Any], startup: Bool = false, symbol: String? = nil) -> [String: Any] {
-        ProjectFixture.project(name: name, root: repo(slug), layout: layout, runStartupCommands: startup, symbol: symbol)
+    private func project(_ name: String, slug: String, layout: [String: Any], startup: Bool = false, symbol: String? = nil, color: Int = 0) -> [String: Any] {
+        ProjectFixture.project(name: name, root: repo(slug), layout: layout, runStartupCommands: startup, symbol: symbol, color: color)
+    }
+
+    /// The four demo Projects, each with its own palette color and symbol. AWS carries
+    /// `heroLayout`; the others are small. Colors are `SessionColor` indexes, because a
+    /// Session takes only the palette index when its Project opens.
+    private func demoProjects(heroLayout: [String: Any]? = nil, simple: Bool = false) -> [[String: Any]] {
+        let one = ProjectFixture.terminal()
+        return [
+            project("AWS", slug: "demo/aws-infra", layout: heroLayout ?? one, symbol: "cloud", color: 1),
+            project("Home Assistant", slug: "demo/home-assistant", layout: simple ? one : ProjectFixture.split("horizontal", [
+                ProjectFixture.terminal([ProjectFixture.tab("Config")]), ProjectFixture.terminal([ProjectFixture.tab("Logs")]),
+            ]), symbol: "home", color: 8),
+            project("Music", slug: "demo/music-app", layout: simple ? one : ProjectFixture.split("vertical", [
+                ProjectFixture.terminal(), ProjectFixture.terminal(),
+            ]), symbol: "music", color: 6),
+            project("Batty", slug: "brennanMKE/Batty", layout: simple ? one : ProjectFixture.terminal([ProjectFixture.tab("Editor")]), symbol: "terminal", color: 2),
+        ]
     }
 
     // Every clip is 15 s or less: all setup (Sessions, repos, builds, shells) happens before the
@@ -238,31 +255,23 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
 
     @MainActor
     func testClip01Projects() throws {
-        let projects = [
-            project("Batty", slug: "brennanMKE/Batty", layout: ProjectFixture.split("horizontal", [
-                ProjectFixture.terminal([ProjectFixture.tab("Shell"), ProjectFixture.tab("Tests")]),
-                ProjectFixture.split("vertical", [
-                    ProjectFixture.view("git-status", repository: "."),
-                    ProjectFixture.terminal([ProjectFixture.tab("Server")]),
-                ]),
-            ]), symbol: "bolt.fill"),
-            project("Laya", slug: "brennanMKE/laya-go", layout: ProjectFixture.split("horizontal", [
-                ProjectFixture.terminal([ProjectFixture.tab("Code")]), ProjectFixture.terminal([ProjectFixture.tab("Run")]),
-            ])),
-            project("ShortLinks", slug: "brennanMKE/ShortLinks", layout: ProjectFixture.split("vertical", [
-                ProjectFixture.terminal(), ProjectFixture.terminal(),
-            ])),
-            project("Neovim", slug: "neovim/neovim", layout: ProjectFixture.terminal([ProjectFixture.tab("Editor")])),
-        ]
+        let projects = demoProjects(heroLayout: ProjectFixture.split("horizontal", [
+            ProjectFixture.terminal([ProjectFixture.tab("Shell"), ProjectFixture.tab("Tests")]),
+            ProjectFixture.split("vertical", [
+                ProjectFixture.view("git-status", repository: "."),
+                ProjectFixture.terminal([ProjectFixture.tab("Server")]),
+            ]),
+        ]))
         let app = try launchScene("01-projects", projects: projects)
         defer { app.terminate() }
 
         // Off camera: one Project is already open, so the Open now strip has a chip.
         click("session-sidebar.open-project-button", in: app)
         XCTAssertTrue(element("project-picker.root", in: app).waitForExistence(timeout: 10))
-        filterPicker(to: "Laya", in: app)
+        filterPicker(to: "Music", in: app)
         pressReturn(in: app)
-        _ = waitForSessions(named: "Laya")
+        _ = waitForSessions(named: "Music")
+        waitForRowIcon("Music", "music.note", in: app)
 
         mark("start", "start")
         click("session-sidebar.open-project-button", in: app)
@@ -270,18 +279,19 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
         mark("picker")
         zoomIn("picker", around: element("project-picker.root", in: app).frame, width: 1000)
         beat(0.5)
-        let shared = element("project-picker.shared.Batty", in: app)
-        XCTAssertTrue(shared.waitForExistence(timeout: 5), "no Shared checkbox on the Batty card")
+        let shared = element("project-picker.shared.AWS", in: app)
+        XCTAssertTrue(shared.waitForExistence(timeout: 5), "no Shared checkbox on the AWS card")
         shared.click()
-        XCTAssertTrue(waitFor({ self.isChecked(self.element("project-picker.shared.Batty", in: app)) }, timeout: 5), "Shared did not tick")
+        XCTAssertTrue(waitFor({ self.isChecked(self.element("project-picker.shared.AWS", in: app)) }, timeout: 5), "Shared did not tick")
         mark("shared")
         beat(0.6)
         zoomOut("picker")
-        filterPicker(to: "Batty", in: app)
+        filterPicker(to: "AWS", in: app)
         pressReturn(in: app)
-        let batty = try XCTUnwrap(waitForSessions(named: "Batty").first)
+        let aws = try XCTUnwrap(waitForSessions(named: "AWS").first)
         XCTAssertTrue(element("git-status.snapshot", in: app).waitForExistence(timeout: 20), "the Git Status Pane did not render")
-        XCTAssertNotNil(BattyCLI.waitForTopology { $0.session(batty.id)?.visiblePanes.count == 3 }, "the Project did not open with three Panes")
+        XCTAssertNotNil(BattyCLI.waitForTopology { $0.session(aws.id)?.visiblePanes.count == 3 }, "the Project did not open with three Panes")
+        waitForRowIcon("AWS", "cloud.fill", in: app)
         mark("opened")
         mark("poster", "poster")
         beat(1.2)
@@ -290,13 +300,13 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
         XCTAssertTrue(element("project-picker.open-now", in: app).waitForExistence(timeout: 10), "no Open now strip")
         mark("opennow")
         beat(0.5)
-        let chip = element("project-picker.card.Batty", in: app)
-        XCTAssertTrue(chip.waitForExistence(timeout: 5), "no Batty chip")
+        let chip = element("project-picker.card.AWS", in: app)
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "no AWS chip")
         chip.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5)).click()
         mark("another")
         beat(0.4)
         pressReturn(in: app, option: true)
-        XCTAssertEqual(waitForSessions(named: "Batty", count: 2).count, 2, "Option-Return did not open another copy")
+        XCTAssertEqual(waitForSessions(named: "AWS", count: 2).count, 2, "Option-Return did not open another copy")
         beat(1.0)
         mark("end", "end")
     }
@@ -305,16 +315,30 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
 
     @MainActor
     func testClip02SessionsAndSidebar() throws {
-        let app = try launchScene("02-sessions")
+        let app = try launchScene("02-sessions", projects: demoProjects(simple: true))
         defer { app.terminate() }
 
+        // Off camera: three Projects open between two plain repo Sessions, so the Sidebar mixes
+        // Project symbols with plain circles. Set Color targets the plain Batty Session.
         var names: [String] = []
-        for slug in ["brennanMKE/Batty", "brennanMKE/laya-go", "brennanMKE/ShortLinks", "neovim/neovim"] {
-            let created = try newSession(slug)
-            names.append(created.session.name)
-            run("git status -sb", pane: created.paneID, app: app)
+        let icons = ["AWS": "cloud.fill", "Home Assistant": "house.fill", "Music": "music.note"]
+        for step in ["project:AWS", "brennanMKE/Batty", "project:Home Assistant", "neovim/neovim", "project:Music"] {
+            if step.hasPrefix("project:") {
+                let name = String(step.dropFirst("project:".count))
+                let opened = BattyCLI.runExpectingSuccess(["project", "open", name, "--json"])
+                let json = try XCTUnwrap(CLITopology.jsonObject(in: opened.output), "no JSON from project open \(name)")
+                let id = try XCTUnwrap((json["sessionID"] as? String).flatMap(UUID.init(uuidString:)), "no sessionID for \(name)")
+                let session = try XCTUnwrap(BattyCLI.waitForTopology { $0.session(id) != nil }?.session(id), "Project \(name) never opened")
+                names.append(session.name)
+                run("git status -sb", pane: session.focusedPaneID, app: app)
+                waitForRowIcon(session.name, try XCTUnwrap(icons[name]), in: app)
+            } else {
+                let created = try newSession(step)
+                names.append(created.session.name)
+                run("git status -sb", pane: created.paneID, app: app)
+            }
         }
-        XCTAssertGreaterThanOrEqual(names.count, 4)
+        XCTAssertGreaterThanOrEqual(names.count, 5)
         note("sessions \(names)")
         app.typeKey("1", modifierFlags: .command)
         beat(0.8)
@@ -339,7 +363,7 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
         key(.return, in: app)
         beat(0.5)
 
-        let editor = BattyUITestHarness.sessionRow(named: names[3], in: app)
+        let editor = BattyUITestHarness.sessionRow(named: names[4], in: app)
         let top = BattyUITestHarness.sessionRow(named: names[0], in: app)
         let before = BattyCLI.topology()?.sessions.map(\.name) ?? []
         mark("reorder")
@@ -549,12 +573,7 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
 
     @MainActor
     func testClip07OpenQuicklyAndPalette() throws {
-        let projects = [
-            project("Batty", slug: "brennanMKE/Batty", layout: ProjectFixture.terminal()),
-            project("Laya", slug: "brennanMKE/laya-go", layout: ProjectFixture.terminal()),
-            project("Neovim", slug: "neovim/neovim", layout: ProjectFixture.terminal()),
-        ]
-        let app = try launchScene("07-quick-open", projects: projects)
+        let app = try launchScene("07-quick-open", projects: demoProjects(simple: true))
         defer { app.terminate() }
 
         let first = try newSession("brennanMKE/Batty")
@@ -574,6 +593,7 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
         presentOpenQuickly(in: app)
         mark("oq")
         zoomIn("oq", around: element("open-quickly.root", in: app).frame, width: 900)
+        beat(0.8)
         app.typeText("lay")
         beat(0.5)
         mark("poster", "poster")

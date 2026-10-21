@@ -866,8 +866,8 @@ Pane inspector, with a footer.
   `orange`, `green`, `pink`, `teal`, `red`, `violet`, `amber`, `cyan`,
   `brown`). The Symbol field (#0482): button `project-editor.symbol` (value the
   current symbol's display name, for example `Terminal`); its popover
-  holds 36 cells `project-editor.symbol.<ProjectSymbol rawValue>`
-  (`folder`, `terminal`, `code`, ..., `map`, in catalog order), the chosen one with the
+  holds 37 cells `project-editor.symbol.<ProjectSymbol rawValue>`
+  (`folder`, `terminal`, `code`, ..., `map`, `music`, in catalog order), the chosen one with the
   selected trait. Arrows move the cursor, Return or Space chooses, Escape closes. Field errors append `.error` and warnings `.warning` to the field's
   identifier (for example `project-editor.name.error`).
 - Layout: `project-editor.layout.<PaneLayout rawValue>`,

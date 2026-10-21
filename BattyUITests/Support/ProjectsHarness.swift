@@ -35,6 +35,8 @@ nonisolated enum ProjectFixture {
         preset: String? = nil,
         runStartupCommands: Bool = false,
         symbol: String? = nil,
+        color: Int = 0,
+        symbolName: String? = nil,
         lastOpenedAt: String? = nil,
         isShared: Bool? = nil,
         modifiedAt: String? = nil,
@@ -46,11 +48,12 @@ nonisolated enum ProjectFixture {
             "id": id.uuidString,
             "name": name,
             "rootPath": root.path,
-            "color": 0,
+            "color": color,
             "layout": layoutObject,
             "runStartupCommandsOnOpen": runStartupCommands,
         ]
         if let symbol { result["symbol"] = symbol }
+        if let symbolName { result["symbolName"] = symbolName }
         if let lastOpenedAt { result["lastOpenedAt"] = lastOpenedAt }
         if let isShared { result["isShared"] = isShared }
         if let modifiedAt { result["modifiedAt"] = modifiedAt }

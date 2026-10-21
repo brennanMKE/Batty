@@ -220,7 +220,7 @@ private struct ProjectSymbolSheet: View {
         returnMonitor.selection = names.indices.contains(cursor.index) ? names[cursor.index] : nil
     }
 
-    private func move(_ direction: ProjectSymbolGridCursor.Direction) -> KeyPress.Result {
+    private func move(_ direction: ProjectSymbolListCursor.Direction) -> KeyPress.Result {
         cursor = cursor.moved(direction)
         return .handled
     }
