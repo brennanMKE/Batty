@@ -9,7 +9,8 @@ Cache read/write counts are exact. Output tokens are estimated (assistant charac
 `usage` is the stream-start snapshot. Wall is first to last timestamp; VM is every Bash call that runs
 tools/run-ui-tests-vm.sh or `./build.sh ui`, from tool_use to its tool_result (or, for a background run, to its task
 notification). Build and Unit time `./build.sh` (build), `./build.sh ui-typecheck` and `./build.sh unit` runs the same
-way; a foreground run counts only when its result has a `CHECK <STAGE>:` line, which also names its stage. Haiku counts
+way, including a bare `./build.sh` followed by a pipe or redirection; a foreground run counts only when its result has
+a `CHECK <STAGE>:` line, which also names its stage. Heredoc bodies are ignored when classifying a command. Haiku counts
 and sums the `claude -p --model haiku` failure summaries recorded in the shared build/checks/haiku-usage.jsonl whose log
 path this transcript printed; Cost is model cost plus that Haiku cost. Stdlib only.
 """
@@ -31,14 +32,30 @@ VM_SUMMARY = re.compile(r"==> RESULT:|Executed \d+ tests?|CHECK UI:")
 # A command that runs build.sh with no action, `build`, `unit` or `ui-typecheck` (same prefix tolerance as VM_COMMAND).
 CHECK_COMMAND = re.compile(
     r"(^|&&|;|\|\||\n|\bdo)\s*(cd \S+\s*&&\s*)?([A-Z_]+=\S+\s+)*(\S*/)?build\.sh"
-    r"(\s+--verbose)*(?P<action>\s+(build|unit|ui-typecheck)\b|\s*($|[;&|\n)]))")
+    r"(\s+--verbose)*(?P<action>\s+(build|unit|ui-typecheck)\b|\s*($|[;&|\n)<>]|\d+>))")
 CHECK_RESULT = re.compile(r"CHECK (BUILD|UNIT|UI-TYPECHECK|UI): (PASSED|FAILED|ERROR)")
 CHECK_LOG = re.compile(r"build/checks/[\w.-]+?\.log\b")
+HEREDOC = re.compile(r"(?<!<)<<(?!<)[-~]?\s*(['\"]?)([\w.-]+)\1")
 BACKGROUND_ID = re.compile(r"background with ID: (\w+)")
 DEFAULT_DIR = pathlib.Path.home() / ".claude" / "projects" / "-Users-brennan-Developer-brennanMKE-Batty"
 
 
+def strip_heredocs(command):
+    """Drop heredoc bodies, keeping each operator's own line, so text written to a file or a
+    commit message is never classified as a command. Lexical: a `<<WORD` inside quotes counts too."""
+    kept, pending = [], []
+    for line in command.split("\n"):
+        if pending:
+            if line.strip() == pending[0]:
+                pending.pop(0)
+            continue
+        kept.append(line)
+        pending = [m.group(2) for m in HEREDOC.finditer(line)]
+    return "\n".join(kept)
+
+
 def check_stage(command):
+    command = strip_heredocs(command)
     match = CHECK_COMMAND.search(command)
     if not match:
         return None
@@ -48,11 +65,25 @@ def check_stage(command):
 def command_stages(command):
     """The CHECK stages a Bash command runs, so a CHECK line from anything else
     in the same call (an offline tools/check-report.py, a cat) earns no credit."""
+    command = strip_heredocs(command)
     stages = {"UI"} if VM_COMMAND.search(command) else set()
     for match in CHECK_COMMAND.finditer(command):
         action = (match.group("action") or "").strip()
         stages.add({"unit": "UNIT", "ui-typecheck": "UI-TYPECHECK"}.get(action, "BUILD"))
     return stages
+
+
+def run_kind(command, background):
+    """(kind, stages) for a Bash command. A foreground call with a real check stage is timed as that
+    check (its CHECK UI: line still credits a VM run); `vm` alone is used only when UI is the sole
+    stage, or for a background call that runs the VM, whose duration is mostly the VM run."""
+    stages = command_stages(command)
+    checks = stages - {"UI"}
+    if "UI" in stages and (background or not checks):
+        return "vm", stages
+    if checks:
+        return ("unit" if "UNIT" in checks else "build"), stages
+    return None, stages
 
 
 def shared_checks_dir():
@@ -130,11 +161,12 @@ def measure(path, pricing):
                     chars += len(json.dumps(tool_input))
                     command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
                     kind = None
+                    background = isinstance(tool_input, dict) and bool(tool_input.get("run_in_background"))
                     if block.get("name") == "Bash":
-                        kind = "vm" if VM_COMMAND.search(command) else check_stage(command)
+                        kind, stages = run_kind(command, background)
                     if kind:
-                        target = background_calls if tool_input.get("run_in_background") else calls
-                        target[block.get("id")] = (kind, when, command_stages(command))
+                        target = background_calls if background else calls
+                        target[block.get("id")] = (kind, when, stages)
         elif entry.get("type") == "user":
             for block in content:
                 if not isinstance(block, dict) or block.get("type") != "tool_result":

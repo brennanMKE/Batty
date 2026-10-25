@@ -330,7 +330,7 @@ It prints a ready work-log row. What it measures:
 - **Cache read / cache write** — exact, from `message.usage`, deduped by `requestId` (one response can span several JSONL lines).
 - **Output** — *estimated* as assistant characters ÷ 4 and marked `~`: the transcript's `usage` is the stream-start snapshot, so `output_tokens` is near zero on every line.
 - **Effort** — the `effort` field on assistant lines. **Turns** — API requests.
-- **Wall** — first to last timestamp. **UI** — count and total minutes of `tools/run-ui-tests-vm.sh` / `./build.sh ui` runs (foreground, or `run_in_background` timed to the task notification). **Build** and **Unit** — the same for `./build.sh` / `./build.sh ui-typecheck` and `./build.sh unit`; a foreground run counts when its result has a `CHECK …` line. Model time is Wall − Build − Unit − UI.
+- **Wall** — first to last timestamp. **UI** — count and total minutes of `tools/run-ui-tests-vm.sh` / `./build.sh ui` runs (foreground, or `run_in_background` timed to the task notification). **Build** and **Unit** — the same for `./build.sh` / `./build.sh ui-typecheck` and `./build.sh unit`; a foreground run counts when its result has a `CHECK …` line. Heredoc bodies (commit messages, files written with `cat <<EOF`) are ignored when classifying runs, and a bare `./build.sh` followed by a pipe or redirection counts as Build; `python3 tools/worklog-selftest.py` checks the classifier. Model time is Wall − Build − Unit − UI.
 - **Haiku** — count and cost of the failure summaries: records in the main checkout's `build/checks/haiku-usage.jsonl` whose log path the transcript printed.
 - **Cost** — model cost from `issues/model-pricing.json`, plus the Haiku cost.
 
