@@ -1,0 +1,374 @@
+2026-10-25 00:05:41.590 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B
+2026-10-25 00:05:43.155 I  Batty[194:c392783] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:05:43.155 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B processAlive=false
+2026-10-25 00:05:47.958 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B
+2026-10-25 00:05:52.225 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B
+2026-10-25 00:05:56.978 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:06:12.828 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B
+2026-10-25 00:06:13.741 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B processAlive=false
+2026-10-25 00:06:14.940 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B
+2026-10-25 00:06:15.565 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B processAlive=false
+2026-10-25 00:06:15.788 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B processAlive=false
+2026-10-25 00:06:16.508 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B
+2026-10-25 00:06:16.993 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=33CEB33B-F37F-4D8E-BD32-0A9E046BBB0B
+2026-10-25 00:06:21.145 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:06:27.992 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:06:43.919 I  Batty[194:c3fdb44] [co.sstools.Batty:AppXPCConnectionRegistry] registered connection — active clients=1
+2026-10-25 00:06:43.919 I  Batty[194:c3fdb44] [co.sstools.Batty:AppXPCListenerDelegate] accepted new connection
+2026-10-25 00:06:43.921 I  Batty[194:aac7084] [co.sstools.Batty:AppXPCService] perform list -> windows=1
+2026-10-25 00:06:43.924 I  Batty[194:c3fd76d] [co.sstools.Batty:AppXPCConnectionRegistry] unregistered connection — active clients=0
+2026-10-25 00:06:43.924 I  Batty[194:c3fd76d] [co.sstools.Batty:AppXPCListenerDelegate] client connection invalidated
+2026-10-25 00:06:46.542 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:06:46.542 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:06:46.542 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:06:46.542 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:06:46.555 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 56CFF2CC-7E26-4B0A-9F71-8A97E470BB80 → 4C4232B3-5491-40AB-A1A7-A800D4F41404
+2026-10-25 00:06:46.555 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Roadie theme=Acid Burn source=global(dark)
+2026-10-25 00:06:46.555 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Roadie
+2026-10-25 00:06:46.556 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=CB168FD9-7A3B-4679-A32E-49E64122801E isHidden=false windowVisible=true effective=true
+2026-10-25 00:06:46.556 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=17
+2026-10-25 00:06:46.556 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=070DC8DF-BC72-40CD-B764-9223D0EB8516 isHidden=false windowVisible=true effective=true
+2026-10-25 00:06:46.556 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=16
+2026-10-25 00:06:46.556 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=2C3C1C94-9FBD-40A3-81DB-A14F615F1520 isHidden=true windowVisible=true effective=false
+2026-10-25 00:06:46.556 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=17
+2026-10-25 00:06:46.560 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=368004FE-C760-4873-AC36-8B4CB3A02ED4 isHidden=true windowVisible=true effective=false
+2026-10-25 00:06:46.560 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=18
+2026-10-25 00:06:46.578 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=CB168FD9-7A3B-4679-A32E-49E64122801E
+2026-10-25 00:06:46.699 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=39 current=<private>
+2026-10-25 00:06:47.306 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:06:47.306 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:06:47.306 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:06:47.306 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:06:47.319 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 4C4232B3-5491-40AB-A1A7-A800D4F41404 → 56CFF2CC-7E26-4B0A-9F71-8A97E470BB80
+2026-10-25 00:06:47.319 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Batty theme=Acid Burn source=global(dark)
+2026-10-25 00:06:47.319 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Batty
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=CB168FD9-7A3B-4679-A32E-49E64122801E isHidden=true windowVisible=true effective=false
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=19
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=070DC8DF-BC72-40CD-B764-9223D0EB8516 isHidden=true windowVisible=true effective=false
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=20
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=2C3C1C94-9FBD-40A3-81DB-A14F615F1520 isHidden=false windowVisible=true effective=true
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=19
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=368004FE-C760-4873-AC36-8B4CB3A02ED4 isHidden=false windowVisible=true effective=true
+2026-10-25 00:06:47.324 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=18
+2026-10-25 00:06:47.344 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:06:47.622 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:06:47.861 I  Batty[194:aac7084] [co.sstools.Batty:NotificationSummarizer] notification summary: 'Claude is waiting for input after Roadie first launch and website session' (1.3s)
+2026-10-25 00:06:58.824 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:06:58.824 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:06:58.824 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:06:58.824 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:06:58.835 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 56CFF2CC-7E26-4B0A-9F71-8A97E470BB80 → 4C4232B3-5491-40AB-A1A7-A800D4F41404
+2026-10-25 00:06:58.835 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Roadie theme=Acid Burn source=global(dark)
+2026-10-25 00:06:58.835 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Roadie
+2026-10-25 00:06:58.836 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=CB168FD9-7A3B-4679-A32E-49E64122801E isHidden=false windowVisible=true effective=true
+2026-10-25 00:06:58.836 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=17
+2026-10-25 00:06:58.836 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=070DC8DF-BC72-40CD-B764-9223D0EB8516 isHidden=false windowVisible=true effective=true
+2026-10-25 00:06:58.836 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=16
+2026-10-25 00:06:58.836 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=2C3C1C94-9FBD-40A3-81DB-A14F615F1520 isHidden=true windowVisible=true effective=false
+2026-10-25 00:06:58.836 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=17
+2026-10-25 00:06:58.840 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=368004FE-C760-4873-AC36-8B4CB3A02ED4 isHidden=true windowVisible=true effective=false
+2026-10-25 00:06:58.840 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=18
+2026-10-25 00:06:58.856 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=CB168FD9-7A3B-4679-A32E-49E64122801E
+2026-10-25 00:06:59.042 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=39 current=<private>
+2026-10-25 00:08:08.958 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:08:08.958 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:08:08.958 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:08:08.959 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:08:08.959 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:08:08.959 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:08:08.971 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 4C4232B3-5491-40AB-A1A7-A800D4F41404 → C87686C1-BA94-41A9-94A9-9EA27016E627
+2026-10-25 00:08:08.971 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=PhotoCraft theme=Acid Burn source=global(dark)
+2026-10-25 00:08:08.971 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=PhotoCraft
+2026-10-25 00:08:08.975 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=CB168FD9-7A3B-4679-A32E-49E64122801E isHidden=true windowVisible=true effective=false
+2026-10-25 00:08:08.975 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=19
+2026-10-25 00:08:08.975 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=070DC8DF-BC72-40CD-B764-9223D0EB8516 isHidden=true windowVisible=true effective=false
+2026-10-25 00:08:08.975 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=20
+2026-10-25 00:08:08.975 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=81D96ADD-3FAA-4AEC-8430-7AB8AE407544 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:08.975 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=19
+2026-10-25 00:08:08.994 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=81D96ADD-3FAA-4AEC-8430-7AB8AE407544
+2026-10-25 00:08:09.102 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=1 current=<private>
+2026-10-25 00:08:09.114 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=1 current=<private>
+2026-10-25 00:08:34.359 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:08:34.359 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:08:34.359 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:08:34.359 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:08:34.359 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:08:34.359 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:08:34.371 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: C87686C1-BA94-41A9-94A9-9EA27016E627 → 5B670722-77F3-4E14-8553-E4B427ADC01B
+2026-10-25 00:08:34.371 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=MilkDropMetalKit theme=Acid Burn source=global(dark)
+2026-10-25 00:08:34.371 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=MilkDropMetalKit
+2026-10-25 00:08:34.372 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=986DE030-3878-40BB-92B4-8913D2E14A1C isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:34.372 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=18
+2026-10-25 00:08:34.372 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=63418AD5-32E3-4AAB-A3B2-92C7E8A828E0 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:34.372 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=17
+2026-10-25 00:08:34.376 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=81D96ADD-3FAA-4AEC-8430-7AB8AE407544 isHidden=true windowVisible=true effective=false
+2026-10-25 00:08:34.376 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=18
+2026-10-25 00:08:34.393 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=986DE030-3878-40BB-92B4-8913D2E14A1C
+2026-10-25 00:08:34.628 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=1 current=<private>
+2026-10-25 00:08:37.805 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:08:37.805 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=986DE030-3878-40BB-92B4-8913D2E14A1C sessions=7 totalTabs=28
+2026-10-25 00:08:37.808 I  Batty[194:c13bd1d] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:08:37.818 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=d07a850abb17d790
+2026-10-25 00:08:37.821 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 986DE030-3878-40BB-92B4-8913D2E14A1C: surface and PTY freed synchronously; host has 20 view(s) remaining
+2026-10-25 00:08:37.821 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=986DE030-3878-40BB-92B4-8913D2E14A1C pane=CF6CE569-83B9-4BC9-A4B0-6BB47A4BEBDB session=5B670722-77F3-4E14-8553-E4B427ADC01B paneTabsRemaining=1
+2026-10-25 00:08:37.828 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:37.828 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=17
+2026-10-25 00:08:37.840 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4
+2026-10-25 00:08:38.341 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 986DE030-3878-40BB-92B4-8913D2E14A1C still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:08:38.721 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:08:38.722 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4 sessions=7 totalTabs=27
+2026-10-25 00:08:38.724 I  Batty[194:c140604] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:08:38.734 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=5c851f4bf5fe76f9
+2026-10-25 00:08:38.736 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 284EFD2D-C9C5-44D1-90CB-614D68799DE4: surface and PTY freed synchronously; host has 19 view(s) remaining
+2026-10-25 00:08:38.736 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4 pane=CF6CE569-83B9-4BC9-A4B0-6BB47A4BEBDB session=5B670722-77F3-4E14-8553-E4B427ADC01B paneTabsRemaining=0
+2026-10-25 00:08:38.736 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab pane=CF6CE569-83B9-4BC9-A4B0-6BB47A4BEBDB empty; removing from tree
+2026-10-25 00:08:38.739 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 2; re-applying theme
+2026-10-25 00:08:38.739 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=MilkDropMetalKit theme=Acid Burn source=global(dark)
+2026-10-25 00:08:38.739 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=MilkDropMetalKit
+2026-10-25 00:08:38.748 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] created terminal view for tab 284EFD2D-C9C5-44D1-90CB-614D68799DE4 in window 40797271-CE6A-4D81-B294-F0FA8902460F; host has 20 view(s)
+2026-10-25 00:08:38.756 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] io_exec: found Ghostty resources dir: /Applications/Batty.app/Contents/Resources/GhosttyKit_GhosttyTerminal.bundle/Contents/Resources/Ghostty
+2026-10-25 00:08:38.756 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] io_exec: shell integration automatically injected shell=.zsh
+2026-10-25 00:08:38.756 I  Batty[194:c3fecfb] [com.mitchellh.ghostty:default] generic_renderer: created display link
+2026-10-25 00:08:38.756 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:38.756 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=63418AD5-32E3-4AAB-A3B2-92C7E8A828E0 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:38.764 I  Batty[194:c3fecfc] [com.mitchellh.ghostty:default] io_exec: started subcommand path=/usr/bin/login pid=58323
+2026-10-25 00:08:38.783 Db Batty[194:aac7084] [com.apple.CarbonCore:checkfix] _CSCheckFix(10507300,co.sstools.Batty/20261014)=NOT-APPLIED
+2026-10-25 00:08:38.783 Db Batty[194:aac7084] [com.apple.CarbonCore:checkfix] _CSCheckFix(40356500,co.sstools.Batty/20261014)=NOT-APPLIED
+2026-10-25 00:08:38.786 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=63418AD5-32E3-4AAB-A3B2-92C7E8A828E0
+2026-10-25 00:08:39.254 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 284EFD2D-C9C5-44D1-90CB-614D68799DE4 still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:08:39.538 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:08:39.538 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=63418AD5-32E3-4AAB-A3B2-92C7E8A828E0 sessions=7 totalTabs=26
+2026-10-25 00:08:39.540 I  Batty[194:c141114] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:08:39.551 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=7fd2564adca0d4ad
+2026-10-25 00:08:39.553 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 63418AD5-32E3-4AAB-A3B2-92C7E8A828E0: surface and PTY freed synchronously; host has 19 view(s) remaining
+2026-10-25 00:08:39.553 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=63418AD5-32E3-4AAB-A3B2-92C7E8A828E0 pane=6EC5499E-5F95-435B-BDAB-7B41820E17FD session=5B670722-77F3-4E14-8553-E4B427ADC01B paneTabsRemaining=0
+2026-10-25 00:08:39.553 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab pane=6EC5499E-5F95-435B-BDAB-7B41820E17FD empty; removing from tree
+2026-10-25 00:08:39.557 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 1; re-applying theme
+2026-10-25 00:08:39.557 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=MilkDropMetalKit theme=Acid Burn source=global(dark)
+2026-10-25 00:08:39.557 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=MilkDropMetalKit
+2026-10-25 00:08:40.054 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] AppTerminalView for tab 63418AD5-32E3-4AAB-A3B2-92C7E8A828E0 still referenced 0.5s after release — surface and PTY were already freed synchronously; this only affects when the NSView itself deallocates
+2026-10-25 00:08:40.054 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 63418AD5-32E3-4AAB-A3B2-92C7E8A828E0 still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:08:40.280 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:08:40.280 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closePane pane=A751A44A-16B0-4540-887E-32F23F07529A session=5B670722-77F3-4E14-8553-E4B427ADC01B tabs=1
+2026-10-25 00:08:40.280 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] releaseTerminalView tab=83593664-7384-428F-9D3A-06AD445E2E77: no view registered (already released, or never created)
+2026-10-25 00:08:40.280 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] tearDown path=<private>
+2026-10-25 00:08:40.280 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:08:40.280 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closePane tree empty for session=5B670722-77F3-4E14-8553-E4B427ADC01B; removing session
+2026-10-25 00:08:40.280 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] removeSession id=5B670722-77F3-4E14-8553-E4B427ADC01B title='MilkDropMetalKit' sessionsAfter=6
+2026-10-25 00:08:40.280 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] releaseTerminalView tab=83593664-7384-428F-9D3A-06AD445E2E77: no view registered (already released, or never created)
+2026-10-25 00:08:40.281 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:08:40.281 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:08:40.288 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 5B670722-77F3-4E14-8553-E4B427ADC01B → 4C4232B3-5491-40AB-A1A7-A800D4F41404
+2026-10-25 00:08:40.288 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Roadie theme=Acid Burn source=global(dark)
+2026-10-25 00:08:40.288 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Roadie
+2026-10-25 00:08:40.288 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 3; re-applying theme
+2026-10-25 00:08:40.288 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Roadie theme=Acid Burn source=global(dark)
+2026-10-25 00:08:40.288 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Roadie
+2026-10-25 00:08:40.291 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=CB168FD9-7A3B-4679-A32E-49E64122801E isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:40.291 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=16
+2026-10-25 00:08:40.291 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=070DC8DF-BC72-40CD-B764-9223D0EB8516 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:40.291 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=15
+2026-10-25 00:08:40.305 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=CB168FD9-7A3B-4679-A32E-49E64122801E
+2026-10-25 00:08:40.546 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=39 current=<private>
+2026-10-25 00:08:44.476 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:08:44.476 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:08:44.476 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:08:44.476 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:08:44.490 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 4C4232B3-5491-40AB-A1A7-A800D4F41404 → 56CFF2CC-7E26-4B0A-9F71-8A97E470BB80
+2026-10-25 00:08:44.490 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Batty theme=Acid Burn source=global(dark)
+2026-10-25 00:08:44.490 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Batty
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=CB168FD9-7A3B-4679-A32E-49E64122801E isHidden=true windowVisible=true effective=false
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=16
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=070DC8DF-BC72-40CD-B764-9223D0EB8516 isHidden=true windowVisible=true effective=false
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=17
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=2C3C1C94-9FBD-40A3-81DB-A14F615F1520 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=16
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=368004FE-C760-4873-AC36-8B4CB3A02ED4 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:44.494 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=15
+2026-10-25 00:08:44.519 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:08:44.787 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:08:45.467 I  Batty[194:aac7084] [co.sstools.Batty:NotificationSummarizer] notification summary: 'Claude Code: Claude is waiting for your input' (0.9s)
+2026-10-25 00:08:46.626 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=false phase=suspended
+2026-10-25 00:08:46.627 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:08:46.627 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:08:46.627 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:08:46.637 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 56CFF2CC-7E26-4B0A-9F71-8A97E470BB80 → E9E44840-5A21-44FF-B30E-16FFE02B928D
+2026-10-25 00:08:46.637 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=AWS theme=Acid Burn source=global(dark)
+2026-10-25 00:08:46.637 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=AWS
+2026-10-25 00:08:46.637 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 2; re-applying theme
+2026-10-25 00:08:46.637 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=AWS theme=Acid Burn source=global(dark)
+2026-10-25 00:08:46.637 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=AWS
+2026-10-25 00:08:46.637 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=3F1D6B41-384D-4E71-AC42-4E8CBE1E3BB0 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:46.637 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=14
+2026-10-25 00:08:46.637 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=2C3C1C94-9FBD-40A3-81DB-A14F615F1520 isHidden=true windowVisible=true effective=false
+2026-10-25 00:08:46.637 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=15
+2026-10-25 00:08:46.640 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=368004FE-C760-4873-AC36-8B4CB3A02ED4 isHidden=true windowVisible=true effective=false
+2026-10-25 00:08:46.640 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=16
+2026-10-25 00:08:46.654 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=3F1D6B41-384D-4E71-AC42-4E8CBE1E3BB0
+2026-10-25 00:08:46.705 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=1 current=<private>
+2026-10-25 00:08:59.163 I  Batty[194:aec32fa] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:08:59.163 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=3F1D6B41-384D-4E71-AC42-4E8CBE1E3BB0 processAlive=false
+2026-10-25 00:08:59.163 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=3F1D6B41-384D-4E71-AC42-4E8CBE1E3BB0 sessions=6 totalTabs=24
+2026-10-25 00:08:59.165 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=61021bb139fe526e
+2026-10-25 00:08:59.167 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 3F1D6B41-384D-4E71-AC42-4E8CBE1E3BB0: surface and PTY freed synchronously; host has 18 view(s) remaining
+2026-10-25 00:08:59.167 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=3F1D6B41-384D-4E71-AC42-4E8CBE1E3BB0 pane=E4969F80-598C-4ACA-A3C1-77539BAB97FB session=E9E44840-5A21-44FF-B30E-16FFE02B928D paneTabsRemaining=1
+2026-10-25 00:08:59.177 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=B7D27B01-F056-4674-8BE8-9B74008A2039 isHidden=false windowVisible=true effective=true
+2026-10-25 00:08:59.177 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=15
+2026-10-25 00:08:59.189 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=B7D27B01-F056-4674-8BE8-9B74008A2039
+2026-10-25 00:08:59.689 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 3F1D6B41-384D-4E71-AC42-4E8CBE1E3BB0 still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:01.017 I  Batty[194:aec56b2] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:09:01.017 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=B7D27B01-F056-4674-8BE8-9B74008A2039 processAlive=false
+2026-10-25 00:09:01.017 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=B7D27B01-F056-4674-8BE8-9B74008A2039 sessions=6 totalTabs=23
+2026-10-25 00:09:01.020 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=bf5e8108002ab027
+2026-10-25 00:09:01.022 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab B7D27B01-F056-4674-8BE8-9B74008A2039: surface and PTY freed synchronously; host has 17 view(s) remaining
+2026-10-25 00:09:01.022 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=B7D27B01-F056-4674-8BE8-9B74008A2039 pane=E4969F80-598C-4ACA-A3C1-77539BAB97FB session=E9E44840-5A21-44FF-B30E-16FFE02B928D paneTabsRemaining=0
+2026-10-25 00:09:01.022 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab pane=E4969F80-598C-4ACA-A3C1-77539BAB97FB empty; removing from tree
+2026-10-25 00:09:01.039 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 1; re-applying theme
+2026-10-25 00:09:01.039 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=AWS theme=Acid Burn source=global(dark)
+2026-10-25 00:09:01.039 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=AWS
+2026-10-25 00:09:01.537 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] AppTerminalView for tab B7D27B01-F056-4674-8BE8-9B74008A2039 still referenced 0.5s after release — surface and PTY were already freed synchronously; this only affects when the NSView itself deallocates
+2026-10-25 00:09:01.538 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab B7D27B01-F056-4674-8BE8-9B74008A2039 still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:02.219 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:02.219 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closePane pane=530B815C-E3A9-482E-9F98-9D223A06C88E session=E9E44840-5A21-44FF-B30E-16FFE02B928D tabs=1
+2026-10-25 00:09:02.219 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] releaseTerminalView tab=254D6689-DAC6-4D0A-8E2A-667F1DCC55CD: no view registered (already released, or never created)
+2026-10-25 00:09:02.219 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] tearDown path=<private>
+2026-10-25 00:09:02.219 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:09:02.219 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closePane tree empty for session=E9E44840-5A21-44FF-B30E-16FFE02B928D; removing session
+2026-10-25 00:09:02.219 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] removeSession id=E9E44840-5A21-44FF-B30E-16FFE02B928D title='AWS' sessionsAfter=5
+2026-10-25 00:09:02.219 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] releaseTerminalView tab=254D6689-DAC6-4D0A-8E2A-667F1DCC55CD: no view registered (already released, or never created)
+2026-10-25 00:09:02.220 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:09:02.220 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:09:02.228 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: E9E44840-5A21-44FF-B30E-16FFE02B928D → 49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3
+2026-10-25 00:09:02.228 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Community theme=Acid Burn source=global(dark)
+2026-10-25 00:09:02.228 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Community
+2026-10-25 00:09:02.228 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 3; re-applying theme
+2026-10-25 00:09:02.228 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Community theme=Acid Burn source=global(dark)
+2026-10-25 00:09:02.228 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Community
+2026-10-25 00:09:02.231 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=27F38227-A564-49B2-BD3A-2DC4093C8A05 isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:02.231 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=14
+2026-10-25 00:09:02.231 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=3911E165-459F-4EE5-A99C-3988CD0A080D isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:02.231 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=13
+2026-10-25 00:09:02.247 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=27F38227-A564-49B2-BD3A-2DC4093C8A05
+2026-10-25 00:09:02.500 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=1 current=<private>
+2026-10-25 00:09:06.811 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:06.811 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=27F38227-A564-49B2-BD3A-2DC4093C8A05 sessions=5 totalTabs=21
+2026-10-25 00:09:06.814 I  Batty[194:b7ac693] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:09:06.825 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=218e48657f3f15f9
+2026-10-25 00:09:06.827 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 27F38227-A564-49B2-BD3A-2DC4093C8A05: surface and PTY freed synchronously; host has 16 view(s) remaining
+2026-10-25 00:09:06.827 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=27F38227-A564-49B2-BD3A-2DC4093C8A05 pane=4056F41B-B60D-4F32-B8F4-AF12825A570F session=49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3 paneTabsRemaining=1
+2026-10-25 00:09:06.833 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=719C4FCE-53C1-4739-BE65-F08E34DBE36D isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:06.833 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=12
+2026-10-25 00:09:06.846 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=719C4FCE-53C1-4739-BE65-F08E34DBE36D
+2026-10-25 00:09:07.351 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 27F38227-A564-49B2-BD3A-2DC4093C8A05 still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:07.555 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:07.555 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=719C4FCE-53C1-4739-BE65-F08E34DBE36D sessions=5 totalTabs=20
+2026-10-25 00:09:07.558 I  Batty[194:b7b264b] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:09:07.567 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=4389303ea04e1530
+2026-10-25 00:09:07.569 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 719C4FCE-53C1-4739-BE65-F08E34DBE36D: surface and PTY freed synchronously; host has 15 view(s) remaining
+2026-10-25 00:09:07.569 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=719C4FCE-53C1-4739-BE65-F08E34DBE36D pane=4056F41B-B60D-4F32-B8F4-AF12825A570F session=49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3 paneTabsRemaining=0
+2026-10-25 00:09:07.569 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab pane=4056F41B-B60D-4F32-B8F4-AF12825A570F empty; removing from tree
+2026-10-25 00:09:07.571 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 2; re-applying theme
+2026-10-25 00:09:07.572 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Community theme=Acid Burn source=global(dark)
+2026-10-25 00:09:07.572 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Community
+2026-10-25 00:09:07.583 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=3911E165-459F-4EE5-A99C-3988CD0A080D isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:08.071 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] AppTerminalView for tab 719C4FCE-53C1-4739-BE65-F08E34DBE36D still referenced 0.5s after release — surface and PTY were already freed synchronously; this only affects when the NSView itself deallocates
+2026-10-25 00:09:08.071 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 719C4FCE-53C1-4739-BE65-F08E34DBE36D still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:08.475 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:08.475 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closePane pane=C9678856-1FDB-4A5D-A025-D1CA84D74C1F session=49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3 tabs=1
+2026-10-25 00:09:08.475 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] releaseTerminalView tab=5840E422-62E3-4B9E-AB5B-4D69C738EAEA: no view registered (already released, or never created)
+2026-10-25 00:09:08.475 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] tearDown path=<private>
+2026-10-25 00:09:08.475 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: stopped
+2026-10-25 00:09:08.478 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 1; re-applying theme
+2026-10-25 00:09:08.478 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Community theme=Acid Burn source=global(dark)
+2026-10-25 00:09:08.478 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Community
+2026-10-25 00:09:08.485 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=3911E165-459F-4EE5-A99C-3988CD0A080D isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:08.497 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=3911E165-459F-4EE5-A99C-3988CD0A080D
+2026-10-25 00:09:09.138 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:09.138 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=3911E165-459F-4EE5-A99C-3988CD0A080D sessions=5 totalTabs=18
+2026-10-25 00:09:09.140 I  Batty[194:b7ac68a] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:09:09.152 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=63ef5da53dbdf7f8
+2026-10-25 00:09:09.154 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 3911E165-459F-4EE5-A99C-3988CD0A080D: surface and PTY freed synchronously; host has 14 view(s) remaining
+2026-10-25 00:09:09.154 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=3911E165-459F-4EE5-A99C-3988CD0A080D pane=97C8C98E-F19E-43FD-A5E0-6496695BA3CB session=49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3 paneTabsRemaining=0
+2026-10-25 00:09:09.154 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab pane=97C8C98E-F19E-43FD-A5E0-6496695BA3CB empty; removing from tree
+2026-10-25 00:09:09.154 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tree empty for session=49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3; removing session
+2026-10-25 00:09:09.154 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] removeSession id=49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3 title='Community' sessionsAfter=4
+2026-10-25 00:09:09.161 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: 49D4219D-5382-4C44-BD2D-E9F2CD1DB6D3 → B9D3FA48-B341-43CD-B399-14C67D1A4260
+2026-10-25 00:09:09.161 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Homelab theme=Acid Burn source=global(dark)
+2026-10-25 00:09:09.161 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Homelab
+2026-10-25 00:09:09.161 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 2; re-applying theme
+2026-10-25 00:09:09.161 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Homelab theme=Acid Burn source=global(dark)
+2026-10-25 00:09:09.161 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Homelab
+2026-10-25 00:09:09.164 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=03D5CB3E-F516-4252-BD05-80EDB8B9A2AA isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:09.164 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=11
+2026-10-25 00:09:09.181 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=03D5CB3E-F516-4252-BD05-80EDB8B9A2AA
+2026-10-25 00:09:09.671 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 3911E165-459F-4EE5-A99C-3988CD0A080D still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:11.388 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:11.388 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=03D5CB3E-F516-4252-BD05-80EDB8B9A2AA sessions=4 totalTabs=17
+2026-10-25 00:09:11.391 I  Batty[194:aedbebe] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:09:11.401 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=5e0de3fb9b87d0e4
+2026-10-25 00:09:11.403 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 03D5CB3E-F516-4252-BD05-80EDB8B9A2AA: surface and PTY freed synchronously; host has 13 view(s) remaining
+2026-10-25 00:09:11.403 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=03D5CB3E-F516-4252-BD05-80EDB8B9A2AA pane=1906D3DE-399D-4877-BC93-C688F8E77484 session=B9D3FA48-B341-43CD-B399-14C67D1A4260 paneTabsRemaining=2
+2026-10-25 00:09:11.409 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=7A49C4AD-FED2-454D-9769-1D55CC4F87CE isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:11.409 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=10
+2026-10-25 00:09:11.419 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=7A49C4AD-FED2-454D-9769-1D55CC4F87CE
+2026-10-25 00:09:11.922 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 03D5CB3E-F516-4252-BD05-80EDB8B9A2AA still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:14.999 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:14.999 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=7A49C4AD-FED2-454D-9769-1D55CC4F87CE sessions=4 totalTabs=16
+2026-10-25 00:09:15.002 I  Batty[194:aac7f3f] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:09:15.012 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=7f3da18eaa5c2fc
+2026-10-25 00:09:15.013 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab 7A49C4AD-FED2-454D-9769-1D55CC4F87CE: surface and PTY freed synchronously; host has 12 view(s) remaining
+2026-10-25 00:09:15.013 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=7A49C4AD-FED2-454D-9769-1D55CC4F87CE pane=1906D3DE-399D-4877-BC93-C688F8E77484 session=B9D3FA48-B341-43CD-B399-14C67D1A4260 paneTabsRemaining=1
+2026-10-25 00:09:15.019 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=EC85B6F6-FB7E-4E5C-8974-0EF82B38F379 isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:15.020 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=9
+2026-10-25 00:09:15.030 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=EC85B6F6-FB7E-4E5C-8974-0EF82B38F379
+2026-10-25 00:09:15.532 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab 7A49C4AD-FED2-454D-9769-1D55CC4F87CE still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:16.022 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:16.022 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab tab=EC85B6F6-FB7E-4E5C-8974-0EF82B38F379 sessions=4 totalTabs=15
+2026-10-25 00:09:16.024 I  Batty[194:baab1fc] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:09:16.034 I  Batty[194:aac7084] [com.mitchellh.ghostty:default] surface: surface closed id=3b1bf3279dc013e2
+2026-10-25 00:09:16.036 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] released terminal view for tab EC85B6F6-FB7E-4E5C-8974-0EF82B38F379: surface and PTY freed synchronously; host has 11 view(s) remaining
+2026-10-25 00:09:16.036 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab removed tab=EC85B6F6-FB7E-4E5C-8974-0EF82B38F379 pane=1906D3DE-399D-4877-BC93-C688F8E77484 session=B9D3FA48-B341-43CD-B399-14C67D1A4260 paneTabsRemaining=0
+2026-10-25 00:09:16.036 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closeTab pane=1906D3DE-399D-4877-BC93-C688F8E77484 empty; removing from tree
+2026-10-25 00:09:16.038 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 1; re-applying theme
+2026-10-25 00:09:16.039 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Homelab theme=Acid Burn source=global(dark)
+2026-10-25 00:09:16.039 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Homelab
+2026-10-25 00:09:16.538 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] AppTerminalView for tab EC85B6F6-FB7E-4E5C-8974-0EF82B38F379 still referenced 0.5s after release — surface and PTY were already freed synchronously; this only affects when the NSView itself deallocates
+2026-10-25 00:09:16.538 Df Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] TabRuntime for tab EC85B6F6-FB7E-4E5C-8974-0EF82B38F379 still referenced 0.5s after release — expected to clear shortly on its own (a rename sheet or SwiftUI placeholder can hold it briefly); repeated notices across unrelated tab closes would mean something is leaking a TabRuntime reference and keeping its ghostty app + glyph atlas alive
+2026-10-25 00:09:17.158 I  Batty[194:aac7084] [co.sstools.Batty:BattyShortcuts] dispatching action closeTab
+2026-10-25 00:09:17.158 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closePane pane=D5EDE5CC-E929-45C7-B498-99C096D1E3F7 session=B9D3FA48-B341-43CD-B399-14C67D1A4260 tabs=1
+2026-10-25 00:09:17.158 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] releaseTerminalView tab=8566EFB1-712C-4079-92B0-0FDDFC09C4FA: no view registered (already released, or never created)
+2026-10-25 00:09:17.159 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] closePane tree empty for session=B9D3FA48-B341-43CD-B399-14C67D1A4260; removing session
+2026-10-25 00:09:17.159 I  Batty[194:aac7084] [co.sstools.Batty:WindowRuntime] removeSession id=B9D3FA48-B341-43CD-B399-14C67D1A4260 title='Homelab' sessionsAfter=3
+2026-10-25 00:09:17.159 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] releaseTerminalView tab=8566EFB1-712C-4079-92B0-0FDDFC09C4FA: no view registered (already released, or never created)
+2026-10-25 00:09:17.159 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] setVisible=true phase=active
+2026-10-25 00:09:17.159 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] watcher: started
+2026-10-25 00:09:17.167 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] selectedSessionID changed: B9D3FA48-B341-43CD-B399-14C67D1A4260 → 56CFF2CC-7E26-4B0A-9F71-8A97E470BB80
+2026-10-25 00:09:17.167 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Batty theme=Acid Burn source=global(dark)
+2026-10-25 00:09:17.167 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Batty
+2026-10-25 00:09:17.167 Db Batty[194:aac7084] [co.sstools.Batty:SessionDetailView] allPanes.count changed → 3; re-applying theme
+2026-10-25 00:09:17.167 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyActiveSessionTheme: session=Batty theme=Acid Burn source=global(dark)
+2026-10-25 00:09:17.167 I  Batty[194:aac7084] [co.sstools.Batty:ThemePreference] applyTheme: theme=Acid Burn session=Batty
+2026-10-25 00:09:17.170 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=2C3C1C94-9FBD-40A3-81DB-A14F615F1520 isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:17.171 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=8
+2026-10-25 00:09:17.171 Db Batty[194:aac7084] [co.sstools.Batty:TerminalHostStore] occlusionApply[setPlacement] tab=368004FE-C760-4873-AC36-8B4CB3A02ED4 isHidden=false windowVisible=true effective=true
+2026-10-25 00:09:17.171 Db Batty[194:aac7084] [co.sstools.Batty:OccludedSurfaceTicker] targets updated count=7
+2026-10-25 00:09:17.197 Db Batty[194:aac7084] [co.sstools.Batty:TerminalSurfaceFocuser] promote: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:09:17.450 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:09:24.042 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:09:24.891 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:09:41.959 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:09:50.811 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4
+2026-10-25 00:09:54.549 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
+2026-10-25 00:11:41.167 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:12:07.692 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:12:13.002 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:12:14.273 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:12:18.415 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:12:18.990 I  Batty[194:aac7084] [co.sstools.Batty:GitStatusPaneContent] scan: worktrees=30 current=<private>
+2026-10-25 00:12:44.843 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4
+2026-10-25 00:12:45.915 I  Batty[194:c3fed01] [com.mitchellh.ghostty:default] io_exec: pty fd closed, read thread exiting
+2026-10-25 00:12:45.915 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4 processAlive=false
+2026-10-25 00:12:46.722 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4 processAlive=false
+2026-10-25 00:12:47.843 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4
+2026-10-25 00:12:48.377 I  Batty[194:aac7084] [co.sstools.Batty:PaneView] onClose tab=284EFD2D-C9C5-44D1-90CB-614D68799DE4 processAlive=false
+2026-10-25 00:12:51.077 Db Batty[194:aac7084] [co.sstools.Batty:TerminalClickFocusMonitor] click-focus: tab=368004FE-C760-4873-AC36-8B4CB3A02ED4
