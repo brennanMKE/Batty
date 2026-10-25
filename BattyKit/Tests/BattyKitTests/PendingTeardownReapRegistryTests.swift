@@ -92,8 +92,14 @@ struct PendingTeardownReapRegistryTests {
         process.terminate()
         #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
 
-        registry.register(process: process, label: "stubborn", bound: 0.2)
+        let graceClock = TestClock()
+        registry.register(process: process, label: "stubborn", bound: 0.2, clock: graceClock)
+        let driver = Task.detached {
+            guard await graceClock.waitForSleepers(1) else { return false }
+            return await graceClock.advance(by: .milliseconds(200)) == 1
+        }
         registry.drainSynchronously()
+        #expect(await driver.value)
 
         #expect(!process.isRunning, "drainSynchronously() must SIGKILL a process that ignored SIGTERM")
         #expect(registry.pendingCountForTesting == 0)
@@ -122,13 +128,23 @@ struct PendingTeardownReapRegistryTests {
             }
         }
 
+        let graceClock = TestClock()
         for (index, entry) in fixtures.enumerated() {
             entry.process.terminate()
-            registry.register(process: entry.process, label: "stubborn-\(index)", bound: 0.2)
+            registry.register(process: entry.process, label: "stubborn-\(index)", bound: 0.2, clock: graceClock)
         }
         #expect(registry.pendingCountForTesting == 2)
 
+        // The drain is sequential: exactly one sleeper at a time.
+        let driver = Task.detached {
+            for _ in 0..<2 {
+                guard await graceClock.waitForSleepers(1) else { return false }
+                guard await graceClock.advance(by: .milliseconds(200)) == 1 else { return false }
+            }
+            return true
+        }
         registry.drainSynchronously()
+        #expect(await driver.value)
 
         for (process, _) in fixtures {
             #expect(!process.isRunning)

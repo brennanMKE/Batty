@@ -112,17 +112,23 @@ mutation that actually exercises this test removes both; the mutant loop is
 allowed to busy-spin once cancelled, since `register` resumes an
 already-cancelled task immediately).
 
-The `SIGTERM` → `SIGKILL` grace period of `LMStudioDashboardPaneContent`
-and `PendingTeardownReapRegistry` runs through `SchedulingClock` too
-(`TeardownReaper`, #0529): the content's `teardownClock`, and the clock a
+The `SIGTERM` → `SIGKILL` grace period of `LMStudioDashboardPaneContent`,
+`ProcessGitStatusScanner` and `PendingTeardownReapRegistry` runs through `SchedulingClock` too
+(`TeardownReaper`, #0529, #0530): the content's and the scanner's
+`teardownClock` (the scanner's is an init parameter), and the clock a
 registry entry was registered with (`register(…, clock:)`, defaulting to
 `SystemClock()`). The synchronous quit and drain paths block on the async
 reap through `TeardownReaper.reapBlocking`, so a test drives the grace
 period from a detached driver task (`waitForSleepers`, then `advance`)
 while the main actor is blocked. Proving uses:
 `LMStudioDashboardPaneContentTests.tearDownReturnsPromptlyEvenWhenBothChildrenIgnoreSIGTERM`,
-`LMStudioDashboardWiringTests.tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess`
-and `LMStudioDashboardWiringTests.registryDrainReapsATermIgnoringSubprocessLeftByAClosedPane`.
+`LMStudioDashboardWiringTests.tearDownAllPaneContentSynchronouslyForQuitKillsATermIgnoringSubprocess`,
+`LMStudioDashboardWiringTests.registryDrainReapsATermIgnoringSubprocessLeftByAClosedPane`,
+`ProcessGitStatusScannerTests.terminateAndWaitBrieflyReturnsImmediatelyEvenWhenTheProcessIgnoresSIGTERM`,
+`ProcessGitStatusScannerTests.waitForPendingTeardownSynchronouslyBlocksUntilAStubbornProcessIsReaped`,
+`ProcessGitStatusScannerTests.registryDrainReapsAStubbornProcessWithNoWaitForPendingTeardownCall`,
+`PendingTeardownReapRegistryTests.drainSynchronouslyKillsAndReapsARegisteredSigtermIgnoringProcess`
+and `PendingTeardownReapRegistryTests.drainSynchronouslyReapsEveryRegisteredEntryIndependently`.
 
 ## 2. Shared child-process readiness — `ChildProcessReadiness`
 
@@ -183,7 +189,7 @@ that work:
 ```swift
 let task = Task.detached { [weak self] in
     await gate.waitUntilOpen()
-    Self.reapAfterTerminate(process, bound: bound, label: label)
+    await TeardownReaper.reap(process, bound: bound, label: label, clock: clock, logger: logger, logPrefix: "teardown")
     ...
 }
 ```
@@ -208,7 +214,7 @@ conformer's own `awaitPendingTeardownReapsForTesting()`.
 — verified to fail under all three mutations tried: `waitUntilOpen()` made
 a no-op, the `await gate.waitUntilOpen()` call removed from
 `scheduleTeardownReap` entirely, and the SIGKILL escalation in
-`reapAfterTerminate` skipped. Direct coverage, including a closed gate
+`TeardownReaper.reap` skipped. Direct coverage, including a closed gate
 parking its waiter until `open()`, in `TestTeardownReapGateTests.swift`.
 
 ## 4. Completion-signal conventions

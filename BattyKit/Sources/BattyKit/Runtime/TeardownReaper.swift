@@ -6,7 +6,8 @@ import OSLog
 
 /// The bounded wait for a `SIGTERM`ed child to exit, escalating to
 /// `SIGKILL` if it doesn't (#0354, #0425), shared by
-/// `LMStudioDashboardPaneContent` and `PendingTeardownReapRegistry`.
+/// `LMStudioDashboardPaneContent`, `ProcessGitStatusScanner` and
+/// `PendingTeardownReapRegistry`.
 ///
 /// The `SIGTERM` → `SIGKILL` grace period of `bound` runs on the injected
 /// `SchedulingClock` (`docs/async-test-seams.md` §1), so a test advances

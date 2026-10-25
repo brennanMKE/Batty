@@ -226,8 +226,8 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     /// `waitForPendingTeardownSynchronously()`, on the quit path) waits for
     /// a signaled subprocess to actually exit before escalating to
     /// `SIGKILL` (#0422). Fixed at construction — injectable via `init` so
-    /// a test can drive the escalation path deterministically without a
-    /// real ~0.3s wait, but not mutable afterward (nothing needs to change
+    /// a test can pick a short bound (the wait itself runs on
+    /// `teardownClock`), but not mutable afterward (nothing needs to change
     /// it mid-lifetime, and a `let` rules that out at compile time). Matches
     /// `LMStudioDashboardPaneContent.teardownWaitBound`'s role (#0354).
     public let teardownWaitBound: TimeInterval
@@ -268,11 +268,17 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
     /// Defaults to the always-open production gate, the same
     /// defaulted-real-value shape `teardownReapRegistry` already uses.
     private let reapGate: TeardownReapGate
+    /// The clock the `SIGTERM` → `SIGKILL` grace period of `teardownWaitBound`
+    /// runs on (`docs/async-test-seams.md` §1), for both the deferred reap
+    /// and the quit path. Defaults to the real clock; a test injects
+    /// `TestClock` and advances it instead of waiting out the bound.
+    private let teardownClock: SchedulingClock
 
-    public init(teardownWaitBound: TimeInterval = 0.3, teardownReapRegistry: PendingTeardownReapRegistry = .shared, reapGate: TeardownReapGate = OpenTeardownReapGate()) {
+    public init(teardownWaitBound: TimeInterval = 0.3, teardownReapRegistry: PendingTeardownReapRegistry = .shared, reapGate: TeardownReapGate = OpenTeardownReapGate(), teardownClock: SchedulingClock = SystemClock()) {
         self.teardownWaitBound = teardownWaitBound
         self.teardownReapRegistry = teardownReapRegistry
         self.reapGate = reapGate
+        self.teardownClock = teardownClock
     }
 
     public func scan(atPath path: String) async -> GitStatusScanResult {
@@ -327,44 +333,12 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         }
     }
 
+    /// Blocks the calling thread (the quit path) until each pending reap
+    /// has finished, rather than relying on the detached tasks ever being
+    /// scheduled before the app process exits.
     public func waitForPendingTeardownSynchronously() {
         for (process, label) in snapshotAndClearPendingReaps() {
-            Self.reapAfterTerminate(process, bound: teardownWaitBound, label: label)
-        }
-    }
-
-    /// `SIGTERM` is already sent by the caller (`terminateAndWaitBriefly()`)
-    /// before this is scheduled. Runs entirely off the main actor — this
-    /// function has no actor affinity, so `waitForPendingTeardownSynchronously()`
-    /// can also call it directly, synchronously, on whatever thread calls
-    /// that (the quit path). Polls `Process.isRunning` for at most `bound`
-    /// — `Process` has no async "did it exit" API — then sends `SIGKILL` if
-    /// the child is still alive, so the "actually reaped" guarantee
-    /// (`docs/pane-view-lifecycle.md` §5) does not depend on the child's
-    /// own cooperation with `SIGTERM`. A second bounded poll after
-    /// `SIGKILL` closes the gap between "signal sent" and "child actually
-    /// exited". Same SIGTERM → bound → SIGKILL → bounded-poll shape as
-    /// `TeardownReaper.reap` (#0354), but the grace period here is measured
-    /// with `Date()` and `Thread.sleep` rather than an injected clock.
-    nonisolated private static func reapAfterTerminate(_ process: Process, bound: TimeInterval, label: String) {
-        let deadline = Date().addingTimeInterval(bound)
-        while process.isRunning, Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-        guard process.isRunning else {
-            logger.info("teardown: \(label, privacy: .public) exited within bound")
-            return
-        }
-        logger.warning("teardown: \(label, privacy: .public) did not exit within \(bound, privacy: .public)s bound; sending SIGKILL")
-        kill(process.processIdentifier, SIGKILL)
-        let killDeadline = Date().addingTimeInterval(min(bound, 0.5))
-        while process.isRunning, Date() < killDeadline {
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-        if process.isRunning {
-            logger.error("teardown: \(label, privacy: .public) still running after SIGKILL")
-        } else {
-            logger.info("teardown: \(label, privacy: .public) exited after SIGKILL")
+            TeardownReaper.reapBlocking(process, bound: teardownWaitBound, label: label, clock: teardownClock, logger: logger, logPrefix: "teardown")
         }
     }
 
@@ -373,12 +347,13 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         let id = ObjectIdentifier(process)
         let registry = teardownReapRegistry
         let gate = reapGate
-        let token = registry.register(process: process, label: label, bound: bound)
+        let clock = teardownClock
+        let token = registry.register(process: process, label: label, bound: bound, clock: clock)
         lock.lock()
         pendingReaps[id] = (process, label)
         let task = Task.detached(priority: .utility) { [weak self] in
             await gate.waitUntilOpen()
-            Self.reapAfterTerminate(process, bound: bound, label: label)
+            await TeardownReaper.reap(process, bound: bound, label: label, clock: clock, logger: logger, logPrefix: "teardown")
             registry.deregister(token)
             // Entries are pruned here, on the reap's own completion, rather
             // than only at the two snapshot-and-clear call sites below — a

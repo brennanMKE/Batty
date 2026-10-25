@@ -382,7 +382,7 @@ struct ProcessGitStatusScannerTests {
 
     @Test func terminateAndWaitBrieflyReturnsImmediatelyEvenWhenTheProcessIgnoresSIGTERM() async throws {
         // #0428's reap gate: held closed, the deferred reap's
-        // `Task.detached` can't even start `reapAfterTerminate`, so the
+        // `Task.detached` can't even start `TeardownReaper.reap`, so the
         // child being alive right after `terminateAndWaitBriefly()`
         // returns is a *structural* proof the call didn't wait on the
         // reap — not a timing guess like the `elapsed < .milliseconds(50)`
@@ -390,7 +390,8 @@ struct ProcessGitStatusScannerTests {
         // call secretly blocked a little.
         let gate = TestTeardownReapGate()
         defer { gate.open() } // safety net: never leave a parked waiter behind, even if an assertion above fails first
-        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, reapGate: gate)
+        let graceClock = TestClock()
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, reapGate: gate, teardownClock: graceClock)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
         guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
@@ -423,8 +424,13 @@ struct ProcessGitStatusScannerTests {
         }
 
         #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
+        #expect(graceClock.pendingCount == 0, "no grace period may start while the gate is closed")
 
         gate.open()
+
+        #expect(await graceClock.waitForSleepers(1), "the deferred reap must start its grace period on the injected clock")
+        #expect(process.isRunning, "nothing may SIGKILL the child before the grace period elapses")
+        #expect(await graceClock.advance(by: .milliseconds(200)) == 1)
 
         // The deferred reap must still actually kill it (SIGKILL
         // escalation) — teardown's "verifiably reaps its subprocesses"
@@ -437,7 +443,7 @@ struct ProcessGitStatusScannerTests {
         // single check, no poll: `docs/async-test-seams.md` §5 Q3 found
         // (10/10, a standalone experiment mirroring this exact reap loop)
         // that once a `Process.isRunning`-polling reap loop like
-        // `reapAfterTerminate` returns, the child has already been
+        // `TeardownReaper.reap` returns, the child has already been
         // `waitpid`-ed, so `kill(pid, 0)` fails immediately with no extra
         // wait — `awaitPendingTeardownReapsForTesting()` above already
         // awaited that reap.
@@ -449,7 +455,12 @@ struct ProcessGitStatusScannerTests {
     /// acceptable brief block only because the app is quitting) rather than
     /// returning while the child is still alive.
     @Test func waitForPendingTeardownSynchronouslyBlocksUntilAStubbornProcessIsReaped() async throws {
-        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.1)
+        // A closed gate parks the scanner's own detached reap, so only the
+        // synchronous path can start a grace period or send `SIGKILL`.
+        let gate = TestTeardownReapGate()
+        defer { gate.open() } // safety net: never leave a parked waiter behind
+        let graceClock = TestClock()
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.1, teardownReapRegistry: PendingTeardownReapRegistry(), reapGate: gate, teardownClock: graceClock)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
         guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
@@ -457,13 +468,27 @@ struct ProcessGitStatusScannerTests {
             ChildProcessFixture.killAndReap(process)
             return
         }
+        let pid = process.processIdentifier
         defer { ChildProcessFixture.killAndReap(process) }
         scanner.addActiveProcess(process)
 
         scanner.terminateAndWaitBriefly()
+        #expect(await gate.waitForParkedWaiter())
+
+        // The main actor blocks in `waitForPendingTeardownSynchronously()`,
+        // so the grace period is driven from a detached task.
+        let driver = Task.detached {
+            guard await graceClock.waitForSleepers(1) else { return false }
+            return await graceClock.advance(by: .milliseconds(100)) == 1
+        }
         scanner.waitForPendingTeardownSynchronously()
 
         #expect(!process.isRunning, "waitForPendingTeardownSynchronously() must not return before the process is reaped")
+        #expect(kill(pid, 0) != 0, "pid \(pid) must not still be signalable after reap — orphaned process")
+        #expect(await driver.value, "the quit path's grace period must run on the injected clock")
+
+        gate.open()
+        await scanner.awaitPendingTeardownReapsForTesting()
     }
 
     // MARK: - #0425: the scanner registers into the shared reap registry too
@@ -484,7 +509,7 @@ struct ProcessGitStatusScannerTests {
     /// `SIGKILL` — whichever fired first made the assertion below pass, so
     /// the test proved nothing about the drain's own `SIGKILL`. A closed
     /// `TestTeardownReapGate` parks that detached task before it can reach
-    /// `reapAfterTerminate` at all (confirmed via `waitForParkedWaiter()`,
+    /// `TeardownReaper.reap` at all (confirmed via `waitForParkedWaiter()`,
     /// per `docs/async-test-seams.md` §3 — a closed gate proves nothing
     /// unless something is actually parked on it), so only
     /// `drainSynchronously()` can kill the child here.
@@ -492,7 +517,8 @@ struct ProcessGitStatusScannerTests {
         let registry = PendingTeardownReapRegistry()
         let gate = TestTeardownReapGate()
         defer { gate.open() } // safety net: never leave a parked waiter behind, even if an assertion above fails first
-        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, teardownReapRegistry: registry, reapGate: gate)
+        let graceClock = TestClock()
+        let scanner = ProcessGitStatusScanner(teardownWaitBound: 0.2, teardownReapRegistry: registry, reapGate: gate, teardownClock: graceClock)
         let (process, readyPipe) = Self.makeStubbornProcess()
         try process.run()
         guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
@@ -524,7 +550,14 @@ struct ProcessGitStatusScannerTests {
 
         #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
 
+        // No sleeper registers on `graceClock` unless the scanner passed
+        // its clock to `register(…, clock:)`.
+        let driver = Task.detached {
+            guard await graceClock.waitForSleepers(1) else { return false }
+            return await graceClock.advance(by: .milliseconds(200)) == 1
+        }
         registry.drainSynchronously()
+        #expect(await driver.value, "the registry entry must carry the scanner's teardown clock")
 
         #expect(!process.isRunning, "drainSynchronously() must reap a process this scanner scheduled, even with no waitForPendingTeardownSynchronously() call")
         // No orphan: confirm the OS has actually reaped the pid, not just
