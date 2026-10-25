@@ -16,7 +16,7 @@
 # appletv, applepencil, airtag, vision.pro, imac, macpro, macmini, macstudio,
 # magsafe, beats, earpods, homekit, carplay, apple., applelogo, airplay,
 # applescript), which Apple's terms limit to referring to those products. The
-# 36 Project symbols are added at load whether or not they appear here.
+# curated Project symbols (ProjectSymbol) are added at load whether or not they appear here.
 # Read both plists with Python's plistlib.
 0.circle	10
 0.circle.fill	10
