@@ -31,8 +31,10 @@ struct TerminalPlaceholderView: View {
 
     var body: some View {
         // Touch the terminal view eagerly so libghostty starts the PTY
-        // the moment the first placeholder appears. Idempotent — the
-        // store returns the existing view on every call after the first.
+        // the moment the first placeholder appears. The store returns the
+        // existing view, creates one on first mount, and refuses a tab id
+        // that has already been released: SwiftUI can evaluate a closing
+        // Pane's placeholder after its tab is closed (#0535).
         //
         // `windowID` is set in the environment by `SessionDetailView`
         // (via `.environment(\.windowID, windowRuntime.id)`), so it is

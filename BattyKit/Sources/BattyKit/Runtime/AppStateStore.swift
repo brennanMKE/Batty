@@ -1437,6 +1437,12 @@ public final class AppStateStore {
                 return
             }
         }
+        // An orphan view for a tab in no window can only be closed here,
+        // from its own "press any key to close" request (#0535).
+        if TerminalHostStore.shared.hasTerminalView(forTabID: tabID) {
+            logger.warning("closeTab: tab \(tabID, privacy: .public) is in no window but still has a terminal view; releasing orphan")
+            TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
+        }
     }
 
     /// Called by `UITestDriver` (#0316: env-var-gated, compiled into the

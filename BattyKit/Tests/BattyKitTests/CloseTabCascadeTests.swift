@@ -148,3 +148,35 @@ struct CloseTabCascadeTests {
         #expect(pane.tabs.first?.id != activeID)
     }
 }
+
+@MainActor
+struct CloseTabOrphanTerminalViewTests {
+
+    /// #0535: a terminal view whose tab is in no window can be closed by
+    /// its own close request.
+    @Test func closeTabForATabInNoWindowReleasesItsOrphanTerminalView() throws {
+        let shared = TerminalHostStore.shared
+        let tab = TabRuntime()
+        defer { shared.releaseTerminalView(forTabID: tab.id) }
+        let view = try #require(shared.terminalView(for: tab, windowID: WindowID()))
+        let store = AppStateStore()
+
+        store.closeTab(id: tab.id)
+
+        #expect(shared.hasTerminalView(forTabID: tab.id) == false)
+        #expect(view.superview == nil)
+    }
+
+    @Test func closeTabForAnUnknownIdWithNoViewIsANoOp() {
+        let store = AppStateStore()
+        let sessionIDs = store.sessions.map(\.id)
+        let paneIDs = store.sessions.flatMap { $0.tree.allPanes.map(\.id) }
+        let tabIDs = store.sessions.flatMap { $0.tree.allPanes.flatMap { $0.tabs.map(\.id) } }
+
+        store.closeTab(id: UUID())
+
+        #expect(store.sessions.map(\.id) == sessionIDs)
+        #expect(store.sessions.flatMap { $0.tree.allPanes.map(\.id) } == paneIDs)
+        #expect(store.sessions.flatMap { $0.tree.allPanes.flatMap { $0.tabs.map(\.id) } } == tabIDs)
+    }
+}

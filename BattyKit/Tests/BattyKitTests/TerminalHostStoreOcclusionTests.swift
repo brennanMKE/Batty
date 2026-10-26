@@ -96,7 +96,7 @@ struct TerminalHostStoreOcclusionTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
 
         store.setPlacement(
             TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 100, height: 100), isVisible: true),
@@ -118,7 +118,7 @@ struct TerminalHostStoreOcclusionTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
 
         store.updatePlacements([
             tab.id: TerminalHostStore.Placement(
@@ -150,7 +150,7 @@ struct TerminalHostStoreOcclusionTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
 
         store.setPlacement(
             TerminalHostStore.Placement(frame: .zero, isVisible: false),
@@ -172,8 +172,8 @@ struct TerminalHostStoreOcclusionTests {
         let window2 = WindowID()
         let tab1 = TabRuntime()
         let tab2 = TabRuntime()
-        let view1 = store.terminalView(for: tab1, windowID: window1)
-        let view2 = store.terminalView(for: tab2, windowID: window2)
+        let view1 = store.terminalView(for: tab1, windowID: window1)!
+        let view2 = store.terminalView(for: tab2, windowID: window2)!
 
         store.setPlacement(
             TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 50, height: 50), isVisible: true),
@@ -223,7 +223,7 @@ struct TerminalHostStoreOcclusionTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
 
         store.updatePlacements([
             tab.id: TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 10, height: 10), isVisible: true)

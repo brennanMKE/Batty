@@ -68,6 +68,15 @@ public final class TerminalHostStore {
     /// is a single dictionary read.
     private var placements: [UUID: Placement] = [:]
 
+    /// Every `tab.id` passed to ``releaseTerminalView(forTabID:)``. A
+    /// released tab never gets a view or placement again: SwiftUI can
+    /// evaluate a closing Pane's ``TerminalPlaceholderView`` once more
+    /// after the close, and without this record that evaluation would
+    /// create a fresh view and PTY that nothing ever hides or releases
+    /// (#0535). Tab ids are fresh `UUID()`s and never reused, so entries
+    /// are never removed; growth is one UUID per closed tab.
+    private var releasedTabIDs: Set<UUID> = []
+
     /// `WindowID` → whether that content window is currently occlusion-visible
     /// (on screen, not minimized, not fully covered by another window, and
     /// not hidden via Cmd-H — see `NSWindow.occlusionState`). Absent entries
@@ -149,7 +158,8 @@ public final class TerminalHostStore {
     // MARK: - Terminal view lifecycle
 
     /// Vend the long-lived `AppTerminalView` for a tab within `windowID`,
-    /// creating one on first request. The view is added to the window's
+    /// creating one on first request, unless the tab has been released
+    /// (then it returns `nil` and creates nothing). The view is added to the window's
     /// host with `isHidden = true` so it's part of the window's view
     /// hierarchy from the moment it exists — libghostty's surface (PTY +
     /// scrollback) starts up the first time it sees a non-nil `window`, and
@@ -160,7 +170,7 @@ public final class TerminalHostStore {
     /// `windowID` is a programmer error (cross-window reparenting is
     /// forbidden; see `view-hierarchy.md` §4).
     @discardableResult
-    public func terminalView(for tab: TabRuntime, windowID: WindowID) -> AppTerminalView {
+    public func terminalView(for tab: TabRuntime, windowID: WindowID) -> AppTerminalView? {
         if let existing = terminalViews[tab.id] {
             // Cross-window reparent guard: the view must already belong to
             // the expected window. A mismatch means the caller is wrong.
@@ -168,6 +178,10 @@ public final class TerminalHostStore {
                 logger.error("terminalView(for:windowID:) tab=\(tab.id, privacy: .public) already registered in window \(registered.value, privacy: .public); ignoring windowID=\(windowID.value, privacy: .public)")
             }
             return existing
+        }
+        if releasedTabIDs.contains(tab.id) {
+            logger.notice("refused terminal view for released tab \(tab.id, privacy: .public) in window \(windowID.value, privacy: .public): tab was closed; not re-creating (#0535)")
+            return nil
         }
         let host = hostView(forWindowID: windowID)
         let view = makeTerminalView()
@@ -278,6 +292,7 @@ public final class TerminalHostStore {
     /// Idempotent: a tab whose view was never created, or one already
     /// released, is a no-op (the guard returns before touching anything).
     public func releaseTerminalView(forTabID id: UUID) {
+        releasedTabIDs.insert(id)
         guard let view = terminalViews.removeValue(forKey: id) else {
             logger.debug("releaseTerminalView tab=\(id, privacy: .public): no view registered (already released, or never created)")
             return
@@ -380,7 +395,7 @@ public final class TerminalHostStore {
     /// ensures one window's preference emissions cannot hide another window's
     /// terminals (design doc §3, amendment 4).
     public func updatePlacements(_ newPlacements: [UUID: Placement], forWindowID windowID: WindowID) {
-        for (id, placement) in newPlacements {
+        for (id, placement) in newPlacements where !releasedTabIDs.contains(id) {
             placements[id] = placement
         }
         let windowVisible = windowOcclusionVisible[windowID] ?? true
@@ -419,6 +434,7 @@ public final class TerminalHostStore {
     /// pass doesn't re-emit because the placeholder's locally proposed
     /// size didn't change.
     public func setPlacement(_ placement: Placement, forTabID id: UUID) {
+        guard !releasedTabIDs.contains(id) else { return }
         placements[id] = placement
         guard let view = terminalViews[id] else { return }
         if placement.isVisible {
