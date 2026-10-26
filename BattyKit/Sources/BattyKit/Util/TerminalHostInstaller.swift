@@ -34,8 +34,9 @@ struct TerminalHostInstaller: NSViewRepresentable {
 
     func updateNSView(_ nsView: TerminalHostView, context: Context) {
         // No-op. Geometry is pushed into the host via
-        // TerminalHostStore.updatePlacements(_:forWindowID:), which is driven
-        // by TerminalPlacementPreferenceKey changes — not by SwiftUI
+        // TerminalHostStore.setPlacement(_:forTabID:), called from
+        // TerminalPlaceholderView's onGeometryChange / onChange(of: isVisible)
+        // and from WindowRuntime's hide-Pane path — not by SwiftUI
         // representable updates.
     }
 

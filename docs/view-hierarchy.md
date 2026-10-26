@@ -203,9 +203,14 @@ and kill the shell. The persistent-host design moves ownership of the
   `terminalView(for:windowID:)`. Geometry reporting goes directly to
   `TerminalHostStore.setPlacement(_:forTabID:)` via `onGeometryChange`
   and `onChange(of: isVisible)`.
-- Placement updates are scoped per window via
-  `updatePlacements(_:forWindowID:)` so one window's preference
-  emissions cannot affect another window's terminals (amendment 4 in §4).
+- `setPlacement(_:forTabID:)` is the production placement path.
+  `updatePlacements(_:forWindowID:)` is a per-window reconcile, kept
+  for tests, scoped so one window's placements cannot affect another
+  window's terminals (amendment 4 in §4).
+- The store records every released tab id and refuses to create a view
+  or record a placement for it again. SwiftUI can evaluate a closing
+  Pane's placeholder `body` after the close, and without that refusal it
+  re-creates a view (and PTY) that nothing ever hides or releases (#0535).
 
 This mirrors the **Surface registry** rule in AGENTS.md: SwiftUI only
 ever stores `surfaceID: UUID`, never the C handle; view rebuilds must
@@ -249,7 +254,9 @@ multi-window topology; they do not change single-window behavior.
 
 - **Never recreate a tab's `AppTerminalView` while the `TabRuntime` is
   alive.** `TerminalHostStore.terminalView(for:windowID:)` is idempotent:
-  it returns the existing view on every call after the first. If you
+  it returns the existing view on every call after the first, and
+  returns `nil` (creating nothing) for a tab id already passed to
+  `releaseTerminalView(forTabID:)` (#0535). If you
   bypass it to build a fresh `AppTerminalView`, the old one stays in
   the host, the new one isn't tracked, and bell/title/focus events
   scatter.

@@ -33,8 +33,8 @@ struct StableTerminalSurfaceTests {
         let windowID = WindowID()
         let tab = TabRuntime()
 
-        let first = store.terminalView(for: tab, windowID: windowID)
-        let second = store.terminalView(for: tab, windowID: windowID)
+        let first = store.terminalView(for: tab, windowID: windowID)!
+        let second = store.terminalView(for: tab, windowID: windowID)!
 
         #expect(first === second)
         #expect(tab.terminalNSView === first)
@@ -47,7 +47,7 @@ struct StableTerminalSurfaceTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
         let host = store.hostView(forWindowID: windowID)
         #expect(view.superview === host)
 
@@ -88,7 +88,7 @@ struct StableTerminalSurfaceTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
         #expect(view.controller != nil, "sanity check: the view is attached to its tab's controller before release")
 
         store.releaseTerminalView(forTabID: tab.id)
@@ -109,7 +109,7 @@ struct StableTerminalSurfaceTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime() // held strongly for the whole test, standing in for a stuck SwiftUI reference
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
 
         store.releaseTerminalView(forTabID: tab.id)
 
@@ -238,9 +238,9 @@ struct StableTerminalSurfaceTests {
         let tab = TabRuntime()
 
         // Touch once to create the view, then re-touch many times.
-        let original = store.terminalView(for: tab, windowID: windowID)
+        let original = store.terminalView(for: tab, windowID: windowID)!
         for _ in 0..<10 {
-            let again = store.terminalView(for: tab, windowID: windowID)
+            let again = store.terminalView(for: tab, windowID: windowID)!
             #expect(again === original)
         }
         #expect(tab.terminalNSView === original)
@@ -254,8 +254,8 @@ struct StableTerminalSurfaceTests {
         let windowID = WindowID()
         let firstTab = TabRuntime()
         let secondTab = TabRuntime()
-        let firstView = store.terminalView(for: firstTab, windowID: windowID)
-        let secondView = store.terminalView(for: secondTab, windowID: windowID)
+        let firstView = store.terminalView(for: firstTab, windowID: windowID)!
+        let secondView = store.terminalView(for: secondTab, windowID: windowID)!
 
         store.updatePlacements([
             firstTab.id: TerminalHostStore.Placement(
@@ -288,7 +288,7 @@ struct StableTerminalSurfaceTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
 
         store.setPlacement(
             TerminalHostStore.Placement(
@@ -313,7 +313,7 @@ struct StableTerminalSurfaceTests {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
-        let view = store.terminalView(for: tab, windowID: windowID)
+        let view = store.terminalView(for: tab, windowID: windowID)!
         #expect(view.isHidden)
 
         store.updatePlacements([
@@ -371,8 +371,8 @@ struct StableTerminalSurfaceTests {
         let tab1 = TabRuntime()
         let tab2 = TabRuntime()
 
-        let view1 = store.terminalView(for: tab1, windowID: window1)
-        let view2 = store.terminalView(for: tab2, windowID: window2)
+        let view1 = store.terminalView(for: tab1, windowID: window1)!
+        let view2 = store.terminalView(for: tab2, windowID: window2)!
 
         let host1 = store.hostView(forWindowID: window1)
         let host2 = store.hostView(forWindowID: window2)
@@ -391,8 +391,8 @@ struct StableTerminalSurfaceTests {
         let tab1 = TabRuntime()
         let tab2 = TabRuntime()
 
-        let view1 = store.terminalView(for: tab1, windowID: window1)
-        let view2 = store.terminalView(for: tab2, windowID: window2)
+        let view1 = store.terminalView(for: tab1, windowID: window1)!
+        let view2 = store.terminalView(for: tab2, windowID: window2)!
 
         // Make view2 visible first so we can verify it doesn't get hidden.
         store.setPlacement(

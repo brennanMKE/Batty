@@ -125,8 +125,11 @@ that first.
 ones): `TerminalPlaceholderView.body`'s lazy `terminalView(for:)` performs a
 one-time `addSubview` into the persistent host on first mount, and terminal
 placement flows as plain frame writes on the frame-based (not Auto Layout)
-`TerminalHostView` via `TerminalHostStore.updatePlacements(_:)`. Both are
-bounded by design — first-mount-only and frame-only respectively. Anything
+`TerminalHostView` via `TerminalHostStore.setPlacement(_:forTabID:)`. Both are
+bounded by design — first-mount-only and frame-only respectively. The
+first-mount bound is enforced by the store: it refuses to create a view or
+record a placement for a released tab id, because SwiftUI can evaluate a
+closing Pane's placeholder after the close (#0535). Anything
 beyond that shape goes through an event handler or the store, not the update.
 
 ## Two-way model ↔ AppKit sync
