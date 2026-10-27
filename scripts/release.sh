@@ -27,6 +27,8 @@ NOTARY_PROFILE="Batty-notary"
 TEAM_ID="XV8BAAVZ6V"
 SIGN_IDENTITY="Developer ID Application: Brennan Stehling ($TEAM_ID)"
 
+source "$SCRIPT_DIR/build-number.sh"
+
 SKIP_CREDENTIAL_CHECK=0
 for arg in "$@"; do
     case "$arg" in
@@ -110,12 +112,24 @@ fi
 
 # --- Build & export ----------------------------------------------------------
 
+BUILD_NUMBER="$(release_build_number)"
+print "==> Build number for this release: $BUILD_NUMBER"
+
+NEWEST_BUILD="$(newest_appcast_build "$REPO_ROOT")"
+if ! build_number_is_newer "$BUILD_NUMBER" "$NEWEST_BUILD"; then
+    print -u2 "error: build number $BUILD_NUMBER is not greater than the newest sparkle:version ($NEWEST_BUILD)"
+    print -u2 "       in website/appcast.xml or main's copy of it. Sparkle would not offer this"
+    print -u2 "       build to users of that release. The build number is the UTC time"
+    print -u2 "       YYYYMMDDHHMM at archive time; check the system clock and the appcast's newest item."
+    if [[ "$BUILD_NUMBER" == "$NEWEST_BUILD" ]]; then
+        print -u2 "       The numbers are equal: re-run in the next minute."
+    fi
+    exit 1
+fi
+
 print "==> Cleaning previous build"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
-
-BUILD_NUMBER="$(date -u +%Y%m%d)"
-print "==> Build number for this release: $BUILD_NUMBER"
 
 print "==> Writing export options plist"
 cat > "$EXPORT_PLIST" <<EOF

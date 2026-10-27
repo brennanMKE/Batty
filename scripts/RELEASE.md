@@ -71,9 +71,13 @@ private key) in one pair of commands, non-destructively.
    (`1.2.0`).
 
    **Do not bump `CURRENT_PROJECT_VERSION` by hand.** `release.sh`
-   overrides it at archive time with today's UTC date in `YYYYMMDD`
-   form (e.g. `20260514`) — the monotonically-increasing build
-   number Sparkle compares against. The static value left in
+   overrides it at archive time with the UTC date and time in
+   `YYYYMMDDHHMM` form (e.g. `202610272315`) — the
+   monotonically-increasing build number Sparkle compares against.
+   `release.sh` and the preflight refuse a build number that is not
+   strictly greater than the newest `sparkle:version` in
+   `website/appcast.xml` or in `main`'s copy of it, so releases may
+   happen any number of times a day, at most once a minute. The static value left in
    `App.xcconfig` is only used by Xcode-driven Debug builds, which
    Sparkle never sees. The auto-derived number is printed at the
    end of `release.sh` so it can be pasted into `appcast.xml` as
