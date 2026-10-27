@@ -307,6 +307,7 @@ See `issues/Issues.md` for the full workflow — **read it before touching any i
 - Status: `open` → `in-progress` → `resolved` → `closed`. **Never set `closed`** — that's the user's transition after they verify.
 - **Resolving an issue is a three-phase, review-gated pipeline (binding, for cost and quality):**
   - All work happens on a branch `issue/NNNN` in its own worktree; `main` receives one squash commit after the reviewer resolves it. The branch is kept, never pushed or deleted.
+  - **Remove the worktree once the squash commit is on `main`** (user directive, 2026-10-27): `git worktree remove .claude/worktrees/issue-NNNN`, and any `vm-NNNN` worktree made for that issue. Keep the branch; only the checkout goes. If it has uncommitted changes, check they already landed on `main` before `--force`; otherwise stop and ask. Worktrees for open, parked or bounced issues stay, and so do `release/X.Y` worktrees.
   - A **filer subagent on Opus** (user directive "Use Opus, not Fable", restated 2026-10-14) creates new `NNNN.md` files on `main` — no branch, no review gate.
   - **Plan** — a fresh Opus subagent at **medium** effort writes `## Plan` (files, approach, tests by name, verification tier and UI test filters) the day the issue is worked. No code.
   - **Implement** — a fresh Opus subagent at **low** effort (medium after a bounce or bail) follows the plan, builds, runs the fast tier, commits, and drafts the resolution sections.

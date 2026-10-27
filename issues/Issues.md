@@ -200,6 +200,8 @@ Issues are worked **one at a time, in ascending order**. Every branch is cut fro
     ```
 
     One commit, one simple one-line message — the issue file carries the detail. **Do not delete the branch** (`git log main..issue/NNNN` keeps the round-by-round history). Don't push branches unless the user asks.
+
+    Then **remove the issue's worktree** (user directive, 2026-10-27): `git worktree remove .claude/worktrees/issue-NNNN`, plus any `vm-NNNN` worktree made for the issue. The branch stays. If the worktree has uncommitted changes, confirm they already landed on `main` before `git worktree remove --force`; if not, stop and ask. For a patch release, cherry-pick from the branch or the squash commit first if needed — both survive the removal.
 9. UI tests are not run per issue; the daily UI run covers the merged change (see "Daily UI run").
 10. Move on to the next open issue, or stop if only one was requested.
 
