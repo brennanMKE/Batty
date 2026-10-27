@@ -157,6 +157,24 @@ struct SaveSessionAsProjectEntryTests {
         #expect(store.projectStore.projects.map(\.name) == ["Website"])
     }
 
+    @Test func aSessionAtHomeCapturesHomeRootWithANoteAndNoSuggestedName() throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        let home = NSHomeDirectory()
+        let session = fixture.session(title: "Session 1", .leaf(fixture.pane([TabRuntime(workingDirectory: home)])))
+
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: store)
+
+        #expect(draft.rootPath == home)
+        #expect(draft.name == ProjectEditorViewModel.untitledName)
+        #expect(draft.captureNotes[.root] != nil)
+        let model = ProjectEditorViewModel(store: store.projectStore)
+        _ = model.requestNavigation(.newDraft(draft))
+        let validation = model.validate()
+        #expect(validation.warnings[.root] != nil)
+        #expect(validation.errors[.root] == nil)
+    }
+
     @Test func updateReplacesLayoutAndTabsButKeepsCommandsAndApprovalOnlyAfterSave() throws {
         let fixture = try Fixture()
         let store = fixture.store()

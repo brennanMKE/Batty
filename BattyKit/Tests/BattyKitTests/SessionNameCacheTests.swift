@@ -61,8 +61,8 @@ struct SessionNameCacheTests {
         let url = makeTempURL()
         defer { cleanup(url) }
         let cache = SessionNameCache(fileURL: url, debounce: .zero)
-        cache.record(path: "/p", name: "  Batty  ")
-        #expect(cache.lookup(path: "/p") == "Batty")
+        cache.record(path: "/work/p", name: "  Batty  ")
+        #expect(cache.lookup(path: "/work/p") == "Batty")
     }
 
     @Test func savePersistsToDiskForFreshInstance() async throws {
@@ -110,21 +110,21 @@ struct SessionNameCacheTests {
         }
         let cache = SessionNameCache(fileURL: url, debounce: .zero, clock: clock)
 
-        cache.record(path: "/a", name: "a")
-        cache.record(path: "/b", name: "b")
+        cache.record(path: "/work/a", name: "a")
+        cache.record(path: "/work/b", name: "b")
         for i in 0..<98 {
             cache.record(path: "/path/\(i)", name: "name-\(i)")
         }
         #expect(cache.entryCount == 100)
 
-        _ = cache.lookup(path: "/a")
+        _ = cache.lookup(path: "/work/a")
 
-        cache.record(path: "/new", name: "new")
+        cache.record(path: "/work/new", name: "new")
 
         #expect(cache.entryCount == 100)
-        #expect(cache.lookup(path: "/a") == "a")
-        #expect(cache.lookup(path: "/b") == nil)
-        #expect(cache.lookup(path: "/new") == "new")
+        #expect(cache.lookup(path: "/work/a") == "a")
+        #expect(cache.lookup(path: "/work/b") == nil)
+        #expect(cache.lookup(path: "/work/new") == "new")
     }
 
     @Test func corruptFileRecoversToEmptySilently() {
@@ -137,14 +137,14 @@ struct SessionNameCacheTests {
         let cache = SessionNameCache(fileURL: url, debounce: .zero)
 
         #expect(cache.entryCount == 0)
-        #expect(cache.lookup(path: "/anywhere") == nil)
+        #expect(cache.lookup(path: "/work/anywhere") == nil)
 
-        cache.record(path: "/p", name: "n")
+        cache.record(path: "/work/p", name: "n")
         cache.save()
         #expect(FileManager.default.fileExists(atPath: url.path))
 
         let reloaded = SessionNameCache(fileURL: url, debounce: .zero)
-        #expect(reloaded.lookup(path: "/p") == "n")
+        #expect(reloaded.lookup(path: "/work/p") == "n")
     }
 
     @Test func missingFileTreatedAsEmpty() {
@@ -231,6 +231,78 @@ struct SessionNameCacheTests {
         let created = store.addSession(title: "Custom")!
 
         #expect(created.title == "Custom")
+    }
+
+    @Test func recordIgnoresHomeDirectory() {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let cache = SessionNameCache(fileURL: url, debounce: .zero, homeDirectory: "/Users/test")
+        cache.record(path: "/Users/test", name: "Home Stuff")
+        cache.record(path: "/Users/test/", name: "Home Stuff")
+        #expect(cache.entryCount == 0)
+    }
+
+    @Test func recordIgnoresRootDirectory() {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let cache = SessionNameCache(fileURL: url, debounce: .zero, homeDirectory: "/Users/test")
+        cache.record(path: "/", name: "Root")
+        cache.record(path: "/tmp", name: "Temp")
+        cache.record(path: "/Volumes", name: "Volumes")
+        #expect(cache.entryCount == 0)
+    }
+
+    @Test func loadDropsAPersistedHomeEntryAndTheNextSaveOmitsIt() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let now = Date(timeIntervalSince1970: 1_000)
+        let file = SessionNameCacheFile(entries: [
+            SessionNameCacheEntry(path: "/Users/test", name: "Home Stuff", lastUsedAt: now),
+            SessionNameCacheEntry(path: "/", name: "Root", lastUsedAt: now),
+            SessionNameCacheEntry(path: "/Users/test/Developer/Batty", name: "Batty", lastUsedAt: now),
+        ])
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try SessionNameCacheFile.prettyEncoder.encode(file).write(to: url)
+
+        let cache = SessionNameCache(fileURL: url, debounce: .zero, homeDirectory: "/Users/test")
+        #expect(cache.entryCount == 1)
+
+        cache.record(path: "/Users/test/Developer/Widget", name: "Widget")
+        cache.save()
+
+        let decoded = try SessionNameCacheFile.decoder.decode(SessionNameCacheFile.self, from: Data(contentsOf: url))
+        #expect(Set(decoded.entries.map(\.path)) == ["/Users/test/Developer/Batty", "/Users/test/Developer/Widget"])
+    }
+
+    @Test func renameSessionAtHomeDoesNotWriteCache() {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let cache = SessionNameCache(fileURL: url, debounce: .zero, homeDirectory: "/Users/test")
+        let store = AppStateStore(nameCache: cache)
+        let session = store.sessions[0]
+        session.tree.root.firstLeafPane.tabs[0].terminal.configuration.workingDirectory = "/Users/test"
+
+        store.renameSession(id: session.id, to: "Home Stuff")
+
+        #expect(session.title == "Home Stuff")
+        #expect(session.titleOverride == true)
+        #expect(cache.snapshot().isEmpty)
+    }
+
+    @Test func addSessionAtHomeUsesDefaultTitleDespiteStaleEntryOnDisk() throws {
+        let url = makeTempURL()
+        defer { cleanup(url) }
+        let file = SessionNameCacheFile(entries: [
+            SessionNameCacheEntry(path: "/Users/test", name: "Home Stuff", lastUsedAt: Date(timeIntervalSince1970: 1_000)),
+        ])
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try SessionNameCacheFile.prettyEncoder.encode(file).write(to: url)
+        let cache = SessionNameCache(fileURL: url, debounce: .zero, homeDirectory: "/Users/test")
+        let store = AppStateStore(nameCache: cache)
+
+        let created = store.addSession(workingDirectory: "/Users/test")!
+
+        #expect(AppStateStore.isDefaultSessionTitle(created.title))
     }
 
     @Test func isDefaultSessionTitleRecognizesPatterns() {

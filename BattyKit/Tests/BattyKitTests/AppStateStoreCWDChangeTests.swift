@@ -20,7 +20,7 @@ final class AppStateStoreCWDChangeTests {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-cwd-change-\(UUID().uuidString)")
             .appendingPathComponent("session-name-cache.json")
-        let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero)
+        let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero, homeDirectory: "/Users/test")
         let store = AppStateStore(nameCache: cache, preferences: testDefaults.defaults)
         return (store, cacheURL)
     }
@@ -277,6 +277,61 @@ final class AppStateStoreCWDChangeTests {
         )
 
         #expect(title == "Session 3")
+    }
+
+    @Test func cdIntoHomeResetsTitleToDefault() {
+        let (store, url) = makeStore()
+        defer { cleanup(url) }
+        store.nameCache.record(path: "/Users/test/Developer/Batty", name: "Batty")
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Batty"
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        #expect(session.title == "Batty")
+
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test"
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+
+        #expect(session.title == "Session 1")
+    }
+
+    @Test func resetNameAtHomeYieldsDefaultTitleNotAccountName() {
+        let (store, url) = makeStore()
+        defer { cleanup(url) }
+        let session = store.sessions[0]
+        session.tree.root.firstLeafPane.tabs[0].terminal.configuration.workingDirectory = "/Users/test"
+        store.renameSession(id: session.id, to: "Home Stuff")
+        #expect(session.title == "Home Stuff")
+
+        store.clearSessionName(id: session.id)
+
+        #expect(session.title == "Session 1")
+        #expect(session.titleOverride == false)
+    }
+
+    @Test func resolveAutoTitleSkipsResolverForNonProjectDirectory() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-home-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try Data(#"{"name": "wrong-name"}"#.utf8).write(to: folder.appendingPathComponent("package.json"))
+
+        let homeCache = SessionNameCache(fileURL: nil, debounce: .zero, homeDirectory: folder.path)
+        let gated = AppStateStore.resolveAutoTitle(
+            forCWD: folder.path,
+            sessionIndex: 0,
+            cache: homeCache,
+            resolver: ProjectNameResolver.shared
+        )
+        #expect(gated == "Session 1")
+
+        let control = AppStateStore.resolveAutoTitle(
+            forCWD: folder.path,
+            sessionIndex: 0,
+            cache: SessionNameCache(fileURL: nil, debounce: .zero),
+            resolver: ProjectNameResolver.shared
+        )
+        #expect(control == "wrong-name")
     }
 
     // MARK: - #0436: pwd-callback ordering

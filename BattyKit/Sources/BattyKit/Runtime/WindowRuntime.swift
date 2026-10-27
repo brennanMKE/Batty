@@ -358,6 +358,12 @@ public final class WindowRuntime {
             ?? anchorTab.terminal.configuration.workingDirectory
         guard let cwd, !cwd.isEmpty else { return }
         nameCache.removeName(forPath: cwd)
+        guard nameCache.isProjectDirectory(cwd) else {
+            if let index = sessions.firstIndex(where: { $0.id == id }) {
+                session.title = String(localized: "Session \(index + 1)")
+            }
+            return
+        }
         if let derivedName = ProjectNameResolver.shared.resolve(at: cwd) {
             session.title = derivedName
             return

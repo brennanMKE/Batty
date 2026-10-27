@@ -36,7 +36,7 @@ final class AISessionNamingTests {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-ai-naming-\(UUID().uuidString)")
             .appendingPathComponent("session-name-cache.json")
-        let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero)
+        let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero, homeDirectory: "/Users/test")
         let store = AppStateStore(nameCache: cache, preferences: testDefaults.defaults)
         store.nameSuggester = suggester
         store.preferences.set(true, forKey: SettingsPreference.autoNameWithAIKey)
@@ -54,6 +54,41 @@ final class AISessionNamingTests {
     }
 
     // MARK: - Gating: AI runs only when the deterministic chain misses
+
+    @Test func aiNeverScheduledForHomeDirectory() async {
+        let suggester = RecordingSuggester(result: "Home AI")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test"
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+
+        #expect(store.nameSuggestionTasks[session.id] == nil)
+        #expect(suggester.requestedPaths.isEmpty)
+        #expect(session.title == "Session 1")
+    }
+
+    @Test func cdHomeCancelsAnInFlightSuggestion() async throws {
+        let suggester = RecordingSuggester(result: "Meeting Notes")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+
+        let session = store.sessions[0]
+        let anchorTab = session.tree.root.firstLeafPane.tabs[0]
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test/meeting notes 2026"
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+        let captured = try #require(store.nameSuggestionTasks[session.id]?.task)
+
+        anchorTab.terminal.configuration.workingDirectory = "/Users/test"
+        store.handleWorkingDirectoryChange(forTabID: anchorTab.id)
+
+        #expect(store.nameSuggestionTasks[session.id] == nil)
+        #expect(captured.isCancelled)
+        await captured.value
+        #expect(session.title == "Session 1")
+    }
 
     @Test func aiSuggestionAppliesWhenCacheAndRulesMiss() async {
         let suggester = RecordingSuggester(result: "Meeting Notes")

@@ -43,6 +43,22 @@ private func terminals(_ count: Int, cwd: String = root) -> [SplitTreeNode] {
 }
 
 @MainActor
+struct SessionProjectCaptureHomeRootTests {
+    @Test func aSessionAtHomeCapturesHomeRootWithANote() {
+        let captured = capture(.leaf(pane(tabs: [tab(home)])))
+        #expect(captured.rootPath == home)
+        #expect(!captured.rootIsFallback)
+        #expect(captured.notes[.root] != nil)
+    }
+
+    @Test func aRequestedHomeRootAddsNoNote() {
+        let captured = capture(.leaf(pane(tabs: [tab(home)])), root: home)
+        #expect(captured.rootPath == home)
+        #expect(captured.notes[.root] == nil)
+    }
+}
+
+@MainActor
 struct SessionProjectCaptureTopologyTests {
     @Test(arguments: PaneLayout.allCases.filter { $0 != .twoByTwoGrid })
     func aSessionArrangedWithAPresetCapturesAsThatPreset(layout: PaneLayout) {
