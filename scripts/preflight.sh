@@ -26,6 +26,7 @@ set -uo pipefail
 
 SCRIPT_DIR="${0:A:h}"
 REPO_ROOT="${SCRIPT_DIR:h}"
+source "$SCRIPT_DIR/build-number.sh"
 XCCONFIG="$REPO_ROOT/Configuration/Build.xcconfig"
 APP_XCCONFIG="$REPO_ROOT/Configuration/App.xcconfig"
 INFO_PLIST_SRC="$REPO_ROOT/Configuration/Info.plist"
@@ -540,28 +541,22 @@ if [[ -n "$VERSION" ]]; then
     fi
 fi
 
-# Build-number collision gate (#0124 follow-up): release.sh derives
-# CURRENT_PROJECT_VERSION as YYYYMMDD at archive time. Same-day re-releases
-# would produce an identical build number to the prior one, which Sparkle
-# treats as "no update available" — repeat of the 1.0.0 → 1.0.1 mistake.
-# Compare today's UTC date against the highest sparkle:version already in
-# the appcast.
-TODAY_BUILD="$(date -u +%Y%m%d)"
+# Build-number collision gate (#0537): release.sh uses the UTC time
+# YYYYMMDDHHMM at archive time as the build number, which Sparkle compares as
+# sparkle:version. This is an estimate made now; release.sh repeats the check
+# with its real number before archiving. The newest number comes from the
+# checked-out appcast and main's copy (see build-number.sh).
 APPCAST="$REPO_ROOT/website/appcast.xml"
-if [[ -f "$APPCAST" ]]; then
-    HIGHEST_BUILD=$(grep -oE 'sparkle:version="[0-9]+"' "$APPCAST" 2>/dev/null \
-        | grep -oE '[0-9]+' | sort -rn | head -1)
-    if [[ -z "$HIGHEST_BUILD" ]]; then
-        pass "appcast has no prior sparkle:version (first release)"
-    elif [[ "$HIGHEST_BUILD" -lt "$TODAY_BUILD" ]]; then
-        pass "today's build $TODAY_BUILD > highest in appcast ($HIGHEST_BUILD)"
-    elif [[ "$HIGHEST_BUILD" -eq "$TODAY_BUILD" ]]; then
-        warn "today's YYYYMMDD ($TODAY_BUILD) already in appcast — same-day re-release would collide; override release.sh BUILD_NUMBER to '$(date -u +%Y%m%d%H%M)' for this one"
-    else
-        fail "appcast has sparkle:version $HIGHEST_BUILD > today's $TODAY_BUILD (clock skew or stale appcast)"
-    fi
-else
+CANDIDATE_BUILD="$(release_build_number)"
+NEWEST_BUILD="$(newest_appcast_build "$REPO_ROOT")"
+if [[ ! -f "$APPCAST" ]] && ! git -C "$REPO_ROOT" rev-parse --verify -q main >/dev/null 2>&1; then
     warn "website/appcast.xml not found — skipping build-number collision check"
+elif [[ -z "$NEWEST_BUILD" ]]; then
+    pass "appcast has no prior sparkle:version (first release)"
+elif build_number_is_newer "$CANDIDATE_BUILD" "$NEWEST_BUILD"; then
+    pass "build number now ($CANDIDATE_BUILD) > newest in appcast ($NEWEST_BUILD)"
+else
+    fail "build number release.sh would use now ($CANDIDATE_BUILD, UTC YYYYMMDDHHMM) is not greater than the newest sparkle:version in the appcast ($NEWEST_BUILD); Sparkle would not offer it. Check the system clock and the appcast's newest item."
 fi
 
 # Marketing-version bump gate (#0226): the most common release mistake is
