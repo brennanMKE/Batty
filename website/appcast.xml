@@ -27,6 +27,23 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.3.3</title>
+      <pubDate>Tue, 27 Oct 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-3-3</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <h2>Fix: closed tab's terminal left on screen</h2>
+        <p>Closing the last tab of a Pane could leave a terminal for that tab drawn over every Session. Batty no longer recreates a terminal for a closed tab.</p>
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.3.3.dmg"
+        sparkle:version="20261027"
+        sparkle:shortVersionString="1.3.3"
+        sparkle:edSignature="3W+D1aGvbHEK7XAzLkyUnIFRuvGXiuvtIrNCuvbc0DYfhVPu/T0ju0Cn1xOY40yoPaDvgy5u+jlQGaRQxOzAAQ=="
+        length="26913239"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.3.2</title>
       <pubDate>Mon, 19 Oct 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>

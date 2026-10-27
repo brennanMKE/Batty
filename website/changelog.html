@@ -15,6 +15,16 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-3-3">
+            <h2>1.3.3 — 2026-10-27</h2>
+            <p class="meta">Fixes a terminal that could stay drawn over every Session after closing a tab.</p>
+            <h3>Fixes</h3>
+            <ul>
+                <li><strong>Closed tab's terminal left on screen.</strong> Closing the last tab of a Pane could leave
+                a new terminal for that tab drawn over the window, on top of whichever Session was selected, with a
+                stray shell running behind it. Batty no longer recreates a terminal for a closed tab. (#0535)</li>
+            </ul>
+        </article>
         <article id="v1-3-2">
             <h2>1.3.2 — 2026-10-19</h2>
             <p class="meta">An optional Bell Feed capture log, with ratings and suggested text, to help improve
