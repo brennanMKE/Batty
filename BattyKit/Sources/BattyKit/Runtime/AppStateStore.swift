@@ -2252,7 +2252,7 @@ public final class AppStateStore {
                     resolver: ProjectNameResolver.shared,
                     nameFromFiles: SettingsPreference.resolvedAutoNameFromFiles(defaults: preferences)
                 )
-                if Self.isDefaultSessionTitle(resolved) {
+                if Self.isDefaultSessionTitle(resolved), nameCache.isProjectDirectory(cwd) {
                     // Deterministic chain missed — AI fallback (#0231). A
                     // memoized suggestion stands in for the default directly;
                     // an unknown path kicks off an async request. The settings
@@ -2351,13 +2351,15 @@ public final class AppStateStore {
         resolver: ProjectNameResolver.Resolver,
         nameFromFiles: Bool = true
     ) -> String {
+        let defaultTitle = String(localized: "Session \(sessionIndex + 1)")
+        guard cache.isProjectDirectory(cwd) else { return defaultTitle }
         if let cachedName = cache.lookup(path: cwd) {
             return cachedName
         }
         if nameFromFiles, let derivedName = resolver.resolve(at: cwd) {
             return derivedName
         }
-        return String(localized: "Session \(sessionIndex + 1)")
+        return defaultTitle
     }
 
     public static func isDefaultSessionTitle(_ title: String) -> Bool {
@@ -2407,7 +2409,7 @@ public final class AppStateStore {
             return
         }
         let cwd = cwdOverride ?? tab.terminal.workingDirectory ?? tab.terminal.configuration.workingDirectory
-        guard let cwd, !cwd.isEmpty else {
+        guard let cwd, !cwd.isEmpty, nameCache.isProjectDirectory(cwd) else {
             cancelTabNameSuggestion(forTabID: tab.id)
             if tab.aiSuggestedName != nil {
                 tab.aiSuggestedName = nil

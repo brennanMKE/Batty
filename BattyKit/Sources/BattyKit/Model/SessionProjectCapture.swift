@@ -61,10 +61,17 @@ struct SessionProjectCapture: Equatable {
         let tree = session.tree
         let root: String
         var rootIsFallback = false
+        var homeRootNote: String?
         if let requestedRoot, requestedRoot.hasPrefix("/") {
             root = Project.standardizedRoot(requestedRoot)
         } else if let derived = derivedRoot(of: tree) {
             root = derived
+            if derived == Project.standardizedRoot(homeDirectory) {
+                homeRootNote = String(
+                    localized: "This Session is in your home folder, which is not usually a Project root.",
+                    comment: "Project Editor: Save as Project from a Session at the home folder"
+                )
+            }
         } else {
             root = Project.standardizedRoot(homeDirectory)
             rootIsFallback = true
@@ -72,6 +79,7 @@ struct SessionProjectCapture: Equatable {
 
         var slot = 0
         var notes: [ProjectEditorField: String] = [:]
+        if let homeRootNote { notes[.root] = homeRootNote }
 
         func capturePane(_ pane: PaneRuntime) -> ProjectPane {
             defer { slot += 1 }

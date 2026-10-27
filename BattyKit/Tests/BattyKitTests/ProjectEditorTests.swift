@@ -605,6 +605,21 @@ struct ProjectEditorNavigationTests {
         #expect(model.draft?.name == "Untitled Project 2")
     }
 
+    @Test func suggestedNameIsNilForHome() {
+        #expect(ProjectEditorViewModel.suggestedName(forRoot: "/Users/test", homeDirectory: "/Users/test") == nil)
+        #expect(ProjectEditorViewModel.suggestedName(forRoot: NSHomeDirectory()) == nil)
+        #expect(ProjectEditorViewModel.suggestedName(forRoot: "/Volumes", homeDirectory: "/Users/test") == nil)
+        #expect(ProjectEditorViewModel.suggestedName(forRoot: "/Users/test/Developer/Widget", homeDirectory: "/Users/test") == "Widget")
+    }
+
+    @Test func newDraftFromAShellAtHomeIsUntitledWithHomeRoot() throws {
+        let fixture = try EditorFixture()
+        let model = ProjectEditorViewModel(store: fixture.store(), defaultRoot: { NSHomeDirectory() })
+        model.requestNewProject()
+        #expect(model.draft?.rootPath == NSHomeDirectory())
+        #expect(model.draft?.name == ProjectEditorViewModel.untitledName)
+    }
+
     @Test func newProjectWithoutAFocusedTabFallsBackToHome() throws {
         let fixture = try EditorFixture()
         let model = fixture.model(store: fixture.store(), defaultRoot: nil, suggestion: nil)

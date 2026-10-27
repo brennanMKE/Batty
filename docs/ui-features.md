@@ -110,8 +110,10 @@ cache.
   that Session.
 - Reset Title/Reset Name returns the title to the resolver-derived or shell
   value, not to the previous override.
-- Reset Name in `$HOME` must fall back to the home directory's basename (e.g.,
-  `brennan`), not to the literal `"~"`.
+- Reset Name in a non-project directory (`$HOME`, `/`, a top-level folder, a
+  temp root) gives `Session N`, never the basename or `~`.
+- The name cache never stores, and auto-naming (rules, AI, Tab AI) never
+  derives, a name for a non-project directory.
 - An empty rename (no text entered) must be treated as a no-op or as a clear,
   per the chosen spec; the behavior must be consistent and tested.
 - Three Tabs in three different cwds must produce three distinct chip titles.
@@ -121,6 +123,8 @@ cache.
 
 **Regression patterns:**
 
+- `[0536]` — A rename at `~` was remembered for every later Session at home,
+  and Reset Name at home gave the account short name.
 - `[0157]` — Rename Tab sheet accepted input and dismissed, but the chip title
   stayed on the shell title. The override was not propagated to the chip.
 - `[0153]` — Reset Name was disabled in the wrong context, making it impossible

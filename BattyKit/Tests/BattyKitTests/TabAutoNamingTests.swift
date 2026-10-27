@@ -35,7 +35,7 @@ final class TabAutoNamingTests {
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-tab-ai-naming-\(UUID().uuidString)")
             .appendingPathComponent("session-name-cache.json")
-        let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero)
+        let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero, homeDirectory: "/Users/test")
         let store = AppStateStore(nameCache: cache, preferences: testDefaults.defaults)
         store.nameSuggester = suggester
         store.preferences.set(true, forKey: SettingsPreference.autoNameWithAIKey)
@@ -53,6 +53,21 @@ final class TabAutoNamingTests {
     }
 
     // MARK: - Gating: AI setting
+
+    @Test func aiNeverScheduledForATabAtHome() {
+        let suggester = RecordingTabSuggester(result: "Home AI")
+        let (store, url) = makeStore(suggester: suggester)
+        defer { cleanup(url) }
+
+        let tab = TabRuntime()
+        tab.aiSuggestedName = "Stale"
+        tab.terminal.configuration.workingDirectory = "/Users/test"
+        store.updateTabAutoName(for: tab)
+
+        #expect(store.tabNameSuggestionTasks[tab.id] == nil)
+        #expect(suggester.requestedPaths.isEmpty)
+        #expect(tab.aiSuggestedName == nil)
+    }
 
     @Test func aiNameAppliesWhenSettingOnAndSuggesterReturnsAName() async {
         let suggester = RecordingTabSuggester(result: "Meeting Notes")

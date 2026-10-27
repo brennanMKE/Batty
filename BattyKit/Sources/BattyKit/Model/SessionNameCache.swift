@@ -59,15 +59,21 @@ public final class SessionNameCache {
     private let fileManager: FileManager
     private let debounce: Duration
     private let clock: () -> Date
+    private let homeDirectory: String
+    private let temporaryDirectory: String
     @ObservationIgnored private var pendingSaveTask: Task<Void, Never>?
 
     public init(
         fileURL: URL? = nil,
         fileManager: FileManager = .default,
         debounce: Duration = SessionNameCache.defaultDebounce,
-        clock: @escaping () -> Date = Date.init
+        clock: @escaping () -> Date = Date.init,
+        homeDirectory: String = NSHomeDirectory(),
+        temporaryDirectory: String = NSTemporaryDirectory()
     ) {
         self.fileManager = fileManager
+        self.homeDirectory = homeDirectory
+        self.temporaryDirectory = temporaryDirectory
         self.debounce = debounce
         self.clock = clock
         let resolvedURL: URL?
@@ -77,7 +83,7 @@ public final class SessionNameCache {
             resolvedURL = try? Self.canonicalFileURL(fileManager: fileManager)
         }
         self.fileURL = resolvedURL
-        self.entriesByPath = Self.loadFromDisk(fileURL: resolvedURL, fileManager: fileManager)
+        self.entriesByPath = Self.loadFromDisk(fileURL: resolvedURL, fileManager: fileManager, home: homeDirectory, temporaryDirectory: temporaryDirectory)
     }
 
     /// This app's own Application Support directory name, derived from
@@ -116,6 +122,12 @@ public final class SessionNameCache {
 
     public var entryCount: Int { entriesByPath.count }
 
+    /// False for the home folder, `/`, top-level folders and temp roots
+    /// (`NonProjectDirectory`): no name is remembered or derived for them.
+    public func isProjectDirectory(_ path: String) -> Bool {
+        !NonProjectDirectory.contains(path, home: homeDirectory, temporaryDirectory: temporaryDirectory)
+    }
+
     public func lookup(path: String) -> String? {
         guard !path.isEmpty else { return nil }
         guard var entry = entriesByPath[path] else { return nil }
@@ -133,7 +145,7 @@ public final class SessionNameCache {
 
     public func record(path: String, name: String) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty, !trimmedName.isEmpty else { return }
+        guard !path.isEmpty, !trimmedName.isEmpty, isProjectDirectory(path) else { return }
         let entry = SessionNameCacheEntry(path: path, name: trimmedName, lastUsedAt: clock())
         entriesByPath[path] = entry
         enforceCap()
@@ -182,14 +194,27 @@ public final class SessionNameCache {
         }
     }
 
-    private static func loadFromDisk(fileURL: URL?, fileManager: FileManager) -> [String: SessionNameCacheEntry] {
+    private static func loadFromDisk(
+        fileURL: URL?,
+        fileManager: FileManager,
+        home: String,
+        temporaryDirectory: String
+    ) -> [String: SessionNameCacheEntry] {
         guard let fileURL, fileManager.fileExists(atPath: fileURL.path) else { return [:] }
         do {
             let data = try Data(contentsOf: fileURL)
             let decoded = try SessionNameCacheFile.decoder.decode(SessionNameCacheFile.self, from: data)
             var byPath: [String: SessionNameCacheEntry] = [:]
+            var dropped = 0
             for entry in decoded.entries where !entry.path.isEmpty && !entry.name.isEmpty {
+                if NonProjectDirectory.contains(entry.path, home: home, temporaryDirectory: temporaryDirectory) {
+                    dropped += 1
+                    continue
+                }
                 byPath[entry.path] = entry
+            }
+            if dropped > 0 {
+                logger.info("session name cache dropped \(dropped) entries for non-project directories")
             }
             logger.debug("session name cache loaded (\(byPath.count) entries)")
             return byPath

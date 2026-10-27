@@ -155,6 +155,12 @@ final class ProjectEditorViewModel {
 
     /// `ProjectNameResolver` first, the folder's basename otherwise.
     static func suggestedName(forRoot path: String) -> String? {
+        suggestedName(forRoot: path, homeDirectory: NSHomeDirectory())
+    }
+
+    /// Nil for the home folder and other non-project folders (`NonProjectDirectory`).
+    static func suggestedName(forRoot path: String, homeDirectory: String) -> String? {
+        if NonProjectDirectory.contains(path, home: homeDirectory) { return nil }
         if let resolved = ProjectNameResolver.shared.resolve(at: path), !resolved.isEmpty { return resolved }
         let base = URL(fileURLWithPath: path).lastPathComponent
         return base.isEmpty || base == "/" ? nil : base
