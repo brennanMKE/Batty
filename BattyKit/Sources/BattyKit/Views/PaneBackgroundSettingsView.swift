@@ -1,7 +1,6 @@
 // PaneBackgroundSettingsView.swift
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// The sheet's edits, apart from its view so they can be tested. All writes go
 /// through `PaneRuntime.setBackgroundOverride`, which is idempotent.
@@ -55,7 +54,6 @@ struct PaneBackgroundSettingsView: View {
     /// `@State` because the presenting view re-inits this struct freely, and
     /// Cancel must restore what was there when the sheet opened.
     @State private var originalOverride: TerminalBackgroundSettings?
-    @State private var isChoosingImage = false
     @State private var importError: String?
     @State private var importTask: Task<Void, Never>?
 
@@ -98,20 +96,24 @@ struct PaneBackgroundSettingsView: View {
                 )
             }
 
-            Group {
-                imageRow(current: current)
-                imageOptions(current: current)
-                opacitySlider(
-                    "Terminal Opacity",
-                    value: current.terminalOpacity,
-                    identifier: "pane-background-sheet.terminal-opacity"
-                ) { value in editor.update { $0.withTerminalOpacity(value) } }
-            }
+            TerminalBackgroundControls(
+                current: current,
+                isImporting: importTask != nil,
+                message: importError,
+                identifierPrefix: "pane-background-sheet",
+                update: { editor.update($0) },
+                onPickedFile: startImport(of:),
+                onFileError: { importError = String(localized: "That file could not be opened.") },
+                onRemoveImage: {
+                    cancelImport()
+                    editor.update { $0.withImagePath(nil) }
+                }
+            )
             .disabled(editor.isFollowing)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("The Pane shows over the Theme's window color, not the desktop.")
-                Text("Programs that paint their own background stay opaque.")
+                Text("Programs that paint their own background stay opaque unless you include them. Image opacity is relative to terminal opacity.")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -119,29 +121,26 @@ struct PaneBackgroundSettingsView: View {
             HStack {
                 Spacer()
                 Button("Cancel") {
-                    importTask?.cancel()
+                    commitTypedOpacity()
+                    cancelImport()
                     editor.cancel()
                     isPresented = false
                 }
                 .keyboardShortcut(.cancelAction)
                 .accessibilityIdentifier("pane-background-sheet.cancel")
                 Button("Done") {
+                    commitTypedOpacity()
                     isPresented = false
                 }
                 .keyboardShortcut(.defaultAction)
+                // Done would end the import, which is cancelled on disappear,
+                // and drop the image the user just chose.
+                .disabled(importTask != nil)
                 .accessibilityIdentifier("pane-background-sheet.done")
             }
         }
         .padding(16)
         .frame(width: 380)
-        .fileImporter(isPresented: $isChoosingImage, allowedContentTypes: [.png, .jpeg]) { result in
-            switch result {
-            case .success(let url):
-                startImport(of: url)
-            case .failure:
-                importError = String(localized: "That file could not be opened.")
-            }
-        }
         .onDisappear { importTask?.cancel() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pane-background-sheet.root")
@@ -166,88 +165,21 @@ struct PaneBackgroundSettingsView: View {
         .accessibilityValue(isSelected ? "selected" : "unselected")
     }
 
-    @ViewBuilder
-    private func imageRow(current: TerminalBackgroundSettings) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Image")
-                Spacer()
-                Text(current.imagePath.map(Self.displayName(forPath:)) ?? String(localized: "None"))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(.secondary)
-                Button("Choose…") { isChoosingImage = true }
-                    .accessibilityIdentifier("pane-background-sheet.choose-image")
-                Button("None") {
-                    importTask?.cancel()
-                    importError = nil
-                    editor.update { $0.withImagePath(nil) }
-                }
-                .disabled(current.imagePath == nil)
-                .accessibilityIdentifier("pane-background-sheet.no-image")
-            }
-            if let importError {
-                Text(importError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        }
+    /// Clicking a button doesn't end editing. Without this, a typed opacity
+    /// would be lost on Done, or commit as the sheet closes and undo Cancel.
+    /// Runs in a button's action, outside any view update.
+    private func commitTypedOpacity() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
-    @ViewBuilder
-    private func imageOptions(current: TerminalBackgroundSettings) -> some View {
-        Group {
-            Picker("Fit", selection: Binding(
-                get: { current.fit },
-                set: { value in editor.update { $0.withFit(value) } }
-            )) {
-                ForEach(BackgroundImageFit.allCases, id: \.self) { fit in
-                    Text(verbatim: fit.rawValue.capitalized).tag(fit)
-                }
-            }
-            Picker("Position", selection: Binding(
-                get: { current.position },
-                set: { value in editor.update { $0.withPosition(value) } }
-            )) {
-                ForEach(BackgroundImagePosition.allCases, id: \.self) { position in
-                    Text(verbatim: position.rawValue.replacingOccurrences(of: "-", with: " ").capitalized).tag(position)
-                }
-            }
-            opacitySlider(
-                "Image Opacity",
-                value: current.imageOpacity,
-                identifier: "pane-background-sheet.image-opacity"
-            ) { value in editor.update { $0.withImageOpacity(value) } }
-        }
-        .disabled(current.imagePath == nil)
-    }
-
-    /// The `0.05` step caps a full drag at 20 config updates per Tab, each of
-    /// which costs the renderer. A stored value above 1 shows at the end of
-    /// the track and isn't rewritten until the slider moves.
-    private func opacitySlider(
-        _ title: LocalizedStringKey,
-        value: Double,
-        identifier: String,
-        set: @escaping (Double) -> Void
-    ) -> some View {
-        HStack {
-            Text(title)
-            Slider(
-                value: Binding(
-                    get: { min(value, 1) },
-                    set: { set(($0 * 20).rounded() / 20) }
-                ),
-                in: 0...1,
-                step: 0.05
-            )
-            .accessibilityIdentifier(identifier)
-        }
+    private func cancelImport() {
+        importTask?.cancel()
+        importTask = nil
+        importError = nil
     }
 
     private func startImport(of url: URL) {
-        importTask?.cancel()
-        importError = nil
+        cancelImport()
         let importer = importer
         let editor = editor
         importTask = Task {
@@ -259,10 +191,7 @@ struct PaneBackgroundSettingsView: View {
                 guard !Task.isCancelled else { return }
                 importError = String(localized: "That image could not be read.")
             }
+            importTask = nil
         }
-    }
-
-    private static func displayName(forPath path: String) -> String {
-        ((path as NSString).lastPathComponent as NSString).deletingPathExtension
     }
 }

@@ -23,6 +23,7 @@ public enum SettingsPreference {
     public static let backgroundImagePositionKey = "co.sstools.Batty.backgroundImagePosition"
     public static let backgroundImageOpacityKey = "co.sstools.Batty.backgroundImageOpacity"
     public static let backgroundOpacityKey = "co.sstools.Batty.backgroundOpacity"
+    public static let backgroundOpacityCellsKey = "co.sstools.Batty.backgroundOpacityCells"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -40,6 +41,7 @@ public enum SettingsPreference {
     public static let defaultBackgroundImagePosition: String = BackgroundImagePosition.center.rawValue
     public static let defaultBackgroundImageOpacity: Double = 1
     public static let defaultBackgroundOpacity: Double = 1
+    public static let defaultBackgroundOpacityCells: Bool = false
     /// #0285's field measurements put graphics cost at ~42-56 MB per open
     /// Terminal Session. 4 GB gives comfortable headroom for the sizes of
     /// workspace people actually run (dozens of sessions) while still
@@ -172,16 +174,14 @@ public enum SettingsPreference {
         UInt64((resolvedFootprintSoftLimitGB(defaults: defaults) * 1_073_741_824).rounded())
     }
 
-    public static func resolvedBackground() -> TerminalBackgroundSettings {
-        resolvedBackground(defaults: .standard)
-    }
-
     /// Doesn't depend on `registerDefaults()`, which has no caller: an absent
-    /// key must still produce the off state. Opacity checks for an absent key
-    /// rather than `stored > 0` because `0` is a legal opacity.
+    /// key must still produce the off state. Opacity checks for a number
+    /// rather than `stored > 0` because `0` is a legal opacity, and
+    /// `double(forKey:)` would turn a hand-edited string into `0`.
+    /// Production reads this only through `AppWideBackgroundGate`.
     static func resolvedBackground(defaults: UserDefaults) -> TerminalBackgroundSettings {
         func opacity(_ key: String, default fallback: Double) -> Double {
-            defaults.object(forKey: key) == nil ? fallback : defaults.double(forKey: key)
+            (defaults.object(forKey: key) as? NSNumber)?.doubleValue ?? fallback
         }
         return TerminalBackgroundSettings(
             imagePath: defaults.string(forKey: backgroundImagePathKey),
@@ -190,8 +190,37 @@ public enum SettingsPreference {
             position: defaults.string(forKey: backgroundImagePositionKey).flatMap(BackgroundImagePosition.init(rawValue:))
                 ?? BackgroundImagePosition(rawValue: defaultBackgroundImagePosition) ?? .center,
             imageOpacity: opacity(backgroundImageOpacityKey, default: defaultBackgroundImageOpacity),
-            terminalOpacity: opacity(backgroundOpacityKey, default: defaultBackgroundOpacity)
+            terminalOpacity: opacity(backgroundOpacityKey, default: defaultBackgroundOpacity),
+            opacityAffectsCells: (defaults.object(forKey: backgroundOpacityCellsKey) as? NSNumber)?.boolValue ?? defaultBackgroundOpacityCells
         )
+    }
+
+    /// As real types, so `resolvedBackground(defaults:)` reads back what was
+    /// written. A `nil` image removes the path key.
+    static func writeBackground(_ background: TerminalBackgroundSettings, defaults: UserDefaults) {
+        if let imagePath = background.imagePath {
+            defaults.set(imagePath, forKey: backgroundImagePathKey)
+        } else {
+            defaults.removeObject(forKey: backgroundImagePathKey)
+        }
+        defaults.set(background.fit.rawValue, forKey: backgroundImageFitKey)
+        defaults.set(background.position.rawValue, forKey: backgroundImagePositionKey)
+        defaults.set(background.imageOpacity, forKey: backgroundImageOpacityKey)
+        defaults.set(background.terminalOpacity, forKey: backgroundOpacityKey)
+        defaults.set(background.opacityAffectsCells, forKey: backgroundOpacityCellsKey)
+    }
+
+    static func clearBackground(defaults: UserDefaults) {
+        for key in [
+            backgroundImagePathKey,
+            backgroundImageFitKey,
+            backgroundImagePositionKey,
+            backgroundImageOpacityKey,
+            backgroundOpacityKey,
+            backgroundOpacityCellsKey,
+        ] {
+            defaults.removeObject(forKey: key)
+        }
     }
 }
 
@@ -239,7 +268,7 @@ extension AppStateStore {
         let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle(defaults: preferences)) ?? .block
         let blink = SettingsPreference.resolvedCursorBlink(defaults: preferences)
         let fontSize = SettingsPreference.resolvedFontSize(defaults: preferences)
-        let appWideBackground = SettingsPreference.resolvedBackground(defaults: preferences)
+        let appWideBackground = backgroundGate.settings()
         // Appearance settings are app-wide, so apply to every window's surfaces.
         // The `sessions` shim resolves to windows[0] only; iterating `windows`
         // directly avoids leaving other windows (often the key window) stale (#0248).
@@ -263,6 +292,20 @@ extension AppStateStore {
                 for tab in pane.tabs {
                     tab.terminal.controller.setTerminalConfiguration(configuration)
                 }
+            }
+        }
+    }
+}
+
+extension AppStateStore {
+    /// Pushes the current app-wide background to every Pane following it.
+    /// Goes through each Tab's own builder, not `applyAppearanceToAllSurfaces`,
+    /// so per-Tab lines survive (#0538).
+    func applyAppWideBackgroundToAllSurfaces() {
+        let appWide = backgroundGate.settings()
+        for session in windows.flatMap({ $0.sessions }) {
+            for pane in session.tree.allPanes {
+                pane.refreshAppWideBackground(appWide)
             }
         }
     }
@@ -339,6 +382,9 @@ extension TerminalConfiguration.Builder {
         }
         if background.terminalOpacity < 1 {
             withBackgroundOpacity(background.terminalOpacity)
+            if background.opacityAffectsCells {
+                withCustom("background-opacity-cells", "true")
+            }
         }
     }
 }
@@ -357,6 +403,7 @@ extension SettingsPreference {
             backgroundImagePositionKey: defaultBackgroundImagePosition,
             backgroundImageOpacityKey: defaultBackgroundImageOpacity,
             backgroundOpacityKey: defaultBackgroundOpacity,
+            backgroundOpacityCellsKey: defaultBackgroundOpacityCells,
         ])
     }
 }

@@ -90,4 +90,21 @@ nonisolated final class PaneBackgroundSettingsTests: XCTestCase {
 
         XCTAssertEqual(gears(in: app).count, 0)
     }
+
+    @MainActor
+    func testOpacitySlidersHaveLabels() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        expandPaneList(in: app)
+
+        gears(in: app).firstMatch.click()
+        let custom = app.buttons["pane-background-sheet.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        custom.click()
+        let image = app.sliders["pane-background-sheet.image-opacity"]
+        let terminal = app.sliders["pane-background-sheet.terminal-opacity"]
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        XCTAssertEqual(image.label, "Image Opacity")
+        XCTAssertEqual(terminal.label, "Terminal Opacity")
+    }
 }

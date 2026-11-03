@@ -31,6 +31,10 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
     public let position: BackgroundImagePosition
     public let imageOpacity: Double
     public let terminalOpacity: Double
+    /// Whether terminal opacity also fades cells a program painted its own
+    /// background on (`background-opacity-cells`). Off by default, because at
+    /// low opacity it breaks text that relies on its own background.
+    public let opacityAffectsCells: Bool
 
     public static let off = TerminalBackgroundSettings(imagePath: nil)
 
@@ -39,7 +43,8 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
         fit: BackgroundImageFit = .contain,
         position: BackgroundImagePosition = .center,
         imageOpacity: Double = 1,
-        terminalOpacity: Double = 1
+        terminalOpacity: Double = 1,
+        opacityAffectsCells: Bool = false
     ) {
         self.imagePath = imagePath.flatMap(Self.normalizedPath)
         self.fit = fit
@@ -48,6 +53,7 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
         // when `background-opacity` is below 1. Zero is a legal value.
         self.imageOpacity = imageOpacity.isFinite ? max(imageOpacity, 0) : 1
         self.terminalOpacity = terminalOpacity.isFinite ? min(max(terminalOpacity, 0), 1) : 1
+        self.opacityAffectsCells = opacityAffectsCells
     }
 
     /// A relative path would resolve against the temp directory holding the
@@ -60,9 +66,10 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
         return expanded
     }
 
-    /// The image opacity a Pane's first image gets, as a tint, so a picture
-    /// doesn't make the Pane unreadable on arrival.
-    static let firstImageOpacity = 0.35
+    /// The image opacity a first image gets, as a tint. The highest tested
+    /// value that keeps both default Themes above 3:1 over an all-black or
+    /// all-white image.
+    static let firstImageOpacity = 0.15
 
     /// The resolution chain. A non-nil override is complete, and `nil` follows
     /// the broader level.
@@ -71,23 +78,27 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
     }
 
     func withImagePath(_ imagePath: String?) -> Self {
-        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity, opacityAffectsCells: opacityAffectsCells)
     }
 
     func withFit(_ fit: BackgroundImageFit) -> Self {
-        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity, opacityAffectsCells: opacityAffectsCells)
     }
 
     func withPosition(_ position: BackgroundImagePosition) -> Self {
-        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity, opacityAffectsCells: opacityAffectsCells)
     }
 
     func withImageOpacity(_ imageOpacity: Double) -> Self {
-        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity, opacityAffectsCells: opacityAffectsCells)
     }
 
     func withTerminalOpacity(_ terminalOpacity: Double) -> Self {
-        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity, opacityAffectsCells: opacityAffectsCells)
+    }
+
+    func withOpacityAffectsCells(_ opacityAffectsCells: Bool) -> Self {
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity, opacityAffectsCells: opacityAffectsCells)
     }
 
     /// Replacing an image keeps its opacity. Only a first image gets the tint.

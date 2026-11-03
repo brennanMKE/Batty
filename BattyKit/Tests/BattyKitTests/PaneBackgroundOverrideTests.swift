@@ -44,10 +44,12 @@ final class PaneBackgroundOverrideTests {
         defaults.set(0.6, forKey: SettingsPreference.backgroundOpacityKey)
     }
 
+    private var gate: AppWideBackgroundGate { .acceptingEveryImage(defaults: defaults) }
+
     private var appWide: TerminalBackgroundSettings { SettingsPreference.resolvedBackground(defaults: defaults) }
 
     private func pane(tabCount: Int = 1) -> PaneRuntime {
-        PaneRuntime(tabs: (0..<tabCount).map { _ in TabRuntime(preferences: defaults) }, tabPreferences: defaults)
+        PaneRuntime(tabs: (0..<tabCount).map { _ in TabRuntime(backgroundGate: gate) }, tabBackgroundGate: gate)
     }
 
     private func lines(_ tab: TabRuntime) -> [String] {
@@ -60,7 +62,7 @@ final class PaneBackgroundOverrideTests {
 
     /// A store whose first Session is split, so it has two terminal Panes.
     private func storeWithTwoPanes() throws -> (AppStateStore, PaneRuntime, PaneRuntime) {
-        let store = AppStateStore(preferences: defaults)
+        let store = AppStateStore(preferences: defaults, backgroundGate: gate)
         let session = try #require(store.windows.first?.sessions.first)
         let first = try #require(session.tree.allPanes.first)
         let second = session.tree.splitFocusedPane(direction: .horizontal)
@@ -125,7 +127,7 @@ final class PaneBackgroundOverrideTests {
     }
 
     @Test func nonTerminalPaneIgnoresOverride() {
-        let pane = PaneRuntime(kind: .systemMetrics, tabPreferences: defaults, contentFactory: { _ in nil })
+        let pane = PaneRuntime(kind: .systemMetrics, tabBackgroundGate: gate, contentFactory: { _ in nil })
         let before = pane.tabs[0].terminal.renderedConfig
         pane.setBackgroundOverride(Self.custom)
         #expect(pane.backgroundOverride == nil)
@@ -173,8 +175,8 @@ final class PaneBackgroundOverrideTests {
     // MARK: - The replace hazard
 
     @Test func paneFanOutKeepsPerTabLines() {
-        let tab = TabRuntime(command: "/bin/cat", preferences: defaults)
-        let pane = PaneRuntime(tabs: [tab], tabPreferences: defaults)
+        let tab = TabRuntime(command: "/bin/cat", backgroundGate: gate)
+        let pane = PaneRuntime(tabs: [tab], tabBackgroundGate: gate)
         let sessionID = UUID()
         pane.attachToSession(sessionID)
         pane.setBackgroundOverride(Self.custom)
