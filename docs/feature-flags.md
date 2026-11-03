@@ -6,11 +6,13 @@ This page is also the recipe for the next flag.
 
 ## Current flags
 
-- `terminalBackgrounds` (`BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`, #0374): per-Pane terminal backgrounds, while umbrella #0372 is unfinished. Flag-off override: `BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF`. There is no `current`, because the CLI has no entry point. Gate sites, both in `SessionSidebarView.swift`:
+- `terminalBackgrounds` (`BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`, #0374): terminal backgrounds, per-Pane and app-wide, while umbrella #0372 is unfinished. Flag-off override: `BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF`. There is no `current`, because the CLI has no entry point. Gate sites:
   - `SessionSidebarView.body` passes `store.featureFlags.terminalBackgrounds` to `PaneRow.showsBackgroundSettings`, which shows the gear.
   - `SessionSidebarView.backgroundSettingsBinding` returns `nil` when off, so the sheet can't present.
+  - `AppearanceSettingsView.body` in `SettingsView.swift` omits `TerminalBackgroundSettingsSection` when off.
+  - `AppWideBackgroundGate.live` is built from `FeatureFlags.resolved()`. Disabled, it returns `.off` before touching `UserDefaults` or the disk, and it is the only route from the persisted background keys to a config builder.
 
-  The sheet is the only caller of `PaneRuntime.setBackgroundOverride` in production, and the only user of `TerminalBackgroundImageImporter`, so with the flag off no override exists and no image file is read or written.
+  The sheet and the Settings section are the only users of `TerminalBackgroundImageImporter`, and the sheet is the only caller of `PaneRuntime.setBackgroundOverride` in production. So with the flag off no override exists, no background key is read, and no image file is read or written.
 
 ## Policy
 

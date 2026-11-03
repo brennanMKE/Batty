@@ -1,6 +1,7 @@
 // TerminalBackgroundImageImporterTests.swift
 
 import CoreGraphics
+import CryptoKit
 import Foundation
 import ImageIO
 import Testing
@@ -12,7 +13,9 @@ final class TerminalBackgroundImageImporterTests {
     private let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("batty-importer-tests-\(UUID().uuidString)", isDirectory: true)
     private var sourceFolder: URL { root.appendingPathComponent("source", isDirectory: true) }
-    private var directory: URL { root.appendingPathComponent("imported", isDirectory: true) }
+    private var parent: URL { root.appendingPathComponent("imported", isDirectory: true) }
+    private var directory: URL { parent.appendingPathComponent("111", isDirectory: true) }
+    private var appWideDirectory: URL { root.appendingPathComponent("app-wide", isDirectory: true) }
 
     init() throws {
         try FileManager.default.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
@@ -48,7 +51,7 @@ final class TerminalBackgroundImageImporterTests {
     }
 
     private func importer() -> TerminalBackgroundImageImporter {
-        TerminalBackgroundImageImporter(directory: directory)
+        TerminalBackgroundImageImporter(directory: directory, cleanup: .deadProcessFolders, isProcessAlive: { _ in false })
     }
 
     private func expectCompletePNG(atPath path: String, differingFrom original: Data) throws {
@@ -144,12 +147,81 @@ final class TerminalBackgroundImageImporterTests {
         #expect(attributes[.modificationDate] as? Date == sentinel)
     }
 
-    @Test func firstImportClearsAnEarlierRunsFiles() async throws {
-        let earlier = directory.appendingPathComponent("earlier/old.png")
-        try FileManager.default.createDirectory(at: earlier.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("old".utf8).write(to: earlier)
+    private func plantFile(in folder: URL) throws -> URL {
+        let file = folder.appendingPathComponent("old.png")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: file)
+        return file
+    }
+
+    @Test func folderIsTheDigestOfTheCopy() async throws {
+        let path = try await importer().importImage(from: source(try encoded()))
+        let bytes = try Data(contentsOf: URL(fileURLWithPath: path))
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        #expect(URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent == digest)
+    }
+
+    @Test func reimportRepairsADamagedCopy() async throws {
+        let importer = importer()
+        let url = try source(try encoded())
+        let first = try await importer.importImage(from: url)
+        let intact = try Data(contentsOf: URL(fileURLWithPath: first))
+        try Data(intact.prefix(intact.count / 2)).write(to: URL(fileURLWithPath: first))
+        #expect(TerminalBackgroundImageImporter.inspect(path: first, directory: directory) == .rejected)
+        let second = try await importer.importImage(from: url)
+        #expect(second == first)
+        #expect(try Data(contentsOf: URL(fileURLWithPath: second)) == intact)
+    }
+
+    @Test func firstImportRemovesDeadProcessFolders() async throws {
+        let dead = try plantFile(in: parent.appendingPathComponent("222", isDirectory: true))
         _ = try await importer().importImage(from: source(try encoded()))
-        #expect(!FileManager.default.fileExists(atPath: earlier.path))
+        #expect(!FileManager.default.fileExists(atPath: dead.path))
+    }
+
+    /// Another running copy of the app must keep its images.
+    @Test func firstImportKeepsLiveProcessFolders() async throws {
+        let live = try plantFile(in: parent.appendingPathComponent("333", isDirectory: true))
+        let dead = try plantFile(in: parent.appendingPathComponent("444", isDirectory: true))
+        let importer = TerminalBackgroundImageImporter(
+            directory: directory,
+            cleanup: .deadProcessFolders,
+            isProcessAlive: { $0 == 333 }
+        )
+        _ = try await importer.importImage(from: source(try encoded()))
+        #expect(FileManager.default.fileExists(atPath: live.path))
+        #expect(!FileManager.default.fileExists(atPath: dead.path))
+    }
+
+    @Test func firstImportRemovesLegacyDigestFolders() async throws {
+        let legacy = try plantFile(in: parent.appendingPathComponent(String(repeating: "a", count: 64), isDirectory: true))
+        _ = try await importer().importImage(from: source(try encoded()))
+        #expect(!FileManager.default.fileExists(atPath: legacy.path))
+    }
+
+    private func appWideImporter() -> TerminalBackgroundImageImporter {
+        TerminalBackgroundImageImporter(directory: appWideDirectory, cleanup: .allButRetained)
+    }
+
+    @Test func firstImportKeepsTheRetainedImage() async throws {
+        let retained = try plantFile(in: appWideDirectory.appendingPathComponent("kept", isDirectory: true))
+        _ = try await appWideImporter().importImage(from: source(try encoded()), retaining: retained.path)
+        #expect(FileManager.default.fileExists(atPath: retained.path))
+    }
+
+    @Test func firstImportRemovesOtherUnreferencedImages() async throws {
+        let retained = try plantFile(in: appWideDirectory.appendingPathComponent("kept", isDirectory: true))
+        let other = try plantFile(in: appWideDirectory.appendingPathComponent("other", isDirectory: true))
+        _ = try await appWideImporter().importImage(from: source(try encoded()), retaining: retained.path)
+        #expect(!FileManager.default.fileExists(atPath: other.path))
+    }
+
+    @Test func laterImportsDoNotSweep() async throws {
+        let importer = appWideImporter()
+        _ = try await importer.importImage(from: source(try encoded(width: 64, height: 64), named: "a.png"))
+        let later = try plantFile(in: appWideDirectory.appendingPathComponent("later", isDirectory: true))
+        _ = try await importer.importImage(from: source(try encoded(width: 32, height: 32), named: "b.png"))
+        #expect(FileManager.default.fileExists(atPath: later.path))
     }
 
     @Test func secondImportKeepsTheFirstImportsFile() async throws {

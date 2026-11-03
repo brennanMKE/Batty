@@ -120,6 +120,7 @@ private struct AppearanceSettingsView: View {
     @AppStorage(ThemePreference.darkDefaultsKey) private var darkThemeName: String = ""
     @AppStorage(ThemePreference.lightDefaultsKey) private var lightThemeName: String = ""
     @Environment(\.colorScheme) private var colorScheme
+    @State private var background = AppWideBackgroundEditor.Snapshot.off
 
     var body: some View {
         Form {
@@ -152,9 +153,20 @@ private struct AppearanceSettingsView: View {
                 themePicker("Light", selection: $lightThemeName, appliesNow: colorScheme == .light)
                 themePicker("Dark", selection: $darkThemeName, appliesNow: colorScheme == .dark)
             }
+
+            if let store, store.featureFlags.terminalBackgrounds {
+                TerminalBackgroundSettingsSection(store: store, snapshot: $background)
+            }
         }
         .formStyle(.grouped)
         .padding(20)
+        // On the Form, not the Section: a modifier on a Section can apply per
+        // row, and rows can appear as they scroll in, so this could hash the
+        // image more than once per appearance of Settings.
+        .onAppear {
+            guard let store, store.featureFlags.terminalBackgrounds else { return }
+            background = AppWideBackgroundEditor(store: store).inspect()
+        }
     }
 
     /// A per-appearance theme picker. `appliesNow` is true for the slot that
@@ -180,6 +192,145 @@ private struct AppearanceSettingsView: View {
 
     private func applyAppearance() {
         store?.applyAppearanceToAllSurfaces()
+    }
+}
+
+/// The app-wide background's edits, apart from the view so they can be tested.
+///
+/// Inspecting hashes the image on the main actor, so only `inspect`, `pickImage`,
+/// `removeImage` and `reset` do it. `update` runs on every slider event and
+/// reuses the gate's memo.
+@MainActor
+struct AppWideBackgroundEditor {
+    struct Snapshot: Equatable {
+        var settings: TerminalBackgroundSettings
+        var imageState: BackgroundImageState
+
+        static let off = Snapshot(settings: .off, imageState: .none)
+    }
+
+    let store: AppStateStore
+
+    private var gate: AppWideBackgroundGate { store.backgroundGate }
+
+    var stored: TerminalBackgroundSettings { gate.storedSettings() }
+
+    func inspect() -> Snapshot {
+        let imageState = gate.refreshImageState()
+        return Snapshot(settings: stored, imageState: imageState)
+    }
+
+    @discardableResult
+    func update(_ transform: (TerminalBackgroundSettings) -> TerminalBackgroundSettings) -> TerminalBackgroundSettings {
+        let current = stored
+        let next = transform(current)
+        guard next != current else { return current }
+        SettingsPreference.writeBackground(next, defaults: gate.defaults)
+        store.applyAppWideBackgroundToAllSurfaces()
+        return next
+    }
+
+    /// Always inspects and pushes: repairing a damaged copy leaves the stored
+    /// path unchanged, because the folder is named for the intact bytes.
+    @discardableResult
+    func pickImage(path: String) -> Snapshot {
+        SettingsPreference.writeBackground(stored.pickingImage(path: path), defaults: gate.defaults)
+        let snapshot = inspect()
+        store.applyAppWideBackgroundToAllSurfaces()
+        return snapshot
+    }
+
+    @discardableResult
+    func removeImage() -> Snapshot {
+        update { $0.withImagePath(nil) }
+        return inspect()
+    }
+
+    @discardableResult
+    func reset() -> Snapshot {
+        SettingsPreference.clearBackground(defaults: gate.defaults)
+        let snapshot = inspect()
+        store.applyAppWideBackgroundToAllSurfaces()
+        return snapshot
+    }
+}
+
+/// Constructed only with the flag on.
+///
+/// Every write starts from a control binding, a button or the file importer's
+/// result, through `AppWideBackgroundEditor`. There is deliberately no
+/// `onChange` and no `@AppStorage` here. `snapshot` is a local copy owned by
+/// the parent, refreshed when Settings appears and after each edit, and feeds
+/// no AppKit call.
+private struct TerminalBackgroundSettingsSection: View {
+    let store: AppStateStore
+    @Binding var snapshot: AppWideBackgroundEditor.Snapshot
+
+    @State private var importError: String?
+    @State private var importTask: Task<Void, Never>?
+
+    private var editor: AppWideBackgroundEditor { AppWideBackgroundEditor(store: store) }
+
+    private var message: String? {
+        if let importError { return importError }
+        switch snapshot.imageState {
+        case .none, .usable: return nil
+        case .missing: return String(localized: "Image not found. Choose it again.")
+        case .rejected: return String(localized: "The saved image can't be used. Choose it again.")
+        }
+    }
+
+    var body: some View {
+        Section("Background") {
+            TerminalBackgroundControls(
+                current: snapshot.settings,
+                isImporting: importTask != nil,
+                message: message,
+                identifierPrefix: "appearance-background",
+                update: { transform in
+                    snapshot.settings = editor.update(transform)
+                },
+                onPickedFile: startImport(of:),
+                onFileError: { importError = String(localized: "That file could not be opened.") },
+                onRemoveImage: {
+                    cancelImport()
+                    snapshot = editor.removeImage()
+                }
+            )
+            Text("Each Tab keeps its own copy of the image in memory. Image opacity is relative to terminal opacity.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Restore Defaults") {
+                cancelImport()
+                snapshot = editor.reset()
+            }
+            .accessibilityIdentifier("appearance-background.restore-defaults")
+        }
+    }
+
+    private func cancelImport() {
+        importTask?.cancel()
+        importTask = nil
+        importError = nil
+    }
+
+    /// Not cancelled on disappear, so closing Settings doesn't lose the pick.
+    private func startImport(of url: URL) {
+        cancelImport()
+        let importer = store.appWideBackgroundImageImporter
+        let editor = editor
+        let retaining = editor.stored.imagePath
+        importTask = Task {
+            do {
+                let path = try await importer.importImage(from: url, retaining: retaining)
+                guard !Task.isCancelled else { return }
+                snapshot = editor.pickImage(path: path)
+            } catch {
+                guard !Task.isCancelled else { return }
+                importError = String(localized: "That image could not be read.")
+            }
+            importTask = nil
+        }
     }
 }
 

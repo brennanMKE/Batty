@@ -210,7 +210,7 @@ public struct SessionSidebarView: View {
             PaneBackgroundSettingsView(
                 isPresented: backgroundSettingsPresentedBinding,
                 pane: pane,
-                appWide: SettingsPreference.resolvedBackground(defaults: store.preferences),
+                appWide: store.backgroundGate.settings(),
                 importer: store.backgroundImageImporter
             )
         }

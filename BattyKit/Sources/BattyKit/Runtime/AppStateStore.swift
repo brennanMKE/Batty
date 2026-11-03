@@ -88,10 +88,20 @@ public final class AppStateStore {
     /// Release gates, fixed at launch (`docs/feature-flags.md`).
     @ObservationIgnored public let featureFlags: FeatureFlags
 
+    /// The only route from the persisted background keys to a builder.
+    @ObservationIgnored let backgroundGate: AppWideBackgroundGate
+
     /// Shared so one import's first-use cleanup runs once per launch. Building
     /// it touches no files.
     @ObservationIgnored let backgroundImageImporter = TerminalBackgroundImageImporter(
-        directory: TerminalBackgroundImageImporter.defaultDirectory()
+        directory: TerminalBackgroundImageImporter.defaultDirectory(),
+        cleanup: .deadProcessFolders
+    )
+
+    /// Separate because app-wide copies are persisted and Pane copies aren't.
+    @ObservationIgnored let appWideBackgroundImageImporter = TerminalBackgroundImageImporter(
+        directory: TerminalBackgroundImageImporter.appWideDirectory(),
+        cleanup: .allButRetained
     )
 
     /// Built on first access, so `projects.json` is never touched until a
@@ -1162,9 +1172,11 @@ public final class AppStateStore {
         notifier: BellNotifying? = nil,
         preferences: UserDefaults = .standard,
         projectsFileURL: URL? = nil,
-        featureFlags: FeatureFlags = .resolved()
+        featureFlags: FeatureFlags = .resolved(),
+        backgroundGate: AppWideBackgroundGate = .live
     ) {
         self.featureFlags = featureFlags
+        self.backgroundGate = backgroundGate
         self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
         self.bellFeed = bellFeed
         self.nameCache = nameCache

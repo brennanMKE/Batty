@@ -45,8 +45,10 @@ final class TerminalBackgroundConfigTests {
         lines(tab).filter { $0.hasPrefix("background-") }
     }
 
+    private var gate: AppWideBackgroundGate { .acceptingEveryImage(defaults: defaults) }
+
     private func tab() -> TabRuntime {
-        TabRuntime(preferences: defaults)
+        TabRuntime(backgroundGate: gate)
     }
 
     private func allTabs(_ store: AppStateStore) -> [TabRuntime] {
@@ -55,7 +57,7 @@ final class TerminalBackgroundConfigTests {
 
     /// The Tabs of a store whose appearance builder has run against `defaults`.
     private func appliedStore() -> AppStateStore {
-        let store = AppStateStore(preferences: defaults)
+        let store = AppStateStore(preferences: defaults, backgroundGate: gate)
         store.applyAppearanceToAllSurfaces()
         #expect(!allTabs(store).isEmpty)
         return store
@@ -81,7 +83,7 @@ final class TerminalBackgroundConfigTests {
 
     @Test func appearanceBuilderEmitsConfiguredBackgroundLines() {
         configureEverything()
-        let store = AppStateStore(preferences: defaults)
+        let store = AppStateStore(preferences: defaults, backgroundGate: gate)
         _ = store.windowRuntime(for: WindowID())
         #expect(store.windows.count >= 2)
         store.applyAppearanceToAllSurfaces()
@@ -303,6 +305,54 @@ final class TerminalBackgroundConfigTests {
             let lines = lines(tab())
             #expect(lines.contains("background-image-opacity = 1.0"))
             #expect(!lines.contains { $0.hasPrefix("background-opacity") })
+        }
+    }
+
+    // MARK: - Opacity on painted cells
+
+    @Test func cellOpacityIsEmittedWithTheToggleBelowFullOpacity() {
+        defaults.set(0.5, forKey: SettingsPreference.backgroundOpacityKey)
+        defaults.set(true, forKey: SettingsPreference.backgroundOpacityCellsKey)
+        let tab = tab()
+        #expect(lines(tab).contains("background-opacity-cells = true"))
+        #expect(tab.terminal.controller.lastConfigurationIssue == nil)
+        for storeTab in allTabs(appliedStore()) {
+            #expect(lines(storeTab).contains("background-opacity-cells = true"))
+        }
+    }
+
+    @Test func cellOpacityEmitsNothingAtFullOpacityOrToggleOff() {
+        defaults.set(true, forKey: SettingsPreference.backgroundOpacityCellsKey)
+        defaults.set(1.0, forKey: SettingsPreference.backgroundOpacityKey)
+        #expect(backgroundLines(tab()).isEmpty)
+        defaults.set(0.5, forKey: SettingsPreference.backgroundOpacityKey)
+        defaults.set(false, forKey: SettingsPreference.backgroundOpacityCellsKey)
+        #expect(backgroundLines(tab()) == ["background-opacity = 0.5"])
+    }
+
+    // MARK: - Hardening and legibility
+
+    @Test func nonNumericOpacityFallsBackToTheDefault() {
+        defaults.set(Self.imagePath, forKey: SettingsPreference.backgroundImagePathKey)
+        defaults.set("loud", forKey: SettingsPreference.backgroundImageOpacityKey)
+        defaults.set("loud", forKey: SettingsPreference.backgroundOpacityKey)
+        let lines = lines(tab())
+        #expect(lines.contains("background-image-opacity = 1.0"))
+        #expect(!lines.contains { $0.hasPrefix("background-opacity") })
+    }
+
+    /// Blends as `bg_image_fragment` does, over the worst possible images.
+    @Test func firstImageTintKeepsDefaultThemesReadable() throws {
+        let black = RGBColor(red: 0, green: 0, blue: 0, alpha: 1)
+        let white = RGBColor(red: 1, green: 1, blue: 1, alpha: 1)
+        for name in [ThemePreference.defaultDarkThemeName, ThemePreference.defaultLightThemeName] {
+            let theme = try #require(BattyThemeCatalog.theme(named: name))
+            let background = try #require(RGBColor(hex: theme.background))
+            let foreground = try #require(RGBColor(hex: theme.foreground))
+            for image in [black, white] {
+                let blended = background.blended(with: image, ratio: TerminalBackgroundSettings.firstImageOpacity)
+                #expect(foreground.contrast(against: blended) >= 3, "\(name)")
+            }
         }
     }
 }
