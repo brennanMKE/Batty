@@ -85,6 +85,15 @@ public final class AppStateStore {
     /// `.standard` through one `cfprefsd` (#0426).
     @ObservationIgnored public let preferences: UserDefaults
 
+    /// Release gates, fixed at launch (`docs/feature-flags.md`).
+    @ObservationIgnored public let featureFlags: FeatureFlags
+
+    /// Shared so one import's first-use cleanup runs once per launch. Building
+    /// it touches no files.
+    @ObservationIgnored let backgroundImageImporter = TerminalBackgroundImageImporter(
+        directory: TerminalBackgroundImageImporter.defaultDirectory()
+    )
+
     /// Built on first access, so `projects.json` is never touched until a
     /// Projects surface reads it.
     public var projectStore: ProjectStore {
@@ -1152,8 +1161,10 @@ public final class AppStateStore {
         nameCache: SessionNameCache = SessionNameCache(),
         notifier: BellNotifying? = nil,
         preferences: UserDefaults = .standard,
-        projectsFileURL: URL? = nil
+        projectsFileURL: URL? = nil,
+        featureFlags: FeatureFlags = .resolved()
     ) {
+        self.featureFlags = featureFlags
         self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
         self.bellFeed = bellFeed
         self.nameCache = nameCache

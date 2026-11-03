@@ -2,7 +2,15 @@
 
 Unfinished features land on `main` behind a flag until the release that ships them (`AGENTS.md`, "Release branches"). With the flag off a feature is invisible and inert: no menu, Command Palette, Sidebar or CLI entry points, and no reads or writes of the feature's files.
 
-There are no flags today. This page is the recipe for the next one.
+This page is also the recipe for the next flag.
+
+## Current flags
+
+- `terminalBackgrounds` (`BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`, #0374): per-Pane terminal backgrounds, while umbrella #0372 is unfinished. Flag-off override: `BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF`. There is no `current`, because the CLI has no entry point. Gate sites, both in `SessionSidebarView.swift`:
+  - `SessionSidebarView.body` passes `store.featureFlags.terminalBackgrounds` to `PaneRow.showsBackgroundSettings`, which shows the gear.
+  - `SessionSidebarView.backgroundSettingsBinding` returns `nil` when off, so the sheet can't present.
+
+  The sheet is the only caller of `PaneRuntime.setBackgroundOverride` in production, and the only user of `TerminalBackgroundImageImporter`, so with the flag off no override exists and no image file is read or written.
 
 ## Policy
 
