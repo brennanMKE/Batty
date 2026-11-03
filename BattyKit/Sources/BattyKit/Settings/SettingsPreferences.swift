@@ -18,6 +18,11 @@ public enum SettingsPreference {
     public static let summarizeNotificationsWithAIKey = "co.sstools.Batty.summarizeNotificationsWithAI"
     public static let footprintSoftLimitGBKey = "co.sstools.Batty.footprintSoftLimitGB"
     public static let captureBellFeedDataKey = "co.sstools.Batty.captureBellFeedData"
+    public static let backgroundImagePathKey = "co.sstools.Batty.backgroundImagePath"
+    public static let backgroundImageFitKey = "co.sstools.Batty.backgroundImageFit"
+    public static let backgroundImagePositionKey = "co.sstools.Batty.backgroundImagePosition"
+    public static let backgroundImageOpacityKey = "co.sstools.Batty.backgroundImageOpacity"
+    public static let backgroundOpacityKey = "co.sstools.Batty.backgroundOpacity"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -31,6 +36,10 @@ public enum SettingsPreference {
     public static let defaultAutoNameWithAI: Bool = true
     public static let defaultSummarizeNotificationsWithAI: Bool = true
     public static let defaultCaptureBellFeedData: Bool = false
+    public static let defaultBackgroundImageFit: String = BackgroundImageFit.contain.rawValue
+    public static let defaultBackgroundImagePosition: String = BackgroundImagePosition.center.rawValue
+    public static let defaultBackgroundImageOpacity: Double = 1
+    public static let defaultBackgroundOpacity: Double = 1
     /// #0285's field measurements put graphics cost at ~42-56 MB per open
     /// Terminal Session. 4 GB gives comfortable headroom for the sizes of
     /// workspace people actually run (dozens of sessions) while still
@@ -162,6 +171,28 @@ public enum SettingsPreference {
     static func resolvedFootprintSoftLimitBytes(defaults: UserDefaults) -> UInt64 {
         UInt64((resolvedFootprintSoftLimitGB(defaults: defaults) * 1_073_741_824).rounded())
     }
+
+    public static func resolvedBackground() -> TerminalBackgroundSettings {
+        resolvedBackground(defaults: .standard)
+    }
+
+    /// Doesn't depend on `registerDefaults()`, which has no caller: an absent
+    /// key must still produce the off state. Opacity checks for an absent key
+    /// rather than `stored > 0` because `0` is a legal opacity.
+    static func resolvedBackground(defaults: UserDefaults) -> TerminalBackgroundSettings {
+        func opacity(_ key: String, default fallback: Double) -> Double {
+            defaults.object(forKey: key) == nil ? fallback : defaults.double(forKey: key)
+        }
+        return TerminalBackgroundSettings(
+            imagePath: defaults.string(forKey: backgroundImagePathKey),
+            fit: defaults.string(forKey: backgroundImageFitKey).flatMap(BackgroundImageFit.init(rawValue:))
+                ?? BackgroundImageFit(rawValue: defaultBackgroundImageFit) ?? .contain,
+            position: defaults.string(forKey: backgroundImagePositionKey).flatMap(BackgroundImagePosition.init(rawValue:))
+                ?? BackgroundImagePosition(rawValue: defaultBackgroundImagePosition) ?? .center,
+            imageOpacity: opacity(backgroundImageOpacityKey, default: defaultBackgroundImageOpacity),
+            terminalOpacity: opacity(backgroundOpacityKey, default: defaultBackgroundOpacity)
+        )
+    }
 }
 
 public enum PasteStrictness: String, CaseIterable, Sendable {
@@ -208,41 +239,13 @@ extension AppStateStore {
         let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle(defaults: preferences)) ?? .block
         let blink = SettingsPreference.resolvedCursorBlink(defaults: preferences)
         let fontSize = SettingsPreference.resolvedFontSize(defaults: preferences)
+        let background = SettingsPreference.resolvedBackground(defaults: preferences)
         let configuration = TerminalConfiguration { builder in
-            builder.withFontSize(fontSize)
-            builder.withCursorStyle(cursor)
-            builder.withCursorStyleBlink(blink)
-            // Emits the same `shell-integration-features` value as
-            // `TabRuntime.applyShellAndAppearancePreferences` (#0392) —
-            // `setTerminalConfiguration` replaces rather than merges, so a
-            // key emitted from only one of the two builders is silently
-            // dropped the next time the other one runs. (This builder still
-            // omits `copy-on-select`, `command`, `env BATTY_*`,
-            // `keybind = clear`, and `cmd+c` — #0373's pre-existing gap, not
-            // fixed here.) Consumed at process spawn, so reapplying here
-            // can't affect an already-running shell; what it does protect is
-            // a Tab created *before* an appearance change whose surface
-            // hasn't spawned yet — a Tab created after the change already
-            // gets the key from `TabRuntime`'s own builder. Only `ssh-env`
-            // is spelled out; every other feature is left at libghostty's
-            // default by omission — see the sibling comment in
-            // `TabRuntime.swift` for why that's deliberate.
-            builder.withCustom("shell-integration-features", "ssh-env")
-            // The `env PATH=…` override (#0364) is the one line from
-            // `TabRuntime`'s builder this one does *not* omit deliberately —
-            // `setTerminalConfiguration` replaces rather than merges (see
-            // above), so a Tab created before an appearance change but whose
-            // surface hasn't spawned yet would otherwise come back up with
-            // `Contents/MacOS` back on `PATH` the moment this builder's
-            // config lands. Must stay in sync with `TabRuntime`'s own
-            // `env PATH=…` line.
-            builder.withCustom("env", "PATH=\(TabRuntimeCLIPathSeam.injectedPath(basePath: ProcessInfo.processInfo.environment["PATH"], bundlePath: Bundle.main.bundlePath))")
-            builder.withCustom("keybind", "super+left=text:\\x01")
-            builder.withCustom("keybind", "super+right=text:\\x05")
-            builder.withCustom("keybind", "super+backspace=text:\\x15")
-            builder.withCustom("keybind", "alt+left=text:\\x1bb")
-            builder.withCustom("keybind", "alt+right=text:\\x1bf")
-            builder.withCustom("keybind", "alt+backspace=text:\\x1b\\x7f")
+            // Still omits `copy-on-select`, `command`, `wait-after-command`,
+            // `abnormal-command-exit-runtime`, `env BATTY_*`, `keybind = clear`
+            // and `cmd+c`, which `TabRuntime`'s builder emits, so an appearance
+            // change drops them from every Tab. Tracked in #0538.
+            builder.withSharedPreferences(fontSize: fontSize, cursor: cursor, blink: blink, background: background)
         }
         // Appearance settings are app-wide, so apply to every window's surfaces.
         // The `sessions` shim resolves to windows[0] only; iterating `windows`
@@ -262,6 +265,81 @@ extension AppStateStore {
     }
 }
 
+extension TerminalConfiguration.Builder {
+    /// Every line the per-Tab builder and `applyAppearanceToAllSurfaces` must
+    /// agree on. `setTerminalConfiguration` replaces rather than merges, so a
+    /// key emitted from only one of them is silently dropped the next time the
+    /// other runs.
+    mutating func withSharedPreferences(
+        fontSize: Float,
+        cursor: TerminalCursorStyle,
+        blink: Bool,
+        background: TerminalBackgroundSettings
+    ) {
+        withFontSize(fontSize)
+        withCursorStyle(cursor)
+        withCursorStyleBlink(blink)
+        // libghostty's default leaves `ssh-env` off, so `COLORTERM`/
+        // `TERM_PROGRAM` never reach a remote host (#0392). Turning it on
+        // declares Batty's intent correctly against libghostty's config
+        // model, but the pinned `libghostty-spm` fork's bash/zsh
+        // shell-integration scripts are a from-scratch MIT rewrite that
+        // explicitly does not act on `ssh-env` (or `sudo`/`ssh-terminfo`/
+        // `path`) — see docs/ssh-colors-and-terminfo.md. So this line is
+        // currently a no-op in practice, kept for forward-compatibility
+        // and because it is the correct declared config either way.
+        // `ssh-terminfo` is deliberately left off: it writes to
+        // `~/.terminfo` on whatever host `ssh` reaches, and #0392 was
+        // told not to decide that trade-off unilaterally — see the
+        // follow-up ticket. Every other feature (`cursor`, `no-sudo`,
+        // `title`, `no-ssh-terminfo`, `path`) is omitted rather than
+        // spelled out: per libghostty's own doc comment on this key, an
+        // omitted feature keeps its default, so spelling out a value
+        // identical to the default only widens the token list a future
+        // pin bump could reject wholesale (one bad token here has been
+        // observed to take the entire config down, `keybind = clear`
+        // included) for zero behavioral gain. `ssh-env` is the only
+        // actual delta from libghostty's default.
+        withCustom("shell-integration-features", "ssh-env")
+        // CLI/PATH collision (#0364): libghostty appends its own
+        // executable directory (`Contents/MacOS`) to every spawned
+        // shell's `PATH` via `GHOSTTY_BIN_DIR`, which on a
+        // case-insensitive APFS volume collides with the app's own main
+        // executable there — `Contents/MacOS/batty` and
+        // `Contents/MacOS/Batty` name the same inode. Override `PATH`
+        // outright so it points at the CLI's real location
+        // (`Contents/Resources/bin`) instead, stripping the app's own
+        // directory defensively. See `TabRuntimeCLIPathSeam`'s doc for
+        // why an `env`-set `PATH` replaces rather than appends to
+        // whatever libghostty already computed.
+        withCustom("env", "PATH=\(TabRuntimeCLIPathSeam.injectedPath(basePath: ProcessInfo.processInfo.environment["PATH"], bundlePath: Bundle.main.bundlePath))")
+        withCustom("keybind", "super+left=text:\\x01")
+        withCustom("keybind", "super+right=text:\\x05")
+        withCustom("keybind", "super+backspace=text:\\x15")
+        withCustom("keybind", "alt+left=text:\\x1bb")
+        withCustom("keybind", "alt+right=text:\\x1bf")
+        withCustom("keybind", "alt+backspace=text:\\x1b\\x7f")
+        withBackground(background)
+    }
+
+    /// Emits nothing for a setting that's off, so a user who never configures
+    /// a background gets no new lines at all.
+    private mutating func withBackground(_ background: TerminalBackgroundSettings) {
+        if let imagePath = background.imagePath {
+            // Quoted because libghostty trims unquoted whitespace from a value.
+            withCustom("background-image", "\"\(imagePath)\"")
+            withCustom("background-image-fit", background.fit.rawValue)
+            withCustom("background-image-position", background.position.rawValue)
+            // `description` rather than a localized format: `0,35` fails the
+            // whole config.
+            withCustom("background-image-opacity", background.imageOpacity.description)
+        }
+        if background.terminalOpacity < 1 {
+            withBackgroundOpacity(background.terminalOpacity)
+        }
+    }
+}
+
 extension SettingsPreference {
     public static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -272,6 +350,10 @@ extension SettingsPreference {
             systemNotificationsKey: defaultSystemNotifications,
             cmdNumberTargetKey: defaultCmdNumberTarget,
             footprintSoftLimitGBKey: defaultFootprintSoftLimitGB,
+            backgroundImageFitKey: defaultBackgroundImageFit,
+            backgroundImagePositionKey: defaultBackgroundImagePosition,
+            backgroundImageOpacityKey: defaultBackgroundImageOpacity,
+            backgroundOpacityKey: defaultBackgroundOpacity,
         ])
     }
 }

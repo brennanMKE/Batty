@@ -37,6 +37,12 @@ public final class TabRuntime: Identifiable {
     /// ``attachContext(paneID:sessionID:)``'s config re-apply.
     private let commandOverride: String?
 
+    /// Source of the background settings only, read again on each config
+    /// render. See ``applyShellAndAppearancePreferences(to:tabID:paneID:sessionID:command:background:)``
+    /// for why the other preferences don't come from here.
+    @ObservationIgnored
+    private let preferences: UserDefaults
+
     /// Observation-tracked mirror of `terminal.workingDirectory`. That
     /// property is Combine `@Published` on an `ObservableObject`
     /// (`TerminalViewState`, from the GhosttyTerminal package), which the
@@ -137,9 +143,11 @@ public final class TabRuntime: Identifiable {
         bellCount: Int = 0,
         unseenBellCount: Int = 0,
         lastBellAt: Date? = nil,
-        lastBellMessage: String? = nil
+        lastBellMessage: String? = nil,
+        preferences: UserDefaults = .standard
     ) {
         self.id = id
+        self.preferences = preferences
         self.titleOverride = titleOverride
         self.workingDirectory = workingDirectory
         self.commandOverride = command
@@ -149,7 +157,7 @@ public final class TabRuntime: Identifiable {
         if let workingDirectory {
             self.terminal.configuration.workingDirectory = workingDirectory
         }
-        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil, command: command)
+        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil, command: command, background: SettingsPreference.resolvedBackground(defaults: preferences))
         self.bellCount = bellCount
         self.unseenBellCount = unseenBellCount
         self.lastBellAt = lastBellAt
@@ -216,7 +224,7 @@ public final class TabRuntime: Identifiable {
         guard self.paneID != paneID || self.sessionID != sessionID else { return }
         self.paneID = paneID
         self.sessionID = sessionID
-        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride)
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: SettingsPreference.resolvedBackground(defaults: preferences))
     }
 
     /// Left on the zero-arg, `.standard`-only `resolved…()` readers (#0426):
@@ -232,21 +240,23 @@ public final class TabRuntime: Identifiable {
     /// assertion, but only to compare production's rendered `command = …`
     /// line against a second same-process read of the same never-written
     /// key, which stays self-consistent regardless of what that key holds.
+    ///
+    /// `background` is the exception: tests must configure it, and they may
+    /// not write `.standard`, so it comes from ``preferences``, which only
+    /// this `TabRuntime`'s own `init` parameter sets.
     private static func applyShellAndAppearancePreferences(
         to terminal: TerminalViewState,
         tabID: UUID,
         paneID: UUID?,
         sessionID: UUID?,
-        command: String? = nil
+        command: String? = nil,
+        background: TerminalBackgroundSettings
     ) {
         let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle()) ?? .block
         let blink = SettingsPreference.resolvedCursorBlink()
         let fontSize = SettingsPreference.resolvedFontSize()
         let shell = SettingsPreference.resolvedShell()
         let configuration = TerminalConfiguration { builder in
-            builder.withFontSize(fontSize)
-            builder.withCursorStyle(cursor)
-            builder.withCursorStyleBlink(blink)
             // libghostty 1.3.2 declares `supports_selection_clipboard` on
             // macOS (it didn't at 1.2.2), and its clipboard-write callback
             // ignores the clipboard kind, writing every selection straight
@@ -259,28 +269,6 @@ public final class TabRuntime: Identifiable {
             // against; Cmd-C and Edit > Copy still copy explicitly via
             // the `cmd+c=copy_to_clipboard` keybind set below.
             builder.withCustom("copy-on-select", "false")
-            // libghostty's default leaves `ssh-env` off, so `COLORTERM`/
-            // `TERM_PROGRAM` never reach a remote host (#0392). Turning it on
-            // declares Batty's intent correctly against libghostty's config
-            // model, but the pinned `libghostty-spm` fork's bash/zsh
-            // shell-integration scripts are a from-scratch MIT rewrite that
-            // explicitly does not act on `ssh-env` (or `sudo`/`ssh-terminfo`/
-            // `path`) — see docs/ssh-colors-and-terminfo.md. So this line is
-            // currently a no-op in practice, kept for forward-compatibility
-            // and because it is the correct declared config either way.
-            // `ssh-terminfo` is deliberately left off: it writes to
-            // `~/.terminfo` on whatever host `ssh` reaches, and #0392 was
-            // told not to decide that trade-off unilaterally — see the
-            // follow-up ticket. Every other feature (`cursor`, `no-sudo`,
-            // `title`, `no-ssh-terminfo`, `path`) is omitted rather than
-            // spelled out: per libghostty's own doc comment on this key, an
-            // omitted feature keeps its default, so spelling out a value
-            // identical to the default only widens the token list a future
-            // pin bump could reject wholesale (one bad token here has been
-            // observed to take the entire config down, `keybind = clear`
-            // included) for zero behavioral gain. `ssh-env` is the only
-            // actual delta from libghostty's default.
-            builder.withCustom("shell-integration-features", "ssh-env")
             // A per-tab command override (#0282's `pane split -c`) replaces
             // the shell preference entirely for this one tab, rather than
             // appending a second `command` line — `command`'s repeat-key
@@ -321,18 +309,6 @@ public final class TabRuntime: Identifiable {
             } else if !shell.isEmpty {
                 builder.withCustom("command", shell)
             }
-            // CLI/PATH collision (#0364): libghostty appends its own
-            // executable directory (`Contents/MacOS`) to every spawned
-            // shell's `PATH` via `GHOSTTY_BIN_DIR`, which on a
-            // case-insensitive APFS volume collides with the app's own main
-            // executable there — `Contents/MacOS/batty` and
-            // `Contents/MacOS/Batty` name the same inode. Override `PATH`
-            // outright so it points at the CLI's real location
-            // (`Contents/Resources/bin`) instead, stripping the app's own
-            // directory defensively. See `TabRuntimeCLIPathSeam`'s doc for
-            // why an `env`-set `PATH` replaces rather than appends to
-            // whatever libghostty already computed.
-            builder.withCustom("env", "PATH=\(TabRuntimeCLIPathSeam.injectedPath(basePath: ProcessInfo.processInfo.environment["PATH"], bundlePath: Bundle.main.bundlePath))")
             // Agent context (#0257/#0281): libghostty's `env` config
             // directive sets the spawned process's environment directly —
             // unlike prepending `export …;` to a shell command line, it
@@ -355,12 +331,8 @@ public final class TabRuntime: Identifiable {
             // our PasteDispatcher menu action.
             builder.withCustom("keybind", "clear")
             builder.withCustom("keybind", "cmd+c=copy_to_clipboard")
-            builder.withCustom("keybind", "super+left=text:\\x01")
-            builder.withCustom("keybind", "super+right=text:\\x05")
-            builder.withCustom("keybind", "super+backspace=text:\\x15")
-            builder.withCustom("keybind", "alt+left=text:\\x1bb")
-            builder.withCustom("keybind", "alt+right=text:\\x1bf")
-            builder.withCustom("keybind", "alt+backspace=text:\\x1b\\x7f")
+            // Last, because `keybind = clear` must precede the bindings this adds.
+            builder.withSharedPreferences(fontSize: fontSize, cursor: cursor, blink: blink, background: background)
         }
         terminal.controller.setTerminalConfiguration(configuration)
     }
