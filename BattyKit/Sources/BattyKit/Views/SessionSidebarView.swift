@@ -10,6 +10,7 @@ public struct SessionSidebarView: View {
     @State private var renameDraft: String = ""
     @State private var themingSessionID: UUID?
     @State private var coloringSessionID: UUID?
+    @State private var backgroundSettingsPaneID: UUID?
 
     public init(store: AppStateStore, windowID: WindowID) {
         self.store = store
@@ -81,7 +82,9 @@ public struct SessionSidebarView: View {
                             pane: pane,
                             session: session,
                             windowRuntime: windowRuntime,
-                            accent: themeChrome?.accent
+                            accent: themeChrome?.accent,
+                            showsBackgroundSettings: store.featureFlags.terminalBackgrounds,
+                            onBackgroundSettings: { backgroundSettingsPaneID = pane.id }
                         )
                         .selectionDisabled()
                         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
@@ -203,6 +206,14 @@ public struct SessionSidebarView: View {
                 isOverride: session.colorOverride
             )
         }
+        .sheet(item: backgroundSettingsBinding) { pane in
+            PaneBackgroundSettingsView(
+                isPresented: backgroundSettingsPresentedBinding,
+                pane: pane,
+                appWide: SettingsPreference.resolvedBackground(defaults: store.preferences),
+                importer: store.backgroundImageImporter
+            )
+        }
     }
 
     /// Routes List selection writes through the validated setter so pane ids
@@ -234,6 +245,26 @@ public struct SessionSidebarView: View {
         Binding(
             get: { themingSessionID != nil },
             set: { if !$0 { themingSessionID = nil } }
+        )
+    }
+
+    /// A closed Pane makes the lookup `nil`, which dismisses the sheet.
+    private var backgroundSettingsBinding: Binding<PaneRuntime?> {
+        Binding(
+            get: {
+                guard store.featureFlags.terminalBackgrounds, let backgroundSettingsPaneID else { return nil }
+                return windowRuntime.sessions.lazy
+                    .flatMap(\.tree.allPanes)
+                    .first { $0.id == backgroundSettingsPaneID }
+            },
+            set: { backgroundSettingsPaneID = $0?.id }
+        )
+    }
+
+    private var backgroundSettingsPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { backgroundSettingsPaneID != nil },
+            set: { if !$0 { backgroundSettingsPaneID = nil } }
         )
     }
 
@@ -426,6 +457,8 @@ struct PaneRow: View {
     @Bindable var session: SessionRuntime
     @Bindable var windowRuntime: WindowRuntime
     let accent: Color?
+    let showsBackgroundSettings: Bool
+    let onBackgroundSettings: () -> Void
 
     /// Column/row position (`1/1`, `2/1`, `1/3`, …) instead of the pane's
     /// path — the path gave no way to tell where a pane sat in the split
@@ -478,6 +511,18 @@ struct PaneRow: View {
                     .padding(.vertical, 2)
                     .background(Capsule().stroke(accent ?? Color.accentColor, lineWidth: 1))
                     .help("\(pane.unseenBellCount) unseen bell event(s)")
+            }
+
+            if showsBackgroundSettings && pane.kind == .terminal {
+                Button(action: onBackgroundSettings) {
+                    Image(systemName: pane.backgroundOverride == nil ? "gearshape" : "gearshape.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.borderless)
+                .help("Pane Background…")
+                .accessibilityIdentifier("pane-background-settings.\(pane.id.uuidString)")
+                .accessibilityValue(pane.backgroundOverride == nil ? "following" : "custom")
             }
 
             // The single visibility control: shows current state

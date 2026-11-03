@@ -43,6 +43,11 @@ public final class TabRuntime: Identifiable {
     @ObservationIgnored
     private let preferences: UserDefaults
 
+    /// The owning Pane's override, which `PaneRuntime` keeps current. Stored
+    /// here because every config render replaces the whole override set.
+    @ObservationIgnored
+    private var backgroundOverride: TerminalBackgroundSettings?
+
     /// Observation-tracked mirror of `terminal.workingDirectory`. That
     /// property is Combine `@Published` on an `ObservableObject`
     /// (`TerminalViewState`, from the GhosttyTerminal package), which the
@@ -144,10 +149,12 @@ public final class TabRuntime: Identifiable {
         unseenBellCount: Int = 0,
         lastBellAt: Date? = nil,
         lastBellMessage: String? = nil,
-        preferences: UserDefaults = .standard
+        preferences: UserDefaults = .standard,
+        backgroundOverride: TerminalBackgroundSettings? = nil
     ) {
         self.id = id
         self.preferences = preferences
+        self.backgroundOverride = backgroundOverride
         self.titleOverride = titleOverride
         self.workingDirectory = workingDirectory
         self.commandOverride = command
@@ -157,7 +164,7 @@ public final class TabRuntime: Identifiable {
         if let workingDirectory {
             self.terminal.configuration.workingDirectory = workingDirectory
         }
-        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil, command: command, background: SettingsPreference.resolvedBackground(defaults: preferences))
+        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil, command: command, background: Self.effectiveBackground(override: backgroundOverride, preferences: preferences))
         self.bellCount = bellCount
         self.unseenBellCount = unseenBellCount
         self.lastBellAt = lastBellAt
@@ -224,7 +231,23 @@ public final class TabRuntime: Identifiable {
         guard self.paneID != paneID || self.sessionID != sessionID else { return }
         self.paneID = paneID
         self.sessionID = sessionID
-        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: SettingsPreference.resolvedBackground(defaults: preferences))
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: Self.effectiveBackground(override: backgroundOverride, preferences: preferences))
+    }
+
+    /// Goes through this Tab's own builder, so the per-Tab lines
+    /// (`keybind = clear`, `command`, `copy-on-select`, `env BATTY_*`) survive
+    /// the wholesale replace.
+    func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        guard newOverride != backgroundOverride else { return }
+        backgroundOverride = newOverride
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: Self.effectiveBackground(override: newOverride, preferences: preferences))
+    }
+
+    private static func effectiveBackground(
+        override: TerminalBackgroundSettings?,
+        preferences: UserDefaults
+    ) -> TerminalBackgroundSettings {
+        .effective(pane: override, appWide: SettingsPreference.resolvedBackground(defaults: preferences))
     }
 
     /// Left on the zero-arg, `.standard`-only `resolved…()` readers (#0426):

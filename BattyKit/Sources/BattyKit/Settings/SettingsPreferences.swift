@@ -239,14 +239,7 @@ extension AppStateStore {
         let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle(defaults: preferences)) ?? .block
         let blink = SettingsPreference.resolvedCursorBlink(defaults: preferences)
         let fontSize = SettingsPreference.resolvedFontSize(defaults: preferences)
-        let background = SettingsPreference.resolvedBackground(defaults: preferences)
-        let configuration = TerminalConfiguration { builder in
-            // Still omits `copy-on-select`, `command`, `wait-after-command`,
-            // `abnormal-command-exit-runtime`, `env BATTY_*`, `keybind = clear`
-            // and `cmd+c`, which `TabRuntime`'s builder emits, so an appearance
-            // change drops them from every Tab. Tracked in #0538.
-            builder.withSharedPreferences(fontSize: fontSize, cursor: cursor, blink: blink, background: background)
-        }
+        let appWideBackground = SettingsPreference.resolvedBackground(defaults: preferences)
         // Appearance settings are app-wide, so apply to every window's surfaces.
         // The `sessions` shim resolves to windows[0] only; iterating `windows`
         // directly avoids leaving other windows (often the key window) stale (#0248).
@@ -257,6 +250,16 @@ extension AppStateStore {
         // review round 1, finding 3).
         for session in windows.flatMap({ $0.sessions }) {
             for pane in session.tree.allPanes where pane.kind == .terminal {
+                // One per Pane, because a Pane's background override must
+                // survive this wholesale replace.
+                let background = TerminalBackgroundSettings.effective(pane: pane.backgroundOverride, appWide: appWideBackground)
+                let configuration = TerminalConfiguration { builder in
+                    // Still omits `copy-on-select`, `command`, `wait-after-command`,
+                    // `abnormal-command-exit-runtime`, `env BATTY_*`, `keybind = clear`
+                    // and `cmd+c`, which `TabRuntime`'s builder emits, so an appearance
+                    // change drops them from every Tab. Tracked in #0538.
+                    builder.withSharedPreferences(fontSize: fontSize, cursor: cursor, blink: blink, background: background)
+                }
                 for tab in pane.tabs {
                     tab.terminal.controller.setTerminalConfiguration(configuration)
                 }

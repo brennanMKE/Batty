@@ -59,4 +59,40 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
         else { return nil }
         return expanded
     }
+
+    /// The image opacity a Pane's first image gets, as a tint, so a picture
+    /// doesn't make the Pane unreadable on arrival.
+    static let firstImageOpacity = 0.35
+
+    /// The resolution chain. A non-nil override is complete, and `nil` follows
+    /// the broader level.
+    static func effective(pane: Self?, appWide: Self) -> Self {
+        pane ?? appWide
+    }
+
+    func withImagePath(_ imagePath: String?) -> Self {
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+    }
+
+    func withFit(_ fit: BackgroundImageFit) -> Self {
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+    }
+
+    func withPosition(_ position: BackgroundImagePosition) -> Self {
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+    }
+
+    func withImageOpacity(_ imageOpacity: Double) -> Self {
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+    }
+
+    func withTerminalOpacity(_ terminalOpacity: Double) -> Self {
+        Self(imagePath: imagePath, fit: fit, position: position, imageOpacity: imageOpacity, terminalOpacity: terminalOpacity)
+    }
+
+    /// Replacing an image keeps its opacity. Only a first image gets the tint.
+    func pickingImage(path: String) -> Self {
+        let picked = withImagePath(path)
+        return imagePath == nil ? picked.withImageOpacity(Self.firstImageOpacity) : picked
+    }
 }

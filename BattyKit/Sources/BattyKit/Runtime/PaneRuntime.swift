@@ -63,6 +63,16 @@ public final class PaneRuntime: Identifiable {
     /// `init`, alongside `kind`, and never mutated.
     public let content: (any PaneContentLifecycle)?
 
+    /// This Pane's terminal background. `nil` follows the app-wide default; a
+    /// non-nil value is complete and ignores later app-wide changes. In memory
+    /// only: `snapshot()` and Save as Project don't carry it.
+    public private(set) var backgroundOverride: TerminalBackgroundSettings?
+
+    /// Where a Tab this Pane creates reads app-wide background preferences.
+    /// Production stays on `.standard`; tests pass their own suite.
+    @ObservationIgnored
+    private let tabPreferences: UserDefaults
+
     /// Builds the concrete `PaneContentLifecycle` conformer for `kind`, or
     /// `nil` for kinds with no conformer (yet). The default
     /// `contentFactory` `PaneRuntime.init` uses.
@@ -97,10 +107,12 @@ public final class PaneRuntime: Identifiable {
         isHidden: Bool = false,
         kind: PaneContentKind = .terminal,
         isSessionSelected: Bool = true,
+        tabPreferences: UserDefaults = .standard,
         contentFactory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = PaneRuntime.makeContent
     ) {
         self.id = id
-        let initial = tabs ?? [TabRuntime()]
+        self.tabPreferences = tabPreferences
+        let initial = tabs ?? [TabRuntime(preferences: tabPreferences)]
         precondition(!initial.isEmpty, "PaneRuntime must contain at least one Tab")
         self.tabs = initial
         self.activeTabID = initial[0].id
@@ -151,6 +163,18 @@ public final class PaneRuntime: Identifiable {
         tabs.first { $0.id == activeTabID } ?? tabs.first
     }
 
+    /// Applies to every Tab here now, and `addTab` carries it to later ones.
+    /// A non-terminal Pane's one Tab is never rendered, so it has no background
+    /// to set. Idempotent because every observed write notifies, equal values
+    /// included.
+    public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        guard kind == .terminal, newOverride != backgroundOverride else { return }
+        backgroundOverride = newOverride
+        for tab in tabs {
+            tab.setBackgroundOverride(newOverride)
+        }
+    }
+
     /// Adds a new Tab to this Pane. **Gated on `kind == .terminal`** (#0332)
     /// — a non-terminal pane's one `TabRuntime` is a structural placeholder
     /// `PaneView` never renders (`kind`'s doc comment above); adding a
@@ -171,7 +195,7 @@ public final class PaneRuntime: Identifiable {
             return activeTab ?? tabs[0]
         }
         let cwd = source?.terminal.workingDirectory
-        let tab = TabRuntime(workingDirectory: cwd)
+        let tab = TabRuntime(workingDirectory: cwd, preferences: tabPreferences, backgroundOverride: backgroundOverride)
         tabs.append(tab)
         activeTabID = tab.id
         if let sessionID {
