@@ -18,9 +18,9 @@ public struct SessionSidebarView: View {
         WindowSeeThrough.sidebarFill(isSeeThrough: windowIsSeeThrough, chromeBackground: themeChrome?.chromeBackground)
     }
 
-    public init(store: AppStateStore, windowID: WindowID) {
+    public init(store: AppStateStore, windowRuntime: WindowRuntime) {
         self.store = store
-        self.windowRuntime = store.windowRuntime(for: windowID)
+        self.windowRuntime = windowRuntime
     }
 
     /// "selected" / "unselected", then ", N unseen" while the Session has

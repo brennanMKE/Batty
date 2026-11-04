@@ -261,7 +261,7 @@ struct ProjectSymbolSessionTests {
         try projectStore.upsert(other)
 
         let first = try store.openProject(id: edited.id, contentFactory: noContent).session
-        let secondWindow = store.windowRuntime(for: WindowID())
+        let secondWindow = store.openWindowRuntime(for: WindowID())
         let tree = try ProjectTreeBuilder.build(project: edited, contentFactory: noContent, isSessionSelected: true)
         let second = secondWindow.addProjectSession(edited, tree: tree)
         let untouched = try store.openProject(id: other.id, contentFactory: noContent).session

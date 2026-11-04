@@ -57,7 +57,7 @@ final class AppWideBackgroundLiveApplyTests {
 
     @Test func changeReachesFollowingPanesInEveryWindow() {
         let store = makeStore()
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
         #expect(store.windows.count >= 2)
         push(Self.settings, to: store)
         for window in store.windows {

@@ -28,7 +28,7 @@ struct AppStateStorePaneSplitTests {
 
     @Test func splitPaneResolvesAPaneInANonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let target = w2.sessions[0].focusedPaneAnyKind
 
         let newPaneID = store.splitPane(id: target.id, direction: .vertical)

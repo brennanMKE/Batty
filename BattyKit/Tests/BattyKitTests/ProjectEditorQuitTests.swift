@@ -269,12 +269,42 @@ struct ProjectEditorQuitTests {
         #expect(f.store.quitWhenEditorCloses == false)
     }
 
+    @Test func heldQuitFinishesWhenTheClosedWindowsRootViewIsRebuilt() async throws {
+        let f = try QuitFixture()
+        f.dirty()
+        f.store.terminateHandler = {}
+        let closed = f.store.windows[0].id
+        f.store.removeWindow(id: closed)
+        #expect(f.store.quitWhenEditorCloses)
+        _ = RootWindowView(windowID: closed, store: f.store)
+        #expect(f.store.windows.isEmpty, "rebuilding the closed window's root view revived its runtime")
+        f.model.cancel()
+
+        let terminated = await terminationSignal(of: f.store) {
+            f.store.projectEditorDidClose()
+        }
+
+        #expect(terminated)
+    }
+
+    @Test func lastWindowCloseTerminatesWhenItsRootViewIsRebuiltBeforeTheDeferredCheck() async throws {
+        let f = try QuitFixture()
+        let closed = f.store.windows[0].id
+
+        let terminated = await terminationSignal(of: f.store) {
+            f.store.removeWindow(id: closed)
+            _ = RootWindowView(windowID: closed, store: f.store)
+        }
+
+        #expect(terminated)
+    }
+
     @Test func aContentWindowThatReturnsBeforeTheEditorClosesStopsTheHeldQuit() async throws {
         let f = try QuitFixture()
         f.dirty()
         f.store.removeWindow(id: f.store.windows[0].id)
         #expect(f.store.quitWhenEditorCloses)
-        _ = f.store.windowRuntime(for: WindowID())
+        _ = f.store.openWindowRuntime(for: WindowID())
 
         f.store.projectEditorDidClose()
 

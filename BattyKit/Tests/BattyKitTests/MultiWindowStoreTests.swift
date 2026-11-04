@@ -6,17 +6,17 @@ import Testing
 @testable import BattyKit
 
 /// Tests for the multi-window `AppStateStore` additions in #0237:
-/// lazy `windowRuntime(for:)` creation, NSWindow registry, and new-window
+/// lazy `openWindowRuntime(for:)` creation, NSWindow registry, and new-window
 /// session seeding.
 @MainActor
 struct MultiWindowStoreTests {
 
-    // MARK: - windowRuntime(for:) lazy creation
+    // MARK: - openWindowRuntime(for:) lazy creation
 
     @Test func windowRuntimeForInitialWindowIDReturnsExistingRuntime() {
         let store = AppStateStore()
         let initialID = store.windows[0].id
-        let resolved = store.windowRuntime(for: initialID)
+        let resolved = store.openWindowRuntime(for: initialID)
         #expect(resolved === store.windows[0])
         #expect(store.windows.count == 1)
     }
@@ -24,7 +24,7 @@ struct MultiWindowStoreTests {
     @Test func windowRuntimeForNewIDCreatesNewRuntime() {
         let store = AppStateStore()
         let newID = WindowID()
-        let runtime = store.windowRuntime(for: newID)
+        let runtime = store.openWindowRuntime(for: newID)
         #expect(store.windows.count == 2)
         #expect(runtime.id == newID)
     }
@@ -32,7 +32,7 @@ struct MultiWindowStoreTests {
     @Test func windowRuntimeForNewIDSeedsOneSession() {
         let store = AppStateStore()
         let newID = WindowID()
-        let runtime = store.windowRuntime(for: newID)
+        let runtime = store.openWindowRuntime(for: newID)
         #expect(runtime.sessions.count == 1)
         #expect(runtime.selectedSessionID != nil)
     }
@@ -40,15 +40,15 @@ struct MultiWindowStoreTests {
     @Test func windowRuntimeCreationIsIdempotent() {
         let store = AppStateStore()
         let newID = WindowID()
-        let first = store.windowRuntime(for: newID)
-        let second = store.windowRuntime(for: newID)
+        let first = store.openWindowRuntime(for: newID)
+        let second = store.openWindowRuntime(for: newID)
         #expect(first === second)
         #expect(store.windows.count == 2)
     }
 
     @Test func windowRuntimeForNewIDHasDefaultSessionTitle() {
         let store = AppStateStore()
-        let runtime = store.windowRuntime(for: WindowID())
+        let runtime = store.openWindowRuntime(for: WindowID())
         let title = runtime.sessions.first?.title ?? ""
         #expect(AppStateStore.isDefaultSessionTitle(title),
                 "New window's first session should have a default title, got: \(title)")
@@ -108,7 +108,7 @@ struct MultiWindowStoreTests {
             let store = AppStateStore()
             var entries: [(runtime: WindowRuntime, nsWindow: NSWindow)] = []
             for _ in 0..<windowCount {
-                let runtime = store.windowRuntime(for: WindowID())
+                let runtime = store.openWindowRuntime(for: WindowID())
                 let nsWindow = NSWindow()
                 store.registerNSWindow(nsWindow, for: runtime.id)
                 entries.append((runtime, nsWindow))
@@ -141,7 +141,7 @@ struct MultiWindowStoreTests {
         // w2 exists in `windows` (e.g. mid-launch, before its NSWindow is
         // known) but is not yet registered — must not be preferred over the
         // registered w1 just because it's newer.
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
 
         let resolved = store.defaultTargetWindow()
         #expect(resolved === w1,
@@ -155,7 +155,7 @@ struct MultiWindowStoreTests {
     @Test func twoWindowRuntimesHaveIndependentSessions() {
         let store = AppStateStore()
         let w1 = store.windows[0]
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         w1.addSession()
         #expect(w1.sessions.count == 2)
         #expect(w2.sessions.count == 1, "Second window's session count should be unaffected")
@@ -164,7 +164,7 @@ struct MultiWindowStoreTests {
     @Test func twoWindowRuntimesHaveIndependentSelection() {
         let store = AppStateStore()
         let w1 = store.windows[0]
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let s2 = w2.addSession()
         w2.selectedSessionID = s2.id
         // w1's selection is unchanged

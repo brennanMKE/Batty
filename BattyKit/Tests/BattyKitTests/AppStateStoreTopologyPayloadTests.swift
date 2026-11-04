@@ -19,7 +19,7 @@ struct AppStateStoreTopologyPayloadTests {
 
     @Test func topologyPayloadReportsOneWindowPerRuntimeWindow() {
         let store = AppStateStore()
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
         #expect(store.topologyPayload().windows.count == store.windows.count)
         #expect(store.topologyPayload().windows.count == 2)
     }
@@ -245,7 +245,7 @@ struct AppStateStoreTopologyPayloadTests {
 
     @Test func sessionInfoPayloadResolvesSessionInNonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let sessionInW2 = w2.sessions[0]
         let payload = store.sessionInfoPayload(sessionID: sessionInW2.id)
         #expect(payload?.id == sessionInW2.id)
@@ -300,7 +300,7 @@ struct AppStateStoreTopologyPayloadTests {
     /// window/session/pane/tab must not disturb any of them.
     @Test func topologyPayloadDoesNotChangeSelectionOrFocusAcrossWindows() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let w1Session = store.sessions[0]
         let w2Session = w2.sessions[0]
         store.windows[0].selectedSessionID = w1Session.id

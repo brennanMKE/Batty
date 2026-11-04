@@ -38,7 +38,7 @@ final class MultiWindowCWDNamingTests {
         defer { cleanup(url) }
         store.nameCache.record(path: "/Users/test/Developer/Widget", name: "Widget")
 
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let session = w2.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         anchorTab.terminal.configuration.workingDirectory = "/Users/test/Developer/Widget"
@@ -55,7 +55,7 @@ final class MultiWindowCWDNamingTests {
         store.nameCache.record(path: "/Users/test/Developer/Widget", name: "Widget")
 
         let w1 = store.windows[0]
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         let w1Session = w1.sessions[0]
         let w1OriginalTitle = w1Session.title
@@ -77,7 +77,7 @@ final class MultiWindowCWDNamingTests {
         store.nameCache.record(path: "/Users/test/Developer/Alpha", name: "Alpha")
 
         // Add a second window to verify the fix doesn't break single-window behavior.
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
 
         let w1Session = store.windows[0].sessions[0]
         let anchorTab = w1Session.tree.root.firstLeafPane.tabs[0]
@@ -93,7 +93,7 @@ final class MultiWindowCWDNamingTests {
         let (store, url) = makeStore()
         defer { cleanup(url) }
         store.nameCache.record(path: "/Users/test/Developer/X", name: "X")
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
 
         // Calling with an ID that belongs to no window should be a no-op.
         store.handleWorkingDirectoryChange(forTabID: UUID())
@@ -112,7 +112,7 @@ final class MultiWindowCWDNamingTests {
         let (store, url) = makeStore()
         defer { cleanup(url) }
 
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let w2Session = w2.sessions[0]
         let originalTitle = w2Session.title
 
@@ -128,7 +128,7 @@ final class MultiWindowCWDNamingTests {
         let (store, url) = makeStore()
         defer { cleanup(url) }
 
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         // Add a second session to w2 so removing one doesn't trigger window close.
         _ = w2.addSession()
         let targetSession = w2.sessions[0]
@@ -146,7 +146,7 @@ final class MultiWindowCWDNamingTests {
         let (store, url) = makeStore()
         defer { cleanup(url) }
 
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let w2Session = w2.sessions[0]
         // Seed a cached name so clearSessionName has something to do.
         store.nameCache.record(path: "/some/path", name: "Cached")
@@ -165,7 +165,7 @@ final class MultiWindowCWDNamingTests {
         let (store, url) = makeStore()
         defer { cleanup(url) }
 
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let w2Session = w2.sessions[0]
         // Add a second tab so closing one doesn't cascade to remove the session.
         let secondTab = w2Session.focusedPaneAnyKind.addTab()
@@ -185,7 +185,7 @@ final class MultiWindowCWDNamingTests {
         let (store, url) = makeStore()
         defer { cleanup(url) }
 
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let w2Session = w2.sessions[0]
         w2Session.tree.splitFocusedPane(direction: .horizontal)
         let panes = w2Session.tree.allPanes
@@ -220,7 +220,7 @@ final class MultiWindowCWDNamingTests {
         let suggester = FixedSuggester("SuggestedName")
         store.nameSuggester = suggester
 
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let session = w2.sessions[0]
         let anchorTab = session.tree.root.firstLeafPane.tabs[0]
         // A path that won't match any cache/rules entry → AI fallback fires.

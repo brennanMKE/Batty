@@ -267,15 +267,21 @@ public final class AppStateStore {
     /// era; grows in `#0237` when `New Window` is added.
     @ObservationIgnored public private(set) var windows: [WindowRuntime]
 
-    /// The id `init` seeded `windows[0]` with, captured independently of
-    /// `windows` itself (#0316). `initialWindowID` falls back to this when
-    /// `windows` is legitimately empty — the deliberate post-last-window-close
-    /// state `terminateIfLastContentWindowGone()`'s doc comment describes —
-    /// so a `WindowGroup` scene-body re-evaluation during that window can
-    /// never index an empty array. A scene body must stay pure (no writes,
-    /// no `Task` hops — `docs/swiftui-observation-rules.md`), so the fix has
-    /// to be "always have a valid value on hand," not "compute one on demand."
-    @ObservationIgnored private let seedWindowID: WindowID
+    /// Ids of content windows that have closed. A view can be re-evaluated for
+    /// a window after `removeWindow`, and without this record its id would look
+    /// exactly like a window being opened: `runtimeForPresentedWindow` would
+    /// create a runtime with a Session for a window nobody can see, and that
+    /// Session would fail `terminateIfLastContentWindowGone`'s guard. Written
+    /// only by `removeWindow`.
+    @ObservationIgnored private var closedWindowIDs: Set<WindowID> = []
+
+    /// What `initialWindowID` returns while `windows` is empty (#0316). Starts
+    /// as the id `init` seeded `windows[0]` with, and is replaced by an id that
+    /// has never been used when the last window closes, so a window opened
+    /// during a held quit can't be given a closed id. A scene body must stay
+    /// pure (`docs/swiftui-observation-rules.md`), so this value has to be on
+    /// hand rather than computed on demand.
+    @ObservationIgnored private var fallbackWindowID: WindowID
 
     /// The `WindowID` that `BattyApp`'s `WindowGroup` must use as its
     /// `defaultValue`. Exposing it here lets SwiftUI reuse `windows[0]`
@@ -283,28 +289,14 @@ public final class AppStateStore {
     /// a phantom second runtime — the root cause of the #0251 wrong-window bug
     /// where `batty <path>` sessions landed in a runtime SwiftUI never showed.
     ///
-    /// Falls back to `seedWindowID` when `windows` is empty (#0316) rather
-    /// than indexing `windows[0]` unconditionally. That state is reachable
-    /// from a scene body while the app deliberately lives with `windows == []`
-    /// for one extra run-loop turn after the last content window closes (see
-    /// `terminateIfLastContentWindowGone`). Reusing the original seed id — not
-    /// a fresh `WindowID()` — keeps behavior identical to today whenever a
-    /// window exists, and if this is ever read in the empty-window turn,
-    /// resolves to the same id `windowRuntime(for:)` would recreate a runtime
-    /// for on demand, matching that method's existing lazy-creation contract
-    /// rather than inventing a new one.
-    ///
-    /// Load-bearing invariant, named here because a multi-window change
-    /// (#0234) could break it silently: reading this in the empty-window turn
-    /// *does* revive a runtime, because `windowRuntime(for:)` lazily creates
-    /// one and appends it to `windows`. That is safe only because it is
-    /// created with `sessions: []` and because `terminateIfLastContentWindowGone`
-    /// re-checks `windows.allSatisfy { $0.sessions.isEmpty }` rather than
-    /// `windows.isEmpty` — so a revived empty runtime does not cancel
-    /// termination. Revive with a session attached and the app would instead
-    /// stay alive headless.
+    /// While `windows` is empty (#0316) it returns `fallbackWindowID` rather
+    /// than indexing `windows[0]`. That state lasts for at least one run-loop
+    /// turn after the last content window closes, and for as long as the
+    /// Project Editor holds the quit (`terminateIfLastContentWindowGone`). The
+    /// read is pure and stable between closes, so `defaultValue` can be
+    /// re-evaluated freely.
     public var initialWindowID: WindowID {
-        windows.first?.id ?? seedWindowID
+        windows.first?.id ?? fallbackWindowID
     }
 
     /// The `WindowID` a New Window action must present. While no content
@@ -328,17 +320,36 @@ public final class AppStateStore {
         registeredContentWindowCount == 0
     }
 
-    /// Returns the `WindowRuntime` for `windowID`, creating one lazily if
-    /// it does not yet exist. This is the single path for launch, New Window,
-    /// and restoration (currently disabled) — all converge here so a new scene and a new runtime
-    /// are always created together. The initial window seeded in `init` uses
-    /// a known `WindowID`; subsequent windows create a fresh runtime with a
-    /// fresh `Session 1` in `$HOME` (no cross-window CWD inheritance).
-    public func windowRuntime(for windowID: WindowID) -> WindowRuntime {
+    /// The live `WindowRuntime` for `windowID`, or `nil`. Never creates one, so
+    /// it is the lookup for anything that can run after the window has closed.
+    public func existingWindowRuntime(for windowID: WindowID) -> WindowRuntime? {
+        windows.first { $0.id == windowID }
+    }
+
+    /// The only entry point for view code resolving the `WindowID` a scene
+    /// presents: `nil` for a window that has closed, otherwise the live runtime,
+    /// created on first sight of a new id. `openWindow(value:)` and the
+    /// `WindowGroup` default deliver only an id, so a new window's runtime can't
+    /// be created any earlier than this.
+    public func runtimeForPresentedWindow(_ windowID: WindowID) -> WindowRuntime? {
+        guard !closedWindowIDs.contains(windowID) else { return nil }
+        return openWindowRuntime(for: windowID)
+    }
+
+    /// Returns the `WindowRuntime` for `windowID`, creating one if it does not
+    /// exist. Launch, New Window, and restoration (currently disabled) all
+    /// converge here so a new scene and a new runtime are always created
+    /// together. The initial window seeded in `init` uses a known `WindowID`;
+    /// subsequent windows create a fresh runtime with a fresh `Session 1` in
+    /// `$HOME` (no cross-window CWD inheritance).
+    ///
+    /// Not for view code: it can't tell a window being opened from one that has
+    /// closed. Use `runtimeForPresentedWindow`.
+    func openWindowRuntime(for windowID: WindowID) -> WindowRuntime {
         if let existing = windows.first(where: { $0.id == windowID }) {
             return existing
         }
-        logger.info("windowRuntime: creating new runtime for windowID=\(windowID.value, privacy: .public)")
+        logger.info("openWindowRuntime: creating new runtime for windowID=\(windowID.value, privacy: .public)")
         let runtime = WindowRuntime(
             id: windowID,
             sessions: [],
@@ -374,6 +385,10 @@ public final class AppStateStore {
             cancelStartupTrust(requestID: request.id)
         }
         windows.removeAll { $0.id == windowID }
+        closedWindowIDs.insert(windowID)
+        if windows.isEmpty, closedWindowIDs.contains(fallbackWindowID) {
+            fallbackWindowID = WindowID()
+        }
         logger.info("removeWindow windowID=\(windowID.value, privacy: .public); remaining windows=\(self.windows.count, privacy: .public)")
         // If no registered content windows remain and there was more than
         // one, the app can terminate. With a single-window history the
@@ -436,7 +451,7 @@ public final class AppStateStore {
     /// regression warn against. That bug deferred a *write* that a second
     /// writer was racing over the same fact (model → AppKit focus vs. AppKit
     /// → model echo). `windows`/`nsWindowMap` do have other writers besides
-    /// this method's own call sites — notably `windowRuntime(for:)`, which
+    /// this method's own call sites — notably `openWindowRuntime(for:)`, which
     /// can append a new window (e.g. a New Window action) in the gap before
     /// the deferred block runs, exactly what
     /// `deferredTerminateAbortsIfANewWindowAppearsBeforeItRuns` exercises —
@@ -1226,7 +1241,7 @@ public final class AppStateStore {
             bellFeed: bellFeed,
             nameCache: nameCache
         )
-        // Wire the initial window the same way windowRuntime(for:) wires
+        // Wire the initial window the same way openWindowRuntime(for:) wires
         // newly created windows: onAllSessionsClosed → closeWindowCallback.
         // RootWindowView sets closeWindowCallback once the NSWindow is live.
         window.onAllSessionsClosed = { [weak window] in
@@ -1235,7 +1250,7 @@ public final class AppStateStore {
             window.closeWindowCallback?()
         }
         self.windows = [window]
-        self.seedWindowID = window.id
+        self.fallbackWindowID = window.id
         footprintMonitor.onWarn = { [weak self] footprintBytes, step in
             self?.recordFootprintWarning(footprintBytes: footprintBytes, step: step)
         }

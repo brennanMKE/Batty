@@ -210,7 +210,7 @@ struct AppStateStoreNotifyTests {
 
     @Test func notifyResolvesATabInANonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let target = w2.sessions[0].focusedPaneAnyKind.activeTabID
 
         let outcome = store.recordCLINotification(tabID: target, title: "Done", body: nil, playSound: false)

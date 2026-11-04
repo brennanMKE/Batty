@@ -22,9 +22,9 @@ public struct SessionDetailView: View {
     @State private var pendingPaste: PendingPaste?
     @State private var splitDetailToolbarSafeInsetTop: CGFloat = -1
 
-    public init(store: AppStateStore, windowID: WindowID) {
+    public init(store: AppStateStore, windowRuntime: WindowRuntime) {
         self.store = store
-        self.windowRuntime = store.windowRuntime(for: windowID)
+        self.windowRuntime = windowRuntime
     }
 
     public var body: some View {

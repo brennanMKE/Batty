@@ -44,7 +44,7 @@ struct SidebarFooterTests {
         withTempDirectory { directory in
             let store = makeStore(in: directory)
             let w1 = store.windows[0]
-            let w2 = store.windowRuntime(for: WindowID())
+            let w2 = store.openWindowRuntime(for: WindowID())
             #expect(!w1.projectPickerShown && !w2.projectPickerShown)
 
             SidebarFooter.presentProjectPicker(in: w1)

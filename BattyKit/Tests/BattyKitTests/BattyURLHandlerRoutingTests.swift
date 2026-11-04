@@ -29,7 +29,7 @@ struct BattyURLHandlerRoutingTests {
     @Test func initialWindowIDIsStableAfterAdditionalWindowRuntimes() {
         let store = AppStateStore()
         let originalID = store.initialWindowID
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
         #expect(store.initialWindowID == originalID)
         #expect(store.windows.count == 2)
     }
@@ -55,7 +55,7 @@ struct BattyURLHandlerRoutingTests {
     /// (`windows.first`) fallback answer.
     @Test func defaultTargetWindowReturnsRegisteredWindowRuntime() {
         let store = AppStateStore()
-        let newer = store.windowRuntime(for: WindowID())
+        let newer = store.openWindowRuntime(for: WindowID())
         let nsWindow = NSWindow()
         store.registerNSWindow(nsWindow, for: newer.id)
         defer { store.unregisterNSWindow(nsWindow) }

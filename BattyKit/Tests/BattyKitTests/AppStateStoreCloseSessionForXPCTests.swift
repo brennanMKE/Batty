@@ -58,7 +58,7 @@ struct AppStateStoreCloseSessionForXPCTests {
 
     @Test func closeSessionForXPCResolvesASessionInANonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let target = w2.sessions[0]
         // A sibling session in w2 so closing `target` isn't also w2's last
         // session — this test is about cross-window resolution, not the
@@ -141,7 +141,7 @@ struct AppStateStoreCloseSessionForXPCTests {
         // A second window with its own session keeps the app-wide session
         // count above one, so the app-wide last-session guard does not
         // apply to this window's own only session.
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
 
         let outcome = store.closeSessionForXPC(id: onlySessionID)
 
@@ -151,7 +151,7 @@ struct AppStateStoreCloseSessionForXPCTests {
 
     @Test func totalSessionCountAcrossWindowsGatesTheRefusalNotPerWindowCount() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         // Two windows, two sessions total (one each) — closing either one
         // would leave exactly one session in the app, which must still be
         // allowed; only reaching zero is refused.

@@ -54,7 +54,7 @@ struct SidebarSelectionGuardTests {
     @Test func rejectsOtherWindowsSessionID() {
         let store = AppStateStore()
         let first = store.sessions[0]
-        let otherWindow = store.windowRuntime(for: WindowID())
+        let otherWindow = store.openWindowRuntime(for: WindowID())
         let foreign = otherWindow.addSession()
 
         store.windows[0].setSelectedSession(id: foreign.id)

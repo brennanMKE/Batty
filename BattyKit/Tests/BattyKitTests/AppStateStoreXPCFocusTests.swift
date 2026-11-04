@@ -50,7 +50,7 @@ struct AppStateStoreXPCFocusTests {
 
     @Test func focusSessionForXPCResolvesASessionInANonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let target = w2.sessions[0]
 
         let outcome = store.focusSessionForXPC(id: target.id)
@@ -197,7 +197,7 @@ struct AppStateStoreXPCFocusTests {
 
     @Test func focusPaneForXPCResolvesAPaneInANonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let target = w2.sessions[0].focusedPaneAnyKind
 
         let outcome = store.focusPaneForXPC(id: target.id)
@@ -279,7 +279,7 @@ struct AppStateStoreXPCFocusTests {
 
     @Test func focusTabForXPCResolvesATabInANonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let targetPane = w2.sessions[0].focusedPaneAnyKind
         let targetTabID = targetPane.activeTabID
 

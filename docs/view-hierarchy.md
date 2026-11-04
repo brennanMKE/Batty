@@ -134,6 +134,13 @@ Notes on the layout:
 - The active-tab toggle inside `PaneView` is the *only* selection
   signal SwiftUI emits; the host reads it indirectly via the
   `isVisible` flag in `TerminalPlaceholderView.body`.
+- `RootWindowView.init` is the only view code that can create a runtime,
+  through `AppStateStore.runtimeForPresentedWindow`, and keeps the result
+  in `@State`. `SessionSidebarView` and `SessionDetailView` receive the
+  `WindowRuntime`; `WindowLifecycleController` and `WindowDelegate` only look
+  one up, with `existingWindowRuntime(for:)`. SwiftUI can rebuild these views
+  after `removeWindow`, so a closed id stays closed (`nil`) rather than
+  reviving a runtime with a Session in it (#0546).
 
 ### See-through windows (#0539)
 
