@@ -61,7 +61,7 @@ cursor: true, sudo: false, title: true, ssh-env: false, ssh-terminfo: false, pat
 — i.e. `shell-integration-features = cursor,no-sudo,title,no-ssh-env,no-ssh-terminfo,path`.
 Batty never emitted this key at all before #0392, so it always inherited
 that default. As of #0392, `TabRuntime.applyShellAndAppearancePreferences`
-and `AppStateStore.applyAppearanceToAllSurfaces` both emit:
+emits:
 
 ```
 shell-integration-features = ssh-env

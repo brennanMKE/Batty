@@ -263,35 +263,32 @@ public enum CmdNumberTarget: String, CaseIterable, Sendable {
     }
 }
 
+/// The preferences an appearance change alters, read once by whoever owns the
+/// `UserDefaults` so every Tab of the push gets the same values.
+struct TerminalAppearance {
+    let fontSize: Float
+    let cursor: TerminalCursorStyle
+    let blink: Bool
+
+    static func resolved(defaults: UserDefaults) -> TerminalAppearance {
+        TerminalAppearance(
+            fontSize: SettingsPreference.resolvedFontSize(defaults: defaults),
+            cursor: TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle(defaults: defaults)) ?? .block,
+            blink: SettingsPreference.resolvedCursorBlink(defaults: defaults)
+        )
+    }
+}
+
 extension AppStateStore {
     public func applyAppearanceToAllSurfaces() {
-        let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle(defaults: preferences)) ?? .block
-        let blink = SettingsPreference.resolvedCursorBlink(defaults: preferences)
-        let fontSize = SettingsPreference.resolvedFontSize(defaults: preferences)
+        let appearance = TerminalAppearance.resolved(defaults: preferences)
         let appWideBackground = backgroundGate.settings()
         // Appearance settings are app-wide, so apply to every window's surfaces.
         // The `sessions` shim resolves to windows[0] only; iterating `windows`
         // directly avoids leaving other windows (often the key window) stale (#0248).
-        // A non-terminal pane's `tabs` holds one structural placeholder
-        // `TabRuntime` (`PaneRuntime.kind`'s doc comment) — its
-        // `TerminalController` was never attached to a rendered surface, so
-        // reconfiguring it is wasted work with no visible effect (#0315
-        // review round 1, finding 3).
         for session in windows.flatMap({ $0.sessions }) {
-            for pane in session.tree.allPanes where pane.kind == .terminal {
-                // One per Pane, because a Pane's or Session's background
-                // override must survive this wholesale replace.
-                let background = TerminalBackgroundSettings.effective(pane: pane.backgroundOverride, session: session.backgroundOverride, appWide: appWideBackground)
-                let configuration = TerminalConfiguration { builder in
-                    // Still omits `copy-on-select`, `command`, `wait-after-command`,
-                    // `abnormal-command-exit-runtime`, `env BATTY_*`, `keybind = clear`
-                    // and `cmd+c`, which `TabRuntime`'s builder emits, so an appearance
-                    // change drops them from every Tab. Tracked in #0538.
-                    builder.withSharedPreferences(fontSize: fontSize, cursor: cursor, blink: blink, background: background)
-                }
-                for tab in pane.tabs {
-                    tab.terminal.controller.setTerminalConfiguration(configuration)
-                }
+            for pane in session.tree.allPanes {
+                pane.refreshAppearance(appearance, appWide: appWideBackground)
             }
         }
     }
@@ -299,8 +296,8 @@ extension AppStateStore {
 
 extension AppStateStore {
     /// Pushes the current app-wide background to every Pane following it.
-    /// Goes through each Tab's own builder, not `applyAppearanceToAllSurfaces`,
-    /// so per-Tab lines survive (#0538).
+    /// Goes through each Tab's own builder, as `applyAppearanceToAllSurfaces`
+    /// does, so per-Tab lines survive (#0538).
     func applyAppWideBackgroundToAllSurfaces() {
         let appWide = backgroundGate.settings()
         setAppWideTerminalOpacity(appWide.terminalOpacity)
@@ -313,10 +310,9 @@ extension AppStateStore {
 }
 
 extension TerminalConfiguration.Builder {
-    /// Every line the per-Tab builder and `applyAppearanceToAllSurfaces` must
-    /// agree on. `setTerminalConfiguration` replaces rather than merges, so a
-    /// key emitted from only one of them is silently dropped the next time the
-    /// other runs.
+    /// The font, cursor, shell-integration, `PATH`, line-editing keybind and
+    /// background lines of a Tab's configuration. Must follow `keybind = clear`,
+    /// which removes every binding before it.
     mutating func withSharedPreferences(
         fontSize: Float,
         cursor: TerminalCursorStyle,
