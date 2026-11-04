@@ -70,6 +70,14 @@ public final class WindowRuntime {
         }
     }
     public var pendingCloseRequest: PendingCloseRequest?
+    /// Written only by `WindowDelegate`'s full-screen callbacks.
+    public private(set) var isNativeFullScreen = false
+
+    func setNativeFullScreen(_ isFullScreen: Bool) {
+        guard isNativeFullScreen != isFullScreen else { return }
+        isNativeFullScreen = isFullScreen
+    }
+
     /// Whether this window's Open Project picker sheet is up. Set by three
     /// event-origin sites (the window-addressed toggle notification, the
     /// Command Palette's direct present, the Sidebar footer button); cleared by

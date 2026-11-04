@@ -10,6 +10,7 @@ This page is also the recipe for the next flag.
   - `SessionSidebarView.body` passes `store.featureFlags.terminalBackgrounds` to `PaneRow.showsBackgroundSettings`, which shows the gear.
   - `SessionSidebarView.backgroundSettingsBinding` returns `nil` when off, so the sheet can't present.
   - `AppearanceSettingsView.body` in `SettingsView.swift` omits `TerminalBackgroundSettingsSection` when off.
+  - `AppStateStore.isWindowSeeThrough` returns `false` when off, so the window stays opaque (#0539).
   - `AppWideBackgroundGate.live` is built from `FeatureFlags.resolved()`. Disabled, it returns `.off` before touching `UserDefaults` or the disk, and it is the only route from the persisted background keys to a config builder.
 
   The sheet and the Settings section are the only users of `TerminalBackgroundImageImporter`, and the sheet is the only caller of `PaneRuntime.setBackgroundOverride` in production. So with the flag off no override exists, no background key is read, and no image file is read or written.

@@ -300,6 +300,9 @@ private struct TerminalBackgroundSettingsSection: View {
             Text("Each Tab keeps its own copy of the image in memory. Image opacity is relative to terminal opacity.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text("Below 100%, the desktop and other windows show through, except in full screen.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Button("Restore Defaults") {
                 cancelImport()
                 snapshot = editor.reset()

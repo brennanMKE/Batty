@@ -112,7 +112,7 @@ struct PaneBackgroundSettingsView: View {
             .disabled(editor.isFollowing)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("The Pane shows over the Theme's window color, not the desktop.")
+                Text("Below 100%, the desktop and other windows show through, except in full screen.")
                 Text("Programs that paint their own background stay opaque unless you include them. Image opacity is relative to terminal opacity.")
             }
             .font(.caption)

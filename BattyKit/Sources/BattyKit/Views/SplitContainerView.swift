@@ -127,6 +127,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     @ViewBuilder let rightContent: () -> Right
 
     @Environment(\.themeChrome) private var themeChrome
+    @Environment(\.windowIsSeeThrough) private var windowIsSeeThrough
     @State private var dragStartRatio: Double?
     @State private var containerLength: CGFloat = 0
     // Identifies this instance's stable coordinate space (rooted at the
@@ -204,6 +205,11 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     private var divider: some View {
         Rectangle()
             .fill(dividerColor)
+            // Divider colors are translucent, and would show the desktop.
+            .background(WindowSeeThrough.chromeBacking(
+                isSeeThrough: windowIsSeeThrough,
+                windowBackground: themeChrome?.windowBackground
+            ))
             .contentShape(Rectangle())
             .onHover { hovering in
                 if hovering {

@@ -15,6 +15,7 @@ public struct PaneView: View {
     @Environment(\.appStateStore) private var appStore
     @Environment(\.isSelectedSession) private var isSessionSelected
     @Environment(\.themeChrome) private var themeChrome
+    @Environment(\.windowIsSeeThrough) private var windowIsSeeThrough
     @Environment(\.paneAllottedSize) private var allottedSize
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
@@ -247,6 +248,10 @@ public struct PaneView: View {
                 paneEyeButton
             }
             .background(themeChrome?.chromeBackground ?? Color.clear)
+            .background(WindowSeeThrough.chromeBacking(
+                isSeeThrough: windowIsSeeThrough,
+                windowBackground: themeChrome?.windowBackground
+            ))
 
             ZStack {
                 ForEach(pane.tabs) { tab in
