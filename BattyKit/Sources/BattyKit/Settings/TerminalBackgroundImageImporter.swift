@@ -35,6 +35,10 @@ actor TerminalBackgroundImageImporter {
         /// overrides aren't persisted: remove sibling folders whose name isn't
         /// a live process, so another running copy keeps its images.
         case deadProcessFolders
+        /// Project copies outlive any one import and the keep-set lives on the
+        /// main actor, so nothing happens during an import.
+        /// `removeUnreferenced(keeping:olderThan:)` does this rule's work.
+        case unreferenced
     }
 
     private let directory: URL
@@ -120,6 +124,7 @@ actor TerminalBackgroundImageImporter {
         let destination = folder.appendingPathComponent(Self.fileName(for: source))
         if FileManager.default.fileExists(atPath: destination.path) {
             if Self.inspect(path: destination.path, directory: directory) == .usable {
+                Self.refreshDate(ofFolderHolding: destination.path)
                 return destination.path
             }
             _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
@@ -149,6 +154,72 @@ actor TerminalBackgroundImageImporter {
                 if let pid = Int32(name), pid > 0, isProcessAlive(pid) { continue }
                 remove(parent.appendingPathComponent(name))
             }
+        case .unreferenced:
+            break
+        }
+    }
+
+    /// Removes digest folders of this directory that hold no kept path and were
+    /// last modified before `cutoff`. Only an `.unreferenced` importer does this.
+    func removeUnreferenced(keeping paths: Set<String>, olderThan cutoff: Date) {
+        guard case .unreferenced = cleanup else { return }
+        let fileManager = FileManager.default
+        let keptFolders = Set(paths.map { ($0 as NSString).deletingLastPathComponent })
+        for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? [] where Self.isDigest(name) {
+            let entry = directory.appendingPathComponent(name, isDirectory: true)
+            guard !keptFolders.contains(entry.path),
+                  let modified = (try? fileManager.attributesOfItem(atPath: entry.path))?[.modificationDate] as? Date,
+                  modified < cutoff
+            else { continue }
+            remove(entry)
+        }
+    }
+
+    /// Returns a path in `directory` holding the same bytes as `path`, or nil
+    /// unless `path` is already an intact copy there or in one of `sources`. A
+    /// copy's folder is named for its bytes, so no re-encoding is needed, and a
+    /// damaged destination is replaced.
+    nonisolated static func adopt(path: String, from sources: [URL], into directory: URL) -> String? {
+        if inspect(path: path, directory: directory) == .usable {
+            refreshDate(ofFolderHolding: path)
+            return path
+        }
+        guard sources.contains(where: { inspect(path: path, directory: $0) == .usable }) else { return nil }
+        let components = (path as NSString).pathComponents
+        let folder = directory.appendingPathComponent(components[components.count - 2], isDirectory: true)
+        let destination = folder.appendingPathComponent(components[components.count - 1])
+        if inspect(path: destination.path, directory: directory) == .usable {
+            refreshDate(ofFolderHolding: destination.path)
+            return destination.path
+        }
+
+        let fileManager = FileManager.default
+        let temporary = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
+        do {
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: temporary) }
+            try fileManager.copyItem(at: URL(fileURLWithPath: path), to: temporary)
+            if fileManager.fileExists(atPath: destination.path) {
+                _ = try fileManager.replaceItemAt(destination, withItemAt: temporary)
+            } else {
+                try fileManager.moveItem(at: temporary, to: destination)
+            }
+            return destination.path
+        } catch {
+            logger.error("could not copy a background image: \(error.localizedDescription, privacy: .private)")
+            return nil
+        }
+    }
+
+    /// `removeUnreferenced` goes by the folder's date, and reusing a folder
+    /// doesn't change it, so a copy reused today would look unused to another
+    /// running copy. A failure here leaves the import good.
+    private nonisolated static func refreshDate(ofFolderHolding path: String) {
+        let folder = (path as NSString).deletingLastPathComponent
+        do {
+            try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: folder)
+        } catch {
+            logger.error("could not refresh a background image's date: \(error.localizedDescription, privacy: .private)")
         }
     }
 

@@ -5,6 +5,25 @@ import os
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProjectSync")
 
+/// A Project's background without its image path, which is device state: a
+/// synced path would name a file the other Mac doesn't have, and publishing it
+/// would overwrite that Mac's own image. Holds no path however it was built.
+public struct ProjectSyncBackground: Codable, Sendable, Hashable {
+    public let settings: TerminalBackgroundSettings
+
+    public init(_ settings: TerminalBackgroundSettings) {
+        self.settings = settings.withImagePath(nil)
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init(try TerminalBackgroundSettings(from: decoder))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try settings.encode(to: encoder)
+    }
+}
+
 /// The synced shape of a shared Project: the definition fields and nothing
 /// else. It has no `isShared`, `lastOpenedAt` or `approvedCommandsHash`, so
 /// device state cannot reach a payload; trust approval is consent given on
@@ -23,11 +42,13 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
     /// decoder ignores them and reads the legacy `color` and `symbol`.
     public var customColor: String?
     public var symbolName: String?
+    public var background: ProjectSyncBackground?
 
     public init(
         id: UUID, name: String, rootPath: String, color: SessionColor, symbol: ProjectSymbol,
         layout: ProjectLayout, runStartupCommandsOnOpen: Bool, modifiedAt: Date?,
-        customColor: String? = nil, symbolName: String? = nil
+        customColor: String? = nil, symbolName: String? = nil,
+        background: ProjectSyncBackground? = nil
     ) {
         self.id = id
         self.name = name
@@ -39,6 +60,28 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
         self.modifiedAt = modifiedAt
         self.customColor = customColor
         self.symbolName = symbolName
+        self.background = background
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, modifiedAt, customColor, symbolName, background
+    }
+
+    /// `background` can't fail the record, because the backend's `snapshot()`
+    /// skips a record it can't decode. The other fields keep what synthesis did.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        rootPath = try c.decode(String.self, forKey: .rootPath)
+        color = try c.decode(SessionColor.self, forKey: .color)
+        symbol = try c.decode(ProjectSymbol.self, forKey: .symbol)
+        layout = try c.decode(ProjectLayout.self, forKey: .layout)
+        runStartupCommandsOnOpen = try c.decode(Bool.self, forKey: .runStartupCommandsOnOpen)
+        modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt)
+        customColor = try c.decodeIfPresent(String.self, forKey: .customColor)
+        symbolName = try c.decodeIfPresent(String.self, forKey: .symbolName)
+        background = (try? c.decodeIfPresent(ProjectSyncBackground.self, forKey: .background)) ?? nil
     }
 }
 
@@ -50,7 +93,8 @@ extension Project {
             color: color, symbol: symbol, layout: layout,
             runStartupCommandsOnOpen: runStartupCommandsOnOpen,
             modifiedAt: modifiedAt,
-            customColor: customColorHex, symbolName: customSymbolName)
+            customColor: customColorHex, symbolName: customSymbolName,
+            background: background.map(ProjectSyncBackground.init))
     }
 
     /// A shared Project with no device state. A root that does not decode to
@@ -65,7 +109,8 @@ extension Project {
             runStartupCommandsOnOpen: record.runStartupCommandsOnOpen,
             approvedCommandsHash: nil, lastOpenedAt: nil,
             isShared: true, modifiedAt: record.modifiedAt,
-            customColorHex: record.customColor, customSymbolName: record.symbolName)
+            customColorHex: record.customColor, customSymbolName: record.symbolName,
+            background: record.background?.settings)
     }
 
     fileprivate func replacingDefinition(with record: ProjectSyncRecord, name: String, home: String) -> Project {
@@ -73,6 +118,7 @@ extension Project {
         merged.name = name
         merged.approvedCommandsHash = approvedCommandsHash
         merged.lastOpenedAt = lastOpenedAt
+        merged.background = merged.background?.withImagePath(background?.imagePath)
         return merged
     }
 }

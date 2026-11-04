@@ -18,7 +18,9 @@ import Foundation
 /// Not captured: split ratios and every other size, startup commands (they
 /// are never inferred from running processes), automatic Tab titles (a
 /// process name or folder name would freeze into a wrong label), Process
-/// Status pids, scrollback, and non-Terminal Panes' placeholder Tab.
+/// Status pids, scrollback, non-Terminal Panes' placeholder Tab, and the
+/// background: `SaveSessionAsProject` reads the Session's override because it
+/// has to copy a file, and a Pane's own override has no Project field.
 struct SessionProjectCapture: Equatable {
     var layout: ProjectLayout
     /// Absolute and standardized. `NSHomeDirectory()` when the Session has no
@@ -260,7 +262,8 @@ struct SessionProjectCapture: Equatable {
     }
 
     /// The stored Project with its layout and Tabs replaced by this capture.
-    /// Name, root, color, the run toggle and the approval carry over. A
+    /// Name, root, color, the run toggle, the approval and the background carry
+    /// over. A
     /// startup command stays on a Tab when the old Project had a Terminal
     /// Pane in the same slot with a Tab at the same position. This capture
     /// must have been made against `project.rootPath`.

@@ -1,0 +1,128 @@
+// ProjectBackgroundModelTests.swift
+
+import Foundation
+import Testing
+@testable import BattyKit
+
+@MainActor
+struct ProjectBackgroundModelTests {
+    private let full = projectBackgroundValue(path: "/tmp/batty-model-tests/photo.png")
+
+    private func project(background: TerminalBackgroundSettings? = nil) -> Project {
+        Project(id: UUID(), name: "Model", rootPath: "/tmp/model", background: background)
+    }
+
+    private func decoded(_ project: Project, background: Any) throws -> Project {
+        var object = try #require(try JSONSerialization.jsonObject(with: ProjectsFile.encoder.encode(project)) as? [String: Any])
+        object["background"] = background
+        return try ProjectsFile.decoder.decode(Project.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+
+    private func settings(_ object: [String: Any]) throws -> TerminalBackgroundSettings {
+        try #require(try decoded(project(), background: object).background)
+    }
+
+    @Test func absentBackgroundDecodesAsFollow() throws {
+        let data = try ProjectsFile.encoder.encode(project())
+        #expect(try ProjectsFile.decoder.decode(Project.self, from: data).background == nil)
+    }
+
+    @Test func projectWithNoBackgroundEncodesByteIdentically() throws {
+        let plain = project()
+        let data = try ProjectsFile.encoder.encode(plain)
+        #expect(!String(decoding: data, as: UTF8.self).contains("background"))
+
+        var withBackground = plain
+        withBackground.background = full
+        var object = try #require(try JSONSerialization.jsonObject(with: ProjectsFile.encoder.encode(withBackground)) as? [String: Any])
+        #expect(object.removeValue(forKey: "background") != nil)
+        let stripped = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        let original = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: data), options: [.prettyPrinted, .sortedKeys])
+        #expect(stripped == original, "the key is the only difference")
+        #expect(try ProjectsFile.encoder.encode(ProjectsFile.decoder.decode(Project.self, from: data)) == data)
+    }
+
+    @Test func fullBackgroundSurvivesEncodeAndDecode() throws {
+        let data = try ProjectsFile.encoder.encode(project(background: full))
+        #expect(try ProjectsFile.decoder.decode(Project.self, from: data).background == full)
+    }
+
+    @Test(arguments: [0, 1, 2])
+    func wrongTypeBackgroundKeepsTheProjectAndFollows(index: Int) throws {
+        let values: [Any] = ["text", 42, [1, 2]]
+        let plain = project()
+        let loaded = try decoded(plain, background: values[index])
+        #expect(loaded.id == plain.id)
+        #expect(loaded.background == nil)
+    }
+
+    @Test func unknownFitAndPositionFallBackAndKeepTheRest() throws {
+        let value = try settings(["fit": "future", "position": 7, "imageOpacity": 0.35, "terminalOpacity": 0.6, "opacityAffectsCells": true])
+        #expect(value == TerminalBackgroundSettings(imagePath: nil, fit: .contain, position: .center, imageOpacity: 0.35, terminalOpacity: 0.6, opacityAffectsCells: true))
+    }
+
+    @Test func nonNumericOpacityFallsBackAndKeepsTheRest() throws {
+        let value = try settings(["fit": "cover", "position": "top-right", "imageOpacity": "half", "terminalOpacity": [], "opacityAffectsCells": "yes"])
+        #expect(value == TerminalBackgroundSettings(imagePath: nil, fit: .cover, position: .topRight))
+    }
+
+    @Test func outOfRangeOpacityIsClamped() throws {
+        let value = try settings(["imageOpacity": -2, "terminalOpacity": 7])
+        #expect(value.imageOpacity == 0)
+        #expect(value.terminalOpacity == 1)
+    }
+
+    @Test(arguments: ["relative/photo.png", "/tmp/a\nb.png"])
+    func relativeOrControlCharacterPathDecodesToNoImage(path: String) throws {
+        let value = try settings(["imagePath": path, "terminalOpacity": 0.6])
+        #expect(value.imagePath == nil)
+        #expect(value.terminalOpacity == 0.6)
+    }
+
+    @Test func oneBadBackgroundDropsNoProjectAndWritesNoBackup() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let good = fixture.project(name: "Good", background: nil)
+        let bad = fixture.project(name: "Bad", background: nil)
+        var badObject = try #require(try JSONSerialization.jsonObject(with: ProjectsFile.encoder.encode(bad)) as? [String: Any])
+        badObject["background"] = "not an object"
+        let goodObject = try JSONSerialization.jsonObject(with: ProjectsFile.encoder.encode(good))
+        try JSONSerialization.data(withJSONObject: ["version": 1, "projects": [goodObject, badObject]]).write(to: fixture.projectsFile)
+
+        let store = ProjectStore(fileURL: fixture.projectsFile)
+        #expect(store.projects.map(\.name) == ["Good", "Bad"])
+        #expect(!store.mayReferenceUnlistedImages)
+        try store.recordOpen(id: bad.id, at: Date())
+        #expect(!FileManager.default.fileExists(atPath: fixture.backupFile.path))
+    }
+
+    @Test func fileStaysVersionOne() throws {
+        let fixture = try ProjectBackgroundFixture()
+        try ProjectStore(fileURL: fixture.projectsFile).upsert(fixture.project(background: full))
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.projectsFile)) as? [String: Any])
+        #expect(object["version"] as? Int == 1)
+    }
+
+    @Test func projectInitKeepsBackground() {
+        #expect(project(background: full).background == full)
+    }
+
+    @Test func draftFromProjectKeepsBackground() {
+        #expect(ProjectDraft(project: project(background: full)).background == full)
+    }
+
+    @Test func draftInitKeepsBackground() {
+        #expect(ProjectDraft(name: "A", rootPath: "/tmp", color: .blue, background: full).background == full)
+    }
+
+    @Test func makeProjectKeepsBackground() {
+        #expect(ProjectDraft(project: project(background: full)).makeProject().background == full)
+    }
+
+    @Test func changingBackgroundDoesNotChangeTheCommandsHash() {
+        let tab = ProjectTab(startupCommand: "make")
+        var value = Project(name: "A", rootPath: "/tmp", layout: ProjectLayout(root: .pane(.terminal(tabs: [tab]))))
+        let before = value.startupCommandsHash
+        value.background = full
+        #expect(value.startupCommandsHash == before)
+    }
+}

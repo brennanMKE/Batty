@@ -140,6 +140,28 @@ public final class ProjectStore {
 
     public var url: URL? { fileURL }
 
+    /// Whether a Project this list doesn't show may still exist: dropped from a
+    /// file that didn't fully load, or kept in `projects.json.bak`.
+    var mayReferenceUnlistedImages: Bool {
+        if unreadableOriginal != nil { return true }
+        guard let fileURL else { return false }
+        let backup = fileURL.deletingLastPathComponent().appendingPathComponent(Self.backupFileName)
+        return fileManager.fileExists(atPath: backup.path)
+    }
+
+    /// The image paths `projects.json` names now, which another running copy may
+    /// have saved since this list was read. Nil unless the whole file can be
+    /// trusted: it is absent, can't be read or decoded, drops a Project, or has
+    /// a newer version.
+    func imagePathsInFile() -> Set<String>? {
+        guard let fileURL,
+              let data = try? Data(contentsOf: fileURL),
+              let file = try? Self.decodeFile(data),
+              file.dropped == 0, file.newerVersion == nil
+        else { return nil }
+        return Set(file.projects.compactMap { $0.background?.imagePath })
+    }
+
     public func project(id: UUID) -> Project? {
         projects.first { $0.id == id }
     }
@@ -324,31 +346,36 @@ public final class ProjectStore {
             return ([], nil)
         }
         do {
-            let file = try ProjectsFile.decoder.decode(LossyProjectsFile.self, from: data)
-            let newer = (file.version ?? 0) > ProjectsFile.currentVersion
-            if newer {
-                logger.error("projects file version \(file.version ?? 0) is newer than \(ProjectsFile.currentVersion); keeping the original until the next save")
+            let file = try decodeFile(data)
+            if let newerVersion = file.newerVersion {
+                logger.error("projects file version \(newerVersion) is newer than \(ProjectsFile.currentVersion); keeping the original until the next save")
             }
-            var seen = Set<UUID>()
-            var names = Set<String>()
-            var loaded: [Project] = []
-            var dropped = 0
-            for element in file.elements {
-                guard let project = element.project,
-                      seen.insert(project.id).inserted,
-                      names.insert(nameKey(project.name)).inserted,
-                      !nameKey(project.name).isEmpty else {
-                    dropped += 1
-                    continue
-                }
-                loaded.append(project)
-            }
-            logger.debug("projects loaded (\(loaded.count) projects, \(dropped) dropped)")
-            return (loaded, dropped > 0 || newer ? data : nil)
+            logger.debug("projects loaded (\(file.projects.count) projects, \(file.dropped) dropped)")
+            return (file.projects, file.dropped > 0 || file.newerVersion != nil ? data : nil)
         } catch {
             logger.error("projects file unreadable (\(String(describing: error), privacy: .public)); starting empty and keeping the original until the next save")
             return ([], data)
         }
+    }
+
+    private static func decodeFile(_ data: Data) throws -> (projects: [Project], dropped: Int, newerVersion: Int?) {
+        let file = try ProjectsFile.decoder.decode(LossyProjectsFile.self, from: data)
+        var seen = Set<UUID>()
+        var names = Set<String>()
+        var projects: [Project] = []
+        var dropped = 0
+        for element in file.elements {
+            guard let project = element.project,
+                  seen.insert(project.id).inserted,
+                  names.insert(nameKey(project.name)).inserted,
+                  !nameKey(project.name).isEmpty else {
+                dropped += 1
+                continue
+            }
+            projects.append(project)
+        }
+        let version = file.version ?? 0
+        return (projects, dropped, version > ProjectsFile.currentVersion ? version : nil)
     }
 
     private func ensureContainerExists(for url: URL) throws {

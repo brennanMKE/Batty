@@ -449,3 +449,153 @@ struct CopyFromCurrentSessionTests {
         #expect(model.save()?.name == "Placeholder")
     }
 }
+
+@MainActor
+struct SaveSessionAsProjectBackgroundTests {
+    private func openedSession(_ fixture: ProjectBackgroundFixture, _ store: AppStateStore, _ project: Project) throws -> SessionRuntime {
+        try store.projectStore.upsert(project)
+        return try store.openProject(id: project.id, mode: .openNew, contentFactory: noContent).session
+    }
+
+    @Test func saveAsNewCapturesTheSessionOverrideAndCopiesItsImage() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy(in: fixture.paneFolder)
+        let session = fixture.session()
+        session.setBackgroundOverride(projectBackgroundValue(path: path))
+
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+
+        let stored = try #require(draft.background)
+        let copied = try #require(stored.imagePath)
+        #expect(copied.hasPrefix(fixture.projectFolder.path))
+        #expect(FileManager.default.fileExists(atPath: copied))
+        #expect(stored == projectBackgroundValue(path: copied))
+        #expect(session.backgroundOverride?.imagePath == path, "capture leaves the Session alone")
+    }
+
+    @Test func copiedImageSurvivesRemovingTheSourceFolder() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy(in: fixture.paneFolder)
+        let session = fixture.session()
+        session.setBackgroundOverride(projectBackgroundValue(path: path))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        try FileManager.default.removeItem(at: fixture.paneFolder)
+        #expect(fixture.library.checked(try #require(draft.background)).problem == nil)
+    }
+
+    @Test func saveAsNewFromAnAppWideSeededPathCopies() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy(in: fixture.appWideFolder)
+        let session = fixture.session()
+        session.setBackgroundOverride(appWideBackgroundValue(path: path))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        #expect(draft.background?.imagePath?.hasPrefix(fixture.projectFolder.path) == true)
+    }
+
+    @Test func saveAsNewWithNoOverrideFollows() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let draft = SaveSessionAsProject.draft(for: fixture.session(), destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        #expect(draft.background == nil)
+        #expect(draft.captureNotes[.background] == nil)
+    }
+
+    @Test func aPaneOverrideIsNotCapturedAndAddsANote() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let session = fixture.session(2)
+        session.tree.allPanes[1].setBackgroundOverride(secondBackgroundValue(path: nil))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        #expect(draft.background == nil)
+        #expect(draft.captureNotes[.background]?.contains("Pane") == true)
+    }
+
+    @Test func anUnreadableSessionImageKeepsOpacityAndAddsANote() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let session = fixture.session()
+        session.setBackgroundOverride(projectBackgroundValue(path: "/tmp/not-a-batty-copy.png"))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        #expect(draft.background == projectBackgroundValue(path: nil))
+        #expect(draft.captureNotes[.background]?.contains("could not be copied") == true)
+    }
+
+    @Test func updateKeepsTheStoredBackgroundWhenTheSessionDidNotChangeIt() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = fixture.project(background: projectBackgroundValue(path: try await fixture.copy()))
+        let session = try openedSession(fixture, store, project)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.background == project.background)
+    }
+
+    /// A Session opened before the Project had a background can't erase it.
+    @Test func updateKeepsABackgroundAddedAfterTheOpen() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        var project = fixture.project(background: nil)
+        let session = try openedSession(fixture, store, project)
+        project.background = projectBackgroundValue(path: try await fixture.copy())
+        try store.projectStore.upsert(project)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.background == project.background)
+    }
+
+    @Test func updateKeepsAnImageDroppedAtOpen() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let path = try await fixture.copy()
+        let project = fixture.project(background: projectBackgroundValue(path: path))
+        try fixture.removeFolder(of: path)
+        let session = try openedSession(fixture, store, project)
+        #expect(session.backgroundOverride?.imagePath == nil, "test setup: the open dropped the image")
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.background?.imagePath == path)
+    }
+
+    @Test func updateTakesAChangedSessionBackground() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = fixture.project(background: projectBackgroundValue(path: try await fixture.copy()))
+        let session = try openedSession(fixture, store, project)
+        let changed = try await fixture.copy(in: fixture.paneFolder, width: 128)
+        session.setBackgroundOverride(secondBackgroundValue(path: changed))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        let stored = try #require(draft.background)
+        #expect(stored.imagePath?.hasPrefix(fixture.projectFolder.path) == true)
+        #expect(stored == secondBackgroundValue(path: stored.imagePath))
+    }
+
+    @Test func updateAfterClearingTheSessionFollows() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = fixture.project(background: projectBackgroundValue(path: try await fixture.copy()))
+        let session = try openedSession(fixture, store, project)
+        session.setBackgroundOverride(nil)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.background == nil)
+    }
+
+    @Test func flagOffUpdateKeepsTheStoredBackgroundAndCopiesNothing() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore(terminalBackgrounds: false)
+        let project = fixture.project(background: projectBackgroundValue(path: "/tmp/stored.png"))
+        let session = try openedSession(fixture, store, project)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.background == project.background)
+        #expect(!FileManager.default.fileExists(atPath: fixture.projectFolder.path))
+    }
+
+    @Test func copyFromCurrentSessionLeavesTheBackgroundAlone() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let projectStore = ProjectStore(fileURL: fixture.projectsFile)
+        let stored = fixture.project(background: projectBackgroundValue(path: nil))
+        try projectStore.upsert(stored)
+        let session = fixture.session()
+        session.setBackgroundOverride(secondBackgroundValue(path: nil))
+        let model = ProjectEditorViewModel(
+            store: projectStore,
+            directoryExists: { _ in true },
+            captureSession: { SessionProjectCapture.capture(session: session, root: $0, gitDirectory: { _ in nil }) }
+        )
+        #expect(model.copyFromCurrentSession(confirmDiscard: true) == .applied)
+        #expect(model.draft?.background == projectBackgroundValue(path: nil))
+    }
+}

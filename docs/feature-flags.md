@@ -13,9 +13,13 @@ This page is also the recipe for the next flag.
   - `SessionSidebarView.sessionBackgroundBinding` returns `nil` when off, so the Session's sheet can't present (#0376).
   - `AppearanceSettingsView.body` in `SettingsView.swift` omits `TerminalBackgroundSettingsSection` when off.
   - `AppStateStore.isWindowSeeThrough` returns `false` when off, so the window stays opaque (#0539).
+  - `AppStateStore.openProject` neither inspects a Project's image nor seeds the Session when off (#0540). `Project`, `ProjectDraft`, `ProjectStore` and the sync types never read the flag, so a saved background survives.
+  - `AppStateStore.projectEditorDidClose` doesn't reclaim Project image copies when off (#0540).
+  - `ProjectEditorWindowController.prepare` passes no `ProjectBackgroundLibrary` when off, so the editor has no Background row and reads no image (#0540).
+  - `SaveSessionAsProject.draft` (`captureBackground`) captures nothing and copies nothing when off (#0540).
   - `AppWideBackgroundGate.live` is built from `FeatureFlags.resolved()`. Disabled, it returns `.off` before touching `UserDefaults` or the disk, and it is the only route from the persisted background keys to a config builder.
 
-  The sheet and the Settings section are the only users of `TerminalBackgroundImageImporter`. In production, `PaneRuntime.setBackgroundOverride` and `SessionRuntime.setBackgroundOverride` are called only by `BackgroundOverrideEditor` and the Clear Session Background item, and `SplitTree` mirrors the Session's value to its Panes, which is a no-op for `nil`. So with the flag off no override exists, no background key is read, and no image file is read or written.
+  The sheet, the Settings section and `ProjectBackgroundLibrary` are the only users of `TerminalBackgroundImageImporter`; `SaveSessionAsProject` only calls `ProjectBackgroundLibrary.adopt`. In production, `PaneRuntime.setBackgroundOverride` and `SessionRuntime.setBackgroundOverride` are called only by `BackgroundOverrideEditor`, the Clear Session Background item and `WindowRuntime.addProjectSession`, and `SplitTree` mirrors the Session's value to its Panes, which is a no-op for `nil`. So with the flag off no override exists, no background key is read, and no image file is read or written. `Help/10-projects.md` doesn't mention a Project's background, because it ships in Prod: when this flag is removed, add that section.
 
 ## Policy
 

@@ -128,6 +128,13 @@ public final class AppStateStore {
         cleanup: .allButRetained
     )
 
+    /// Copies of Projects' background images. Building it touches no files. A
+    /// `var` so tests can point its sources at their own folders, because the
+    /// type isn't public and so can't be a parameter of the public `init`.
+    @ObservationIgnored var projectBackgrounds: ProjectBackgroundLibrary
+    /// The reclaim started by the last Project Editor close, for tests to await.
+    @ObservationIgnored var projectBackgroundReclaim: Task<Void, Never>?
+
     /// Built on first access, so `projects.json` is never touched until a
     /// Projects surface reads it.
     public var projectStore: ProjectStore {
@@ -1203,6 +1210,13 @@ public final class AppStateStore {
         self.backgroundGate = backgroundGate
         self.appWideTerminalOpacity = backgroundGate.storedSettings().terminalOpacity
         self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
+        self.projectBackgrounds = ProjectBackgroundLibrary(
+            directory: ProjectBackgroundLibrary.directory(forProjectsFile: self.projectsFileURL),
+            adoptableFrom: [
+                TerminalBackgroundImageImporter.defaultDirectory(),
+                TerminalBackgroundImageImporter.appWideDirectory(),
+            ]
+        )
         self.bellFeed = bellFeed
         self.nameCache = nameCache
         self.notifier = notifier
@@ -1399,7 +1413,9 @@ public final class AppStateStore {
             contentFactory: contentFactory,
             isSessionSelected: true
         )
-        let session = target.addProjectSession(project, tree: tree)
+        let background = featureFlags.terminalBackgrounds ? project.background.map(projectBackgrounds.checked) : nil
+        let session = target.addProjectSession(project, tree: tree, background: background?.settings)
+        if let problem = background?.problem { session.projectBackgroundImageProblem = problem }
         // A CLI create brings Batty forward like `batty new` does (its
         // `open -a` activates the app). A GUI open normally starts from the
         // content window, but from Settings, Help or the Project Editor the

@@ -56,7 +56,9 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
             captureSession: { [weak store] root in
                 guard let session = store?.defaultTargetWindow()?.selectedSession else { return nil }
                 return SessionProjectCapture.capture(session: session, root: root)
-            }
+            },
+            backgrounds: store.featureFlags.terminalBackgrounds ? store.projectBackgrounds : nil,
+            appWideBackground: { [weak store] in store?.backgroundGate.settings() ?? .off }
         )
         if let newDraft { model.requestNavigation(.newDraft(newDraft)) }
 

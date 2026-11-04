@@ -24,6 +24,12 @@ public final class SessionRuntime: Identifiable {
     /// a non-nil value is complete, and a Pane's own override still beats it.
     /// Not persisted: resets to nil on every launch.
     public private(set) var backgroundOverride: TerminalBackgroundSettings?
+    /// What the Project seeded at open. Update Project compares against it, so
+    /// a Session that left its background alone can't change the Project's.
+    @ObservationIgnored public internal(set) var projectBackgroundSeed: TerminalBackgroundSettings?
+    /// Why the Project's image was left out at open, for the Sidebar row. Ends
+    /// when the background changes.
+    public internal(set) var projectBackgroundImageProblem: BackgroundImageState?
     /// Whether the sidebar shows this session's pane rows. Collapsed by
     /// default; `WindowRuntime.hidePane` expands it so a just-hidden pane's
     /// restore control is always reachable (#0258). Not persisted.
@@ -237,6 +243,7 @@ extension SessionRuntime: BackgroundOverrideHolder {
     public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
         guard newOverride != backgroundOverride else { return }
         backgroundOverride = newOverride
+        if projectBackgroundImageProblem != nil { projectBackgroundImageProblem = nil }
         tree.setSessionBackgroundOverride(newOverride)
     }
 

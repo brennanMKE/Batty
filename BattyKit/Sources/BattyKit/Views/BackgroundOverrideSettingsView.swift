@@ -2,7 +2,8 @@
 
 import SwiftUI
 
-/// A level of the background chain the sheet can edit: a Pane or a Session.
+/// A level of the background chain the sheet can edit: a Pane, a Session, or a
+/// Project Editor's draft.
 protocol BackgroundOverrideHolder: AnyObject {
     var backgroundOverride: TerminalBackgroundSettings? { get }
     func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?)
@@ -35,6 +36,15 @@ struct BackgroundOverrideScope {
             followTitle: String(localized: "Follow App Default"),
             customTitle: String(localized: "Custom for This Session"),
             identifierPrefix: "session-background-sheet"
+        )
+    }
+
+    static var project: Self {
+        Self(
+            title: String(localized: "Project Background"),
+            followTitle: String(localized: "Follow Settings"),
+            customTitle: String(localized: "Custom for This Project"),
+            identifierPrefix: "project-background-sheet"
         )
     }
 }
