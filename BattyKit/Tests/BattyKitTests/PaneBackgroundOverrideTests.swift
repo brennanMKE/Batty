@@ -224,11 +224,11 @@ final class PaneBackgroundOverrideTests {
     // MARK: - Resolution and editing
 
     @Test func effectivePrefersThePaneOverride() {
-        #expect(TerminalBackgroundSettings.effective(pane: Self.custom, appWide: .off) == Self.custom)
+        #expect(TerminalBackgroundSettings.effective(pane: Self.custom, session: nil, appWide: .off) == Self.custom)
     }
 
     @Test func effectiveFallsThroughToAppWide() {
-        #expect(TerminalBackgroundSettings.effective(pane: nil, appWide: Self.custom) == Self.custom)
+        #expect(TerminalBackgroundSettings.effective(pane: nil, session: nil, appWide: Self.custom) == Self.custom)
     }
 
     @Test func pickingFirstImageAppliesTheTint() {
@@ -243,8 +243,8 @@ final class PaneBackgroundOverrideTests {
         #expect(picked.imageOpacity == 0.9)
     }
 
-    private func editor(for pane: PaneRuntime) -> PaneBackgroundEditor {
-        PaneBackgroundEditor(pane: pane, appWide: appWide, originalOverride: pane.backgroundOverride)
+    private func editor(for pane: PaneRuntime) -> BackgroundOverrideEditor {
+        BackgroundOverrideEditor(target: pane, appWide: appWide, originalOverride: pane.backgroundOverride)
     }
 
     @Test func editorCustomSeedsFromEffectiveValue() {

@@ -63,10 +63,17 @@ public final class PaneRuntime: Identifiable {
     /// `init`, alongside `kind`, and never mutated.
     public let content: (any PaneContentLifecycle)?
 
-    /// This Pane's terminal background. `nil` follows the app-wide default; a
-    /// non-nil value is complete and ignores later app-wide changes. In memory
-    /// only: `snapshot()` and Save as Project don't carry it.
+    /// This Pane's terminal background. `nil` follows the Session's override,
+    /// then the app-wide default; a non-nil value is complete and ignores later
+    /// changes to either. In memory only: `snapshot()` and Save as Project don't
+    /// carry it.
     public private(set) var backgroundOverride: TerminalBackgroundSettings?
+
+    /// A mirror of the owning `SessionRuntime.backgroundOverride`, written only
+    /// by `SplitTree`. Observed because `AppStateStore.isWindowSeeThrough` reads
+    /// it through ``effectiveTerminalOpacity(appWide:)``. Stays `nil` on a
+    /// non-terminal Pane.
+    private(set) var sessionBackgroundOverride: TerminalBackgroundSettings?
 
     /// Where a Tab this Pane creates reads the app-wide background. Production
     /// stays on `.live`; tests pass their own.
@@ -165,7 +172,7 @@ public final class PaneRuntime: Identifiable {
 
     /// The terminal opacity this Pane renders at, given the app-wide default.
     func effectiveTerminalOpacity(appWide: Double) -> Double {
-        backgroundOverride?.terminalOpacity ?? appWide
+        (backgroundOverride ?? sessionBackgroundOverride)?.terminalOpacity ?? appWide
     }
 
     /// Applies to every Tab here now, and `addTab` carries it to later ones.
@@ -175,15 +182,26 @@ public final class PaneRuntime: Identifiable {
     public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
         guard kind == .terminal, newOverride != backgroundOverride else { return }
         backgroundOverride = newOverride
+        pushOverridesToTabs()
+    }
+
+    /// Idempotent for the same reason as ``setBackgroundOverride(_:)``.
+    func setSessionBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        guard kind == .terminal, newOverride != sessionBackgroundOverride else { return }
+        sessionBackgroundOverride = newOverride
+        pushOverridesToTabs()
+    }
+
+    private func pushOverridesToTabs() {
         for tab in tabs {
-            tab.setBackgroundOverride(newOverride)
+            tab.setBackgroundOverrides(pane: backgroundOverride, session: sessionBackgroundOverride)
         }
     }
 
-    /// A Pane with an override ignores app-wide changes, and a non-terminal
-    /// Pane's one Tab is never rendered.
+    /// A Pane with an override, or in a Session with one, ignores app-wide
+    /// changes, and a non-terminal Pane's one Tab is never rendered.
     func refreshAppWideBackground(_ appWide: TerminalBackgroundSettings) {
-        guard kind == .terminal, backgroundOverride == nil else { return }
+        guard kind == .terminal, backgroundOverride == nil, sessionBackgroundOverride == nil else { return }
         for tab in tabs {
             tab.refreshAppWideBackground(appWide)
         }
@@ -209,7 +227,7 @@ public final class PaneRuntime: Identifiable {
             return activeTab ?? tabs[0]
         }
         let cwd = source?.terminal.workingDirectory
-        let tab = TabRuntime(workingDirectory: cwd, backgroundGate: tabBackgroundGate, backgroundOverride: backgroundOverride)
+        let tab = TabRuntime(workingDirectory: cwd, backgroundGate: tabBackgroundGate, paneBackgroundOverride: backgroundOverride, sessionBackgroundOverride: sessionBackgroundOverride)
         tabs.append(tab)
         activeTabID = tab.id
         if let sessionID {
@@ -220,8 +238,7 @@ public final class PaneRuntime: Identifiable {
 
     /// Attaches this pane (and every tab it currently holds) to `sessionID`.
     /// Called by `SplitTree.attachToSession(_:)` for the tree's existing
-    /// panes and by `SplitTree.splitFocusedPane`/`splitFullDimension` for a
-    /// freshly-created pane — both always run before this pane's tabs can
+    /// panes and by `SplitTree.adopt(_:)` for a freshly-created pane — both always run before this pane's tabs can
     /// have a live libghostty surface (see `TabRuntime.attachContext`).
     public func attachToSession(_ sessionID: UUID) {
         self.sessionID = sessionID
@@ -299,5 +316,11 @@ public final class PaneRuntime: Identifiable {
         else { return }
         let prev = (current - 1 + tabs.count) % tabs.count
         activeTabID = tabs[prev].id
+    }
+}
+
+extension PaneRuntime: BackgroundOverrideHolder {
+    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
+        .effective(pane: nil, session: sessionBackgroundOverride, appWide: appWide)
     }
 }

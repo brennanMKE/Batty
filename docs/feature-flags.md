@@ -6,14 +6,16 @@ This page is also the recipe for the next flag.
 
 ## Current flags
 
-- `terminalBackgrounds` (`BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`, #0374): terminal backgrounds, per-Pane and app-wide, while umbrella #0372 is unfinished. Flag-off override: `BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF`. There is no `current`, because the CLI has no entry point. Gate sites:
+- `terminalBackgrounds` (`BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`, #0374): terminal backgrounds, per-Pane, per-Session and app-wide, while umbrella #0372 is unfinished. Flag-off override: `BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF`. There is no `current`, because the CLI has no entry point. Gate sites:
   - `SessionSidebarView.body` passes `store.featureFlags.terminalBackgrounds` to `PaneRow.showsBackgroundSettings`, which shows the gear.
   - `SessionSidebarView.backgroundSettingsBinding` returns `nil` when off, so the sheet can't present.
+  - `SessionSidebarView.body` passes `store.featureFlags.terminalBackgrounds` to `SessionRow.showsBackgroundSettings`, which shows the Set and Clear Session Background menu items (#0376).
+  - `SessionSidebarView.sessionBackgroundBinding` returns `nil` when off, so the Session's sheet can't present (#0376).
   - `AppearanceSettingsView.body` in `SettingsView.swift` omits `TerminalBackgroundSettingsSection` when off.
   - `AppStateStore.isWindowSeeThrough` returns `false` when off, so the window stays opaque (#0539).
   - `AppWideBackgroundGate.live` is built from `FeatureFlags.resolved()`. Disabled, it returns `.off` before touching `UserDefaults` or the disk, and it is the only route from the persisted background keys to a config builder.
 
-  The sheet and the Settings section are the only users of `TerminalBackgroundImageImporter`, and the sheet is the only caller of `PaneRuntime.setBackgroundOverride` in production. So with the flag off no override exists, no background key is read, and no image file is read or written.
+  The sheet and the Settings section are the only users of `TerminalBackgroundImageImporter`. In production, `PaneRuntime.setBackgroundOverride` and `SessionRuntime.setBackgroundOverride` are called only by `BackgroundOverrideEditor` and the Clear Session Background item, and `SplitTree` mirrors the Session's value to its Panes, which is a no-op for `nil`. So with the flag off no override exists, no background key is read, and no image file is read or written.
 
 ## Policy
 

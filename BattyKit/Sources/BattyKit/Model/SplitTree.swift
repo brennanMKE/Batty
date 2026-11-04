@@ -165,6 +165,10 @@ public final class SplitTree {
     /// (e.g. a bare unit-test fixture).
     public internal(set) var sessionID: UUID?
 
+    /// Held so a Pane created later can be told. `SessionRuntime` owns the value.
+    @ObservationIgnored
+    private(set) var sessionBackgroundOverride: TerminalBackgroundSettings?
+
     public init(root: SplitTreeNode) {
         self.root = root
         // `didSet` never fires for a property's own initializer assignment,
@@ -217,6 +221,22 @@ public final class SplitTree {
         }
     }
 
+    func setSessionBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        sessionBackgroundOverride = newOverride
+        for pane in allPanes {
+            pane.setSessionBackgroundOverride(newOverride)
+        }
+    }
+
+    /// Gives a freshly created Pane what the tree's existing Panes already
+    /// have, before any of its Tabs can have a surface.
+    private func adopt(_ newPane: PaneRuntime) {
+        if let sessionID {
+            newPane.attachToSession(sessionID)
+        }
+        newPane.setSessionBackgroundOverride(sessionBackgroundOverride)
+    }
+
     public var focusedPane: PaneRuntime {
         root.findPane(id: focusedPaneID) ?? root.firstLeafPane
     }
@@ -244,9 +264,7 @@ public final class SplitTree {
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
         let newPane = Self.makePane(inheritingFrom: source, in: self, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
-        if let sessionID {
-            newPane.attachToSession(sessionID)
-        }
+        adopt(newPane)
         if let newRoot = SplitTreeNode.inserting(
             newPane: newPane,
             adjacentTo: focusedPaneID,
@@ -289,9 +307,7 @@ public final class SplitTree {
         inheritingFrom source: PaneRuntime? = nil
     ) -> PaneRuntime {
         let newPane = Self.makePane(inheritingFrom: source, in: self, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
-        if let sessionID {
-            newPane.attachToSession(sessionID)
-        }
+        adopt(newPane)
         root = .split(id: UUID(), direction: direction, ratio: ratio, left: root, right: .leaf(newPane))
         focusedPaneID = newPane.id
         return newPane
@@ -590,9 +606,7 @@ public final class SplitTree {
             isSessionSelected: isSessionSelected,
             tabLookup: Self.tabLookup(for: self)
         )
-        if let sessionID {
-            newPane.attachToSession(sessionID)
-        }
+        adopt(newPane)
         guard let newRoot = SplitTreeNode.inserting(
             newPane: newPane,
             adjacentTo: targetPaneID,

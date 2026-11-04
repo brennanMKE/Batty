@@ -137,7 +137,7 @@ Notes on the layout:
 
 ### See-through windows (#0539)
 
-A content window is non-opaque while `AppStateStore.isWindowSeeThrough` is true: the feature flag is on, the window isn't in native full screen, and some terminal Pane in any of its Sessions is below full terminal opacity. The value is computed, not stored, so it has no writer of its own. `RootWindowView.body` reads it once and hands it to `WindowChromeApplier` and to `\.windowIsSeeThrough`. `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`, and it runs in the applier's deferred hop, never inside the layout pass. The fills sit in `.background`s below or beside the surface, and the terminal host's position doesn't change.
+A content window is non-opaque while `AppStateStore.isWindowSeeThrough` is true: the feature flag is on, the window isn't in native full screen, and some terminal Pane in any of its Sessions is below full terminal opacity. A Pane's opacity resolves through its own override, its Session's, then the app-wide value. The value is computed, not stored, so it has no writer of its own. `RootWindowView.body` reads it once and hands it to `WindowChromeApplier` and to `\.windowIsSeeThrough`. `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`, and it runs in the applier's deferred hop, never inside the layout pass. The fills sit in `.background`s below or beside the surface, and the terminal host's position doesn't change.
 
 ---
 

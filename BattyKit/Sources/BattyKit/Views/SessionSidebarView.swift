@@ -12,6 +12,7 @@ public struct SessionSidebarView: View {
     @State private var themingSessionID: UUID?
     @State private var coloringSessionID: UUID?
     @State private var backgroundSettingsPaneID: UUID?
+    @State private var backgroundSettingsSessionID: UUID?
 
     private var sidebarFill: Color? {
         WindowSeeThrough.sidebarFill(isSeeThrough: windowIsSeeThrough, chromeBackground: themeChrome?.chromeBackground)
@@ -131,6 +132,10 @@ public struct SessionSidebarView: View {
                         },
                         onSetColor: {
                             coloringSessionID = session.id
+                        },
+                        showsBackgroundSettings: store.featureFlags.terminalBackgrounds,
+                        onBackground: {
+                            backgroundSettingsSessionID = session.id
                         }
                     )
                     .accessibilityIdentifier("session-row.\(session.title)")
@@ -215,9 +220,19 @@ public struct SessionSidebarView: View {
             )
         }
         .sheet(item: backgroundSettingsBinding) { pane in
-            PaneBackgroundSettingsView(
+            BackgroundOverrideSettingsView(
                 isPresented: backgroundSettingsPresentedBinding,
-                pane: pane,
+                target: pane,
+                scope: .pane(pane),
+                appWide: store.backgroundGate.settings(),
+                importer: store.backgroundImageImporter
+            )
+        }
+        .sheet(item: sessionBackgroundBinding) { session in
+            BackgroundOverrideSettingsView(
+                isPresented: sessionBackgroundPresentedBinding,
+                target: session,
+                scope: .session,
                 appWide: store.backgroundGate.settings(),
                 importer: store.backgroundImageImporter
             )
@@ -273,6 +288,24 @@ public struct SessionSidebarView: View {
         Binding(
             get: { backgroundSettingsPaneID != nil },
             set: { if !$0 { backgroundSettingsPaneID = nil } }
+        )
+    }
+
+    /// A closed Session makes the lookup `nil`, which dismisses the sheet.
+    private var sessionBackgroundBinding: Binding<SessionRuntime?> {
+        Binding(
+            get: {
+                guard store.featureFlags.terminalBackgrounds, let backgroundSettingsSessionID else { return nil }
+                return windowRuntime.sessions.first { $0.id == backgroundSettingsSessionID }
+            },
+            set: { backgroundSettingsSessionID = $0?.id }
+        )
+    }
+
+    private var sessionBackgroundPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { backgroundSettingsSessionID != nil },
+            set: { if !$0 { backgroundSettingsSessionID = nil } }
         )
     }
 
@@ -385,6 +418,8 @@ private struct SessionRow: View {
     let onRename: () -> Void
     let onTheme: () -> Void
     let onSetColor: () -> Void
+    let showsBackgroundSettings: Bool
+    let onBackground: () -> Void
 
     var body: some View {
         HStack {
@@ -429,6 +464,14 @@ private struct SessionRow: View {
                     session.localThemeName = nil
                     if session.id == windowRuntime.selectedSessionID {
                         store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
+                    }
+                }
+            }
+            if showsBackgroundSettings {
+                Button("Set Session Background\u{2026}") { onBackground() }
+                if session.backgroundOverride != nil {
+                    Button("Clear Session Background") {
+                        session.setBackgroundOverride(nil)
                     }
                 }
             }

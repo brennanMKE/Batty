@@ -279,9 +279,9 @@ extension AppStateStore {
         // review round 1, finding 3).
         for session in windows.flatMap({ $0.sessions }) {
             for pane in session.tree.allPanes where pane.kind == .terminal {
-                // One per Pane, because a Pane's background override must
-                // survive this wholesale replace.
-                let background = TerminalBackgroundSettings.effective(pane: pane.backgroundOverride, appWide: appWideBackground)
+                // One per Pane, because a Pane's or Session's background
+                // override must survive this wholesale replace.
+                let background = TerminalBackgroundSettings.effective(pane: pane.backgroundOverride, session: session.backgroundOverride, appWide: appWideBackground)
                 let configuration = TerminalConfiguration { builder in
                     // Still omits `copy-on-select`, `command`, `wait-after-command`,
                     // `abnormal-command-exit-runtime`, `env BATTY_*`, `keybind = clear`
