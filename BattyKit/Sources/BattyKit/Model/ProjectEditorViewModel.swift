@@ -920,6 +920,8 @@ final class ProjectEditorViewModel {
         return store.projects.indices.contains(index + offset)
     }
 
+    var unreadableFilePath: String? { store.unreadableFilePath }
+
     static func message(for error: ProjectStoreError) -> String {
         switch error {
         case .emptyName:
@@ -930,6 +932,8 @@ final class ProjectEditorViewModel {
             String(localized: "Projects cannot be saved because their storage location is unavailable.", comment: "Project Editor")
         case .unknownProject:
             String(localized: "That Project no longer exists.", comment: "Project Editor")
+        case .fileUnreadable(let path):
+            String(localized: "Batty can't read your saved Projects, so this wasn't saved and they haven't been changed. Check that Batty can read \(path), then try again.", comment: "Project Editor: a save refused because projects.json can't be read")
         }
     }
 }

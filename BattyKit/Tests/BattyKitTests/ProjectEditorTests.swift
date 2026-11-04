@@ -143,6 +143,26 @@ struct ProjectLayoutEditingTests {
 
 @MainActor
 struct ProjectEditorSaveTests {
+    @Test func saveWhileTheFileCannotBeReadShowsWhyAndKeepsTheDraft() throws {
+        let fixture = try EditorFixture()
+        try fixture.store().upsert(fixture.simpleProject(name: "Kept"))
+        let bytes = try Data(contentsOf: fixture.projectsFile)
+        let gate = ProjectFileReadGate()
+        gate.failure = ProjectFileReadGate.cocoaReadError(posix: .EIO)
+        let store = ProjectStore(fileURL: fixture.projectsFile, clock: { EditorFixture.stamp }, readFile: { try gate.read($0) })
+        let model = fixture.model(store: store)
+        model.requestNewProject()
+        model.setName("New")
+        model.setRootPath(fixture.root.path)
+        #expect(model.unreadableFilePath == fixture.projectsFile.path)
+
+        #expect(model.save() == nil)
+
+        #expect(model.saveError?.contains(fixture.projectsFile.path) == true)
+        #expect(model.draft?.name == "New")
+        #expect(try Data(contentsOf: fixture.projectsFile) == bytes)
+    }
+
     @Test func saveWritesExactlyTheEditedProjectAndNothingBefore() throws {
         let fixture = try EditorFixture()
         let store = fixture.store()
@@ -1135,6 +1155,30 @@ struct ProjectEditorMenuTargetTests {
 
 @MainActor
 struct ProjectEditorWindowTests {
+    @Test func prepareRetriesAFailedRead() throws {
+        let fixture = try EditorFixture()
+        try fixture.store().upsert(fixture.simpleProject(name: "Kept"))
+        let bytes = try Data(contentsOf: fixture.projectsFile)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: fixture.projectsFile.path) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: fixture.projectsFile.path)
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let store = AppStateStore(
+            nameCache: SessionNameCache(fileURL: fixture.cacheFile),
+            preferences: testDefaults.defaults,
+            projectsFileURL: fixture.projectsFile)
+        #expect(store.projectStore.unreadableFilePath == fixture.projectsFile.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: fixture.projectsFile.path)
+        let controller = ProjectEditorWindowController()
+        defer { controller.window?.close() }
+
+        #expect(controller.prepare(store: store))
+
+        #expect(controller.model?.listEntries.map(\.name) == ["Kept"])
+        #expect(controller.model?.unreadableFilePath == nil)
+        #expect(try Data(contentsOf: fixture.projectsFile) == bytes)
+    }
+
     @Test func theWindowIsCreatedOnDemandAndIsNotAContentWindow() throws {
         let fixture = try EditorFixture()
         let project = fixture.richProject()

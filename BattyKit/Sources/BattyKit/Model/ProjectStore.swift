@@ -13,6 +13,9 @@ public enum ProjectStoreError: Error, Sendable, Equatable {
     case applicationSupportUnavailable
     case noFileURL
     case unknownProject(UUID)
+    /// `projects.json` exists but this store has never read it, so a write
+    /// could replace Projects it knows nothing about.
+    case fileUnreadable(path: String)
 }
 
 struct ProjectsFile: Encodable {
@@ -81,16 +84,24 @@ public final class ProjectStore {
     public static let fileName = "projects.json"
     public static let backupFileName = "projects.json.bak"
 
+    /// What the store last learned about `projects.json`. `loaded` means the
+    /// bytes were read, even if they then failed to decode
+    /// (`unreadableOriginal` covers that case). A store that wrote the file is
+    /// loaded too, with no read behind it.
+    private enum FileState { case loaded, absent, readFailed }
+
     public private(set) var projects: [Project]
     /// Why the last attempt to share failed, until a publish succeeds.
     public private(set) var syncError: String?
 
     private let fileURL: URL?
+    private var fileState: FileState
     @ObservationIgnored private let fileManager: FileManager
     /// The bytes of a file that could not be fully loaded. Copied to
     /// `projects.json.bak` before the first save overwrites it.
     @ObservationIgnored private var unreadableOriginal: Data?
     @ObservationIgnored private let clock: @MainActor () -> Date
+    @ObservationIgnored private let readFile: @MainActor (URL) throws -> Data
     @ObservationIgnored private let backend: (any ProjectSyncBackend)?
     @ObservationIgnored private let home: String
     /// Runs while a backend is present; ends when its `changes` stream does.
@@ -101,17 +112,20 @@ public final class ProjectStore {
         fileManager: FileManager = .default,
         clock: @escaping @MainActor () -> Date = { Date() },
         backend: (any ProjectSyncBackend)? = nil,
-        home: String = NSHomeDirectory()
+        home: String = NSHomeDirectory(),
+        readFile: @escaping @MainActor (URL) throws -> Data = { try Data(contentsOf: $0) }
     ) {
         self.fileManager = fileManager
         self.clock = clock
         self.backend = backend
         self.home = home
+        self.readFile = readFile
         let resolved = fileURL ?? (try? Self.canonicalFileURL(fileManager: fileManager))
         self.fileURL = resolved
-        let loaded = Self.load(fileURL: resolved, fileManager: fileManager)
+        let loaded = Self.load(fileURL: resolved, readFile: readFile, isRetry: false)
         self.projects = loaded.projects
         self.unreadableOriginal = loaded.unreadableOriginal
+        self.fileState = loaded.state
         if let backend {
             backend.onSyncError = { [weak self] error in
                 self?.syncError = error.localizedDescription
@@ -140,10 +154,23 @@ public final class ProjectStore {
 
     public var url: URL? { fileURL }
 
-    /// Whether a Project this list doesn't show may still exist: dropped from a
-    /// file that didn't fully load, or kept in `projects.json.bak`.
+    /// The path of a `projects.json` this store could not read. While set the
+    /// list is empty and every write is refused.
+    public var unreadableFilePath: String? {
+        fileState == .readFailed ? fileURL?.path : nil
+    }
+
+    /// Reads the file again if the last read didn't load it, so Projects return
+    /// without a relaunch once it can be read. A loaded store does nothing.
+    public func retryLoadIfNeeded() {
+        reconcileWithFile()
+    }
+
+    /// Whether a Project this list doesn't show may still exist: in a file this
+    /// store hasn't read, dropped from a file that didn't fully load, or kept
+    /// in `projects.json.bak`.
     var mayReferenceUnlistedImages: Bool {
-        if unreadableOriginal != nil { return true }
+        if fileState == .readFailed || unreadableOriginal != nil { return true }
         guard let fileURL else { return false }
         let backup = fileURL.deletingLastPathComponent().appendingPathComponent(Self.backupFileName)
         return fileManager.fileExists(atPath: backup.path)
@@ -155,7 +182,7 @@ public final class ProjectStore {
     /// a newer version.
     func imagePathsInFile() -> Set<String>? {
         guard let fileURL,
-              let data = try? Data(contentsOf: fileURL),
+              let data = try? readFile(fileURL),
               let file = try? Self.decodeFile(data),
               file.dropped == 0, file.newerVersion == nil
         else { return nil }
@@ -177,6 +204,7 @@ public final class ProjectStore {
     /// since the CLI opens by name) without changing anything. A failed write
     /// rolls the in-memory list back and rethrows.
     public func upsert(_ project: Project) throws {
+        try requireReadableFile()
         var project = project
         project.name = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !project.name.isEmpty else { throw ProjectStoreError.emptyName }
@@ -214,6 +242,7 @@ public final class ProjectStore {
     }
 
     public func delete(id: UUID) throws {
+        try requireReadableFile()
         guard let existing = project(id: id) else { throw ProjectStoreError.unknownProject(id) }
         try commit(projects.filter { $0.id != id })
         if existing.isShared { backend?.tombstone(id: id, deletedAt: clock()) }
@@ -223,6 +252,7 @@ public final class ProjectStore {
     /// definition's membership. While the file on disk could not be fully
     /// loaded, only memory is updated, as for `recordOpen`.
     public func setShared(id: UUID, _ shared: Bool) throws {
+        try requireReadableFile()
         guard let index = projects.firstIndex(where: { $0.id == id }) else { throw ProjectStoreError.unknownProject(id) }
         var updated = projects
         let wasShared = updated[index].isShared
@@ -241,10 +271,16 @@ public final class ProjectStore {
     }
 
     /// Applies the backend's entries to the list. This is the one write to
-    /// `projects.json` that is not a direct user action, and it runs only on
-    /// a backend change. A file that could not be fully loaded is left alone.
+    /// `projects.json` that is not a direct user action. It runs on a backend
+    /// change, and when the store first reads a file it couldn't read or find
+    /// before. A file that could not be read or fully loaded is left alone.
     func mergeRemote() {
         guard let backend, backend.isAvailable else { return }
+        reconcileWithFile()
+        guard fileState != .readFailed else {
+            logger.notice("mergeRemote: projects file can't be read; skipping")
+            return
+        }
         guard unreadableOriginal == nil else {
             logger.notice("mergeRemote: projects file not fully loaded; skipping")
             return
@@ -263,6 +299,7 @@ public final class ProjectStore {
     /// Puts `ids` first in the given order; Projects not listed keep their
     /// relative order after them. Unknown ids are ignored.
     public func reorder(_ ids: [UUID]) throws {
+        try requireReadableFile()
         var remaining = projects
         var ordered: [Project] = []
         for id in ids {
@@ -279,6 +316,7 @@ public final class ProjectStore {
     /// updated: opening a Project must not rewrite a file the user has not
     /// explicitly saved.
     public func recordOpen(id: UUID, at date: Date) throws {
+        try requireReadableFile()
         guard let index = projects.firstIndex(where: { $0.id == id }) else { throw ProjectStoreError.unknownProject(id) }
         var updated = projects
         updated[index].lastOpenedAt = date
@@ -294,6 +332,7 @@ public final class ProjectStore {
     /// it does not stamp `modifiedAt` or reach the backend, and while the file
     /// on disk could not be fully loaded only memory is updated.
     public func recordApproval(id: UUID, hash: String) throws {
+        try requireReadableFile()
         guard let index = projects.firstIndex(where: { $0.id == id }) else { throw ProjectStoreError.unknownProject(id) }
         var updated = projects
         updated[index].approvedCommandsHash = hash
@@ -309,7 +348,7 @@ public final class ProjectStore {
         let previous = projects
         projects = updated
         do {
-            try save()
+            try writeFile()
         } catch {
             projects = previous
             logger.error("projects save failed: \(error.localizedDescription, privacy: .public)")
@@ -317,9 +356,43 @@ public final class ProjectStore {
         }
     }
 
-    /// Encodes first, so an encode failure never touches the file.
     public func save() throws {
+        try requireReadableFile()
+        try writeFile()
+    }
+
+    /// Runs first in every mutator, because each builds its new list from
+    /// `projects`, which a heal replaces.
+    private func requireReadableFile() throws {
+        reconcileWithFile()
+        if fileState == .readFailed, let fileURL {
+            throw ProjectStoreError.fileUnreadable(path: fileURL.path)
+        }
+    }
+
+    /// Reads the file again unless it is loaded. `projects` is empty outside
+    /// the loaded state, since a commit there either moves to loaded or rolls
+    /// back, so a heal can replace the list outright. It also runs a merge,
+    /// because a backend change skipped while unread won't be sent again.
+    private func reconcileWithFile() {
+        guard fileState != .loaded else { return }
+        let result = Self.load(fileURL: fileURL, readFile: readFile, isRetry: true)
+        setFileState(result.state)
+        guard result.state == .loaded else { return }
+        projects = result.projects
+        unreadableOriginal = result.unreadableOriginal
+        mergeRemote()
+    }
+
+    /// `@Observable` notifies on equal writes, and this runs when a view appears.
+    private func setFileState(_ state: FileState) {
+        if fileState != state { fileState = state }
+    }
+
+    /// Encodes first, so an encode failure never touches the file.
+    private func writeFile() throws {
         guard let fileURL else { throw ProjectStoreError.noFileURL }
+        guard fileState != .readFailed else { throw ProjectStoreError.fileUnreadable(path: fileURL.path) }
         let data = try ProjectsFile.encoder.encode(ProjectsFile(projects: projects))
         try ensureContainerExists(for: fileURL)
         if let original = unreadableOriginal {
@@ -329,6 +402,7 @@ public final class ProjectStore {
             unreadableOriginal = nil
         }
         try writeAtomically(data: data, to: fileURL)
+        setFileState(.loaded)
         logger.debug("projects saved (\(self.projects.count) projects, \(data.count) bytes)")
     }
 
@@ -336,14 +410,28 @@ public final class ProjectStore {
         name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    private static func load(fileURL: URL?, fileManager: FileManager) -> (projects: [Project], unreadableOriginal: Data?) {
-        guard let fileURL, fileManager.fileExists(atPath: fileURL.path) else { return ([], nil) }
+    /// The read alone tells a missing file from an unreadable one: `fileExists`
+    /// is also false under a parent folder that can't be searched.
+    private static func load(
+        fileURL: URL?,
+        readFile: @MainActor (URL) throws -> Data,
+        isRetry: Bool
+    ) -> (projects: [Project], unreadableOriginal: Data?, state: FileState) {
+        guard let fileURL else { return ([], nil, .absent) }
         let data: Data
         do {
-            data = try Data(contentsOf: fileURL)
+            data = try readFile(fileURL)
         } catch {
-            logger.error("projects load failed (\(error.localizedDescription, privacy: .public)); starting empty")
-            return ([], nil)
+            let nsError = error as NSError
+            if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileReadNoSuchFileError {
+                return ([], nil, .absent)
+            }
+            if isRetry {
+                logger.debug("projects read still failing (\(error.localizedDescription, privacy: .public))")
+            } else {
+                logger.error("projects read failed (\(error.localizedDescription, privacy: .public)); showing none and refusing writes until it can be read")
+            }
+            return ([], nil, .readFailed)
         }
         do {
             let file = try decodeFile(data)
@@ -351,10 +439,10 @@ public final class ProjectStore {
                 logger.error("projects file version \(newerVersion) is newer than \(ProjectsFile.currentVersion); keeping the original until the next save")
             }
             logger.debug("projects loaded (\(file.projects.count) projects, \(file.dropped) dropped)")
-            return (file.projects, file.dropped > 0 || file.newerVersion != nil ? data : nil)
+            return (file.projects, file.dropped > 0 || file.newerVersion != nil ? data : nil, .loaded)
         } catch {
             logger.error("projects file unreadable (\(String(describing: error), privacy: .public)); starting empty and keeping the original until the next save")
-            return ([], data)
+            return ([], data, .loaded)
         }
     }
 

@@ -62,6 +62,7 @@ enum ProjectPickerEscape: Equatable {
 enum ProjectPickerEmptyState: Equatable {
     case noProjects
     case noMatches
+    case unreadableFile(path: String)
 }
 
 /// The picker's state and rules, free of views: which Projects show for a
@@ -77,6 +78,8 @@ struct ProjectPickerModel: Equatable {
     private(set) var selectedID: UUID?
     /// Why the last share was refused, shown as a caption under the cards.
     private(set) var syncError: String?
+    /// The `projects.json` that can't be read, which is why the list is empty.
+    private(set) var unreadableFilePath: String?
     private var projects: [Project]
     private var openProjectIDs: Set<UUID>
     private let homeDirectory: String
@@ -121,9 +124,10 @@ struct ProjectPickerModel: Equatable {
     /// The same query and selection over current data, for a view that reads
     /// Projects and open Sessions live. The selection stays on its Project by
     /// id; if that Project is gone or filtered out, the best match is chosen.
-    func refreshed(projects: [Project], openProjectIDs: Set<UUID>, syncError: String? = nil) -> ProjectPickerModel {
+    func refreshed(projects: [Project], openProjectIDs: Set<UUID>, syncError: String? = nil, unreadableFilePath: String? = nil) -> ProjectPickerModel {
         var copy = self
         copy.syncError = syncError
+        copy.unreadableFilePath = unreadableFilePath
         copy.projects = ProjectRecency.ranked(projects, openProjectIDs: openProjectIDs)
         copy.openProjectIDs = openProjectIDs
         if let selectedID, copy.filtered.contains(where: { $0.id == selectedID }) { return copy }
@@ -170,6 +174,12 @@ struct ProjectPickerModel: Equatable {
     private var closedCount: Int {
         let tiers = tiers
         return tiers.featured.count + tiers.rest.count
+    }
+
+    /// An empty list over a file that can't be read must not invite a save.
+    var offersNewProject: Bool {
+        if case .unreadableFile = emptyState { return false }
+        return true
     }
 
     var showsNewProjectCard: Bool {
@@ -227,7 +237,10 @@ struct ProjectPickerModel: Equatable {
     }
 
     var emptyState: ProjectPickerEmptyState? {
-        if projects.isEmpty { return .noProjects }
+        if projects.isEmpty {
+            if let unreadableFilePath { return .unreadableFile(path: unreadableFilePath) }
+            return .noProjects
+        }
         return filtered.isEmpty ? .noMatches : nil
     }
 

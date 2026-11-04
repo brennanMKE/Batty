@@ -408,6 +408,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         case XPCVerb.projectList:
             Task { @MainActor [pendingRequests, storeProvider] in
                 let store = storeProvider()
+                if let problem = store.projectFileProblemForXPC() {
+                    logger.error("perform projectList: \(problem, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: problem)))
+                    return
+                }
                 let reply = store.projectListReplyForXPC()
                 guard let replyData = try? JSONEncoder().encode(reply)
                 else {

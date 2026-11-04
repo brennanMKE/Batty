@@ -9,6 +9,13 @@ extension AppStateStore {
         case failed(String)
     }
 
+    /// Why the Project verbs can't answer: retries a failed read, and while
+    /// the file still can't be read, says so rather than reporting no Projects.
+    public func projectFileProblemForXPC() -> String? {
+        projectStore.retryLoadIfNeeded()
+        return projectStore.unreadableFilePath.map { "can't read the saved Projects file at \($0); nothing was changed" }
+    }
+
     /// The `projectList` verb's reply.
     public func projectListReplyForXPC() -> ProjectListReply {
         let open = openProjectIDs
@@ -32,6 +39,10 @@ extension AppStateStore {
         openNew: Bool,
         completion: @escaping (ProjectOpenXPCOutcome) -> Void
     ) -> (projectName: String, trustRequestID: UUID?)? {
+        if let problem = projectFileProblemForXPC() {
+            completion(.failed(problem))
+            return nil
+        }
         let projectStore = self.projectStore
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let project = projectStore.project(named: trimmed) else {

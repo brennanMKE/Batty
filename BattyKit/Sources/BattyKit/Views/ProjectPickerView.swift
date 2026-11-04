@@ -32,6 +32,9 @@ struct ProjectPickerView: View {
     /// not go through `onAction`, which dismisses first.
     let onSetShared: (UUID, Bool) -> Void
     let syncError: () -> String?
+    let unreadableFilePath: () -> String?
+    /// Lets the host retry a failed read when the sheet appears.
+    let onPresented: () -> Void
     let onCancel: () -> Void
 
     @State private var base: ProjectPickerModel
@@ -47,6 +50,8 @@ struct ProjectPickerView: View {
         onAction: @escaping (ProjectPickerAction) -> Void,
         onSetShared: @escaping (UUID, Bool) -> Void,
         syncError: @escaping () -> String? = { nil },
+        unreadableFilePath: @escaping () -> String? = { nil },
+        onPresented: @escaping () -> Void = {},
         onCancel: @escaping () -> Void
     ) {
         _base = State(initialValue: ProjectPickerModel(
@@ -56,11 +61,13 @@ struct ProjectPickerView: View {
         self.onAction = onAction
         self.onSetShared = onSetShared
         self.syncError = syncError
+        self.unreadableFilePath = unreadableFilePath
+        self.onPresented = onPresented
         self.onCancel = onCancel
     }
 
     private var model: ProjectPickerModel {
-        get { base.refreshed(projects: projects(), openProjectIDs: openProjectIDs(), syncError: syncError()) }
+        get { base.refreshed(projects: projects(), openProjectIDs: openProjectIDs(), syncError: syncError(), unreadableFilePath: unreadableFilePath()) }
         nonmutating set { base = newValue }
     }
 
@@ -107,7 +114,10 @@ struct ProjectPickerView: View {
         .background(shortcutButtons)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-picker.root")
-        .onAppear { filterFocused = true }
+        .onAppear {
+            filterFocused = true
+            onPresented()
+        }
     }
 
     private var filterField: some View {
@@ -286,6 +296,19 @@ struct ProjectPickerView: View {
                 Image(systemName: "magnifyingglass").font(.system(size: 34)).foregroundStyle(.secondary)
                 Text("No Projects Found").font(.title3.weight(.semibold))
                 Text("Try a different search term.").foregroundStyle(.secondary)
+            case .unreadableFile(let path):
+                Image(systemName: "exclamationmark.triangle").font(.system(size: 34)).foregroundStyle(.secondary)
+                Text("Batty Can't Read Your Saved Projects").font(.title3.weight(.semibold))
+                Text("Your Projects haven't been changed. Check that Batty can read this file, then open this window again.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+                Text(verbatim: path)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("project-picker.unreadable-path")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -304,7 +327,9 @@ struct ProjectPickerView: View {
                 Text("\u{2325}\u{21A9} Open another copy")
                 Text("\u{2318}E Edit")
             }
-            Text("\u{2318}N New Project\u{2026}")
+            if model.offersNewProject {
+                Text("\u{2318}N New Project\u{2026}")
+            }
         }
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -331,7 +356,11 @@ struct ProjectPickerView: View {
             }
             .keyboardShortcut("e", modifiers: .command)
             .disabled(model.selectedID == nil)
-            Button("New Project") { onAction(.newProject) }
+            // Stays enabled when New Project isn't offered, so the chord still
+            // stops here instead of reaching File > New Session.
+            Button("New Project") {
+                if model.offersNewProject { onAction(.newProject) }
+            }
                 .keyboardShortcut("n", modifiers: .command)
         }
         .frame(width: 0, height: 0)

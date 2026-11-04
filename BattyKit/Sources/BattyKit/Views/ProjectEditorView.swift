@@ -214,13 +214,27 @@ private struct ProjectEditorEmptyState: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("No Projects yet")
-                .font(.headline)
-            Text("A Project opens a Session with its folder, color, layout and startup commands already set up.")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("New Project\u{2026}") { model.requestNewProject() }
-                .accessibilityIdentifier("project-editor.empty.new-project")
+            if let path = model.unreadableFilePath {
+                Text("Batty Can't Read Your Saved Projects")
+                    .font(.headline)
+                Text("Your Projects haven't been changed. Check that Batty can read this file, then open this window again.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Text(verbatim: path)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("project-editor.empty.unreadable-path")
+            } else {
+                Text("No Projects yet")
+                    .font(.headline)
+                Text("A Project opens a Session with its folder, color, layout and startup commands already set up.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("New Project\u{2026}") { model.requestNewProject() }
+                    .accessibilityIdentifier("project-editor.empty.new-project")
+            }
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

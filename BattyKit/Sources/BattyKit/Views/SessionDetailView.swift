@@ -113,6 +113,8 @@ public struct SessionDetailView: View {
                     }
                 },
                 syncError: { store.projectStore.syncError },
+                unreadableFilePath: { store.projectStore.unreadableFilePath },
+                onPresented: { store.projectStore.retryLoadIfNeeded() },
                 onCancel: { windowRuntime.projectPickerShown = false }
             )
         }
