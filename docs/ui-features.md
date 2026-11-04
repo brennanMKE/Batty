@@ -2,7 +2,7 @@
 
 This document is the authoritative reference for each major UI feature area in
 Batty. Read it before modifying any of the behaviors listed here: drag-and-drop,
-tab and session rename, theme application, layout picker, bell feed, tab chip
+tab and session rename, theme application, terminal backgrounds, layout picker, bell feed, tab chip
 rendering, settings sheet, sidebar toggle, fuzzy finders,
 modal confirmation flows, and the Process Status picker. Each section describes what the feature does, the
 invariants it must preserve, the regression history that established those
@@ -211,6 +211,32 @@ the developer workflow for adding themes.
 - `theme-row.<name>` — each row in the selector list.
 - `theme-row-pin.<name>` — the pin button on each row.
 - `theme-selector.pinned-section` — the pinned-themes subgroup.
+
+---
+
+## Terminal backgrounds
+
+A terminal can show an image behind its text, let the desktop show through, or both. Three levels set it, and the most specific wins: a Pane override (the gear on its Sidebar row), a Session override (the row's context menu), and the app-wide default (Settings → Appearance). A Project's stored background seeds the Session override when the Project opens. The user-facing description is `BattyKit/Sources/BattyKit/Help/11-backgrounds.md`.
+
+**Invariants:**
+
+- `AppWideBackgroundGate` is the only route from the persisted keys to a config builder. A persisted image reaches libghostty only after proving it is the importer's unchanged output, because a corrupt file leaves a Pane with no shell and an oversized one aborts the process.
+- `withBackground` emits no line for an unset image or for opacity 1, so a user who configured nothing gets the same terminal config as before the feature.
+- `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`. See [view-hierarchy.md](view-hierarchy.md), "See-through windows".
+- A see-through window must pass the checklist in [terminal-pane-requirements.md](terminal-pane-requirements.md) §6.
+
+**Accessibility identifiers:**
+
+- `pane-background-settings.<id>`: the gear on a Pane's row. Its value is `following` or `custom`.
+- `pane-background-sheet.*`, `session-background-sheet.*`, `project-background-sheet.*`: the override sheets.
+- `appearance-background.*`: the Settings section.
+- `project-editor.background.*`: the Project Editor's Background row.
+- `session-row.background-problem`: the warning on a Session whose Project image can't be used.
+
+**Tests:**
+
+- UI: `PaneBackgroundSettingsTests`, `SessionBackgroundSettingsTests`, `AppearanceBackgroundSettingsTests`, `TerminalSeeThroughTests`, `ProjectsEditorTests`.
+- BattyKit: `WindowSeeThroughTests`, `AppWideBackgroundGateTests`, `ProjectBackground*Tests`.
 
 ---
 

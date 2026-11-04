@@ -85,9 +85,6 @@ public final class AppStateStore {
     /// `.standard` through one `cfprefsd` (#0426).
     @ObservationIgnored public let preferences: UserDefaults
 
-    /// Release gates, fixed at launch (`docs/feature-flags.md`).
-    @ObservationIgnored public let featureFlags: FeatureFlags
-
     /// The only route from the persisted background keys to a builder.
     @ObservationIgnored let backgroundGate: AppWideBackgroundGate
 
@@ -107,7 +104,7 @@ public final class AppStateStore {
     /// each Session switch. Native full screen stays opaque, as upstream Ghostty
     /// does, because its background turns gray.
     public func isWindowSeeThrough(_ window: WindowRuntime) -> Bool {
-        guard featureFlags.terminalBackgrounds, !window.isNativeFullScreen else { return false }
+        guard !window.isNativeFullScreen else { return false }
         return window.sessions.contains { session in
             session.tree.allPanes.contains {
                 $0.kind == .terminal && $0.effectiveTerminalOpacity(appWide: appWideTerminalOpacity) < 1
@@ -1203,10 +1200,8 @@ public final class AppStateStore {
         notifier: BellNotifying? = nil,
         preferences: UserDefaults = .standard,
         projectsFileURL: URL? = nil,
-        featureFlags: FeatureFlags = .resolved(),
         backgroundGate: AppWideBackgroundGate = .live
     ) {
-        self.featureFlags = featureFlags
         self.backgroundGate = backgroundGate
         self.appWideTerminalOpacity = backgroundGate.storedSettings().terminalOpacity
         self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
@@ -1413,7 +1408,7 @@ public final class AppStateStore {
             contentFactory: contentFactory,
             isSessionSelected: true
         )
-        let background = featureFlags.terminalBackgrounds ? project.background.map(projectBackgrounds.checked) : nil
+        let background = project.background.map(projectBackgrounds.checked)
         let session = target.addProjectSession(project, tree: tree, background: background?.settings)
         if let problem = background?.problem { session.projectBackgroundImageProblem = problem }
         // A CLI create brings Batty forward like `batty new` does (its

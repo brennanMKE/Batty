@@ -204,7 +204,7 @@ final class AppWideBackgroundLiveApplyTests {
     /// the image back.
     @Test func editorPickAtTheSamePathInspectsAgainAndPushes() {
         var state = BackgroundImageState.rejected
-        let gate = AppWideBackgroundGate(defaults: defaults, isEnabled: true) { _ in state }
+        let gate = AppWideBackgroundGate(defaults: defaults) { _ in state }
         let store = AppStateStore(preferences: defaults, backgroundGate: gate)
         push(Self.settings, to: store)
         for tab in allTabs(store) {
@@ -227,7 +227,7 @@ final class AppWideBackgroundLiveApplyTests {
     }
 
     private func countingGate(_ count: @escaping () -> Void) -> AppWideBackgroundGate {
-        AppWideBackgroundGate(defaults: defaults, isEnabled: true) { _ in
+        AppWideBackgroundGate(defaults: defaults) { _ in
             count()
             return .usable
         }

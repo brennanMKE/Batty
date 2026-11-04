@@ -102,7 +102,8 @@ final class ProjectEditorViewModel {
     /// already up on it.
     @ObservationIgnored var presentForQuit: @MainActor () -> Bool = { true }
     @ObservationIgnored private var quitReply: (@MainActor (Bool) -> Void)?
-    /// Nil hides the Background row, and nothing here reads an image.
+    /// `ProjectEditorWindowController` always passes one. Nil hides the
+    /// Background row, and nothing here reads an image.
     @ObservationIgnored let backgrounds: ProjectBackgroundLibrary?
     @ObservationIgnored private let appWideBackground: @MainActor () -> TerminalBackgroundSettings
 

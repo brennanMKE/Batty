@@ -66,16 +66,4 @@ nonisolated final class AppearanceBackgroundSettingsTests: XCTestCase {
 
         restore.click()
     }
-
-    @MainActor
-    func testBackgroundControlsAbsentWithTheFlagOff() throws {
-        let app = BattyUITestHarness.launchBatty(
-            script: [],
-            extraEnvironment: ["BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF": "1"]
-        )
-        defer { app.terminate() }
-        openAppearanceSettings(in: app)
-
-        XCTAssertFalse(app.buttons["appearance-background.restore-defaults"].waitForExistence(timeout: 2))
-    }
 }

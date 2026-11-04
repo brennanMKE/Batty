@@ -176,12 +176,12 @@ struct ProjectBackgroundEditorTests {
         #expect(fixture.inspections == 0)
     }
 
-    @Test func flagOffEditorSaveKeepsTheField() throws {
+    @Test func editorSaveThatLeavesTheBackgroundAloneKeepsIt() throws {
         let fixture = try ProjectBackgroundFixture()
         let value = projectBackgroundValue(path: "/tmp/stored.png")
         let project = fixture.project(background: value)
         let projectStore = try store(fixture, project)
-        let model = ProjectEditorViewModel(store: projectStore, directoryExists: { _ in true })
+        let model = model(fixture, projectStore)
         model.setName("Renamed")
         #expect(model.save() != nil)
         #expect(ProjectStore(fileURL: fixture.projectsFile).project(id: project.id)?.background == value)

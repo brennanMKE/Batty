@@ -6,30 +6,6 @@ import SwiftUI
 import Testing
 @testable import BattyKit
 
-private nonisolated final class RecordingDefaults: UserDefaults {
-    private(set) var readKeys: [String] = []
-
-    override func object(forKey defaultName: String) -> Any? {
-        readKeys.append(defaultName)
-        return super.object(forKey: defaultName)
-    }
-
-    override func string(forKey defaultName: String) -> String? {
-        readKeys.append(defaultName)
-        return super.string(forKey: defaultName)
-    }
-
-    override func double(forKey defaultName: String) -> Double {
-        readKeys.append(defaultName)
-        return super.double(forKey: defaultName)
-    }
-
-    override func bool(forKey defaultName: String) -> Bool {
-        readKeys.append(defaultName)
-        return super.bool(forKey: defaultName)
-    }
-}
-
 private nonisolated final class ChangeFlag: @unchecked Sendable {
     var fired = false
 }
@@ -46,11 +22,10 @@ final class WindowSeeThroughTests {
 
     @MainActor deinit { testDefaults.tearDown() }
 
-    private func makeStore(sessions: [SessionRuntime]? = nil, flag: Bool = true) -> AppStateStore {
+    private func makeStore(sessions: [SessionRuntime]? = nil) -> AppStateStore {
         AppStateStore(
             sessions: sessions ?? [session()],
             preferences: defaults,
-            featureFlags: FeatureFlags(terminalBackgrounds: flag),
             backgroundGate: .acceptingEveryImage(defaults: defaults)
         )
     }
@@ -72,35 +47,6 @@ final class WindowSeeThroughTests {
     }
 
     // MARK: - Derivation
-
-    @Test func flagOffIsNeverSeeThroughWithLowOpacityEverywhere() throws {
-        storeAppWide(0.5)
-        let pane = pane()
-        pane.setBackgroundOverride(Self.low)
-        let flagOff = makeStore(sessions: [session(pane)], flag: false)
-        #expect(pane.backgroundOverride == Self.low)
-        #expect(flagOff.appWideTerminalOpacity == 0.5)
-        #expect(!flagOff.isWindowSeeThrough(try firstWindow(flagOff)))
-
-        // The control: the same state with the flag on is see-through.
-        let flagOn = makeStore(sessions: [session(pane)])
-        #expect(flagOn.isWindowSeeThrough(try firstWindow(flagOn)))
-    }
-
-    @Test func flagOffStoreInitReadsNoBackgroundKeys() throws {
-        let recording = try #require(RecordingDefaults(suiteName: testDefaults.suiteName))
-        storeAppWide(0.5)
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("batty-see-through-tests-\(UUID().uuidString)", isDirectory: true)
-        let store = AppStateStore(
-            sessions: [session()],
-            preferences: defaults,
-            featureFlags: FeatureFlags(terminalBackgrounds: false),
-            backgroundGate: .make(flags: FeatureFlags(terminalBackgrounds: false), defaults: recording, directory: directory)
-        )
-        #expect(store.appWideTerminalOpacity == 1)
-        #expect(recording.readKeys.isEmpty)
-    }
 
     @Test func everyPaneAtFullOpacityIsNotSeeThrough() throws {
         let store = makeStore()
@@ -258,17 +204,6 @@ final class WindowSeeThroughTests {
         session.setBackgroundOverride(Self.low)
         #expect(session.backgroundOverride == Self.low)
         #expect(!store.isWindowSeeThrough(try firstWindow(store)))
-    }
-
-    @Test func flagOffIsNeverSeeThroughWithALowSessionOverride() throws {
-        let session = session()
-        session.setBackgroundOverride(Self.low)
-        let flagOff = makeStore(sessions: [session], flag: false)
-        #expect(!flagOff.isWindowSeeThrough(try firstWindow(flagOff)))
-
-        // The control: the same state with the flag on is see-through.
-        let flagOn = makeStore(sessions: [session])
-        #expect(flagOn.isWindowSeeThrough(try firstWindow(flagOn)))
     }
 
     @Test func sessionOverrideInvalidatesAnObservedSeeThroughRead() throws {
@@ -551,5 +486,81 @@ final class WindowSeeThroughTests {
             WindowSeeThrough.apply(palette: ChromePalette(theme: nil), isSeeThrough: isSeeThrough, to: plain)
             #expect(!plain.titlebarAppearsTransparent)
         }
+    }
+
+    // MARK: - A user who configured nothing
+
+    private func temporaryRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-see-through-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func emptyDefaultsResolveToNoBackgroundAndAnOpaqueWindow() throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let gate = AppWideBackgroundGate.make(defaults: defaults, directory: root.appendingPathComponent("TerminalBackgrounds"))
+        #expect(gate.settings() == .off)
+        #expect(gate.storedSettings() == .off)
+        #expect(gate.refreshImageState() == .none)
+
+        let pane = PaneRuntime(tabBackgroundGate: gate)
+        let store = AppStateStore(sessions: [session(pane)], preferences: defaults, backgroundGate: gate)
+        let window = try firstWindow(store)
+        let backgroundLines = { pane.tabs[0].terminal.renderedConfig.split(separator: "\n").filter { $0.hasPrefix("background-") } }
+        #expect(store.appWideTerminalOpacity == 1)
+        #expect(!store.isWindowSeeThrough(window))
+        #expect(backgroundLines().isEmpty)
+
+        // The control: the same store and Tab do respond to a stored value.
+        storeAppWide(0.5)
+        store.applyAppWideBackgroundToAllSurfaces()
+        #expect(store.isWindowSeeThrough(window))
+        #expect(backgroundLines().contains("background-opacity = 0.5"))
+    }
+
+    @Test func emptyDefaultsCreateNoBackgroundFolders() throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let gateDirectory = root.appendingPathComponent("TerminalBackgrounds", isDirectory: true)
+        let projectsFile = root.appendingPathComponent("projects.json")
+        let gate = AppWideBackgroundGate.make(defaults: defaults, directory: gateDirectory)
+        let store = AppStateStore(
+            sessions: [SessionRuntime(tree: SplitTree(root: .leaf(PaneRuntime(tabBackgroundGate: gate))))],
+            nameCache: SessionNameCache(fileURL: root.appendingPathComponent("cache.json")),
+            preferences: defaults,
+            projectsFileURL: projectsFile,
+            backgroundGate: gate
+        )
+        store.applyAppearanceToAllSurfaces()
+        store.applyAppWideBackgroundToAllSurfaces()
+
+        let files = FileManager.default
+        #expect(!files.fileExists(atPath: gateDirectory.path))
+        #expect(!files.fileExists(atPath: store.projectBackgrounds.directory.path))
+        #expect(!files.fileExists(atPath: projectsFile.path))
+    }
+
+    @Test func emptyDefaultsWindowKeepsAFreshWindowsValues() throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let gate = AppWideBackgroundGate.make(defaults: defaults, directory: root.appendingPathComponent("TerminalBackgrounds"))
+        let store = AppStateStore(
+            sessions: [SessionRuntime(tree: SplitTree(root: .leaf(PaneRuntime(tabBackgroundGate: gate))))],
+            preferences: defaults,
+            backgroundGate: gate
+        )
+        let fresh = unshownWindow()
+        let window = unshownWindow()
+        WindowSeeThrough.apply(
+            palette: ChromePalette(theme: nil),
+            isSeeThrough: store.isWindowSeeThrough(try firstWindow(store)),
+            to: window
+        )
+        #expect(window.isOpaque)
+        #expect(window.isOpaque == fresh.isOpaque)
+        #expect(window.backgroundColor == fresh.backgroundColor)
+        #expect(window.titlebarAppearsTransparent == fresh.titlebarAppearsTransparent)
     }
 }

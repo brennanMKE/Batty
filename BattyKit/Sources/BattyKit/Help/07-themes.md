@@ -27,6 +27,7 @@ A theme controls the terminal color palette only. It does **not** control:
 - The **font** — set separately in **Settings → Appearance**.
 - The **cursor style** (block, bar, or underline) and blink — also in **Settings → Appearance**.
 - The **window chrome** — title bar and borders follow your macOS system appearance.
+- A **background image** or a see-through terminal — see [Backgrounds and See-Through](11-backgrounds.md).
 
 If you change the theme and the cursor or font stays put, that's working as intended.
 

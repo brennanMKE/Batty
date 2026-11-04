@@ -154,7 +154,7 @@ private struct AppearanceSettingsView: View {
                 themePicker("Dark", selection: $darkThemeName, appliesNow: colorScheme == .dark)
             }
 
-            if let store, store.featureFlags.terminalBackgrounds {
+            if let store {
                 TerminalBackgroundSettingsSection(store: store, snapshot: $background)
             }
         }
@@ -164,7 +164,7 @@ private struct AppearanceSettingsView: View {
         // row, and rows can appear as they scroll in, so this could hash the
         // image more than once per appearance of Settings.
         .onAppear {
-            guard let store, store.featureFlags.terminalBackgrounds else { return }
+            guard let store else { return }
             background = AppWideBackgroundEditor(store: store).inspect()
         }
     }
@@ -255,8 +255,6 @@ struct AppWideBackgroundEditor {
     }
 }
 
-/// Constructed only with the flag on.
-///
 /// Every write starts from a control binding, a button or the file importer's
 /// result, through `AppWideBackgroundEditor`. There is deliberately no
 /// `onChange` and no `@AppStorage` here. `snapshot` is a local copy owned by

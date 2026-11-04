@@ -91,7 +91,6 @@ public struct SessionSidebarView: View {
                             session: session,
                             windowRuntime: windowRuntime,
                             accent: themeChrome?.accent,
-                            showsBackgroundSettings: store.featureFlags.terminalBackgrounds,
                             onBackgroundSettings: { backgroundSettingsPaneID = pane.id }
                         )
                         .selectionDisabled()
@@ -135,7 +134,6 @@ public struct SessionSidebarView: View {
                         onSetColor: {
                             coloringSessionID = session.id
                         },
-                        showsBackgroundSettings: store.featureFlags.terminalBackgrounds,
                         onBackground: {
                             backgroundSettingsSessionID = session.id
                         }
@@ -277,7 +275,7 @@ public struct SessionSidebarView: View {
     private var backgroundSettingsBinding: Binding<PaneRuntime?> {
         Binding(
             get: {
-                guard store.featureFlags.terminalBackgrounds, let backgroundSettingsPaneID else { return nil }
+                guard let backgroundSettingsPaneID else { return nil }
                 return windowRuntime.sessions.lazy
                     .flatMap(\.tree.allPanes)
                     .first { $0.id == backgroundSettingsPaneID }
@@ -297,7 +295,7 @@ public struct SessionSidebarView: View {
     private var sessionBackgroundBinding: Binding<SessionRuntime?> {
         Binding(
             get: {
-                guard store.featureFlags.terminalBackgrounds, let backgroundSettingsSessionID else { return nil }
+                guard let backgroundSettingsSessionID else { return nil }
                 return windowRuntime.sessions.first { $0.id == backgroundSettingsSessionID }
             },
             set: { backgroundSettingsSessionID = $0?.id }
@@ -420,7 +418,6 @@ private struct SessionRow: View {
     let onRename: () -> Void
     let onTheme: () -> Void
     let onSetColor: () -> Void
-    let showsBackgroundSettings: Bool
     let onBackground: () -> Void
 
     var body: some View {
@@ -476,12 +473,10 @@ private struct SessionRow: View {
                     }
                 }
             }
-            if showsBackgroundSettings {
-                Button("Set Session Background\u{2026}") { onBackground() }
-                if session.backgroundOverride != nil {
-                    Button("Clear Session Background") {
-                        session.setBackgroundOverride(nil)
-                    }
+            Button("Set Session Background\u{2026}") { onBackground() }
+            if session.backgroundOverride != nil {
+                Button("Clear Session Background") {
+                    session.setBackgroundOverride(nil)
                 }
             }
             Divider()
@@ -517,7 +512,6 @@ struct PaneRow: View {
     @Bindable var session: SessionRuntime
     @Bindable var windowRuntime: WindowRuntime
     let accent: Color?
-    let showsBackgroundSettings: Bool
     let onBackgroundSettings: () -> Void
 
     /// Column/row position (`1/1`, `2/1`, `1/3`, …) instead of the pane's
@@ -573,7 +567,7 @@ struct PaneRow: View {
                     .help("\(pane.unseenBellCount) unseen bell event(s)")
             }
 
-            if showsBackgroundSettings && pane.kind == .terminal {
+            if pane.kind == .terminal {
                 Button(action: onBackgroundSettings) {
                     Image(systemName: pane.backgroundOverride == nil ? "gearshape" : "gearshape.fill")
                         .font(.system(size: 10, weight: .semibold))

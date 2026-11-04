@@ -176,9 +176,9 @@ final class TerminalAppearancePushTests {
         #expect(lines(sessionWithOverride.tabs[0]).contains("font-size = 21"))
     }
 
-    /// The path Prod runs while `terminalBackgrounds` is off.
-    @Test func appearanceChangeKeepsPerTabLinesWithBackgroundsFlagOff() {
-        let gate = AppWideBackgroundGate(defaults: defaults, isEnabled: false) { _ in .usable }
+    /// What a user who never set a background gets on an appearance change.
+    @Test func appearanceChangeKeepsPerTabLinesWithNoBackgroundConfigured() {
+        SettingsPreference.clearBackground(defaults: defaults)
         let pane = shellPane(gate: gate)
         let session = SessionRuntime(tree: SplitTree(root: .leaf(pane)))
         store([session], gate: gate).applyAppearanceToAllSurfaces()
