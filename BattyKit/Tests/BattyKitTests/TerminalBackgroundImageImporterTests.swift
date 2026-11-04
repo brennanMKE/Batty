@@ -24,24 +24,7 @@ final class TerminalBackgroundImageImporterTests {
     @MainActor deinit { try? FileManager.default.removeItem(at: root) }
 
     private func encoded(width: Int = 256, height: Int = 256, type: UTType = .png) throws -> Data {
-        let context = try #require(CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ))
-        // Varied pixels, so the file has real compressed data to damage.
-        for x in stride(from: 0, to: width, by: max(width / 64, 1)) {
-            for y in stride(from: 0, to: height, by: max(height / 64, 1)) {
-                context.setFillColor(red: CGFloat(x % 97) / 97, green: CGFloat(y % 89) / 89, blue: CGFloat((x ^ y) % 83) / 83, alpha: 1)
-                context.fill(CGRect(x: x, y: y, width: max(width / 64, 1), height: max(height / 64, 1)))
-            }
-        }
-        let image = try #require(context.makeImage())
-        let data = NSMutableData()
-        let output = try #require(CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil))
-        CGImageDestinationAddImage(output, image, nil)
-        #expect(CGImageDestinationFinalize(output))
-        return data as Data
+        try BackgroundTestImage.encoded(width: width, height: height, type: type)
     }
 
     private func source(_ data: Data, named name: String = "photo.png") throws -> URL {
@@ -242,5 +225,142 @@ final class TerminalBackgroundImageImporterTests {
         let url = try source(try encoded(), named: String(repeating: "写", count: 80) + ".png")
         let path = try await importer().importImage(from: url)
         #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    // MARK: - Project copies
+
+    private var projectFolder: URL { root.appendingPathComponent("ProjectBackgrounds", isDirectory: true) }
+
+    private func projectImporter() -> TerminalBackgroundImageImporter {
+        TerminalBackgroundImageImporter(directory: projectFolder, cleanup: .unreferenced)
+    }
+
+    private func age(_ path: String) throws {
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-3 * 86_400)],
+            ofItemAtPath: (path as NSString).deletingLastPathComponent
+        )
+    }
+
+    private func damage(_ path: String) throws {
+        var bytes = try Data(contentsOf: URL(fileURLWithPath: path))
+        bytes[bytes.count / 2] ^= 0x01
+        try bytes.write(to: URL(fileURLWithPath: path))
+    }
+
+    @Test func adoptCopiesAnIntactImageIntoTheDirectory() async throws {
+        let path = try await importer().importImage(from: source(encoded()))
+        let adopted = try #require(TerminalBackgroundImageImporter.adopt(path: path, from: [directory], into: projectFolder))
+        #expect(adopted.hasPrefix(projectFolder.path))
+        #expect(adopted.hasSuffix("/photo.png"))
+        #expect(TerminalBackgroundImageImporter.inspect(path: adopted, directory: projectFolder) == .usable)
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: projectFolder.path).filter { $0.hasSuffix(".tmp") }
+        #expect(leftovers.isEmpty)
+    }
+
+    @Test func adoptReturnsAPathAlreadyThere() async throws {
+        let path = try await projectImporter().importImage(from: source(encoded()))
+        #expect(TerminalBackgroundImageImporter.adopt(path: path, from: [], into: projectFolder) == path)
+    }
+
+    @Test func adoptRefusesAFileOutsideTheSources() throws {
+        let file = try source(encoded())
+        #expect(TerminalBackgroundImageImporter.adopt(path: file.path, from: [directory], into: projectFolder) == nil)
+        #expect(!FileManager.default.fileExists(atPath: projectFolder.path))
+    }
+
+    @Test func adoptRefusesADamagedSource() async throws {
+        let path = try await importer().importImage(from: source(encoded()))
+        try damage(path)
+        #expect(TerminalBackgroundImageImporter.adopt(path: path, from: [directory], into: projectFolder) == nil)
+    }
+
+    @Test func adoptRepairsADamagedDestination() async throws {
+        let path = try await importer().importImage(from: source(encoded()))
+        let first = try #require(TerminalBackgroundImageImporter.adopt(path: path, from: [directory], into: projectFolder))
+        try damage(first)
+        #expect(TerminalBackgroundImageImporter.adopt(path: path, from: [directory], into: projectFolder) == first)
+        #expect(TerminalBackgroundImageImporter.inspect(path: first, directory: projectFolder) == .usable)
+    }
+
+    @Test func adoptRefreshesAReusedFoldersDate() async throws {
+        let path = try await importer().importImage(from: source(encoded()))
+        let first = try #require(TerminalBackgroundImageImporter.adopt(path: path, from: [directory], into: projectFolder))
+        try age(first)
+        #expect(TerminalBackgroundImageImporter.adopt(path: path, from: [directory], into: projectFolder) == first)
+        await projectImporter().removeUnreferenced(keeping: [], olderThan: Date().addingTimeInterval(-86_400))
+        #expect(FileManager.default.fileExists(atPath: first))
+    }
+
+    @Test func adoptOfAPathAlreadyThereRefreshesItsFoldersDate() async throws {
+        let path = try await projectImporter().importImage(from: source(encoded()))
+        try age(path)
+        #expect(TerminalBackgroundImageImporter.adopt(path: path, from: [], into: projectFolder) == path)
+        await projectImporter().removeUnreferenced(keeping: [], olderThan: Date().addingTimeInterval(-86_400))
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func importRefreshesAReusedFoldersDate() async throws {
+        let file = try source(encoded())
+        let path = try await projectImporter().importImage(from: file)
+        try age(path)
+        #expect(try await projectImporter().importImage(from: file) == path)
+        await projectImporter().removeUnreferenced(keeping: [], olderThan: Date().addingTimeInterval(-86_400))
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func unreferencedRemovesAnOldUnreferencedFolder() async throws {
+        let importer = projectImporter()
+        let path = try await importer.importImage(from: source(encoded()))
+        try age(path)
+        await importer.removeUnreferenced(keeping: [], olderThan: Date().addingTimeInterval(-86_400))
+        #expect(!FileManager.default.fileExists(atPath: (path as NSString).deletingLastPathComponent))
+    }
+
+    @Test func unreferencedKeepsAReferencedFolder() async throws {
+        let importer = projectImporter()
+        let path = try await importer.importImage(from: source(encoded()))
+        try age(path)
+        await importer.removeUnreferenced(keeping: [path], olderThan: Date().addingTimeInterval(-86_400))
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func unreferencedKeepsAYoungFolder() async throws {
+        let importer = projectImporter()
+        let path = try await importer.importImage(from: source(encoded()))
+        await importer.removeUnreferenced(keeping: [], olderThan: Date().addingTimeInterval(-86_400))
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func unreferencedLeavesNonDigestEntries() async throws {
+        let importer = projectImporter()
+        let other = projectFolder.appendingPathComponent("not-a-digest", isDirectory: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86_400)], ofItemAtPath: other.path)
+        await importer.removeUnreferenced(keeping: [], olderThan: Date().addingTimeInterval(-86_400))
+        #expect(FileManager.default.fileExists(atPath: other.path))
+    }
+
+    @Test func removeUnreferencedDoesNothingForAnotherRule() async throws {
+        let importer = TerminalBackgroundImageImporter(directory: appWideDirectory, cleanup: .allButRetained)
+        let path = try await importer.importImage(from: source(encoded()))
+        try age(path)
+        await importer.removeUnreferenced(keeping: [], olderThan: Date())
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func importingNeverCleansAnUnreferencedDirectory() async throws {
+        let first = try await projectImporter().importImage(from: source(encoded(width: 128)))
+        try age(first)
+        _ = try await projectImporter().importImage(from: source(encoded(width: 64)))
+        #expect(FileManager.default.fileExists(atPath: first))
+    }
+
+    @Test func appWideCleanupLeavesTheProjectFolderAlone() async throws {
+        let projectCopy = try await projectImporter().importImage(from: source(encoded(width: 128)))
+        let wide = root.appendingPathComponent("TerminalBackgrounds", isDirectory: true)
+        _ = try await TerminalBackgroundImageImporter(directory: wide, cleanup: .allButRetained).importImage(from: source(encoded(width: 64)))
+        _ = try await TerminalBackgroundImageImporter(directory: wide, cleanup: .allButRetained).importImage(from: source(encoded(width: 32)))
+        #expect(FileManager.default.fileExists(atPath: projectCopy))
     }
 }

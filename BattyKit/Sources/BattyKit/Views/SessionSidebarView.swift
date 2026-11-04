@@ -25,7 +25,8 @@ public struct SessionSidebarView: View {
 
     /// "selected" / "unselected", then ", N unseen" while the Session has
     /// unseen bell events, then ", Project, <symbol name> symbol" when the Session is
-    /// backed by a Project. The row's icon and numeric badge are folded into
+    /// backed by a Project, and ", background image problem" when its Project's
+    /// image was left out. The row's icon and numeric badge are folded into
     /// its single accessibility element, so this value is the only place
     /// either is readable.
     static func rowAccessibilityValue(
@@ -39,6 +40,7 @@ public struct SessionSidebarView: View {
         if session.unseenBellCount > 0 { value += ", \(session.unseenBellCount) unseen" }
         if let projectSymbol { value += ", Project, \(ProjectAppearance.displayName(symbol: projectSymbol, customName: projectSymbolName)) symbol" }
         if let iconName { value += ", icon \(iconName)" }
+        if session.projectBackgroundImageProblem != nil { value += ", background image problem" }
         return value
     }
 
@@ -442,6 +444,13 @@ private struct SessionRow: View {
                     .padding(.vertical, 2)
                     .background(Capsule().stroke(accent ?? Color.accentColor, lineWidth: 1))
                     .help("\(session.unseenBellCount) unseen bell event(s)")
+            }
+            if session.projectBackgroundImageProblem != nil {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .help("This Project's background image couldn't be used. Edit the Project to choose it again.")
+                    .accessibilityLabel("This Project's background image couldn't be used. Edit the Project to choose it again.")
+                    .accessibilityIdentifier("session-row.background-problem")
             }
         }
         .contextMenu {

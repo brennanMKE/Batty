@@ -36,11 +36,43 @@ enum SaveSessionAsProject {
             return SessionProjectCapture.capture(session: session, root: root)
         }
         if case .update(let id) = destination, session.projectID == id, let project = projectStore.project(id: id) {
-            return capture(root: project.rootPath).updateDraft(of: project)
+            var draft = capture(root: project.rootPath).updateDraft(of: project)
+            captureBackground(of: session, into: &draft, replacingStored: session.backgroundOverride != session.projectBackgroundSeed, store: store)
+            return draft
         }
         let captured = capture(root: nil)
         let name = SessionProjectCapture.suggestedName(session: session, capture: captured, nameForRoot: nameForRoot)
-        return captured.newDraft(name: name, existingNames: projectStore.projects.map(\.name))
+        var draft = captured.newDraft(name: name, existingNames: projectStore.projects.map(\.name))
+        captureBackground(of: session, into: &draft, replacingStored: true, store: store)
+        return draft
+    }
+
+    /// Here and not in `SessionProjectCapture`, which writes nothing and also
+    /// serves Copy from Current Session: an image has to be copied into the
+    /// Project folder, because the Session's copy can be removed.
+    private static func captureBackground(
+        of session: SessionRuntime,
+        into draft: inout ProjectDraft,
+        replacingStored: Bool,
+        store: AppStateStore
+    ) {
+        guard store.featureFlags.terminalBackgrounds else { return }
+        var notes: [String] = []
+        if replacingStored {
+            var background = session.backgroundOverride
+            if let path = background?.imagePath {
+                let adopted = store.projectBackgrounds.adopt(path: path)
+                background = background?.withImagePath(adopted)
+                if adopted == nil {
+                    notes.append(String(localized: "The Session's image could not be copied, so this Project has no image. Choose it again.", comment: "Project Editor: Save as Project could not copy the Session's background image"))
+                }
+            }
+            draft.background = background
+        }
+        if session.tree.allPanes.contains(where: { $0.kind == .terminal && $0.backgroundOverride != nil }) {
+            notes.append(String(localized: "A Pane's own background isn't saved. A Project has one background for the whole Session.", comment: "Project Editor: Save as Project from a Session with a per-Pane background"))
+        }
+        if !notes.isEmpty { draft.captureNotes[.background] = notes.joined(separator: " ") }
     }
 
     @discardableResult

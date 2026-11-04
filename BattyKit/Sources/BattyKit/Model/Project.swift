@@ -222,6 +222,11 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     /// When the definition last changed, the last-writer-wins key for a
     /// shared Project. Not set by opening or by storing a startup-command approval, which touch device state only.
     public var modifiedAt: Date?
+    /// `nil` follows Settings. A value seeds a Session's background override
+    /// when it opens, and one with no image hides any app-wide image. The image
+    /// path is device state and the rest is definition. Older Batty versions
+    /// ignore and, on their next save, drop it.
+    public var background: TerminalBackgroundSettings?
 
     public init(
         id: UUID = UUID(),
@@ -236,7 +241,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         isShared: Bool = false,
         modifiedAt: Date? = nil,
         customColorHex: String? = nil,
-        customSymbolName: String? = nil
+        customSymbolName: String? = nil,
+        background: TerminalBackgroundSettings? = nil
     ) {
         let resolvedColor = ProjectAppearance.resolve(color: color, customHex: customColorHex)
         let resolvedSymbol = ProjectAppearance.resolve(symbol: symbol, customName: customSymbolName)
@@ -253,6 +259,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.lastOpenedAt = lastOpenedAt
         self.isShared = isShared
         self.modifiedAt = modifiedAt
+        self.background = background
     }
 
     /// The color to draw: the custom color, else the palette entry.
@@ -309,7 +316,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, customColor, symbol, symbolName, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt
+        case id, name, rootPath, color, customColor, symbol, symbolName, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt, background
     }
 
     /// `isShared` is written only when true, so a local Project's object is
@@ -329,6 +336,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         try c.encodeIfPresent(lastOpenedAt, forKey: .lastOpenedAt)
         if isShared { try c.encode(true, forKey: .isShared) }
         try c.encodeIfPresent(modifiedAt, forKey: .modifiedAt)
+        try c.encodeIfPresent(background, forKey: .background)
     }
 
     public init(from decoder: Decoder) throws {
@@ -378,6 +386,12 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         } else {
             if c.contains(.modifiedAt), !((try? c.decodeNil(forKey: .modifiedAt)) ?? false) { logger.error("unreadable project modifiedAt; treating the definition as undated") }
             modifiedAt = nil
+        }
+        if let decoded = try? c.decodeIfPresent(TerminalBackgroundSettings.self, forKey: .background) {
+            background = decoded
+        } else {
+            if c.contains(.background), !((try? c.decodeNil(forKey: .background)) ?? false) { logger.error("unreadable project background; following Settings") }
+            background = nil
         }
     }
 }

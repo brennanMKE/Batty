@@ -251,4 +251,51 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         XCTAssertTrue(element("project-editor.name", in: app).waitForExistence(timeout: 5))
         XCTAssertTrue((ProjectFixture.read(storeFile) ?? []).isEmpty, "the draft was stored before Save")
     }
+
+    // MARK: - Background
+
+    @MainActor
+    func testBackgroundRowOpensTheSheetShowingFollow() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.background.edit", in: app)
+        let follow = app.buttons["project-background-sheet.follow"]
+        XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Background row did not open its sheet")
+        XCTAssertEqual(follow.value as? String, "selected")
+        app.buttons["project-background-sheet.cancel"].click()
+    }
+
+    @MainActor
+    func testCustomBackgroundIsWrittenToTheProject() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.background.edit", in: app)
+        let custom = app.buttons["project-background-sheet.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        custom.click()
+        app.buttons["project-background-sheet.done"].click()
+        click("project-editor.save", in: app)
+
+        XCTAssertTrue(
+            waitFor({ ProjectFixture.read(self.storeFile)?.first?["background"] != nil }, timeout: 10),
+            "Save did not write the Project's background"
+        )
+    }
+
+    @MainActor
+    func testBackgroundRowIsAbsentWithTheFlagOff() throws {
+        let (app, _) = try launchApp(
+            projects: [try existingProject()],
+            extraEnvironment: ["BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF": "1"]
+        )
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        XCTAssertTrue(element("project-editor.name", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(element("project-editor.background.edit", in: app).exists)
+    }
 }

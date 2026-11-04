@@ -108,3 +108,35 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
         return imagePath == nil ? picked.withImageOpacity(Self.firstImageOpacity) : picked
     }
 }
+
+/// How a saved Project stores its background. Reading never fails on a field's
+/// value, because `LossyProject` drops a whole Project when its decoder throws:
+/// an unreadable field takes its default, and the rest goes through the
+/// normalizing `init`.
+extension TerminalBackgroundSettings: Hashable, Codable {
+    private enum CodingKeys: String, CodingKey {
+        case imagePath, fit, position, imageOpacity, terminalOpacity, opacityAffectsCells
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            imagePath: (try? c.decodeIfPresent(String.self, forKey: .imagePath)) ?? nil,
+            fit: ((try? c.decodeIfPresent(String.self, forKey: .fit)) ?? nil).flatMap(BackgroundImageFit.init(rawValue:)) ?? .contain,
+            position: ((try? c.decodeIfPresent(String.self, forKey: .position)) ?? nil).flatMap(BackgroundImagePosition.init(rawValue:)) ?? .center,
+            imageOpacity: ((try? c.decodeIfPresent(Double.self, forKey: .imageOpacity)) ?? nil) ?? 1,
+            terminalOpacity: ((try? c.decodeIfPresent(Double.self, forKey: .terminalOpacity)) ?? nil) ?? 1,
+            opacityAffectsCells: ((try? c.decodeIfPresent(Bool.self, forKey: .opacityAffectsCells)) ?? nil) ?? false
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(imagePath, forKey: .imagePath)
+        try c.encode(fit.rawValue, forKey: .fit)
+        try c.encode(position.rawValue, forKey: .position)
+        try c.encode(imageOpacity, forKey: .imageOpacity)
+        try c.encode(terminalOpacity, forKey: .terminalOpacity)
+        try c.encode(opacityAffectsCells, forKey: .opacityAffectsCells)
+    }
+}

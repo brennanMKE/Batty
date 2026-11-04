@@ -67,9 +67,24 @@ extension AppStateStore {
     /// The editor window has closed. Re-runs the automatic-quit check when it
     /// was holding the quit; the check itself re-reads the live window state.
     func projectEditorDidClose() {
+        if featureFlags.terminalBackgrounds {
+            projectBackgroundReclaim = projectBackgrounds.reclaim(store: projectStore, inUse: projectBackgroundPathsInUse)
+        }
         guard quitWhenEditorCloses else { return }
         quitWhenEditorCloses = false
         terminateIfLastContentWindowGone()
+    }
+
+    /// A live Session or Pane may still show a copy its Project has replaced.
+    private var projectBackgroundPathsInUse: Set<String> {
+        var paths = Set<String>()
+        for session in windows.flatMap(\.sessions) {
+            if let path = session.backgroundOverride?.imagePath { paths.insert(path) }
+            for pane in session.tree.allPanes {
+                if let path = pane.backgroundOverride?.imagePath { paths.insert(path) }
+            }
+        }
+        return paths
     }
 
     /// Close item while the Project Editor is key, or a sheet over it. Closes

@@ -239,7 +239,7 @@ public final class WindowRuntime {
     /// alone) and colored with the Project color via `setSessionColor`. Does
     /// not touch `SessionNameCache`.
     @discardableResult
-    func addProjectSession(_ project: Project, tree: SplitTree) -> SessionRuntime {
+    func addProjectSession(_ project: Project, tree: SplitTree, background: TerminalBackgroundSettings? = nil) -> SessionRuntime {
         let session = SessionRuntime(
             title: project.name,
             tree: tree,
@@ -249,6 +249,8 @@ public final class WindowRuntime {
         session.projectID = project.id
         session.projectSymbol = project.symbol
         session.projectSymbolName = project.customSymbolName
+        session.projectBackgroundSeed = background
+        session.setBackgroundOverride(background)
         sessions.append(session)
         selectedSessionID = session.id
         setSessionColor(id: session.id, to: project.color.rawValue)

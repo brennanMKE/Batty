@@ -30,6 +30,8 @@ struct ProjectDraft: Equatable {
     var isShared = false
     /// Carried through untouched; the store stamps it on save.
     var modifiedAt: Date?
+    /// `nil` follows Settings. Edited by the Background row's sheet.
+    var background: TerminalBackgroundSettings?
     /// Messages about parts of a captured Session that could not be kept as
     /// they were (a folder outside the root), shown as warnings until the
     /// field or the structure around it is edited. Not part of the Project.
@@ -52,6 +54,7 @@ struct ProjectDraft: Equatable {
         lastOpenedAt = project.lastOpenedAt
         isShared = project.isShared
         modifiedAt = project.modifiedAt
+        background = project.background
     }
 
     init(
@@ -63,8 +66,10 @@ struct ProjectDraft: Equatable {
         layout: ProjectLayout = .preset(.singlePane),
         runStartupCommandsOnOpen: Bool = true,
         customColorHex: String? = nil,
-        customSymbolName: String? = nil
+        customSymbolName: String? = nil,
+        background: TerminalBackgroundSettings? = nil
     ) {
+        self.background = background
         self.customColorHex = customColorHex
         self.customSymbolName = customSymbolName
         self.id = id
@@ -144,7 +149,8 @@ struct ProjectDraft: Equatable {
             isShared: isShared,
             modifiedAt: modifiedAt,
             customColorHex: customColorHex,
-            customSymbolName: customSymbolName
+            customSymbolName: customSymbolName,
+            background: background
         )
     }
 }

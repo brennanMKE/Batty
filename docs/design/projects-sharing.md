@@ -21,8 +21,8 @@ split is enforced by types, not by convention.
 
 | Group | Fields | Syncs |
 |---|---|---|
-| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `modifiedAt` | yes, when shared |
-| Device state | `lastOpenedAt`, `approvedCommandsHash` | never |
+| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, `modifiedAt` | yes, when shared |
+| Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath` | never |
 | Membership | `isShared` | implied by presence in the shared set; never a field of the synced record |
 
 `ProjectSyncRecord` (`Model/ProjectSync.swift`) holds exactly the Definition
@@ -35,7 +35,14 @@ it would turn every open into a sync write.
 
 `projects.json` gains two optional keys per Project: `isShared` (written only
 when true, so a local Project's object is unchanged) and `modifiedAt`. Both
-are additive; a build without this change ignores them.
+are additive; a build without this change ignores them. `background` (#0540)
+is also optional, written only when set, and decoded so that a bad value costs
+only the background, never the Project or the record.
+
+The image path stays on each Mac because a merge replaces a Project whole: a
+synced path would overwrite the other Mac's image with one it doesn't have, and
+the image's bytes can't fit the store. `replacingDefinition` keeps this Mac's
+path, and a Project arriving from another Mac has its opacity and no image.
 
 `modifiedAt` is stamped by `ProjectStore` on every definition write (`upsert`,
 `setShared`) and is the last-writer-wins key. It is not stamped by

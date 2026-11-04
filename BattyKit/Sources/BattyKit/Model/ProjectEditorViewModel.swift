@@ -15,6 +15,7 @@ enum ProjectEditorField: Hashable {
     case repository(slot: Int)
     case tabDirectory(slot: Int, tab: Int)
     case tabCommand(slot: Int, tab: Int)
+    case background
 }
 
 /// A move away from the current draft that the unsaved-changes question
@@ -101,6 +102,9 @@ final class ProjectEditorViewModel {
     /// already up on it.
     @ObservationIgnored var presentForQuit: @MainActor () -> Bool = { true }
     @ObservationIgnored private var quitReply: (@MainActor (Bool) -> Void)?
+    /// Nil hides the Background row, and nothing here reads an image.
+    @ObservationIgnored let backgrounds: ProjectBackgroundLibrary?
+    @ObservationIgnored private let appWideBackground: @MainActor () -> TerminalBackgroundSettings
 
     private(set) var draft: ProjectDraft?
     private var baseline: Project?
@@ -108,6 +112,9 @@ final class ProjectEditorViewModel {
     private(set) var saveError: String?
     private(set) var pendingNavigation: ProjectEditorNavigation?
     private(set) var pendingDeletion: UUID?
+    /// Stored because `validate()` runs from `body`, which must not read files.
+    /// Changes only when a Project loads or the draft's image path changes.
+    private(set) var backgroundImageState: BackgroundImageState = .none
 
     /// Panes the draft moved away from, per slot and kind, so Terminal to
     /// Git Status and back keeps the Tabs until Save. A preset change drops
@@ -132,8 +139,12 @@ final class ProjectEditorViewModel {
         suggestName: @escaping @MainActor (String) -> String? = ProjectEditorViewModel.suggestedName(forRoot:),
         openProject: @escaping @MainActor (UUID) -> Void = { _ in },
         captureSession: @escaping @MainActor (String?) -> SessionProjectCapture? = { _ in nil },
-        closeWindow: @escaping @MainActor () -> Void = {}
+        closeWindow: @escaping @MainActor () -> Void = {},
+        backgrounds: ProjectBackgroundLibrary? = nil,
+        appWideBackground: @escaping @MainActor () -> TerminalBackgroundSettings = { .off }
     ) {
+        self.backgrounds = backgrounds
+        self.appWideBackground = appWideBackground
         self.store = store
         self.directoryExists = directoryExists
         self.defaultRoot = defaultRoot
@@ -253,6 +264,25 @@ final class ProjectEditorViewModel {
         }
     }
 
+    var showsBackground: Bool { backgrounds != nil }
+
+    func appWideBackgroundValue() -> TerminalBackgroundSettings { appWideBackground() }
+
+    var backgroundSummary: String {
+        guard let background = draft?.background else {
+            return String(localized: "Follows Settings", comment: "Project Editor: the Background row for a Project with no background of its own")
+        }
+        let image = background.imagePath.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension }
+            ?? String(localized: "No image", comment: "Project Editor: the Background row for a Project that hides any image")
+        let opacity = Int((background.terminalOpacity * 100).rounded())
+        return String(localized: "Custom: \(image), terminal \(opacity)%", comment: "Project Editor: the Background row; the arguments are the image name and the terminal opacity")
+    }
+
+    private func imageState(of background: TerminalBackgroundSettings?) -> BackgroundImageState {
+        guard let backgrounds, let path = background?.imagePath else { return .none }
+        return backgrounds.imageState(ofPath: path)
+    }
+
     static func abbreviated(_ path: String) -> String {
         (path as NSString).abbreviatingWithTildeInPath
     }
@@ -310,6 +340,14 @@ final class ProjectEditorViewModel {
                 break
             }
         }
+        switch backgroundImageState {
+        case .none, .usable:
+            break
+        case .missing:
+            result.warnings[.background] = String(localized: "Image not found. Choose it again.")
+        case .rejected:
+            result.warnings[.background] = String(localized: "The saved image can't be used. Choose it again.")
+        }
         for (field, note) in draft.captureNotes where result.errors[field] == nil && result.warnings[field] == nil {
             result.warnings[field] = note
         }
@@ -354,6 +392,7 @@ final class ProjectEditorViewModel {
         let loaded = ProjectDraft(project: project)
         draft = loaded
         baseline = loaded.makeProject()
+        backgroundImageState = imageState(of: loaded.background)
         selectedSlot = 0
         stash = [:]
         tabIdentities = [:]
@@ -365,6 +404,7 @@ final class ProjectEditorViewModel {
     private func load(newDraft: ProjectDraft, handedIn: Bool = false, autoSuggestedName: Bool = false) {
         draft = newDraft
         baseline = newDraft.makeProject()
+        backgroundImageState = imageState(of: newDraft.background)
         selectedSlot = 0
         stash = [:]
         tabIdentities = [:]
@@ -635,7 +675,8 @@ final class ProjectEditorViewModel {
 
     /// "Copy from current Session": replaces the draft's layout, Pane kinds
     /// and Tabs with a capture of the content window's selected Session,
-    /// made relative to the draft's root. Name, color and the run toggle stay.
+    /// made relative to the draft's root. Name, color, the run toggle and the
+    /// background stay.
     /// Asks first (`.needsConfirmation`) when that would discard configured
     /// Tabs, commands or views. An empty root takes the Session's folder.
     @discardableResult
@@ -890,5 +931,39 @@ final class ProjectEditorViewModel {
         case .unknownProject:
             String(localized: "That Project no longer exists.", comment: "Project Editor")
         }
+    }
+}
+
+extension ProjectEditorViewModel: BackgroundOverrideHolder {
+    var backgroundOverride: TerminalBackgroundSettings? { draft?.background }
+
+    /// A newly chosen path is copied into the Project folder, because the sheet
+    /// seeds Custom from the app-wide value, whose copy the app-wide cleanup can
+    /// delete. The baseline's own path stays as it is, so Cancel over a bad
+    /// stored path leaves the draft clean. A slider edit keeps the path, so it
+    /// reads no file.
+    func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        guard let current = draft else { return }
+        var value = newOverride
+        var adoptFailed = false
+        if let backgrounds, let path = value?.imagePath,
+           path != current.background?.imagePath, path != baseline?.background?.imagePath {
+            let adopted = backgrounds.adopt(path: path)
+            adoptFailed = adopted == nil
+            value = value?.withImagePath(adopted)
+        }
+        let note = adoptFailed
+            ? String(localized: "That image could not be copied, so this Project has no image. Choose it again.", comment: "Project Editor: a background image could not be copied into the Project")
+            : nil
+        guard value != current.background || note != current.captureNotes[.background] else { return }
+        if value != current.background { draft?.background = value }
+        if note != current.captureNotes[.background] { draft?.captureNotes[.background] = note }
+        if value?.imagePath != current.background?.imagePath {
+            backgroundImageState = imageState(of: value)
+        }
+    }
+
+    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
+        appWide
     }
 }

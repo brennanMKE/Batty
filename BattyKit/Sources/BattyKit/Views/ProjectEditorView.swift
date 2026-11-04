@@ -324,6 +324,12 @@ private struct ProjectEditorMain: View {
         let validation = model.validate()
         VStack(spacing: 0) {
             ProjectHeaderFields(model: model, validation: validation)
+            if model.showsBackground {
+                ProjectBackgroundRow(model: model, validation: validation)
+                    // A draft swapped in while the sheet is up ends the sheet, so
+                    // its Cancel can't write one Project's value onto another.
+                    .id(model.selectedID)
+            }
             Divider()
             HStack(spacing: 0) {
                 ProjectLayoutSection(model: model, pendingPreset: $pendingPreset, pendingCopy: $pendingCopy)
@@ -333,6 +339,41 @@ private struct ProjectEditorMain: View {
             }
             Divider()
             ProjectEditorFooter(model: model, validation: validation)
+        }
+    }
+}
+
+private struct ProjectBackgroundRow: View {
+    let model: ProjectEditorViewModel
+    let validation: ProjectEditorValidation
+    @State private var isEditing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Background").font(.caption).foregroundStyle(.secondary)
+                Text(model.backgroundSummary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .accessibilityIdentifier("project-editor.background.summary")
+                Spacer()
+                Button("Edit\u{2026}") { isEditing = true }
+                    .accessibilityIdentifier("project-editor.background.edit")
+            }
+            FieldMessages(error: nil, warning: validation.warnings[.background], identifier: "project-editor.background")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .sheet(isPresented: $isEditing) {
+            if let library = model.backgrounds {
+                BackgroundOverrideSettingsView(
+                    isPresented: $isEditing,
+                    target: model,
+                    scope: .project,
+                    appWide: model.appWideBackgroundValue(),
+                    importer: library.importer
+                )
+            }
         }
     }
 }
