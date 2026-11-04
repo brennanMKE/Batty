@@ -70,13 +70,12 @@ final class ProjectBackgroundFixture {
 
     func resetInspections() { inspections = 0 }
 
-    func appStore(terminalBackgrounds: Bool = true, sessions: [SessionRuntime] = []) -> AppStateStore {
+    func appStore(sessions: [SessionRuntime] = []) -> AppStateStore {
         let store = AppStateStore(
             sessions: sessions,
             nameCache: SessionNameCache(fileURL: base.appendingPathComponent("cache.json")),
             preferences: testDefaults.defaults,
             projectsFileURL: projectsFile,
-            featureFlags: FeatureFlags(terminalBackgrounds: terminalBackgrounds),
             backgroundGate: .acceptingEveryImage(defaults: testDefaults.defaults)
         )
         store.projectBackgrounds = library

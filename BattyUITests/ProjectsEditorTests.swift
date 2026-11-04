@@ -285,17 +285,4 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
             "Save did not write the Project's background"
         )
     }
-
-    @MainActor
-    func testBackgroundRowIsAbsentWithTheFlagOff() throws {
-        let (app, _) = try launchApp(
-            projects: [try existingProject()],
-            extraEnvironment: ["BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF": "1"]
-        )
-        defer { app.terminate() }
-
-        openEditorFromFileMenu(in: app)
-        XCTAssertTrue(element("project-editor.name", in: app).waitForExistence(timeout: 5))
-        XCTAssertFalse(element("project-editor.background.edit", in: app).exists)
-    }
 }

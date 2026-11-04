@@ -22,6 +22,50 @@ struct ProjectBackgroundModelTests {
         try #require(try decoded(project(), background: object).background)
     }
 
+    /// A literal, so a later encoder change can't make this vacuous.
+    @Test func aProjectsFileWrittenBeforeBackgroundsLoadsFully() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let local = UUID()
+        let shared = UUID()
+        let layout = #""layout":{"root":{"type":"pane","pane":{"kind":"terminal","tabs":[{"workingDirectory":"."}]}}}"#
+        let json = """
+        {"version":1,"projects":[
+        {"id":"\(local.uuidString)","name":"Local","rootPath":"/tmp/local","color":2,"symbol":"ai",\(layout),\
+        "runStartupCommandsOnOpen":true},
+        {"id":"\(shared.uuidString)","name":"Shared","rootPath":"/tmp/shared","color":2,"customColor":"#123456",\
+        "symbol":"folder","symbolName":"star",\(layout),"runStartupCommandsOnOpen":false,\
+        "isShared":true,"modifiedAt":"2026-10-01T12:00:00.000Z"}
+        ]}
+        """
+        try Data(json.utf8).write(to: fixture.projectsFile)
+
+        let store = ProjectStore(fileURL: fixture.projectsFile)
+        #expect(store.projects.map(\.id) == [local, shared])
+        #expect(store.projects.allSatisfy { $0.background == nil })
+        #expect(!store.mayReferenceUnlistedImages)
+
+        let loadedLocal = try #require(store.project(id: local))
+        #expect(loadedLocal.color == .green)
+        #expect(loadedLocal.symbol == .ai)
+        #expect(loadedLocal.customColorHex == nil)
+        #expect(loadedLocal.customSymbolName == nil)
+        #expect(loadedLocal.runStartupCommandsOnOpen)
+        #expect(!loadedLocal.isShared)
+        #expect(loadedLocal.modifiedAt == nil)
+
+        let loadedShared = try #require(store.project(id: shared))
+        #expect(loadedShared.customColorHex == "#123456")
+        #expect(loadedShared.symbol == .folder)
+        #expect(loadedShared.customSymbolName == "star")
+        #expect(!loadedShared.runStartupCommandsOnOpen)
+        #expect(loadedShared.isShared)
+        #expect(loadedShared.modifiedAt == Date(timeIntervalSince1970: 1_790_856_000))
+
+        try store.recordOpen(id: local, at: Date(timeIntervalSince1970: 1_800_000_000))
+        let backup = fixture.projectsFile.deletingLastPathComponent().appendingPathComponent(ProjectStore.backupFileName)
+        #expect(!FileManager.default.fileExists(atPath: backup.path))
+    }
+
     @Test func absentBackgroundDecodesAsFollow() throws {
         let data = try ProjectsFile.encoder.encode(project())
         #expect(try ProjectsFile.decoder.decode(Project.self, from: data).background == nil)

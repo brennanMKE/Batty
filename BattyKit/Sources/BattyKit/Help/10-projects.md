@@ -32,9 +32,19 @@ Commands run like typed input, so Batty asks first. The confirmation sheet lists
 
 If a tab's shell never reports its directory, Batty can't tell it is ready and shows an orange warning triangle on that tab instead of typing the command. Click it to **Run Now** or **Dismiss**.
 
+## Background
+
+A Project can carry a terminal background. The **Background** row in the editor shows **Follows Settings** or what the Project sets, and **Edit…** opens a sheet with **Follow Settings**, **Custom for This Project** and the controls described in [Backgrounds and See-Through](11-backgrounds.md). A custom background with no image hides any image set in Settings.
+
+Opening a Project gives its new session that background, as if you had chosen **Set Session Background…**. Saving the Project doesn't change a session that is already open. **Clear Session Background** then follows Settings, not the Project.
+
+If the image can't be used, the Project still opens, without the picture but with its other settings. An orange warning triangle shows on the session's row, and the editor says to choose the image again.
+
+**Save Session as Project…** keeps the session's background and copies its image into the Project. A Pane's own background isn't saved, because a Project has one background for the whole session, and the editor says so. **Update "Name"…** replaces the stored background only if the session's background changed since it opened. **Copy from current Session** leaves the background alone.
+
 ## Shared
 
-The **Shared** checkbox syncs a Project through iCloud to your other Macs signed into the same Apple ID. Its name, folder, color, symbol, layout and startup commands sync; which Projects you opened last and which startup commands you approved stay on each Mac. The folder path must exist on each Mac, or the Project is listed with a "Folder not found" note until it does. If iCloud cannot take the Project (for example it is over iCloud's size limit), Batty says why and leaves the Project unshared.
+The **Shared** checkbox syncs a Project through iCloud to your other Macs signed into the same Apple ID. Its name, folder, color, symbol, layout, startup commands and background settings sync; which Projects you opened last, which startup commands you approved and the background's image stay on each Mac, so choose the image on each Mac. The folder path must exist on each Mac, or the Project is listed with a "Folder not found" note until it does. If iCloud cannot take the Project (for example it is over iCloud's size limit), Batty says why and leaves the Project unshared.
 
 ## From the command line
 

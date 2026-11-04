@@ -8,41 +8,8 @@ import Testing
 import UniformTypeIdentifiers
 @testable import BattyKit
 
-private nonisolated final class RecordingDefaults: UserDefaults, @unchecked Sendable {
-    private(set) var readKeys: [String] = []
-
-    override func object(forKey defaultName: String) -> Any? {
-        readKeys.append(defaultName)
-        return super.object(forKey: defaultName)
-    }
-
-    override func string(forKey defaultName: String) -> String? {
-        readKeys.append(defaultName)
-        return super.string(forKey: defaultName)
-    }
-
-    override func double(forKey defaultName: String) -> Double {
-        readKeys.append(defaultName)
-        return super.double(forKey: defaultName)
-    }
-
-    override func bool(forKey defaultName: String) -> Bool {
-        readKeys.append(defaultName)
-        return super.bool(forKey: defaultName)
-    }
-}
-
 @MainActor
 final class AppWideBackgroundGateTests {
-    private static let backgroundKeys = [
-        SettingsPreference.backgroundImagePathKey,
-        SettingsPreference.backgroundImageFitKey,
-        SettingsPreference.backgroundImagePositionKey,
-        SettingsPreference.backgroundImageOpacityKey,
-        SettingsPreference.backgroundOpacityKey,
-        SettingsPreference.backgroundOpacityCellsKey,
-    ]
-
     private let testDefaults = TestDefaults()
     private var defaults: UserDefaults { testDefaults.defaults }
     private let root = FileManager.default.temporaryDirectory
@@ -58,12 +25,8 @@ final class AppWideBackgroundGateTests {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func enabledGate() -> AppWideBackgroundGate {
-        .make(flags: FeatureFlags(terminalBackgrounds: true), defaults: defaults, directory: directory)
-    }
-
-    private func disabledGate(defaults: UserDefaults) -> AppWideBackgroundGate {
-        .make(flags: FeatureFlags(terminalBackgrounds: false), defaults: defaults, directory: directory)
+    private func realGate() -> AppWideBackgroundGate {
+        .make(defaults: defaults, directory: directory)
     }
 
     private func png(width: Int = 64, height: Int = 64) throws -> Data {
@@ -110,7 +73,7 @@ final class AppWideBackgroundGateTests {
 
     /// The next launch's first Tab: a fresh gate, so no memo carries over.
     private func expectNoImageButOtherLinesKept(_ expected: BackgroundImageState) {
-        let gate = enabledGate()
+        let gate = realGate()
         #expect(gate.refreshImageState() == expected)
         let tab = TabRuntime(backgroundGate: gate)
         let rendered = lines(tab)
@@ -122,50 +85,11 @@ final class AppWideBackgroundGateTests {
         #expect(rendered.contains("env = BATTY_TAB_ID=\(tab.id.uuidString)"))
     }
 
-    // MARK: - Flag off
-
-    @Test func disabledGateReadsNoBackgroundKeys() throws {
-        let recording = try #require(RecordingDefaults(suiteName: testDefaults.suiteName))
-        store(path: "/tmp/batty-gate-tests/photo.png")
-        let gate = disabledGate(defaults: recording)
-        #expect(gate.settings() == .off)
-        #expect(gate.storedSettings() == .off)
-        #expect(gate.refreshImageState() == .none)
-        #expect(recording.readKeys.filter(Self.backgroundKeys.contains).isEmpty)
-
-        // The control: the same recorder does see an enabled gate's reads.
-        _ = AppWideBackgroundGate.make(
-            flags: FeatureFlags(terminalBackgrounds: true), defaults: recording, directory: directory
-        ).settings()
-        #expect(!recording.readKeys.filter(Self.backgroundKeys.contains).isEmpty)
-    }
-
-    @Test func disabledGateEmitsNothingThroughEitherPush() async throws {
-        _ = try await importAndStore()
-        defaults.set(true, forKey: SettingsPreference.backgroundOpacityCellsKey)
-        let gate = disabledGate(defaults: defaults)
-        #expect(backgroundLines(TabRuntime(backgroundGate: gate)).isEmpty)
-
-        let store = AppStateStore(preferences: defaults, backgroundGate: gate)
-        store.applyAppearanceToAllSurfaces()
-        store.applyAppWideBackgroundToAllSurfaces()
-        let tabs = store.windows.flatMap(\.sessions).flatMap { $0.tree.allPanes.flatMap(\.tabs) }
-        #expect(!tabs.isEmpty)
-        for tab in tabs {
-            #expect(backgroundLines(tab).isEmpty)
-        }
-    }
-
-    @Test func makeFollowsTheFlag() {
-        #expect(enabledGate().isEnabled)
-        #expect(!disabledGate(defaults: defaults).isEnabled)
-    }
-
     // MARK: - The safe path
 
     @Test func importedImageReachesTheBuilder() async throws {
         let path = try await importAndStore()
-        let tab = TabRuntime(backgroundGate: enabledGate())
+        let tab = TabRuntime(backgroundGate: realGate())
         #expect(backgroundLines(tab) == [
             "background-image = \"\(path)\"",
             "background-image-fit = cover",
@@ -240,7 +164,7 @@ final class AppWideBackgroundGateTests {
         defaults.set("loud", forKey: SettingsPreference.backgroundImageOpacityKey)
         defaults.set("loud", forKey: SettingsPreference.backgroundOpacityKey)
         defaults.set("loud", forKey: SettingsPreference.backgroundOpacityCellsKey)
-        let gate = enabledGate()
+        let gate = realGate()
         #expect(gate.settings() == .off)
         let tab = TabRuntime(backgroundGate: gate)
         #expect(backgroundLines(tab).isEmpty)
@@ -252,7 +176,7 @@ final class AppWideBackgroundGateTests {
     @Test func inspectionRunsOncePerPath() {
         store(path: "/tmp/batty-gate-tests/photo.png")
         var count = 0
-        let gate = AppWideBackgroundGate(defaults: defaults, isEnabled: true) { _ in
+        let gate = AppWideBackgroundGate(defaults: defaults) { _ in
             count += 1
             return .usable
         }
@@ -264,7 +188,7 @@ final class AppWideBackgroundGateTests {
     @Test func changedPathIsInspectedAgain() {
         store(path: "/tmp/batty-gate-tests/a.png")
         var inspected: [String] = []
-        let gate = AppWideBackgroundGate(defaults: defaults, isEnabled: true) { path in
+        let gate = AppWideBackgroundGate(defaults: defaults) { path in
             inspected.append(path)
             return .usable
         }
@@ -276,7 +200,7 @@ final class AppWideBackgroundGateTests {
 
     @Test func refreshSeesAFileThatChanged() async throws {
         let path = try await importAndStore()
-        let gate = enabledGate()
+        let gate = realGate()
         #expect(gate.settings().imagePath == path)
         try Data("corrupt".utf8).write(to: URL(fileURLWithPath: path))
         #expect(gate.refreshImageState() == .rejected)
@@ -287,7 +211,7 @@ final class AppWideBackgroundGateTests {
         let elsewhere = root.appendingPathComponent("elsewhere.png")
         try png().write(to: elsewhere)
         store(path: elsewhere.path)
-        let gate = enabledGate()
+        let gate = realGate()
         let pane = PaneRuntime(tabBackgroundGate: gate)
         BackgroundOverrideEditor(target: pane, appWide: gate.settings(), originalOverride: nil).selectCustom()
         let override = try #require(pane.backgroundOverride)

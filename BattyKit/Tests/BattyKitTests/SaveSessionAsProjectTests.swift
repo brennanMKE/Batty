@@ -573,16 +573,6 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(draft.background == nil)
     }
 
-    @Test func flagOffUpdateKeepsTheStoredBackgroundAndCopiesNothing() throws {
-        let fixture = try ProjectBackgroundFixture()
-        let store = fixture.appStore(terminalBackgrounds: false)
-        let project = fixture.project(background: projectBackgroundValue(path: "/tmp/stored.png"))
-        let session = try openedSession(fixture, store, project)
-        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
-        #expect(draft.background == project.background)
-        #expect(!FileManager.default.fileExists(atPath: fixture.projectFolder.path))
-    }
-
     @Test func copyFromCurrentSessionLeavesTheBackgroundAlone() throws {
         let fixture = try ProjectBackgroundFixture()
         let projectStore = ProjectStore(fileURL: fixture.projectsFile)

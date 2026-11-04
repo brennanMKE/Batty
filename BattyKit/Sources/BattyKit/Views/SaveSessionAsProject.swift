@@ -56,7 +56,6 @@ enum SaveSessionAsProject {
         replacingStored: Bool,
         store: AppStateStore
     ) {
-        guard store.featureFlags.terminalBackgrounds else { return }
         var notes: [String] = []
         if replacingStored {
             var background = session.backgroundOverride

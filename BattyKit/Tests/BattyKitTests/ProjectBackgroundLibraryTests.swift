@@ -200,15 +200,4 @@ struct ProjectBackgroundLibraryTests {
         #expect(FileManager.default.fileExists(atPath: named))
         #expect(!FileManager.default.fileExists(atPath: unused))
     }
-
-    @Test func flagOffEditorCloseReclaimsNothing() async throws {
-        let fixture = try ProjectBackgroundFixture()
-        let path = try await fixture.copy()
-        try fixture.age(folderOf: path)
-        try fixture.saveProjectsFile()
-        let store = fixture.appStore(terminalBackgrounds: false)
-        store.projectEditorDidClose()
-        #expect(store.projectBackgroundReclaim == nil)
-        #expect(FileManager.default.fileExists(atPath: path))
-    }
 }

@@ -80,18 +80,6 @@ nonisolated final class PaneBackgroundSettingsTests: XCTestCase {
     }
 
     @MainActor
-    func testGearIsAbsentWithTheFlagOff() throws {
-        let app = BattyUITestHarness.launchBatty(
-            script: [],
-            extraEnvironment: ["BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF": "1"]
-        )
-        defer { app.terminate() }
-        expandPaneList(in: app)
-
-        XCTAssertEqual(gears(in: app).count, 0)
-    }
-
-    @MainActor
     func testOpacitySlidersHaveLabels() throws {
         let app = BattyUITestHarness.launchBatty()
         defer { app.terminate() }

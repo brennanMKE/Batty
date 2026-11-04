@@ -89,18 +89,4 @@ nonisolated final class SessionBackgroundSettingsTests: XCTestCase {
         XCTAssertTrue(menuItem("Set Session Background", in: app).waitForExistence(timeout: 5))
         XCTAssertFalse(menuItem("Clear Session Background", in: app).exists)
     }
-
-    @MainActor
-    func testMenuItemIsAbsentWithTheFlagOff() throws {
-        let app = BattyUITestHarness.launchBatty(
-            script: [],
-            extraEnvironment: ["BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF": "1"]
-        )
-        defer { app.terminate() }
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
-
-        BattyUITestHarness.sessionRow(named: "Session 1", in: app).rightClick()
-        XCTAssertTrue(menuItem("Set Session Theme", in: app).waitForExistence(timeout: 5))
-        XCTAssertFalse(menuItem("Set Session Background", in: app).exists)
-    }
 }

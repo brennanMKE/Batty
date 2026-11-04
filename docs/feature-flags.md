@@ -2,24 +2,7 @@
 
 Unfinished features land on `main` behind a flag until the release that ships them (`AGENTS.md`, "Release branches"). With the flag off a feature is invisible and inert: no menu, Command Palette, Sidebar or CLI entry points, and no reads or writes of the feature's files.
 
-This page is also the recipe for the next flag.
-
-## Current flags
-
-- `terminalBackgrounds` (`BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`, #0374): terminal backgrounds, per-Pane, per-Session and app-wide, while umbrella #0372 is unfinished. Flag-off override: `BATTY_UI_TEST_FORCE_BACKGROUNDS_OFF`. There is no `current`, because the CLI has no entry point. Gate sites:
-  - `SessionSidebarView.body` passes `store.featureFlags.terminalBackgrounds` to `PaneRow.showsBackgroundSettings`, which shows the gear.
-  - `SessionSidebarView.backgroundSettingsBinding` returns `nil` when off, so the sheet can't present.
-  - `SessionSidebarView.body` passes `store.featureFlags.terminalBackgrounds` to `SessionRow.showsBackgroundSettings`, which shows the Set and Clear Session Background menu items (#0376).
-  - `SessionSidebarView.sessionBackgroundBinding` returns `nil` when off, so the Session's sheet can't present (#0376).
-  - `AppearanceSettingsView.body` in `SettingsView.swift` omits `TerminalBackgroundSettingsSection` when off.
-  - `AppStateStore.isWindowSeeThrough` returns `false` when off, so the window stays opaque (#0539).
-  - `AppStateStore.openProject` neither inspects a Project's image nor seeds the Session when off (#0540). `Project`, `ProjectDraft`, `ProjectStore` and the sync types never read the flag, so a saved background survives.
-  - `AppStateStore.projectEditorDidClose` doesn't reclaim Project image copies when off (#0540).
-  - `ProjectEditorWindowController.prepare` passes no `ProjectBackgroundLibrary` when off, so the editor has no Background row and reads no image (#0540).
-  - `SaveSessionAsProject.draft` (`captureBackground`) captures nothing and copies nothing when off (#0540).
-  - `AppWideBackgroundGate.live` is built from `FeatureFlags.resolved()`. Disabled, it returns `.off` before touching `UserDefaults` or the disk, and it is the only route from the persisted background keys to a config builder.
-
-  The sheet, the Settings section and `ProjectBackgroundLibrary` are the only users of `TerminalBackgroundImageImporter`; `SaveSessionAsProject` only calls `ProjectBackgroundLibrary.adopt`. In production, `PaneRuntime.setBackgroundOverride` and `SessionRuntime.setBackgroundOverride` are called only by `BackgroundOverrideEditor`, the Clear Session Background item and `WindowRuntime.addProjectSession`, and `SplitTree` mirrors the Session's value to its Panes, which is a no-op for `nil`. So with the flag off no override exists, no background key is read, and no image file is read or written. `Help/10-projects.md` doesn't mention a Project's background, because it ships in Prod: when this flag is removed, add that section.
+There are no flags today. This page is the recipe for the next one.
 
 ## Policy
 
@@ -39,3 +22,4 @@ Record each gate site (file, symbol, what the flag changes) as you add it, so re
 ## Retired flags
 
 - `projects`: added in #0470, removed in 1.3.0 by #0504. Projects is always on in Prod and Beta.
+- `terminalBackgrounds`: added in #0374, removed in 1.3.5 by #0544. Terminal backgrounds and see-through are always on in Prod and Beta.
