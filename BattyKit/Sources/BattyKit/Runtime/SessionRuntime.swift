@@ -20,6 +20,10 @@ public final class SessionRuntime: Identifiable {
     /// applies this theme instead of the global `ThemePreference`. Not
     /// persisted — resets to nil on every launch.
     public var localThemeName: String? = nil
+    /// This Session's terminal background. `nil` follows the app-wide default;
+    /// a non-nil value is complete, and a Pane's own override still beats it.
+    /// Not persisted: resets to nil on every launch.
+    public private(set) var backgroundOverride: TerminalBackgroundSettings?
     /// Whether the sidebar shows this session's pane rows. Collapsed by
     /// default; `WindowRuntime.hidePane` expands it so a just-hidden pane's
     /// restore control is always reachable (#0258). Not persisted.
@@ -222,5 +226,21 @@ public final class SessionRuntime: Identifiable {
     public var focusedTerminalPane: PaneRuntime? {
         let pane = focusedPaneAnyKind
         return pane.kind == .terminal ? pane : nil
+    }
+}
+
+extension SessionRuntime: BackgroundOverrideHolder {
+    /// Reaches every Tab at once, selected Session or not, because
+    /// `AppStateStore.isWindowSeeThrough` counts unselected Sessions and nothing
+    /// re-applies a background on selection. Idempotent because every observed
+    /// write notifies, equal values included.
+    public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        guard newOverride != backgroundOverride else { return }
+        backgroundOverride = newOverride
+        tree.setSessionBackgroundOverride(newOverride)
+    }
+
+    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
+        appWide
     }
 }

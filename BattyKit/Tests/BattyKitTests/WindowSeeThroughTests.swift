@@ -191,6 +191,96 @@ final class WindowSeeThroughTests {
         #expect(!store.isWindowSeeThrough(try firstWindow(store)))
     }
 
+    // MARK: - Session override
+
+    @Test func sessionOverrideBelowOneMakesTheWindowSeeThrough() throws {
+        let session = session()
+        let store = makeStore(sessions: [session])
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+        session.setBackgroundOverride(Self.low)
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func sessionOverrideAtOneWithAppWideBelowOneIsNotSeeThrough() throws {
+        storeAppWide(0.5)
+        let session = session()
+        let store = makeStore(sessions: [session])
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+        session.setBackgroundOverride(Self.full)
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func sessionOverrideInAnUnselectedSessionCounts() throws {
+        let unselected = session()
+        let selected = session()
+        let store = makeStore(sessions: [unselected, selected])
+        let window = try firstWindow(store)
+        window.setSelectedSession(id: selected.id)
+        #expect(!store.isWindowSeeThrough(window))
+        unselected.setBackgroundOverride(Self.low)
+        #expect(window.selectedSessionID == selected.id)
+        #expect(store.isWindowSeeThrough(window))
+    }
+
+    @Test func paneOverrideAtOneInALowSessionIsNotSeeThrough() throws {
+        let pane = pane()
+        let session = session(pane)
+        let store = makeStore(sessions: [session])
+        session.setBackgroundOverride(Self.low)
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+        pane.setBackgroundOverride(Self.full)
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func paneOverrideBelowOneInAFullSessionIsSeeThrough() throws {
+        let pane = pane()
+        let session = session(pane)
+        let store = makeStore(sessions: [session])
+        session.setBackgroundOverride(Self.full)
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+        pane.setBackgroundOverride(Self.low)
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func clearingTheSessionOverrideEndsSeeThrough() throws {
+        let session = session()
+        let store = makeStore(sessions: [session])
+        session.setBackgroundOverride(Self.low)
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+        session.setBackgroundOverride(nil)
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func sessionWithOnlyNonTerminalPanesIsIgnored() throws {
+        let metrics = PaneRuntime(kind: .systemMetrics, contentFactory: { _ in nil })
+        let session = session(metrics)
+        let store = makeStore(sessions: [session])
+        session.setBackgroundOverride(Self.low)
+        #expect(session.backgroundOverride == Self.low)
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func flagOffIsNeverSeeThroughWithALowSessionOverride() throws {
+        let session = session()
+        session.setBackgroundOverride(Self.low)
+        let flagOff = makeStore(sessions: [session], flag: false)
+        #expect(!flagOff.isWindowSeeThrough(try firstWindow(flagOff)))
+
+        // The control: the same state with the flag on is see-through.
+        let flagOn = makeStore(sessions: [session])
+        #expect(flagOn.isWindowSeeThrough(try firstWindow(flagOn)))
+    }
+
+    @Test func sessionOverrideInvalidatesAnObservedSeeThroughRead() throws {
+        let session = session()
+        let store = makeStore(sessions: [session])
+        let window = try firstWindow(store)
+        let changed = ChangeFlag()
+        withObservationTracking { _ = store.isWindowSeeThrough(window) } onChange: { changed.fired = true }
+        session.setBackgroundOverride(Self.low)
+        #expect(changed.fired)
+    }
+
     @Test func nativeFullScreenForcesOpaque() throws {
         storeAppWide(0.5)
         let store = makeStore()

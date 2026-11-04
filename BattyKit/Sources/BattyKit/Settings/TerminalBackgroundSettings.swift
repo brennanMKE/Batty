@@ -72,9 +72,10 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
     static let firstImageOpacity = 0.15
 
     /// The resolution chain. A non-nil override is complete, and `nil` follows
-    /// the broader level.
-    static func effective(pane: Self?, appWide: Self) -> Self {
-        pane ?? appWide
+    /// the broader level. `session` has no default so that no caller can leave
+    /// a tier out by accident.
+    static func effective(pane: Self?, session: Self?, appWide: Self) -> Self {
+        pane ?? session ?? appWide
     }
 
     func withImagePath(_ imagePath: String?) -> Self {

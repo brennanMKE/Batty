@@ -289,7 +289,7 @@ final class AppWideBackgroundGateTests {
         store(path: elsewhere.path)
         let gate = enabledGate()
         let pane = PaneRuntime(tabBackgroundGate: gate)
-        PaneBackgroundEditor(pane: pane, appWide: gate.settings(), originalOverride: nil).selectCustom()
+        BackgroundOverrideEditor(target: pane, appWide: gate.settings(), originalOverride: nil).selectCustom()
         let override = try #require(pane.backgroundOverride)
         #expect(override.imagePath == nil)
         #expect(override.terminalOpacity == 0.5)
