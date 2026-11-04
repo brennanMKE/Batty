@@ -380,8 +380,8 @@ nonisolated class ProjectsUITestCase: XCTestCase {
 
     // MARK: - Sidebar glyph
 
-    /// The SF Symbol a Sidebar row draws. The icon is merged into the row's single
-    /// accessibility element, so the app appends ", icon <symbol>" to the row's value when
+    /// The SF Symbol a Sidebar row draws. The row doesn't expose the icon to
+    /// accessibility, so the app appends ", icon <symbol>" to the row's value when
     /// `BATTY_UI_TEST_SIDEBAR_ICONS=1`, which `launchApp` sets.
     @MainActor
     func rowIcon(_ title: String, in app: XCUIApplication) -> String? {
