@@ -82,7 +82,6 @@ final class AppWideBackgroundLiveApplyTests {
         #expect(backgroundLines(following.tabs[0]) == Self.settingsLines)
     }
 
-    /// What stops #0538 spreading to every slider step.
     @Test func changeKeepsPerTabLines() {
         let store = makeStore()
         push(Self.settings, to: store)

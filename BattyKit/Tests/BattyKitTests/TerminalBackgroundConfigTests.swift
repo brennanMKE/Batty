@@ -55,7 +55,7 @@ final class TerminalBackgroundConfigTests {
         store.windows.flatMap(\.sessions).flatMap { $0.tree.allPanes.flatMap(\.tabs) }
     }
 
-    /// The Tabs of a store whose appearance builder has run against `defaults`.
+    /// A store whose appearance push has run against `defaults`.
     private func appliedStore() -> AppStateStore {
         let store = AppStateStore(preferences: defaults, backgroundGate: gate)
         store.applyAppearanceToAllSurfaces()
@@ -81,7 +81,7 @@ final class TerminalBackgroundConfigTests {
         #expect(backgroundLines(tab) == Self.configuredLines)
     }
 
-    @Test func appearanceBuilderEmitsConfiguredBackgroundLines() {
+    @Test func appearancePushEmitsConfiguredBackgroundLines() {
         configureEverything()
         let store = AppStateStore(preferences: defaults, backgroundGate: gate)
         _ = store.windowRuntime(for: WindowID())
@@ -97,7 +97,7 @@ final class TerminalBackgroundConfigTests {
         }
     }
 
-    @Test func bothBuildersEmitIdenticalBackgroundLines() {
+    @Test func newAndPushedTabsEmitIdenticalBackgroundLines() {
         configureEverything()
         let fromTab = backgroundLines(tab())
         #expect(!fromTab.isEmpty)
@@ -170,7 +170,7 @@ final class TerminalBackgroundConfigTests {
         }
     }
 
-    @Test func sharedPreferencesReachBothBuilders() {
+    @Test func sharedPreferencesReachNewAndPushedTabs() {
         let path = TabRuntimeCLIPathSeam.injectedPath(
             basePath: ProcessInfo.processInfo.environment["PATH"],
             bundlePath: Bundle.main.bundlePath

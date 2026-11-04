@@ -38,7 +38,7 @@ public final class TabRuntime: Identifiable {
     private let commandOverride: String?
 
     /// Source of the app-wide background, read again on each config render.
-    /// See ``applyShellAndAppearancePreferences(to:tabID:paneID:sessionID:command:background:)``
+    /// See ``applyShellAndAppearancePreferences(to:tabID:paneID:sessionID:command:background:appearance:)``
     /// for why the other preferences don't come from here.
     @ObservationIgnored
     private let backgroundGate: AppWideBackgroundGate
@@ -258,6 +258,13 @@ public final class TabRuntime: Identifiable {
         Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: .effective(pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide))
     }
 
+    /// New font and cursor values, through this Tab's own builder for the same
+    /// reason as ``setBackgroundOverrides(pane:session:)``. Both arguments come
+    /// from the store, whose `UserDefaults` and gate may not be this Tab's.
+    func refreshAppearance(_ appearance: TerminalAppearance, appWide: TerminalBackgroundSettings) {
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: .effective(pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide), appearance: appearance)
+    }
+
     private static func effectiveBackground(
         pane: TerminalBackgroundSettings?,
         session: TerminalBackgroundSettings?,
@@ -282,31 +289,27 @@ public final class TabRuntime: Identifiable {
     ///
     /// `background` is the exception: tests must configure it, and they may
     /// not write `.standard`, so it comes from ``backgroundGate``, which only
-    /// this `TabRuntime`'s own `init` parameter sets.
+    /// this `TabRuntime`'s own `init` parameter sets. `appearance` defaults to
+    /// those `.standard` reads; ``refreshAppearance(_:appWide:)`` passes in the
+    /// store's values instead.
     private static func applyShellAndAppearancePreferences(
         to terminal: TerminalViewState,
         tabID: UUID,
         paneID: UUID?,
         sessionID: UUID?,
         command: String? = nil,
-        background: TerminalBackgroundSettings
+        background: TerminalBackgroundSettings,
+        appearance: TerminalAppearance = .resolved(defaults: .standard)
     ) {
-        let cursor = TerminalCursorStyle(rawValue: SettingsPreference.resolvedCursorStyle()) ?? .block
-        let blink = SettingsPreference.resolvedCursorBlink()
-        let fontSize = SettingsPreference.resolvedFontSize()
         let shell = SettingsPreference.resolvedShell()
         let configuration = TerminalConfiguration { builder in
-            // libghostty 1.3.2 declares `supports_selection_clipboard` on
-            // macOS (it didn't at 1.2.2), and its clipboard-write callback
-            // ignores the clipboard kind, writing every selection straight
-            // to the system pasteboard (#0286). With ghostty's own default
-            // `copy-on-select = true`, that means an ordinary mouse
-            // selection would silently overwrite whatever the user last
-            // put on the system clipboard, with no Cmd-C. Disable it
-            // explicitly to keep selection and system-clipboard writes
-            // independent, matching the 1.2.2 behavior Batty was built
-            // against; Cmd-C and Edit > Copy still copy explicitly via
-            // the `cmd+c=copy_to_clipboard` keybind set below.
+            // At this pin Ghostty's default `true` writes a selection to the
+            // selection clipboard, and the package's `writeClipboard` discards
+            // it (`TerminalController+Callbacks.swift`), so a selection doesn't
+            // reach the system pasteboard with or without this line (measured,
+            // #0538). It stays because it is what Batty declares, and a package
+            // bump could change that discard. Cmd-C and Edit > Copy still copy
+            // explicitly via the `cmd+c=copy_to_clipboard` keybind set below.
             builder.withCustom("copy-on-select", "false")
             // A per-tab command override (#0282's `pane split -c`) replaces
             // the shell preference entirely for this one tab, rather than
@@ -371,7 +374,7 @@ public final class TabRuntime: Identifiable {
             builder.withCustom("keybind", "clear")
             builder.withCustom("keybind", "cmd+c=copy_to_clipboard")
             // Last, because `keybind = clear` must precede the bindings this adds.
-            builder.withSharedPreferences(fontSize: fontSize, cursor: cursor, blink: blink, background: background)
+            builder.withSharedPreferences(fontSize: appearance.fontSize, cursor: appearance.cursor, blink: appearance.blink, background: background)
         }
         terminal.controller.setTerminalConfiguration(configuration)
     }

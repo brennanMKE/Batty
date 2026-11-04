@@ -207,6 +207,15 @@ public final class PaneRuntime: Identifiable {
         }
     }
 
+    /// Unlike ``refreshAppWideBackground(_:)``, this reaches a Pane with an
+    /// override, which keeps it. A non-terminal Pane's one Tab is never rendered.
+    func refreshAppearance(_ appearance: TerminalAppearance, appWide: TerminalBackgroundSettings) {
+        guard kind == .terminal else { return }
+        for tab in tabs {
+            tab.refreshAppearance(appearance, appWide: appWide)
+        }
+    }
+
     /// Adds a new Tab to this Pane. **Gated on `kind == .terminal`** (#0332)
     /// — a non-terminal pane's one `TabRuntime` is a structural placeholder
     /// `PaneView` never renders (`kind`'s doc comment above); adding a

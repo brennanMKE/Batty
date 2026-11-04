@@ -140,7 +140,7 @@ final class AppWideBackgroundGateTests {
         #expect(!recording.readKeys.filter(Self.backgroundKeys.contains).isEmpty)
     }
 
-    @Test func disabledGateEmitsNothingThroughEitherBuilder() async throws {
+    @Test func disabledGateEmitsNothingThroughEitherPush() async throws {
         _ = try await importAndStore()
         defaults.set(true, forKey: SettingsPreference.backgroundOpacityCellsKey)
         let gate = disabledGate(defaults: defaults)
