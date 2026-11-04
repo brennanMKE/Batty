@@ -84,7 +84,7 @@ final class TerminalBackgroundConfigTests {
     @Test func appearancePushEmitsConfiguredBackgroundLines() {
         configureEverything()
         let store = AppStateStore(preferences: defaults, backgroundGate: gate)
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
         #expect(store.windows.count >= 2)
         store.applyAppearanceToAllSurfaces()
         for window in store.windows {

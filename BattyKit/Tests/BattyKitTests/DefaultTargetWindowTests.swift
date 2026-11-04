@@ -34,9 +34,9 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
-        let c = store.windowRuntime(for: WindowID())
-        let d = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
+        let c = store.openWindowRuntime(for: WindowID())
+        let d = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         let nsC = NSWindow()
@@ -65,8 +65,8 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
-        let c = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
+        let c = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         let nsC = NSWindow()
@@ -89,7 +89,7 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
 
         #expect(store.defaultTargetWindow()?.id == a.id)
     }
@@ -107,9 +107,9 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
-        let c = store.windowRuntime(for: WindowID())
-        let d = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
+        let c = store.openWindowRuntime(for: WindowID())
+        let d = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         let nsC = NSWindow()
@@ -151,8 +151,8 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
-        let c = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
+        let c = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         let nsC = NSWindow()
@@ -187,7 +187,7 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         store.registerNSWindow(nsA, for: a.id)
@@ -221,8 +221,8 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
-        let c = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
+        let c = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         let nsC = NSWindow()
@@ -253,7 +253,7 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         store.registerNSWindow(nsA, for: a.id)
@@ -287,8 +287,8 @@ struct DefaultTargetWindowTests {
         let store = AppStateStore()
         store.terminateHandler = {}
         let a = store.windows[0]
-        let b = store.windowRuntime(for: WindowID())
-        let c = store.windowRuntime(for: WindowID())
+        let b = store.openWindowRuntime(for: WindowID())
+        let c = store.openWindowRuntime(for: WindowID())
         let nsA = NSWindow()
         let nsB = NSWindow()
         let nsC = NSWindow()

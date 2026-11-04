@@ -91,7 +91,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         TerminalHostStore.shared.startOccludedSurfaceTicking()
         TerminalMetalMetricsLogger.startIfEnabled()
         // onAllSessionsClosed is wired per-window in AppStateStore.init and
-        // windowRuntime(for:) — each window's closure closes itself when its
+        // openWindowRuntime(for:) — each window's closure closes itself when its
         // last session goes. The app terminates when the last content window
         // is unregistered (AppStateStore.unregisterNSWindow →
         // terminateIfLastContentWindowGone). No app-level terminate hook here.

@@ -94,6 +94,47 @@ nonisolated final class ProjectsEditorQuitTests: ProjectsUITestCase {
     }
 
     @MainActor
+    func testNewWindowDuringAHeldQuitOpensAWorkingWindowAndTheQuitFollowsItsClose() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        let contentIdentifier = app.windows.firstMatch.identifier
+        editExistingName(in: app)
+        let content = app.windows.matching(NSPredicate(format: "identifier == %@", contentIdentifier)).firstMatch
+        let windowMenu = openMenu("Window", in: app)
+        let contentItem = menuItem("Session 1", in: windowMenu)
+        XCTAssertTrue(contentItem.waitForExistence(timeout: 5), "the Window menu does not list the content window: \(menuTitles(windowMenu))")
+        contentItem.click()
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitFor({ !content.exists }, timeout: 10), "the content window did not close")
+        XCTAssertEqual(BattyCLI.topology()?.sessions.count, 0, "the closed window left a Session behind")
+
+        let fileMenu = openMenu("File", in: app)
+        let newWindow = menuItem("New Window", in: fileMenu)
+        XCTAssertTrue(newWindow.waitForExistence(timeout: 5), "no New Window item: \(menuTitles(fileMenu))")
+        newWindow.click()
+        guard let opened = BattyCLI.waitForTopology(timeout: 20, { $0.sessions.count == 1 }) else {
+            XCTFail("New Window during the held quit did not produce one Session")
+            return
+        }
+        XCTAssertEqual(opened.sessions[0].panes.map(\.kind), ["terminal"], "the new window has no terminal Pane")
+        let newContent = app.windows.matching(NSPredicate(format: "identifier != %@ AND identifier != ''", editorWindow(in: app).identifier)).firstMatch
+        XCTAssertTrue(newContent.waitForExistence(timeout: 10), "the new content window is not on screen")
+
+        click("project-editor.name", in: app)
+        app.typeKey("w", modifierFlags: .command)
+        let sheet = editorSheet(in: app)
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Cmd-W with unsaved edits did not ask")
+        sheet.buttons["Discard Changes"].click()
+        XCTAssertTrue(waitFor({ !self.editorWindow(in: app).exists }, timeout: 10), "Discard did not close the editor")
+        XCTAssertEqual(app.state, .runningForeground, "closing the editor quit the app with a content window open")
+
+        newContent.click()
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 20), "closing the new window did not quit the app")
+    }
+
+    @MainActor
     func testCmdWWithASheetOverTheEditorLeavesTheSheetAndTheEditorAlone() throws {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }

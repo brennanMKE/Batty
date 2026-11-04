@@ -230,7 +230,7 @@ final class WindowSeeThroughTests {
     @Test func windowsAreIndependent() throws {
         let low = pane()
         let store = makeStore(sessions: [session(low)])
-        let other = store.windowRuntime(for: WindowID())
+        let other = store.openWindowRuntime(for: WindowID())
         if other.sessions.isEmpty { other.addSession() }
         low.setBackgroundOverride(Self.low)
         #expect(store.isWindowSeeThrough(try firstWindow(store)))
@@ -240,7 +240,7 @@ final class WindowSeeThroughTests {
     @Test func windowOpenedLaterFollowsTheAppWideValue() {
         storeAppWide(0.5)
         let store = makeStore()
-        let later = store.windowRuntime(for: WindowID())
+        let later = store.openWindowRuntime(for: WindowID())
         if later.sessions.isEmpty { later.addSession() }
         #expect(store.isWindowSeeThrough(later))
     }
@@ -328,7 +328,7 @@ final class WindowSeeThroughTests {
     @Test func fullScreenCallbackAfterWindowRemovalCreatesNoRuntime() throws {
         let store = makeStore()
         let kept = try firstWindow(store)
-        let removed = store.windowRuntime(for: WindowID())
+        let removed = store.openWindowRuntime(for: WindowID())
         let delegate = WindowDelegate(windowID: removed.id, store: store)
         delegate.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification))
         #expect(removed.isNativeFullScreen)

@@ -97,10 +97,8 @@ public final class WindowRuntime {
     /// Called by `onAllSessionsClosed` to close the owning NSWindow.
     /// Set by `RootWindowView` once the NSWindow is known. The level of
     /// indirection (closure vs. direct NSWindow reference) keeps NSWindow
-    /// out of the pure-model layer. `AppStateStore.windowRuntime(for:)`
-    /// seeds a no-op default that logs a warning if the window hasn't
-    /// set it yet — possible on very early session close before the view
-    /// tree is live.
+    /// out of the pure-model layer. `nil` until the window's view tree is
+    /// live, so a very early session close does not close the window.
     @ObservationIgnored public var closeWindowCallback: (() -> Void)?
 
     // Injected from AppStateStore — global services shared across windows.

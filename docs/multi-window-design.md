@@ -186,9 +186,11 @@ Binding scene identity to state:
   another `openWindow(value:)` call site).
 - The presented value **is** the stable window ID: it links the scene to
   its `WindowRuntime` (§5), to the per-window host (§3), and to scene
-  restoration (§6, currently disabled). `AppStateStore.windowRuntime(for:)`
-  creates the runtime lazily on first sight of an ID, so launch, New Window,
-  and (when enabled) restoration all converge on one code path.
+  restoration (§6, currently disabled). `RootWindowView.init` resolves it
+  with `AppStateStore.runtimeForPresentedWindow(_:)`, which creates the
+  runtime on first sight of an ID, so launch, New Window, and (when enabled)
+  restoration all converge on one code path. An ID whose window has closed
+  stays closed: the same call returns `nil` for it (#0546).
 - The default (first-launch) window uses the `defaultValue:` variant so a
   cold start presents exactly one window — preserving today's behavior.
 - New Window presents `AppStateStore.windowIDForNewWindow()` and calls
@@ -213,7 +215,7 @@ window's presented value and frame into the system's window-restoration
 state. On relaunch macOS reopens every window, on its original display
 when that display is present, re-presenting each `WindowID` — which
 re-materializes per-window state through the same lazy
-`windowRuntime(for:)` path. See §6 for what that state contains.
+`runtimeForPresentedWindow(_:)` path. See §6 for what that state contains.
 
 Knock-on change: `BattyShortcuts.mainWindowIsKey()`'s heuristic
 (`identifier contains "main"`) breaks under `WindowGroup`, whose scene
@@ -246,7 +248,8 @@ Moves from `AppStateStore` into `WindowRuntime` (per-window):
 Stays global on `AppStateStore` (now an app-level registry +
 cross-cutting services):
 
-- `windows: [WindowRuntime]` and `windowRuntime(for: WindowID)`.
+- `windows: [WindowRuntime]`, `runtimeForPresentedWindow(_:)` and
+  `existingWindowRuntime(for:)`.
 - The NSWindow ↔ `WindowID` map and the derived "key content window"
   accessor. The map itself is `@ObservationIgnored` bookkeeping (it is
   populated from AppKit window callbacks; making it observed state written

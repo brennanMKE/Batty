@@ -398,7 +398,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closePaneResolvesAPaneInANonKeyWindow() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         let target = w2.sessions[0].tree.allPanes[0]
         w2.sessions[0].tree.splitFocusedPane(direction: .horizontal)
 
@@ -443,7 +443,7 @@ struct AppStateStoreClosePaneTests {
         let onlyPaneID = store.sessions[0].tree.allPanes[0].id
         // A second window keeps the app alive even after this window empties,
         // so the app-wide last-pane guard does not apply here.
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
 
         nonisolated(unsafe) var windowEmptied = false
         store.windows[0].onAllSessionsClosed = { windowEmptied = true }
@@ -464,7 +464,7 @@ struct AppStateStoreClosePaneTests {
     @Test func totalPaneCountIgnoresAWindowThatLingersWithNoSessions() {
         let store = AppStateStore()
         let onlyPaneID = store.sessions[0].tree.allPanes[0].id
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         w2.removeSession(id: w2.sessions[0].id)
         #expect(w2.sessions.isEmpty)
         #expect(store.windows.count == 2,

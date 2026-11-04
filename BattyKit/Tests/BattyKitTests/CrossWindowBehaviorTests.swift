@@ -28,7 +28,7 @@ struct CrossWindowBehaviorTests {
     @Test func bellEntryCarriesOwningWindowID() async {
         let store = AppStateStore()
         let w1 = store.windows[0]
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         let pane = w2.sessions[0].tree.allPanes[0]
         let tab = pane.tabs[0]
@@ -48,7 +48,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func bellEntryWindowIDMatchesOwningWindowNotFirst() async {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         // Ring a bell in w2
         let pane = w2.sessions[0].tree.allPanes[0]
@@ -73,7 +73,7 @@ struct CrossWindowBehaviorTests {
         // Then record a bell in w1's active tab — should count as unseen.
         let store = AppStateStore()
         let w1 = store.windows[0]
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         // Register a fake NSWindow for w2 so keyWindowRuntime returns w2.
         let fakeKeyWindow = NSWindow()
@@ -129,7 +129,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func jumpToBellEntryDeadWindowNoOpsAndMarksSeen() async {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         // Ring a bell in w2, get the entry.
         let pane = w2.sessions[0].tree.allPanes[0]
@@ -189,7 +189,7 @@ struct CrossWindowBehaviorTests {
     @Test func jumpToBellEntryInSecondWindowNavigatesSecondWindow() async {
         let store = AppStateStore()
         let w1 = store.windows[0]
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         // Ring a bell in w2's session.
         let w2Session = w2.sessions[0]
@@ -219,7 +219,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func windowCloseBellCleanupRemovesWindowEntries() async {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         // Deliver unseen bells to w2.
         let pane = w2.sessions[0].tree.allPanes[0]
@@ -255,7 +255,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func quitConfirmationCountsTabsAcrossAllWindows() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         // w1 has 1 tab (the default), w2 has 1 tab.
         let w1TabCount = store.windows[0].sessions.flatMap { $0.tree.allPanes }.flatMap { $0.tabs }.count
@@ -338,7 +338,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func removeWindowReducesWindowCount() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         #expect(store.windows.count == 2)
 
         store.removeWindow(id: w2.id)
@@ -473,7 +473,7 @@ struct CrossWindowBehaviorTests {
 
         store.removeWindow(id: onlyWindowID)
         // A new window appears before the deferred block runs (e.g. New Window).
-        _ = store.windowRuntime(for: WindowID())
+        _ = store.openWindowRuntime(for: WindowID())
 
         // removeWindow's DispatchQueue.main.async-deferred check
         // (AppStateStore.terminateIfLastContentWindowGone) was enqueued
@@ -495,11 +495,10 @@ struct CrossWindowBehaviorTests {
     /// this issue's fix — the worst site in the inventory, since it's read
     /// from `BattyApp`'s `WindowGroup` scene-body content closure and
     /// `defaultValue` closure; trapping there would take down the whole
-    /// scene. Verifies both totality (no trap) and that the value stays
-    /// stable across the empty-windows turn, matching the doc comment's
-    /// claim that it reuses the original seed id rather than inventing a
-    /// fresh one.
-    @Test func initialWindowIDResolvesToSeedWhenNoWindowsRemain() {
+    /// scene. Verifies totality (no trap), that the value is stable across
+    /// reads, that it is not the closed id (#0546), and that reading it
+    /// creates nothing.
+    @Test func initialWindowIDIsAStableUnusedIDWhenNoWindowsRemain() {
         let store = AppStateStore()
         store.terminateHandler = {}
         let onlyWindowID = store.windows[0].id
@@ -510,8 +509,10 @@ struct CrossWindowBehaviorTests {
         store.removeWindow(id: onlyWindowID)
         #expect(store.windows.isEmpty, "test setup: windows must be empty")
 
-        #expect(store.initialWindowID == seededID,
-                "initialWindowID must remain stable and not trap when windows is empty")
+        let fallback = store.initialWindowID
+        #expect(fallback != seededID, "a window opened now must not be given the closed id")
+        #expect(store.initialWindowID == fallback, "initialWindowID must remain stable between closes")
+        #expect(store.windows.isEmpty, "reading initialWindowID must create nothing")
     }
 
     /// `addSession(title:workingDirectory:)` read
@@ -593,7 +594,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func newWindowRuntimeOnAllSessionsClosedCallsCloseWindowCallback() {
         let store = AppStateStore()
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
         var callbackFired = false
         w2.closeWindowCallback = { callbackFired = true }
 
@@ -607,7 +608,7 @@ struct CrossWindowBehaviorTests {
     @Test func applyThemeToAllSurfacesRethemesEveryWindow() {
         let store = AppStateStore()
         let w1 = store.windows[0]
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         // Two distinct catalog themes so the applied theme differs from
         // whatever each surface initialised with, and from each other.
@@ -654,7 +655,7 @@ struct CrossWindowBehaviorTests {
         testDefaults.defaults.set(false, forKey: SettingsPreference.cursorBlinkKey)
         testDefaults.defaults.set(20.0, forKey: SettingsPreference.fontSizeKey)
         let store = AppStateStore(preferences: testDefaults.defaults)
-        let w2 = store.windowRuntime(for: WindowID())
+        let w2 = store.openWindowRuntime(for: WindowID())
 
         func allTabs(_ w: WindowRuntime) -> [TabRuntime] {
             w.sessions.flatMap { $0.tree.allPanes.flatMap(\.tabs) }

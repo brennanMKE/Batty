@@ -223,7 +223,7 @@ struct OpenQuicklyDeduplicationTests {
         let fixture = Fixture()
         let remote = project("Remote Work")
         let store = try fixture.store(seeding: [remote])
-        let other = store.windowRuntime(for: WindowID())
+        let other = store.openWindowRuntime(for: WindowID())
         let tree = try ProjectTreeBuilder.build(project: remote, contentFactory: { _ in nil }, isSessionSelected: true)
         other.addProjectSession(remote, tree: tree)
 

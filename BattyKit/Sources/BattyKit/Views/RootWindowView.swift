@@ -13,7 +13,12 @@ extension Notification.Name {
 public struct RootWindowView: View {
     @State private var store: AppStateStore
     private let windowID: WindowID
-    private let windowRuntime: WindowRuntime
+    /// Resolved once, by the first init. SwiftUI can rebuild this view for a
+    /// window that has just closed; that init computes `nil` and `@State`
+    /// discards it, so the closing window keeps its tree and nothing revives
+    /// its runtime. The `nil` branch of `body` is reached only if a closed id
+    /// is presented to a new scene.
+    @State private var windowRuntime: WindowRuntime?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     /// Per-window sidebar visibility. Window restoration is disabled
     /// (`.restorationBehavior(.disabled)` in `BattyApp`), so the value lives
@@ -33,17 +38,24 @@ public struct RootWindowView: View {
     /// instead of always touching the process-wide singleton.
     public init(windowID: WindowID, store: AppStateStore) {
         self.windowID = windowID
-        self.windowRuntime = store.windowRuntime(for: windowID)
+        _windowRuntime = State(initialValue: store.runtimeForPresentedWindow(windowID))
         _store = State(initialValue: store)
     }
 
     public var body: some View {
+        if let windowRuntime {
+            content(windowRuntime)
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ windowRuntime: WindowRuntime) -> some View {
         let isSeeThrough = store.isWindowSeeThrough(windowRuntime)
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            SessionSidebarView(store: store, windowID: windowID)
+            SessionSidebarView(store: store, windowRuntime: windowRuntime)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
-            SessionDetailView(store: store, windowID: windowID)
+            SessionDetailView(store: store, windowRuntime: windowRuntime)
                 .environment(\.paneWindowCorners, WindowCorners.detailArea(sidebarHidden: columnVisibility == .detailOnly))
         }
         .environment(\.appStateStore, store)
@@ -146,8 +158,7 @@ private struct WindowLifecycleController: NSViewRepresentable {
             }
             // Wire closeWindowCallback on the runtime so onAllSessionsClosed
             // (last session closed) closes the NSWindow.
-            let runtime = appStore.windowRuntime(for: id)
-            if runtime.closeWindowCallback == nil {
+            if let runtime = appStore.existingWindowRuntime(for: id), runtime.closeWindowCallback == nil {
                 runtime.closeWindowCallback = { [weak window] in
                     logger.info("closeWindowCallback: closing windowID=\(id.value, privacy: .public)")
                     window?.performClose(nil)
@@ -186,7 +197,7 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
     /// "Confirm on close" setting is enabled — same contract as `QuitConfirmation`.
     /// Returns `true` to allow the close; `false` to cancel it.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        let runtime = store.windowRuntime(for: windowID)
+        guard let runtime = store.existingWindowRuntime(for: windowID) else { return true }
         guard QuitConfirmation.windowNeedsConfirmClose(window: runtime, defaults: store.preferences) else {
             return true
         }
@@ -222,13 +233,13 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
     ///   6. Remove the `WindowRuntime` from `AppStateStore.windows`.
     func windowWillClose(_ notification: Notification) {
         logger.info("windowWillClose windowID=\(self.windowID.value, privacy: .public)")
-        let runtime = store.windowRuntime(for: self.windowID)
+        let runtime = store.existingWindowRuntime(for: self.windowID)
         // 1. Bell-feed cleanup: collect all tab IDs in the window.
-        let allTabIDs = Set(runtime.sessions.flatMap { session in
+        let allTabIDs = Set((runtime?.sessions ?? []).flatMap { session in
             session.tree.allPanes.flatMap { $0.tabs.map(\.id) }
         })
         if !allTabIDs.isEmpty {
-            runtime.cleanUpBellState(forTabIDs: allTabIDs)
+            runtime?.cleanUpBellState(forTabIDs: allTabIDs)
         }
         // 2. Non-terminal pane content (#0303/#0314): review round 1 found
         // this window-close path never tore any of it down — a
@@ -237,7 +248,7 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
         // window closing, relying on ARC to eventually free the conformer
         // rather than a synchronous, observable teardown
         // (`docs/pane-view-lifecycle.md` §5).
-        runtime.tearDownAllPaneContent()
+        runtime?.tearDownAllPaneContent()
         // 3. Release terminal views (the only sanctioned removeFromSuperview path).
         for tabID in allTabIDs {
             TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
