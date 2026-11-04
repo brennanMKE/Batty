@@ -118,6 +118,36 @@ struct ProjectBackgroundLibraryTests {
         #expect(FileManager.default.fileExists(atPath: path))
     }
 
+    @Test func reclaimSkipsWhileTheStoreHasNotReadTheFile() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        try fixture.age(folderOf: path)
+        try ProjectStore(fileURL: fixture.projectsFile).upsert(fixture.project(background: nil))
+        let gate = ProjectFileReadGate()
+        gate.failure = ProjectFileReadGate.cocoaReadError(posix: .EIO)
+        let store = ProjectStore(fileURL: fixture.projectsFile, readFile: { try gate.read($0) })
+        gate.failure = nil
+        #expect(fixture.library.reclaim(store: store, inUse: []) == nil)
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func reclaimRunsAfterTheStoreHeals() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let unused = try await fixture.copy()
+        let stored = try await fixture.copy(width: 128)
+        try fixture.age(folderOf: unused)
+        try fixture.age(folderOf: stored)
+        try ProjectStore(fileURL: fixture.projectsFile).upsert(fixture.project(background: projectBackgroundValue(path: stored)))
+        let gate = ProjectFileReadGate()
+        gate.failure = ProjectFileReadGate.cocoaReadError(posix: .EIO)
+        let store = ProjectStore(fileURL: fixture.projectsFile, readFile: { try gate.read($0) })
+        gate.failure = nil
+        store.retryLoadIfNeeded()
+        try await reclaim(fixture, store)
+        #expect(!FileManager.default.fileExists(atPath: unused))
+        #expect(FileManager.default.fileExists(atPath: stored))
+    }
+
     @Test func reclaimSkipsWhenTheFileIsAbsent() async throws {
         let fixture = try ProjectBackgroundFixture()
         let path = try await fixture.copy()

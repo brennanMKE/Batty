@@ -34,6 +34,7 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
     @discardableResult
     func prepare(store: AppStateStore, selecting projectID: UUID? = nil, newDraft: ProjectDraft? = nil) -> Bool {
         let projectStore = store.projectStore
+        projectStore.retryLoadIfNeeded()
         if let model, window != nil {
             if let newDraft {
                 model.requestNavigation(.newDraft(newDraft))

@@ -102,9 +102,11 @@ sync code runs. With one, `upsert` and `setShared(true)` of a shared Project
 `publish`, an unshare `withdraw`s, and `delete` of a shared Project
 `tombstone`s. Local Projects never reach it.
 
-The store applies the merge on each `changes` event. That is the one write to
+The store applies the merge on each `changes` event, and when it first reads a
+file it couldn't read or find before. That is the one write to
 `projects.json` that is not a direct user action, and it is skipped while the
-file could not be fully loaded. The store ignores `changes` from a backend whose `isAvailable` is false, but
+file could not be fully loaded. While `projects.json` can't be read at all, a
+merge is skipped and nothing is published. The store ignores `changes` from a backend whose `isAvailable` is false, but
 phase (b) must also only yield `changes` after a real remote read: rule 4 treats an empty snapshot as "everything withdrawn",
 so a backend that yields before its first sync would turn every shared Project
 local.

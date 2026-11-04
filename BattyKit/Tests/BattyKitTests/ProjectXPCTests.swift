@@ -146,6 +146,16 @@ struct ProjectXPCTests {
         #expect(try JSONDecoder().decode(ProjectListReply.self, from: try #require(response.payload)).projects.isEmpty)
     }
 
+    @Test func listReportsAnUnreadableFileRatherThanNoProjects() async throws {
+        let fixture = try Fixture()
+        try FileManager.default.createDirectory(at: fixture.projectsFile, withIntermediateDirectories: true)
+        let store = fixture.store()
+        let response = try await perform(AppXPCService(store: { store }, clock: TestClock()), verb: XPCVerb.projectList)
+        #expect(response.ok == false)
+        #expect(response.error?.contains(fixture.projectsFile.path) == true)
+        #expect(response.payload == nil)
+    }
+
     // MARK: - projectOpen
 
     @Test func openCreatesThenFocusesAndOpenNewCreatesAnother() async throws {

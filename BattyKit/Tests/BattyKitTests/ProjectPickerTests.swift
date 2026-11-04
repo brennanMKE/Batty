@@ -95,6 +95,22 @@ struct ProjectPickerModelTests {
         #expect(m.selectedID == b.id)
     }
 
+    @Test func emptyStateSaysTheFileCouldNotBeRead() {
+        let m = model([]).refreshed(projects: [], openProjectIDs: [], unreadableFilePath: "/x/projects.json")
+        #expect(m.emptyState == .unreadableFile(path: "/x/projects.json"))
+        #expect(!m.offersNewProject)
+        #expect(model([]).offersNewProject)
+    }
+
+    @Test func refreshedLeavesTheUnreadableStateWhenProjectsReturn() {
+        let unread = model([]).refreshed(projects: [], openProjectIDs: [], unreadableFilePath: "/x/projects.json")
+        let a = project("Alpha")
+        let healed = unread.refreshed(projects: [a], openProjectIDs: [])
+        #expect(healed.emptyState == nil)
+        #expect(healed.offersNewProject)
+        #expect(healed.selectedID == a.id)
+    }
+
     @Test func emptyStateDistinguishesNoProjectsFromNoMatches() {
         #expect(model([]).emptyState == .noProjects)
         #expect(model([]).selectedID == nil)
