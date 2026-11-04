@@ -6,11 +6,16 @@ public struct SessionSidebarView: View {
     @Bindable public var windowRuntime: WindowRuntime
     public let store: AppStateStore
     @Environment(\.themeChrome) private var themeChrome
+    @Environment(\.windowIsSeeThrough) private var windowIsSeeThrough
     @State private var renamingSessionID: UUID?
     @State private var renameDraft: String = ""
     @State private var themingSessionID: UUID?
     @State private var coloringSessionID: UUID?
     @State private var backgroundSettingsPaneID: UUID?
+
+    private var sidebarFill: Color? {
+        WindowSeeThrough.sidebarFill(isSeeThrough: windowIsSeeThrough, chromeBackground: themeChrome?.chromeBackground)
+    }
 
     public init(store: AppStateStore, windowID: WindowID) {
         self.store = store
@@ -89,7 +94,7 @@ public struct SessionSidebarView: View {
                         .selectionDisabled()
                         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
                         .modifier(SidebarRowBackground(
-                            sidebarBackground: themeChrome?.chromeBackground,
+                            sidebarBackground: sidebarFill,
                             selectionTint: nil,
                             isSelected: false
                         ))
@@ -133,8 +138,11 @@ public struct SessionSidebarView: View {
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(
-                    sidebarBackground: themeChrome?.chromeBackground,
-                    selectionTint: themeChrome?.sidebarSelectionTint,
+                    sidebarBackground: sidebarFill,
+                    selectionTint: WindowSeeThrough.sidebarSelectionTint(
+                        isSeeThrough: windowIsSeeThrough,
+                        themeTint: themeChrome?.sidebarSelectionTint
+                    ),
                     isSelected: session.id == windowRuntime.selectedSessionID
                 ))
             }
@@ -143,8 +151,8 @@ public struct SessionSidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .scrollContentBackground(themeChrome?.chromeBackground == nil ? .automatic : .hidden)
-        .background(themeChrome?.chromeBackground ?? Color.clear)
+        .scrollContentBackground(sidebarFill == nil ? .automatic : .hidden)
+        .background(sidebarFill ?? Color.clear)
         .accessibilityIdentifier("session-sidebar")
         .navigationTitle(Text(verbatim: "Batty"))
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -173,7 +181,7 @@ public struct SessionSidebarView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background {
-                if let bg = themeChrome?.chromeBackground {
+                if let bg = sidebarFill {
                     bg.overlay(themeChrome?.divider ?? Color.clear, alignment: .top)
                 } else {
                     Color.clear.background(.bar)

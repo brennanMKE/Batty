@@ -26,7 +26,7 @@ The canonical containment chain. Defined in `Concepts.md`; this is a
 recap with implementation pointers.
 
 ```
-Window                           (singleton NSWindow per #0063)
+Window                           (one WindowRuntime per NSWindow)
 └── Session                      (one sidebar entry)
     └── SplitTree                (recursive layout)
         ├── Split node           (direction + ratio; arranges children)
@@ -46,7 +46,7 @@ persistence lands again, but nothing serializes it today.
 
 Cardinality:
 
-- One `Window`. (Multi-window deferred per `#0063`.)
+- Many `Window`s, each a `WindowGroup` scene with its own `WindowRuntime`.
 - Many `Session`s per Window — ordered, persisted, one selected at a time.
 - One `SplitTree` per Session, with a `focusedPaneID`.
 - A `SplitTree` is a recursive `enum` of split nodes and pane leaves.
@@ -81,7 +81,7 @@ What SwiftUI actually renders, top down.
 
 ```
 BattyApp (Scene)
-└── Window (singular, NOT WindowGroup — see #0063)
+└── WindowGroup(for: WindowID.self)
     └── ContentView
         └── RootWindowView
             └── NavigationSplitView
@@ -134,6 +134,10 @@ Notes on the layout:
 - The active-tab toggle inside `PaneView` is the *only* selection
   signal SwiftUI emits; the host reads it indirectly via the
   `isVisible` flag in `TerminalPlaceholderView.body`.
+
+### See-through windows (#0539)
+
+A content window is non-opaque while `AppStateStore.isWindowSeeThrough` is true: the feature flag is on, the window isn't in native full screen, and some terminal Pane in any of its Sessions is below full terminal opacity. The value is computed, not stored, so it has no writer of its own. `RootWindowView.body` reads it once and hands it to `WindowChromeApplier` and to `\.windowIsSeeThrough`. `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`, and it runs in the applier's deferred hop, never inside the layout pass. The fills sit in `.background`s below or beside the surface, and the terminal host's position doesn't change.
 
 ---
 

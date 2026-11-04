@@ -91,6 +91,30 @@ public final class AppStateStore {
     /// The only route from the persisted background keys to a builder.
     @ObservationIgnored let backgroundGate: AppWideBackgroundGate
 
+    /// The observable copy of the stored app-wide terminal opacity, because the
+    /// gate isn't observable. Every `AppWideBackgroundEditor` path updates it
+    /// through `applyAppWideBackgroundToAllSurfaces`.
+    public private(set) var appWideTerminalOpacity: Double
+
+    func setAppWideTerminalOpacity(_ opacity: Double) {
+        guard appWideTerminalOpacity != opacity else { return }
+        appWideTerminalOpacity = opacity
+    }
+
+    /// Whether a window must let the desktop show through. Computed so Panes
+    /// closing, splits and overrides need no trigger of their own. Every Session
+    /// counts, because selecting only the current one would flip the window on
+    /// each Session switch. Native full screen stays opaque, as upstream Ghostty
+    /// does, because its background turns gray.
+    public func isWindowSeeThrough(_ window: WindowRuntime) -> Bool {
+        guard featureFlags.terminalBackgrounds, !window.isNativeFullScreen else { return false }
+        return window.sessions.contains { session in
+            session.tree.allPanes.contains {
+                $0.kind == .terminal && $0.effectiveTerminalOpacity(appWide: appWideTerminalOpacity) < 1
+            }
+        }
+    }
+
     /// Shared so one import's first-use cleanup runs once per launch. Building
     /// it touches no files.
     @ObservationIgnored let backgroundImageImporter = TerminalBackgroundImageImporter(
@@ -1177,6 +1201,7 @@ public final class AppStateStore {
     ) {
         self.featureFlags = featureFlags
         self.backgroundGate = backgroundGate
+        self.appWideTerminalOpacity = backgroundGate.storedSettings().terminalOpacity
         self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
         self.bellFeed = bellFeed
         self.nameCache = nameCache

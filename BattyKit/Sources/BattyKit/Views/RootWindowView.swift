@@ -13,6 +13,7 @@ extension Notification.Name {
 public struct RootWindowView: View {
     @State private var store: AppStateStore
     private let windowID: WindowID
+    private let windowRuntime: WindowRuntime
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     /// Per-window sidebar visibility. Window restoration is disabled
     /// (`.restorationBehavior(.disabled)` in `BattyApp`), so the value lives
@@ -32,10 +33,12 @@ public struct RootWindowView: View {
     /// instead of always touching the process-wide singleton.
     public init(windowID: WindowID, store: AppStateStore) {
         self.windowID = windowID
+        self.windowRuntime = store.windowRuntime(for: windowID)
         _store = State(initialValue: store)
     }
 
     public var body: some View {
+        let isSeeThrough = store.isWindowSeeThrough(windowRuntime)
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SessionSidebarView(store: store, windowID: windowID)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
@@ -45,7 +48,8 @@ public struct RootWindowView: View {
         }
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)
-        .background(WindowChromeApplier(palette: store.themeChrome.palette))
+        .environment(\.windowIsSeeThrough, isSeeThrough)
+        .background(WindowChromeApplier(palette: store.themeChrome.palette, isSeeThrough: isSeeThrough))
         .background(WindowIDRegistrar(windowID: windowID, store: store))
         .background(WindowLifecycleController(windowID: windowID, store: store))
         .task { setUpNotifier() }
@@ -268,6 +272,18 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
             forWindowID: windowID
         )
     }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        store.windows.first { $0.id == windowID }?.setNativeFullScreen(true)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        store.windows.first { $0.id == windowID }?.setNativeFullScreen(false)
+    }
+
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        store.windows.first { $0.id == windowID }?.setNativeFullScreen(false)
+    }
 }
 
 public enum SidebarPreference {
@@ -299,9 +315,11 @@ public enum SidebarPreference {
 /// Themes the host `NSWindow` to match the active palette: paints the
 /// window background and makes the title bar transparent so it adopts the
 /// themed color uniformly. Reverts to the system default chrome (vibrant
-/// title-bar material) when no theme is active.
+/// title-bar material) when no theme is active. The only writer of the
+/// window's `backgroundColor` and `isOpaque` (`WindowSeeThrough.apply`).
 private struct WindowChromeApplier: NSViewRepresentable {
     let palette: ChromePalette
+    let isSeeThrough: Bool
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -312,17 +330,7 @@ private struct WindowChromeApplier: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
             guard let window = nsView.window else { return }
-            apply(palette: palette, to: window)
-        }
-    }
-
-    private func apply(palette: ChromePalette, to window: NSWindow) {
-        if let bg = palette.windowBackground {
-            window.titlebarAppearsTransparent = true
-            window.backgroundColor = NSColor(bg)
-        } else {
-            window.titlebarAppearsTransparent = false
-            window.backgroundColor = nil
+            WindowSeeThrough.apply(palette: palette, isSeeThrough: isSeeThrough, to: window)
         }
     }
 }

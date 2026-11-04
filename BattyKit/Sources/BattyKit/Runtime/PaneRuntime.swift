@@ -163,6 +163,11 @@ public final class PaneRuntime: Identifiable {
         tabs.first { $0.id == activeTabID } ?? tabs.first
     }
 
+    /// The terminal opacity this Pane renders at, given the app-wide default.
+    func effectiveTerminalOpacity(appWide: Double) -> Double {
+        backgroundOverride?.terminalOpacity ?? appWide
+    }
+
     /// Applies to every Tab here now, and `addTab` carries it to later ones.
     /// A non-terminal Pane's one Tab is never rendered, so it has no background
     /// to set. Idempotent because every observed write notifies, equal values

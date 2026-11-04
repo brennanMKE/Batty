@@ -10,6 +10,7 @@ public struct SessionDetailView: View {
     public let store: AppStateStore
     public let windowRuntime: WindowRuntime
     @Environment(\.themeChrome) private var themeChrome
+    @Environment(\.windowIsSeeThrough) private var windowIsSeeThrough
     @State private var bellFeedShown: Bool = false
     @State private var commandPaletteShown: Bool = false
     @State private var openQuicklyShown: Bool = false
@@ -303,9 +304,29 @@ public struct SessionDetailView: View {
         // Themed window background fills behind the terminal host and into
         // the transparent title bar (`WindowChromeApplier`).
         .background(
-            themeChrome?.windowBackground ?? Color.clear,
+            WindowSeeThrough.backdropFill(
+                isSeeThrough: windowIsSeeThrough,
+                hasSelectedSession: windowRuntime.selectedSession != nil,
+                windowBackground: themeChrome?.windowBackground
+            ),
             ignoresSafeAreaEdges: .all
         )
+        // A see-through backdrop is clear, so the themed title bar needs its
+        // own fill. Zero height so it never covers the terminal rectangle.
+        .background(alignment: .top) {
+            if windowIsSeeThrough {
+                Color.clear
+                    .frame(height: 0)
+                    .background(
+                        WindowSeeThrough.titlebarFill(
+                            isSeeThrough: windowIsSeeThrough,
+                            windowBackground: themeChrome?.windowBackground
+                        ),
+                        ignoresSafeAreaEdges: .top
+                    )
+                    .allowsHitTesting(false)
+            }
+        }
         .coordinateSpace(name: TerminalHostInstaller.coordinateSpaceName)
         .environment(\.windowID, windowRuntime.id)
         .frame(minWidth: 600, minHeight: 400)

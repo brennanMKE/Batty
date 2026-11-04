@@ -303,6 +303,7 @@ extension AppStateStore {
     /// so per-Tab lines survive (#0538).
     func applyAppWideBackgroundToAllSurfaces() {
         let appWide = backgroundGate.settings()
+        setAppWideTerminalOpacity(appWide.terminalOpacity)
         for session in windows.flatMap({ $0.sessions }) {
             for pane in session.tree.allPanes {
                 pane.refreshAppWideBackground(appWide)
