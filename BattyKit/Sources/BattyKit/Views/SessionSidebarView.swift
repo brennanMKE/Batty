@@ -23,12 +23,19 @@ public struct SessionSidebarView: View {
         self.windowRuntime = windowRuntime
     }
 
+    static let rowBackgroundProblemMessage = String(localized: "This Project's background image couldn't be used. Edit the Project to choose it again.")
+
+    /// The Session's title, then the background image warning while the row shows it.
+    static func rowAccessibilityLabel(for session: SessionRuntime) -> String {
+        guard session.projectBackgroundImageProblem != nil else { return session.title }
+        return "\(session.title), \(rowBackgroundProblemMessage)"
+    }
+
     /// "selected" / "unselected", then ", N unseen" while the Session has
     /// unseen bell events, then ", Project, <symbol name> symbol" when the Session is
     /// backed by a Project, and ", background image problem" when its Project's
-    /// image was left out. The row's icon and numeric badge are folded into
-    /// its single accessibility element, so this value is the only place
-    /// either is readable.
+    /// image was left out. The row hides its children from accessibility, so
+    /// this value is the only place its icon and numeric badge are readable.
     static func rowAccessibilityValue(
         for session: SessionRuntime,
         isSelected: Bool,
@@ -112,13 +119,12 @@ public struct SessionSidebarView: View {
                         .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
                     }
                 } label: {
-                    // SessionRow's icon identifiers and label are folded into
-                    // this row's single element, and no child is a control
-                    // that needs its own identifier, so `.contain` isn't
-                    // used. The icon's state is exposed through
-                    // `rowAccessibilityValue` instead. Applied on the label content, not on the whole
-                    // DisclosureGroup, purely so it doesn't also describe the
-                    // disclosed pane rows below it.
+                    // Without an element of its own, the row's accessible
+                    // leaves each inherit the identifier, and folding them
+                    // joins the copies with "-". So the row hides its
+                    // children and states its own label and value. Applied on
+                    // the label content, not on the whole DisclosureGroup, so
+                    // it doesn't also describe the disclosed pane rows below.
                     SessionRow(
                         session: session,
                         store: store,
@@ -138,6 +144,9 @@ public struct SessionSidebarView: View {
                             backgroundSettingsSessionID = session.id
                         }
                     )
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Self.rowAccessibilityLabel(for: session))
+                    .accessibilityAddTraits(.isStaticText)
                     .accessibilityIdentifier("session-row.\(session.title)")
                     .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session), projectSymbolName: session.projectSymbolName))
                 }
@@ -397,15 +406,11 @@ private struct SessionRowIconView: View {
             Image(systemName: name)
                 .foregroundStyle(color.color)
                 .frame(width: Self.width)
-                .accessibilityIdentifier("session-row.project-glyph")
-                .accessibilityLabel("Project")
         } else {
             Image(systemName: name)
                 .imageScale(.small)
                 .foregroundStyle(color.color)
                 .frame(width: Self.width)
-                .accessibilityIdentifier("session-row.icon")
-                .accessibilityLabel(color.displayName)
         }
     }
 }
@@ -445,11 +450,10 @@ private struct SessionRow: View {
             if session.projectBackgroundImageProblem != nil {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                    .help("This Project's background image couldn't be used. Edit the Project to choose it again.")
-                    .accessibilityLabel("This Project's background image couldn't be used. Edit the Project to choose it again.")
-                    .accessibilityIdentifier("session-row.background-problem")
+                    .help(SessionSidebarView.rowBackgroundProblemMessage)
             }
         }
+        .contentShape(Rectangle())
         .contextMenu {
             Button("Rename") { onRename() }
             Button("Reset Name") {

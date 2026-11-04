@@ -33,11 +33,7 @@ nonisolated final class CLIBackgroundSessionTests: XCTestCase {
 
     @MainActor
     private func rowValue(_ name: String, in app: XCUIApplication) -> String? {
-        // With an unseen badge the row's identifier is doubled
-        // ("session-row.X-session-row.X"), so match it by prefix.
-        let row = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-row.\(name)"))
-            .firstMatch
+        let row = BattyUITestHarness.sessionRow(named: name, in: app)
         guard row.exists else { return nil }
         return (try? row.snapshot())?.value as? String
     }
@@ -160,8 +156,8 @@ nonisolated final class CLIBackgroundSessionTests: XCTestCase {
         XCTAssertTrue(BattyScreen.bellEntryIDs(in: app).isEmpty)
 
         // The Sidebar row's accessibility value carries "N unseen" while the
-        // Session has unseen bell events (the row folds its children, so the
-        // exact surrounding text varies).
+        // Session has unseen bell events, among the row's other states, so the
+        // exact surrounding text varies.
         func badgeCount(_ session: CLITopology.Session) -> String? {
             guard let value = rowValue(session.name, in: app),
                   let range = value.range(of: #"\d+(?= unseen)"#, options: .regularExpression)
@@ -175,6 +171,7 @@ nonisolated final class CLIBackgroundSessionTests: XCTestCase {
         if !badgeShown { attachTree("tree without unseen badge", app) }
         XCTAssertTrue(badgeShown, "the background Session's Sidebar row shows no unseen badge: \(String(describing: badgeCount(second)))")
         XCTAssertNil(badgeCount(first), "the selected Session must not be marked unseen")
+        BattyScreen.expectMatches(try XCTUnwrap(BattyCLI.topology()), in: app)
 
         // The entry carries the notification's text and is attributed to the
         // targeted Session and Pane, not the selected one.

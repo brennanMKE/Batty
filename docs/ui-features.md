@@ -231,7 +231,7 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `pane-background-sheet.*`, `session-background-sheet.*`, `project-background-sheet.*`: the override sheets.
 - `appearance-background.*`: the Settings section.
 - `project-editor.background.*`: the Project Editor's Background row.
-- `session-row.background-problem`: the warning on a Session whose Project image can't be used.
+- `session-row.<title>`: its label and value carry the warning on a Session whose Project image can't be used. The warning has no identifier of its own.
 
 **Tests:**
 
@@ -596,7 +596,7 @@ Quickly was caught as `[0150]`.
   does not replace the rows' (#0484's caveat); tests still type into the focused field rather than
   query it.
 - `menu.file.open-quickly` — the File menu item for Open Quickly.
-- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`, then `, N unseen` while bells are unseen, then `, Project, <symbol name> symbol` (for example `selected, Project, Terminal symbol`) for a Project-backed Session (#0484). With `BATTY_UI_TEST_SIDEBAR_ICONS=1` the value also ends with `, icon <SF Symbol name>` (#0482), for example `selected, icon circle.fill`; it is how UI tests read which SF Symbol a row draws.
+- `accessibilityValue("selected" / "unselected")` on `session-row.<title>`, then `, N unseen` while bells are unseen, then `, Project, <symbol name> symbol` (for example `selected, Project, Terminal symbol`) for a Project-backed Session (#0484). With `BATTY_UI_TEST_SIDEBAR_ICONS=1` the value also ends with `, icon <SF Symbol name>` (#0482), for example `selected, icon circle.fill`; it is how UI tests read which SF Symbol a row draws. `, background image problem` comes last, while the Session's Project image can't be used.
 - `accessibilityValue("active" / "inactive")` on `tab-chip.<title>`.
 
 ---
