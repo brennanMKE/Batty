@@ -89,4 +89,7 @@ Before marking a pane-area feature complete, manually verify:
 - [ ] Dropping text onto the terminal pastes it.
 - [ ] The keyboard types characters into the focused terminal.
 - [ ] IME input (e.g. Japanese kana) composes correctly.
+- [ ] **The window's chrome still works below Terminal Opacity 100, at 80 and at 0, with and without a Theme, with the Sidebar shown and collapsed.** Dragging the title bar over the terminal and over the Sidebar moves the window; double-clicking it zooms; the traffic lights, toolbar buttons, tab chips, split dividers and window edges behave as they do at 100. A drag inside the terminal still selects text and doesn't move the window.
 - [ ] The new feature's own behavior (highlight, gesture, etc.) still works.
+
+**Regression:** #0548 passed the old list because the list stopped at the terminal's edge. Test the drag across the title bar's whole height on a real display: only a band of it failed, and the VM didn't reproduce it.
