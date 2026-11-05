@@ -57,7 +57,7 @@ final class AppWideBackgroundGateTests {
 
     private func store(path: String) {
         defaults.set(path, forKey: SettingsPreference.backgroundImagePathKey)
-        defaults.set("cover", forKey: SettingsPreference.backgroundImageFitKey)
+        defaults.set("contain", forKey: SettingsPreference.backgroundImageFitKey)
         defaults.set("top-left", forKey: SettingsPreference.backgroundImagePositionKey)
         defaults.set(0.35, forKey: SettingsPreference.backgroundImageOpacityKey)
         defaults.set(0.5, forKey: SettingsPreference.backgroundOpacityKey)
@@ -92,7 +92,7 @@ final class AppWideBackgroundGateTests {
         let tab = TabRuntime(backgroundGate: realGate())
         #expect(backgroundLines(tab) == [
             "background-image = \"\(path)\"",
-            "background-image-fit = cover",
+            "background-image-fit = contain",
             "background-image-position = top-left",
             "background-image-opacity = 0.35",
             "background-opacity = 0.5",

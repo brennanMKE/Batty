@@ -7,6 +7,17 @@ public enum BackgroundImageFit: String, CaseIterable, Sendable {
     case cover
     case stretch
     case none
+
+    /// The raw values are Ghostty's and are what gets stored and synced, so
+    /// only this name may change.
+    public var displayName: String {
+        switch self {
+        case .contain: String(localized: "Fit", comment: "Background image size that shows the whole image")
+        case .cover: String(localized: "Fill", comment: "Background image size that covers the Pane and crops the overflow")
+        case .stretch: String(localized: "Stretch", comment: "Background image size that distorts the image to the Pane's shape")
+        case .none: String(localized: "Actual Size", comment: "Background image size that draws the image unscaled")
+        }
+    }
 }
 
 public enum BackgroundImagePosition: String, CaseIterable, Sendable {
@@ -40,7 +51,7 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
 
     public init(
         imagePath: String?,
-        fit: BackgroundImageFit = .contain,
+        fit: BackgroundImageFit = .cover,
         position: BackgroundImagePosition = .center,
         imageOpacity: Double = 1,
         terminalOpacity: Double = 1,
@@ -122,7 +133,7 @@ extension TerminalBackgroundSettings: Hashable, Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             imagePath: (try? c.decodeIfPresent(String.self, forKey: .imagePath)) ?? nil,
-            fit: ((try? c.decodeIfPresent(String.self, forKey: .fit)) ?? nil).flatMap(BackgroundImageFit.init(rawValue:)) ?? .contain,
+            fit: ((try? c.decodeIfPresent(String.self, forKey: .fit)) ?? nil).flatMap(BackgroundImageFit.init(rawValue:)) ?? .cover,
             position: ((try? c.decodeIfPresent(String.self, forKey: .position)) ?? nil).flatMap(BackgroundImagePosition.init(rawValue:)) ?? .center,
             imageOpacity: ((try? c.decodeIfPresent(Double.self, forKey: .imageOpacity)) ?? nil) ?? 1,
             terminalOpacity: ((try? c.decodeIfPresent(Double.self, forKey: .terminalOpacity)) ?? nil) ?? 1,

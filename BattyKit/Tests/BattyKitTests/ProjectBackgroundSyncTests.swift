@@ -42,10 +42,10 @@ struct ProjectBackgroundSyncTests {
 
     @Test func recordWithAStrayImagePathDropsIt() throws {
         var object = try encodedObject(shared(background: nil).syncRecord(home: home))
-        object["background"] = ["imagePath": path, "fit": "cover"]
+        object["background"] = ["imagePath": path, "fit": "stretch"]
         let decoded = try ProjectsFile.decoder.decode(ProjectSyncRecord.self, from: JSONSerialization.data(withJSONObject: object))
         #expect(decoded.background?.settings.imagePath == nil)
-        #expect(decoded.background?.settings.fit == .cover)
+        #expect(decoded.background?.settings.fit == .stretch)
     }
 
     @Test func recordWithoutABackgroundKeyDecodes() throws {

@@ -72,12 +72,12 @@ struct TerminalBackgroundControls: View {
 
     private var imageOptions: some View {
         Group {
-            Picker("Fit", selection: Binding(
+            Picker("Image Size", selection: Binding(
                 get: { current.fit },
                 set: { value in update { $0.withFit(value) } }
             )) {
                 ForEach(BackgroundImageFit.allCases, id: \.self) { fit in
-                    Text(verbatim: fit.rawValue.capitalized).tag(fit)
+                    Text(fit.displayName).tag(fit)
                 }
             }
             Picker("Position", selection: Binding(

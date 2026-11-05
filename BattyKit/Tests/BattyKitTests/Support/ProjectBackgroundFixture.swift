@@ -122,7 +122,7 @@ final class ProjectBackgroundFixture {
 
 /// Non-default in every field, and different from the app-wide and second values.
 func projectBackgroundValue(path: String?) -> TerminalBackgroundSettings {
-    TerminalBackgroundSettings(imagePath: path, fit: .cover, position: .topRight, imageOpacity: 0.35, terminalOpacity: 0.6, opacityAffectsCells: true)
+    TerminalBackgroundSettings(imagePath: path, fit: .contain, position: .topRight, imageOpacity: 0.35, terminalOpacity: 0.6, opacityAffectsCells: true)
 }
 
 func secondBackgroundValue(path: String?) -> TerminalBackgroundSettings {
@@ -136,7 +136,7 @@ func appWideBackgroundValue(path: String?) -> TerminalBackgroundSettings {
 /// With no image, the builder writes only the terminal opacity lines.
 func projectBackgroundLines(path: String?) -> [String] {
     let image = path.map {
-        ["background-image = \"\($0)\"", "background-image-fit = cover", "background-image-position = top-right", "background-image-opacity = 0.35"]
+        ["background-image = \"\($0)\"", "background-image-fit = contain", "background-image-position = top-right", "background-image-opacity = 0.35"]
     }
     return (image ?? []) + ["background-opacity = 0.6", "background-opacity-cells = true"]
 }

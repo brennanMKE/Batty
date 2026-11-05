@@ -102,12 +102,16 @@ struct ProjectBackgroundModelTests {
 
     @Test func unknownFitAndPositionFallBackAndKeepTheRest() throws {
         let value = try settings(["fit": "future", "position": 7, "imageOpacity": 0.35, "terminalOpacity": 0.6, "opacityAffectsCells": true])
-        #expect(value == TerminalBackgroundSettings(imagePath: nil, fit: .contain, position: .center, imageOpacity: 0.35, terminalOpacity: 0.6, opacityAffectsCells: true))
+        #expect(value == TerminalBackgroundSettings(imagePath: nil, fit: .cover, position: .center, imageOpacity: 0.35, terminalOpacity: 0.6, opacityAffectsCells: true))
+    }
+
+    @Test func missingFitDecodesToFill() throws {
+        #expect(try settings(["position": "top-right"]).fit == .cover)
     }
 
     @Test func nonNumericOpacityFallsBackAndKeepsTheRest() throws {
-        let value = try settings(["fit": "cover", "position": "top-right", "imageOpacity": "half", "terminalOpacity": [], "opacityAffectsCells": "yes"])
-        #expect(value == TerminalBackgroundSettings(imagePath: nil, fit: .cover, position: .topRight))
+        let value = try settings(["fit": "stretch", "position": "top-right", "imageOpacity": "half", "terminalOpacity": [], "opacityAffectsCells": "yes"])
+        #expect(value == TerminalBackgroundSettings(imagePath: nil, fit: .stretch, position: .topRight))
     }
 
     @Test func outOfRangeOpacityIsClamped() throws {

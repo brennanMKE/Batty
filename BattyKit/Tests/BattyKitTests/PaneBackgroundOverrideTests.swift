@@ -14,11 +14,11 @@ final class PaneBackgroundOverrideTests {
     private static let customPath = "/tmp/batty-pane-background-tests/custom.png"
     private static let appWidePath = "/tmp/batty-pane-background-tests/app-wide.png"
     private static let custom = TerminalBackgroundSettings(
-        imagePath: customPath, fit: .cover, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
+        imagePath: customPath, fit: .contain, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
     )
     private static let customLines = [
         "background-image = \"\(customPath)\"",
-        "background-image-fit = cover",
+        "background-image-fit = contain",
         "background-image-position = top-left",
         "background-image-opacity = 0.35",
         "background-opacity = 0.5",

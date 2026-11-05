@@ -37,7 +37,7 @@ public enum SettingsPreference {
     public static let defaultAutoNameWithAI: Bool = true
     public static let defaultSummarizeNotificationsWithAI: Bool = true
     public static let defaultCaptureBellFeedData: Bool = false
-    public static let defaultBackgroundImageFit: String = BackgroundImageFit.contain.rawValue
+    public static let defaultBackgroundImageFit: String = BackgroundImageFit.cover.rawValue
     public static let defaultBackgroundImagePosition: String = BackgroundImagePosition.center.rawValue
     public static let defaultBackgroundImageOpacity: Double = 1
     public static let defaultBackgroundOpacity: Double = 1
@@ -186,7 +186,7 @@ public enum SettingsPreference {
         return TerminalBackgroundSettings(
             imagePath: defaults.string(forKey: backgroundImagePathKey),
             fit: defaults.string(forKey: backgroundImageFitKey).flatMap(BackgroundImageFit.init(rawValue:))
-                ?? BackgroundImageFit(rawValue: defaultBackgroundImageFit) ?? .contain,
+                ?? BackgroundImageFit(rawValue: defaultBackgroundImageFit) ?? .cover,
             position: defaults.string(forKey: backgroundImagePositionKey).flatMap(BackgroundImagePosition.init(rawValue:))
                 ?? BackgroundImagePosition(rawValue: defaultBackgroundImagePosition) ?? .center,
             imageOpacity: opacity(backgroundImageOpacityKey, default: defaultBackgroundImageOpacity),
