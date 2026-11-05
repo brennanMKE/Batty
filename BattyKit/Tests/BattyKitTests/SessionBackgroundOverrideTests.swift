@@ -16,14 +16,14 @@ final class SessionBackgroundOverrideTests {
     private static let appWidePath = "/tmp/batty-session-background-tests/app-wide.png"
 
     private static let paneValue = TerminalBackgroundSettings(
-        imagePath: panePath, fit: .cover, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
+        imagePath: panePath, fit: .none, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
     )
     private static let sessionValue = TerminalBackgroundSettings(
         imagePath: sessionPath, fit: .contain, position: .bottomCenter, imageOpacity: 0.55, terminalOpacity: 0.7, opacityAffectsCells: true
     )
     private static let paneLines = [
         "background-image = \"\(panePath)\"",
-        "background-image-fit = cover",
+        "background-image-fit = none",
         "background-image-position = top-left",
         "background-image-opacity = 0.35",
         "background-opacity = 0.5",

@@ -19,7 +19,8 @@ Pane and Session backgrounds aren't saved. They end when you quit Batty, and **D
 ## The controls
 
 - **Image:** **Choose…** picks a PNG or JPEG, and **None** removes it. Animation isn't supported. Batty keeps its own copy, scaled down if its longest side is over 4096 pixels, so moving your file changes nothing. The first image you choose starts at 15% **Image Opacity**, as a tint.
-- **Fit** and **Position:** how the image is sized and where it sits.
+- **Image Size:** **Fit** shows the whole image and can leave empty space. **Fill**, the default, covers the Pane, keeps the image's proportions and crops what overflows. **Stretch** covers the Pane and distorts the image to its shape. **Actual Size** draws the image unscaled.
+- **Position:** where the image sits.
 - **Image Opacity:** relative to **Terminal Opacity**.
 - **Terminal Opacity:** below 100%, the desktop and other windows show through.
 - **Include programs that paint their own background:** programs such as vim or htop that paint their own colors stay opaque unless you turn this on. It is available below 100%.

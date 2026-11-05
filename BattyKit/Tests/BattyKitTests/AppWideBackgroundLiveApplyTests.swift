@@ -10,11 +10,11 @@ final class AppWideBackgroundLiveApplyTests {
     private static let path = "/tmp/batty-live-apply-tests/photo.png"
     private static let otherPath = "/tmp/batty-live-apply-tests/other.png"
     private static let settings = TerminalBackgroundSettings(
-        imagePath: path, fit: .cover, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
+        imagePath: path, fit: .contain, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
     )
     private static let settingsLines = [
         "background-image = \"\(path)\"",
-        "background-image-fit = cover",
+        "background-image-fit = contain",
         "background-image-position = top-left",
         "background-image-opacity = 0.35",
         "background-opacity = 0.5",

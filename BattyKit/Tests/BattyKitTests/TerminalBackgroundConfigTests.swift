@@ -18,7 +18,7 @@ final class TerminalBackgroundConfigTests {
     private static let imagePath = "/tmp/batty-background-tests/photo.png"
     private static let configuredLines = [
         "background-image = \"\(imagePath)\"",
-        "background-image-fit = cover",
+        "background-image-fit = contain",
         "background-image-position = top-left",
         "background-image-opacity = 0.35",
         "background-opacity = 0.5",
@@ -31,7 +31,7 @@ final class TerminalBackgroundConfigTests {
 
     private func configureEverything() {
         defaults.set(Self.imagePath, forKey: SettingsPreference.backgroundImagePathKey)
-        defaults.set("cover", forKey: SettingsPreference.backgroundImageFitKey)
+        defaults.set("contain", forKey: SettingsPreference.backgroundImageFitKey)
         defaults.set("top-left", forKey: SettingsPreference.backgroundImagePositionKey)
         defaults.set(0.35, forKey: SettingsPreference.backgroundImageOpacityKey)
         defaults.set(0.5, forKey: SettingsPreference.backgroundOpacityKey)
@@ -128,7 +128,7 @@ final class TerminalBackgroundConfigTests {
     }
 
     @Test func fitAndPositionWithoutAnImageEmitNothing() {
-        defaults.set("cover", forKey: SettingsPreference.backgroundImageFitKey)
+        defaults.set("contain", forKey: SettingsPreference.backgroundImageFitKey)
         defaults.set("top-left", forKey: SettingsPreference.backgroundImagePositionKey)
         defaults.set(0.35, forKey: SettingsPreference.backgroundImageOpacityKey)
         #expect(backgroundLines(tab()).isEmpty)
@@ -245,6 +245,25 @@ final class TerminalBackgroundConfigTests {
         }
     }
 
+    @Test func fitNamesAndStoredValues() {
+        let table = BackgroundImageFit.allCases.map { [$0.rawValue, $0.displayName] }
+        #expect(table == [
+            ["contain", "Fit"],
+            ["cover", "Fill"],
+            ["stretch", "Stretch"],
+            ["none", "Actual Size"],
+        ])
+    }
+
+    @Test func imageWithNoStoredFitFills() {
+        defaults.set(Self.imagePath, forKey: SettingsPreference.backgroundImagePathKey)
+        #expect(lines(tab()).contains("background-image-fit = cover"))
+    }
+
+    @Test func settingsWithNoFitFill() {
+        #expect(TerminalBackgroundSettings.off.fit == .cover)
+    }
+
     @Test func unknownStoredFitAndPositionFallBackAndKeepOtherOverrides() {
         defaults.set(Self.imagePath, forKey: SettingsPreference.backgroundImagePathKey)
         defaults.set("bogus", forKey: SettingsPreference.backgroundImageFitKey)
@@ -252,7 +271,7 @@ final class TerminalBackgroundConfigTests {
         let tab = tab()
         let lines = lines(tab)
         #expect(tab.terminal.controller.lastConfigurationIssue == nil)
-        #expect(lines.contains("background-image-fit = contain"))
+        #expect(lines.contains("background-image-fit = cover"))
         #expect(lines.contains("background-image-position = center"))
         #expect(lines.contains { $0.hasPrefix("font-size = ") })
     }

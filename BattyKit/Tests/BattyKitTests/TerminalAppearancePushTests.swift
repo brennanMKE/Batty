@@ -27,7 +27,7 @@ final class TerminalAppearancePushTests {
         "keybind = alt+backspace=text:\\x1b\\x7f",
     ]
     private static let paneOverride = TerminalBackgroundSettings(
-        imagePath: "/tmp/batty-appearance-push-tests/pane.png", fit: .cover, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
+        imagePath: "/tmp/batty-appearance-push-tests/pane.png", fit: .stretch, position: .topLeft, imageOpacity: 0.35, terminalOpacity: 0.5
     )
     private static let sessionOverride = TerminalBackgroundSettings(
         imagePath: "/tmp/batty-appearance-push-tests/session.png", fit: .contain, position: .bottomCenter, imageOpacity: 0.55, terminalOpacity: 0.7
@@ -163,7 +163,7 @@ final class TerminalAppearancePushTests {
         let backgroundBefore = [paneWithOverride, sessionWithOverride].map { pane in
             lines(pane.tabs[0]).filter { $0.hasPrefix("background-") }
         }
-        #expect(backgroundBefore[0].contains("background-image-fit = cover"))
+        #expect(backgroundBefore[0].contains("background-image-fit = stretch"))
         #expect(backgroundBefore[1].contains("background-image-fit = contain"))
 
         store.applyAppearanceToAllSurfaces()
