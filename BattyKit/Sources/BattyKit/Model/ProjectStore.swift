@@ -189,6 +189,22 @@ public final class ProjectStore {
         return Set(file.projects.compactMap { $0.background?.imagePath })
     }
 
+    /// `imagePathsInFile()` can't tell an absent file from an unreadable one.
+    var fileIsAbsent: Bool {
+        guard let fileURL else { return true }
+        return !fileManager.fileExists(atPath: fileURL.path)
+    }
+
+    /// Whether `projects.json` names this image for a Project whose entry in
+    /// this list doesn't: another running copy saved it since this list was read.
+    func fileNamesImageTheListDoesNot(digest: String) -> Bool {
+        guard let fileURL, let data = try? readFile(fileURL), let file = try? Self.decodeFile(data) else { return false }
+        func names(_ project: Project?) -> Bool {
+            project?.background?.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
+        }
+        return file.projects.contains { names($0) && !names(project(id: $0.id)) }
+    }
+
     public func project(id: UUID) -> Project? {
         projects.first { $0.id == id }
     }
@@ -339,6 +355,29 @@ public final class ProjectStore {
         if unreadableOriginal != nil {
             projects = updated
             logger.notice("recordApproval: projects file not fully loaded; keeping the approval in memory only")
+            return
+        }
+        try commit(updated)
+    }
+
+    /// Clears the path of every Project naming this image and keeps its fit,
+    /// position and opacities. Device state, like `recordApproval`: the path
+    /// never syncs, so this does not stamp `modifiedAt` or reach the backend.
+    func clearBackgroundImage(digest: String) throws {
+        try requireReadableFile()
+        var updated = projects
+        var changed = false
+        for index in updated.indices {
+            guard let background = updated[index].background,
+                  background.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
+            else { continue }
+            updated[index].background = background.withImagePath(nil)
+            changed = true
+        }
+        guard changed else { return }
+        if unreadableOriginal != nil {
+            projects = updated
+            logger.notice("clearBackgroundImage: projects file not fully loaded; keeping the change in memory only")
             return
         }
         try commit(updated)

@@ -86,6 +86,38 @@ struct ProjectBackgroundEditorTests {
         #expect(!model.isDirty)
     }
 
+    @Test func removedImageClearsDraftAndBaselineWithoutDirtying() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        let projectStore = try store(fixture, fixture.project(background: projectBackgroundValue(path: path)))
+        let model = model(fixture, projectStore)
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+
+        try projectStore.clearBackgroundImage(digest: digest)
+        model.backgroundImageWasRemoved(digest: digest)
+
+        #expect(model.draft?.background == projectBackgroundValue(path: nil))
+        #expect(model.backgroundImageState == .none)
+        #expect(!model.isDirty)
+        #expect(model.draft?.captureNotes[.background] == nil)
+        withExtendedLifetime(fixture) {}
+    }
+
+    @Test func removedImageOnlyInTheDraftLeavesANote() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let wide = try await fixture.copy(in: fixture.appWideFolder)
+        let model = model(fixture, try store(fixture, fixture.project(background: nil)))
+        editor(model, appWide: appWideBackgroundValue(path: wide)).selectCustom()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: wide))
+
+        model.backgroundImageWasRemoved(digest: digest)
+
+        #expect(model.draft?.background?.imagePath == nil)
+        #expect(model.draft?.background?.terminalOpacity == appWideBackgroundValue(path: nil).terminalOpacity)
+        #expect(model.draft?.captureNotes[.background] != nil)
+        withExtendedLifetime(fixture) {}
+    }
+
     @Test func cancelOverAStoredBadPathLeavesTheDraftClean() throws {
         let fixture = try ProjectBackgroundFixture()
         let bad = projectBackgroundValue(path: "/tmp/nope.png")
@@ -96,6 +128,21 @@ struct ProjectBackgroundEditorTests {
         #expect(model.draft?.background == bad)
         #expect(!model.isDirty)
         #expect(model.backgroundImageState == .rejected)
+    }
+
+    @Test func cancelKeepsASavedCopyWhoseFileIsGone() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        try fixture.removeFolder(of: path)
+        #expect(TerminalBackgroundImageImporter.digest(ofPath: path) != nil)
+        let saved = projectBackgroundValue(path: path)
+        let model = model(fixture, try store(fixture, fixture.project(background: saved)))
+        let editor = editor(model)
+        editor.selectFollow()
+        #expect(model.isDirty)
+        editor.cancel()
+        #expect(model.draft?.background == saved)
+        #expect(!model.isDirty)
     }
 
     @Test func missingImageWarnsAndDoesNotBlockSave() async throws {

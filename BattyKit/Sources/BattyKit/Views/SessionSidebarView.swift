@@ -234,7 +234,8 @@ public struct SessionSidebarView: View {
                 target: pane,
                 scope: .pane(pane),
                 appWide: store.backgroundGate.settings(),
-                importer: store.backgroundImageImporter
+                importer: store.backgroundImageImporter,
+                images: store.backgroundImages
             )
         }
         .sheet(item: sessionBackgroundBinding) { session in
@@ -243,7 +244,8 @@ public struct SessionSidebarView: View {
                 target: session,
                 scope: .session,
                 appWide: store.backgroundGate.settings(),
-                importer: store.backgroundImageImporter
+                importer: store.backgroundImageImporter,
+                images: store.backgroundImages
             )
         }
     }

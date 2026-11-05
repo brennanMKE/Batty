@@ -56,6 +56,8 @@ struct CommandPaletteView: View {
     /// Test seam for the Save Session as Project entries; nil opens the
     /// Project Editor on a captured draft.
     var saveSession: (@MainActor (SessionRuntime?, SaveSessionAsProject.Destination) -> Void)?
+    /// Test seam for the Background Images entry; nil opens the window.
+    var openBackgroundImages: (@MainActor () -> Void)?
 
     @State private var query = ""
     @State private var selectedIndex = 0
@@ -113,6 +115,21 @@ struct CommandPaletteView: View {
             title: String(localized: "About Batty"),
             keyHint: nil,
             action: { AboutPanel.show() }
+        ))
+
+        cmds.append(PaletteCommand(
+            id: "extra:backgroundImages",
+            title: String(localized: "Background Images\u{2026}"),
+            keyHint: nil,
+            action: {
+                runAfterDismiss {
+                    if let openBackgroundImages {
+                        openBackgroundImages()
+                    } else {
+                        BackgroundImagesWindowController.shared.show(store: store)
+                    }
+                }
+            }
         ))
 
         let projectStore = store.projectStore

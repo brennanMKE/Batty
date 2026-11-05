@@ -255,6 +255,40 @@ final class PaneBackgroundOverrideTests {
         #expect(backgroundLines(pane.tabs[0]) == Self.appWideLines)
     }
 
+    private func copyShapedPath(exists: Bool) throws -> String {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-pane-cancel-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(String(repeating: "a", count: 64), isDirectory: true)
+        let path = folder.appendingPathComponent("photo.png").path
+        if exists {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data().write(to: URL(fileURLWithPath: path))
+        }
+        return path
+    }
+
+    @Test func cancelDropsAnImageThatWasRemoved() throws {
+        let path = try copyShapedPath(exists: false)
+        let pane = pane()
+        pane.setBackgroundOverride(Self.custom.withImagePath(path))
+        let editor = editor(for: pane)
+        pane.setBackgroundOverride(Self.custom.withImagePath(nil))
+        editor.update { $0.withTerminalOpacity(0.25) }
+        editor.cancel()
+        #expect(pane.backgroundOverride == Self.custom.withImagePath(nil))
+    }
+
+    @Test func cancelKeepsAnImageStillOnDisk() throws {
+        let path = try copyShapedPath(exists: true)
+        defer { try? FileManager.default.removeItem(atPath: ((path as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent) }
+        let pane = pane()
+        pane.setBackgroundOverride(Self.custom.withImagePath(path))
+        let editor = editor(for: pane)
+        editor.update { $0.withImagePath(nil) }
+        editor.cancel()
+        #expect(pane.backgroundOverride == Self.custom.withImagePath(path))
+    }
+
     @Test func editorCancelRestoresTheOriginalOverride() {
         let followingPane = pane()
         let followingEditor = editor(for: followingPane)

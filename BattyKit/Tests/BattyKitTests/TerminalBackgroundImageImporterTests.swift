@@ -363,4 +363,69 @@ final class TerminalBackgroundImageImporterTests {
         _ = try await TerminalBackgroundImageImporter(directory: wide, cleanup: .allButRetained).importImage(from: source(encoded(width: 32)))
         #expect(FileManager.default.fileExists(atPath: projectCopy))
     }
+
+    // MARK: - The image library's routes
+
+    /// A file in `folder`, in a folder named for its own digest, as a copy would be.
+    private func digestCopy(in folder: URL, _ data: Data, named name: String = "photo.png") throws -> String {
+        let digestFolder = folder.appendingPathComponent(BackgroundTestImage.digest(of: data), isDirectory: true)
+        try FileManager.default.createDirectory(at: digestFolder, withIntermediateDirectories: true)
+        let file = digestFolder.appendingPathComponent(name)
+        try data.write(to: file)
+        return file.path
+    }
+
+    private var libraryFolder: URL { root.appendingPathComponent("library", isDirectory: true) }
+
+    @Test func keepAllImporterRemovesNothing() async throws {
+        let kept = try digestCopy(in: directory, try encoded(width: 32))
+        let keepAll = TerminalBackgroundImageImporter(directory: directory, cleanup: .keepAll)
+        _ = try await keepAll.importImage(from: try source(try encoded(width: 40)))
+        await keepAll.removeUnreferenced(keeping: [], olderThan: Date.distantFuture)
+        #expect(FileManager.default.fileExists(atPath: kept))
+    }
+
+    @Test func adoptImageCopiesFromTheLibraryIntoItsFolder() async throws {
+        let data = try encoded(width: 32)
+        let path = try digestCopy(in: libraryFolder, data)
+        let adopted = try #require(await importer().adoptImage(path: path, from: [libraryFolder]))
+        #expect(TerminalBackgroundImageImporter.inspect(path: adopted, directory: directory) == .usable)
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func adoptImageRunsFirstPickCleanupAndKeepsTheRetainedFolder() async throws {
+        let retained = try digestCopy(in: appWideDirectory, try encoded(width: 40))
+        let stale = try digestCopy(in: appWideDirectory, try encoded(width: 48))
+        let path = try digestCopy(in: libraryFolder, try encoded(width: 32))
+        let importer = TerminalBackgroundImageImporter(directory: appWideDirectory, cleanup: .allButRetained)
+        let adopted = try #require(await importer.adoptImage(path: path, from: [libraryFolder], retaining: retained))
+        #expect(FileManager.default.fileExists(atPath: retained))
+        #expect(!FileManager.default.fileExists(atPath: stale))
+        #expect(FileManager.default.fileExists(atPath: adopted))
+    }
+
+    @Test func adoptImageRefusesAnOversizedFileNamedForItsOwnDigest() async throws {
+        let path = try digestCopy(in: libraryFolder, try encoded(width: TerminalBackgroundImageImporter.maxPixelSize + 1, height: 4))
+        #expect(await importer().adoptImage(path: path, from: [libraryFolder]) == nil)
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    @Test func adoptImageRefusesADamagedFile() async throws {
+        let path = try digestCopy(in: libraryFolder, try encoded(width: 32))
+        try Data(try encoded(width: 40)).write(to: URL(fileURLWithPath: path))
+        #expect(await importer().adoptImage(path: path, from: [libraryFolder]) == nil)
+    }
+
+    @Test func adoptImageRefusesAPathOutsideItsSources() async throws {
+        let path = try digestCopy(in: sourceFolder, try encoded(width: 32))
+        #expect(await importer().adoptImage(path: path, from: [libraryFolder]) == nil)
+    }
+
+    @Test func digestOfPathRejectsOtherShapes() {
+        let digest = String(repeating: "a", count: 64)
+        #expect(TerminalBackgroundImageImporter.digest(ofPath: "/x/\(digest)/photo.png") == digest)
+        #expect(TerminalBackgroundImageImporter.digest(ofPath: "/x/photo.png") == nil)
+        #expect(TerminalBackgroundImageImporter.digest(ofPath: "/x/\(String(repeating: "A", count: 64))/photo.png") == nil)
+        #expect(TerminalBackgroundImageImporter.digest(ofPath: "photo.png") == nil)
+    }
 }

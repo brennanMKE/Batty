@@ -9,6 +9,13 @@ protocol BackgroundOverrideHolder: AnyObject {
     func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?)
     /// What this level shows while following.
     func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings
+    /// Whether Cancel should put this path back even if its file is gone,
+    /// because a saved value names it and the holder reports that itself.
+    func isSavedImagePath(_ path: String) -> Bool
+}
+
+extension BackgroundOverrideHolder {
+    func isSavedImagePath(_ path: String) -> Bool { false }
 }
 
 /// The sheet's wording and identifiers for one level. Existing UI tests query
@@ -73,8 +80,17 @@ struct BackgroundOverrideEditor {
         target.setBackgroundOverride(current)
     }
 
+    /// A copy-shaped path whose file is gone was removed in the Background
+    /// Images window while this sheet was open: new Tabs must not get it back.
     func cancel() {
-        target.setBackgroundOverride(originalOverride)
+        if let path = originalOverride?.imagePath,
+           TerminalBackgroundImageImporter.digest(ofPath: path) != nil,
+           !target.isSavedImagePath(path),
+           !FileManager.default.fileExists(atPath: path) {
+            target.setBackgroundOverride(originalOverride?.withImagePath(nil))
+        } else {
+            target.setBackgroundOverride(originalOverride)
+        }
     }
 
     /// Ignored while following, so an import that finishes after the user
@@ -89,7 +105,7 @@ struct BackgroundOverrideEditor {
 /// because the terminal is the preview: every control applies live.
 ///
 /// Every write to the target's override starts from a user event: a
-/// control's `Binding` setter, a button, or the file importer's result. Its
+/// control's `Binding` setter, a button, or the picker's choice. Its
 /// observers only render, and `setTerminalConfiguration` touches neither the
 /// responder nor layout, so nothing writes back.
 struct BackgroundOverrideSettingsView: View {
@@ -98,6 +114,7 @@ struct BackgroundOverrideSettingsView: View {
     let scope: BackgroundOverrideScope
     let appWide: TerminalBackgroundSettings
     let importer: TerminalBackgroundImageImporter
+    let images: BackgroundImagesModel
 
     /// `@State` because the presenting view re-inits this struct freely, and
     /// Cancel must restore what was there when the sheet opened.
@@ -110,13 +127,15 @@ struct BackgroundOverrideSettingsView: View {
         target: any BackgroundOverrideHolder,
         scope: BackgroundOverrideScope,
         appWide: TerminalBackgroundSettings,
-        importer: TerminalBackgroundImageImporter
+        importer: TerminalBackgroundImageImporter,
+        images: BackgroundImagesModel
     ) {
         self._isPresented = isPresented
         self.target = target
         self.scope = scope
         self.appWide = appWide
         self.importer = importer
+        self.images = images
         self._originalOverride = State(initialValue: target.backgroundOverride)
     }
 
@@ -152,8 +171,8 @@ struct BackgroundOverrideSettingsView: View {
                 message: importError,
                 identifierPrefix: scope.identifierPrefix,
                 update: { editor.update($0) },
-                onPickedFile: startImport(of:),
-                onFileError: { importError = String(localized: "That file could not be opened.") },
+                images: images,
+                onPickedLibraryImage: startAdopt(ofLibraryPath:),
                 onRemoveImage: {
                     cancelImport()
                     editor.update { $0.withImagePath(nil) }
@@ -228,17 +247,17 @@ struct BackgroundOverrideSettingsView: View {
         importError = nil
     }
 
-    private func startImport(of url: URL) {
+    private func startAdopt(ofLibraryPath libraryPath: String) {
         cancelImport()
         let importer = importer
         let editor = editor
+        let sources = [images.library.directory]
         importTask = Task {
-            do {
-                let path = try await importer.importImage(from: url)
-                guard !Task.isCancelled else { return }
-                editor.update { $0.pickingImage(path: path) }
-            } catch {
-                guard !Task.isCancelled else { return }
+            let adopted = await importer.adoptImage(path: libraryPath, from: sources)
+            guard !Task.isCancelled else { return }
+            if let adopted {
+                editor.update { $0.pickingImage(path: adopted) }
+            } else {
                 importError = String(localized: "That image could not be read.")
             }
             importTask = nil

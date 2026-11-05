@@ -39,6 +39,8 @@ actor TerminalBackgroundImageImporter {
         /// main actor, so nothing happens during an import.
         /// `removeUnreferenced(keeping:olderThan:)` does this rule's work.
         case unreferenced
+        /// The image library: only the user's Remove deletes from it.
+        case keepAll
     }
 
     private let directory: URL
@@ -98,7 +100,27 @@ actor TerminalBackgroundImageImporter {
         return hexDigest(of: bytes) == components[root.count] ? .usable : .rejected
     }
 
-    private nonisolated static func isDigest(_ name: String) -> Bool {
+    /// The digest folder `path` is in, or nil if that folder isn't named like one.
+    nonisolated static func digest(ofPath path: String) -> String? {
+        let components = (path as NSString).pathComponents
+        guard components.count >= 2, isDigest(components[components.count - 2]) else { return nil }
+        return components[components.count - 2]
+    }
+
+    /// Reads the header only, which decodes no pixels. `inspect` checks shape
+    /// and digest, and a file named for its own digest can still be oversized,
+    /// which aborts the process once libghostty loads it.
+    nonisolated static func isWithinPixelLimit(path: String) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return false }
+        return max(width, height) <= maxPixelSize
+    }
+
+    nonisolated static func isDigest(_ name: String) -> Bool {
         name.utf8.count == 64 && name.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
 
@@ -154,7 +176,7 @@ actor TerminalBackgroundImageImporter {
                 if let pid = Int32(name), pid > 0, isProcessAlive(pid) { continue }
                 remove(parent.appendingPathComponent(name))
             }
-        case .unreferenced:
+        case .unreferenced, .keepAll:
             break
         }
     }
@@ -209,6 +231,16 @@ actor TerminalBackgroundImageImporter {
             logger.error("could not copy a background image: \(error.localizedDescription, privacy: .private)")
             return nil
         }
+    }
+
+    /// Copies an image from `sources` into this importer's folder, running the
+    /// same first-use cleanup an import does. The pixel check is what the import
+    /// route's encode otherwise guarantees: nothing later checks a Pane's path,
+    /// and a too-wide file named for its own digest would pass `inspect`.
+    func adoptImage(path: String, from sources: [URL], retaining: String? = nil) -> String? {
+        cleanUpIfNeeded(retaining: retaining)
+        guard Self.isWithinPixelLimit(path: path) else { return nil }
+        return Self.adopt(path: path, from: sources, into: directory)
     }
 
     /// `removeUnreferenced` goes by the folder's date, and reusing a folder

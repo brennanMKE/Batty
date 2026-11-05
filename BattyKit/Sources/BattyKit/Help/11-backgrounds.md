@@ -18,7 +18,7 @@ Pane and Session backgrounds aren't saved. They end when you quit Batty, and **D
 
 ## The controls
 
-- **Image:** **Choose…** picks a PNG or JPEG, and **None** removes it. Animation isn't supported. Batty keeps its own copy, scaled down if its longest side is over 4096 pixels, so moving your file changes nothing. The first image you choose starts at 15% **Image Opacity**, as a tint.
+- **Image:** **Choose…** opens your images, and **Add from File…** there brings in a PNG or JPEG. **None** removes it. Animation isn't supported. Batty keeps its own copy, scaled down if its longest side is over 4096 pixels, so moving your file changes nothing. The first image you choose starts at 15% **Image Opacity**, as a tint.
 - **Image Size:** **Fit** shows the whole image and can leave empty space. **Fill**, the default, covers the Pane, keeps the image's proportions and crops what overflows. **Stretch** covers the Pane and distorts the image to its shape. **Actual Size** draws the image unscaled.
 - **Position:** where the image sits.
 - **Image Opacity:** relative to **Terminal Opacity**.
@@ -26,6 +26,12 @@ Pane and Session backgrounds aren't saved. They end when you quit Batty, and **D
 - **Include programs that paint their own background:** programs such as vim or htop that paint their own colors stay opaque unless you turn this on. It is available below 100%.
 
 Each Pane draws its own copy of the image, so one picture doesn't span a split, and each Tab keeps its own copy in memory.
+
+## Background Images
+
+**File → Background Images…**, or **Manage Images…** in Settings' Background section, opens a window showing every image Batty holds, with a thumbnail, what uses it and its size. **Add from File…** brings in a new one. Images stay until you remove them.
+
+**Remove…** lists what uses the image and asks first. Those uses then have no image, and keep their other settings: terminals lose the picture right away, Settings shows **None**, and a Project opens with no picture. A Shared Project changes on this Mac only. If Batty can't read all your saved Projects, it removes nothing and says why.
 
 If Batty's copy of the image in Settings goes missing or changes, terminals open with no picture and Settings asks you to choose it again.
 

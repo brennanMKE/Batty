@@ -52,10 +52,18 @@ final class ProjectBackgroundFixture {
         }
     )
 
+    /// Private to this fixture, because tests run in parallel.
+    let notificationCenter = NotificationCenter()
+    private(set) lazy var imageLibrary = BackgroundImageLibrary(
+        directory: libraryFolder,
+        sources: [appWideFolder, projectFolder, paneFolder]
+    )
+
     var root: URL { base.appendingPathComponent("root", isDirectory: true) }
     var projectsFile: URL { base.appendingPathComponent("projects.json") }
     var backupFile: URL { base.appendingPathComponent(ProjectStore.backupFileName) }
     var projectFolder: URL { base.appendingPathComponent("ProjectBackgrounds", isDirectory: true) }
+    var libraryFolder: URL { base.appendingPathComponent("BackgroundImages", isDirectory: true) }
     var appWideFolder: URL { base.appendingPathComponent("app-wide", isDirectory: true) }
     var paneFolder: URL { base.appendingPathComponent("pane", isDirectory: true) }
 
@@ -79,6 +87,7 @@ final class ProjectBackgroundFixture {
             backgroundGate: .acceptingEveryImage(defaults: testDefaults.defaults)
         )
         store.projectBackgrounds = library
+        store.backgroundImages = store.makeBackgroundImagesModel(library: imageLibrary, notificationCenter: notificationCenter)
         return store
     }
 

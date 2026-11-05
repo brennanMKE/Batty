@@ -1,6 +1,10 @@
 // ProjectsHarness.swift
 
+import CoreGraphics
+import CryptoKit
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 
 /// Builds `projects.json` content for the Projects UI tests. The UI-test
@@ -91,6 +95,38 @@ nonisolated enum ProjectFixture {
         }
         if let layout = project["layout"] as? [String: Any], let root = layout["root"] as? [String: Any] { walk(root) }
         return result
+    }
+}
+
+/// Writes a real PNG the way Batty stores a copy, `<folder>/<digest>/<name>.png`.
+/// `name` also varies the pixels, so each fixture gets its own digest.
+nonisolated enum BackgroundImageFixture {
+    /// The fixture's one fill colour, in sRGB. A test can look for these pixels on screen.
+    static func color(named name: String) -> (red: Double, green: Double, blue: Double) {
+        let seed = name.utf8.reduce(0) { ($0 &* 31 &+ Int($1)) % 251 }
+        return (Double(seed) / 251, 0.4, 0.6)
+    }
+
+    static func write(named name: String, in folder: URL) throws -> String {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0,
+            space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        let color = color(named: name)
+        context.setFillColor(red: color.red, green: color.green, blue: color.blue, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+        let image = try XCTUnwrap(context.makeImage())
+        let data = NSMutableData()
+        let output = try XCTUnwrap(CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(output, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(output))
+        let digest = SHA256.hash(data: data as Data).map { String(format: "%02x", $0) }.joined()
+        let digestFolder = folder.appending(path: digest)
+        try FileManager.default.createDirectory(at: digestFolder, withIntermediateDirectories: true)
+        let file = digestFolder.appending(path: "\(name).png")
+        try (data as Data).write(to: file)
+        return file.path
     }
 }
 

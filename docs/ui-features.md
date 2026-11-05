@@ -224,6 +224,8 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `withBackground` emits no line for an unset image or for opacity 1, so a user who configured nothing gets the same terminal config as before the feature.
 - `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`. See [view-hierarchy.md](view-hierarchy.md), "See-through windows".
 - A see-through window must pass the checklist in [terminal-pane-requirements.md](terminal-pane-requirements.md) §6.
+- A path handed to the Pane or app-wide folder comes from `importImage`, whose encode guarantees the pixel limit, or from `adoptImage`, whose `isWithinPixelLimit` check stands in for it. The gate checks shape and digest only and nothing checks a Pane's path, so the static `adopt` must never be the route into those folders.
+- The Background Images library (`BackgroundImages/`, `.keepAll`) is outside every other folder's cleanup. Stored paths never name it: a pick copies out of it. Uses are matched by digest, and Remove clears them before deleting any file.
 
 **Accessibility identifiers:**
 
@@ -231,12 +233,14 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `pane-background-sheet.*`, `session-background-sheet.*`, `project-background-sheet.*`: the override sheets.
 - `appearance-background.*`: the Settings section.
 - `project-editor.background.*`: the Project Editor's Background row.
+- `background-images.root`, `background-images.picker.root`: the window and the picker sheet. Also `.add`, `.remove`, `.confirm-remove`, `.total`, `.message`, `.empty`, `.empty-add`, `.picker.cancel`.
+- `background-images.cell.<name>`: the cell, which XCUITest reads as a Group with no value, so a test proves a thumbnail by its pixels. `.cell.<name>.uses` and `.cell.<name>.size` are its lines, read through `value`.
 - `session-row.<title>`: its label and value carry the warning on a Session whose Project image can't be used. The warning has no identifier of its own.
 
 **Tests:**
 
-- UI: `PaneBackgroundSettingsTests`, `SessionBackgroundSettingsTests`, `AppearanceBackgroundSettingsTests`, `TerminalSeeThroughTests`, `ProjectsEditorTests`.
-- BattyKit: `WindowSeeThroughTests`, `AppWideBackgroundGateTests`, `ProjectBackground*Tests`.
+- UI: `PaneBackgroundSettingsTests`, `SessionBackgroundSettingsTests`, `AppearanceBackgroundSettingsTests`, `TerminalSeeThroughTests`, `ProjectsEditorTests`, `BackgroundImagesWindowTests`.
+- BattyKit: `WindowSeeThroughTests`, `AppWideBackgroundGateTests`, `ProjectBackground*Tests`, `BackgroundImage*Tests`.
 
 ---
 

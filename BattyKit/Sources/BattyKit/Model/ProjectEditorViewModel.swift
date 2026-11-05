@@ -105,6 +105,8 @@ final class ProjectEditorViewModel {
     /// `ProjectEditorWindowController` always passes one. Nil hides the
     /// Background row, and nothing here reads an image.
     @ObservationIgnored let backgrounds: ProjectBackgroundLibrary?
+    /// What the Background sheet's picker shows. Passed with `backgrounds`.
+    @ObservationIgnored let imageLibrary: BackgroundImagesModel?
     @ObservationIgnored private let appWideBackground: @MainActor () -> TerminalBackgroundSettings
 
     private(set) var draft: ProjectDraft?
@@ -142,9 +144,11 @@ final class ProjectEditorViewModel {
         captureSession: @escaping @MainActor (String?) -> SessionProjectCapture? = { _ in nil },
         closeWindow: @escaping @MainActor () -> Void = {},
         backgrounds: ProjectBackgroundLibrary? = nil,
+        imageLibrary: BackgroundImagesModel? = nil,
         appWideBackground: @escaping @MainActor () -> TerminalBackgroundSettings = { .off }
     ) {
         self.backgrounds = backgrounds
+        self.imageLibrary = imageLibrary
         self.appWideBackground = appWideBackground
         self.store = store
         self.directoryExists = directoryExists
@@ -265,7 +269,7 @@ final class ProjectEditorViewModel {
         }
     }
 
-    var showsBackground: Bool { backgrounds != nil }
+    var showsBackground: Bool { backgrounds != nil && imageLibrary != nil }
 
     func appWideBackgroundValue() -> TerminalBackgroundSettings { appWideBackground() }
 
@@ -970,5 +974,31 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
 
     func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
         appWide
+    }
+
+    func isSavedImagePath(_ path: String) -> Bool {
+        baseline?.background?.imagePath == path
+    }
+
+    /// The store has already cleared the saved Project, so the baseline follows
+    /// it and a clean editor stays clean. If only the draft named the image,
+    /// the user's edit is what changed, so it gets a note.
+    func backgroundImageWasRemoved(digest: String) {
+        func names(_ settings: TerminalBackgroundSettings?) -> Bool {
+            settings?.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
+        }
+        let baselineNamed = names(baseline?.background)
+        let draftNamed = names(draft?.background)
+        if baselineNamed {
+            let cleared = baseline?.background?.withImagePath(nil)
+            baseline?.background = cleared
+        }
+        guard draftNamed else { return }
+        let cleared = draft?.background?.withImagePath(nil)
+        draft?.background = cleared
+        backgroundImageState = .none
+        if !baselineNamed {
+            draft?.captureNotes[.background] = String(localized: "The image you chose was removed, so this Project has no image.", comment: "Project Editor: the draft's background image was removed in the Background Images window")
+        }
     }
 }

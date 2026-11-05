@@ -1,18 +1,18 @@
 // TerminalBackgroundControls.swift
 
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// The controls every background level shares. It owns no import: the caller
-/// runs the importer and says what to show while it does.
+/// The controls every background level shares. It owns no import: Choose… opens
+/// the images in the library, and the caller copies the pick into its own folder
+/// and says what to show while it does.
 struct TerminalBackgroundControls: View {
     let current: TerminalBackgroundSettings
     let isImporting: Bool
     let message: String?
     let identifierPrefix: String
     let update: ((TerminalBackgroundSettings) -> TerminalBackgroundSettings) -> Void
-    let onPickedFile: (URL) -> Void
-    let onFileError: () -> Void
+    let images: BackgroundImagesModel
+    let onPickedLibraryImage: (String) -> Void
     let onRemoveImage: () -> Void
 
     @State private var isChoosingImage = false
@@ -61,12 +61,19 @@ struct TerminalBackgroundControls: View {
             }
         }
         // On this one view: a modifier on a multi-view container can apply to
-        // each member, which would attach one importer per row.
-        .fileImporter(isPresented: $isChoosingImage, allowedContentTypes: [.png, .jpeg]) { result in
-            switch result {
-            case .success(let url): onPickedFile(url)
-            case .failure: onFileError()
-            }
+        // each member, which would attach one sheet per row.
+        .sheet(isPresented: $isChoosingImage) {
+            BackgroundImagesView(
+                model: images,
+                mode: .pick(
+                    current: current.imagePath,
+                    onPick: { path in
+                        onPickedLibraryImage(path)
+                        isChoosingImage = false
+                    },
+                    onCancel: { isChoosingImage = false }
+                )
+            )
         }
     }
 

@@ -167,6 +167,12 @@ private struct AppearanceSettingsView: View {
             guard let store else { return }
             background = AppWideBackgroundEditor(store: store).inspect()
         }
+        // `background` is a local copy, refreshed only on appear, so without
+        // this it would keep showing an image removed in the window.
+        .onReceive(NotificationCenter.default.publisher(for: .battyBackgroundImagesDidChange)) { _ in
+            guard let store else { return }
+            background = AppWideBackgroundEditor(store: store).inspect()
+        }
     }
 
     /// A per-appearance theme picker. `appliesNow` is true for the slot that
@@ -255,8 +261,8 @@ struct AppWideBackgroundEditor {
     }
 }
 
-/// Every write starts from a control binding, a button or the file importer's
-/// result, through `AppWideBackgroundEditor`. There is deliberately no
+/// Every write starts from a control binding, a button or the picker's choice,
+/// through `AppWideBackgroundEditor`. There is deliberately no
 /// `onChange` and no `@AppStorage` here. `snapshot` is a local copy owned by
 /// the parent, refreshed when Settings appears and after each edit, and feeds
 /// no AppKit call.
@@ -288,8 +294,8 @@ private struct TerminalBackgroundSettingsSection: View {
                 update: { transform in
                     snapshot.settings = editor.update(transform)
                 },
-                onPickedFile: startImport(of:),
-                onFileError: { importError = String(localized: "That file could not be opened.") },
+                images: store.backgroundImages,
+                onPickedLibraryImage: startAdopt(ofLibraryPath:),
                 onRemoveImage: {
                     cancelImport()
                     snapshot = editor.removeImage()
@@ -301,11 +307,17 @@ private struct TerminalBackgroundSettingsSection: View {
             Text("Below 100%, the desktop and other windows show through, except in full screen.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Button("Restore Defaults") {
-                cancelImport()
-                snapshot = editor.reset()
+            HStack {
+                Button("Manage Images…") {
+                    BackgroundImagesWindowController.shared.show(store: store)
+                }
+                .accessibilityIdentifier("appearance-background.manage-images")
+                Button("Restore Defaults") {
+                    cancelImport()
+                    snapshot = editor.reset()
+                }
+                .accessibilityIdentifier("appearance-background.restore-defaults")
             }
-            .accessibilityIdentifier("appearance-background.restore-defaults")
         }
     }
 
@@ -316,18 +328,18 @@ private struct TerminalBackgroundSettingsSection: View {
     }
 
     /// Not cancelled on disappear, so closing Settings doesn't lose the pick.
-    private func startImport(of url: URL) {
+    private func startAdopt(ofLibraryPath libraryPath: String) {
         cancelImport()
         let importer = store.appWideBackgroundImageImporter
         let editor = editor
         let retaining = editor.stored.imagePath
+        let sources = [store.backgroundImages.library.directory]
         importTask = Task {
-            do {
-                let path = try await importer.importImage(from: url, retaining: retaining)
-                guard !Task.isCancelled else { return }
-                snapshot = editor.pickImage(path: path)
-            } catch {
-                guard !Task.isCancelled else { return }
+            let adopted = await importer.adoptImage(path: libraryPath, from: sources, retaining: retaining)
+            guard !Task.isCancelled else { return }
+            if let adopted {
+                snapshot = editor.pickImage(path: adopted)
+            } else {
                 importError = String(localized: "That image could not be read.")
             }
             importTask = nil

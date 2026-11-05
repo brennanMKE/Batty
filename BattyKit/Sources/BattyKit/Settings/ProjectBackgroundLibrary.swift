@@ -1,7 +1,6 @@
 // ProjectBackgroundLibrary.swift
 
 import Foundation
-import ImageIO
 import OSLog
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProjectBackgroundLibrary")
@@ -40,13 +39,7 @@ final class ProjectBackgroundLibrary {
     func imageState(ofPath path: String) -> BackgroundImageState {
         let state = inspect(path)
         guard state == .usable else { return state }
-        let url = URL(fileURLWithPath: path)
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int,
-              max(width, height) <= TerminalBackgroundImageImporter.maxPixelSize
-        else { return .rejected }
+        guard TerminalBackgroundImageImporter.isWithinPixelLimit(path: path) else { return .rejected }
         return .usable
     }
 

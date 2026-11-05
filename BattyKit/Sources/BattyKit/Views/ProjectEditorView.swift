@@ -379,13 +379,14 @@ private struct ProjectBackgroundRow: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .sheet(isPresented: $isEditing) {
-            if let library = model.backgrounds {
+            if let library = model.backgrounds, let images = model.imageLibrary {
                 BackgroundOverrideSettingsView(
                     isPresented: $isEditing,
                     target: model,
                     scope: .project,
                     appWide: model.appWideBackgroundValue(),
-                    importer: library.importer
+                    importer: library.importer,
+                    images: images
                 )
             }
         }

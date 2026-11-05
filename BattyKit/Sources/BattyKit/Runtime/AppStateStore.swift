@@ -129,6 +129,9 @@ public final class AppStateStore {
     /// `var` so tests can point its sources at their own folders, because the
     /// type isn't public and so can't be a parameter of the public `init`.
     @ObservationIgnored var projectBackgrounds: ProjectBackgroundLibrary
+    /// The Background Images window's and picker's model. Building it touches
+    /// no files. A `var` for the same reason as `projectBackgrounds`.
+    @ObservationIgnored lazy var backgroundImages: BackgroundImagesModel = makeBackgroundImagesModel()
     /// The reclaim started by the last Project Editor close, for tests to await.
     @ObservationIgnored var projectBackgroundReclaim: Task<Void, Never>?
 
@@ -163,7 +166,7 @@ public final class AppStateStore {
         guard !isTestProcess, hasEntitlement else { return nil }
         return make()
     }
-    @ObservationIgnored private let projectsFileURL: URL?
+    @ObservationIgnored let projectsFileURL: URL?
     @ObservationIgnored var pendingStartupOpens: [UUID: PendingStartupOpen] = [:]
     /// Test seam: observes every request to bring a Window forward, including
     /// ones that find no `NSWindow` to act on (unit tests), so tests can pin

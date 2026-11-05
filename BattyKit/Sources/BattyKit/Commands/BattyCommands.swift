@@ -185,6 +185,12 @@ public struct BattyCommands: Commands {
             } label: {
                 Label("Edit Projects\u{2026}", systemImage: "folder.badge.gearshape")
             }
+
+            Button {
+                BackgroundImagesWindowController.shared.show(store: store)
+            } label: {
+                Label("Background Images\u{2026}", systemImage: "photo.on.rectangle")
+            }
         }
 
         CommandGroup(after: .sidebar) {
