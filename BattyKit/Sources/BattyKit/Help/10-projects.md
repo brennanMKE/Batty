@@ -46,6 +46,10 @@ If the image can't be used, the Project still opens, without the picture but wit
 
 The **Shared** checkbox syncs a Project through iCloud to your other Macs signed into the same Apple ID. Its name, folder, color, symbol, layout, startup commands and background settings sync; which Projects you opened last, which startup commands you approved and the background's image stay on each Mac, so choose the image on each Mac. The folder path must exist on each Mac, or the Project is listed with a "Folder not found" note until it does. If iCloud cannot take the Project (for example it is over iCloud's size limit), Batty says why and leaves the Project unshared.
 
+In Batty Beta, a Shared Project's image also travels to your other Macs, through a **Batty Beta** folder in iCloud Drive. Batty copies only the image of a Project set to Shared, when you choose it or share the Project. If you turn off **Shared** or delete the Project, the other Macs keep what they have, and the copy in iCloud Drive is removed after 30 days once no Shared Project names it.
+
+On a Mac still waiting for the image, the Project opens without the picture and the terminal is usable straight away. The Project Editor says "Waiting for" the image, with **Don't Use This Image** beside it. The picture appears when it arrives. If iCloud Drive is off, full, or not allowed in System Settings, Batty says so, and the rest of the Project still syncs.
+
 ## From the command line
 
 `batty project list` prints your Projects, and `batty project open <name> [--new]` opens one, or focuses its session if it is open. `--new` always opens another copy. If the Project has startup commands that need your approval, the prompt appears in Batty and the command waits for your answer. See the command-line docs for the full list of verbs and exit codes.

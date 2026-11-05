@@ -124,6 +124,7 @@ struct BackgroundImagesView: View {
                     BackgroundImageCell(
                         entry: entry,
                         uses: model.uses[entry.digest] ?? [],
+                        sharedStatus: model.sharedStatus(forDigest: entry.digest),
                         thumbnailer: model.thumbnailer,
                         isHighlighted: entry.digest == selectedDigest || entry.digest == currentDigest
                     )
@@ -266,13 +267,17 @@ struct BackgroundImagesView: View {
             return String(localized: "It isn't in use on this Mac.", comment: "Background Images: the Remove confirmation for an unused image")
         }
         let list = plan.uses.map(\.localizedDescription).joined(separator: "\n")
-        return String(localized: "These will have no image:\n\(list)", comment: "Background Images: the Remove confirmation; the argument lists the image's uses, one per line")
+        let message = String(localized: "These will have no image:\n\(list)", comment: "Background Images: the Remove confirmation; the argument lists the image's uses, one per line")
+        guard plan.keepsOnOtherMacs else { return message }
+        let warning = String(localized: "Your other Macs keep this image. It comes back here if another Mac changes that Project.", comment: "Background Images: the Remove confirmation when a Shared Project uses the image")
+        return message + "\n\n" + warning
     }
 }
 
 private struct BackgroundImageCell: View {
     let entry: BackgroundImageEntry
     let uses: [BackgroundImageUse]
+    let sharedStatus: SharedImageStatus?
     let thumbnailer: BackgroundImageThumbnailer
     let isHighlighted: Bool
 
@@ -299,6 +304,15 @@ private struct BackgroundImageCell: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .accessibilityIdentifier("background-images.cell.\(entry.name).uses")
+            if let sharedStatus {
+                Text(sharedStatus == .inICloudDrive
+                    ? String(localized: "In iCloud Drive for a Shared Project", comment: "Background Images: this image's copy is in iCloud Drive")
+                    : String(localized: "Waiting to upload", comment: "Background Images: this Shared Project image hasn't reached iCloud Drive yet"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("background-images.cell.\(entry.name).shared")
+            }
         }
         .task(id: entry.digest) {
             thumbnail = await thumbnailer.thumbnail(for: entry)

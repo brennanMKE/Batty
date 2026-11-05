@@ -108,6 +108,10 @@ final class ProjectEditorViewModel {
     /// What the Background sheet's picker shows. Passed with `backgrounds`.
     @ObservationIgnored let imageLibrary: BackgroundImagesModel?
     @ObservationIgnored private let appWideBackground: @MainActor () -> TerminalBackgroundSettings
+    @ObservationIgnored private let sharedImagesMessage: @MainActor () -> String?
+    /// False where nothing can fetch a waiting image: a routine Beta build reads
+    /// the same `projects.json` as a signed one, and has no transport.
+    @ObservationIgnored private let sharedImagesAvailable: Bool
 
     private(set) var draft: ProjectDraft?
     private var baseline: Project?
@@ -145,8 +149,12 @@ final class ProjectEditorViewModel {
         closeWindow: @escaping @MainActor () -> Void = {},
         backgrounds: ProjectBackgroundLibrary? = nil,
         imageLibrary: BackgroundImagesModel? = nil,
-        appWideBackground: @escaping @MainActor () -> TerminalBackgroundSettings = { .off }
+        appWideBackground: @escaping @MainActor () -> TerminalBackgroundSettings = { .off },
+        sharedImagesMessage: @escaping @MainActor () -> String? = { nil },
+        sharedImagesAvailable: Bool = false
     ) {
+        self.sharedImagesMessage = sharedImagesMessage
+        self.sharedImagesAvailable = sharedImagesAvailable
         self.backgrounds = backgrounds
         self.imageLibrary = imageLibrary
         self.appWideBackground = appWideBackground
@@ -282,6 +290,16 @@ final class ProjectEditorViewModel {
         let opacity = Int((background.terminalOpacity * 100).rounded())
         return String(localized: "Custom: \(image), terminal \(opacity)%", comment: "Project Editor: the Background row; the arguments are the image name and the terminal opacity")
     }
+
+    /// Set only while a Shared Project's image hasn't arrived on this Mac.
+    var sharedImageCaption: String? {
+        guard sharedImagesAvailable, draft?.isShared == true, case .named(let digest, let name)? = draft?.sharedImage,
+              draft?.background?.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) != digest
+        else { return nil }
+        return String(localized: "Waiting for \(name) from iCloud Drive.", comment: "Project Editor: a Shared Project's image hasn't arrived on this Mac yet; the argument is the image's name")
+    }
+
+    var sharedImageMessage: String? { sharedImagesMessage() }
 
     private func imageState(of background: TerminalBackgroundSettings?) -> BackgroundImageState {
         guard let backgrounds, let path = background?.imagePath else { return .none }
@@ -1000,5 +1018,28 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
         if !baselineNamed {
             draft?.captureNotes[.background] = String(localized: "The image you chose was removed, so this Project has no image.", comment: "Project Editor: the draft's background image was removed in the Background Images window")
         }
+    }
+
+    /// The user doesn't want the waiting image. Any earlier image goes with it,
+    /// because a Save would otherwise publish that one instead of a removal.
+    func declineSharedImage() {
+        guard let background = draft?.background else { return }
+        draft?.sharedImage = nil
+        draft?.background = background.withImagePath(nil)
+        backgroundImageState = .none
+    }
+
+    /// The store has already recorded the path, so the baseline follows it and a
+    /// clean editor stays clean. A draft whose background the user has edited
+    /// keeps its image.
+    func sharedImageArrived(projectID: UUID, path: String) {
+        guard let draft, draft.id == projectID, let baseline, baseline.id == projectID else { return }
+        let earlier = baseline.background?.imagePath
+        self.baseline?.background = baseline.background?.withImagePath(path)
+        guard draft.background?.imagePath == earlier, draft.sharedImage == baseline.sharedImage,
+              let background = draft.background
+        else { return }
+        self.draft?.background = background.withImagePath(path)
+        backgroundImageState = imageState(of: self.draft?.background)
     }
 }

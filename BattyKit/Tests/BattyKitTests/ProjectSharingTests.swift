@@ -108,6 +108,7 @@ final class SwitchableProjectSyncBackend: ProjectSyncBackend {
     private(set) var published: [ProjectSyncRecord] = []
     let isAvailable = true
     let snapshotIsAuthoritative = true
+    let snapshotSkippedEntries = false
     let changes = AsyncStream<Void>.makeStream().stream
     var onSyncError: (@MainActor (ProjectSyncError) -> Void)?
 

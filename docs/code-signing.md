@@ -171,8 +171,9 @@ no secrets:
   one.
 - **Regenerate on a capability change.** Enabling or disabling a capability on
   an App ID invalidates its profiles. Adding `icloud-services` or a container
-  later means new profiles; the current ones already allow them, but Batty
-  requests only the kvstore key.
+  later means new profiles: the current ones carry `icloud-services: *`, but
+  their `icloud-container-identifiers` and `ubiquity-container-identifiers` are
+  empty arrays, so they name no container. Batty requests only the kvstore key.
 - **Selection.** `Configuration/App.xcconfig` (Prod) and `Beta.xcconfig` set
   `BATTY_DEVELOPER_ID_PROFILE` (`Batty Developer ID`, `Batty Beta Developer ID`),
   which becomes `PROVISIONING_PROFILE_SPECIFIER` only when `BATTY_SIGNING` is

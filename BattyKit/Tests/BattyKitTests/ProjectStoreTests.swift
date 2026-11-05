@@ -345,3 +345,240 @@ private final class RecordingFileManager: FileManager, @unchecked Sendable {
         try super.moveItem(at: srcURL, to: dstURL)
     }
 }
+
+@MainActor
+struct ProjectStoreSharedImageTests {
+    private static let stamp = Date(timeIntervalSince1970: 1_750_000_000)
+
+    private func makeTempURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-projects-\(UUID().uuidString)")
+            .appendingPathComponent("projects.json")
+    }
+
+    private func cleanup(_ url: URL) {
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    private static let digestA = String(repeating: "a", count: 64)
+    private static let digestB = String(repeating: "b", count: 64)
+    private static func path(_ digest: String, name: String = "Harbor") -> String { "/images/\(digest)/\(name).png" }
+    private static func background(_ path: String?) -> TerminalBackgroundSettings { projectBackgroundValue(path: path) }
+
+    private func imageStore(_ url: URL, backend: (any ProjectSyncBackend)? = LocalOnlyProjectSyncBackend(isAvailable: true), enabled: Bool = true) -> ProjectStore {
+        ProjectStore(fileURL: url, clock: { Self.stamp }, backend: backend, home: "/Users/test", sharedImagesEnabled: enabled)
+    }
+
+    private func sharedProject(path: String?, sharedImage: ProjectSharedImage? = nil) -> Project {
+        Project(name: "Shared", rootPath: "/tmp/shared", isShared: true, background: Self.background(path), sharedImage: sharedImage)
+    }
+
+    @Test func forSaveNamesAPickedImage() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        var project = sharedProject(path: Self.path(Self.digestA))
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == .named(digest: Self.digestA, name: "Harbor"))
+        project.background = Self.background(Self.path(Self.digestB, name: "New"))
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == .named(digest: Self.digestB, name: "New"))
+    }
+
+    @Test func forSaveKeepsPendingOnAnUnrelatedEdit() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        let pending = ProjectSharedImage.named(digest: Self.digestB, name: "Pending")
+        let project = sharedProject(path: Self.path(Self.digestA))
+        try store.upsert(project)
+        var edited = store.projects[0]
+        edited.sharedImage = pending
+        try store.upsert(edited)
+        edited.name = "Renamed"
+        try store.upsert(edited)
+        #expect(store.projects[0].sharedImage == pending)
+        #expect(store.projects[0].background?.imagePath == Self.path(Self.digestA))
+    }
+
+    @Test func noneOnAnImageBecomesRemoved() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = imageStore(url, backend: backend)
+        var project = sharedProject(path: Self.path(Self.digestA))
+        try store.upsert(project)
+        project = store.projects[0]
+        project.background = Self.background(nil)
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == .removed)
+        guard case .record(let record)? = backend.snapshot()[project.id] else { Issue.record("no record"); return }
+        #expect(record.background?.image == .removed)
+    }
+
+    @Test func decliningPendingBecomesRemoved() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        var project = sharedProject(path: nil, sharedImage: .named(digest: Self.digestA, name: "Pending"))
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == .named(digest: Self.digestA, name: "Pending"))
+        project = store.projects[0]
+        project.sharedImage = nil
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == .removed)
+    }
+
+    @Test func aPickAfterRemovedNamesTheImage() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        var project = sharedProject(path: nil, sharedImage: .removed)
+        try store.upsert(project)
+        project = store.projects[0]
+        project.background = Self.background(Self.path(Self.digestA))
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == .named(digest: Self.digestA, name: "Harbor"))
+    }
+
+    @Test func followClearsTheSharedImage() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = imageStore(url, backend: backend)
+        var project = sharedProject(path: Self.path(Self.digestA))
+        try store.upsert(project)
+        project = store.projects[0]
+        project.background = nil
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == nil)
+        guard case .record(let record)? = backend.snapshot()[project.id] else { Issue.record("no record"); return }
+        #expect(record.background == nil)
+    }
+
+    @Test func aSaveAfterRemoveInBackgroundImagesPublishesUnspecified() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = imageStore(url, backend: backend)
+        try store.upsert(sharedProject(path: Self.path(Self.digestA)))
+        try store.clearBackgroundImage(digest: Self.digestA)
+        #expect(store.projects[0].sharedImage == nil)
+        try store.upsert(store.projects[0])
+        guard case .record(let record)? = backend.snapshot()[store.projects[0].id] else { Issue.record("no record"); return }
+        #expect(record.background?.image == .unspecified)
+        #expect(record.background?.settings == Self.background(nil))
+    }
+
+    @Test func setSharedTrueNamesTheImage() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = imageStore(url, backend: backend)
+        var project = sharedProject(path: Self.path(Self.digestA))
+        project.isShared = false
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == nil)
+        try store.setShared(id: project.id, true)
+        #expect(store.projects[0].sharedImage == .named(digest: Self.digestA, name: "Harbor"))
+        guard case .record(let record)? = backend.snapshot()[project.id] else { Issue.record("no record"); return }
+        #expect(record.background?.image == .named(digest: Self.digestA, name: "Harbor"))
+    }
+
+    @Test func setSharedFalseClearsTheSharedImage() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        let project = sharedProject(path: Self.path(Self.digestA))
+        try store.upsert(project)
+        try store.setShared(id: project.id, false)
+        #expect(store.projects[0].sharedImage == nil)
+        #expect(store.projects[0].background?.imagePath == Self.path(Self.digestA))
+    }
+
+    @Test func setResolvedDoesNotStampOrPublish() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        var now = Self.stamp
+        let store = ProjectStore(fileURL: url, clock: { now }, backend: backend, home: "/Users/test", sharedImagesEnabled: true)
+        try store.upsert(sharedProject(path: nil, sharedImage: .named(digest: Self.digestA, name: "Harbor")))
+        let calls = backend.calls.count
+        now = now.addingTimeInterval(500)
+        #expect(try store.setResolvedSharedImage(id: store.projects[0].id, digest: Self.digestA, path: Self.path(Self.digestA)))
+        #expect(store.projects[0].background == Self.background(Self.path(Self.digestA)))
+        #expect(store.projects[0].modifiedAt == Self.stamp)
+        #expect(backend.calls.count == calls)
+        #expect(ProjectStore(fileURL: url).projects[0].background?.imagePath == Self.path(Self.digestA))
+    }
+
+    @Test func setResolvedIgnoresAnOutdatedDigest() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        try store.upsert(sharedProject(path: Self.path(Self.digestB, name: "Picked")))
+        #expect(try !store.setResolvedSharedImage(id: store.projects[0].id, digest: Self.digestA, path: Self.path(Self.digestA)))
+        #expect(store.projects[0].background?.imagePath == Self.path(Self.digestB, name: "Picked"))
+    }
+
+    @Test func upgradeLaunchPublishesNothing() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        try imageStore(url, enabled: false).upsert(sharedProject(path: Self.path(Self.digestA)))
+        let before = try Data(contentsOf: url)
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = imageStore(url, backend: backend)
+        #expect(store.projects[0].sharedImage == nil)
+        #expect(store.projects[0].modifiedAt == Self.stamp)
+        #expect(backend.calls.isEmpty)
+        #expect(try Data(contentsOf: url) == before)
+    }
+
+    @Test func aLocalProjectsFileIsUnchangedByThisField() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        var local = sharedProject(path: Self.path(Self.digestA))
+        local.isShared = false
+        try imageStore(url, backend: nil).upsert(local)
+        #expect(!String(decoding: try Data(contentsOf: url), as: UTF8.self).contains("sharedImage"))
+        #expect(ProjectStore(fileURL: url).projects[0].sharedImage == nil)
+    }
+
+    @Test func aBadSharedImageInTheFileCostsOnlyThatField() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let json = #"{"version":1,"projects":[{"id":"\#(UUID().uuidString)","name":"N","rootPath":"/tmp/n","layout":{"root":{"type":"pane","pane":{"kind":"terminal","tabs":[]}}},"color":0,"symbol":"folder","sharedImage":{"digest":"../x"}}]}"#
+        try Data(json.utf8).write(to: url)
+        let store = ProjectStore(fileURL: url)
+        #expect(store.projects.count == 1)
+        #expect(store.projects[0].sharedImage == nil)
+    }
+
+    @Test func sharedImagesOffChangesNoRecordOrFile() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = imageStore(url, backend: backend, enabled: false)
+        let project = sharedProject(path: Self.path(Self.digestA))
+        try store.upsert(project)
+        #expect(store.projects[0].sharedImage == nil)
+        #expect(!String(decoding: try Data(contentsOf: url), as: UTF8.self).contains("sharedImage"))
+        guard case .record(let record)? = backend.snapshot()[project.id] else { Issue.record("no record"); return }
+        #expect(record.background?.image == .unspecified)
+        #expect(!String(decoding: try ProjectsFile.encoder.encode(record), as: UTF8.self).contains("imageDigest"))
+    }
+
+    @Test func mergeWithSharedImagesOffLeavesTheImageAlone() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let backend = LocalOnlyProjectSyncBackend(isAvailable: true)
+        let store = imageStore(url, backend: backend, enabled: false)
+        let project = sharedProject(path: Self.path(Self.digestA))
+        try store.upsert(project)
+        var record = store.projects[0].syncRecord(home: "/Users/test")
+        record.modifiedAt = Self.stamp.addingTimeInterval(10)
+        record.background = ProjectSyncBackground(secondBackgroundValue(path: nil), image: .removed)
+        backend.receive([record.id: .record(record)])
+        store.mergeRemote()
+        #expect(store.projects[0].background == secondBackgroundValue(path: Self.path(Self.digestA)))
+        #expect(store.projects[0].sharedImage == nil)
+    }
+
+    @Test(arguments: [false, true], [false, true])
+    func defaultSharedImageTransportNeedsEntitlementFlagAndNoTests(isTestProcess: Bool, hasEntitlement: Bool) {
+        for isEnabled in [false, true] {
+            var built = false
+            let transport = AppStateStore.defaultSharedImageTransport(
+                isTestProcess: isTestProcess, hasEntitlement: hasEntitlement, isEnabled: isEnabled,
+                make: { built = true; return FakeSharedImageTransport() })
+            let expected = !isTestProcess && hasEntitlement && isEnabled
+            #expect((transport != nil) == expected)
+            #expect(built == expected)
+        }
+    }
+}

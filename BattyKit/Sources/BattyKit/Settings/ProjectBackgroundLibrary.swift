@@ -62,7 +62,8 @@ final class ProjectBackgroundLibrary {
     /// no file shows yet, such as that copy's unsaved draft: importing or
     /// adopting a copy refreshes its folder's date. Returns nil, removing
     /// nothing, unless the file can be trusted in full, because a leak is
-    /// cheaper than a lost image.
+    /// cheaper than a lost image. A folder whose digest a `sharedImage` names is
+    /// kept too: a Project waiting for that image has no path to keep it by.
     @discardableResult
     func reclaim(
         store: ProjectStore,
@@ -70,13 +71,17 @@ final class ProjectBackgroundLibrary {
         now: Date = Date(),
         minimumAge: TimeInterval = 86_400
     ) -> Task<Void, Never>? {
-        guard !store.mayReferenceUnlistedImages, let inFile = store.imagePathsInFile() else {
+        guard !store.mayReferenceUnlistedImages,
+              let inFile = store.imagePathsInFile(),
+              let digestsInFile = store.sharedImageDigestsInFile()
+        else {
             logger.notice("not reclaiming project background images: the projects file may name others")
             return nil
         }
         let keeping = inUse.union(inFile).union(store.projects.compactMap { $0.background?.imagePath })
+        let keepingDigests = digestsInFile.union(store.projects.compactMap { $0.sharedImage?.digest })
         let cutoff = now.addingTimeInterval(-minimumAge)
         let importer = importer
-        return Task { await importer.removeUnreferenced(keeping: keeping, olderThan: cutoff) }
+        return Task { await importer.removeUnreferenced(keeping: keeping, keepingDigests: keepingDigests, olderThan: cutoff) }
     }
 }

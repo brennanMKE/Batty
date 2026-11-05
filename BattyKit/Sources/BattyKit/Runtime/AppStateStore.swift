@@ -1,6 +1,7 @@
 // AppStateStore.swift
 
 import AppKit
+import BattyXPCCore
 import Foundation
 import Observation
 import OSLog
@@ -135,13 +136,61 @@ public final class AppStateStore {
     /// The reclaim started by the last Project Editor close, for tests to await.
     @ObservationIgnored var projectBackgroundReclaim: Task<Void, Never>?
 
+    /// On in Batty Beta and off in Prod (`docs/feature-flags.md`).
+    @ObservationIgnored public let featureFlags: FeatureFlags
+
     /// Built on first access, so `projects.json` is never touched until a
     /// Projects surface reads it.
     public var projectStore: ProjectStore {
         if let existing = projectStoreStorage { return existing }
-        let store = ProjectStore(fileURL: projectsFileURL, backend: projectSyncBackendFactory())
+        let transport = sharedImageTransportFactory(featureFlags)
+        let store = ProjectStore(fileURL: projectsFileURL, backend: projectSyncBackendFactory(), sharedImagesEnabled: transport != nil)
         projectStoreStorage = store
+        if let transport {
+            let images = SharedProjectImages(
+                store: store,
+                directory: projectBackgrounds.directory,
+                transport: transport,
+                clock: sharedImageClock,
+                defaults: preferences,
+                notificationCenter: sharedImageNotificationCenter
+            )
+            images.onArrival = { [weak self] project, path in self?.sharedImageArrived(project: project, path: path) }
+            sharedProjectImagesStorage = images
+        }
         return store
+    }
+    /// Nil without a transport, and nothing then touches the shared folder.
+    var sharedProjectImages: SharedProjectImages? {
+        _ = projectStore
+        return sharedProjectImagesStorage
+    }
+    @ObservationIgnored private var sharedProjectImagesStorage: SharedProjectImages?
+    /// Tests assign a fake, before the first read of `projectStore`.
+    @ObservationIgnored var sharedImageTransportFactory: @MainActor (FeatureFlags) -> (any SharedImageTransport)? = { flags in
+        AppStateStore.defaultSharedImageTransport(
+            isTestProcess: ProjectSyncEntitlement.isTestProcess(),
+            hasEntitlement: ProjectSyncEntitlement.isPresent(),
+            isEnabled: flags.sharedProjectImages,
+            make: {
+                ICloudDriveImageFolder(
+                    cloudDrive: ICloudDriveImageFolder.defaultCloudDrive(),
+                    variantFolderName: SessionNameCache.resolvedDirectoryName())
+            })
+    }
+    @ObservationIgnored var sharedImageClock: any SchedulingClock = SystemClock()
+    @ObservationIgnored var sharedImageNotificationCenter: NotificationCenter = .default
+
+    /// The same gate as the sync backend's, plus the flag: routine builds, tests
+    /// and the VM have no entitlement, so they never reach iCloud Drive.
+    static func defaultSharedImageTransport(
+        isTestProcess: Bool,
+        hasEntitlement: Bool,
+        isEnabled: Bool,
+        make: () -> any SharedImageTransport
+    ) -> (any SharedImageTransport)? {
+        guard !isTestProcess, hasEntitlement, isEnabled else { return nil }
+        return make()
     }
     @ObservationIgnored private var projectStoreStorage: ProjectStore?
     /// Builds the sync backend for the Project store. Production
@@ -1218,8 +1267,10 @@ public final class AppStateStore {
         notifier: BellNotifying? = nil,
         preferences: UserDefaults = .standard,
         projectsFileURL: URL? = nil,
-        backgroundGate: AppWideBackgroundGate = .live
+        backgroundGate: AppWideBackgroundGate = .live,
+        featureFlags: FeatureFlags = .resolved()
     ) {
+        self.featureFlags = featureFlags
         self.backgroundGate = backgroundGate
         self.appWideTerminalOpacity = backgroundGate.storedSettings().terminalOpacity
         self.projectsFileURL = projectsFileURL ?? UITestDriver.projectsFileOverride()
@@ -1415,6 +1466,7 @@ public final class AppStateStore {
             let event = WatchEventPayload(type: "session_focused", sessionID: existing.id, fromCli: fromCli)
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
             recordProjectOpen(projectStore, id: projectID)
+            reconcileSharedImage(of: project)
             return ProjectOpenResult(session: existing, wasCreated: false)
         }
         guard let target = defaultTargetWindow() else {
@@ -1437,6 +1489,7 @@ public final class AppStateStore {
         let event = WatchEventPayload(type: "session_created", sessionID: session.id, fromCli: fromCli)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
         recordProjectOpen(projectStore, id: projectID)
+        reconcileSharedImage(of: project)
         return ProjectOpenResult(session: session, wasCreated: true)
     }
 

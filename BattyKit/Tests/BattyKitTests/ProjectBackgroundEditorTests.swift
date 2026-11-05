@@ -13,7 +13,7 @@ struct ProjectBackgroundEditorTests {
     }
 
     private func model(_ fixture: ProjectBackgroundFixture, _ store: ProjectStore, selecting id: UUID? = nil) -> ProjectEditorViewModel {
-        ProjectEditorViewModel(store: store, initialSelection: id, directoryExists: { _ in true }, backgrounds: fixture.library)
+        ProjectEditorViewModel(store: store, initialSelection: id, directoryExists: { _ in true }, backgrounds: fixture.library, sharedImagesAvailable: true)
     }
 
     private func editor(_ model: ProjectEditorViewModel, appWide: TerminalBackgroundSettings = .off) -> BackgroundOverrideEditor {
@@ -256,5 +256,89 @@ struct ProjectBackgroundEditorTests {
         #expect(scope.followTitle == "Follow Settings")
         #expect(scope.customTitle == "Custom for This Project")
         #expect(scope.identifierPrefix == "project-background-sheet")
+    }
+
+    // MARK: - Shared images
+
+    private static let digest = String(repeating: "a", count: 64)
+
+    private func pendingModel(_ fixture: ProjectBackgroundFixture) throws -> (ProjectEditorViewModel, ProjectStore, Project) {
+        let store = ProjectStore(fileURL: fixture.projectsFile, sharedImagesEnabled: true)
+        var project = fixture.project(background: projectBackgroundValue(path: nil))
+        project.isShared = true
+        project.sharedImage = .named(digest: Self.digest, name: "Harbor")
+        try store.upsert(project)
+        return (model(fixture, store, selecting: project.id), store, project)
+    }
+
+    @Test func pendingCaptionNamesTheImage() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let (model, _, _) = try pendingModel(fixture)
+        #expect(model.sharedImageCaption == "Waiting for Harbor from iCloud Drive.")
+    }
+
+    /// A routine Beta build reads the same `projects.json` and has no transport.
+    @Test func noCaptionWhereNothingCanFetchTheImage() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let (_, store, project) = try pendingModel(fixture)
+        #expect(store.project(id: project.id)?.pendingSharedImage != nil)
+        let model = ProjectEditorViewModel(store: store, initialSelection: project.id, directoryExists: { _ in true }, backgrounds: fixture.library)
+        #expect(model.draft?.sharedImage == store.project(id: project.id)?.sharedImage)
+        #expect(model.sharedImageCaption == nil)
+    }
+
+    @Test func noCaptionWithoutAPendingImage() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: projectBackgroundValue(path: nil))))
+        #expect(model.sharedImageCaption == nil)
+    }
+
+    @Test func declineClearsTheDraftsImage() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let (model, store, project) = try pendingModel(fixture)
+        model.declineSharedImage()
+        #expect(model.draft?.sharedImage == nil)
+        #expect(model.sharedImageCaption == nil)
+        #expect(model.isDirty)
+        _ = try #require(model.save())
+        #expect(store.project(id: project.id)?.sharedImage == .removed)
+    }
+
+    @Test func arrivalLeavesACleanEditorClean() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let (_, store, project) = try pendingModel(fixture)
+        let path = try await fixture.copy()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        var rename = try #require(store.project(id: project.id))
+        rename.sharedImage = .named(digest: digest, name: "Harbor")
+        try store.upsert(rename)
+        let reopened = self.model(fixture, store, selecting: project.id)
+        #expect(!reopened.isDirty)
+        try store.setResolvedSharedImage(id: project.id, digest: digest, path: path)
+        reopened.sharedImageArrived(projectID: project.id, path: path)
+        #expect(reopened.draft?.background?.imagePath == path)
+        #expect(reopened.backgroundImageState == .usable)
+        #expect(!reopened.isDirty)
+        #expect(reopened.sharedImageCaption == nil)
+    }
+
+    @Test func arrivalKeepsADirtyDraftsEdits() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let (model, _, project) = try pendingModel(fixture)
+        let picked = try await fixture.copy(width: 72)
+        model.setBackgroundOverride(secondBackgroundValue(path: picked))
+        let draftImage = model.draft?.background
+        model.sharedImageArrived(projectID: project.id, path: "/elsewhere/\(Self.digest)/Harbor.png")
+        #expect(model.draft?.background == draftImage)
+        #expect(model.isDirty)
+    }
+
+    @Test func arrivalForAnotherProjectChangesNothing() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let (model, _, _) = try pendingModel(fixture)
+        let draft = model.draft
+        model.sharedImageArrived(projectID: UUID(), path: "/elsewhere/\(Self.digest)/Harbor.png")
+        #expect(model.draft == draft)
+        #expect(!model.isDirty)
     }
 }

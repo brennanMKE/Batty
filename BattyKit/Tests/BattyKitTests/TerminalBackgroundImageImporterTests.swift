@@ -429,3 +429,48 @@ final class TerminalBackgroundImageImporterTests {
         #expect(TerminalBackgroundImageImporter.digest(ofPath: "photo.png") == nil)
     }
 }
+
+@MainActor
+struct TerminalBackgroundStoreVerifiedTests {
+    private let folder = FileManager.default.temporaryDirectory.appendingPathComponent("batty-store-verified-\(UUID().uuidString)", isDirectory: true)
+
+    private func contents() -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+    }
+
+    @Test func storeVerifiedRejectsAWrongHashAndLeavesNothing() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let bytes = try BackgroundTestImage.encoded(width: 32)
+        let state = TerminalBackgroundImageImporter.storeVerified(bytes: bytes, digest: String(repeating: "a", count: 64), name: "x", into: folder)
+        #expect(state == .rejected)
+        #expect(contents().isEmpty)
+    }
+
+    @Test func storeVerifiedRejectsAnOversizedImage() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let bytes = try BackgroundTestImage.encoded(width: TerminalBackgroundImageImporter.maxPixelSize + 1, height: 4)
+        let state = TerminalBackgroundImageImporter.storeVerified(bytes: bytes, digest: BackgroundTestImage.digest(of: bytes), name: "x", into: folder)
+        #expect(state == .rejected)
+        #expect(contents().isEmpty)
+    }
+
+    @Test func storeVerifiedStoresUnderTheDigest() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let bytes = try BackgroundTestImage.encoded(width: 32)
+        let digest = BackgroundTestImage.digest(of: bytes)
+        #expect(TerminalBackgroundImageImporter.storeVerified(bytes: bytes, digest: digest, name: "Harbor", into: folder) == .usable)
+        let path = TerminalBackgroundImageImporter.verifiedPath(digest: digest, name: "Harbor", in: folder)
+        #expect(path == folder.appendingPathComponent(digest).appendingPathComponent("Harbor.png").path)
+        #expect(TerminalBackgroundImageImporter.inspect(path: path, directory: folder) == .usable)
+        #expect(contents() == [digest])
+    }
+
+    @Test func aNameCannotEscapeTheFolder() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let bytes = try BackgroundTestImage.encoded(width: 32)
+        let digest = BackgroundTestImage.digest(of: bytes)
+        #expect(TerminalBackgroundImageImporter.storeVerified(bytes: bytes, digest: digest, name: "../../evil", into: folder) == .usable)
+        #expect(contents() == [digest])
+        #expect(TerminalBackgroundImageImporter.verifiedPath(digest: digest, name: "../../evil", in: folder).hasSuffix("/\(digest)/evil.png"))
+    }
+}

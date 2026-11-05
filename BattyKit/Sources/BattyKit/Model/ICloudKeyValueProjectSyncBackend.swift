@@ -41,6 +41,7 @@ public final class ICloudKeyValueProjectSyncBackend: ProjectSyncBackend {
     /// account change, so an absent key withdraws a Project only after the
     /// store has reported the account's data.
     public private(set) var snapshotIsAuthoritative = false
+    public private(set) var snapshotSkippedEntries = false
 
     private let store: any KeyValueStoring
     private let clock: @MainActor () -> Date
@@ -93,10 +94,12 @@ public final class ICloudKeyValueProjectSyncBackend: ProjectSyncBackend {
     public func snapshot() -> [UUID: ProjectSyncEntry] {
         let now = clock()
         var entries: [UUID: ProjectSyncEntry] = [:]
+        snapshotSkippedEntries = false
         for (key, value) in store.dictionaryRepresentation {
             guard let id = Self.projectID(fromKey: key) else { continue }
             guard let data = value as? Data, let entry = Self.decode(data, id: id) else {
                 logger.error("skipping an undecodable shared project value")
+                snapshotSkippedEntries = true
                 continue
             }
             if case .tombstone(let deletedAt) = entry, now.timeIntervalSince(deletedAt) > Self.tombstoneLifetime {

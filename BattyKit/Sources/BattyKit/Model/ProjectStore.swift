@@ -106,6 +106,12 @@ public final class ProjectStore {
     @ObservationIgnored private let home: String
     /// Runs while a backend is present; ends when its `changes` stream does.
     @ObservationIgnored private(set) var syncTask: Task<Void, Never>?
+    /// With false, records, merges and `projects.json` are what they were
+    /// before images synced (`docs/feature-flags.md`).
+    @ObservationIgnored let sharedImagesEnabled: Bool
+    /// After a commit that may change a Shared Project's image. True for a
+    /// user's save or share, false for a merge, which must not prompt.
+    @ObservationIgnored var onSharedImagesChanged: (@MainActor (_ userInitiated: Bool) -> Void)?
 
     public init(
         fileURL: URL? = nil,
@@ -113,8 +119,10 @@ public final class ProjectStore {
         clock: @escaping @MainActor () -> Date = { Date() },
         backend: (any ProjectSyncBackend)? = nil,
         home: String = NSHomeDirectory(),
-        readFile: @escaping @MainActor (URL) throws -> Data = { try Data(contentsOf: $0) }
+        readFile: @escaping @MainActor (URL) throws -> Data = { try Data(contentsOf: $0) },
+        sharedImagesEnabled: Bool = false
     ) {
+        self.sharedImagesEnabled = sharedImagesEnabled
         self.fileManager = fileManager
         self.clock = clock
         self.backend = backend
@@ -189,6 +197,34 @@ public final class ProjectStore {
         return Set(file.projects.compactMap { $0.background?.imagePath })
     }
 
+    /// The digests `projects.json`'s `sharedImage` values name, which a Project
+    /// waiting for its image has no path for. Nil on the same terms as
+    /// `imagePathsInFile()`.
+    func sharedImageDigestsInFile() -> Set<String>? {
+        guard let fileURL,
+              let data = try? readFile(fileURL),
+              let file = try? Self.decodeFile(data),
+              file.dropped == 0, file.newerVersion == nil
+        else { return nil }
+        return Set(file.projects.compactMap { $0.sharedImage?.digest })
+    }
+
+    /// Every digest some Project may still need: the backend's records, this
+    /// list and `projects.json`. Nil unless all of them can be trusted, because
+    /// the sweep deletes what this leaves out and another Mac may need it.
+    func namedSharedImageDigestsIfTrusted() -> Set<String>? {
+        guard let backend, backend.snapshotIsAuthoritative, !mayReferenceUnlistedImages else { return nil }
+        let snapshot = backend.snapshot()
+        guard !backend.snapshotSkippedEntries, imagePathsInFile() != nil, let inFile = sharedImageDigestsInFile() else { return nil }
+        var named = inFile.union(projects.compactMap { $0.sharedImage?.digest })
+        for entry in snapshot.values {
+            if case .record(let record) = entry, case .named(let digest, _)? = record.background?.image {
+                named.insert(digest)
+            }
+        }
+        return named
+    }
+
     /// `imagePathsInFile()` can't tell an absent file from an unreadable one.
     var fileIsAbsent: Bool {
         guard let fileURL else { return true }
@@ -229,6 +265,11 @@ public final class ProjectStore {
             throw ProjectStoreError.duplicateName(project.name)
         }
         project.modifiedAt = clock()
+        if sharedImagesEnabled {
+            project.sharedImage = project.isShared
+                ? ProjectSharedImage.forSave(draft: project, stored: self.project(id: project.id))
+                : nil
+        }
         var updated = projects
         let wasShared: Bool
         if let index = updated.firstIndex(where: { $0.id == project.id }) {
@@ -243,13 +284,14 @@ public final class ProjectStore {
         if !project.isShared, wasShared {
             backend?.withdraw(id: project.id)
         }
+        if project.isShared || wasShared { onSharedImagesChanged?(true) }
     }
 
     /// Runs before the local commit, so a refused share changes nothing.
     private func publish(_ project: Project) throws {
         guard let backend else { return }
         do {
-            try backend.publish(project.syncRecord(home: home))
+            try backend.publish(project.syncRecord(home: home, carriesSharedImage: sharedImagesEnabled))
             syncError = nil
         } catch {
             syncError = error.localizedDescription
@@ -274,6 +316,13 @@ public final class ProjectStore {
         let wasShared = updated[index].isShared
         updated[index].isShared = shared
         updated[index].modifiedAt = clock()
+        if sharedImagesEnabled {
+            if !shared {
+                updated[index].sharedImage = nil
+            } else if !wasShared || updated[index].sharedImage == nil {
+                updated[index].sharedImage = updated[index].background?.imagePath.flatMap(ProjectSharedImage.named(fromPath:))
+            }
+        }
         if shared { try publish(updated[index]) }
         if unreadableOriginal != nil {
             projects = updated
@@ -284,6 +333,7 @@ public final class ProjectStore {
         if !shared, wasShared {
             backend?.withdraw(id: id)
         }
+        onSharedImagesChanged?(true)
     }
 
     /// Applies the backend's entries to the list. This is the one write to
@@ -303,10 +353,12 @@ public final class ProjectStore {
         }
         let merged = ProjectSyncMerge.apply(
             remote: backend.snapshot(), to: projects, home: home, now: clock(),
-            withdrawAbsent: backend.snapshotIsAuthoritative)
+            withdrawAbsent: backend.snapshotIsAuthoritative,
+            honorsSharedImages: sharedImagesEnabled)
         guard merged != projects else { return }
         do {
             try commit(merged)
+            onSharedImagesChanged?(false)
         } catch {
             logger.error("mergeRemote: save failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -363,11 +415,16 @@ public final class ProjectStore {
     /// Clears the path of every Project naming this image and keeps its fit,
     /// position and opacities. Device state, like `recordApproval`: the path
     /// never syncs, so this does not stamp `modifiedAt` or reach the backend.
+    /// A `sharedImage` naming it goes too, so the image isn't downloaded again.
     func clearBackgroundImage(digest: String) throws {
         try requireReadableFile()
         var updated = projects
         var changed = false
         for index in updated.indices {
+            if updated[index].sharedImage?.digest == digest {
+                updated[index].sharedImage = nil
+                changed = true
+            }
             guard let background = updated[index].background,
                   background.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
             else { continue }
@@ -381,6 +438,28 @@ public final class ProjectStore {
             return
         }
         try commit(updated)
+    }
+
+    /// An image from another Mac has arrived. Device state, like
+    /// `recordApproval`: no stamp and no publish. Does nothing, returning false,
+    /// unless the Project still names this digest, since the user may have
+    /// picked another image during the download.
+    @discardableResult
+    func setResolvedSharedImage(id: UUID, digest: String, path: String) throws -> Bool {
+        try requireReadableFile()
+        guard let index = projects.firstIndex(where: { $0.id == id }),
+              projects[index].sharedImage?.digest == digest,
+              let background = projects[index].background
+        else { return false }
+        var updated = projects
+        updated[index].background = background.withImagePath(path)
+        if unreadableOriginal != nil {
+            projects = updated
+            logger.notice("setResolvedSharedImage: projects file not fully loaded; keeping the path in memory only")
+            return true
+        }
+        try commit(updated)
+        return true
     }
 
     private func commit(_ updated: [Project]) throws {

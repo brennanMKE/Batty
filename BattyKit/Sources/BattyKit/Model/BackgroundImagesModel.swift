@@ -18,6 +18,8 @@ final class BackgroundImagesModel {
         let uses: [BackgroundImageUse]
         /// Why nothing can be removed now. When set, `uses` isn't worth showing.
         let refusal: String?
+        /// A Shared Project uses this image and its copy stays in iCloud Drive.
+        var keepsOnOtherMacs = false
     }
 
     private(set) var entries: [BackgroundImageEntry] = []
@@ -31,6 +33,7 @@ final class BackgroundImagesModel {
     @ObservationIgnored private let refusal: @MainActor (String) -> String?
     @ObservationIgnored private let clearUses: @MainActor (String) throws -> Void
     @ObservationIgnored private let notificationCenter: NotificationCenter
+    @ObservationIgnored private let sharedImages: @MainActor () -> SharedProjectImages?
 
     init(
         library: BackgroundImageLibrary,
@@ -38,8 +41,10 @@ final class BackgroundImagesModel {
         uses: @escaping @MainActor () -> [String: [BackgroundImageUse]],
         refusal: @escaping @MainActor (String) -> String?,
         clearUses: @escaping @MainActor (String) throws -> Void,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        sharedImages: @escaping @MainActor () -> SharedProjectImages? = { nil }
     ) {
+        self.sharedImages = sharedImages
         self.library = library
         self.thumbnailer = thumbnailer
         self.findUses = uses
@@ -76,7 +81,19 @@ final class BackgroundImagesModel {
     }
 
     func prepareRemoval(_ entry: BackgroundImageEntry) -> RemovalPlan {
-        RemovalPlan(entry: entry, uses: findUses()[entry.digest] ?? [], refusal: refusal(entry.digest))
+        let uses = findUses()[entry.digest] ?? []
+        let usedByShared = uses.contains {
+            if case .project(_, _, true) = $0 { return true }
+            return false
+        }
+        return RemovalPlan(
+            entry: entry, uses: uses, refusal: refusal(entry.digest),
+            keepsOnOtherMacs: usedByShared && sharedImages() != nil)
+    }
+
+    /// A digest with no Shared Project behind it has no status at all.
+    func sharedStatus(forDigest digest: String) -> SharedImageStatus? {
+        sharedImages()?.sharedStatus[digest]
     }
 
     /// Uses are cleared first, and a failure there deletes nothing: a path left

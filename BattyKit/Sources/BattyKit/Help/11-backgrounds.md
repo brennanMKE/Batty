@@ -43,3 +43,5 @@ While any terminal Pane in any session of a window is below 100% **Terminal Opac
 - Native full screen is always opaque.
 - Each window decides for itself.
 - There is no blur, so what is behind the window stays sharp.
+
+In Batty Beta, the only background image copied to iCloud Drive is the one on a Shared [Project](10-projects.md). Images in the library, on a Pane or Session, in Settings or on a local Project stay on this Mac.

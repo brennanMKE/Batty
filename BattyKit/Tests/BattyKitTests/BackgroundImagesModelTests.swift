@@ -172,4 +172,53 @@ struct BackgroundImagesModelTests {
         await model.remove(target)
         #expect(posts == 1)
     }
+
+    @Test func removalPlanWarnsWhenASharedProjectUsesTheImage() async throws {
+        let world = try SharedImageWorld()
+        let path = try await world.fixture.copy()
+        try world.store.upsert(world.project(path: path))
+        let model = world.appStore.backgroundImages
+        await model.refresh()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        let entry = try #require(model.entries.first { $0.digest == digest })
+        #expect(model.prepareRemoval(entry).keepsOnOtherMacs)
+    }
+
+    @Test func removalPlanDoesNotWarnForALocalProject() async throws {
+        let world = try SharedImageWorld()
+        let path = try await world.fixture.copy()
+        try world.store.upsert(world.project(path: path, shared: false))
+        let model = world.appStore.backgroundImages
+        await model.refresh()
+        let entry = try #require(model.entries.first)
+        #expect(!model.prepareRemoval(entry).keepsOnOtherMacs)
+    }
+
+    @Test func removalPlanDoesNotWarnWithTheFeatureOff() async throws {
+        let path = try await f.copy()
+        let store = f.appStore()
+        var project = f.project(background: projectBackgroundValue(path: path))
+        project.isShared = true
+        try store.projectStore.upsert(project)
+        await store.backgroundImages.refresh()
+        let entry = try #require(store.backgroundImages.entries.first)
+        #expect(!store.backgroundImages.prepareRemoval(entry).keepsOnOtherMacs)
+    }
+
+    @Test func removalLeavesTheSharedCopyAlone() async throws {
+        let world = try SharedImageWorld()
+        let path = try await world.fixture.copy()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        let project = world.project(path: path)
+        try world.store.upsert(project)
+        await world.pass()
+        let model = world.appStore.backgroundImages
+        await model.refresh()
+        await model.remove(try #require(model.entries.first))
+        await world.pass()
+        #expect(world.fake.deletes.isEmpty)
+        #expect(world.fake.hasFile(digest: digest))
+        #expect(world.store.project(id: project.id)?.sharedImage == nil)
+        #expect(world.store.project(id: project.id)?.background == projectBackgroundValue(path: nil))
+    }
 }

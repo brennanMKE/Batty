@@ -375,6 +375,23 @@ private struct ProjectBackgroundRow: View {
                     .accessibilityIdentifier("project-editor.background.edit")
             }
             FieldMessages(error: nil, warning: validation.warnings[.background], identifier: "project-editor.background")
+            if let caption = model.sharedImageCaption {
+                HStack(spacing: 8) {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("project-editor.background.shared-image")
+                    Button("Don't Use This Image") { model.declineSharedImage() }
+                        .controlSize(.small)
+                        .accessibilityIdentifier("project-editor.background.decline")
+                }
+            }
+            if let message = model.sharedImageMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("project-editor.background.shared-image-message")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)

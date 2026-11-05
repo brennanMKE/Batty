@@ -2,7 +2,7 @@
 
 Unfinished features land on `main` behind a flag until the release that ships them (`AGENTS.md`, "Release branches"). With the flag off a feature is invisible and inert: no menu, Command Palette, Sidebar or CLI entry points, and no reads or writes of the feature's files.
 
-There are no flags today. This page is the recipe for the next one.
+One flag exists today, listed under "Current flags". This page is also the recipe for the next one.
 
 ## Policy
 
@@ -18,6 +18,15 @@ Add a `FeatureFlags` struct (one `Bool` per flag) in `BattyKit/Sources/BattyXPCC
 UI tests run against the Beta bundle, so a flag is on there. To prove flag-off inertness, add an environment override that is read only when the UI-test driver variable `BATTY_UI_TEST_SCRIPT` is present and that can only force a flag off, never on.
 
 Record each gate site (file, symbol, what the flag changes) as you add it, so removing the flag is "delete the property, fix the compile errors, check the list". Delete the flag in the release that ships the feature, along with its flag-off tests.
+
+## Current flags
+
+`FeatureFlags` is in `BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`.
+
+- `sharedProjectImages` (#0551): a Shared Project's background image is copied through an iCloud Drive folder. It has no CLI `current` because the CLI doesn't read it, and no UI-test override because a UI-test build has no entitlement and so has no transport. Remove it in the release that ships the feature, after the user has run U1 to U8 in `issues/0551.md`. Gate sites:
+  - `AppStateStore.defaultSharedImageTransport`: no transport, so no shared folder is read or written, unless the flag is on.
+  - `ProjectStore.sharedImagesEnabled`: true only with a transport. False keeps records, merges and `projects.json` as they were.
+  - `BattyKit/Sources/BattyKit/Help/10-projects.md` keeps "choose the image on each Mac" until the flag goes, because Help ships in Prod. Update that sentence when removing the flag.
 
 ## Retired flags
 

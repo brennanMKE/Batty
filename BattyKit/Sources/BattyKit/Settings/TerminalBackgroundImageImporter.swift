@@ -124,7 +124,7 @@ actor TerminalBackgroundImageImporter {
         name.utf8.count == 64 && name.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
 
-    private nonisolated static func hexDigest(of bytes: Data) -> String {
+    nonisolated static func hexDigest(of bytes: Data) -> String {
         SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
     }
 
@@ -183,11 +183,11 @@ actor TerminalBackgroundImageImporter {
 
     /// Removes digest folders of this directory that hold no kept path and were
     /// last modified before `cutoff`. Only an `.unreferenced` importer does this.
-    func removeUnreferenced(keeping paths: Set<String>, olderThan cutoff: Date) {
+    func removeUnreferenced(keeping paths: Set<String>, keepingDigests: Set<String> = [], olderThan cutoff: Date) {
         guard case .unreferenced = cleanup else { return }
         let fileManager = FileManager.default
         let keptFolders = Set(paths.map { ($0 as NSString).deletingLastPathComponent })
-        for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? [] where Self.isDigest(name) {
+        for name in (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? [] where Self.isDigest(name) && !keepingDigests.contains(name) {
             let entry = directory.appendingPathComponent(name, isDirectory: true)
             guard !keptFolders.contains(entry.path),
                   let modified = (try? fileManager.attributesOfItem(atPath: entry.path))?[.modificationDate] as? Date,
@@ -263,17 +263,70 @@ actor TerminalBackgroundImageImporter {
         }
     }
 
-    /// Keeps the source's name for display. A quote or backslash is dropped
-    /// because the path is written into a quoted config value. The bound is in
-    /// bytes because APFS limits a name to 255 of them.
     private static func fileName(for source: URL) -> String {
+        sanitizedImageName(source.deletingPathExtension().lastPathComponent) + ".png"
+    }
+
+    /// An image's name with no extension, safe as one path component and inside
+    /// a quoted config value, which is why a quote or backslash is dropped. It
+    /// also arrives from other Macs' records, so `/`, `:` and leading dots go
+    /// too. The bound is in bytes because APFS limits a name to 255 of them.
+    nonisolated static func sanitizedImageName(_ raw: String, maxBytes: Int = 200) -> String {
         var name = String(String.UnicodeScalarView(
-            source.deletingPathExtension().lastPathComponent.unicodeScalars.filter {
-                $0.properties.generalCategory != .control && $0 != "\"" && $0 != "\\"
+            raw.unicodeScalars.filter {
+                $0.properties.generalCategory != .control && !["\"", "\\", "/", ":"].contains($0)
             }
         ))
-        while name.utf8.count > 200 { name.removeLast() }
-        return (name.isEmpty ? "image" : name) + ".png"
+        while name.hasPrefix(".") { name.removeFirst() }
+        while name.utf8.count > maxBytes { name.removeLast() }
+        return name.isEmpty ? "image" : name
+    }
+
+    /// Where `storeVerified` puts this image.
+    nonisolated static func verifiedPath(digest: String, name: String, in directory: URL) -> String {
+        directory
+            .appendingPathComponent(digest, isDirectory: true)
+            .appendingPathComponent(sanitizedImageName(name) + ".png")
+            .path
+    }
+
+    /// Stores bytes from another Mac as a local copy. `bytes` must hash to the
+    /// `digest` the record names, and the header must pass the pixel check,
+    /// because a too-wide image aborts the process once libghostty loads it.
+    /// `.rejected` leaves nothing behind. Runs on the caller's executor, so
+    /// call it off the main actor.
+    nonisolated static func storeVerified(bytes: Data, digest: String, name: String, into directory: URL) -> BackgroundImageState {
+        guard isDigest(digest), hexDigest(of: bytes) == digest else { return .rejected }
+        let fileManager = FileManager.default
+        let temporary = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
+        defer { try? fileManager.removeItem(at: temporary) }
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try bytes.write(to: temporary)
+            guard isWithinPixelLimit(path: temporary.path) else { return .rejected }
+            let destination = URL(fileURLWithPath: verifiedPath(digest: digest, name: name, in: directory))
+            try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if fileManager.fileExists(atPath: destination.path) {
+                _ = try fileManager.replaceItemAt(destination, withItemAt: temporary)
+            } else {
+                try fileManager.moveItem(at: temporary, to: destination)
+            }
+            return .usable
+        } catch {
+            logger.error("could not store a shared background image: \(error.localizedDescription, privacy: .private)")
+            return .rejected
+        }
+    }
+
+    /// An intact copy of this image already in `directory`, whatever its name.
+    nonisolated static func existingCopy(digest: String, in directory: URL) -> String? {
+        guard isDigest(digest) else { return nil }
+        let folder = directory.appendingPathComponent(digest, isDirectory: true)
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.sorted() ?? [] {
+            let path = folder.appendingPathComponent(name).path
+            if inspect(path: path, directory: directory) == .usable, isWithinPixelLimit(path: path) { return path }
+        }
+        return nil
     }
 
     private static func decode(_ bytes: Data) throws -> CGImage {

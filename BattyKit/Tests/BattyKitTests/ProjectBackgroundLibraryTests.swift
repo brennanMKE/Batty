@@ -200,4 +200,34 @@ struct ProjectBackgroundLibraryTests {
         #expect(FileManager.default.fileExists(atPath: named))
         #expect(!FileManager.default.fileExists(atPath: unused))
     }
+
+    @Test func reclaimKeepsAFolderAPendingProjectNames() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        try fixture.age(folderOf: path)
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        let store = ProjectStore(fileURL: fixture.projectsFile, sharedImagesEnabled: true)
+        var project = fixture.project(background: projectBackgroundValue(path: nil))
+        project.isShared = true
+        project.sharedImage = .named(digest: digest, name: "photo")
+        try store.upsert(project)
+        try await reclaim(fixture, store)
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func reclaimKeepsAFolderTheFileNamesForAPendingProject() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        try fixture.age(folderOf: path)
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        let store = ProjectStore(fileURL: fixture.projectsFile, sharedImagesEnabled: true)
+        try store.upsert(fixture.project(name: "Mine", background: nil))
+        var other = fixture.project(name: "Other Copy", background: projectBackgroundValue(path: nil))
+        other.isShared = true
+        other.sharedImage = .named(digest: digest, name: "photo")
+        try ProjectStore(fileURL: fixture.projectsFile, sharedImagesEnabled: true).upsert(other)
+        #expect(store.project(id: other.id) == nil)
+        try await reclaim(fixture, store)
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
 }

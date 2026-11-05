@@ -21,7 +21,8 @@ extension AppStateStore {
             uses: { [weak self] in self?.backgroundImageUses() ?? [:] },
             refusal: { [weak self] in self?.removalRefusal(digest: $0) },
             clearUses: { [weak self] in try self?.clearBackgroundImageUses(digest: $0) },
-            notificationCenter: notificationCenter
+            notificationCenter: notificationCenter,
+            sharedImages: { [weak self] in self?.sharedProjectImages }
         )
     }
 
@@ -92,5 +93,24 @@ extension AppStateStore {
                 pane.setBackgroundOverride(pane.backgroundOverride?.withImagePath(nil))
             }
         }
+    }
+
+    /// Opening doesn't wait for this. A local Project has nothing to reconcile,
+    /// so opening one can't be what first reaches the folder.
+    func reconcileSharedImage(of project: Project) {
+        guard project.isShared, project.sharedImage?.digest != nil else { return }
+        sharedProjectImages?.reconcile(userInitiated: true)
+    }
+
+    /// An open Session the user hasn't changed gets the image on both its seed
+    /// and override, so `SaveSessionAsProject` doesn't read this as their edit.
+    func sharedImageArrived(project: Project, path: String) {
+        for session in windows.flatMap(\.sessions) where session.projectID == project.id {
+            guard let seed = session.projectBackgroundSeed, session.backgroundOverride == seed else { continue }
+            let updated = seed.withImagePath(path)
+            session.projectBackgroundSeed = updated
+            session.setBackgroundOverride(updated)
+        }
+        openProjectEditorModel()?.sharedImageArrived(projectID: project.id, path: path)
     }
 }

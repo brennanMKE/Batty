@@ -191,6 +191,71 @@ public struct ProjectStartupCommand: Sendable, Hashable {
     public var command: String
 }
 
+/// What a Shared Project has published about its image. A bad digest fails the
+/// decode, which `Project` turns into nil, so it never builds a path.
+public enum ProjectSharedImage: Codable, Sendable, Hashable {
+    case named(digest: String, name: String)
+    case removed
+
+    public var digest: String? {
+        if case .named(let digest, _) = self { return digest }
+        return nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case digest, name, removed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if (try? c.decodeIfPresent(Bool.self, forKey: .removed)) == true {
+            self = .removed
+            return
+        }
+        let digest = try c.decode(String.self, forKey: .digest)
+        guard TerminalBackgroundImageImporter.isDigest(digest) else {
+            throw DecodingError.dataCorruptedError(forKey: .digest, in: c, debugDescription: "not a digest")
+        }
+        let name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+        self = .named(digest: digest, name: TerminalBackgroundImageImporter.sanitizedImageName(name, maxBytes: Self.maxNameBytes))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .named(let digest, let name):
+            try c.encode(digest, forKey: .digest)
+            try c.encode(name, forKey: .name)
+        case .removed:
+            try c.encode(true, forKey: .removed)
+        }
+    }
+
+    nonisolated static let maxNameBytes = 100
+
+    /// Nil when `path` isn't in a folder named for a digest.
+    static func named(fromPath path: String) -> ProjectSharedImage? {
+        guard let digest = TerminalBackgroundImageImporter.digest(ofPath: path) else { return nil }
+        let name = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+        return .named(digest: digest, name: TerminalBackgroundImageImporter.sanitizedImageName(name, maxBytes: maxNameBytes))
+    }
+
+    /// What a Save of a Shared Project publishes. `stored` is the Project as it
+    /// was before this Save.
+    static func forSave(draft: Project, stored: Project?) -> ProjectSharedImage? {
+        guard let background = draft.background else { return nil }
+        if let path = background.imagePath {
+            if path == stored?.background?.imagePath, case .named = draft.sharedImage {
+                return draft.sharedImage
+            }
+            return named(fromPath: path)
+        }
+        if stored?.background?.imagePath != nil { return .removed }
+        if draft.sharedImage == nil, stored?.sharedImage?.digest != nil { return .removed }
+        return draft.sharedImage
+    }
+}
+
 public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
     public var name: String
@@ -227,6 +292,9 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     /// path is device state and the rest is definition. Older Batty versions
     /// ignore and, on their next save, drop it.
     public var background: TerminalBackgroundSettings?
+    /// Nil means this Project has never published an image. `.named` with a
+    /// digest other than `imagePath`'s means the image hasn't arrived yet.
+    public var sharedImage: ProjectSharedImage?
 
     public init(
         id: UUID = UUID(),
@@ -242,7 +310,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         modifiedAt: Date? = nil,
         customColorHex: String? = nil,
         customSymbolName: String? = nil,
-        background: TerminalBackgroundSettings? = nil
+        background: TerminalBackgroundSettings? = nil,
+        sharedImage: ProjectSharedImage? = nil
     ) {
         let resolvedColor = ProjectAppearance.resolve(color: color, customHex: customColorHex)
         let resolvedSymbol = ProjectAppearance.resolve(symbol: symbol, customName: customSymbolName)
@@ -260,6 +329,15 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.isShared = isShared
         self.modifiedAt = modifiedAt
         self.background = background
+        self.sharedImage = sharedImage
+    }
+
+    /// The image this Mac is still waiting for, if any.
+    var pendingSharedImage: (digest: String, name: String)? {
+        guard case .named(let digest, let name) = sharedImage,
+              background?.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) != digest
+        else { return nil }
+        return (digest, name)
     }
 
     /// The color to draw: the custom color, else the palette entry.
@@ -316,7 +394,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, customColor, symbol, symbolName, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt, background
+        case id, name, rootPath, color, customColor, symbol, symbolName, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt, background, sharedImage
     }
 
     /// `isShared` is written only when true, so a local Project's object is
@@ -337,6 +415,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         if isShared { try c.encode(true, forKey: .isShared) }
         try c.encodeIfPresent(modifiedAt, forKey: .modifiedAt)
         try c.encodeIfPresent(background, forKey: .background)
+        try c.encodeIfPresent(sharedImage, forKey: .sharedImage)
     }
 
     public init(from decoder: Decoder) throws {
@@ -393,5 +472,6 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
             if c.contains(.background), !((try? c.decodeNil(forKey: .background)) ?? false) { logger.error("unreadable project background; following Settings") }
             background = nil
         }
+        sharedImage = (try? c.decodeIfPresent(ProjectSharedImage.self, forKey: .sharedImage)) ?? nil
     }
 }

@@ -21,8 +21,8 @@ split is enforced by types, not by convention.
 
 | Group | Fields | Syncs |
 |---|---|---|
-| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, `modifiedAt` | yes, when shared |
-| Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath` | never |
+| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, `modifiedAt`, and behind the `sharedProjectImages` flag the image's digest and name | yes, when shared |
+| Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath`, `sharedImage` as held in `projects.json` | never |
 | Membership | `isShared` | implied by presence in the shared set; never a field of the synced record |
 
 `ProjectSyncRecord` (`Model/ProjectSync.swift`) holds exactly the Definition
@@ -43,11 +43,70 @@ The image path stays on each Mac because a merge replaces a Project whole: a
 synced path would overwrite the other Mac's image with one it doesn't have, and
 the image's bytes can't fit the store. `replacingDefinition` keeps this Mac's
 path, and a Project arriving from another Mac has its opacity and no image.
+Behind the flag, the record names the image by digest and the file travels
+separately (see "Shared images").
 
 `modifiedAt` is stamped by `ProjectStore` on every definition write (`upsert`,
 `setShared`) and is the last-writer-wins key. It is not stamped by
 `recordOpen` or `recordApproval`, which write device state only: neither
 stamps, publishes, or rewrites a file that could not be fully loaded.
+
+## Shared images (#0551, behind `sharedProjectImages`)
+
+On in Beta, off in Prod, until the user has run U1 to U8 in `issues/0551.md`.
+With the flag off, records, merges and `projects.json` are unchanged and no
+shared folder is read or written. The transport also needs the entitlement and
+a non-test process (`AppStateStore.defaultSharedImageTransport`), so a routine
+build, a test or the VM never reaches iCloud Drive.
+
+**Scope.** A copy goes to iCloud only when an image is chosen for a Project set
+to Shared, or a Project with an image becomes Shared. `SharedProjectImages`
+builds its work list only from Shared Projects whose `sharedImage` names an
+image. A pass with no such Project makes no transport call.
+
+**The record's image has three states**, as keys inside `background`:
+
+| State | Keys | A receiving Mac |
+|---|---|---|
+| Named | `imageDigest` (64 lowercase hex), `imageName` (at most 100 bytes, sanitized on receipt) | Keeps its current image until the named one arrives |
+| Removed | `imageRemoved: true` | Clears its image and any wait |
+| Unspecified | neither | Keeps its image and any wait |
+
+Unspecified is what older Batty writes, and a bad digest or wrong type reads as
+unspecified. Removal needs its own encoding because an absent key can't mean it.
+An older Mac's edit drops the digest, and the next edit on a newer Mac publishes
+it again. `ProjectSyncMerge.apply` stays pure; all file work follows it.
+
+**The folder is transport only.** It is
+`iCloud Drive/<Batty or Batty Beta>/Project Backgrounds/<digest>.png`, flat, with
+no user text in a path. An arriving file must hash to the record's digest and
+pass the pixel check, off the main actor, and only then becomes a local copy in
+`ProjectBackgrounds/`. `imagePath` always names that copy, so libghostty never
+gets a path that isn't materialized and opening never touches the network. No
+code sets an I/O materialization policy, because every shell in a Pane would
+inherit one set at process scope.
+
+**Nothing is deleted on the spot**: not on unshare, on delete, or when the image
+changes. Another Mac may be mid-download and a user can re-share.
+
+**The sweep** runs after `reclaim` when the Project Editor closes, at most once
+per launch. It runs only if the folder is available, the snapshot is
+authoritative, the backend skipped no undecodable entry, `mayReferenceUnlistedImages`
+is false and `projects.json` can be trusted in full. It deletes only `<digest>.png`
+names that no record and no local `sharedImage` has named for 30 days. Folder dates
+in iCloud Drive aren't used; `shared-image-sweep.json` beside `projects.json` records
+when each digest was first seen unnamed, and a digest named again leaves it. Deleting
+too early costs a re-upload, as long as one Mac has a copy.
+
+**Prompting.** A first access may prompt, so it happens only from a user action:
+saving or sharing a Project with an image, opening one that is Shared, or opening
+the Project Editor on one. A launch or key-value change does nothing until
+`SharedProjectImages.folderWasReached` is set by a success.
+
+**Unverified.** Whether a plain folder in iCloud Drive syncs, downloads and reports
+status without a ubiquity container entitlement can only be proven on real Macs.
+`issues/0551.md` has the checklist and the fallbacks, and only one type,
+`ICloudDriveImageFolder`, has to change for them.
 
 ## Portable root
 

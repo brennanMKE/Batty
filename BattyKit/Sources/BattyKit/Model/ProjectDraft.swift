@@ -32,6 +32,8 @@ struct ProjectDraft: Equatable {
     var modifiedAt: Date?
     /// `nil` follows Settings. Edited by the Background row's sheet.
     var background: TerminalBackgroundSettings?
+    /// Carried through; the store works out what a Save publishes.
+    var sharedImage: ProjectSharedImage?
     /// Messages about parts of a captured Session that could not be kept as
     /// they were (a folder outside the root), shown as warnings until the
     /// field or the structure around it is edited. Not part of the Project.
@@ -55,6 +57,7 @@ struct ProjectDraft: Equatable {
         isShared = project.isShared
         modifiedAt = project.modifiedAt
         background = project.background
+        sharedImage = project.sharedImage
     }
 
     init(
@@ -150,7 +153,8 @@ struct ProjectDraft: Equatable {
             modifiedAt: modifiedAt,
             customColorHex: customColorHex,
             customSymbolName: customSymbolName,
-            background: background
+            background: background,
+            sharedImage: sharedImage
         )
     }
 }

@@ -5,22 +5,61 @@ import os
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProjectSync")
 
+/// What a record says about its image. `unspecified` is what older Batty writes
+/// and keeps this Mac's image, so a remote "Custom, no image" can't clear it;
+/// removal has its own encoding for that reason.
+public enum ProjectSyncImage: Sendable, Hashable {
+    case unspecified
+    case named(digest: String, name: String)
+    case removed
+}
+
 /// A Project's background without its image path, which is device state: a
 /// synced path would name a file the other Mac doesn't have, and publishing it
 /// would overwrite that Mac's own image. Holds no path however it was built.
 public struct ProjectSyncBackground: Codable, Sendable, Hashable {
     public let settings: TerminalBackgroundSettings
+    public let image: ProjectSyncImage
 
-    public init(_ settings: TerminalBackgroundSettings) {
+    public init(_ settings: TerminalBackgroundSettings, image: ProjectSyncImage = .unspecified) {
         self.settings = settings.withImagePath(nil)
+        self.image = image
     }
 
+    private enum ImageKeys: String, CodingKey {
+        case imageDigest, imageName, imageRemoved
+    }
+
+    /// A bad digest or a wrong type reads as `unspecified`. These keys share the
+    /// settings' object, whose decoder ignores them, as older Batty's does.
     public init(from decoder: Decoder) throws {
-        self.init(try TerminalBackgroundSettings(from: decoder))
+        let settings = try TerminalBackgroundSettings(from: decoder)
+        let c = try decoder.container(keyedBy: ImageKeys.self)
+        let image: ProjectSyncImage
+        if (try? c.decodeIfPresent(Bool.self, forKey: .imageRemoved)) == true {
+            image = .removed
+        } else if let digest = (try? c.decodeIfPresent(String.self, forKey: .imageDigest)) ?? nil,
+                  TerminalBackgroundImageImporter.isDigest(digest) {
+            let name = (try? c.decodeIfPresent(String.self, forKey: .imageName)) ?? nil
+            image = .named(digest: digest, name: TerminalBackgroundImageImporter.sanitizedImageName(name ?? "", maxBytes: ProjectSharedImage.maxNameBytes))
+        } else {
+            image = .unspecified
+        }
+        self.init(settings, image: image)
     }
 
     public func encode(to encoder: Encoder) throws {
         try settings.encode(to: encoder)
+        var c = encoder.container(keyedBy: ImageKeys.self)
+        switch image {
+        case .unspecified:
+            break
+        case .named(let digest, let name):
+            try c.encode(digest, forKey: .imageDigest)
+            try c.encode(name, forKey: .imageName)
+        case .removed:
+            try c.encode(true, forKey: .imageRemoved)
+        }
     }
 }
 
@@ -85,22 +124,40 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+extension ProjectSyncImage {
+    fileprivate var projectSharedImage: ProjectSharedImage? {
+        switch self {
+        case .unspecified: nil
+        case .named(let digest, let name): .named(digest: digest, name: name)
+        case .removed: .removed
+        }
+    }
+}
+
 extension Project {
-    public func syncRecord(home: String) -> ProjectSyncRecord {
-        ProjectSyncRecord(
+    /// Only `sharedImage` can put image keys in the record. Without
+    /// `carriesSharedImage` the bytes are what they were before those keys.
+    public func syncRecord(home: String, carriesSharedImage: Bool = false) -> ProjectSyncRecord {
+        let image: ProjectSyncImage = switch carriesSharedImage ? sharedImage : nil {
+        case .named(let digest, let name):
+            .named(digest: digest, name: TerminalBackgroundImageImporter.sanitizedImageName(name, maxBytes: ProjectSharedImage.maxNameBytes))
+        case .removed: .removed
+        case nil: .unspecified
+        }
+        return ProjectSyncRecord(
             id: id, name: name,
             rootPath: PortablePath.encode(absolute: rootPath, home: home),
             color: color, symbol: symbol, layout: layout,
             runStartupCommandsOnOpen: runStartupCommandsOnOpen,
             modifiedAt: modifiedAt,
             customColor: customColorHex, symbolName: customSymbolName,
-            background: background.map(ProjectSyncBackground.init))
+            background: background.map { ProjectSyncBackground($0, image: image) })
     }
 
     /// A shared Project with no device state. A root that does not decode to
     /// an absolute path (a `~user/...` form) is anchored at `/`, so the
     /// Project is kept and shows as missing-folder instead of being dropped.
-    public init(syncRecord record: ProjectSyncRecord, home: String) {
+    public init(syncRecord record: ProjectSyncRecord, home: String, honorsSharedImages: Bool = false) {
         let decoded = PortablePath.decode(portable: record.rootPath, home: home)
         self.init(
             id: record.id, name: record.name,
@@ -110,15 +167,31 @@ extension Project {
             approvedCommandsHash: nil, lastOpenedAt: nil,
             isShared: true, modifiedAt: record.modifiedAt,
             customColorHex: record.customColor, customSymbolName: record.symbolName,
-            background: record.background?.settings)
+            background: record.background?.settings,
+            sharedImage: honorsSharedImages ? record.background?.image.projectSharedImage : nil)
     }
 
-    fileprivate func replacingDefinition(with record: ProjectSyncRecord, name: String, home: String) -> Project {
+    fileprivate func replacingDefinition(with record: ProjectSyncRecord, name: String, home: String, honorsSharedImages: Bool) -> Project {
         var merged = Project(syncRecord: record, home: home)
         merged.name = name
         merged.approvedCommandsHash = approvedCommandsHash
         merged.lastOpenedAt = lastOpenedAt
         merged.background = merged.background?.withImagePath(background?.imagePath)
+        merged.sharedImage = sharedImage
+        guard honorsSharedImages else { return merged }
+        switch record.background?.image {
+        case nil:
+            merged.sharedImage = nil
+        case .unspecified:
+            break
+        case .named(let digest, let name):
+            // A different digest keeps the old path: the earlier image shows
+            // until the new one arrives.
+            merged.sharedImage = .named(digest: digest, name: name)
+        case .removed:
+            merged.background = merged.background?.withImagePath(nil)
+            merged.sharedImage = .removed
+        }
         return merged
     }
 }
@@ -168,6 +241,10 @@ public protocol ProjectSyncBackend: AnyObject {
     /// change, since before that an empty snapshot may only mean the local
     /// cache has not been filled yet.
     var snapshotIsAuthoritative: Bool { get }
+    /// Whether the last `snapshot()` skipped an entry it couldn't decode. A
+    /// newer version's record may name an image, so nothing can be read from
+    /// that image's absence.
+    var snapshotSkippedEntries: Bool { get }
     /// Reports a failure that no user action caused, such as the store
     /// rejecting data after the fact. Set by `ProjectStore`.
     var onSyncError: (@MainActor (ProjectSyncError) -> Void)? { get set }
@@ -184,6 +261,8 @@ public final class LocalOnlyProjectSyncBackend: ProjectSyncBackend {
 
     public var onSyncError: (@MainActor (ProjectSyncError) -> Void)?
     public var snapshotIsAuthoritative = true
+    /// Test seam for a skipped entry.
+    public var snapshotSkippedEntries = false
     public private(set) var calls: [Call] = []
     private var entries: [UUID: ProjectSyncEntry] = [:]
     public let changes: AsyncStream<Void>
@@ -235,7 +314,8 @@ public enum ProjectSyncMerge {
         to local: [Project],
         home: String,
         now: Date,
-        withdrawAbsent: Bool = true
+        withdrawAbsent: Bool = true,
+        honorsSharedImages: Bool = false
     ) -> [Project] {
         var result: [Project] = []
         var handled = Set<UUID>()
@@ -244,7 +324,10 @@ public enum ProjectSyncMerge {
             guard let entry = remote[project.id] else {
                 // Absent from the remote set: withdrawn elsewhere. Kept as local, never deleted.
                 var kept = project
-                if kept.isShared, withdrawAbsent { kept.isShared = false }
+                if kept.isShared, withdrawAbsent {
+                    kept.isShared = false
+                    kept.sharedImage = nil
+                }
                 result.append(kept)
                 continue
             }
@@ -256,7 +339,7 @@ public enum ProjectSyncMerge {
             case .record(let record):
                 if let remoteDate = record.modifiedAt, remoteDate > (project.modifiedAt ?? .distantPast) {
                     let name = uniqueName(record.name, excluding: record.id, among: local, accepted: result)
-                    result.append(project.replacingDefinition(with: record, name: name, home: home))
+                    result.append(project.replacingDefinition(with: record, name: name, home: home, honorsSharedImages: honorsSharedImages))
                 } else {
                     var kept = project
                     if (record.modifiedAt ?? .distantPast) >= (project.modifiedAt ?? .distantPast) {
@@ -274,7 +357,7 @@ public enum ProjectSyncMerge {
                 return record
             }
         for record in incoming {
-            var project = Project(syncRecord: record, home: home)
+            var project = Project(syncRecord: record, home: home, honorsSharedImages: honorsSharedImages)
             let name = uniqueName(record.name, excluding: record.id, among: local, accepted: result)
             if name != record.name {
                 logger.notice("shared project name collides with a local project; renamed on this Mac")

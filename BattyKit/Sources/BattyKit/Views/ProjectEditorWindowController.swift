@@ -40,6 +40,7 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
                 model.requestNavigation(.newDraft(newDraft))
             } else if let projectID {
                 model.requestNavigation(.select(projectID))
+                if let project = projectStore.project(id: projectID) { store.reconcileSharedImage(of: project) }
             }
             return true
         }
@@ -60,9 +61,14 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
             },
             backgrounds: store.projectBackgrounds,
             imageLibrary: store.backgroundImages,
-            appWideBackground: { [weak store] in store?.backgroundGate.settings() ?? .off }
+            appWideBackground: { [weak store] in store?.backgroundGate.settings() ?? .off },
+            sharedImagesMessage: { [weak store] in store?.sharedProjectImages?.message },
+            sharedImagesAvailable: store.sharedProjectImages != nil
         )
         if let newDraft { model.requestNavigation(.newDraft(newDraft)) }
+        if let project = model.selectedID.flatMap({ projectStore.project(id: $0) }) {
+            store.reconcileSharedImage(of: project)
+        }
 
         let hosting = NSHostingController(rootView: ProjectEditorView(model: model))
         hosting.sizingOptions = []
