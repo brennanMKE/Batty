@@ -25,6 +25,7 @@ struct AppStateStoreClosePaneTests {
     /// torn down.
     @Test func closingAPaneWithMultipleTabsEndsEveryTabsTerminalSession() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let originalPane = session.tree.allPanes[0]
         let sibling = session.tree.splitFocusedPane(direction: .horizontal)
@@ -58,6 +59,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingAPaneReturnsUnknownForAStaleID() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         #expect(store.closePane(id: UUID()) == .unknownPane)
     }
 
@@ -75,6 +77,7 @@ struct AppStateStoreClosePaneTests {
     /// tab starts idle and is flipped busy explicitly.
     @Test func closingAPaneWithABusyTabIsRefused() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         _ = session.tree.splitFocusedPane(direction: .horizontal)
@@ -98,6 +101,7 @@ struct AppStateStoreClosePaneTests {
     /// happened to also be the app's only pane, without saying so).
     @Test func closingTheAppsLastPaneWhenItIsAlsoBusyReturnsNeedsConfirmationNotRefusedLastPane() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         #expect(session.tree.allPanes.count == 1, "precondition: this is the app's only pane")
@@ -112,6 +116,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingAPaneCollapsesTheSplitSoTheSiblingTakesTheFullSpace() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let paneA = session.tree.allPanes[0]
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -154,6 +159,7 @@ struct AppStateStoreClosePaneTests {
     /// property no positional fallback satisfies.
     @Test func closingThreeSequentialPanesWalksFocusBackByRecencyNotPosition() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let main = session.tree.allPanes[0]
         let paneA = session.tree.splitFocusedPane(direction: .horizontal)
@@ -199,6 +205,7 @@ struct AppStateStoreClosePaneTests {
     /// recency stack must answer Other.
     @Test func closingFallsBackToTheMostRecentlyFocusedPaneEvenWhenItIsNotTheStructuralSibling() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let main = session.tree.allPanes[0]
         let focused = session.tree.splitFocusedPane(direction: .horizontal)
@@ -220,6 +227,7 @@ struct AppStateStoreClosePaneTests {
     /// only when the closed Pane was the focused one.
     @Test func closingANonFocusedPaneAmongThreeSurvivorsLeavesFocusUnchanged() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         _ = session.tree.allPanes[0]
         let paneA = session.tree.splitFocusedPane(direction: .horizontal)
@@ -234,6 +242,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingTheFocusedPaneMovesFocusToTheRemainingSibling() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let paneA = session.tree.allPanes[0]
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -247,6 +256,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingANonFocusedPaneLeavesFocusUnchanged() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let paneA = session.tree.allPanes[0]
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -263,6 +273,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingTheVisibleFocusedPaneUnhidesTheHiddenSiblingThatAbsorbsItsSpace() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let paneA = session.tree.allPanes[0]
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -297,6 +308,7 @@ struct AppStateStoreClosePaneTests {
     /// un-hiding A.
     @Test func closingAFocusedPaneMovesFocusOffAHiddenLeftmostLeafOntoAVisibleSibling() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let paneA = session.tree.allPanes[0]
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -333,6 +345,7 @@ struct AppStateStoreClosePaneTests {
     /// `recentVisibleSurvivor` but is hidden, so it must be skipped.
     @Test func closingFallsBackToTheMostRecentVisibleHistoryEntryNotTheFirstVisiblePane() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let main = session.tree.allPanes[0]
         let focused = session.tree.splitFocusedPane(direction: .horizontal)
@@ -352,6 +365,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingAPaneLeavesAnAlreadyVisibleSiblingsHiddenStateAlone() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let paneA = session.tree.allPanes[0]
         let paneB = session.tree.splitFocusedPane(direction: .horizontal)
@@ -377,6 +391,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingAPaneInABackgroundSessionDoesNotChangeSelectionOrTheForegroundSessionsFocus() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let selected = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.windows[0].selectedSessionID = selected.id
@@ -398,6 +413,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closePaneResolvesAPaneInANonKeyWindow() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
         let target = w2.sessions[0].tree.allPanes[0]
         w2.sessions[0].tree.splitFocusedPane(direction: .horizontal)
@@ -412,6 +428,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingTheLastPaneOfANonLastSessionClosesThatSessionOnly() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let firstSession = store.sessions[0]
         let secondSession = store.addSession()!
         store.selectedSessionID = firstSession.id
@@ -429,6 +446,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingTheAppsVeryLastPaneIsRefused() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let onlyPaneID = store.sessions[0].tree.allPanes[0].id
 
         let outcome = store.closePane(id: onlyPaneID)
@@ -440,6 +458,7 @@ struct AppStateStoreClosePaneTests {
 
     @Test func closingTheLastPaneOfAWindowIsAllowedWhenAnotherWindowStillHasSessions() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let onlyPaneID = store.sessions[0].tree.allPanes[0].id
         // A second window keeps the app alive even after this window empties,
         // so the app-wide last-pane guard does not apply here.
@@ -463,6 +482,7 @@ struct AppStateStoreClosePaneTests {
     /// exists anywhere. Counting panes directly is immune to this.
     @Test func totalPaneCountIgnoresAWindowThatLingersWithNoSessions() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let onlyPaneID = store.sessions[0].tree.allPanes[0].id
         let w2 = store.openWindowRuntime(for: WindowID())
         w2.removeSession(id: w2.sessions[0].id)

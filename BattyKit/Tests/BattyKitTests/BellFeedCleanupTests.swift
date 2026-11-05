@@ -9,6 +9,7 @@ struct BellFeedCleanupTests {
 
     @Test func closingTabRemovesItsFeedEntriesAndDecrementsAggregates() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
@@ -43,6 +44,7 @@ struct BellFeedCleanupTests {
 
     @Test func closingTabDoesNotTouchOtherTabsEntries() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession()!
         store.selectedSessionID = focused.id
@@ -70,6 +72,7 @@ struct BellFeedCleanupTests {
 
     @Test func closingLastTabInPaneClearsItsEntries() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession()!
         store.selectedSessionID = focused.id
@@ -95,6 +98,7 @@ struct BellFeedCleanupTests {
 
     @Test func closingLastTabCascadingToSessionClearsItsEntries() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
@@ -122,6 +126,7 @@ struct BellFeedCleanupTests {
 
     @Test func removeSessionDirectlyClearsAllEntriesUnderIt() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession()!
         store.selectedSessionID = focused.id
@@ -150,6 +155,7 @@ struct BellFeedCleanupTests {
 
     @Test func cleanupLeavesSeenEntriesAlone() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]

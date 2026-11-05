@@ -8,7 +8,7 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// Record shapes for the opt-in Bell Feed capture log (`docs/bell-feed-capture.md`).
 /// Optionals encode as explicit JSON `null` so every key is always present.
 public nonisolated enum BellCaptureSchema {
-    public static let version = 1
+    public static let version = 2
     public static let maxMessageCharacters = 16 * 1024
 }
 
@@ -68,6 +68,7 @@ public nonisolated enum BellCaptureSummarization: String, Codable, Sendable, Equ
     case skippedNoSummarizer
     case skippedDisabled
     case notApplicableCollapsed
+    case notApplicableNotRecorded
 }
 
 public nonisolated struct BellCaptureEvent: Codable, Sendable, Equatable {
@@ -104,6 +105,7 @@ public nonisolated struct BellCaptureEvent: Codable, Sendable, Equatable {
     public var notification: BellCaptureNotification
     public var notificationTitle: String?
     public var notificationBody: String?
+    public var feedRecorded: Bool
     public var feedRowPath: String
     public var feedRowText: String?
     public var summarization: BellCaptureSummarization
@@ -137,6 +139,7 @@ public nonisolated struct BellCaptureEvent: Codable, Sendable, Equatable {
         notification: BellCaptureNotification,
         notificationTitle: String?,
         notificationBody: String?,
+        feedRecorded: Bool,
         feedRowPath: String,
         feedRowText: String?,
         summarization: BellCaptureSummarization
@@ -169,6 +172,7 @@ public nonisolated struct BellCaptureEvent: Codable, Sendable, Equatable {
         self.notification = notification
         self.notificationTitle = notificationTitle
         self.notificationBody = notificationBody
+        self.feedRecorded = feedRecorded
         self.feedRowPath = feedRowPath
         self.feedRowText = feedRowText
         self.summarization = summarization
@@ -181,7 +185,7 @@ public nonisolated struct BellCaptureEvent: Codable, Sendable, Equatable {
         case foregroundProcess, workingDirectory, screen, screenUnavailableReason
         case seenAtCreation, battyActive, sessionMuted, systemNotificationsEnabled, notifierPresent
         case collapse, notification, notificationTitle, notificationBody
-        case feedRowPath, feedRowText, summarization
+        case feedRecorded, feedRowPath, feedRowText, summarization
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -216,6 +220,7 @@ public nonisolated struct BellCaptureEvent: Codable, Sendable, Equatable {
         try c.encode(notification, forKey: .notification)
         try c.encode(notificationTitle, forKey: .notificationTitle)
         try c.encode(notificationBody, forKey: .notificationBody)
+        try c.encode(feedRecorded, forKey: .feedRecorded)
         try c.encode(feedRowPath, forKey: .feedRowPath)
         try c.encode(feedRowText, forKey: .feedRowText)
         try c.encode(summarization, forKey: .summarization)

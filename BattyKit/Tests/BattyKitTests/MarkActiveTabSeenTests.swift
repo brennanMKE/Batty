@@ -9,6 +9,7 @@ struct MarkActiveTabSeenTests {
 
     @Test func markActiveTabSeenClearsCountsAndEntries() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
@@ -40,6 +41,7 @@ struct MarkActiveTabSeenTests {
 
     @Test func markActiveTabSeenZeroesTabEvenWhenEntryEvicted() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
@@ -81,6 +83,7 @@ struct MarkActiveTabSeenTests {
 
     @Test func markActiveTabSeenWithNoUnseenIsNoOp() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]
@@ -100,6 +103,7 @@ struct MarkActiveTabSeenTests {
 
     @Test func markActiveTabSeenLeavesOtherTabsAlone() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id

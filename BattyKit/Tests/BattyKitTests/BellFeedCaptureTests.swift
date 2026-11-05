@@ -69,6 +69,7 @@ struct BellCaptureEncodingTests {
             notification: BellCaptureNotification(outcome: "suppressed", reason: "sessionMuted"),
             notificationTitle: nil,
             notificationBody: nil,
+            feedRecorded: false,
             feedRowPath: "Work › Pane 1 › zsh",
             feedRowText: "line one\nline two \"quoted\" /slash",
             summarization: .scheduled
@@ -84,7 +85,9 @@ struct BellCaptureEncodingTests {
         let text = String(decoding: data, as: UTF8.self)
         #expect(!text.contains("\n"), "a record must encode as a single line")
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(object["schema"] as? Int == 1)
+        #expect(BellCaptureSchema.version == 2)
+        #expect(object["schema"] as? Int == BellCaptureSchema.version)
+        #expect(object["feedRecorded"] as? Bool == false)
         #expect(object["type"] as? String == "event")
         for key in ["screen", "foregroundProcess", "workingDirectory", "notificationTitle", "notificationBody"] {
             #expect(object[key] is NSNull, "\(key) must be present as an explicit null")
@@ -100,7 +103,7 @@ struct BellCaptureEncodingTests {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(summary)
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(object["schema"] as? Int == 1)
+        #expect(object["schema"] as? Int == BellCaptureSchema.version)
         #expect(object["type"] as? String == "summary")
         #expect(object["errorDescription"] is NSNull)
         #expect(try decoder().decode(BellCaptureSummary.self, from: data) == summary)
@@ -264,6 +267,7 @@ final class AppStateStoreBellCaptureTests {
         testDefaults.defaults.set(capture, forKey: SettingsPreference.captureBellFeedDataKey)
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier, preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         store.notificationSummarizer = summarizer
         let writer = BellCaptureWriter(directory: directory)
         store.bellCaptureWriter = writer
@@ -322,6 +326,7 @@ final class AppStateStoreBellCaptureTests {
         #expect(event.collapse.collapsed == false)
         #expect(event.collapse.repeatCount == 1)
         #expect(event.seenAtCreation == false)
+        #expect(event.feedRecorded == true)
         #expect(event.summarization == .skippedNoSummarizer)
         #expect(event.screen == nil)
         #expect(event.screenUnavailableReason != nil)
@@ -487,5 +492,41 @@ final class AppStateStoreBellCaptureTests {
         off.store.recordCLINotification(tabID: off.tabID, title: "x", body: nil, playSound: false)
         let offEvents = try await records(BellCaptureEvent.self, off.writer)
         #expect(offEvents.map(\.summarization) == [.skippedDisabled])
+    }
+
+    @Test func droppedBellWritesAnEventWithFeedRecordedFalse() async throws {
+        let f = makeFixture(capture: true, summarizer: StubSummarizer(.init(rawReply: "x")))
+        f.store.isBattyActiveProvider = { true }
+        let focusedTabID = f.store.sessions[0].focusedPaneAnyKind.activeTabID
+        f.store.recordCLINotification(tabID: focusedTabID, title: "Build", body: nil, playSound: false)
+
+        let writer = f.writer
+        #expect(await awaitBounded { await writer.flush() })
+        let lines = readLines(f.writer.currentFileURL)
+        #expect(lines.count == 1)
+        let line = try #require(lines.first)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        #expect(object["type"] as? String == "event")
+        let event = try decoder().decode(BellCaptureEvent.self, from: Data(lines[0].utf8))
+        #expect(event.feedRecorded == false)
+        #expect(event.summarization == .notApplicableNotRecorded)
+        #expect(event.notification == BellCaptureNotification(outcome: "suppressed", reason: "frontmostAndSeen"))
+        #expect(event.seenAtCreation == true)
+        #expect(event.battyActive == true)
+        #expect(event.feedRowText == "Build")
+        #expect(!event.feedRowPath.isEmpty)
+        #expect(f.store.bellFeed.entries.isEmpty)
+    }
+
+    @Test func droppedEntryNeverReachesCapturedEntryIDs() async throws {
+        let f = makeFixture(capture: true)
+        f.store.isBattyActiveProvider = { true }
+        let focusedTabID = f.store.sessions[0].focusedPaneAnyKind.activeTabID
+        f.store.recordCLINotification(tabID: focusedTabID, title: "dropped", body: nil, playSound: false)
+        f.store.recordCLINotification(tabID: f.tabID, title: "kept", body: nil, playSound: false)
+
+        let kept = try #require(f.store.bellFeed.entries.first)
+        #expect(f.store.bellFeed.entries.count == 1)
+        #expect(f.store.bellFeed.capturedEntryIDs == [kept.id])
     }
 }

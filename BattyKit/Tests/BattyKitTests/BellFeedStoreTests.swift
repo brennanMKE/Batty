@@ -82,6 +82,7 @@ struct AppStateStoreBellRoutingTests {
 
     @Test func bellFromFocusedTabRecordsButLeavesUnseenAlone() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]
@@ -99,6 +100,7 @@ struct AppStateStoreBellRoutingTests {
 
     @Test func bellFromUnfocusedTabIncrementsAllLevels() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focusedSession = store.sessions[0]
         let backgroundSession = store.addSession(title: "Background")!
         store.selectedSessionID = focusedSession.id
@@ -120,6 +122,7 @@ struct AppStateStoreBellRoutingTests {
 
     @Test func markBellSeenDecrementsAllLevels() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focusedSession = store.sessions[0]
         let backgroundSession = store.addSession()!
         store.selectedSessionID = focusedSession.id
@@ -142,6 +145,7 @@ struct AppStateStoreBellRoutingTests {
 
     @Test func markAllBellsSeenZerosCounters() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focusedSession = store.sessions[0]
         let backgroundSession = store.addSession()!
         store.selectedSessionID = focusedSession.id
@@ -166,6 +170,7 @@ struct AppStateStoreBellRoutingTests {
 
     @Test func desktopNotificationCarriesMessageThroughEntry() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]
@@ -185,6 +190,7 @@ struct AppStateStoreBellRoutingTests {
 
     @Test func jumpToBellEntrySelectsSessionPaneAndTab() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let target = store.addSession()!
         store.selectedSessionID = focused.id

@@ -60,43 +60,45 @@ nonisolated final class BellFeedTests: XCTestCase {
 
     // MARK: - Bell capture — would catch [[0024]], [[0025]]
 
-    /// BEL byte typed into a terminal produces a feed entry.
-    /// Would have caught [[0024]]: bell capture not wired up.
+    /// A BEL from a Pane the user isn't looking at produces a feed entry.
+    /// Would have caught [[0024]]: bell capture not wired up. The bell rings
+    /// from an unfocused Pane because a bell from the focused Tab while Batty
+    /// is frontmost adds no entry. The gate file keeps the BEL from ringing
+    /// before focus has moved back to the first Pane.
     @MainActor
     func testBellByteProducesFeedEntry() throws {
-        let app = BattyUITestHarness.launchBatty()
+        let scratch = try BattyCLI.makeScratchDirectory()
+        let (app, _, initial) = try BattyCLI.launchConnected(from: Self.self)
         defer { app.terminate() }
 
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        let session = try XCTUnwrap(initial.selectedSession)
+        let original = session.focusedPaneID
+        let gate = BattyUITestHarness.sentinelPath(named: "bell-gate")
+        let rang = BattyUITestHarness.sentinelPath(named: "bell-rang")
+        let script = try BattyCLI.makeScript(
+            in: scratch,
+            named: "ring.sh",
+            body: "while [ ! -e \(BattyCLI.shellQuoted(gate)) ]; do sleep 0.1; done; printf '\\a'; touch \(BattyCLI.shellQuoted(rang)); exec sleep 600"
+        )
+        BattyCLI.runExpectingSuccess(["pane", "split", "-h", "--pane", original.uuidString, "--command", script])
+        BattyCLI.runExpectingSuccess(["pane", "focus", original.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.session(session.id)?.focusedPaneID == original }, "focus did not return to the first Pane")
 
-        // Click into the terminal area to focus it.
-        let pane = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH 'pane-terminal.'"))
-            .firstMatch
-        XCTAssertTrue(pane.waitForExistence(timeout: 5))
-        pane.click()
-        BattyUITestHarness.pause(0.5)
+        BattyScreen.openBellFeed(in: app)
+        XCTAssertEqual(BattyScreen.bellEntryIDs(in: app).count, 0)
 
-        // Send a BEL byte. The terminal must be accepting keyboard input for
-        // this to work; it's intentionally fragile for CI — the test verifies
-        // the *capability* of the path, not that it works in headless builds.
-        app.typeText("printf '\\a'\n")
+        XCTAssertTrue(FileManager.default.createFile(atPath: gate, contents: nil))
+        XCTAssertTrue(BattyUITestHarness.waitForFile(at: rang, timeout: 15), "the script never rang the bell")
 
-        // Open the bell feed and check for an entry.
-        BattyUITestHarness.pause(1.0)
-        app.typeKey("n", modifierFlags: [.command, .shift])
-
-        let entries = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH 'bell-feed-entry.'"))
-        // The entry may not appear if the terminal isn't a real shell;
-        // report as XCTExpectFailure to keep CI green while allowing the test
-        // to document the expected behavior.
-        XCTExpectFailure("BEL-byte test requires a real shell in the terminal — may not fire in headless CI") {
-            XCTAssertTrue(
-                waitFor({ entries.count >= 1 }, timeout: 5),
-                "A BEL byte must produce at least one bell-feed-entry ([[0024]] regression)"
-            )
-        }
+        XCTAssertTrue(
+            waitFor({ BattyScreen.bellEntryIDs(in: app).count == 1 }, timeout: 10),
+            "A BEL byte must produce one bell-feed-entry ([[0024]] regression)"
+        )
+        let entryID = try XCTUnwrap(BattyScreen.bellEntryIDs(in: app).first)
+        let path = BattyScreen.element("bell-feed-path.\(entryID)", in: app)
+        XCTAssertTrue(path.waitForExistence(timeout: 10))
+        let label = path.label.isEmpty ? ((path.value as? String) ?? "") : path.label
+        XCTAssertTrue(label.contains("Pane 2"), "the entry must name the ringing Pane, saw \(label)")
     }
 
     // MARK: - Bell cleared on navigation — would catch [[0069]]

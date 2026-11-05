@@ -137,6 +137,7 @@ final class AppStateStoreSummarizationTests {
 
     private func makeStore(summarizer: NotificationSummarizing?) -> AppStateStore {
         let store = AppStateStore(preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         store.notificationSummarizer = summarizer
         return store
     }
@@ -316,6 +317,7 @@ final class AppStateStoreSummarizationTests {
         }
         let summarizer = MessageKeyedSummarizer()
         let store = AppStateStore(preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         store.notificationSummarizer = summarizer
         store.selectedSessionID = nil
 

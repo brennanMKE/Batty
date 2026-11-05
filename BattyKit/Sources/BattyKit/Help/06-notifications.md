@@ -18,7 +18,7 @@ A bell in a tab you're not looking at lights up in up to four places at once:
 3. **A desktop notification** — a macOS banner, if enabled in Settings and the session isn't muted.
 4. **A row in the bell feed** — timestamped, with the path `Session > Pane N > Tab` and any message body.
 
-A bell in the tab you're already looking at lands in the feed only. No dot, no badge, no banner — you saw it.
+A bell in the tab you're looking at while Batty is in front shows nothing: no dot, no badge, no banner and no row in the feed — you saw it. If Batty is in the background, you get the banner and a row.
 
 ## Clearing notifications
 
@@ -28,7 +28,7 @@ For a fresh slate, choose **Window > Mark All Bells Seen**. Every unseen count z
 
 ## The bell feed
 
-Press `Cmd-Shift-B` (or click the toolbar bell button) to open the bell feed popover. It lists every recorded bell, newest first.
+Press `Cmd-Shift-B` (or click the toolbar bell button) to open the bell feed popover. It lists the bells you didn't see when they rang, newest first.
 
 - Click a row to jump to the tab — selection and focus follow automatically.
 - Entries for closed tabs, panes, or sessions disappear on their own. You won't see a stale row pointing at something that's gone.

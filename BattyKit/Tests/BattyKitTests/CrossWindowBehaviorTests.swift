@@ -27,6 +27,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func bellEntryCarriesOwningWindowID() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w1 = store.windows[0]
         let w2 = store.openWindowRuntime(for: WindowID())
 
@@ -48,6 +49,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func bellEntryWindowIDMatchesOwningWindowNotFirst() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
 
         // Ring a bell in w2
@@ -72,6 +74,7 @@ struct CrossWindowBehaviorTests {
         // Simulate multi-window: register w2's NSWindow as key, w1 as non-key.
         // Then record a bell in w1's active tab — should count as unseen.
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w1 = store.windows[0]
         let w2 = store.openWindowRuntime(for: WindowID())
 
@@ -109,6 +112,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func bellInUnfocusedWindowSessionIsUnseenInSingleWindowMode() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w1 = store.windows[0]
         let focusedSession = w1.sessions[0]
         let bgSession = w1.addSession(title: "Background")
@@ -129,6 +133,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func jumpToBellEntryDeadWindowNoOpsAndMarksSeen() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
 
         // Ring a bell in w2, get the entry.
@@ -160,6 +165,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func jumpToBellEntryLiveWindowNavigatesToCorrectSession() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w1 = store.windows[0]
         let focusedSession = w1.sessions[0]
         let targetSession = w1.addSession(title: "Target")
@@ -188,6 +194,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func jumpToBellEntryInSecondWindowNavigatesSecondWindow() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w1 = store.windows[0]
         let w2 = store.openWindowRuntime(for: WindowID())
 
@@ -219,6 +226,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func windowCloseBellCleanupRemovesWindowEntries() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
 
         // Deliver unseen bells to w2.
@@ -255,6 +263,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func quitConfirmationCountsTabsAcrossAllWindows() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
 
         // w1 has 1 tab (the default), w2 has 1 tab.
@@ -273,6 +282,7 @@ struct CrossWindowBehaviorTests {
     /// open terminal(s)" Cmd-Q prompt.
     @Test func quitConfirmationCountExcludesNonTerminalPanes() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let session = store.sessions.first!
         let terminalPane = session.focusedPaneAnyKind
         let before = QuitConfirmation.openTerminalTabCount(store: store)
@@ -294,6 +304,7 @@ struct CrossWindowBehaviorTests {
         defer { testDefaults.tearDown() }
         testDefaults.defaults.set(true, forKey: SettingsPreference.confirmQuitKey)
         let store = AppStateStore(preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         let window = store.windows[0]
         let pane = window.sessions[0].tree.allPanes[0]
         #expect(QuitConfirmation.windowNeedsConfirmClose(window: window, defaults: testDefaults.defaults) == false,
@@ -313,6 +324,7 @@ struct CrossWindowBehaviorTests {
         defer { testDefaults.tearDown() }
         testDefaults.defaults.set(true, forKey: SettingsPreference.confirmQuitKey)
         let store = AppStateStore(preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         let window = store.windows[0]
         let session = window.sessions[0]
         let terminalPane = session.focusedPaneAnyKind
@@ -327,6 +339,7 @@ struct CrossWindowBehaviorTests {
         defer { testDefaults.tearDown() }
         testDefaults.defaults.set(false, forKey: SettingsPreference.confirmQuitKey)
         let store = AppStateStore(preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         let window = store.windows[0]
         window.sessions[0].tree.allPanes[0].tabs[0].needsConfirmCloseOverride = true
 
@@ -338,6 +351,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func removeWindowReducesWindowCount() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
         #expect(store.windows.count == 2)
 
@@ -348,6 +362,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func removeWindowForUnknownIDIsNoOp() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let unknownID = WindowID()
         let initialCount = store.windows.count
         store.removeWindow(id: unknownID)
@@ -367,6 +382,7 @@ struct CrossWindowBehaviorTests {
     /// degrades to `nil` instead of trapping.
     @Test func keyWindowFallbackResolvesToNilWhenNoWindowsRemain() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         // Deliberately overridden even though this test is only about the
         // keyWindow fallback, not termination timing: removing the only
         // window satisfies terminateIfLastContentWindowGone()'s guards, and
@@ -400,6 +416,7 @@ struct CrossWindowBehaviorTests {
     /// process.
     @Test func removeWindowOnLastWindowDoesNotTerminateSynchronously() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         var terminated = false
         store.terminateHandler = { terminated = true }
         let onlyWindowID = store.windows[0].id
@@ -428,6 +445,7 @@ struct CrossWindowBehaviorTests {
     /// the real callback.
     @Test func removeWindowOnLastWindowEventuallyTerminates() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         var terminated = false
         let onlyWindowID = store.windows[0].id
         let resumeLock = NSLock()
@@ -467,6 +485,7 @@ struct CrossWindowBehaviorTests {
     /// no longer holds — the staleness guard the deferred design depends on.
     @Test func deferredTerminateAbortsIfANewWindowAppearsBeforeItRuns() async {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         var terminated = false
         store.terminateHandler = { terminated = true }
         let onlyWindowID = store.windows[0].id
@@ -500,6 +519,7 @@ struct CrossWindowBehaviorTests {
     /// creates nothing.
     @Test func initialWindowIDIsAStableUnusedIDWhenNoWindowsRemain() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         store.terminateHandler = {}
         let onlyWindowID = store.windows[0].id
         let seededID = store.initialWindowID
@@ -523,6 +543,7 @@ struct CrossWindowBehaviorTests {
     /// side effect.
     @Test func addSessionReturnsNilWhenNoWindowsRemain() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         store.terminateHandler = {}
         let onlyWindowID = store.windows[0].id
         store.removeWindow(id: onlyWindowID)
@@ -543,6 +564,7 @@ struct CrossWindowBehaviorTests {
     /// degraded one.
     @Test func markActiveTabSeenNoOpsWhenNoWindowsRemain() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         store.terminateHandler = {}
         let onlyWindowID = store.windows[0].id
         store.removeWindow(id: onlyWindowID)
@@ -563,6 +585,7 @@ struct CrossWindowBehaviorTests {
     /// mutation-tested (see #0316's Verification section).
     @Test func callerLessActionShimsNoOpWhenNoWindowsRemain() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         store.terminateHandler = {}
         let onlyWindowID = store.windows[0].id
         store.removeWindow(id: onlyWindowID)
@@ -583,6 +606,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func onAllSessionsClosedCallsCloseWindowCallback() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         var callbackFired = false
         store.windows[0].closeWindowCallback = { callbackFired = true }
 
@@ -594,6 +618,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func newWindowRuntimeOnAllSessionsClosedCallsCloseWindowCallback() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
         var callbackFired = false
         w2.closeWindowCallback = { callbackFired = true }
@@ -607,6 +632,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func applyThemeToAllSurfacesRethemesEveryWindow() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         let w1 = store.windows[0]
         let w2 = store.openWindowRuntime(for: WindowID())
 
@@ -655,6 +681,7 @@ struct CrossWindowBehaviorTests {
         testDefaults.defaults.set(false, forKey: SettingsPreference.cursorBlinkKey)
         testDefaults.defaults.set(20.0, forKey: SettingsPreference.fontSizeKey)
         let store = AppStateStore(preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         let w2 = store.openWindowRuntime(for: WindowID())
 
         func allTabs(_ w: WindowRuntime) -> [TabRuntime] {
@@ -696,6 +723,7 @@ struct CrossWindowBehaviorTests {
     /// `"shell-integration-features = ssh-env"` as a prefix).
     @Test func applyAppearanceToAllSurfacesSetsSSHShellIntegrationFeatures() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         for tab in store.windows[0].sessions.flatMap({ $0.tree.allPanes.flatMap(\.tabs) }) {
             tab.terminal.controller.setTerminalConfiguration(.default)
         }
@@ -711,6 +739,7 @@ struct CrossWindowBehaviorTests {
     /// `Contents/MacOS` back on its spawned `PATH`.
     @Test func applyAppearanceToAllSurfacesPreservesThePATHOverride() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         for tab in store.windows[0].sessions.flatMap({ $0.tree.allPanes.flatMap(\.tabs) }) {
             tab.terminal.controller.setTerminalConfiguration(.default)
         }
@@ -727,6 +756,7 @@ struct CrossWindowBehaviorTests {
 
     @Test func onAllSessionsClosedIsTriggeredWhenSessionsEmpty() {
         let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
         var closeCalled = false
         store.windows[0].closeWindowCallback = { closeCalled = true }
 

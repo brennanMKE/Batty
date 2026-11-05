@@ -10,8 +10,10 @@ extension AppStateStore {
     }
 
     /// Builds the `event` record from one occurrence and hands it to the
-    /// writer's serial queue. `entry` is the surviving feed entry, so a
-    /// collapsed repeat joins on the id the Bell Feed actually shows.
+    /// writer's serial queue. For a collapsed repeat `entry` is the surviving
+    /// feed entry, so it joins on the id the Bell Feed actually shows. When
+    /// `feedRecorded` is false the entry was never added to the Bell Feed
+    /// (#0555), so it is not marked captured.
     /// `decision` is the record `bellDecisionHistory` just received for this
     /// occurrence; its outcome and gate facts are reused, not recomputed.
     func captureBellEvent(
@@ -19,7 +21,8 @@ extension AppStateStore {
         at location: WindowRuntime.BellLocation,
         decision: BellDecisionRecord,
         collapsed: Bool,
-        summarization: BellCaptureSummarization
+        summarization: BellCaptureSummarization,
+        feedRecorded: Bool
     ) {
         guard let writer = bellCaptureWriter else { return }
 
@@ -79,11 +82,14 @@ extension AppStateStore {
             notification: notification,
             notificationTitle: notificationTitle,
             notificationBody: notificationBody,
+            feedRecorded: feedRecorded,
             feedRowPath: BellFeedEntry.pathLabel(sessionTitle: sessionTitle, paneIndex: paneIndex, tabLabel: tabLabel),
             feedRowText: entry.displayText,
             summarization: summarization
         ))
-        bellFeed.markCaptured(entry.id)
+        if feedRecorded {
+            bellFeed.markCaptured(entry.id)
+        }
     }
 
     /// Deletes the capture files and forgets which entries were captured and

@@ -37,6 +37,9 @@ public final class AppStateStore {
     /// kernel-level process-start-time lookup.
     public let launchDate = Date()
     @ObservationIgnored public var notifier: BellNotifying?
+    /// Whether Batty is the active app, read once per bell by
+    /// `routeRealTabBell`. The default is the live read; tests set it.
+    @ObservationIgnored var isBattyActiveProvider: () -> Bool = { NSApplication.shared.isActive }
     /// Called when `removeSession` empties the window's `sessions`. Nil in
     /// unit tests; the app delegate sets this to terminate the process.
     /// Forwarded to `windows[0].onAllSessionsClosed`.
@@ -1990,6 +1993,7 @@ public final class AppStateStore {
     /// focused tab AND, when multiple content windows are registered, the
     /// owning window is the key window. In single-window mode (no registered
     /// key window, as in unit tests), `isFocused` alone determines seen-ness.
+    /// A seen bell while Batty is active adds no entry (`routeRealTabBell`).
     public func recordBellTick(forTabID tabID: UUID, surfaceID: UUID = UUID()) {
         let keyWindowID = keyWindowRuntime()?.id
         let multiWindow = keyWindowID != nil
@@ -2013,17 +2017,7 @@ public final class AppStateStore {
                     message: nil,
                     seen: effectivelySeen
                 )
-                // #0298: a seen-at-creation bell (tab currently focused)
-                // always becomes its own entry — collapse only applies to
-                // still-unread repeats, so `recordOrCollapse` is skipped
-                // entirely rather than relying on it to find no candidate.
-                let outcome: BellFeedStore.RecordOutcome = effectivelySeen
-                    ? .recorded(bellFeed.record(entry))
-                    : bellFeed.recordOrCollapse(entry)
-                if !effectivelySeen {
-                    window.propagateUnseenForced(at: location)
-                }
-                handleBellOutcome(outcome, incoming: entry, at: location, trigger: .bel)
+                routeRealTabBell(entry, in: window, at: location, trigger: .bel)
             }
             return
         }
@@ -2033,6 +2027,7 @@ public final class AppStateStore {
     /// with `tabID`. `windowID` on the entry carries the real owning window's
     /// ID; in multi-window mode a bell is only "seen at creation" if the owning
     /// window is the key content window and the tab is the focused active tab.
+    /// A seen notification while Batty is active adds no entry (`routeRealTabBell`).
     public func recordDesktopNotification(forTabID tabID: UUID, surfaceID: UUID = UUID()) {
         let keyWindowID = keyWindowRuntime()?.id
         let multiWindow = keyWindowID != nil
@@ -2051,13 +2046,7 @@ public final class AppStateStore {
                 message: location.tab.lastBellMessage,
                 seen: effectivelySeen
             )
-            let outcome: BellFeedStore.RecordOutcome = effectivelySeen
-                ? .recorded(bellFeed.record(entry))
-                : bellFeed.recordOrCollapse(entry)
-            if !effectivelySeen {
-                window.propagateUnseenForced(at: location)
-            }
-            handleBellOutcome(outcome, incoming: entry, at: location, trigger: .oscNotification)
+            routeRealTabBell(entry, in: window, at: location, trigger: .oscNotification)
             return
         }
     }
@@ -2070,8 +2059,8 @@ public final class AppStateStore {
         case unknownTab
     }
 
-    /// Posts a CLI-originated notification into the Bell Feed, attributed
-    /// to a real tab — #0284's `notify` verb, the terminal step of the
+    /// Posts a CLI-originated notification into the Bell Feed, unless the
+    /// user is looking at it (`routeRealTabBell`), attributed to a real tab — #0284's `notify` verb, the terminal step of the
     /// agent loop (#0257). Deliberately rides the same `BellFeedEntry`
     /// shape every other entry uses rather than growing a kind/placeholder-
     /// id path: `BellFeedView.pathLabel(for:)`'s `(closed)` fallback and
@@ -2114,13 +2103,7 @@ public final class AppStateStore {
                 message: Self.formatNotifyMessage(title: title, body: body),
                 seen: effectivelySeen
             )
-            let outcome: BellFeedStore.RecordOutcome = effectivelySeen
-                ? .recorded(bellFeed.record(entry))
-                : bellFeed.recordOrCollapse(entry)
-            if !effectivelySeen {
-                window.propagateUnseenForced(at: location)
-            }
-            handleBellOutcome(outcome, incoming: entry, at: location, trigger: .cliNotification, playSound: playSound)
+            routeRealTabBell(entry, in: window, at: location, trigger: .cliNotification, playSound: playSound)
             return .posted
         }
         return .unknownTab
@@ -2622,6 +2605,50 @@ public final class AppStateStore {
         windows.flatMap(\.sessions).first { $0.id == sessionID }
     }
 
+    /// The three real-tab bell paths call this once per bell, after their
+    /// `TabRuntime` delta bookkeeping and entry construction.
+    private func routeRealTabBell(
+        _ entry: BellFeedEntry,
+        in window: WindowRuntime,
+        at location: WindowRuntime.BellLocation,
+        trigger: BellTriggerKind,
+        playSound: Bool = true
+    ) {
+        let battyActive = isBattyActiveProvider()
+        // A seen entry is dropped exactly when the notifier would decline the
+        // banner, so no notification tap can name a dropped entry
+        // (`RootWindowView.setUpNotifier`'s lookup). The #0297 decision
+        // history and the #0523 capture log still record the bell.
+        guard BellNotifier.evaluateShouldPost(isBattyActive: battyActive, entrySeen: entry.seen) else {
+            recordDroppedBell(entry, at: location, trigger: trigger, battyActive: battyActive)
+            return
+        }
+        // #0298: a seen-at-creation bell always becomes its own entry —
+        // collapse only applies to still-unread repeats, so
+        // `recordOrCollapse` is skipped entirely rather than relying on it
+        // to find no candidate.
+        let outcome: BellFeedStore.RecordOutcome = entry.seen
+            ? .recorded(bellFeed.record(entry))
+            : bellFeed.recordOrCollapse(entry)
+        if !entry.seen {
+            window.propagateUnseenForced(at: location)
+        }
+        handleBellOutcome(outcome, incoming: entry, at: location, trigger: trigger, playSound: playSound, battyActive: battyActive)
+    }
+
+    private func recordDroppedBell(
+        _ entry: BellFeedEntry,
+        at location: WindowRuntime.BellLocation,
+        trigger: BellTriggerKind,
+        battyActive: Bool
+    ) {
+        let decision = makeBellDecisionRecord(for: entry, at: location, trigger: trigger, battyActive: battyActive)
+        bellDecisionHistory.record(decision)
+        if isBellCaptureEnabled {
+            captureBellEvent(entry: entry, at: location, decision: decision, collapsed: false, summarization: .notApplicableNotRecorded, feedRecorded: false)
+        }
+    }
+
     /// Shared tail of the three record paths: posts or collapses, schedules the
     /// summary, then hands the capture log (#0523) one snapshot taken from the
     /// same decision record the history just received.
@@ -2634,12 +2661,13 @@ public final class AppStateStore {
         incoming entry: BellFeedEntry,
         at location: WindowRuntime.BellLocation,
         trigger: BellTriggerKind,
-        playSound: Bool = true
+        playSound: Bool = true,
+        battyActive: Bool
     ) {
         let capturing = isBellCaptureEnabled
         switch outcome {
         case .recorded:
-            let decision = postNotification(for: entry, at: location, trigger: trigger, playSound: playSound)
+            let decision = postNotification(for: entry, at: location, trigger: trigger, playSound: playSound, battyActive: battyActive)
             let summarization = scheduleSummarization(
                 for: entry,
                 tabTitle: location.tab.terminal.title,
@@ -2647,12 +2675,12 @@ public final class AppStateStore {
                 capturing: capturing
             )
             if capturing {
-                captureBellEvent(entry: entry, at: location, decision: decision, collapsed: false, summarization: summarization)
+                captureBellEvent(entry: entry, at: location, decision: decision, collapsed: false, summarization: summarization, feedRecorded: true)
             }
         case .collapsed(let surviving):
-            let decision = recordCollapsedNotificationDecision(for: entry, at: location, trigger: trigger)
+            let decision = recordCollapsedNotificationDecision(for: entry, at: location, trigger: trigger, battyActive: battyActive)
             if capturing {
-                captureBellEvent(entry: surviving, at: location, decision: decision, collapsed: true, summarization: .notApplicableCollapsed)
+                captureBellEvent(entry: surviving, at: location, decision: decision, collapsed: true, summarization: .notApplicableCollapsed, feedRecorded: true)
             }
         }
     }
@@ -2671,7 +2699,7 @@ public final class AppStateStore {
     /// Capture is unconditional (no Settings toggle — see
     /// `BellDecisionHistory`'s type doc comment for why) and unconditionally
     /// cheap: two libghostty FFI calls (`foregroundPid`/`ttyName`), a
-    /// `UserDefaults` read, `NSApplication.shared.isActive`, and a couple of
+    /// `UserDefaults` read, and a couple of
     /// linear scans over a Session's Panes/Tabs, all triggered by a bell —
     /// a human-scale, discrete event, not a hot path — so paying this cost
     /// every time, including on the nil-notifier/muted-session cases below
@@ -2681,9 +2709,10 @@ public final class AppStateStore {
         for entry: BellFeedEntry,
         at location: WindowRuntime.BellLocation,
         trigger: BellTriggerKind,
-        playSound: Bool = true
+        playSound: Bool = true,
+        battyActive: Bool
     ) -> BellDecisionRecord {
-        let decision = makeBellDecisionRecord(for: entry, at: location, trigger: trigger)
+        let decision = makeBellDecisionRecord(for: entry, at: location, trigger: trigger, battyActive: battyActive)
         bellDecisionHistory.record(decision)
 
         guard let notifier else { return decision }
@@ -2734,10 +2763,10 @@ public final class AppStateStore {
         for entry: BellFeedEntry,
         at location: WindowRuntime.BellLocation,
         trigger: BellTriggerKind,
+        battyActive: Bool,
         forcedOutcome: BellDecisionRecord.Outcome? = nil
     ) -> BellDecisionRecord {
         let tabIndex = (location.pane.tabs.firstIndex { $0.id == location.tab.id } ?? 0) + 1
-        let battyActive = NSApplication.shared.isActive
         let systemNotificationsEnabled = SettingsPreference.resolvedSystemNotifications(defaults: preferences)
         let notifierPresent = notifier != nil
         let sessionMuted = location.session.notificationsMuted
@@ -2785,9 +2814,10 @@ public final class AppStateStore {
     private func recordCollapsedNotificationDecision(
         for entry: BellFeedEntry,
         at location: WindowRuntime.BellLocation,
-        trigger: BellTriggerKind
+        trigger: BellTriggerKind,
+        battyActive: Bool
     ) -> BellDecisionRecord {
-        let decision = makeBellDecisionRecord(for: entry, at: location, trigger: trigger, forcedOutcome: .suppressed(.collapsedIntoUnread))
+        let decision = makeBellDecisionRecord(for: entry, at: location, trigger: trigger, battyActive: battyActive, forcedOutcome: .suppressed(.collapsedIntoUnread))
         bellDecisionHistory.record(decision)
         return decision
     }

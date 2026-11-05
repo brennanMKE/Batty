@@ -68,6 +68,8 @@ struct BellDecisionRecord: Sendable, Equatable {
     }
 
     let trigger: BellTriggerKind
+    /// When `battyActive && entrySeenAtCreation`, this names an entry that
+    /// was never added to the Bell Feed (#0555), so it won't join to a row.
     let entryID: UUID
     let windowID: UUID
     let sessionID: UUID

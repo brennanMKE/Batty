@@ -111,6 +111,9 @@ public struct RootWindowView: View {
         guard store.notifier == nil else { return }
         let notifier = BellNotifier { [weak store] entryID in
             guard let store else { return }
+            // A real bell's banner always names a recorded entry: a seen
+            // bell is dropped from the Bell Feed only when no banner is
+            // posted (`AppStateStore.routeRealTabBell`).
             if let entry = store.bellFeed.entries.first(where: { $0.id == entryID }) {
                 store.markBellSeen(id: entryID)
                 store.jumpToBellEntry(entry)

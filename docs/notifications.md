@@ -114,7 +114,14 @@ AppStateStore.recordBellTick(forTabID:)   AppStateStore.recordDesktopNotificatio
           |                                                  |
           |  locate(tabID:)  ->  BellLocation                |  locate(tabID:)  ->  BellLocation
           |                                                  |
-          +--> BellFeedEntry created and recorded <----------+
+          +--> BellFeedEntry created <-----------------------+
+          |                                                  |
+          +--> routeRealTabBell: if Batty is active AND the  |
+          |   entry is seen, drop it here (decision history  |
+          |   and capture log still record it; no row, no    |
+          |   banner)                                        |
+          |                                                  |
+          +--> otherwise recorded into BellFeedStore         |
           |   (BellFeedStore caps at 200, newest first)      |
           |                                                  |
           +--> propagateUnseen(at:) (skipped if isFocused) <-+
@@ -147,8 +154,13 @@ A few important properties of this flow:
   `lastDesktopNotificationAt`; the body of the macOS notification is
   the `lastBellMessage` carried on the `TabRuntime`.
 - **Entries record `seen: location.isFocused` at creation.** A bell
-  delivered to the tab the user is already viewing lands in the feed
-  as already-seen. Off-focus bells land as unseen.
+  delivered to the tab the user is already viewing, while Batty is the
+  active app, adds no feed row at all (#0555): `routeRealTabBell` drops
+  it exactly when `BellNotifier.evaluateShouldPost` would decline the
+  banner. The #0297 decision history (`suppressed:frontmostAndSeen`) and
+  the #0523 capture log still record it. With Batty in the background
+  the same bell lands as already-seen and the banner posts. Off-focus
+  bells land as unseen.
 - **`BellFeedStore` is capped at 200 entries.** Oldest entries are
   evicted when the cap is exceeded; see section 5 on auto-clear for
   how this interacts with `markActiveTabSeen()`.
@@ -182,11 +194,14 @@ The branching at the recording site:
 
 | `isFocused` | `BellFeedEntry.seen` at insert | `propagateUnseen` | Unseen counters change? |
 |---|---|---|---|
-| `true` | `true` | skipped early-return | no |
+| `true`, Batty active | no entry (dropped, #0555) | skipped | no |
+| `true`, Batty in background | `true` | skipped early-return | no |
 | `false` | `false` | runs | `tab.unseenBellCount`, `pane.unseenBellCount`, `session.unseenBellCount` each `+= 1` |
 
 `postNotification` does **not** depend on `isFocused` directly — it
-runs in both branches. It's gated separately on
+runs for every entry that is kept. A dropped entry (focused while Batty
+is active) never reaches it; its decision record is written by
+`recordDroppedBell` instead. It's gated separately on
 `session.notificationsMuted` (per-session) and, inside
 `BellNotifier.post`, on `SettingsPreference.resolvedSystemNotifications()`
 (app-wide). `BellNotifier.shouldPost(for:)` also suppresses a duplicate
@@ -429,6 +444,12 @@ the tab doesn't need a delayed banner for the same bell.
   was already marked seen, so `BellNotifier.shouldPost(for:)`
   suppressed the duplicate. The sidebar badge fires independently of
   all three.
+- *Why didn't a notification from the Tab I'm looking at show in the
+  feed?* — By design (#0555). A bell, OSC 9/777 or `batty notify` from
+  the focused Tab while Batty is the active app adds no row, because you
+  saw it. The decision export still lists it as
+  `suppressed:frontmostAndSeen`. With Batty in the background it posts a
+  banner and adds a seen row.
 - *What's the keyboard shortcut for the bell feed?* — `Cmd-Shift-B` by
   default. Customizable at Settings → Shortcuts → "Toggle Bell Feed".
   See [`shortcuts.md`](shortcuts.md).

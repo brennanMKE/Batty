@@ -20,6 +20,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func recordBellTickCapturesTheBelTriggerKind() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let tabID = session.focusedPaneAnyKind.activeTabID
         let terminal = session.focusedPaneAnyKind.activeTab?.terminal
@@ -35,6 +36,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func recordDesktopNotificationCapturesTheOscNotificationTriggerKind() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         let tabID = session.focusedPaneAnyKind.activeTabID
         let terminal = session.focusedPaneAnyKind.activeTab?.terminal
@@ -52,6 +54,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func recordCLINotificationCapturesTheCliNotificationTriggerKind() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
@@ -63,6 +66,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func mutedSessionCapturesTheSessionMutedSuppressionReason() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         session.notificationsMuted = true
         let tabID = session.focusedPaneAnyKind.activeTabID
@@ -76,6 +80,7 @@ struct AppStateStoreBellDecisionHistoryTests {
 
     @Test func nilNotifierCapturesTheNilNotifierSuppressionReason() {
         let store = AppStateStore(notifier: nil)
+        store.isBattyActiveProvider = { false }
         let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
@@ -95,6 +100,7 @@ struct AppStateStoreBellDecisionHistoryTests {
         testDefaults.defaults.set(false, forKey: SettingsPreference.systemNotificationsKey)
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier, preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
@@ -113,6 +119,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func capturedMessageIsTruncatedToMaxFieldLengthAtTheStore() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
         let longBody = String(repeating: "x", count: BellDecisionFormat.maxFieldLength * 4)
 
@@ -126,6 +133,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func capturedSessionTitleAndTabLabelAreTruncatedToMaxFieldLengthAtTheStore() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
         session.title = String(repeating: "s", count: BellDecisionFormat.maxFieldLength * 4)
         let tab = session.focusedPaneAnyKind.activeTab!
@@ -148,6 +156,7 @@ struct AppStateStoreBellDecisionHistoryTests {
         // still captures on the very first bell.
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let tabID = store.sessions[0].focusedPaneAnyKind.activeTabID
 
         store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
@@ -165,6 +174,7 @@ struct AppStateStoreBellDecisionHistoryTests {
     @Test func recordFootprintWarningNeverEntersTheBellDecisionHistory() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
 
         store.recordFootprintWarning(footprintBytes: 5_000_000_000, step: 1)
 

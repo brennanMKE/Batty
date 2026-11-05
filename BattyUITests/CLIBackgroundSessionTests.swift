@@ -210,10 +210,20 @@ nonisolated final class CLIBackgroundSessionTests: XCTestCase {
         )
         BattyCLI.runExpectingSuccess(["pane", "focus", secondPane.uuidString])
         _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.session(session.id)?.focusedPaneID == secondPane })
+
+        // The fallback is the focused Tab, so while Batty is frontmost the
+        // user is looking at it and no entry is added. In the background the
+        // banner is posted and the entry kept.
+        BattyCLI.runExpectingSuccess(["notify", "--title", "while active"])
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        finder.activate()
+        XCTAssertTrue(finder.wait(for: .runningForeground, timeout: 10), "Finder did not come to the front")
+        BattyCLI.runExpectingSuccess(["notify", "--title", "fallback title"])
+        app.activate()
         BattyScreen.openBellFeed(in: app)
 
-        BattyCLI.runExpectingSuccess(["notify", "--title", "fallback title"])
-        XCTAssertTrue(waitFor({ BattyScreen.bellEntryIDs(in: app).count == 1 }, timeout: 10), "notify with no --tab added no entry")
+        XCTAssertTrue(waitFor({ BattyScreen.bellEntryIDs(in: app).count >= 1 }, timeout: 10), "notify with no --tab in the background added no entry")
+        XCTAssertEqual(BattyScreen.bellEntryIDs(in: app).count, 1, "the notify while Batty was active must not add an entry")
         let entryID = try XCTUnwrap(BattyScreen.bellEntryIDs(in: app).first)
         let message = BattyScreen.element("bell-feed-message.\(entryID)", in: app)
         XCTAssertTrue(message.waitForExistence(timeout: 10), "the entry shows no message")

@@ -291,8 +291,10 @@ the file extension) and strips the `_<n>_<UUID>` Xcode appends.
    one test confirmed to ask for sound is
    `CLIBackgroundSessionTests.testNotifyToABackgroundSessionIsUnseenAndCollapses`, whose
    `batty notify --sound` posts a notification with `content.sound = .default`
-   (`BellNotifier.swift`); `BellFeedTests.testBellByteProducesFeedEntry` can too if Batty is not
-   the active app when the bell arrives. No UI test asserts on sound, so muting changes nothing
+   (`BellNotifier.swift`); `BellFeedTests.testBellByteProducesFeedEntry` does too: it rings from an
+   unfocused Pane, so its banner (with the default sound) always posts.
+   `CLIBackgroundSessionTests.testNotifyWithoutTabTargetsTheFocusedPaneOrIsRefused` posts a
+   banner while Finder is in front, without `--sound`. No UI test asserts on sound, so muting changes nothing
    a test observes. Do not use `--suspendable` for this (it changes other devices too), and do
    not turn off the guest's "Play sound" or system-notification settings: their defaults are
    part of what the suite runs against.

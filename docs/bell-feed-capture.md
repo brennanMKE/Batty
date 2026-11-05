@@ -33,15 +33,15 @@ generations survive.
 
 ## Schema
 
-Every record has `schema` (integer, currently `1`), `type`, `recordID`
+Every record has `schema` (integer, currently `2`), `type`, `recordID`
 (fresh UUID) and `entryID`, plus a timestamp: `capturedAt` (ISO 8601 UTC) on
 `event` and `summary`, `ratedAt` on `rating`. **Bump `schema` on
 any breaking change** (removed or retyped field, changed meaning); adding a
-field or a record type (`rating` joined schema 1 this way) is not breaking. Optional fields are always present, as explicit `null`.
+field or a record type (`rating` joined schema 1 this way) is not breaking. Optional fields are always present, as explicit `null`. Schema 2 (#0555) changed the meaning of `entryID`: an `event` can now name an entry that was never added to the Bell Feed (`feedRecorded` false).
 
 ### Join rules
 
-`entryID` is the `BellFeedEntry.id` the Bell Feed shows. A collapsed repeat
+`entryID` is the `BellFeedEntry.id` the Bell Feed shows, except when `feedRecorded` is false: then it names an entry that never reached the Feed, and no `summary` or `rating` ever exists for it. A collapsed repeat
 (#0298) writes its own `event` record carrying the **surviving** entry's id,
 not the discarded incoming one. A `summary` or `rating` record joins to its
 `event` records by `entryID`; one entry can therefore have several `event`
@@ -77,9 +77,10 @@ the current file; analysis should ignore a `summary` with no matching `event`.
 | `collapse` | object | `{collapsed: bool, repeatCount: int, firstOccurrenceAt: ISO date}` of the surviving entry |
 | `notification` | object | `{outcome: "submitted" \| "suppressed", reason: string?}`; reasons are `nilNotifier`, `sessionMuted`, `systemNotificationsDisabled`, `frontmostAndSeen`, `collapsedIntoUnread` |
 | `notificationTitle`, `notificationBody` | string, null | Exact strings `BellNotifier.post` uses; null when suppressed |
+| `feedRecorded` | bool | `false` when the bell was seen at creation while Batty was active, so no row was added (#0555); `feedRowPath` and `feedRowText` are then what the row would have shown |
 | `feedRowPath` | string | Row path label |
 | `feedRowText` | string, null | `summary ?? message` at record time (the summary is not there yet for a new entry); null when empty, as the row shows nothing then |
-| `summarization` | string | `scheduled`, `skippedNoSummarizer`, `skippedDisabled`, `notApplicableCollapsed` |
+| `summarization` | string | `scheduled`, `skippedNoSummarizer`, `skippedDisabled`, `notApplicableCollapsed`, `notApplicableNotRecorded` (no row was added) |
 
 `notification` is taken from the same `BellDecisionRecord` that goes into the
 in-memory decision history; the gates are not recomputed.

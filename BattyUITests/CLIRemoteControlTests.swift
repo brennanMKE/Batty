@@ -467,8 +467,12 @@ nonisolated final class CLIRemoteControlTests: XCTestCase {
         let (app, _, initial) = try launch()
         defer { app.terminate() }
 
-        let session = try XCTUnwrap(initial.selectedSession)
-        let tab = try XCTUnwrap(session.pane(session.focusedPaneID)?.activeTabID)
+        let first = try XCTUnwrap(initial.selectedSession)
+        let focusedTab = try XCTUnwrap(first.pane(first.focusedPaneID)?.activeTabID)
+        let (second, secondPane) = try BattyCLI.newSession(at: try makeDirectory("notify-target"))
+        let tab = try XCTUnwrap(second.pane(secondPane)?.activeTabID)
+        BattyCLI.runExpectingSuccess(["session", "focus", first.id.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == first.id }, "session focus did not select the first Session")
 
         func entryCount() -> Int { BattyScreen.identifiers(withPrefix: "bell-feed-entry.", in: app).count }
         let bell = app.toolbars.buttons["Bell Feed"].firstMatch
@@ -483,14 +487,17 @@ nonisolated final class CLIRemoteControlTests: XCTestCase {
         BattyCLI.runExpectingSuccess(["notify", "--title", "first title", "--body", "first body", "--tab", tab.uuidString])
         XCTAssertTrue(waitFor({ entryCount() == 1 }, timeout: 10), "notify did not add a Bell Feed entry (\(entryCount()))")
 
-        // An unknown Tab is refused and adds nothing. The valid notify that
-        // follows is the barrier: requests are served in order, so once it
-        // has landed, a wrongly added entry would already show as a third.
+        // An unknown Tab is refused and adds nothing, and a notify to the Tab
+        // the user is looking at while Batty is frontmost adds nothing
+        // either. The valid notify that follows is the barrier: requests are
+        // served in order, so once it has landed, a wrongly added entry
+        // would already show as a third.
         let refused = BattyCLI.run(["notify", "--title", "ghost", "--tab", UUID().uuidString])
         XCTAssertEqual(refused.status, 4, "notify to an unknown Tab must exit 4: \(refused.summary)")
+        BattyCLI.runExpectingSuccess(["notify", "--title", "looking at it", "--tab", focusedTab.uuidString])
         BattyCLI.runExpectingSuccess(["notify", "--title", "second title", "--tab", tab.uuidString])
         XCTAssertTrue(waitFor({ entryCount() >= 2 }, timeout: 10))
-        XCTAssertEqual(entryCount(), 2, "the refused notify must not add an entry")
+        XCTAssertEqual(entryCount(), 2, "neither the refused notify nor the one to the focused Tab may add an entry")
     }
 
     // MARK: - bad targets

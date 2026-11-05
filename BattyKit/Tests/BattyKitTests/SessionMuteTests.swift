@@ -27,6 +27,7 @@ struct SessionMuteTests {
     @Test func mutedSessionSuppressesDesktopNotification() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         guard let session = store.sessions.first else {
             Issue.record("Expected a default session")
             return
@@ -48,6 +49,7 @@ struct SessionMuteTests {
     @Test func unmutedSessionPostsDesktopNotification() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         guard let session = store.sessions.first else {
             Issue.record("Expected a default session")
             return
@@ -73,6 +75,7 @@ struct SessionMuteTests {
     @Test func mutedSessionSuppressesBellTickNotification() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         guard let session = store.sessions.first else {
             Issue.record("Expected a default session")
             return

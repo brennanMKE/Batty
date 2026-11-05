@@ -22,6 +22,7 @@ struct AppStateStoreBellCollapseTests {
     @Test func collapsedRepeatDoesNotRepostASystemNotification() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
         let tabID = session.focusedPaneAnyKind.activeTabID
@@ -37,6 +38,7 @@ struct AppStateStoreBellCollapseTests {
     @Test func collapsedRepeatIsRecordedWithTheCollapsedIntoUnreadOutcome() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
         let tabID = session.focusedPaneAnyKind.activeTabID
@@ -52,6 +54,7 @@ struct AppStateStoreBellCollapseTests {
     @Test func nonRedundantRepeatsBothSubmit() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
         let tabID = session.focusedPaneAnyKind.activeTabID
@@ -74,6 +77,7 @@ struct AppStateStoreBellCollapseTests {
     @Test func markBellSeenOnACollapsedEntryDecrementsByTheFullRepeatCount() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let focused = store.sessions[0]
         let background = store.addSession(title: "Background")!
         store.selectedSessionID = focused.id
@@ -110,6 +114,7 @@ struct AppStateStoreBellCollapseTests {
     @Test func batchedBellTicksInOneCallCollapseTogether() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
         let session = store.addSession(title: "Background")!
         store.selectedSessionID = store.sessions[0].id
         let tab = session.focusedPaneAnyKind.activeTab!

@@ -65,6 +65,7 @@ final class BellFeedRatingTests {
     private func makeFixture(capture: Bool = true, summarizer: NotificationSummarizing? = nil) -> Fixture {
         testDefaults.defaults.set(capture, forKey: SettingsPreference.captureBellFeedDataKey)
         let store = AppStateStore(notifier: SpyBellNotifier(), preferences: testDefaults.defaults)
+        store.isBattyActiveProvider = { false }
         store.notificationSummarizer = summarizer
         let writer = BellCaptureWriter(directory: directory)
         store.bellCaptureWriter = writer
