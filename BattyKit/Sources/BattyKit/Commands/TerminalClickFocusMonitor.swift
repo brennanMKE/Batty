@@ -33,6 +33,10 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// It also withholds a click from the surface when `StuckMouseReportGuard`
 /// matches (mouse reporting left on at an idle shell prompt), except for
 /// Shift-clicks, which select locally.
+///
+/// In a non-opaque window it starts the window drag itself for a press on
+/// the title strip's empty views (`TitleStripDrag`), since those presses
+/// reach the app without moving the window. Opaque windows skip all of it.
 @MainActor
 public enum TerminalClickFocusMonitor {
     private static var monitor: Any?
@@ -48,6 +52,7 @@ public enum TerminalClickFocusMonitor {
         ) { event in
             switch event.type {
             case .leftMouseDown:
+                if startTitleStripDragIfNeeded(for: event) { return nil }
                 let terminal = promoteFirstResponderIfNeeded(for: event)
                 let shiftHeld = event.modifierFlags.contains(.shift)
                 withholdingClick = terminal.map {
@@ -61,6 +66,28 @@ public enum TerminalClickFocusMonitor {
                 return withholdingClick ? nil : event
             }
         }
+    }
+
+    /// The press is consumed, so AppKit doesn't get to raise a background
+    /// window from it. This does that instead.
+    private static func startTitleStripDragIfNeeded(for event: NSEvent) -> Bool {
+        guard let window = event.window, !window.isOpaque else { return false }
+        guard let rootView = window.contentView?.superview ?? window.contentView,
+              let hit = rootView.hitTest(event.locationInWindow) else { return false }
+        guard TitleStripDrag.shouldStartDrag(
+            hitViewClassName: String(describing: type(of: hit)),
+            isWindowOpaque: window.isOpaque,
+            clickCount: event.clickCount,
+            isInTitleStrip: event.locationInWindow.y >= window.contentLayoutRect.maxY,
+            controlOrCommandHeld: !event.modifierFlags.isDisjoint(with: [.control, .command])
+        ) else { return false }
+        // Cleared first, so a stale value can't swallow a later drag or mouse-up
+        // event, whether or not this drag's mouse-up reaches the monitor.
+        withholdingClick = false
+        if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
+        if !NSApp.isActive { NSApp.activate() }
+        window.performDrag(with: event)
+        return true
     }
 
     private static func shouldWithholdClick(on terminal: AppTerminalView, shiftHeld: Bool) -> Bool {
