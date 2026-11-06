@@ -126,7 +126,7 @@ struct ProcessInspectorTests {
             process.waitUntilExit()
         }
         let children = ProcessInspector.children(ofPid: getpid())
-        #expect(children.contains { $0.id == process.processIdentifier })
+        #expect(children?.contains { $0.id == process.processIdentifier } == true)
     }
 
     @Test func allSameUserProcessesIncludesSelf() {

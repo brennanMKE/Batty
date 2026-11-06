@@ -21,6 +21,10 @@ struct ProcessInspectorAllPidsTests {
         var probeCount: Int32
         var pids: [pid_t]
         private(set) var fillCapacities: [Int] = []
+        /// The probe fails with `errno = ENOMEM`.
+        var failProbe = false
+        /// The 1-based fill attempt that fails with `errno = ENOMEM`.
+        var failFillAttempt: Int?
 
         init(probeCount: Int32, pids: [pid_t]) {
             self.probeCount = probeCount
@@ -28,9 +32,13 @@ struct ProcessInspectorAllPidsTests {
         }
 
         func call(_ buffer: UnsafeMutableRawPointer?, _ bufferSize: Int32) -> Int32 {
-            guard let buffer else { return probeCount }
+            guard let buffer else {
+                if failProbe { errno = ENOMEM; return -1 }
+                return probeCount
+            }
             let capacity = Int(bufferSize) / MemoryLayout<pid_t>.stride
             fillCapacities.append(capacity)
+            if fillCapacities.count == failFillAttempt { errno = ENOMEM; return -1 }
             let written = min(capacity, pids.count)
             buffer.bindMemory(to: pid_t.self, capacity: capacity)
                 .update(from: Array(pids.prefix(written)), count: written)
@@ -80,9 +88,24 @@ struct ProcessInspectorAllPidsTests {
         #expect(result == Array(huge.prefix(7424)))
     }
 
-    @Test func aProbeReportingNoProcessesReturnsEmptyWithoutFilling() {
-        let fake = FakeListAllPIDs(probeCount: 0, pids: [])
-        #expect(ProcessInspector.allPids(listAllPIDs: fake.call).isEmpty)
-        #expect(fake.fillCapacities.isEmpty)
+    @Test func aProbeThatFailsIsAFailedWalkNotAnEmptyList() {
+        let fake = FakeListAllPIDs(probeCount: 400, pids: pids(400))
+        fake.failProbe = true
+        #expect(ProcessInspector.allPids(listAllPIDs: fake.call) == nil)
+        #expect(fake.fillCapacities == [])
+    }
+
+    @Test func aFillThatFailsIsAFailedWalkNotAnEmptyList() {
+        let fake = FakeListAllPIDs(probeCount: 400, pids: pids(400))
+        fake.failFillAttempt = 1
+        #expect(ProcessInspector.allPids(listAllPIDs: fake.call) == nil)
+        #expect(fake.fillCapacities == [464])
+    }
+
+    @Test func aFillThatFailsAfterAGrowthRetryReturnsNoPartialList() {
+        let fake = FakeListAllPIDs(probeCount: 400, pids: pids(1000))
+        fake.failFillAttempt = 2
+        #expect(ProcessInspector.allPids(listAllPIDs: fake.call) == nil)
+        #expect(fake.fillCapacities == [464, 928])
     }
 }

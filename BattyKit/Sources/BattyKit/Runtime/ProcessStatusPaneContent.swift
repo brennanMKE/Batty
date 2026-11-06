@@ -104,6 +104,8 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         case noSelection
         case sourceTabGone
         case waitingForName
+        /// The process-table walk failed, so nothing is known and the tick changes nothing.
+        case lookupFailed
     }
 
     /// What an on-demand disclosure section (`openFilesState`/
@@ -206,9 +208,10 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// `ProcessStatusPaneContentTests`' CPU% tests can control that
     /// interval explicitly too, instead of bracketing it with `Date()`.
     private let clock: SchedulingClock
-    /// Resolves a followed name to a pid. Defaults to the real enumerator;
-    /// injectable so tests can script which process appears and disappears.
-    private let nameResolver: @MainActor (String) -> pid_t?
+    /// Resolves a followed name to a pid, or reports that the walk failed.
+    /// Defaults to the real enumerator; injectable so tests can script which
+    /// process appears and disappears, and when the walk fails.
+    private let nameResolver: @MainActor (String) -> ProcessInspector.NameLookup
     /// Reads a pid's enumerator name and start time. Injectable so tests can
     /// script PID reuse; defaults to the real `bsdInfo` read.
     private let identityReader: @MainActor (pid_t) -> ProcessInspector.ListedIdentity?
@@ -292,7 +295,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         samplingInterval: Duration = .seconds(1),
         coreMetricsProvider: @escaping @MainActor (pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure> = ProcessInspector.coreMetrics,
         clock: SchedulingClock = SystemClock(),
-        nameResolver: @escaping @MainActor (String) -> pid_t? = ProcessInspector.firstSameUserProcess(named:),
+        nameResolver: @escaping @MainActor (String) -> ProcessInspector.NameLookup = ProcessInspector.firstSameUserProcess(named:),
         identityReader: @escaping @MainActor (pid_t) -> ProcessInspector.ListedIdentity? = ProcessInspector.listedIdentity(pid:)
     ) {
         self.target = target
@@ -433,6 +436,9 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                     logger.info("process-status: followed name=\(name, privacy: .public) pid=\(followed.pid, privacy: .public) was recycled or changed name, re-resolving")
                     let resolution = reresolve(name: name, lost: followed.pid)
                     if case .pid(let successor) = resolution { return .successorPid(successor) }
+                    // The followed process is known to be gone, so a failed
+                    // walk still means Waiting, not "nothing changed".
+                    if case .lookupFailed = resolution { return .waitingForName }
                     return resolution
                 }
                 return .pid(followed.pid)
@@ -444,7 +450,13 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     }
 
     private func resolveByName(_ name: String, excluding lost: pid_t?) -> Resolution {
-        guard let pid = nameResolver(name), pid != lost else { return .waitingForName }
+        let pid: pid_t
+        switch nameResolver(name) {
+        case .unknown: return .lookupFailed
+        case .notRunning: return .waitingForName
+        case .found(let found): pid = found
+        }
+        guard pid != lost else { return .waitingForName }
         let identity = identityReader(pid)
         // A resolved pid whose listed name differs was replaced between the
         // enumeration and this read.
@@ -475,6 +487,10 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         case .waitingForName:
             hasNoSelection = false
             if runState != .waiting { runState = .waiting }
+        case .lookupFailed:
+            // No observed writes: `@Observable` notifies on equal-value
+            // writes too. `allPids` already logged the error.
+            logger.debug("process-status: name lookup failed, keeping current state")
         case .pid(let pid):
             hasNoSelection = false
             sample(pid: pid)
@@ -684,16 +700,17 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         }
     }
 
-    /// Same shape as ``loadOpenFiles()``. `children(ofPid:)` itself never
-    /// fails (it is a whole-system scan, not a call gated on the target
-    /// pid's own permissions — §1.3), so the only `.unavailable` case here
-    /// is "no pid to scan for at all."
+    /// Same shape as ``loadOpenFiles()``. `children(ofPid:)` is a
+    /// whole-system scan, not a call gated on the target pid's own
+    /// permissions (§1.3), so it fails only when the process-table walk
+    /// itself fails; that and "no pid to scan for" are the `.unavailable`
+    /// cases here.
     public func loadChildProcesses() {
-        guard let pid = snapshot?.pid else {
+        guard let pid = snapshot?.pid, let children = ProcessInspector.children(ofPid: pid) else {
             childProcessesState = .unavailable
             return
         }
-        childProcessesState = .loaded(ProcessInspector.children(ofPid: pid))
+        childProcessesState = .loaded(children)
     }
 
     /// Resets both disclosure sections for a pid that just replaced a

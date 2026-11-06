@@ -16,6 +16,8 @@ struct ProcessFollowByNameTests {
     final class World {
         var alive: [pid_t: UInt64] = [:]
         var resolves: pid_t?
+        /// The process-table walk fails, so the resolver answers `.unknown`.
+        var walkFails = false
         var resolverCalls = 0
         var identities: [pid_t: ProcessInspector.ListedIdentity] = [:]
         var resolvedNames: [String] = []
@@ -29,6 +31,10 @@ struct ProcessFollowByNameTests {
         }
 
         func identity(_ pid: pid_t) -> ProcessInspector.ListedIdentity? { identities[pid] }
+
+        func lookup() -> ProcessInspector.NameLookup {
+            walkFails ? .unknown : resolves.map(ProcessInspector.NameLookup.found) ?? .notRunning
+        }
     }
 
     private func makeContent(world: World, name: String = "app", clock: SchedulingClock = TestClock()) -> ProcessStatusPaneContent {
@@ -40,7 +46,7 @@ struct ProcessFollowByNameTests {
             nameResolver: { requested in
                 world.resolverCalls += 1
                 #expect(requested == name)
-                return world.resolves
+                return world.lookup()
             },
             identityReader: { world.identity($0) }
         )
@@ -313,7 +319,7 @@ struct ProcessFollowByNameTests {
             target: .pinned(501),
             tabLookup: { _ in nil },
             coreMetricsProvider: { world.metrics($0) },
-            nameResolver: { _ in world.resolverCalls += 1; return world.resolves }
+            nameResolver: { _ in world.resolverCalls += 1; return world.lookup() }
         )
         content.setUp(visible: true)
         #expect(content.runState == .exited)
@@ -328,7 +334,7 @@ struct ProcessFollowByNameTests {
             target: .followingName("app"),
             tabLookup: { _ in nil },
             coreMetricsProvider: { pid in denied ? .failure(.permissionDenied) : world.metrics(pid) },
-            nameResolver: { _ in world.resolverCalls += 1; return 501 }
+            nameResolver: { _ in world.resolverCalls += 1; return .found(501) }
         )
         world.alive = [501: 10]
         content.setUp(visible: true)
@@ -356,7 +362,7 @@ struct ProcessFollowByNameTests {
             target: .pinned(601),
             tabLookup: { _ in nil },
             coreMetricsProvider: { world.metrics($0) },
-            nameResolver: { _ in world.resolverCalls += 1; return world.resolves },
+            nameResolver: { _ in world.resolverCalls += 1; return world.lookup() },
             identityReader: { world.identity($0) }
         )
         content.setUp(visible: true)
@@ -394,7 +400,7 @@ struct ProcessFollowByNameTests {
             nameResolver: { _ in
                 if let state = box.content?.runState { box.states.append(state) }
                 world.resolverCalls += 1
-                return world.resolves
+                return world.lookup()
             },
             identityReader: { world.identity($0) }
         )
@@ -589,7 +595,7 @@ struct ProcessFollowByNameTests {
         }
         let first = processes[0].processIdentifier
         let second = processes[1].processIdentifier
-        #expect(ProcessInspector.firstSameUserProcess(named: name) == first)
+        #expect(ProcessInspector.firstSameUserProcess(named: name) == .found(first))
 
         let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil })
         content.setUp(visible: true)
@@ -597,6 +603,109 @@ struct ProcessFollowByNameTests {
         #expect(content.runState == .running)
         #expect(content.snapshot?.pid == second)
         #expect(content.snapshot?.listedName == name)
+        content.tearDown()
+    }
+
+    // MARK: - Failed walk
+
+    @Test func aFailedWalkWhileWaitingKeepsWaitingAndKeepsSampling() async {
+        let world = World()
+        let clock = TestClock()
+        let content = makeContent(world: world, clock: clock)
+        content.setUp(visible: true)
+        #expect(content.runState == .waiting)
+        #expect(await clock.waitForSleepers(1))
+
+        world.walkFails = true
+        let callsBefore = world.resolverCalls
+        await tick(clock)
+        #expect(content.runState == .waiting)
+        #expect(world.resolverCalls == callsBefore + 1)
+        #expect(content.isSamplingTaskAlive)
+
+        world.walkFails = false
+        world.alive = [501: 10]
+        world.resolves = 501
+        await tick(clock)
+        #expect(content.runState == .running)
+        #expect(content.snapshot?.pid == 501)
+        content.tearDown()
+    }
+
+    @Test func aFailedWalkAtSetUpDoesNotReportWaiting() async {
+        final class Box { var content: ProcessStatusPaneContent?; var states: [ProcessStatusPaneContent.RunState] = [] }
+        let box = Box()
+        let world = World()
+        world.walkFails = true
+        let clock = TestClock()
+        let content = ProcessStatusPaneContent(
+            target: .followingName("app"),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { world.metrics($0) },
+            clock: clock,
+            nameResolver: { _ in
+                if let state = box.content?.runState { box.states.append(state) }
+                world.resolverCalls += 1
+                return world.lookup()
+            },
+            identityReader: { world.identity($0) }
+        )
+        box.content = content
+        content.setUp(visible: true)
+        #expect(content.runState == .running)
+        #expect(content.snapshot == nil)
+        #expect(content.hasNoSelection == false)
+        #expect(content.followedPid == nil)
+        #expect(content.isSamplingTaskAlive)
+        #expect(await clock.waitForSleepers(1))
+
+        world.walkFails = false
+        world.alive = [501: 10]
+        world.resolves = 501
+        await tick(clock)
+        #expect(content.runState == .running)
+        #expect(content.snapshot?.pid == 501)
+        #expect(!box.states.contains(.waiting), "a failed walk must never surface as Waiting")
+        content.tearDown()
+    }
+
+    @Test func aFailedWalkAfterTheFollowedProcessExitsReportsWaiting() {
+        let world = World()
+        world.alive = [501: 10]
+        world.resolves = 501
+        let content = makeContent(world: world)
+        content.setUp(visible: true)
+        #expect(content.followedPid == 501)
+
+        world.alive = [:]
+        world.walkFails = true
+        content.sampleNowForTesting()
+        #expect(content.runState == .waiting)
+        #expect(content.followedPid == nil)
+
+        world.walkFails = false
+        world.alive = [502: 20]
+        world.resolves = 502
+        content.sampleNowForTesting()
+        #expect(content.runState == .running)
+        #expect(content.snapshot?.pid == 502)
+        content.tearDown()
+    }
+
+    @Test func aFailedWalkAfterPidReuseDropsTheRecycledPid() {
+        let world = World()
+        world.alive = [501: 10]
+        world.identities = [501: identity(start: 100)]
+        world.resolves = 501
+        let content = makeContent(world: world)
+        content.setUp(visible: true)
+        #expect(content.followedPid == 501)
+
+        world.identities[501] = identity(start: 300)
+        world.walkFails = true
+        content.sampleNowForTesting()
+        #expect(content.runState == .waiting)
+        #expect(content.followedPid == nil)
         content.tearDown()
     }
 
@@ -620,7 +729,7 @@ struct ProcessFollowByNameTests {
         let fixture = ChildProcessFixture()
         defer { fixture.killAndReapAll() }
 
-        #expect(ProcessInspector.firstSameUserProcess(named: name) == nil)
+        #expect(ProcessInspector.firstSameUserProcess(named: name) == .notRunning)
 
         func launch() throws -> Process {
             let process = Process()
@@ -631,7 +740,10 @@ struct ProcessFollowByNameTests {
         }
 
         let first = try launch()
-        #expect(ProcessInspector.firstSameUserProcess(named: name) == first.processIdentifier)
+        #expect(
+            ProcessInspector.firstSameUserProcess(named: name) == .found(first.processIdentifier),
+            walkDiagnostic(first)
+        )
         #expect(ProcessInspector.listedName(pid: first.processIdentifier) == name)
 
         let content = ProcessStatusPaneContent(target: .followingName(name), tabLookup: { _ in nil })
@@ -668,11 +780,21 @@ struct ProcessFollowByNameTests {
         newer.arguments = ["300"]
         try fixture.run(newer)
 
-        let listed = ProcessInspector.allSameUserProcesses()
-            .filter { $0.name == name }
-            .sorted(by: ProcessInspector.RunningProcess.listOrder)
-        #expect(listed.count == 2)
-        #expect(ProcessInspector.firstSameUserProcess(named: name) == listed.first?.id)
-        #expect(listed.first?.id == older.processIdentifier)
+        // One walk, compared against a pid this test owns. The ordering
+        // rules themselves are proved by `ProcessInspectorNameSelectionTests`.
+        #expect(
+            ProcessInspector.firstSameUserProcess(named: name) == .found(older.processIdentifier),
+            walkDiagnostic(older, newer)
+        )
+    }
+
+    /// Evaluated only on failure: whether each owned child was readable per
+    /// pid, which separates a failed whole walk (logged by `allPids`) from
+    /// per-pid `bsdInfo` misses.
+    private func walkDiagnostic(_ processes: Process...) -> Comment {
+        Comment(rawValue: processes.map { process in
+            let pid = process.processIdentifier
+            return "pid \(pid): \(String(describing: ProcessInspector.listedIdentity(pid: pid)))"
+        }.joined(separator: "; "))
     }
 }

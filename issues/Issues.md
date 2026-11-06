@@ -274,7 +274,6 @@ Builds and unit tests run on the host; **UI tests run only in the Tart VM** (`AG
 - **Switches:** `--verbose` or `BATTY_CHECK_VERBOSE=1` streams the full log as well (for humans only); `BATTY_CHECK_SUMMARY=0` prints the raw digest instead of the Haiku summary; `BATTY_CHECK_SUMMARY_TIMEOUT` (seconds, default 90) bounds the Haiku call. Exit codes and the `CHECK` line never depend on Haiku.
 - **Run the VM runner in the foreground or with the Bash tool's `run_in_background`** — not with `&`, `nohup` or a redirect to a file — so its time is measurable for the work log. One VM at a time.
 - **Known flaky tests** may fail on unrelated changes. Add a test here only with the run ids that show it flaking, and file an issue to fix it.
-  - `ProcessFollowByNameTests/theRealEnumeratorPrefersTheLongestRunningProcessOfAName()` (unit): failed at `:675` in `build/checks/unit-20261105-163643-95788.log` (`issue/0561`; passed alone and on a full re-run), and earlier in `Test-Batty (Beta)-2026.10.14_17-52-06--0700.xcresult` (#0516). Fix: [#0565](0565.md).
 - Unit tests follow `AGENTS.md` "Asynchronous tests" — never pass by waiting.
 
 ### Daily UI run

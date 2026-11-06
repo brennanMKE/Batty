@@ -322,8 +322,8 @@ public enum ProcessInspector {
     /// direct "list children of pid X" libproc call (§1.3), so this
     /// enumerates every pid on the system and filters by `pbi_ppid`.
     /// On-demand only, for the same reason as `listOpenFileDescriptors`.
-    public static func children(ofPid targetPid: pid_t) -> [ChildProcess] {
-        allPids().compactMap { pid -> ChildProcess? in
+    public static func children(ofPid targetPid: pid_t) -> [ChildProcess]? {
+        allPids()?.compactMap { pid -> ChildProcess? in
             guard let info = bsdInfo(pid: pid), info.pbi_ppid == UInt32(targetPid) else { return nil }
             return ChildProcess(id: pid, name: bsdName(info))
         }
@@ -376,7 +376,7 @@ public enum ProcessInspector {
     /// (review round 1, S4).
     public static func allSameUserProcesses() -> [RunningProcess] {
         let myUID = getuid()
-        return allPids().compactMap { pid -> RunningProcess? in
+        return (allPids() ?? []).compactMap { pid -> RunningProcess? in
             guard let info = bsdInfo(pid: pid), info.pbi_uid == myUID else { return nil }
             let path = identity(pid: pid).executablePath
             return RunningProcess(
@@ -389,26 +389,43 @@ public enum ProcessInspector {
         }
     }
 
-    /// The first same-uid process whose `bsdName` equals `name` exactly
+    /// The answer to "which process is called this?". `unknown` means the
+    /// process-table walk itself failed, so the answer is not "no such
+    /// process" and callers must not act as if it were.
+    public enum NameLookup: Equatable, Sendable {
+        case found(pid_t)
+        case notRunning
+        case unknown
+    }
+
+    /// The first record in `processes` whose `name` equals `name` exactly
     /// (case-sensitive) under ``RunningProcess/listOrder(_:_:)``, i.e. the
-    /// longest-running one, then the lowest pid. Walks `allPids()` +
-    /// `bsdInfo` only (no `proc_pidpath` per pid), since follow-by-name
-    /// calls this once per tick while no match is held.
-    public static func firstSameUserProcess(named name: String) -> pid_t? {
+    /// longest-running one, then the lowest pid. Reads nothing from the
+    /// system.
+    static func firstProcess(named name: String, in processes: [RunningProcess]) -> pid_t? {
+        processes
+            .filter { $0.name == name }
+            .min(by: RunningProcess.listOrder)?
+            .id
+    }
+
+    /// The first same-uid process named `name`, chosen by
+    /// ``firstProcess(named:in:)``. Walks `allPids()` + `bsdInfo` only (no
+    /// `proc_pidpath` per pid), since follow-by-name calls this once per
+    /// tick while no match is held. `.unknown` when the walk failed.
+    public static func firstSameUserProcess(named name: String) -> NameLookup {
+        guard let pids = allPids() else { return .unknown }
         let myUID = getuid()
-        var best: RunningProcess?
-        for pid in allPids() {
-            guard let info = bsdInfo(pid: pid), info.pbi_uid == myUID, bsdName(info) == name else { continue }
-            let candidate = RunningProcess(
+        let matches = pids.compactMap { pid -> RunningProcess? in
+            guard let info = bsdInfo(pid: pid), info.pbi_uid == myUID, bsdName(info) == name else { return nil }
+            return RunningProcess(
                 id: pid,
                 name: name,
                 startSeconds: info.pbi_start_tvsec,
                 startMicroseconds: info.pbi_start_tvusec
             )
-            if let current = best, !RunningProcess.listOrder(candidate, current) { continue }
-            best = candidate
         }
-        return best?.id
+        return firstProcess(named: name, in: matches).map(NameLookup.found) ?? .notRunning
     }
 
     /// The name the enumerator would list `pid` under, or `nil` when the
@@ -441,7 +458,7 @@ public enum ProcessInspector {
 
     // MARK: - Shared low-level helpers
 
-    private static func allPids() -> [pid_t] {
+    private static func allPids() -> [pid_t]? {
         allPids(listAllPIDs: { buffer, bufferSize in
             errno = 0
             return proc_listallpids(buffer, bufferSize)
@@ -470,9 +487,18 @@ public enum ProcessInspector {
     /// processes do not exist", which is how a Mode C pane ended up
     /// reporting a live child missing between two adjacent enumerations.
     /// A full buffer is now treated as suspect and retried larger.
-    static func allPids(listAllPIDs: (UnsafeMutableRawPointer?, Int32) -> Int32) -> [pid_t] {
+    ///
+    /// A call that returns `<= 0` is a failed walk, not an empty process
+    /// table (a live host always has processes), so it returns `nil` and
+    /// logs `errno` rather than handing callers an empty list they would
+    /// read the same way.
+    static func allPids(listAllPIDs: (UnsafeMutableRawPointer?, Int32) -> Int32) -> [pid_t]? {
         let probeCount = listAllPIDs(nil, 0)
-        guard probeCount > 0 else { return [] }
+        guard probeCount > 0 else {
+            let error = errno
+            logger.error("allPids: probe returned \(probeCount, privacy: .public), errno \(error, privacy: .public)")
+            return nil
+        }
         var capacity = Int(probeCount) + 64
         for attempt in 1...allPidsMaxAttempts {
             var pids = [pid_t](repeating: 0, count: capacity)
@@ -484,7 +510,11 @@ public enum ProcessInspector {
             // real size.
             let capacityBytes = Int32(pids.count * MemoryLayout<pid_t>.stride)
             let actualCount = pids.withUnsafeMutableBytes { listAllPIDs($0.baseAddress, capacityBytes) }
-            guard actualCount > 0 else { return [] }
+            guard actualCount > 0 else {
+                let error = errno
+                logger.error("allPids: fill attempt \(attempt, privacy: .public) returned \(actualCount, privacy: .public), errno \(error, privacy: .public)")
+                return nil
+            }
             // Round 2: keeps pid 0 (`kernel_task`), matching `#0314`'s
             // `ProcessMetricsReader.listAllPIDs()` exactly, rather than
             // filtering it out here — confirmed lossless for all callers of
@@ -503,7 +533,7 @@ public enum ProcessInspector {
             }
             capacity *= 2
         }
-        return []
+        return nil
     }
 
     private static func bsdInfo(pid: pid_t) -> proc_bsdinfo? {
