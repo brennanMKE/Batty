@@ -14,8 +14,10 @@ import Testing
 /// never inline even when already on the main thread. Production bell intake
 /// never reads these published values: `TerminalDelegateProxy` hands the
 /// ring instant and notification text to `TabRuntime` synchronously
-/// (#0561). The helper remains for the published values views still read
-/// (title, command-finished and the like). A
+/// (#0561), and the title and command-finished events likewise (#0563). No
+/// production code reads these published values for intake or display;
+/// tests use this helper to prove the delegate path ran *before* the publish
+/// landed. A
 /// test that calls a delegate method and reads the published property on
 /// the next line races that deferral and sees the pre-call value.
 ///

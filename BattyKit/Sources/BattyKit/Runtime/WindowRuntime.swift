@@ -1269,7 +1269,7 @@ public final class WindowRuntime {
     // MARK: - Private helpers
 
     private static func runningLabel(for tab: TabRuntime) -> String {
-        let title = tab.terminal.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = tab.terminalTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if title.isEmpty || title.contains(":") || title.contains("@") {
             return String(localized: "A process")
         }

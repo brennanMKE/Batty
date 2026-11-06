@@ -174,14 +174,7 @@ public struct BellFeedView: View {
         }
         let paneIndex = (session.tree.allPanes.firstIndex(where: { $0.id == pane.id }) ?? 0) + 1
         let tabIndex = (pane.tabs.firstIndex(where: { $0.id == tab.id }) ?? 0) + 1
-        let tabLabel: String
-        if let override = tab.titleOverride, !override.isEmpty {
-            tabLabel = override
-        } else if !tab.terminal.title.isEmpty {
-            tabLabel = tab.terminal.title
-        } else {
-            tabLabel = String(localized: "Tab \(tabIndex)")
-        }
+        let tabLabel = AppStateStore.tabLabel(for: tab, tabIndex: tabIndex)
         return BellFeedEntry.pathLabel(sessionTitle: session.title, paneIndex: paneIndex, tabLabel: tabLabel)
     }
 }

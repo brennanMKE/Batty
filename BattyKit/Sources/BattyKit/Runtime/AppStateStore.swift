@@ -2749,7 +2749,7 @@ public final class AppStateStore {
             let decision = postNotification(for: entry, at: location, trigger: trigger, playSound: playSound, battyActive: battyActive)
             let summarization = scheduleSummarization(
                 for: entry,
-                tabTitle: location.tab.terminal.title,
+                tabTitle: location.tab.terminalTitle,
                 sessionTitle: location.session.title,
                 capturing: capturing
             )
@@ -2818,8 +2818,8 @@ public final class AppStateStore {
         if let override = tab.titleOverride, !override.isEmpty {
             return override
         }
-        if !tab.terminal.title.isEmpty {
-            return tab.terminal.title
+        if !tab.terminalTitle.isEmpty {
+            return tab.terminalTitle
         }
         return String(localized: "Tab \(tabIndex)")
     }

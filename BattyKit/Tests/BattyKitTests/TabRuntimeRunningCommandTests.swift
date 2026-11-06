@@ -1,124 +1,104 @@
 // TabRuntimeRunningCommandTests.swift
 
 import Foundation
+import Observation
 import Testing
 @testable import BattyKit
+
+private nonisolated final class RunningCommandChangeFlag: @unchecked Sendable {
+    var fired = false
+}
 
 @MainActor
 struct TabRuntimeRunningCommandTests {
 
-    @Test func refreshSetsDisplayNameForKnownTitle() async {
+    @Test func knownTitleSetsDisplayNameBeforeThePublishLands() async {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("claude")
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
+        #expect(tab.terminal.title == "")
+        #expect(tab.runningCommandDisplayName == "Claude Code")
         await awaitTerminalStatePublish { tab.terminal.title == "claude" }
-        tab.refreshRunningCommandFromTitle()
         #expect(tab.runningCommandDisplayName == "Claude Code")
     }
 
-    @Test func refreshHandlesCommandWithArgs() async {
+    @Test func titleWithArgumentsSetsDisplayName() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("aider --model gpt-4")
-        await awaitTerminalStatePublish { tab.terminal.title == "aider --model gpt-4" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("aider --model gpt-4")
         #expect(tab.runningCommandDisplayName == "Aider")
     }
 
-    @Test func refreshHandlesZshTruncatedTitle() async {
+    @Test func zshTruncatedTitleSetsDisplayName() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("...>claude --resume very-long-session-id-here")
-        await awaitTerminalStatePublish { tab.terminal.title == "...>claude --resume very-long-session-id-here" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("...>claude --resume very-long-session-id-here")
         #expect(tab.runningCommandDisplayName == "Claude Code")
     }
 
-    @Test func refreshDoesNotClearOnPromptForm() async {
-        // TUIs (claude, vim, ssh) routinely mutate OSC 2 mid-session to
-        // a non-registry value. The title-driven path must NOT clear on
-        // a miss — clearing is the command-finished path's job.
+    @Test func promptTitleDoesNotClearDisplayName() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("claude")
-        await awaitTerminalStatePublish { tab.terminal.title == "claude" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
         #expect(tab.runningCommandDisplayName == "Claude Code")
-        tab.terminal.terminalDidChangeTitle("brennan@host:~/Developer/Batty")
-        await awaitTerminalStatePublish { tab.terminal.title == "brennan@host:~/Developer/Batty" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("brennan@host:~/Developer/Batty")
         #expect(tab.runningCommandDisplayName == "Claude Code")
     }
 
-    @Test func refreshDoesNotClearOnUnknownTitle() async {
+    @Test func unknownTitleDoesNotClearDisplayName() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("claude")
-        await awaitTerminalStatePublish { tab.terminal.title == "claude" }
-        tab.refreshRunningCommandFromTitle()
-        #expect(tab.runningCommandDisplayName == "Claude Code")
-        tab.terminal.terminalDidChangeTitle("Some Inner Claude State")
-        await awaitTerminalStatePublish { tab.terminal.title == "Some Inner Claude State" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
+        tab.terminalDelegate.terminalDidChangeTitle("Some Inner Claude State")
         #expect(tab.runningCommandDisplayName == "Claude Code")
     }
 
-    @Test func refreshFlipsBetweenKnownTUIs() async {
-        // If one TUI's title is replaced by another known TUI's title
-        // (rare but possible — chained tools), the latest one wins.
+    @Test func secondKnownTitleReplacesTheFirst() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("claude")
-        await awaitTerminalStatePublish { tab.terminal.title == "claude" }
-        tab.refreshRunningCommandFromTitle()
-        #expect(tab.runningCommandDisplayName == "Claude Code")
-        tab.terminal.terminalDidChangeTitle("aider")
-        await awaitTerminalStatePublish { tab.terminal.title == "aider" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
+        tab.terminalDelegate.terminalDidChangeTitle("aider")
         #expect(tab.runningCommandDisplayName == "Aider")
     }
 
-    @Test func refreshRecognizesDisplayNameVerbatim() async {
-        // A TUI might set its own OSC 2 title to its product name.
+    @Test func displayNameTitleIsRecognizedVerbatim() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("Claude Code")
-        await awaitTerminalStatePublish { tab.terminal.title == "Claude Code" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("Claude Code")
         #expect(tab.runningCommandDisplayName == "Claude Code")
     }
 
-    @Test func commandFinishedClearsRunningName() async {
+    @Test func commandFinishedClearsDisplayNameSynchronously() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("claude")
-        await awaitTerminalStatePublish { tab.terminal.title == "claude" }
-        tab.refreshRunningCommandFromTitle()
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
         #expect(tab.runningCommandDisplayName == "Claude Code")
-
-        // Simulate libghostty's OSC 133 D callback: command-finished sets
-        // `lastCommandDurationNanos` to a non-nil value.
-        tab.terminal.terminalDidFinishCommand(exitCode: 0, durationNanos: 1_000)
-        await awaitTerminalStatePublish { tab.terminal.lastCommandDurationNanos != nil }
-        let cleared = tab.recordCommandFinishedIfNeeded()
-        #expect(cleared == true)
+        tab.terminalDelegate.terminalDidFinishCommand(exitCode: 0, durationNanos: 1_000)
         #expect(tab.runningCommandDisplayName == nil)
     }
 
-    @Test func commandFinishedIsIdempotent() async {
+    @Test func commandFinishedClearsAgainWithTheSameDuration() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("claude")
-        await awaitTerminalStatePublish { tab.terminal.title == "claude" }
-        tab.refreshRunningCommandFromTitle()
-        tab.terminal.terminalDidFinishCommand(exitCode: 0, durationNanos: 1_000)
-        await awaitTerminalStatePublish { tab.terminal.lastCommandDurationNanos != nil }
-        let first = tab.recordCommandFinishedIfNeeded()
-        let second = tab.recordCommandFinishedIfNeeded()
-        #expect(first == true)
-        #expect(second == false)
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
+        tab.terminalDelegate.terminalDidFinishCommand(exitCode: 0, durationNanos: 1_000)
+        #expect(tab.runningCommandDisplayName == nil)
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
+        #expect(tab.runningCommandDisplayName == "Claude Code")
+        tab.terminalDelegate.terminalDidFinishCommand(exitCode: 0, durationNanos: 1_000)
+        #expect(tab.runningCommandDisplayName == nil)
     }
 
-    @Test func refreshDoesNotOverwriteWhenDerivedMatches() async {
+    @Test func commandFinishedDoesNotChangeTheTitleMirror() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidChangeTitle("claude")
-        await awaitTerminalStatePublish { tab.terminal.title == "claude" }
-        tab.refreshRunningCommandFromTitle()
-        let first = tab.runningCommandDisplayName
-        tab.refreshRunningCommandFromTitle()
-        let second = tab.runningCommandDisplayName
-        #expect(first == second)
-        #expect(second == "Claude Code")
+        tab.terminalDelegate.terminalDidChangeTitle("vim - notes.txt")
+        tab.terminalDelegate.terminalDidFinishCommand(exitCode: 0, durationNanos: 1_000)
+        #expect(tab.terminalTitle == "vim - notes.txt")
+        #expect(TabTitleFormatter.chipTitle(for: tab) == "vim - notes.txt")
+    }
+
+    /// `receiveTitleChange` writes the derived name unconditionally and
+    /// relies on the `@Observable` setter skipping an equal `Equatable`
+    /// write. This fails if that toolchain behaviour changes.
+    @Test func sameDisplayNameFromANewTitleDoesNotRenotify() {
+        let tab = TabRuntime()
+        tab.terminalDelegate.terminalDidChangeTitle("claude")
+        let changed = RunningCommandChangeFlag()
+        withObservationTracking { _ = tab.runningCommandDisplayName } onChange: { changed.fired = true }
+        tab.terminalDelegate.terminalDidChangeTitle("claude --resume abc")
+        #expect(!changed.fired)
+        #expect(tab.runningCommandDisplayName == "Claude Code")
+        #expect(tab.terminalTitle == "claude --resume abc")
     }
 }

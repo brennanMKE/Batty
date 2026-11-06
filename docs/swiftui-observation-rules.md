@@ -49,10 +49,13 @@ on **what flipped the observed value**, not on the callback's name:
   fine — `TabRuntime.bellCount` is flipped by a libghostty delegate
   callback, and the write doesn't feed back into anything that re-fires it.
 - *An `onChange` keyed on a Combine `@Published` property reached through a
-  plain `let` on an `@Observable` model (e.g. `tab.terminal.bellCount`)
+  plain `let` on an `@Observable` model (e.g. `tab.terminal.bellCount`,
+  `tab.terminal.title`)
   compares only when something else re-renders the view.* Observation
   tracks no dependency on it, so the handler fires late or never. Route
-  such events from the delegate callback instead (#0227, #0260, #0561).
+  such events from the delegate callback instead (#0227, #0260, #0561,
+  #0563). Views read the `TabRuntime` mirror (`workingDirectory`,
+  `terminalTitle`) instead.
 - *Layout/focus/geometry-origin flips are the danger zone.* If the observed
   value was flipped synchronously by AppKit machinery — first-responder
   promotion, layout, geometry — the handler may be executing *inside that

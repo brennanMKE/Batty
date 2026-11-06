@@ -8,9 +8,10 @@ public enum TabTitleFormatter {
         if let override = tab.titleOverride, !override.isEmpty {
             return override
         }
-        // `tab.workingDirectory`, not `tab.terminal.workingDirectory` — the
-        // latter is Combine-backed and invisible to Observation, which left
-        // this chip stuck on the tab's initial directory after `cd` (#0260).
+        // `tab.workingDirectory` and `tab.terminalTitle`, not `tab.terminal.*`
+        // — the `terminal` values are Combine-backed and invisible to
+        // Observation, which left this chip stale after `cd` (#0260) and
+        // after an OSC 2 title change (#0563).
         if let cwd = tab.workingDirectory {
             if cwd == NSHomeDirectory() || cwd == "~" {
                 return "~"
@@ -19,7 +20,7 @@ public enum TabTitleFormatter {
         if let running = tab.runningCommandDisplayName, !running.isEmpty {
             return running
         }
-        if let stripped = stripShellPromptPrefix(tab.terminal.title), !stripped.isEmpty {
+        if let stripped = stripShellPromptPrefix(tab.terminalTitle), !stripped.isEmpty {
             return prettifyPath(stripped)
         }
         // AI-suggested name (Apple Intelligence, gated by the auto-name

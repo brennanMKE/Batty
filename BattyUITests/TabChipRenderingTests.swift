@@ -188,4 +188,41 @@ nonisolated final class TabChipRenderingTests: XCTestCase {
     }
 }
 
-extension TabChipRenderingTests {}
+extension TabChipRenderingTests {
+
+    /// An OSC 2 title in an idle, unfocused Pane renames its chip with no
+    /// input to trigger a re-render (#0563).
+    @MainActor
+    func testOSCTitleRenamesAnIdlePaneChipWithoutInteraction() throws {
+        let scratch = try BattyCLI.makeScratchDirectory()
+        let (app, _, initial) = try BattyCLI.launchConnected(from: Self.self)
+        defer { app.terminate() }
+
+        let session = try XCTUnwrap(initial.selectedSession)
+        let original = session.focusedPaneID
+        let gate = BattyUITestHarness.sentinelPath(named: "title-gate")
+        let titled = BattyUITestHarness.sentinelPath(named: "title-set")
+        let dir = scratch.path
+        let script = try BattyCLI.makeScript(
+            in: scratch,
+            named: "title.sh",
+            body: "printf '\\033]7;file://%s%s\\a' \"$(hostname)\" \(BattyCLI.shellQuoted(dir)); while [ ! -e \(BattyCLI.shellQuoted(gate)) ]; do sleep 0.1; done; printf '\\033]2;claude\\a'; touch \(BattyCLI.shellQuoted(titled)); exec sleep 600"
+        )
+        BattyCLI.runExpectingSuccess(["pane", "split", "-h", "--pane", original.uuidString, "--command", script])
+        BattyCLI.runExpectingSuccess(["pane", "focus", original.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.session(session.id)?.focusedPaneID == original }, "focus did not return to the first Pane")
+
+        XCTAssertTrue(
+            BattyScreen.element("tab-chip.\(scratch.lastPathComponent)", in: app).waitForExistence(timeout: 15),
+            "the split Pane's chip never showed the reported directory"
+        )
+
+        XCTAssertTrue(FileManager.default.createFile(atPath: gate, contents: nil))
+        XCTAssertTrue(BattyUITestHarness.waitForFile(at: titled, timeout: 15), "the script never set the title")
+
+        XCTAssertTrue(
+            BattyScreen.element("tab-chip.Claude Code", in: app).waitForExistence(timeout: 10),
+            "an OSC 2 title in an idle Pane must rename its chip without interaction"
+        )
+    }
+}

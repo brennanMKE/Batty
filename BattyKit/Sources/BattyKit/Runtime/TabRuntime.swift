@@ -73,6 +73,14 @@ public final class TabRuntime: Identifiable {
     /// the live property) — both event-origin, not view-update code.
     public internal(set) var workingDirectory: String?
 
+    /// Observation-tracked mirror of `terminal.title` (the #0260 pattern).
+    /// View-reachable code and code running inside a delegate callback
+    /// (bell intake) read this, never `terminal.title`, which is
+    /// Combine-backed and published a main-queue turn late. Written only by
+    /// ``receiveTitleChange(_:)`` with the reported value. Starts at `""`,
+    /// matching a fresh `TerminalViewState`'s title.
+    public internal(set) var terminalTitle: String = ""
+
     /// Per-cwd name suggested by the on-device model (mirrors the session
     /// auto-naming mechanism — see `AppStateStore.updateTabAutoName(for:)`).
     /// `nil` means "no AI name for the current directory": suggestion
@@ -129,8 +137,6 @@ public final class TabRuntime: Identifiable {
     private var pendingBells: (count: Int, lastAt: Date)?
     @ObservationIgnored
     private var pendingNotification: (message: String?, at: Date)?
-    @ObservationIgnored
-    private var lastObservedCommandDurationNanos: UInt64?
 
     /// Testability hook only (`internal`, reached via `@testable import` in
     /// `BattyKitTests`) — lets a test force this Tab's ``needsConfirmClose``
@@ -188,6 +194,12 @@ public final class TabRuntime: Identifiable {
         }
         terminalDelegate.onDesktopNotification = { [weak self] title, body, at in
             self?.receiveDesktopNotification(title: title, body: body, at: at)
+        }
+        terminalDelegate.onTitleChange = { [weak self] title in
+            self?.receiveTitleChange(title)
+        }
+        terminalDelegate.onCommandFinished = { [weak self] _, _ in
+            self?.receiveCommandFinished()
         }
     }
 
@@ -481,42 +493,34 @@ public final class TabRuntime: Identifiable {
         unseenBellCount = 0
     }
 
-    /// Re-derive ``runningCommandDisplayName`` from the surface's current
-    /// OSC 2 title. Called whenever ``TerminalViewState.title`` changes.
+    /// Mirrors a reported OSC 2 title into ``terminalTitle`` and
+    /// re-derives ``runningCommandDisplayName`` from it.
     ///
     /// Set-only: a registry hit assigns the display name. A miss does NOT
     /// clear — many TUIs (claude, vim, ssh) mutate their own OSC 2 title
     /// mid-session to show context (chat name, file path, host), and a
     /// strict "clear on any non-matching title" would wipe the chip the
-    /// moment the TUI started doing its job. Clearing is the
-    /// responsibility of ``recordCommandFinishedIfNeeded`` (driven by
-    /// libghostty's OSC 133 D command-finished signal).
-    public func refreshRunningCommandFromTitle() {
-        guard let derived = TUIAppRegistry.displayNameFromTitle(terminal.title) else {
-            return
-        }
-        if derived != runningCommandDisplayName {
+    /// moment the TUI started doing its job. Clearing is the job of
+    /// ``receiveCommandFinished()``.
+    ///
+    /// No equal-value guards here or in ``receiveCommandFinished()``: the
+    /// `@Observable` setter already skips notifying when an `Equatable`
+    /// property is assigned an equal value (`shouldNotifyObservers`).
+    /// `TabTitleMirrorTests.equalTitleDoesNotRenotifyTheMirror` and
+    /// `TabRuntimeRunningCommandTests.sameDisplayNameFromANewTitleDoesNotRenotify`
+    /// pin that behaviour.
+    func receiveTitleChange(_ title: String) {
+        terminalTitle = title
+        if let derived = TUIAppRegistry.displayNameFromTitle(title) {
             runningCommandDisplayName = derived
         }
     }
 
-    /// Clears ``runningCommandDisplayName`` once when libghostty reports a
-    /// command finished via OSC 133 D. Returns `true` if the call cleared
-    /// the field (i.e. the duration moved since the last observation).
-    ///
-    /// Acts as a backstop for shells that don't emit a prompt OSC 2 on
-    /// command exit; with oh-my-zsh's precmd the title-driven path already
-    /// clears, but this guards against shell configs that skip that step.
-    @discardableResult
-    public func recordCommandFinishedIfNeeded() -> Bool {
-        let observed = terminal.lastCommandDurationNanos
-        guard observed != lastObservedCommandDurationNanos else { return false }
-        lastObservedCommandDurationNanos = observed
-        guard observed != nil else { return false }
-        if runningCommandDisplayName != nil {
-            runningCommandDisplayName = nil
-        }
-        return true
+    /// Clears ``runningCommandDisplayName`` when libghostty reports a
+    /// command finished (OSC 133 D). This is the only clear path: the
+    /// title path is set-only, so a prompt title never clears the name.
+    func receiveCommandFinished() {
+        runningCommandDisplayName = nil
     }
 
     private static func formatNotification(title: String?, body: String?) -> String? {

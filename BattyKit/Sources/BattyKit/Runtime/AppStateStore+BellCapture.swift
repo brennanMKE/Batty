@@ -66,7 +66,7 @@ extension AppStateStore {
             trigger: decision.trigger.rawValue,
             message: message,
             messageTruncated: messageTruncated,
-            tabTitle: location.tab.terminal.title,
+            tabTitle: location.tab.terminalTitle,
             tabLabel: tabLabel,
             sessionTitle: sessionTitle,
             foregroundProcess: process,

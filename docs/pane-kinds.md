@@ -47,7 +47,7 @@ reasons that are structural, not aesthetic:
 - **The Tab bar (`SlidingTabBar`) is a fundamentally *terminal-session*
   affordance**: `hasUnseen` maps to bell state, `onReorderCommit` persists
   tab order, and `PaneView`'s chip title resolution
-  (`TabTitleFormatter.chipTitle`) walks `tab.terminal.title` →
+  (`TabTitleFormatter.chipTitle`) walks `tab.terminalTitle` →
   `tab.workingDirectory` → override. None of that exists for a Git Status
   view. Kind-on-Tab would need a second, parallel chip-rendering and
   title-resolution path inside the *same* `SlidingTabBar`, conditionally

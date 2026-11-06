@@ -29,6 +29,19 @@ struct AppStateStoreBellDecisionHistoryTests {
         #expect(store.bellDecisionHistory.records[0].trigger == .bel)
     }
 
+    @Test func bellRungRightAfterATitleChangeRecordsTheNewTabLabel() {
+        let notifier = SpyBellNotifier()
+        let store = AppStateStore(notifier: notifier)
+        store.isBattyActiveProvider = { false }
+        let session = store.sessions[0]
+        let tab = session.focusedPaneAnyKind.activeTab!
+        tab.terminalDelegate.terminalDidChangeTitle("ssh prod-box")
+        store.ringBell(in: tab)
+
+        #expect(store.bellDecisionHistory.records.count == 1)
+        #expect(store.bellDecisionHistory.records[0].tabLabel == "ssh prod-box")
+    }
+
     @Test func recordDesktopNotificationCapturesTheOscNotificationTriggerKind() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)

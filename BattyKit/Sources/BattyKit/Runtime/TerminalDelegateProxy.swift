@@ -54,6 +54,15 @@ final class TerminalDelegateProxy: NSObject,
     var onRingBell: ((Date) -> Void)?
     var onDesktopNotification: ((_ title: String, _ body: String, _ at: Date) -> Void)?
 
+    /// Fire synchronously inside the libghostty callback with its
+    /// arguments. `state`'s copy is published a main-queue turn later
+    /// (`publishSoon`), so consumers use the arguments and never read
+    /// `state` back (#0436). They replace a SwiftUI `.onChange` over
+    /// `state`'s Combine values, which compared only on incidental
+    /// re-renders (#0561, #0563).
+    var onTitleChange: ((String) -> Void)?
+    var onCommandFinished: ((_ exitCode: Int?, _ durationNanos: UInt64) -> Void)?
+
     /// Fires when a terminal program in this tab's Session needs the user's
     /// permission for a clipboard operation (unsafe paste, or a protected
     /// OSC 52 read/write). Wired by `PaneView` (which has the owning
@@ -182,6 +191,7 @@ final class TerminalDelegateProxy: NSObject,
 
     func terminalDidChangeTitle(_ title: String) {
         state.terminalDidChangeTitle(title)
+        onTitleChange?(title)
     }
 
     func terminalDidResize(_ size: TerminalGridMetrics) {
@@ -225,6 +235,7 @@ final class TerminalDelegateProxy: NSObject,
 
     func terminalDidFinishCommand(exitCode: Int?, durationNanos: UInt64) {
         state.terminalDidFinishCommand(exitCode: exitCode, durationNanos: durationNanos)
+        onCommandFinished?(exitCode, durationNanos)
     }
 
     func terminalDidAttachSurface(_ surface: TerminalSurface) {

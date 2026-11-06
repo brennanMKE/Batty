@@ -65,7 +65,7 @@ the current file; analysis should ignore a `summary` with no matching `event`.
 | `trigger` | string | `bel`, `oscNotification`, `cliNotification` |
 | `message` | string, null | Raw OSC 9/777 body or CLI `title\nbody`; null for a bare BEL. Capped at 16384 characters |
 | `messageTruncated` | bool | `message` was cut at the cap |
-| `tabTitle` | string | `terminal.title` |
+| `tabTitle` | string | `TabRuntime.terminalTitle` |
 | `tabLabel` | string | Override-aware label the UI shows |
 | `sessionTitle` | string | |
 | `foregroundProcess` | object, null | `{pid: int, name: string?, executablePath: string?}`; null when libghostty reports no pid |

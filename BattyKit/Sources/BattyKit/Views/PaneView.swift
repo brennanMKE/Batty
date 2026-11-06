@@ -171,7 +171,7 @@ public struct PaneView: View {
         .sheet(item: $renamingTab) { tab in
             RenameTabSheet(
                 title: $renameDraft,
-                placeholder: tab.terminal.title,
+                placeholder: tab.terminalTitle,
                 onCommit: {
                     let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     let prior = tab.titleOverride
@@ -262,7 +262,6 @@ public struct PaneView: View {
                         isPaneFocused: isPaneFocused
                     )
                         .allowsHitTesting(tab.id == pane.activeTabID)
-                        .modifier(TabRunningCommandObserver(tab: tab))
                         // Deliberately NO .onChange(of: tab.terminal.isFocused)
                         // model write here. libghostty flips isFocused on
                         // existing surfaces during surface creation (#0230
@@ -791,26 +790,6 @@ private struct PaneSwapDropZone: View {
                     .opacity(isTargeted ? 1 : 0)
                     .animation(.easeOut(duration: 0.1), value: isTargeted)
                     .allowsHitTesting(false)
-            }
-    }
-}
-
-/// Observes the terminal's OSC 2 title and OSC 133 D command-finished
-/// markers and keeps ``TabRuntime.runningCommandDisplayName`` in sync.
-///
-/// Extracted from ``PaneView`` because adding both `.onChange` modifiers
-/// inline pushes the surrounding `ViewBuilder` past the SwiftUI
-/// type-checker's complexity budget.
-private struct TabRunningCommandObserver: ViewModifier {
-    let tab: TabRuntime
-
-    func body(content: Content) -> some View {
-        content
-            .onChange(of: tab.terminal.title) {
-                tab.refreshRunningCommandFromTitle()
-            }
-            .onChange(of: tab.terminal.lastCommandDurationNanos) {
-                tab.recordCommandFinishedIfNeeded()
             }
     }
 }
