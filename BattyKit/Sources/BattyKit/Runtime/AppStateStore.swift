@@ -2038,7 +2038,8 @@ public final class AppStateStore {
     /// are registered, the owning window is the key window. In
     /// single-window mode (no registered key window, as in unit tests),
     /// `isFocused` alone determines seen-ness. A seen bell while Batty is
-    /// active adds no entry (`routeRealTabBell`).
+    /// active, or any bell from a muted Session, adds no entry
+    /// (`routeRealTabBell`).
     func recordBell(forTabID tabID: UUID, count: Int, at: Date, surfaceID: UUID = UUID()) {
         guard count > 0 else { return }
         let keyWindowID = keyWindowRuntime()?.id
@@ -2067,7 +2068,8 @@ public final class AppStateStore {
     /// Routes one desktop notification (OSC 9 / OSC 777) from the tab with
     /// `tabID`, with the formatted `message` and ring instant `at` the
     /// delegate passed. Seen-ness follows ``recordBell(forTabID:count:at:surfaceID:)``.
-    /// A seen notification while Batty is active adds no entry (`routeRealTabBell`).
+    /// A seen notification while Batty is active, or any notification from a
+    /// muted Session, adds no entry (`routeRealTabBell`).
     func recordDesktopNotification(forTabID tabID: UUID, message: String?, at: Date, surfaceID: UUID = UUID()) {
         let keyWindowID = keyWindowRuntime()?.id
         let multiWindow = keyWindowID != nil
@@ -2099,7 +2101,7 @@ public final class AppStateStore {
     }
 
     /// Posts a CLI-originated notification into the Bell Feed, unless the
-    /// user is looking at it (`routeRealTabBell`), attributed to a real tab — #0284's `notify` verb, the terminal step of the
+    /// user is looking at it or its Session is muted (`routeRealTabBell`), attributed to a real tab — #0284's `notify` verb, the terminal step of the
     /// agent loop (#0257). Deliberately rides the same `BellFeedEntry`
     /// shape every other entry uses rather than growing a kind/placeholder-
     /// id path: `BellFeedView.pathLabel(for:)`'s `(closed)` fallback and
@@ -2690,11 +2692,13 @@ public final class AppStateStore {
         playSound: Bool = true
     ) {
         let battyActive = isBattyActiveProvider()
-        // A seen entry is dropped exactly when the notifier would decline the
-        // banner, so no notification tap can name a dropped entry
+        // An entry is dropped when its Session is muted or when the notifier
+        // would decline the banner. Neither posts a banner, so no
+        // notification tap can name a dropped entry
         // (`RootWindowView.setUpNotifier`'s lookup). The #0297 decision
         // history and the #0523 capture log still record the bell.
-        guard BellNotifier.evaluateShouldPost(isBattyActive: battyActive, entrySeen: entry.seen) else {
+        guard !location.session.notificationsMuted,
+              BellNotifier.evaluateShouldPost(isBattyActive: battyActive, entrySeen: entry.seen) else {
             recordDroppedBell(entry, at: location, trigger: trigger, battyActive: battyActive)
             return
         }
@@ -2770,6 +2774,8 @@ public final class AppStateStore {
     /// `recordFootprintWarning` (#0290's system entry) never calls this
     /// method — it posts via `BellNotifier.postFootprintWarning` directly —
     /// so a system entry can never masquerade as a real-bell decision here.
+    /// `routeRealTabBell` already drops a muted Session's bells before this
+    /// runs (via `recordDroppedBell`), so the mute guard below is defensive.
     ///
     /// Capture is unconditional (no Settings toggle — see
     /// `BellDecisionHistory`'s type doc comment for why) and unconditionally

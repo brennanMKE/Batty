@@ -155,6 +155,13 @@ final class AppStateStoreReminderTests {
         target.notificationsMuted = true
         try await fire(5, on: target.id)
         #expect(notifier.reminders.count == 1)
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.kind == .reminder)
+        #expect(store.bellFeed.entries.first?.seen == false)
+
+        store.recordCLINotification(tabID: target.focusedPaneAnyKind.activeTabID, title: "Done", body: nil, playSound: false)
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.kind == .reminder)
     }
 
     @Test func aReminderOnTheFrontmostSessionIsStillUnseenAndPosted() async throws {

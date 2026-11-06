@@ -395,6 +395,8 @@ final class AppStateStoreBellCaptureTests {
         #expect(event.notification == BellCaptureNotification(outcome: "suppressed", reason: "sessionMuted"))
         #expect(event.sessionMuted == true)
         #expect(f.store.bellDecisionHistory.records.last?.outcome == .suppressed(.sessionMuted))
+        #expect(event.feedRecorded == false)
+        #expect(event.summarization == .notApplicableNotRecorded)
     }
 
     @Test func summaryRecordCarriesPromptRawReplyAndJoinsByEntryID() async throws {

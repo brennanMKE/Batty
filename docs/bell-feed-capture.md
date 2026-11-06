@@ -77,7 +77,7 @@ the current file; analysis should ignore a `summary` with no matching `event`.
 | `collapse` | object | `{collapsed: bool, repeatCount: int, firstOccurrenceAt: ISO date}` of the surviving entry |
 | `notification` | object | `{outcome: "submitted" \| "suppressed", reason: string?}`; reasons are `nilNotifier`, `sessionMuted`, `systemNotificationsDisabled`, `frontmostAndSeen`, `collapsedIntoUnread` |
 | `notificationTitle`, `notificationBody` | string, null | Exact strings `BellNotifier.post` uses; null when suppressed |
-| `feedRecorded` | bool | `false` when the bell was seen at creation while Batty was active, so no row was added (#0555); `feedRowPath` and `feedRowText` are then what the row would have shown |
+| `feedRecorded` | bool | `false` when the bell was seen at creation while Batty was active, so no row was added (#0555), or when the Session was muted (#0558); `feedRowPath` and `feedRowText` are then what the row would have shown |
 | `feedRowPath` | string | Row path label |
 | `feedRowText` | string, null | `summary ?? message` at record time (the summary is not there yet for a new entry); null when empty, as the row shows nothing then |
 | `summarization` | string | `scheduled`, `skippedNoSummarizer`, `skippedDisabled`, `notApplicableCollapsed`, `notApplicableNotRecorded` (no row was added) |

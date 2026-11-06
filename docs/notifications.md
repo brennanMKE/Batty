@@ -20,9 +20,10 @@ touching the path needs to keep three things in mind:
 2. **Focus is the gate on unseen counts.** A bell that lands on the
    tab the user is already looking at is recorded into the feed but
    does **not** bump any unseen counters. Anything off-focus does.
-3. **Per-session mute affects only desktop notifications.** The bell
-   feed entry is still recorded; the sidebar badge and chip dot still
-   update. Mute suppresses the macOS banner / Notification Center post.
+3. **A muted Session's bells add nothing** (#0558). No bell feed
+   entry, no unseen count (chip dot, Pane and sidebar badges), no macOS
+   banner. The decision history and capture log still record them.
+   Reminders are exempt.
 
 ---
 
@@ -50,9 +51,10 @@ every row for that tab from the feed (#0556).
 
 Per-session mute lives on the **sidebar right-click menu** (per
 `#0068`). "Mute Notifications" / "Unmute Notifications" toggles
-`SessionRuntime.notificationsMuted`. While muted, desktop notifications
-for that session are suppressed; the bell feed and sidebar/chip
-indicators continue to update.
+`SessionRuntime.notificationsMuted`. While muted, the session's bells
+add no feed row, no chip dot, no sidebar badge and no desktop
+notification (#0558). Rows already in the feed when you mute stay;
+unmuting brings back nothing that rang while muted.
 
 The bell feed header has a **"Clear All"** action that runs
 `AppStateStore.markAllBellsSeen()` — every entry is flipped to seen and
@@ -156,8 +158,9 @@ AppStateStore.recordBell(forTabID:count:at:)   AppStateStore.recordDesktopNotifi
           |                                                  |
           +--> BellFeedEntry created <-----------------------+
           |                                                  |
-          +--> routeRealTabBell: if Batty is active AND the  |
-          |   entry is seen, drop it here (decision history  |
+          +--> routeRealTabBell: if the Session is muted, OR |
+          |   Batty is active AND the entry is seen, drop it |
+          |   here (decision history                         |
           |   and capture log still record it; no row, no    |
           |   banner)                                        |
           |                                                  |
@@ -169,7 +172,8 @@ AppStateStore.recordBell(forTabID:count:at:)   AppStateStore.recordDesktopNotifi
           |                                                  |
           +--> postNotification(for:at:) <-------------------+
                           |
-                          | (early-return if session.notificationsMuted)
+                          | (defensive early-return if session.notificationsMuted;
+                          |  routeRealTabBell already dropped muted bells)
                           v
                   BellNotifier.post(for:sessionTitle:paneIndex:tabLabel:)
                           |
@@ -237,13 +241,14 @@ The branching at the recording site:
 |---|---|---|---|
 | `true`, Batty active | no entry (dropped, #0555) | skipped | no |
 | `true`, Batty in background | `true` | skipped early-return | no |
+| any, Session muted | no entry (dropped, #0558) | skipped | no |
 | `false` | `false` | runs | `tab.unseenBellCount`, `pane.unseenBellCount`, `session.unseenBellCount` each `+= 1` |
 
 `postNotification` does **not** depend on `isFocused` directly — it
 runs for every entry that is kept. A dropped entry (focused while Batty
-is active) never reaches it; its decision record is written by
-`recordDroppedBell` instead. It's gated separately on
-`session.notificationsMuted` (per-session) and, inside
+is active, or any bell from a muted Session) never reaches it; its
+decision record is written by `recordDroppedBell` instead. It keeps a
+defensive guard on `session.notificationsMuted` and, inside
 `BellNotifier.post`, on `SettingsPreference.resolvedSystemNotifications()`
 (app-wide). `BellNotifier.shouldPost(for:)` also suppresses a duplicate
 banner if the app is already active AND the feed entry has already been
@@ -362,21 +367,38 @@ Per `#0068`, each session carries a `notificationsMuted` flag:
 | `SessionRuntime.notificationsMuted: Bool` (persisted side) | Runtime state only. Mute state does not survive a relaunch — each session starts unmuted. |
 | Sidebar right-click → "Mute Notifications" / "Unmute Notifications" | The user-facing toggle. Lives in `SessionSidebarView`. |
 
-The gate in `AppStateStore.postNotification(for:at:)`:
+The gate in `AppStateStore.routeRealTabBell` (#0558), shared with
+#0555's seen drop:
 
 ```swift
-guard let notifier else { return }
-guard !location.session.notificationsMuted else { return }
+guard !location.session.notificationsMuted,
+      BellNotifier.evaluateShouldPost(isBattyActive: battyActive, entrySeen: entry.seen) else {
+    recordDroppedBell(entry, at: location, trigger: trigger, battyActive: battyActive)
+    return
+}
 ```
 
 Behavior contract:
 
-- **The bell-feed entry is still recorded.** Mute does not suppress
-  the row in `BellFeedView`.
-- **Unseen counts still update.** Chip dot and sidebar badge fire as
-  usual.
-- **The desktop notification is suppressed.** No banner, no
-  Notification Center entry.
+- **No bell-feed row.** A muted Session's BEL, OSC 9/777 and
+  `batty notify` add no row, whether Batty is active or not and
+  whether the Tab is focused or not. A muted bell never collapses into
+  an existing unread row either.
+- **No unseen counts.** Chip dot, Pane badge and sidebar badge don't
+  move. `TabRuntime.bellCount` still advances, and the Pane's in-place
+  bell flash still plays.
+- **No desktop notification.** No banner, no Notification Center entry.
+- **Still recorded for diagnosis.** The #0297 decision history records
+  `suppressed:sessionMuted` (or `suppressed:nilNotifier` with no
+  notifier); the #0523 capture log writes an `event` with
+  `feedRecorded: false`.
+- **Existing rows stay.** Rows in the feed when you mute keep their
+  unseen counts and clear the usual ways (visit, Clear All, close).
+- **Unmuting restores nothing.** Dropped bells were never stored. Bells
+  after the unmute behave normally.
+- **Reminders are exempt.** `fireReminder` doesn't go through
+  `routeRealTabBell`, so a muted Session's Reminder still adds its row
+  and posts its banner.
 - **Sound is not gated by mute.** libghostty plays its bell sound
   internally and there is no app-level gate at the per-session
   level in v1. The app-wide "Play sound" toggle in
@@ -384,8 +406,8 @@ Behavior contract:
   request carries `.default` sound; it does not stop libghostty from
   ringing in-surface.
 - **`batty notify` (#0284) follows the same mute contract as a real
-  bell** — a muted session's feed entry and unseen counters still
-  update; only the banner is suppressed. `BellNotifying.post`'s
+  bell** — it adds no row and no unseen count, and still returns
+  success, so the CLI exits 0. `BellNotifying.post`'s
   `playSound` parameter (added in #0284) is a separate, per-call gate
   layered on top of the existing app-wide "Play sound" toggle: `notify
   --sound` requests sound *subject to* that toggle, never overriding
@@ -471,7 +493,6 @@ the tab doesn't need a delayed banner for the same bell.
 | [`../BattyKit/Sources/BattyKit/BattyTabChip.swift`](../BattyKit/Sources/BattyKit/BattyTabChip.swift) | The unseen-bell dot on tab chips. `hasUnseen` + `showsUnseenDot = hasUnseen && !isActive`. |
 | [`../BattyKit/Sources/BattyKit/SessionRuntime.swift`](../BattyKit/Sources/BattyKit/SessionRuntime.swift) | `notificationsMuted` flag (observable). |
 | [`../BattyKit/Sources/BattyKit/SessionSidebarView.swift`](../BattyKit/Sources/BattyKit/SessionSidebarView.swift) | Right-click "Mute Notifications" / "Unmute Notifications" toggle. |
-| [`../BattyKit/Sources/BattyKit/LayoutModel.swift`](../BattyKit/Sources/BattyKit/LayoutModel.swift) | `Session.notificationsMuted` Codable field (`decodeIfPresent ?? false`). |
 | [`../BattyKit/Sources/BattyKit/SettingsView.swift`](../BattyKit/Sources/BattyKit/SettingsView.swift) | `NotificationsSettingsView` — the "Play sound" + "Show system notifications" toggles plus the per-session-mute help row. |
 | [`../BattyKit/Sources/BattyKit/BattyCommands.swift`](../BattyKit/Sources/BattyKit/BattyCommands.swift) | The "Toggle Bell Feed" menu item that posts `.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/BattyShortcuts.swift`](../BattyKit/Sources/BattyKit/BattyShortcuts.swift) | Dispatches `.toggleBellFeed` from the NSEvent monitor. |
@@ -495,6 +516,9 @@ the tab doesn't need a delayed banner for the same bell.
   `BellFeedStore.removeEntries(matchingTabIDs:)` and
   `AppStateStore.cleanUpBellState(forTabIDs:)`; wired into
   `closeTab(id:)` and `removeSession(id:)`.
+- `#0558` — A muted Session's bells add no feed row and no unseen
+  count; `routeRealTabBell` drops them through #0555's
+  `recordDroppedBell`. Reminders are exempt.
 - `#0556` — Visits remove rows. `WindowRuntime.visitFocusedTab()`
   removes the visited tab's rows from the feed; fallback focus keeps
   marking them seen through `markActiveTabSeen()`.
@@ -507,24 +531,20 @@ the tab doesn't need a delayed banner for the same bell.
   (section 5), its tab closed (section 6), or the 200-entry cap evicted
   it. Mark All Bells Seen and "Clear All" never remove rows.
 
-- *Why didn't my muted session's badge update?* — It should have.
-  Mute only suppresses desktop notifications. The bell-feed entry is
-  still recorded and the unseen counts (chip dot, sidebar badge) still
-  cascade through `propagateUnseen`. If the badge truly didn't update,
-  check whether the bell landed on the focused tab — focused bells
-  insert with `seen: true` and skip `propagateUnseen` by design.
+- *Why didn't my muted session's badge update?* — By design (#0558).
+  A muted Session's bells add no feed row and no unseen count. Unmute
+  it from the sidebar right-click menu; bells after that show as usual.
 - *Why did the feed show an entry I can't click?* — The entry's
   `sessionID` / `paneID` / `tabID` no longer resolve to a live tab.
   This should be rare because `cleanUpBellState(forTabIDs:)` purges
   entries on tab close; if it happens, the tab was closed via a path
   that doesn't route through `cleanUpBellState(forTabIDs:)` (worth filing).
 - *Why didn't the desktop notification fire even though the sidebar
-  badged?* — Three plausible gates: (a) Settings → Notifications →
-  "Show system notifications" is off; (b) the session is muted via
-  the sidebar right-click menu; (c) the app is active and the entry
-  was already marked seen, so `BellNotifier.shouldPost(for:)`
-  suppressed the duplicate. The sidebar badge fires independently of
-  all three.
+  badged?* — Two plausible gates: (a) Settings → Notifications →
+  "Show system notifications" is off; (b) the app is active and the
+  entry was already marked seen, so `BellNotifier.shouldPost(for:)`
+  suppressed the duplicate. A muted Session can't badge at all
+  (#0558).
 - *Why didn't a notification from the Tab I'm looking at show in the
   feed?* — By design (#0555). A bell, OSC 9/777 or `batty notify` from
   the focused Tab while Batty is the active app adds no row, because you

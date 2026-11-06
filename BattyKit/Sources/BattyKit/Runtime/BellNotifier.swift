@@ -119,8 +119,8 @@ public final class BellNotifier: BellNotifying {
     /// decision). `isActive`/`entry.seen` are the only two inputs the
     /// instance method reads, so this is a straight extraction, not a
     /// behavior change. `AppStateStore.routeRealTabBell` uses the same
-    /// function to decide that no Bell Feed row is added, so adding an
-    /// input changes both.
+    /// function as one of its two drop conditions (the other is Session
+    /// mute), so adding an input changes both.
     static func evaluateShouldPost(isBattyActive: Bool, entrySeen: Bool) -> Bool {
         if !isBattyActive { return true }
         return !entrySeen

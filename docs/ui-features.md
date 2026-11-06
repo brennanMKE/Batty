@@ -317,9 +317,10 @@ session mute behavior, and the app-wide notification settings.
 - The chip dot (`hasUnseen`) on a Tab chip, the Pane border dot, and the sidebar
   Session badge must all reflect the aggregate unseen bell count at their
   respective levels.
-- Per-session mute suppresses macOS desktop notifications for that Session only.
-  The Bell Feed entry, chip dot, Pane badge, and sidebar badge all continue to
-  update regardless of mute state.
+- Per-session mute drops that Session's bells entirely (#0558): no Bell Feed
+  entry, chip dot, Pane badge, sidebar badge or macOS desktop notification.
+  Rows already in the feed when muting stay; unmuting restores nothing.
+  Reminders still fire.
 - Clicking a Bell Feed entry (or tapping its macOS notification) invokes the
   click-to-jump flow: make the source Window key, select the source Session,
   focus the source Pane, activate the source Tab, mark the entry seen.
@@ -356,8 +357,9 @@ session mute behavior, and the app-wide notification settings.
   Reminder row by the "Reminder" title text it holds.
 - `accessibilityValue("bell-pending" / "clear")` on `tab-chip.<title>`,
   `pane-terminal.<id>`, and `session-row.<title>`.
-- `menu.sidebar.mute-session.<title>` — the mute/unmute item in the Session
-  sidebar context menu.
+- The mute/unmute item in the Session row's context menu has no identifier;
+  UI tests find it by its "Mute Notifications" / "Unmute Notifications" title
+  (context-menu identifiers don't reach XCUITest).
 
 A Reminder entry (#0514) is a second kind of row in the same list. It shows an
 `alarm` icon in the accent color, "Reminder" with the Session's title, the note

@@ -177,4 +177,104 @@ final class BellFeedSeenDropTests {
         let task = try #require(store.summarizationTaskForTesting(entryID: kept.id))
         #expect(await awaitBounded { await task.value })
     }
+
+    // MARK: - Muted Session (#0558)
+
+    private func makeMutedBackgroundSession(_ store: AppStateStore) -> SessionRuntime {
+        let second = store.addSession(title: "Muted")!
+        store.selectedSessionID = store.sessions[0].id
+        second.notificationsMuted = true
+        return second
+    }
+
+    @Test func mutedBackgroundSessionAddsNoEntryAndNoUnseenCounts() throws {
+        testDefaults.defaults.set(true, forKey: SettingsPreference.systemNotificationsKey)
+        let notifier = SpyBellNotifier()
+        let store = makeStore(notifier: notifier, active: true)
+        let muted = makeMutedBackgroundSession(store)
+        let tab = muted.focusedPaneAnyKind.activeTab!
+
+        #expect(store.recordCLINotification(tabID: tab.id, title: "Done", body: nil, playSound: false) == .posted)
+
+        #expect(store.bellFeed.entries.isEmpty)
+        #expect(muted.unseenBellCount == 0)
+        #expect(muted.focusedPaneAnyKind.unseenBellCount == 0)
+        #expect(tab.unseenBellCount == 0)
+        let decision = try #require(store.bellDecisionHistory.records.last)
+        #expect(decision.outcome == .suppressed(.sessionMuted))
+        #expect(!store.bellFeed.entries.contains { $0.id == decision.entryID })
+        #expect(notifier.postedEntries.isEmpty)
+    }
+
+    @Test func mutedFocusedTabWhileBattyIsInactiveAddsNoEntry() {
+        let notifier = SpyBellNotifier()
+        let store = makeStore(notifier: notifier, active: false)
+        store.sessions[0].notificationsMuted = true
+
+        store.recordCLINotification(tabID: focusedTab(store).id, title: "Done", body: nil, playSound: false)
+
+        #expect(store.bellFeed.entries.isEmpty)
+        #expect(notifier.postedEntries.isEmpty)
+    }
+
+    @Test func mutedSessionBelAndOscAddNoEntry() {
+        let store = makeStore(active: false)
+        let muted = makeMutedBackgroundSession(store)
+        let tab = muted.focusedPaneAnyKind.activeTab!
+
+        store.ringBell(in: tab)
+        store.requestDesktopNotification(in: tab, title: "Build", body: "Succeeded")
+
+        #expect(store.bellFeed.entries.isEmpty)
+        #expect(muted.unseenBellCount == 0)
+        #expect(muted.focusedPaneAnyKind.unseenBellCount == 0)
+        #expect(tab.unseenBellCount == 0)
+        #expect(tab.bellCount == 2)
+    }
+
+    @Test func mutingKeepsExistingRowsAndCountsAndLaterBellsDoNotCollapseIntoThem() throws {
+        testDefaults.defaults.set(true, forKey: SettingsPreference.systemNotificationsKey)
+        let store = makeStore(notifier: SpyBellNotifier(), active: true)
+        let second = store.addSession(title: "Other")!
+        store.selectedSessionID = store.sessions[0].id
+        let tabID = second.focusedPaneAnyKind.activeTabID
+
+        store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.repeatCount == 1)
+        #expect(second.unseenBellCount == 1)
+
+        second.notificationsMuted = true
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(second.unseenBellCount == 1)
+
+        store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: false)
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.repeatCount == 1)
+        #expect(store.bellFeed.entries.first?.seen == false)
+        #expect(second.unseenBellCount == 1)
+        let decision = try #require(store.bellDecisionHistory.records.last)
+        #expect(decision.outcome == .suppressed(.sessionMuted))
+    }
+
+    @Test func unmutingRestoresNoPastBells() {
+        testDefaults.defaults.set(true, forKey: SettingsPreference.systemNotificationsKey)
+        let notifier = SpyBellNotifier()
+        let store = makeStore(notifier: notifier, active: false)
+        let muted = makeMutedBackgroundSession(store)
+        let tabID = muted.focusedPaneAnyKind.activeTabID
+
+        store.recordCLINotification(tabID: tabID, title: "One", body: nil, playSound: false)
+        store.recordCLINotification(tabID: tabID, title: "Two", body: nil, playSound: false)
+        muted.notificationsMuted = false
+
+        #expect(store.bellFeed.entries.isEmpty)
+        #expect(muted.unseenBellCount == 0)
+
+        store.recordCLINotification(tabID: tabID, title: "Three", body: nil, playSound: false)
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.seen == false)
+        #expect(muted.unseenBellCount == 1)
+        #expect(notifier.postedEntries.count == 1)
+    }
 }

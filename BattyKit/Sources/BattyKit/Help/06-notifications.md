@@ -18,6 +18,8 @@ A bell in a tab you're not looking at lights up in up to four places at once:
 3. **A desktop notification** — a macOS banner, if enabled in Settings and the session isn't muted.
 4. **A row in the bell feed** — timestamped, with the path `Session > Pane N > Tab` and any message body.
 
+A bell from a muted session appears in none of these places (see below).
+
 A bell in the tab you're looking at while Batty is in front shows nothing: no dot, no badge, no banner and no row in the feed — you saw it. If Batty is in the background, you get the banner and a row.
 
 ## Clearing notifications
@@ -35,7 +37,7 @@ Press `Cmd-Shift-B` (or click the toolbar bell button) to open the bell feed pop
 
 ## Muting a session
 
-Right-click a session row in the sidebar and choose **Mute Notifications**. While muted, desktop notifications for the session are suppressed. The chip dot, sidebar badge, and bell feed still update — mute affects delivery, not capture. Right-click again for **Unmute Notifications**.
+Right-click a session row in the sidebar and choose **Mute Notifications**. While muted, the session's bells add nothing: no desktop notification, no row in the bell feed, no chip dot and no sidebar badge. Rows already in the feed when you mute stay, and visiting their tab removes them as usual. Right-click again for **Unmute Notifications**; bells that rang while muted don't come back. Reminders still fire for a muted session.
 
 The bell *sound* isn't gated by per-session mute in this release; the app-wide **Play sound** toggle in Settings is the only sound control.
 

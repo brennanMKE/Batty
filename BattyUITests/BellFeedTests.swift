@@ -150,6 +150,48 @@ nonisolated final class BellFeedTests: XCTestCase {
                       "the Sidebar visit did not remove Session C's row")
     }
 
+    // MARK: - Muted Session (#0558)
+
+    /// A muted Session's `batty notify` adds no Bell Feed row, and unmuting
+    /// brings nothing back. The absence check is not a race: the CLI's
+    /// `notify` reply arrives only after `recordCLINotification` returned,
+    /// and `runExpectingSuccess` waits for the CLI to exit.
+    @MainActor
+    func testMutedSessionNotifyAddsNoFeedEntry() throws {
+        let (app, _, initial) = try BattyCLI.launchConnected(from: Self.self)
+        let first = try XCTUnwrap(initial.selectedSession)
+        let directory = try BattyCLI.makeScratchDirectory().appending(path: "muted-project")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let (second, secondPane) = try BattyCLI.newSession(at: directory)
+        let secondTab = try XCTUnwrap(second.pane(secondPane)?.activeTabID)
+        BattyCLI.runExpectingSuccess(["session", "focus", first.id.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == first.id }, "session focus did not select the first Session")
+
+        toggleMute("Mute Notifications", onRowNamed: second.name, in: app)
+        BattyScreen.openBellFeed(in: app)
+        BattyCLI.runExpectingSuccess(["notify", "--title", "muted", "--tab", secondTab.uuidString])
+        XCTAssertEqual(BattyScreen.bellEntryIDs(in: app).count, 0, "a muted Session's notify must add no Bell Feed row")
+
+        app.typeKey(.escape, modifierFlags: [])
+        toggleMute("Unmute Notifications", onRowNamed: second.name, in: app)
+        BattyScreen.openBellFeed(in: app)
+        BattyCLI.runExpectingSuccess(["notify", "--title", "unmuted", "--tab", secondTab.uuidString])
+        XCTAssertTrue(BattyUITestHarness.waitFor({ BattyScreen.bellEntryIDs(in: app).count == 1 }, timeout: 10),
+                      "after unmuting, exactly the new notify must be listed")
+    }
+
+    /// Context-menu identifiers don't reach XCUITest, so the item is found
+    /// by title in the row's menu, which is the one holding "Reset Name".
+    @MainActor
+    private func toggleMute(_ title: String, onRowNamed name: String, in app: XCUIApplication) {
+        let row = BattyUITestHarness.sessionRow(named: name, in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "session-row.\(name) must exist")
+        row.rightClick()
+        let item = app.menus.containing(NSPredicate(format: "title == 'Reset Name'")).menuItems[title].firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "the row's context menu must offer \(title)")
+        item.click()
+    }
+
     /// The text a Text exposes: its label, else its value.
     @MainActor
     private static func text(of element: XCUIElement) -> String {

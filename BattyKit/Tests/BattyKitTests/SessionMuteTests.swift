@@ -24,7 +24,7 @@ final class SpyBellNotifier: BellNotifying {
 @MainActor
 struct SessionMuteTests {
 
-    @Test func mutedSessionSuppressesDesktopNotification() async {
+    @Test func mutedSessionDesktopNotificationAddsNoEntryAndNoBanner() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         store.isBattyActiveProvider = { false }
@@ -37,7 +37,7 @@ struct SessionMuteTests {
         let tab = session.focusedPaneAnyKind.activeTab!
         store.requestDesktopNotification(in: tab, title: "Build", body: "Succeeded")
 
-        #expect(store.bellFeed.entries.first != nil)
+        #expect(store.bellFeed.entries.isEmpty)
         #expect(notifier.postedEntries.isEmpty)
     }
 
@@ -62,7 +62,7 @@ struct SessionMuteTests {
         #expect(notifier.postedEntries.count == 1)
     }
 
-    @Test func mutedSessionSuppressesBellTickNotification() async {
+    @Test func mutedSessionBellTickAddsNoEntryAndNoUnseenCount() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         store.isBattyActiveProvider = { false }
@@ -82,10 +82,11 @@ struct SessionMuteTests {
         }
         store.ringBell(in: tab)
 
-        #expect(store.bellFeed.entries.first != nil)
+        #expect(store.bellFeed.entries.isEmpty)
         #expect(notifier.postedEntries.isEmpty)
-        // Bell feed still records — mute is about delivery, not capture.
-        #expect(store.bellFeed.entries.count == 1)
-        #expect(session.unseenBellCount == 1)
+        #expect(session.unseenBellCount == 0)
+        #expect(session.focusedPaneAnyKind.unseenBellCount == 0)
+        #expect(tab.unseenBellCount == 0)
+        #expect(tab.bellCount == 1)
     }
 }

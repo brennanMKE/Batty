@@ -140,10 +140,10 @@ struct AppStateStoreNotifyTests {
         #expect(store.focusedTabIDFallback() == nil)
     }
 
-    // MARK: - Mute suppresses the banner, not the feed entry (per
-    // docs/notifications.md's existing mute contract — notify inherits it)
+    // MARK: - A muted Session's notify reports success but adds no feed
+    // entry and no banner (#0558)
 
-    @Test func mutedSessionSuppressesTheNotifierPostButStillRecordsTheFeedEntry() {
+    @Test func mutedSessionNotifyReportsPostedButAddsNoEntryAndNoBanner() {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         store.isBattyActiveProvider = { false }
@@ -154,8 +154,8 @@ struct AppStateStoreNotifyTests {
         let outcome = store.recordCLINotification(tabID: tabID, title: "Done", body: nil, playSound: true)
 
         #expect(outcome == .posted)
-        #expect(store.bellFeed.entries.count == 1)
-        #expect(notifier.postedEntries.isEmpty, "mute suppresses only the desktop-notification banner")
+        #expect(store.bellFeed.entries.isEmpty)
+        #expect(notifier.postedEntries.isEmpty)
     }
 
     @Test func unmutedSessionPostsThroughTheNotifier() {
