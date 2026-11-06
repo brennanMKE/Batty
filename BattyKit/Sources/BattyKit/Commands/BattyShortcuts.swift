@@ -58,7 +58,7 @@ public enum BattyShortcuts {
                 if cmdSwitchesSessions {
                     windowRuntime.selectSession(at: index - 1)
                 } else {
-                    windowRuntime.selectedSession?.focusedTerminalPane?.selectTab(at: index - 1)
+                    windowRuntime.selectTabInFocusedPane(at: index - 1)
                 }
                 return true
             }
@@ -67,7 +67,7 @@ public enum BattyShortcuts {
         case ([.command, .option], let digit) where digit.count == 1 && digit.first?.isWholeNumber == true:
             if let index = Int(digit), (1...9).contains(index) {
                 if cmdSwitchesSessions {
-                    windowRuntime.selectedSession?.focusedTerminalPane?.selectTab(at: index - 1)
+                    windowRuntime.selectTabInFocusedPane(at: index - 1)
                 } else {
                     windowRuntime.selectSession(at: index - 1)
                 }
@@ -168,17 +168,17 @@ public enum BattyShortcuts {
         case .splitVerticalSystemMetrics:
             window.createPane(kind: .systemMetrics, direction: .vertical)
         case .focusPaneLeft:
-            window.selectedSession?.focusPane(adjacent: .left)
+            window.focusPane(adjacent: .left)
         case .focusPaneRight:
-            window.selectedSession?.focusPane(adjacent: .right)
+            window.focusPane(adjacent: .right)
         case .focusPaneUp:
-            window.selectedSession?.focusPane(adjacent: .up)
+            window.focusPane(adjacent: .up)
         case .focusPaneDown:
-            window.selectedSession?.focusPane(adjacent: .down)
+            window.focusPane(adjacent: .down)
         case .previousTab:
-            window.selectedSession?.focusedTerminalPane?.selectPreviousTab()
+            window.selectPreviousTabInFocusedPane()
         case .nextTab:
-            window.selectedSession?.focusedTerminalPane?.selectNextTab()
+            window.selectNextTabInFocusedPane()
         case .toggleSidebar:
             NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
         case .toggleBellFeed:

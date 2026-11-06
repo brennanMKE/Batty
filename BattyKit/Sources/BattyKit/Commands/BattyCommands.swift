@@ -516,7 +516,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                actionWindow?.selectedSession?.focusPane(adjacent: .left)
+                actionWindow?.focusPane(adjacent: .left)
             } label: {
                 Label("Focus Pane Left", systemImage: "arrow.left")
             }
@@ -524,7 +524,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                actionWindow?.selectedSession?.focusPane(adjacent: .right)
+                actionWindow?.focusPane(adjacent: .right)
             } label: {
                 Label("Focus Pane Right", systemImage: "arrow.right")
             }
@@ -532,7 +532,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                actionWindow?.selectedSession?.focusPane(adjacent: .up)
+                actionWindow?.focusPane(adjacent: .up)
             } label: {
                 Label("Focus Pane Above", systemImage: "arrow.up")
             }
@@ -540,7 +540,7 @@ public struct BattyCommands: Commands {
             .disabled(!canFocusAdjacentPane)
 
             Button {
-                actionWindow?.selectedSession?.focusPane(adjacent: .down)
+                actionWindow?.focusPane(adjacent: .down)
             } label: {
                 Label("Focus Pane Below", systemImage: "arrow.down")
             }
@@ -638,7 +638,7 @@ public struct BattyCommands: Commands {
             Divider()
 
             Button {
-                actionWindow?.selectedSession?.focusedTerminalPane?.selectPreviousTab()
+                actionWindow?.selectPreviousTabInFocusedPane()
             } label: {
                 Label("Show Previous Tab", systemImage: "chevron.left")
             }
@@ -646,7 +646,7 @@ public struct BattyCommands: Commands {
             .disabled((focusedTerminalPane?.tabs.count ?? 0) < 2)
 
             Button {
-                actionWindow?.selectedSession?.focusedTerminalPane?.selectNextTab()
+                actionWindow?.selectNextTabInFocusedPane()
             } label: {
                 Label("Show Next Tab", systemImage: "chevron.right")
             }
@@ -657,7 +657,7 @@ public struct BattyCommands: Commands {
 
             ForEach(0..<9) { index in
                 Button {
-                    actionWindow?.selectedSession?.focusedTerminalPane?.selectTab(at: index)
+                    actionWindow?.selectTabInFocusedPane(at: index)
                 } label: {
                     Text(tabMenuTitle(at: index))
                 }

@@ -103,32 +103,59 @@ nonisolated final class BellFeedTests: XCTestCase {
 
     // MARK: - Bell cleared on navigation — would catch [[0069]]
 
-    /// Navigating to a bell's pane clears the bell feed entry.
+    /// Visiting a Tab removes its rows from the Feed (#0556): a Feed row
+    /// click removes that Tab's row, and a Sidebar click removes the other.
     /// Would have caught [[0069]]: notifications didn't clear on navigation.
     @MainActor
     func testBellClearsOnNavigation() throws {
-        // This test's setup requires a real shell BEL. Document the expected
-        // behavior and mark as expected failure in environments without a shell.
-        let app = BattyUITestHarness.launchBatty(script: [
-            ["intent": "splitHorizontal"]
-        ])
+        let (app, _, initial) = try BattyCLI.launchConnected(from: Self.self)
         defer { app.terminate() }
+        let first = try XCTUnwrap(initial.selectedSession)
+        let scratch = try BattyCLI.makeScratchDirectory()
+        let dirB = scratch.appending(path: "visit-b")
+        let dirC = scratch.appending(path: "visit-c")
+        try FileManager.default.createDirectory(at: dirB, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dirC, withIntermediateDirectories: true)
+        let (sessionB, paneB) = try BattyCLI.newSession(at: dirB)
+        let (sessionC, paneC) = try BattyCLI.newSession(at: dirC)
+        let tabB = try XCTUnwrap(sessionB.pane(paneB)?.activeTabID)
+        let tabC = try XCTUnwrap(sessionC.pane(paneC)?.activeTabID)
+        BattyCLI.runExpectingSuccess(["session", "focus", first.id.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == first.id }, "session focus did not select the first Session")
 
-        XCTAssertNil(BattyUITestHarness.waitForDriverErrors(), "Driver script failed")
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        BattyCLI.runExpectingSuccess(["notify", "--title", "visit me", "--tab", tabB.uuidString])
+        BattyCLI.runExpectingSuccess(["notify", "--title", "keep me", "--tab", tabC.uuidString])
 
-        // The full test would:
-        // 1. Send BEL to pane 0.
-        // 2. Move focus to pane 1.
-        // 3. Verify bell feed has 1 entry.
-        // 4. Click pane 0.
-        // 5. Verify bell feed has 0 unseen entries.
-        //
-        // We can verify the structural path (split exists) without a real shell.
-        let panes = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH 'pane-terminal.'"))
-        XCTAssertTrue(waitFor({ panes.count == 2 }, timeout: 10),
-                      "Two panes must exist for the bell navigation test setup")
+        BattyScreen.openBellFeed(in: app)
+        XCTAssertTrue(waitFor({ BattyScreen.bellEntryIDs(in: app).count == 2 }, timeout: 10), "the two notifications did not both reach the Feed")
+        let visitID = try XCTUnwrap(BattyScreen.bellEntryIDs(in: app).first { entryID in
+            Self.text(of: BattyScreen.element("bell-feed-message.\(entryID)", in: app)) == "visit me"
+        }, "no \"visit me\" row")
+        BattyScreen.element("bell-feed-message.\(visitID)", in: app).click()
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == sessionB.id }, "the Feed click did not select Session B")
+
+        BattyScreen.openBellFeed(in: app)
+        XCTAssertTrue(waitFor({ BattyScreen.bellEntryIDs(in: app).count == 1 }, timeout: 10), "the visited Tab's row is still in the Feed")
+        let keptID = try XCTUnwrap(BattyScreen.bellEntryIDs(in: app).first)
+        XCTAssertEqual(Self.text(of: BattyScreen.element("bell-feed-message.\(keptID)", in: app)), "keep me")
+        app.typeKey(.escape, modifierFlags: [])
+
+        let rowC = BattyUITestHarness.sessionRow(named: sessionC.name, in: app)
+        XCTAssertTrue(rowC.waitForExistence(timeout: 10), "no Sidebar row for Session C")
+        rowC.click()
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == sessionC.id }, "the Sidebar click did not select Session C")
+
+        BattyScreen.openBellFeed(in: app)
+        XCTAssertTrue(waitFor({ app.staticTexts["No bell events"].exists && BattyScreen.bellEntryIDs(in: app).isEmpty }, timeout: 10),
+                      "the Sidebar visit did not remove Session C's row")
+    }
+
+    /// The text a Text exposes: its label, else its value.
+    @MainActor
+    private static func text(of element: XCUIElement) -> String {
+        if !element.label.isEmpty { return element.label }
+        if let value = element.value as? String, !value.isEmpty { return value }
+        return element.title
     }
 
     // MARK: - Helpers

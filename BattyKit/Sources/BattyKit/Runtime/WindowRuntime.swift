@@ -428,6 +428,29 @@ public final class WindowRuntime {
     public func selectSession(at index: Int) {
         guard sessions.indices.contains(index) else { return }
         selectedSessionID = sessions[index].id
+        visitFocusedTab()
+    }
+
+    /// The Sidebar `List` selection binding's setter. A visit only when the
+    /// selection actually changed: macOS `List` re-asserts its own selection
+    /// (#0258), so an equal-value set can't be told from an echo.
+    public func selectSessionFromSidebar(id: UUID?) {
+        let previous = selectedSessionID
+        setSelectedSession(id: id)
+        if selectedSessionID != previous {
+            visitFocusedTab()
+        }
+    }
+
+    /// A Sidebar Pane row tap: select its Session, un-hide and focus the Pane.
+    public func activatePaneFromSidebar(sessionID: UUID, paneID: UUID) {
+        setSelectedSession(id: sessionID)
+        if let pane = sessions.first(where: { $0.id == sessionID })?.tree.allPanes.first(where: { $0.id == paneID }),
+           pane.isHidden {
+            showPane(id: paneID)
+        }
+        focusPane(id: paneID)
+        visitFocusedTab()
     }
 
     /// Single entry point for sidebar `List` selection writes. macOS `List`
@@ -876,9 +899,44 @@ public final class WindowRuntime {
         for session in sessions {
             for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
                 focusPane(id: pane.id)
+                if locate(tabID: tabID)?.isFocused == true {
+                    visitFocusedTab()
+                }
                 return
             }
         }
+    }
+
+    /// Cmd-Option-arrow focus move. A visit only when focus moved.
+    public func focusPane(adjacent direction: PaneFocusDirection) {
+        guard let session = selectedSession else { return }
+        let previous = session.tree.focusedPaneID
+        session.focusPane(adjacent: direction)
+        if session.tree.focusedPaneID != previous {
+            visitFocusedTab()
+        }
+    }
+
+    public func selectTabInFocusedPane(at index: Int) {
+        guard let pane = selectedSession?.focusedTerminalPane,
+              pane.tabs.indices.contains(index)
+        else { return }
+        pane.selectTab(at: index)
+        visitFocusedTab()
+    }
+
+    public func selectNextTabInFocusedPane() {
+        guard let pane = selectedSession?.focusedTerminalPane else { return }
+        let previous = pane.activeTabID
+        pane.selectNextTab()
+        if pane.activeTabID != previous { visitFocusedTab() }
+    }
+
+    public func selectPreviousTabInFocusedPane() {
+        guard let pane = selectedSession?.focusedTerminalPane else { return }
+        let previous = pane.activeTabID
+        pane.selectPreviousTab()
+        if pane.activeTabID != previous { visitFocusedTab() }
     }
 
     // MARK: - Session selection visibility
@@ -1032,6 +1090,7 @@ public final class WindowRuntime {
             )
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
         }
+        visitFocusedTab()
     }
 
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
@@ -1052,6 +1111,7 @@ public final class WindowRuntime {
         selectedSessionID = session.id
         session.tree.focusedPaneID = pane.id
         pane.activeTabID = entry.tabID
+        visitFocusedTab()
     }
 
     /// A Reminder returns the user to the Session as they left it, so unlike
@@ -1061,10 +1121,29 @@ public final class WindowRuntime {
     private func jumpToReminderEntry(_ entry: BellFeedEntry) {
         guard sessions.contains(where: { $0.id == entry.sessionID }) else { return }
         selectedSessionID = entry.sessionID
+        visitFocusedTab()
     }
 
     // MARK: - Bell state (per-window tab-level counters)
 
+    /// A user visit to the focused Tab of the selected Session: marks its
+    /// rows seen, then removes every row for that Tab from the Bell Feed,
+    /// along with every Reminder row of the Session (#0556). Call only from event-origin navigation (Sidebar clicks,
+    /// Cmd-1..9, terminal and chip clicks, Pane/Tab navigation commands,
+    /// Open Quickly, Feed jumps, CLI focus verbs, Open Project on an open
+    /// Project), never from view-update code: focus that lands somewhere
+    /// because something closed goes through `markActiveTabSeen()` only.
+    public func visitFocusedTab() {
+        guard let session = selectedSession else { return }
+        bellFeed.removeReminderEntries(forSessionID: session.id)
+        guard let pane = session.focusedTerminalPane else { return }
+        markActiveTabSeen()
+        bellFeed.removeEntries(matchingTabIDs: [pane.activeTabID])
+    }
+
+    /// The fallback and focus-change path, run from the `onChange` hooks:
+    /// marks the focused Tab's rows seen and never removes them. Real visits
+    /// go through `visitFocusedTab()` (#0556).
     public func markActiveTabSeen() {
         markSelectedSessionReminderEntriesSeen()
         // `focusedTerminalPane`, not `focusedPaneAnyKind` (#0332 B3): this

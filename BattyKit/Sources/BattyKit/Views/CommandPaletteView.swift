@@ -431,17 +431,17 @@ struct CommandPaletteView: View {
         case .splitVerticalSystemMetrics:
             window.createPane(kind: .systemMetrics, direction: .vertical)
         case .focusPaneLeft:
-            window.selectedSession?.focusPane(adjacent: .left)
+            window.focusPane(adjacent: .left)
         case .focusPaneRight:
-            window.selectedSession?.focusPane(adjacent: .right)
+            window.focusPane(adjacent: .right)
         case .focusPaneUp:
-            window.selectedSession?.focusPane(adjacent: .up)
+            window.focusPane(adjacent: .up)
         case .focusPaneDown:
-            window.selectedSession?.focusPane(adjacent: .down)
+            window.focusPane(adjacent: .down)
         case .previousTab:
-            window.selectedSession?.focusedTerminalPane?.selectPreviousTab()
+            window.selectPreviousTabInFocusedPane()
         case .nextTab:
-            window.selectedSession?.focusedTerminalPane?.selectNextTab()
+            window.selectNextTabInFocusedPane()
         case .toggleSidebar:
             NotificationCenter.default.post(name: .battyToggleSidebar, object: nil)
         case .toggleBellFeed:

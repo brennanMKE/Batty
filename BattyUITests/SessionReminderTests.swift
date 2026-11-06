@@ -246,6 +246,10 @@ nonisolated final class SessionReminderTests: XCTestCase {
         XCTAssertEqual(focusedPaneIndex(in: app), 1, "The jump must leave Alpha's focused Pane where it was")
         XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == nil }, timeout: 5),
                       "Acknowledging the Reminder must clear the due state")
+
+        openBellFeed(in: app)
+        XCTAssertTrue(waitFor({ self.reminderEntryIDs(in: app).isEmpty }, timeout: 5),
+                      "Jumping to the Reminder visits its Session, which removes the row")
     }
 
     /// A sheet preset selects its duration and Set creates the Reminder.

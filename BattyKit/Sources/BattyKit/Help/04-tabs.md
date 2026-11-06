@@ -49,6 +49,6 @@ Right-click a chip for **Rename**, **Reset Title**, **Duplicate Tab**, **Close T
 
 ## Unseen bells
 
-When a tab you aren't looking at emits a `\a` bell, a small accent-colored dot appears on its chip. Visit the tab and the dot clears. The bell itself still lands in the [bell feed](06-notifications.md) with a timestamp, so a flurry of background activity is recoverable even after the dot is gone.
+When a tab you aren't looking at emits a `\a` bell, a small accent-colored dot appears on its chip. Visit the tab and the dot clears. The bell itself lands in the [bell feed](06-notifications.md) with a timestamp and stays there until you visit the tab.
 
 For the full binding list, see [Keyboard Shortcuts](05-shortcuts.md). For when to reach for a tab versus a split versus a whole new session, see [Panes and Splits](03-panes.md).

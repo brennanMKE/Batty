@@ -159,6 +159,8 @@ struct CrossWindowBehaviorTests {
                 "Dead-window entry should be marked seen on jump")
         #expect(store.windows[0].selectedSessionID == initialSelectedSession,
                 "Selection in surviving window must not change on dead-window jump")
+        #expect(store.bellFeed.entries.contains { $0.id == entry.id },
+                "A dead-window jump is not a visit, so the entry stays in the feed (#0556)")
     }
 
     // MARK: - jumpToBellEntry: live-window entries
@@ -190,6 +192,7 @@ struct CrossWindowBehaviorTests {
                 "jumpToBellEntry should select the entry's session in its owning window")
         #expect(targetSession.tree.focusedPaneID == pane.id,
                 "jumpToBellEntry should focus the entry's pane within the target session")
+        #expect(store.bellFeed.entries.isEmpty, "the jump is a visit, so the Tab's row is removed (#0556)")
     }
 
     @Test func jumpToBellEntryInSecondWindowNavigatesSecondWindow() async {

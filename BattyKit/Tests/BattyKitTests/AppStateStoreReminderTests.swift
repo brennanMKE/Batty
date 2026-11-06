@@ -222,10 +222,10 @@ final class AppStateStoreReminderTests {
         #expect(fixture.session.tree.focusedPaneID == fixture.firstPane.id, "the jump must not move to the Pane recorded at fire time")
         #expect(fixture.firstPane.activeTabID == firstTabID)
         #expect(fixture.secondPane.activeTabID == fixture.secondTab.id)
-        #expect(store.bellFeed.entries.first?.seen == true)
+        #expect(store.bellFeed.entries.isEmpty, "the jump is a visit, which removes the Reminder row")
     }
 
-    @Test func jumpingToAReminderOnTheAlreadySelectedSessionMarksItSeen() async throws {
+    @Test func jumpingToAReminderOnTheAlreadySelectedSessionRemovesIt() async throws {
         let target = store.addSession(title: "selected")!
         try await fire(5, on: target.id)
         #expect(store.selectedSessionID == target.id, "precondition: no selection change will happen")
@@ -234,7 +234,7 @@ final class AppStateStoreReminderTests {
 
         store.jumpToBellEntry(entry)
 
-        #expect(store.bellFeed.entries.first?.seen == true)
+        #expect(store.bellFeed.entries.isEmpty)
         #expect(store.bellFeed.unseenReminderEntries(forSessionID: target.id).isEmpty)
     }
 

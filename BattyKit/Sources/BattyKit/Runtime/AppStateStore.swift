@@ -1499,6 +1499,7 @@ public final class AppStateStore {
            let window = windows.first(where: { $0.sessions.contains { $0.projectID == projectID } }),
            let existing = window.sessions.first(where: { $0.projectID == projectID }) {
             window.setSelectedSession(id: existing.id)
+            window.visitFocusedTab()
             activateWindow(window)
             let event = WatchEventPayload(type: "session_focused", sessionID: existing.id, fromCli: fromCli)
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
@@ -1678,6 +1679,9 @@ public final class AppStateStore {
         for window in windows {
             if window.sessions.contains(where: { $0.tree.allPanes.contains(where: { $0.id == id }) }) {
                 window.focusPane(id: id)
+                if window.selectedSession?.tree.focusedPaneID == id {
+                    window.visitFocusedTab()
+                }
                 return
             }
         }
@@ -1858,6 +1862,7 @@ public final class AppStateStore {
     public func focusSessionForXPC(id sessionID: UUID) -> SessionFocusOutcome {
         guard let window = windowOwning(sessionID: sessionID) else { return .unknownSession }
         window.setSelectedSession(id: sessionID)
+        window.visitFocusedTab()
         activateWindow(window)
         let event = WatchEventPayload(type: "session_focused", sessionID: sessionID, fromCli: true)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
@@ -1913,6 +1918,7 @@ public final class AppStateStore {
                 window.showPane(id: paneID)
             }
             window.focusPane(id: paneID)
+            window.visitFocusedTab()
             activateWindow(window)
             let event = WatchEventPayload(type: "pane_focused", sessionID: session.id, targetPaneID: paneID, fromCli: true)
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
@@ -1959,6 +1965,7 @@ public final class AppStateStore {
                 )
                 AppEventWatcher.shared.send(eventType: activeTabChangedEvent.type, payload: activeTabChangedEvent)
             }
+            window.visitFocusedTab()
             activateWindow(window)
             let event = WatchEventPayload(type: "tab_focused", sessionID: location.session.id, targetPaneID: location.pane.id, tabID: tabID, fromCli: true)
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
@@ -2011,9 +2018,10 @@ public final class AppStateStore {
     /// close turn `terminateIfLastContentWindowGone()` describes. There is no
     /// tab left to mark seen at that point, so silently no-oping is the
     /// correct behavior, not a degraded one. In multi-window production, this
-    /// clears bells for whichever tab just became active in the key window —
-    /// a tab in a non-key window gaining a new active tab doesn't clear its
-    /// bells.
+    /// marks seen the bells of whichever tab just became active in the key
+    /// window, without removing them from the feed (real visits go through
+    /// `WindowRuntime.visitFocusedTab()`, #0556) — a tab in a non-key window
+    /// gaining a new active tab doesn't mark its bells seen.
     public func markActiveTabSeen() {
         keyWindowOrFirstRegistered()?.markActiveTabSeen()
     }

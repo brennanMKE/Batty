@@ -44,8 +44,8 @@ signals:
    notifications"** AND not per-session muted.
 
 Clicking a feed entry calls `AppStateStore.jumpToBellEntry(_:)`: it
-selects the session, focuses the pane, activates the tab, and marks the
-entry seen.
+selects the session, focuses the pane, activates the tab, and removes
+every row for that tab from the feed (#0556).
 
 Per-session mute lives on the **sidebar right-click menu** (per
 `#0068`). "Mute Notifications" / "Unmute Notifications" toggles
@@ -55,7 +55,7 @@ indicators continue to update.
 
 The bell feed header has a **"Clear All"** action that runs
 `AppStateStore.markAllBellsSeen()` — every entry is flipped to seen and
-every session/pane/tab aggregate is zeroed in one shot.
+every session/pane/tab aggregate is zeroed in one shot. The rows stay.
 
 ---
 
@@ -114,9 +114,12 @@ three sources above in its gating:
   gates only.
 - Clicking the entry or its notification runs the Session-level jump:
   `WindowRuntime.jumpToBellEntry` selects the Session and leaves
-  `focusedPaneID` and the active Tab untouched, then the entry is marked
-  seen. Selecting the Session (anything that runs `markActiveTabSeen`) and
-  Clear All also mark it seen.
+  `focusedPaneID` and the active Tab untouched, then visits it
+  (`visitFocusedTab`), which removes the entry. Any real visit to the
+  Session removes its Reminder rows, whatever Tab they recorded
+  (`removeReminderEntries(forSessionID:)`, #0556). A fallback selection
+  (anything that only runs `markActiveTabSeen`) marks them seen and keeps
+  them, and Clear All marks them seen.
 - Closing a Tab or Pane does **not** purge a `.reminder` entry, because
   the Tab it recorded is only whatever was active when it fired
   (`removeEntries(matchingTabIDs:)` skips them). Closing the Session or its
@@ -241,14 +244,40 @@ marked seen — see section 9 below.
 
 ---
 
-## 5. Auto-clear when the user visits a tab
+## 5. Visiting a tab removes its rows; other focus changes mark them seen
 
-`AppStateStore.markActiveTabSeen()` is the "you looked at it, the
-unread state is acknowledged" hook. It runs on every focus-changing
-path so visiting a tab acknowledges its bells the way Mail, iMessage,
-and Slack do (per `#0069`).
+Two paths, split by *what flipped focus* (`docs/swiftui-observation-rules.md`):
 
-Call sites:
+- **A visit** (#0556) — a user or CLI gesture that names or moves to a
+  tab. `WindowRuntime.visitFocusedTab()` marks the focused tab's rows
+  seen, then removes every row for that tab
+  (`BellFeedStore.removeEntries(matchingTabIDs:)`, which writes nothing
+  when nothing matches). It is called from the gesture's own handler,
+  never from `onChange`:
+
+| Gesture | Entry point |
+|---|---|
+| Sidebar Session row (only when the selection changed) | `WindowRuntime.selectSessionFromSidebar(id:)` |
+| Sidebar Pane row | `WindowRuntime.activatePaneFromSidebar(sessionID:paneID:)` |
+| Cmd-1..9 | `WindowRuntime.selectSession(at:)` |
+| Click in a terminal (only when the clicked tab is now focused) | `WindowRuntime.focusPane(containingTabID:)` |
+| Tab chip click, non-terminal Pane tap | `AppStateStore.focusPane(id:)` |
+| Cmd-Option-arrows (only when focus moved) | `WindowRuntime.focusPane(adjacent:)` |
+| Next/previous Tab, Cmd-Option-1..9 | `WindowRuntime.selectTabInFocusedPane(at:)`, `selectNextTabInFocusedPane()`, `selectPreviousTabInFocusedPane()` |
+| Open Quickly Tab row | `WindowRuntime.jumpToTab(sessionID:tabID:)` |
+| Feed row click / Return, notification tap | `WindowRuntime.jumpToBellEntry(_:)` |
+| `batty session/pane/tab focus` | `AppStateStore.focusSessionForXPC` / `focusPaneForXPC` / `focusTabForXPC` |
+| Open Project on an already-open Project | `AppStateStore.openProject` (`.focusExistingOrOpen`) |
+
+  Footprint rows (#0290) carry `BellFeedEntry.systemID` as their tab, so
+  no visit removes them.
+
+- **A fallback** — focus that lands on a tab because something closed,
+  a split, a new tab, or a view appearing. `AppStateStore.markActiveTabSeen()`
+  is the "you looked at it, the unread state is acknowledged" hook
+  (per `#0069`); it marks seen and never removes rows.
+
+Mark-seen call sites:
 
 | Trigger | Wired in |
 |---|---|
@@ -398,7 +427,7 @@ Interactions:
 - **Tap a row** — `handleJump(to:)` calls `markBellSeen(id:)` then the
   caller-provided `onJump` closure, which routes to
   `AppStateStore.jumpToBellEntry(_:)` (selects session, focuses pane,
-  activates tab).
+  activates tab, and removes that tab's rows, #0556).
 - **Return key** — same as tap on the currently selected row, via
   `.onKeyPress(.return)`.
 - **Path label for closed tabs** — `pathLabel(for:)` falls back to
@@ -419,7 +448,7 @@ the tab doesn't need a delayed banner for the same bell.
 |---|---|
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/BellNotifier.swift`](../BattyKit/Sources/BattyKit/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, and the tap-to-jump delegate (`onTapEntry`). |
-| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `recordBellTick`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `recordBellTick`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
 | [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
 | [`../BattyKit/Sources/BattyKit/BellFeedView.swift`](../BattyKit/Sources/BattyKit/BellFeedView.swift) | The popover and `BellFeedRow`. Path-label formatting lives here. |
@@ -453,10 +482,17 @@ the tab doesn't need a delayed banner for the same bell.
   `BellFeedStore.removeEntries(matchingTabIDs:)` and
   `AppStateStore.cleanUpBellState(forTabIDs:)`; wired into
   `closeTab(id:)` and `removeSession(id:)`.
+- `#0556` — Visits remove rows. `WindowRuntime.visitFocusedTab()`
+  removes the visited tab's rows from the feed; fallback focus keeps
+  marking them seen through `markActiveTabSeen()`.
 
 ---
 
 ## Quick answer key
+
+- *Why did a row disappear from the feed?* — You visited its tab
+  (section 5), its tab closed (section 6), or the 200-entry cap evicted
+  it. Mark All Bells Seen and "Clear All" never remove rows.
 
 - *Why didn't my muted session's badge update?* — It should have.
   Mute only suppresses desktop notifications. The bell-feed entry is

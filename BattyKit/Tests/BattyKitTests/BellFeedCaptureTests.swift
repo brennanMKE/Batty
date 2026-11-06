@@ -246,6 +246,28 @@ private final class StubSummarizer: NotificationSummarizing {
     func summarize(message: String?, tabTitle: String?, sessionTitle: String?) async -> NotificationSummarizationResult { result }
 }
 
+/// Holds `summarize` until the test opens the gate, so a test can act while
+/// the model "is thinking".
+private final class GatedSummarizer: NotificationSummarizing {
+    let result: NotificationSummarizationResult
+    private var isOpen = false
+    private var waiter: CheckedContinuation<Void, Never>?
+    init(_ result: NotificationSummarizationResult) { self.result = result }
+
+    func open() {
+        isOpen = true
+        waiter?.resume()
+        waiter = nil
+    }
+
+    func summarize(message: String?, tabTitle: String?, sessionTitle: String?) async -> NotificationSummarizationResult {
+        if !isOpen {
+            await withCheckedContinuation { waiter = $0 }
+        }
+        return result
+    }
+}
+
 @MainActor
 final class AppStateStoreBellCaptureTests {
     private let testDefaults = TestDefaults()
@@ -516,6 +538,55 @@ final class AppStateStoreBellCaptureTests {
         #expect(event.feedRowText == "Build")
         #expect(!event.feedRowPath.isEmpty)
         #expect(f.store.bellFeed.entries.isEmpty)
+    }
+
+    @Test func aVisitDropsTheRowsRatingStateButKeepsItsCaptureRecords() async throws {
+        let f = makeFixture(capture: true)
+        f.store.recordCLINotification(tabID: f.tabID, title: "Rated", body: nil, playSound: false)
+        let entryID = try #require(f.store.bellFeed.entries.first?.id)
+        #expect(f.store.rateBellEntry(id: entryID, verdict: .bad))
+        #expect(f.store.bellFeed.ratingVerdicts[entryID] == .bad, "precondition")
+        #expect(f.store.bellFeed.capturedEntryIDs.contains(entryID), "precondition")
+
+        f.store.focusSessionForXPC(id: f.store.sessions[1].id)
+
+        #expect(f.store.bellFeed.entries.isEmpty)
+        #expect(f.store.bellFeed.ratingVerdicts[entryID] == nil)
+        #expect(!f.store.bellFeed.capturedEntryIDs.contains(entryID))
+        let writer = f.writer
+        #expect(await awaitBounded { await writer.flush() })
+        let types = try readLines(f.writer.currentFileURL).map { line in
+            try #require(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])["type"] as? String
+        }
+        #expect(types == ["event", "rating"])
+    }
+
+    @Test func summaryForARowVisitedBeforeTheModelRepliesIsWrittenWithNullRowText() async throws {
+        let summarizer = GatedSummarizer(.init(prompt: "p", rawReply: "late summary"))
+        let f = makeFixture(capture: true, summarizer: summarizer)
+        f.store.recordCLINotification(tabID: f.tabID, title: "Visited", body: nil, playSound: false)
+        let entryID = try #require(f.store.bellFeed.entries.first?.id)
+        let task = try #require(f.store.summarizationTaskForTesting(entryID: entryID))
+
+        f.store.focusSessionForXPC(id: f.store.sessions[1].id)
+        #expect(f.store.bellFeed.entries.isEmpty, "precondition: the visit removed the row")
+        summarizer.open()
+        await awaitTask(task)
+
+        let writer = f.writer
+        #expect(await awaitBounded { await writer.flush() })
+        let summaries = try summaryRecords(f.writer)
+        let summary = try #require(summaries.first { $0.entryID == entryID })
+        #expect(summary.rawReply == "late summary")
+        #expect(summary.feedRowText == nil)
+    }
+
+    private func summaryRecords(_ writer: BellCaptureWriter) throws -> [BellCaptureSummary] {
+        try readLines(writer.currentFileURL).compactMap { line in
+            let object = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+            guard object?["type"] as? String == "summary" else { return nil }
+            return try decoder().decode(BellCaptureSummary.self, from: Data(line.utf8))
+        }
     }
 
     @Test func droppedEntryNeverReachesCapturedEntryIDs() async throws {

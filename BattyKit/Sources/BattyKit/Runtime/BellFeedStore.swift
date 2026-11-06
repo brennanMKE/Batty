@@ -282,8 +282,9 @@ public final class BellFeedStore {
     /// seen-at-creation (i.e. call this only when the incoming occurrence
     /// is not effectively seen) — a bell arriving while its tab is
     /// currently focused is a distinct "seen" event, and in practice any
-    /// earlier unread entry for that tab would already have been cleared by
-    /// `WindowRuntime.markActiveTabSeen` the moment focus moved there.
+    /// earlier unread entry for that tab would already have been marked seen by
+    /// `WindowRuntime.markActiveTabSeen` the moment focus moved there, or
+    /// removed by `WindowRuntime.visitFocusedTab` on a real visit.
     @discardableResult
     public func recordOrCollapse(_ entry: BellFeedEntry, collapseWindow: TimeInterval = collapseWindow) -> RecordOutcome {
         guard entry.tabID != BellFeedEntry.systemID, entry.kind == .bell else {
@@ -357,8 +358,10 @@ public final class BellFeedStore {
     @discardableResult
     public func removeReminderEntries(forSessionID sessionID: UUID) -> [BellFeedEntry] {
         let removed = entries.filter { $0.kind == .reminder && $0.sessionID == sessionID }
+        // Runs on every visit; skip the no-match write, which would notify.
+        guard !removed.isEmpty else { return [] }
         entries.removeAll { $0.kind == .reminder && $0.sessionID == sessionID }
-        if !removed.isEmpty { pruneRatingState() }
+        pruneRatingState()
         return removed
     }
 
@@ -368,8 +371,11 @@ public final class BellFeedStore {
         // A Reminder belongs to its Session, not to the Tab that happened to
         // be active when it fired; it is purged by Session id instead.
         let removed = entries.filter { $0.kind == .bell && tabIDs.contains($0.tabID) }
+        // `removeAll` writes even on no match, and an @Observable write
+        // notifies; this runs on every terminal click (#0556).
+        guard !removed.isEmpty else { return [] }
         entries.removeAll { $0.kind == .bell && tabIDs.contains($0.tabID) }
-        if !removed.isEmpty { pruneRatingState() }
+        pruneRatingState()
         return removed
     }
 }

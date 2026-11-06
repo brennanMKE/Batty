@@ -27,11 +27,16 @@ struct MarkActiveTabSeenTests {
         #expect(tab.unseenBellCount == 2)
         #expect(pane.unseenBellCount == 2)
         #expect(background.unseenBellCount == 2)
+        // The two BELs collapse into one row.
+        let entryCount = store.bellFeed.entries.count
+        #expect(entryCount == 1)
 
         store.selectedSessionID = background.id
         background.tree.focusedPaneID = pane.id
         pane.activeTabID = tab.id
         store.markActiveTabSeen()
+
+        #expect(store.bellFeed.entries.count == entryCount, "marking seen never removes rows (#0556)")
 
         #expect(tab.unseenBellCount == 0)
         #expect(pane.unseenBellCount == 0)
@@ -125,11 +130,15 @@ struct MarkActiveTabSeenTests {
         #expect(secondTab.unseenBellCount == 1)
         #expect(pane.unseenBellCount == 2)
         #expect(background.unseenBellCount == 2)
+        let entryCount = store.bellFeed.entries.count
+        #expect(entryCount == 2)
 
         store.selectedSessionID = background.id
         background.tree.focusedPaneID = pane.id
         pane.activeTabID = firstTab.id
         store.markActiveTabSeen()
+
+        #expect(store.bellFeed.entries.count == entryCount, "marking seen never removes rows (#0556)")
 
         #expect(firstTab.unseenBellCount == 0)
         #expect(secondTab.unseenBellCount == 1)

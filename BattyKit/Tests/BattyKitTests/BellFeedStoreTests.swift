@@ -211,5 +211,6 @@ struct AppStateStoreBellRoutingTests {
         #expect(store.selectedSessionID == target.id)
         #expect(target.tree.focusedPaneID == pane.id)
         #expect(pane.activeTabID == secondaryTab.id)
+        #expect(store.bellFeed.entries.isEmpty)
     }
 }

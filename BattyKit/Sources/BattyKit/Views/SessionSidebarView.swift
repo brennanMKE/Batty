@@ -285,7 +285,7 @@ public struct SessionSidebarView: View {
     private var sidebarSelection: Binding<UUID?> {
         Binding(
             get: { windowRuntime.selectedSessionID },
-            set: { windowRuntime.setSelectedSession(id: $0) }
+            set: { windowRuntime.selectSessionFromSidebar(id: $0) }
         )
     }
 
@@ -683,11 +683,7 @@ struct PaneRow: View {
     /// Event-origin writes; pane rows are `selectionDisabled` so this is the
     /// row's only activation path (#0258).
     private func activate() {
-        windowRuntime.setSelectedSession(id: session.id)
-        if pane.isHidden {
-            windowRuntime.showPane(id: pane.id)
-        }
-        windowRuntime.focusPane(id: pane.id)
+        windowRuntime.activatePaneFromSidebar(sessionID: session.id, paneID: pane.id)
     }
 }
 

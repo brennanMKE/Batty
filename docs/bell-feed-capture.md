@@ -95,7 +95,7 @@ in-memory decision history; the gates are not recomputed.
 | `errorDescription` | string, null | For `error` |
 | `elapsedSeconds` | number | Wall time of the summarizer call |
 | `sanitizedSummary` | string, null | What `NotificationSummary.sanitize` kept |
-| `feedRowText` | string, null | Row text after the update; null if the entry left the feed |
+| `feedRowText` | string, null | Row text after the update; null if the entry left the feed, including a visit to its Tab (#0556) |
 
 An app quit before the model replies leaves an `event` with no `summary`.
 That is expected.
