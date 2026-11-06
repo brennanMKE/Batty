@@ -17,12 +17,8 @@ struct MarkActiveTabSeenTests {
         let pane = background.tree.allPanes[0]
         let tab = pane.tabs[0]
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
+        store.ringBell(in: tab)
 
         #expect(tab.unseenBellCount == 2)
         #expect(pane.unseenBellCount == 2)
@@ -55,9 +51,7 @@ struct MarkActiveTabSeenTests {
         let tab = pane.tabs[0]
 
         // One real bell tick lands on the tab/pane/session aggregates...
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
         #expect(tab.unseenBellCount == 1)
 
         // ...then we overflow the feed cap with synthetic entries from a
@@ -66,11 +60,8 @@ struct MarkActiveTabSeenTests {
         let evictedSession = store.addSession(title: "Filler")!
         let evictedPane = evictedSession.tree.allPanes[0]
         let evictedTab = evictedPane.tabs[0]
-        for i in 0..<(BellFeedStore.cap + 5) {
-            let expectedCount = i + 1
-            evictedTab.terminal.terminalDidRingBell()
-            await awaitTerminalStatePublish { evictedTab.terminal.bellCount >= expectedCount }
-            store.recordBellTick(forTabID: evictedTab.id)
+        for _ in 0..<(BellFeedStore.cap + 5) {
+            store.ringBell(in: evictedTab)
         }
 
         #expect(!store.bellFeed.entries.contains { $0.tabID == tab.id })
@@ -119,12 +110,8 @@ struct MarkActiveTabSeenTests {
         let secondTab = pane.tabs[1]
         pane.activeTabID = firstTab.id
 
-        firstTab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { firstTab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: firstTab.id)
-        secondTab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { secondTab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: secondTab.id)
+        store.ringBell(in: firstTab)
+        store.ringBell(in: secondTab)
 
         #expect(firstTab.unseenBellCount == 1)
         #expect(secondTab.unseenBellCount == 1)

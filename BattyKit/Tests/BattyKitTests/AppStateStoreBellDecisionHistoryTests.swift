@@ -4,7 +4,7 @@ import Foundation
 import Testing
 @testable import BattyKit
 
-/// #0297 end-to-end: `AppStateStore.recordBellTick` /
+/// #0297 end-to-end: `AppStateStore.recordBell` /
 /// `recordDesktopNotification` / `recordCLINotification` each route through
 /// `postNotification`, which is the single production call site that
 /// appends to `AppStateStore.bellDecisionHistory`. These tests exercise the
@@ -17,17 +17,13 @@ import Testing
 @MainActor
 struct AppStateStoreBellDecisionHistoryTests {
 
-    @Test func recordBellTickCapturesTheBelTriggerKind() async {
+    @Test func recordBellCapturesTheBelTriggerKind() async {
         let notifier = SpyBellNotifier()
         let store = AppStateStore(notifier: notifier)
         store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
-        let tabID = session.focusedPaneAnyKind.activeTabID
-        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
-
-        terminal?.terminalDidRingBell()
-        await awaitTerminalStatePublish { (terminal?.bellCount ?? 0) > 0 }
-        store.recordBellTick(forTabID: tabID)
+        let tab = session.focusedPaneAnyKind.activeTab!
+        store.ringBell(in: tab)
 
         #expect(store.bellDecisionHistory.records.count == 1)
         #expect(store.bellDecisionHistory.records[0].trigger == .bel)
@@ -38,14 +34,8 @@ struct AppStateStoreBellDecisionHistoryTests {
         let store = AppStateStore(notifier: notifier)
         store.isBattyActiveProvider = { false }
         let session = store.sessions[0]
-        let tabID = session.focusedPaneAnyKind.activeTabID
-        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
-
-        terminal?.terminalDidRequestDesktopNotification(
-            title: "Build", body: "Succeeded"
-        )
-        await awaitTerminalStatePublish { terminal?.lastDesktopNotificationAt != nil }
-        store.recordDesktopNotification(forTabID: tabID)
+        let tab = session.focusedPaneAnyKind.activeTab!
+        store.requestDesktopNotification(in: tab, title: "Build", body: "Succeeded")
 
         #expect(store.bellDecisionHistory.records.count == 1)
         #expect(store.bellDecisionHistory.records[0].trigger == .oscNotification)

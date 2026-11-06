@@ -2028,29 +2028,28 @@ public final class AppStateStore {
 
     // MARK: - Bell event routing (global — searches across all windows)
 
-    /// Records a BEL tick from the tab with `tabID`. The `windowID` field
-    /// on the resulting `BellFeedEntry` is set to the owning window's ID
-    /// (retired: the throwaway `UUID()` default from before #0239).
-    /// A bell counts as "seen at creation" only when the tab is the active
-    /// focused tab AND, when multiple content windows are registered, the
-    /// owning window is the key window. In single-window mode (no registered
-    /// key window, as in unit tests), `isFocused` alone determines seen-ness.
-    /// A seen bell while Batty is active adds no entry (`routeRealTabBell`).
-    public func recordBellTick(forTabID tabID: UUID, surfaceID: UUID = UUID()) {
+    /// Routes `count` BELs from the tab with `tabID`, each stamped `at`
+    /// (the ring instant the delegate captured; `count > 1` only for bells
+    /// buffered in `TabRuntime` before ``wireBellReporting(for:)`` ran).
+    /// The tab's own counters were already advanced by
+    /// `TabRuntime.receiveRingBell(at:)`. The `windowID` on each entry is
+    /// the owning window's ID. A bell counts as "seen at creation" only when
+    /// the tab is the active focused tab AND, when multiple content windows
+    /// are registered, the owning window is the key window. In
+    /// single-window mode (no registered key window, as in unit tests),
+    /// `isFocused` alone determines seen-ness. A seen bell while Batty is
+    /// active adds no entry (`routeRealTabBell`).
+    func recordBell(forTabID tabID: UUID, count: Int, at: Date, surfaceID: UUID = UUID()) {
+        guard count > 0 else { return }
         let keyWindowID = keyWindowRuntime()?.id
         let multiWindow = keyWindowID != nil
         for window in windows {
             guard let location = window.locate(tabID: tabID) else { continue }
-            let delta = location.tab.recordBellTickIfNeeded()
-            guard delta > 0 else { return }
-            // In multi-window mode: seen requires both in-window focus AND key-window.
-            // In single-window / no-key-window mode: isFocused alone (preserves
-            // existing single-window test semantics).
             let isOwnerKey = !multiWindow || window.id == keyWindowID
             let effectivelySeen = location.isFocused && isOwnerKey
-            for _ in 0..<delta {
+            for _ in 0..<count {
                 let entry = BellFeedEntry(
-                    timestamp: location.tab.lastBellAt ?? Date(),
+                    timestamp: at,
                     windowID: window.id.value,
                     sessionID: location.session.id,
                     paneID: location.pane.id,
@@ -2065,27 +2064,25 @@ public final class AppStateStore {
         }
     }
 
-    /// Records a desktop notification event (OSC 9 / OSC 777) from the tab
-    /// with `tabID`. `windowID` on the entry carries the real owning window's
-    /// ID; in multi-window mode a bell is only "seen at creation" if the owning
-    /// window is the key content window and the tab is the focused active tab.
+    /// Routes one desktop notification (OSC 9 / OSC 777) from the tab with
+    /// `tabID`, with the formatted `message` and ring instant `at` the
+    /// delegate passed. Seen-ness follows ``recordBell(forTabID:count:at:surfaceID:)``.
     /// A seen notification while Batty is active adds no entry (`routeRealTabBell`).
-    public func recordDesktopNotification(forTabID tabID: UUID, surfaceID: UUID = UUID()) {
+    func recordDesktopNotification(forTabID tabID: UUID, message: String?, at: Date, surfaceID: UUID = UUID()) {
         let keyWindowID = keyWindowRuntime()?.id
         let multiWindow = keyWindowID != nil
         for window in windows {
             guard let location = window.locate(tabID: tabID) else { continue }
-            guard location.tab.recordDesktopNotificationIfNeeded() else { return }
             let isOwnerKey = !multiWindow || window.id == keyWindowID
             let effectivelySeen = location.isFocused && isOwnerKey
             let entry = BellFeedEntry(
-                timestamp: location.tab.lastBellAt ?? Date(),
+                timestamp: at,
                 windowID: window.id.value,
                 sessionID: location.session.id,
                 paneID: location.pane.id,
                 tabID: location.tab.id,
                 surfaceID: surfaceID,
-                message: location.tab.lastBellMessage,
+                message: message,
                 seen: effectivelySeen
             )
             routeRealTabBell(entry, in: window, at: location, trigger: .oscNotification)
@@ -2114,12 +2111,11 @@ public final class AppStateStore {
     ///
     /// Shares its post-resolution plumbing (`BellFeedEntry` construction,
     /// unseen propagation, `postNotification`, `scheduleSummarization`)
-    /// with `recordBellTick`/`recordDesktopNotification` — it diverges only
-    /// in how the tab id and message are obtained. There is no `TabRuntime`
-    /// change-detection to run through here (unlike
-    /// `recordBellTickIfNeeded`/`recordDesktopNotificationIfNeeded`, which
-    /// dedupe against libghostty's own delta): a CLI `notify` invocation is
-    /// deliberately exactly one entry per call, not a coalesced delta.
+    /// with `recordBell`/`recordDesktopNotification` — it diverges only
+    /// in how the tab id and message are obtained. It never passes through
+    /// `TabRuntime`'s bell counters (which the delegate-driven BEL/OSC
+    /// intake advances): a CLI `notify` invocation is deliberately exactly
+    /// one entry per call.
     ///
     /// `surfaceID` is set to the resolved tab id, not a fresh random UUID
     /// like the other two record methods' `surfaceID: UUID = UUID()`
@@ -2313,6 +2309,40 @@ public final class AppStateStore {
             return NSApp.windows.first { ObjectIdentifier($0) == key }
         }
         return nil
+    }
+
+    // MARK: - Bell intake wiring (#0561)
+
+    /// Routes this Tab's delegate-driven BEL and OSC 9/777 events into the
+    /// Bell Feed, synchronously from the libghostty callback (#0561).
+    /// Idempotent: re-wiring replaces the intake. Bells rung before the
+    /// first wiring are flushed from `TabRuntime`'s buffer here.
+    public func wireBellReporting(for tab: TabRuntime) {
+        tab.setBellIntake { [weak self] tab, event in
+            self?.receiveBellIntake(event, fromTabID: tab.id)
+        }
+    }
+
+    /// The intake ``wireBellReporting(for:)`` installs. A Tab no Window
+    /// locates gets no Bell Feed entry.
+    func receiveBellIntake(_ event: BellIntakeEvent, fromTabID tabID: UUID) {
+        let located = windows.contains { $0.locate(tabID: tabID) != nil }
+        switch event {
+        case let .bel(count, at):
+            logger.info("bell intake: tab=\(tabID.uuidString, privacy: .public) kind=bel count=\(count) located=\(located)")
+            guard located else {
+                logger.debug("bell intake skipped: no window locates tab=\(tabID.uuidString, privacy: .public)")
+                return
+            }
+            recordBell(forTabID: tabID, count: count, at: at)
+        case let .desktopNotification(message, at):
+            logger.info("bell intake: tab=\(tabID.uuidString, privacy: .public) kind=osc located=\(located)")
+            guard located else {
+                logger.debug("bell intake skipped: no window locates tab=\(tabID.uuidString, privacy: .public)")
+                return
+            }
+            recordDesktopNotification(forTabID: tabID, message: message, at: at)
+        }
     }
 
     // MARK: - pwd delegate wiring (#0436)
@@ -2731,7 +2761,7 @@ public final class AppStateStore {
     }
 
     /// #0297's single choke point: every real-tab bell path (BEL, OSC
-    /// 9/777, CLI `notify`) — `recordBellTick`, `recordDesktopNotification`,
+    /// 9/777, CLI `notify`) — `recordBell`, `recordDesktopNotification`,
     /// `recordCLINotification` — calls this exactly once per entry, so
     /// capturing the decision here before the early-return suppression
     /// gates covers all three trigger kinds and every gate (nil notifier,

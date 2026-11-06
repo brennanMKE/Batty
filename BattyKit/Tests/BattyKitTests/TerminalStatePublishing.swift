@@ -11,9 +11,11 @@ import Testing
 /// (`terminalDidRingBell`, `terminalDidRequestDesktopNotification`,
 /// `terminalDidChangeTitle`, `terminalDidFinishCommand`, …) through
 /// `terminalRunOnMainNextTurn` — an unconditional `DispatchQueue.main.async`,
-/// never inline even when already on the main thread. Production never
-/// notices: `.onChange(of:)` in `PaneView.swift` only fires once the write
-/// has landed, so the read is always causally downstream of the publish. A
+/// never inline even when already on the main thread. Production bell intake
+/// never reads these published values: `TerminalDelegateProxy` hands the
+/// ring instant and notification text to `TabRuntime` synchronously
+/// (#0561). The helper remains for the published values views still read
+/// (title, command-finished and the like). A
 /// test that calls a delegate method and reads the published property on
 /// the next line races that deferral and sees the pre-call value.
 ///

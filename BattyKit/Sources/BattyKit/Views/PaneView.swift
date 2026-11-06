@@ -262,20 +262,6 @@ public struct PaneView: View {
                         isPaneFocused: isPaneFocused
                     )
                         .allowsHitTesting(tab.id == pane.activeTabID)
-                        .onChange(of: tab.terminal.bellCount) {
-                            if let appStore {
-                                appStore.recordBellTick(forTabID: tab.id)
-                            } else {
-                                tab.recordBellTickIfNeeded()
-                            }
-                        }
-                        .onChange(of: tab.terminal.lastDesktopNotificationAt) {
-                            if let appStore {
-                                appStore.recordDesktopNotification(forTabID: tab.id)
-                            } else {
-                                tab.recordDesktopNotificationIfNeeded()
-                            }
-                        }
                         .modifier(TabRunningCommandObserver(tab: tab))
                         // Deliberately NO .onChange(of: tab.terminal.isFocused)
                         // model write here. libghostty flips isFocused on
@@ -311,6 +297,12 @@ public struct PaneView: View {
                             // rather than by a test-local stand-in that could silently
                             // diverge from it (#0436).
                             appStore?.wireWorkingDirectoryReporting(for: tab)
+                            // BEL / OSC 9/777 intake runs from the delegate
+                            // callback, not an .onChange over the Combine
+                            // bellCount (same staleness as #0227, #0561).
+                            // Stays wired after this view unmounts, so a
+                            // hidden Pane's bells still record.
+                            appStore?.wireBellReporting(for: tab)
                             // #0390: route a clipboard-read confirmation
                             // (OSC 52 / Kitty clipboard protocol) to this
                             // tab's owning Session, which applies the

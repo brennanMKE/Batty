@@ -313,12 +313,8 @@ final class AppStateStoreBellCaptureTests {
         let tab = f.store.sessions[1].focusedPaneAnyKind.activeTab!
 
         f.store.recordCLINotification(tabID: f.tabID, title: "Done", body: nil, playSound: false)
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        f.store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "passed")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        f.store.recordDesktopNotification(forTabID: tab.id)
+        f.store.ringBell(in: tab)
+        f.store.requestDesktopNotification(in: tab, title: "CI", body: "passed")
 
         #expect(f.store.bellFeed.entries.count >= 1)
         let writer = f.writer
@@ -360,12 +356,8 @@ final class AppStateStoreBellCaptureTests {
         let f = makeFixture(capture: true)
         let tab = f.store.sessions[1].focusedPaneAnyKind.activeTab!
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        f.store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "passed")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        f.store.recordDesktopNotification(forTabID: tab.id)
+        f.store.ringBell(in: tab)
+        f.store.requestDesktopNotification(in: tab, title: "CI", body: "passed")
 
         let events = try await records(BellCaptureEvent.self, f.writer)
         #expect(events.map(\.trigger) == ["bel", "oscNotification"])

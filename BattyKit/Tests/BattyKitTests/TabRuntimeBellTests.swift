@@ -7,97 +7,67 @@ import Testing
 @MainActor
 struct TabRuntimeBellTests {
 
-    @Test func recordBellTickReturnsDeltaAndUpdatesMirror() async {
-        let tab = TabRuntime()
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        let delta = tab.recordBellTickIfNeeded()
-        #expect(delta == 1)
+    @Test func ringingThroughTheDelegateCountsWithoutAStore() {
+        let tab = TabRuntime(lastBellMessage: "stale")
+        tab.terminalDelegate.terminalDidRingBell()
         #expect(tab.bellCount == 1)
         #expect(tab.lastBellAt != nil)
         #expect(tab.lastBellMessage == nil)
     }
 
-    /// `publishSoon` captures `Date()` at the instant the bell rang, before
-    /// deferring the write — not at the instant the deferred publish drains
-    /// (`TerminalViewState+Delegate.swift`'s `terminalDidRingBell`). The
-    /// artificial delay makes those two instants provably different, so a
-    /// mirror write that captured "now" at drain time instead of forwarding
-    /// `terminal.lastBellAt` would show up as inequality here.
-    @Test func recordBellTickCapturesTheRingInstantNotTheDrainInstant() async {
+    @Test func receiveRingBellStampsTheGivenInstant() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        _ = tab.recordBellTickIfNeeded()
-        #expect(tab.lastBellAt == tab.terminal.lastBellAt)
+        let at = Date(timeIntervalSince1970: 1_700_000_000)
+        tab.receiveRingBell(at: at)
+        #expect(tab.lastBellAt == at)
     }
 
-    @Test func recordBellTickIsIdempotentBetweenTicks() async {
+    @Test func eachRingCountsOnce() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        _ = tab.recordBellTickIfNeeded()
-        let secondDelta = tab.recordBellTickIfNeeded()
-        #expect(secondDelta == 0)
-        #expect(tab.bellCount == 1)
+        tab.terminalDelegate.terminalDidRingBell()
+        tab.terminalDelegate.terminalDidRingBell()
+        #expect(tab.bellCount == 2)
     }
 
-    @Test func recordBellTickHandlesBurstDelta() async {
+    @Test func pendingBellsCoalesceUntilAnIntakeIsSet() {
         let tab = TabRuntime()
-        for _ in 0..<5 { tab.terminal.terminalDidRingBell() }
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 5 }
-        let delta = tab.recordBellTickIfNeeded()
-        #expect(delta == 5)
+        let last = Date(timeIntervalSince1970: 1_700_000_500)
+        for i in 0..<4 { tab.receiveRingBell(at: Date(timeIntervalSince1970: 1_700_000_000 + Double(i))) }
+        tab.receiveRingBell(at: last)
+        var events: [BellIntakeEvent] = []
+        tab.setBellIntake { _, event in events.append(event) }
+        #expect(events == [.bel(count: 5, at: last)])
         #expect(tab.bellCount == 5)
+
+        tab.setBellIntake { _, event in events.append(event) }
+        #expect(events.count == 1, "a flushed buffer must not be delivered again")
     }
 
-    @Test func recordDesktopNotificationFormatsTitleAndBody() async {
+    @Test func pendingNotificationKeepsOnlyTheLatest() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidRequestDesktopNotification(
-            title: "Build", body: "Succeeded"
-        )
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        let recorded = tab.recordDesktopNotificationIfNeeded()
-        #expect(recorded == true)
+        let second = Date(timeIntervalSince1970: 1_700_000_100)
+        tab.receiveDesktopNotification(title: "first", body: "one", at: Date(timeIntervalSince1970: 1_700_000_000))
+        tab.receiveDesktopNotification(title: "second", body: "two", at: second)
+        var events: [BellIntakeEvent] = []
+        tab.setBellIntake { _, event in events.append(event) }
+        #expect(events == [.desktopNotification(message: "second: two", at: second)])
+        #expect(tab.bellCount == 2)
+
+        tab.setBellIntake { _, event in events.append(event) }
+        #expect(events.count == 1, "a flushed notification must not be delivered again")
+    }
+
+    @Test func desktopNotificationFormatsTitleAndBody() {
+        let tab = TabRuntime()
+        tab.terminalDelegate.terminalDidRequestDesktopNotification(title: "Build", body: "Succeeded")
         #expect(tab.lastBellMessage == "Build: Succeeded")
         #expect(tab.bellCount == 1)
     }
 
-    /// Same instant-capture property as
-    /// `recordBellTickCapturesTheRingInstantNotTheDrainInstant`, for the
-    /// notification path's `let at = Date()` in
-    /// `terminalDidRequestDesktopNotification`.
-    @Test func recordDesktopNotificationCapturesTheRequestInstantNotTheDrainInstant() async {
+    @Test func desktopNotificationFallsBackWhenTitleMissing() {
         let tab = TabRuntime()
-        tab.terminal.terminalDidRequestDesktopNotification(
-            title: "Build", body: "Succeeded"
-        )
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        _ = tab.recordDesktopNotificationIfNeeded()
-        #expect(tab.lastBellAt == tab.terminal.lastDesktopNotificationAt)
-    }
-
-    @Test func recordDesktopNotificationFallsBackWhenTitleMissing() async {
-        let tab = TabRuntime()
-        tab.terminal.terminalDidRequestDesktopNotification(
-            title: "", body: "hello"
-        )
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        _ = tab.recordDesktopNotificationIfNeeded()
+        tab.terminalDelegate.terminalDidRequestDesktopNotification(title: "", body: "hello")
         #expect(tab.lastBellMessage == "hello")
-    }
-
-    @Test func recordDesktopNotificationIsIdempotentForSameTimestamp() async {
-        let tab = TabRuntime()
-        tab.terminal.terminalDidRequestDesktopNotification(
-            title: "", body: "hello"
-        )
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        let first = tab.recordDesktopNotificationIfNeeded()
-        let second = tab.recordDesktopNotificationIfNeeded()
-        #expect(first == true)
-        #expect(second == false)
-        #expect(tab.bellCount == 1)
     }
 
     @Test func markBellsSeenClearsUnseenOnly() {

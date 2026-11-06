@@ -43,6 +43,17 @@ final class TerminalDelegateProxy: NSObject,
     /// on the initial directory (#0226-adjacent; see #0227).
     var onWorkingDirectoryChange: ((String) -> Void)?
 
+    /// Fire synchronously inside the libghostty callback with the instant
+    /// captured there (and, for OSC 9/777, the title and body). `state`'s
+    /// own copy is published a main-queue turn later (`publishSoon`,
+    /// libghostty-spm), so consumers must use the arguments and never read
+    /// `state` back (#0436). Bell intake hangs off these rather than a
+    /// SwiftUI `.onChange` over `state`'s Combine values, which the
+    /// `@Observable` model doesn't track and so compared only on incidental
+    /// re-renders (#0561).
+    var onRingBell: ((Date) -> Void)?
+    var onDesktopNotification: ((_ title: String, _ body: String, _ at: Date) -> Void)?
+
     /// Fires when a terminal program in this tab's Session needs the user's
     /// permission for a clipboard operation (unsafe paste, or a protected
     /// OSC 52 read/write). Wired by `PaneView` (which has the owning
@@ -190,11 +201,17 @@ final class TerminalDelegateProxy: NSObject,
     }
 
     func terminalDidRingBell() {
+        let at = Date()
+        logger.info("bell: tab=\(self.tabID?.uuidString ?? "unknown", privacy: .public) kind=bel")
         state.terminalDidRingBell()
+        onRingBell?(at)
     }
 
     func terminalDidRequestDesktopNotification(title: String, body: String) {
+        let at = Date()
+        logger.info("bell: tab=\(self.tabID?.uuidString ?? "unknown", privacy: .public) kind=osc")
         state.terminalDidRequestDesktopNotification(title: title, body: body)
+        onDesktopNotification?(title, body, at)
     }
 
     func terminalDidChangeWorkingDirectory(_ path: String) {

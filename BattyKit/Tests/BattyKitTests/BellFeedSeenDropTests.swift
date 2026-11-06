@@ -31,9 +31,7 @@ final class BellFeedSeenDropTests {
         let tab = focusedTab(store)
         let pane = store.sessions[0].focusedPaneAnyKind
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.isEmpty)
         #expect(tab.bellCount == 1)
@@ -42,11 +40,10 @@ final class BellFeedSeenDropTests {
         #expect(store.sessions[0].unseenBellCount == 0)
 
         store.isBattyActiveProvider = { false }
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
-        #expect(store.bellFeed.entries.count == 1, "the dropped bell must still advance the delta tracker")
+        #expect(tab.bellCount == 2, "the dropped bell must still count on the Tab")
+        #expect(store.bellFeed.entries.count == 1)
         #expect(store.bellFeed.entries.first?.seen == true)
     }
 
@@ -54,16 +51,11 @@ final class BellFeedSeenDropTests {
         let store = makeStore(active: true)
         let tab = focusedTab(store)
 
-        tab.terminal.terminalDidRequestDesktopNotification(title: "first", body: "one")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "first", body: "one")
         #expect(store.bellFeed.entries.isEmpty)
 
         store.isBattyActiveProvider = { false }
-        let firstAt = tab.terminal.lastDesktopNotificationAt
-        tab.terminal.terminalDidRequestDesktopNotification(title: "second", body: "two")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != firstAt }
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "second", body: "two")
 
         #expect(store.bellFeed.entries.count == 1)
         #expect(store.bellFeed.entries.first?.message?.contains("second") == true)
@@ -159,10 +151,7 @@ final class BellFeedSeenDropTests {
         }
         let tab = focusedTab(store)
 
-        tab.terminal.terminalDidRingBell()
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab, times: 2)
 
         #expect(calls == 2)
         #expect(store.bellFeed.entries.count == 1)

@@ -36,9 +36,7 @@ struct CrossWindowBehaviorTests {
         // Make w2's session the "unfocused" one from w2's perspective.
         w2.selectedSessionID = nil
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         let entry = store.bellFeed.entries.first
         #expect(entry != nil)
@@ -57,9 +55,7 @@ struct CrossWindowBehaviorTests {
         let tab = pane.tabs[0]
         w2.selectedSessionID = nil  // Make it unfocused within w2
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         let entry = store.bellFeed.entries.first
         #expect(entry?.windowID == w2.id.value,
@@ -99,9 +95,7 @@ struct CrossWindowBehaviorTests {
         session.tree.focusedPaneID = pane.id
         pane.activeTabID = tab.id
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.first != nil)
         // In single-window mode (no key window registered), isFocused alone governs.
@@ -120,9 +114,7 @@ struct CrossWindowBehaviorTests {
 
         let pane = bgSession.tree.allPanes[0]
         let tab = pane.tabs[0]
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.first?.seen == false)
         #expect(tab.unseenBellCount == 1)
@@ -140,9 +132,7 @@ struct CrossWindowBehaviorTests {
         let pane = w2.sessions[0].tree.allPanes[0]
         let tab = pane.tabs[0]
         w2.selectedSessionID = nil
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries.first!
@@ -178,9 +168,7 @@ struct CrossWindowBehaviorTests {
         #expect(targetSession.tree.focusedPaneID != pane.id,
                 "precondition: bell pane is not focused before the jump")
         let tab = pane.tabs[0]
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries.first!
@@ -206,9 +194,7 @@ struct CrossWindowBehaviorTests {
         w2.selectedSessionID = nil
         let pane = w2Session.tree.allPanes[0]
         let tab = pane.tabs[0]
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries.first!
@@ -236,12 +222,8 @@ struct CrossWindowBehaviorTests {
         let pane = w2.sessions[0].tree.allPanes[0]
         let tab = pane.tabs[0]
         w2.selectedSessionID = nil
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
+        store.ringBell(in: tab)
 
         // #0298: both bare BELs are unseen and share this tab, so they
         // collapse into one entry with repeatCount 2; unseenBellCount still

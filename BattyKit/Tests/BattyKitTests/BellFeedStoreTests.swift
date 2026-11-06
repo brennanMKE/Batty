@@ -87,9 +87,7 @@ struct AppStateStoreBellRoutingTests {
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.count == 1)
         #expect(store.bellFeed.entries.first?.seen == true)
@@ -108,9 +106,7 @@ struct AppStateStoreBellRoutingTests {
         let pane = backgroundSession.tree.allPanes[0]
         let tab = pane.tabs[0]
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.count == 1)
         #expect(store.bellFeed.entries.first?.seen == false)
@@ -130,9 +126,7 @@ struct AppStateStoreBellRoutingTests {
         let pane = backgroundSession.tree.allPanes[0]
         let tab = pane.tabs[0]
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
         #expect(store.bellFeed.entries.first != nil)
         let entryID = store.bellFeed.entries[0].id
 
@@ -153,12 +147,8 @@ struct AppStateStoreBellRoutingTests {
         let pane = backgroundSession.tree.allPanes[0]
         let tab = pane.tabs[0]
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
+        store.ringBell(in: tab)
 
         #expect(tab.unseenBellCount == 2)
 
@@ -176,11 +166,7 @@ struct AppStateStoreBellRoutingTests {
         let tab = pane.tabs[0]
         store.selectedSessionID = nil
 
-        tab.terminal.terminalDidRequestDesktopNotification(
-            title: "Build", body: "OK"
-        )
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "Build", body: "OK")
 
         #expect(store.bellFeed.entries.first != nil)
         #expect(store.bellFeed.entries.first?.message == "Build: OK")
@@ -200,9 +186,7 @@ struct AppStateStoreBellRoutingTests {
         let secondaryTab = pane.tabs.last!
         pane.activeTabID = pane.tabs[0].id
 
-        secondaryTab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { secondaryTab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: secondaryTab.id)
+        store.ringBell(in: secondaryTab)
         #expect(store.bellFeed.entries.first != nil)
         let entry = store.bellFeed.entries[0]
 

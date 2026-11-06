@@ -4,7 +4,7 @@ import Foundation
 import Testing
 @testable import BattyKit
 
-/// #0298 end-to-end: `AppStateStore.recordBellTick` / `recordDesktopNotification`
+/// #0298 end-to-end: `AppStateStore.recordBell` / `recordDesktopNotification`
 /// / `recordCLINotification` all route new entries through
 /// `BellFeedStore.recordOrCollapse` (the matching rule itself is covered in
 /// isolation by `BellFeedCollapseTests`). These tests exercise the real
@@ -84,15 +84,9 @@ struct AppStateStoreBellCollapseTests {
 
         let pane = background.tree.allPanes[0]
         let tab = pane.tabs[0]
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
-        store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 3 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
+        store.ringBell(in: tab)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.count == 1)
         #expect(store.bellFeed.entries[0].repeatCount == 3)
@@ -107,8 +101,9 @@ struct AppStateStoreBellCollapseTests {
         #expect(background.unseenBellCount == 0)
     }
 
-    /// `recordBellTick` loops `for _ in 0..<delta` when several BEL ticks
-    /// arrive batched in one call (#0288's occluded-Tab poll can do this).
+    /// `recordBell` loops `for _ in 0..<count` when several BEL ticks
+    /// arrive batched in one call (bells rung before the Tab's intake was
+    /// wired are flushed as one event).
     /// Each iteration must see the entry the previous iteration just
     /// recorded/collapsed as a live candidate.
     @Test func batchedBellTicksInOneCallCollapseTogether() async {
@@ -119,11 +114,8 @@ struct AppStateStoreBellCollapseTests {
         store.selectedSessionID = store.sessions[0].id
         let tab = session.focusedPaneAnyKind.activeTab!
 
-        tab.terminal.terminalDidRingBell()
-        tab.terminal.terminalDidRingBell()
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 3 }
-        store.recordBellTick(forTabID: tab.id)
+        for _ in 0..<3 { tab.terminalDelegate.terminalDidRingBell() }
+        store.wireBellReporting(for: tab)
 
         #expect(store.bellFeed.entries.count == 1)
         #expect(store.bellFeed.entries[0].repeatCount == 3)

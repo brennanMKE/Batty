@@ -39,8 +39,9 @@ What exists today (audited against the code, 2026-06-11):
   identifier contains `"main"` or whose title is `"Batty"` — and then
   dispatches every action against `AppStateStore.shared`.
 - **Bell feed:** `BellFeedEntry` already carries a `windowID: UUID` field,
-  but `AppStateStore.recordBellTick(forTabID:surfaceID:windowID:)` defaults
-  it to a throwaway `UUID()` — it is schema headroom, not live routing.
+  but `AppStateStore.recordBellTick(forTabID:surfaceID:windowID:)` (now
+  `recordBell`) defaults it to a throwaway `UUID()` — it is schema
+  headroom, not live routing.
 - **Lifecycle:** `BattyAppDelegate` terminates the app from
   `AppStateStore.onAllSessionsClosed` when the last session closes, and
   `applicationShouldTerminate` runs `QuitConfirmation.shouldQuitOrPrompt`.
@@ -254,7 +255,7 @@ cross-cutting services):
   accessor. The map itself is `@ObservationIgnored` bookkeeping (it is
   populated from AppKit window callbacks; making it observed state written
   from window machinery is exactly the #0229 hazard class).
-- Bell routing: `recordBellTick`, `recordDesktopNotification`,
+- Bell routing: `recordBell`, `recordDesktopNotification`,
   `markBellSeen`, `markAllBellsSeen`, `jumpToBellEntry` — these search
   across windows (`locate(tabID:)` iterates `windows × sessions`, and its
   `isFocused` test additionally requires the owning window to be the key
@@ -398,7 +399,7 @@ the window untouched.
 
 **Bell-feed click-to-jump across windows:** `BellFeedEntry.windowID` starts
 carrying the real owning window's ID (today's throwaway `UUID()` default in
-`recordBellTick` / `recordDesktopNotification` is retired).
+`recordBell` / `recordDesktopNotification` is retired).
 `AppStateStore.jumpToBellEntry(_:)` resolves the entry's window first, makes
 that window key and front, then performs today's selection flow
 (`selectedSessionID` → `focusedPaneID` → `activeTabID`) on *that* window's

@@ -120,10 +120,15 @@ public final class TabRuntime: Identifiable {
     @ObservationIgnored
     let terminalDelegate: TerminalDelegateProxy
 
+    /// Where rung bells go once a store is wired. Until then they are held
+    /// in ``pendingBells``/``pendingNotification`` (bounded: a count and the
+    /// latest notification) and flushed by ``setBellIntake(_:)``.
     @ObservationIgnored
-    private var lastObservedBellCount: Int = 0
+    private var bellIntake: ((TabRuntime, BellIntakeEvent) -> Void)?
     @ObservationIgnored
-    private var lastObservedNotificationAt: Date?
+    private var pendingBells: (count: Int, lastAt: Date)?
+    @ObservationIgnored
+    private var pendingNotification: (message: String?, at: Date)?
     @ObservationIgnored
     private var lastObservedCommandDurationNanos: UInt64?
 
@@ -177,6 +182,12 @@ public final class TabRuntime: Identifiable {
         terminalDelegate.tabID = id
         terminalDelegate.onStartupWaitingChange = { [weak self] waiting in
             self?.startupCommandWaiting = waiting
+        }
+        terminalDelegate.onRingBell = { [weak self] at in
+            self?.receiveRingBell(at: at)
+        }
+        terminalDelegate.onDesktopNotification = { [weak self] title, body, at in
+            self?.receiveDesktopNotification(title: title, body: body, at: at)
         }
     }
 
@@ -428,30 +439,42 @@ public final class TabRuntime: Identifiable {
         return true
     }
 
-    @discardableResult
-    public func recordBellTickIfNeeded() -> Int {
-        let observed = terminal.bellCount
-        guard observed > lastObservedBellCount else { return 0 }
-        let delta = observed - lastObservedBellCount
-        lastObservedBellCount = observed
-        bellCount += delta
-        lastBellAt = terminal.lastBellAt ?? Date()
-        lastBellMessage = nil
-        return delta
-    }
-
-    @discardableResult
-    public func recordDesktopNotificationIfNeeded() -> Bool {
-        guard let at = terminal.lastDesktopNotificationAt else { return false }
-        guard at != lastObservedNotificationAt else { return false }
-        lastObservedNotificationAt = at
+    func receiveRingBell(at: Date) {
         bellCount += 1
         lastBellAt = at
-        lastBellMessage = Self.formatNotification(
-            title: terminal.lastDesktopNotificationTitle,
-            body: terminal.lastDesktopNotificationBody
-        )
-        return true
+        lastBellMessage = nil
+        if let bellIntake {
+            bellIntake(self, .bel(count: 1, at: at))
+        } else {
+            pendingBells = (count: (pendingBells?.count ?? 0) + 1, lastAt: at)
+        }
+    }
+
+    func receiveDesktopNotification(title: String, body: String, at: Date) {
+        bellCount += 1
+        lastBellAt = at
+        let message = Self.formatNotification(title: title, body: body)
+        lastBellMessage = message
+        if let bellIntake {
+            bellIntake(self, .desktopNotification(message: message, at: at))
+        } else {
+            pendingNotification = (message: message, at: at)
+        }
+    }
+
+    /// Replaces any earlier intake, then delivers what rang before one was
+    /// set: buffered BELs as one event stamped with the last of them, then
+    /// the latest buffered notification.
+    func setBellIntake(_ intake: @escaping (TabRuntime, BellIntakeEvent) -> Void) {
+        bellIntake = intake
+        if let pending = pendingBells {
+            pendingBells = nil
+            intake(self, .bel(count: pending.count, at: pending.lastAt))
+        }
+        if let pending = pendingNotification {
+            pendingNotification = nil
+            intake(self, .desktopNotification(message: pending.message, at: pending.at))
+        }
     }
 
     public func markBellsSeen() {
@@ -512,4 +535,9 @@ public final class TabRuntime: Identifiable {
         }
     }
 
+}
+
+public enum BellIntakeEvent: Equatable, Sendable {
+    case bel(count: Int, at: Date)
+    case desktopNotification(message: String?, at: Date)
 }

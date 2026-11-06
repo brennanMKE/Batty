@@ -37,9 +37,7 @@ struct AppStateStoreClosePaneTests {
 
         for tabID in tabIDs {
             let tab = originalPane.tabs.first { $0.id == tabID }!
-            tab.terminal.terminalDidRingBell()
-            await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-            store.recordBellTick(forTabID: tabID)
+            store.ringBell(in: tab)
         }
         #expect(store.bellFeed.entries.count == 3, "precondition: every tab has a live bell-feed entry")
 

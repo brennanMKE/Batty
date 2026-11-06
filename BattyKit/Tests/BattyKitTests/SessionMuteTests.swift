@@ -34,13 +34,8 @@ struct SessionMuteTests {
         }
         session.notificationsMuted = true
 
-        let tabID = session.focusedPaneAnyKind.activeTabID
-        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
-        terminal?.terminalDidRequestDesktopNotification(
-            title: "Build", body: "Succeeded"
-        )
-        await awaitTerminalStatePublish { terminal?.lastDesktopNotificationAt != nil }
-        store.recordDesktopNotification(forTabID: tabID)
+        let tab = session.focusedPaneAnyKind.activeTab!
+        store.requestDesktopNotification(in: tab, title: "Build", body: "Succeeded")
 
         #expect(store.bellFeed.entries.first != nil)
         #expect(notifier.postedEntries.isEmpty)
@@ -61,13 +56,8 @@ struct SessionMuteTests {
         store.addSession(title: "Other")
         store.selectedSessionID = store.sessions.last?.id
 
-        let tabID = session.focusedPaneAnyKind.activeTabID
-        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
-        terminal?.terminalDidRequestDesktopNotification(
-            title: "Build", body: "Succeeded"
-        )
-        await awaitTerminalStatePublish { terminal?.lastDesktopNotificationAt != nil }
-        store.recordDesktopNotification(forTabID: tabID)
+        let tab = session.focusedPaneAnyKind.activeTab!
+        store.requestDesktopNotification(in: tab, title: "Build", body: "Succeeded")
 
         #expect(notifier.postedEntries.count == 1)
     }
@@ -86,14 +76,11 @@ struct SessionMuteTests {
         store.addSession(title: "Other")
         store.selectedSessionID = store.sessions.last?.id
 
-        guard let tabID = session.focusedPaneAnyKind.activeTab?.id else {
+        guard let tab = session.focusedPaneAnyKind.activeTab else {
             Issue.record("Expected an active tab")
             return
         }
-        let terminal = session.focusedPaneAnyKind.activeTab?.terminal
-        terminal?.terminalDidRingBell()
-        await awaitTerminalStatePublish { (terminal?.bellCount ?? 0) > 0 }
-        store.recordBellTick(forTabID: tabID)
+        store.ringBell(in: tab)
 
         #expect(store.bellFeed.entries.first != nil)
         #expect(notifier.postedEntries.isEmpty)

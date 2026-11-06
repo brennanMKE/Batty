@@ -12,10 +12,11 @@ OSC 777 desktop notification) emitted by a terminal program produces up
 to four user-visible signals, each gated on independent state. Anyone
 touching the path needs to keep three things in mind:
 
-1. **`AppStateStore` is the routing hub.** libghostty hands off to
-   `TerminalViewState`; SwiftUI `.onChange` observers in `PaneView` push
-   into `TabRuntime`; `TabRuntime` returns a delta to `AppStateStore`,
-   which decides what to record, what to badge, and what to post.
+1. **`AppStateStore` is the routing hub.** libghostty's delegate
+   callback lands in `TerminalDelegateProxy`, which hands the event
+   synchronously to `TabRuntime`; `TabRuntime` passes it to the intake
+   `AppStateStore` installed, which decides what to record, what to
+   badge, and what to post.
 2. **Focus is the gate on unseen counts.** A bell that lands on the
    tab the user is already looking at is recorded into the feed but
    does **not** bump any unseen counters. Anything off-focus does.
@@ -65,19 +66,24 @@ Two distinct event kinds enter the pipeline:
 
 - **Plain `\a` BEL** — emitted by any shell, build tool, REPL, or
   process that writes the BEL byte. libghostty surfaces this as
-  `TerminalSurfaceBellDelegate.terminalDidRingBell()`, which increments
-  `TerminalViewState.bellCount` and updates `lastBellAt`. No message
+  `TerminalSurfaceBellDelegate.terminalDidRingBell()`, which
+  `TerminalDelegateProxy` receives with the ring instant. No message
   body — these bells are anonymous.
 - **OSC 9 / OSC 777 desktop notification** — apps that want a rich,
   titled notification can emit OSC 9 (iTerm2 convention) or OSC 777
   (rxvt-unicode convention). libghostty's
   `TerminalSurfaceDesktopNotificationDelegate` reports the title and
-  body; `TerminalViewState.lastDesktopNotificationAt` /
-  `lastDesktopNotificationTitle` / `lastDesktopNotificationBody`
-  update.
+  body to `TerminalDelegateProxy`.
 
-Both event kinds are observed by `.onChange` modifiers in `PaneView` and
-flow through `TabRuntime` into `AppStateStore`'s bell-routing methods.
+`TerminalDelegateProxy` hands both event kinds synchronously to
+`TabRuntime` (`onRingBell` / `onDesktopNotification`), passing the ring
+instant and the title and body as arguments. `TabRuntime` routes them
+through the intake that `AppStateStore.wireBellReporting(for:)` installs,
+into `recordBell` / `recordDesktopNotification`; until an intake is wired
+it buffers them. The proxy also forwards each event to
+`TerminalViewState`, whose published copies (`bellCount`, `lastBellAt`,
+`lastDesktopNotificationAt` / `Title` / `Body`) still update a main-queue
+turn later, but intake never reads them.
 
 A third source enters the pipeline downstream of libghostty entirely:
 **`batty notify --title <t> [--body <b>] [--sound]`** (#0284), the CLI
@@ -136,15 +142,15 @@ End-to-end, from libghostty to `UNUserNotificationCenter`:
    libghostty BEL                                  libghostty OSC 9 / OSC 777
           |                                                  |
           v                                                  v
-TerminalViewState.bellCount++           TerminalViewState.lastDesktopNotificationAt
-          |                                                  |
-          | (PaneView .onChange)                             | (PaneView .onChange)
+TerminalDelegateProxy.terminalDidRingBell  TerminalDelegateProxy.terminalDidRequestDesktopNotification
+          |  (at = Date(), synchronous,                      |  (title, body, at)
+          |   inside ghostty_app_tick)                       |
           v                                                  v
-TabRuntime.recordBellTickIfNeeded       TabRuntime.recordDesktopNotificationIfNeeded
-          |                                                  |
-          | (returns Int delta)                              | (returns Bool fired)
+TabRuntime.receiveRingBell(at:)         TabRuntime.receiveDesktopNotification(title:body:at:)
+          |  bellCount += 1, lastBellAt = at                 |  bellCount += 1, lastBellMessage
+          |  (buffered until wireBellReporting runs)         |  (latest buffered until wired)
           v                                                  v
-AppStateStore.recordBellTick(forTabID:)   AppStateStore.recordDesktopNotification(forTabID:)
+AppStateStore.recordBell(forTabID:count:at:)   AppStateStore.recordDesktopNotification(forTabID:message:at:)
           |                                                  |
           |  locate(tabID:)  ->  BellLocation                |  locate(tabID:)  ->  BellLocation
           |                                                  |
@@ -178,15 +184,16 @@ AppStateStore.recordBellTick(forTabID:)   AppStateStore.recordDesktopNotificatio
 
 A few important properties of this flow:
 
-- **`recordBellTick` may run more than once per call.** libghostty
-  coalesces multiple BEL bytes into a single delta on `bellCount`. The
-  store loops `0..<delta` and records one `BellFeedEntry` per
-  coalesced bell, so a process that bursts ten `\a`s shows up as ten
-  feed rows.
-- **OSC 9 / OSC 777 always produces exactly one entry per fire.**
-  `recordDesktopNotificationIfNeeded()` returns `true` once per new
-  `lastDesktopNotificationAt`; the body of the macOS notification is
-  the `lastBellMessage` carried on the `TabRuntime`.
+- **One delegate callback per BEL.** Intake runs synchronously in the
+  libghostty callback, not from a view's `.onChange` (which compared the
+  Combine `bellCount` only on incidental re-renders, #0561). `recordBell`
+  gets `count > 1` only for bells buffered in `TabRuntime` before
+  `AppStateStore.wireBellReporting(for:)` ran; it loops `0..<count` and
+  routes one `BellFeedEntry` per bell, all stamped with the last ring
+  instant.
+- **Every OSC 9 / OSC 777 records.** Each callback carries its own title,
+  body and instant, so nothing is dropped between re-renders. The body of
+  the macOS notification is the formatted message.
 - **Entries record `seen: location.isFocused` at creation.** A bell
   delivered to the tab the user is already viewing, while Batty is the
   active app, adds no feed row at all (#0555): `routeRealTabBell` drops
@@ -200,8 +207,8 @@ A few important properties of this flow:
   how this interacts with `markActiveTabSeen()`.
 
 Cross-references: see `BellFeedStore.record(_:)`,
-`AppStateStore.recordBellTick(forTabID:surfaceID:windowID:)`,
-`AppStateStore.recordDesktopNotification(forTabID:surfaceID:windowID:)`,
+`AppStateStore.recordBell(forTabID:count:at:surfaceID:)`,
+`AppStateStore.recordDesktopNotification(forTabID:message:at:surfaceID:)`,
 and the private `AppStateStore.locate(tabID:)` /
 `propagateUnseen(at:)` / `postNotification(for:at:)` helpers.
 
@@ -454,12 +461,12 @@ the tab doesn't need a delayed banner for the same bell.
 |---|---|
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/BellNotifier.swift`](../BattyKit/Sources/BattyKit/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, and the tap-to-jump delegate (`onTapEntry`). |
-| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `recordBellTick`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
 | [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
 | [`../BattyKit/Sources/BattyKit/BellFeedView.swift`](../BattyKit/Sources/BattyKit/BellFeedView.swift) | The popover and `BellFeedRow`. Path-label formatting lives here. |
-| [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) | `recordBellTickIfNeeded()` (returns `Int` delta), `recordDesktopNotificationIfNeeded()` (returns `Bool`), `bellCount` / `unseenBellCount` / `lastBellAt` / `lastBellMessage`. |
-| [`../BattyKit/Sources/BattyKit/PaneView.swift`](../BattyKit/Sources/BattyKit/PaneView.swift) | `.onChange(of: tab.terminal.bellCount)` and `.onChange(of: tab.terminal.lastDesktopNotificationAt)` observers; also `.onChange(of: pane.activeTabID)` that calls `markActiveTabSeen()`. |
+| [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) | `receiveRingBell(at:)` / `receiveDesktopNotification(title:body:at:)` (installed on its `TerminalDelegateProxy`), `setBellIntake(_:)` with its pre-wiring buffer, `bellCount` / `unseenBellCount` / `lastBellAt` / `lastBellMessage`. |
+| [`../BattyKit/Sources/BattyKit/PaneView.swift`](../BattyKit/Sources/BattyKit/PaneView.swift) | `.task(id: tab.id)` calls `wireBellReporting(for:)`; also `.onChange(of: pane.activeTabID)` that calls `markActiveTabSeen()`. |
 | [`../BattyKit/Sources/BattyKit/SessionDetailView.swift`](../BattyKit/Sources/BattyKit/SessionDetailView.swift) | `.onChange(of: store.selectedSessionID)` and `.onChange(of: store.selectedSession?.tree.focusedPaneID)` hooks calling `markActiveTabSeen()`. Also receives the `.battyToggleBellFeed` notification to present the popover. |
 | [`../BattyKit/Sources/BattyKit/BattyTabChip.swift`](../BattyKit/Sources/BattyKit/BattyTabChip.swift) | The unseen-bell dot on tab chips. `hasUnseen` + `showsUnseenDot = hasUnseen && !isActive`. |
 | [`../BattyKit/Sources/BattyKit/SessionRuntime.swift`](../BattyKit/Sources/BattyKit/SessionRuntime.swift) | `notificationsMuted` flag (observable). |

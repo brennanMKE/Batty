@@ -200,9 +200,7 @@ final class AppStateStoreSummarizationTests {
         let tab = session.tree.allPanes[0].tabs[0]
         store.selectedSessionID = nil
 
-        tab.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "passed")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "CI", body: "passed")
 
         #expect(store.bellFeed.entries.first != nil)
         #expect(store.bellFeed.entries.first?.summary == nil)
@@ -215,11 +213,9 @@ final class AppStateStoreSummarizationTests {
 
         let session = store.sessions[0]
         let tab = session.tree.allPanes[0].tabs[0]
-        tab.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "passed")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
         store.preferences.set(false, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "CI", body: "passed")
         let entryID = store.bellFeed.entries.first!.id
 
         // "Skipped" is a synchronous fact — scheduleSummarization returned
@@ -237,11 +233,9 @@ final class AppStateStoreSummarizationTests {
 
         let session = store.sessions[0]
         let tab = session.tree.allPanes[0].tabs[0]
-        tab.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "passed")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
         store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "CI", body: "passed")
         let entryID = store.bellFeed.entries.first!.id
 
         let task = try #require(store.summarizationTaskForTesting(entryID: entryID),
@@ -262,11 +256,9 @@ final class AppStateStoreSummarizationTests {
 
         let session = store.sessions[0]
         let tab = session.tree.allPanes[0].tabs[0]
-        tab.terminal.terminalDidRequestDesktopNotification(title: "Bell", body: "")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
         store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "Bell", body: "")
         let entryID = store.bellFeed.entries.first!.id
 
         let task = try #require(store.summarizationTaskForTesting(entryID: entryID),
@@ -287,11 +279,9 @@ final class AppStateStoreSummarizationTests {
 
         let session = store.sessions[0]
         let tab = session.tree.allPanes[0].tabs[0]
-        tab.terminal.terminalDidRequestDesktopNotification(title: "Junk", body: "response")
-        await awaitTerminalStatePublish { tab.terminal.lastDesktopNotificationAt != nil }
 
         store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        store.recordDesktopNotification(forTabID: tab.id)
+        store.requestDesktopNotification(in: tab, title: "Junk", body: "response")
         let entryID = store.bellFeed.entries.first!.id
 
         let task = try #require(store.summarizationTaskForTesting(entryID: entryID),
@@ -327,16 +317,11 @@ final class AppStateStoreSummarizationTests {
         let tab0 = pane.tabs[0]
         let tab1 = pane.tabs[1]
 
-        tab0.terminal.terminalDidRequestDesktopNotification(title: "CI", body: "ci-passed")
-        await awaitTerminalStatePublish { tab0.terminal.lastDesktopNotificationAt != nil }
-
         store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        store.recordDesktopNotification(forTabID: tab0.id)
+        store.requestDesktopNotification(in: tab0, title: "CI", body: "ci-passed")
         let firstEntryID = store.bellFeed.entries.first!.id
 
-        tab1.terminal.terminalDidRequestDesktopNotification(title: "Tests", body: "tests-failed")
-        await awaitTerminalStatePublish { tab1.terminal.lastDesktopNotificationAt != nil }
-        store.recordDesktopNotification(forTabID: tab1.id)
+        store.requestDesktopNotification(in: tab1, title: "Tests", body: "tests-failed")
         let secondEntryID = store.bellFeed.entries.first(where: { $0.id != firstEntryID })!.id
 
         let firstTask = try #require(store.summarizationTaskForTesting(entryID: firstEntryID),
@@ -364,11 +349,9 @@ final class AppStateStoreSummarizationTests {
 
         let session = store.sessions[0]
         let tab = session.tree.allPanes[0].tabs[0]
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
 
         store.preferences.set(true, forKey: SettingsPreference.summarizeNotificationsWithAIKey)
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
         let entryID = store.bellFeed.entries.first!.id
 
         let task = try #require(store.summarizationTaskForTesting(entryID: entryID),

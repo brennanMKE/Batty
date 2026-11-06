@@ -20,12 +20,8 @@ struct BellFeedCleanupTests {
         let tabB = pane.tabs[1]
         pane.activeTabID = tabA.id
 
-        tabA.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tabA.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tabA.id)
-        tabB.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tabB.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tabB.id)
+        store.ringBell(in: tabA)
+        store.ringBell(in: tabB)
 
         #expect(store.bellFeed.entries.count == 2)
         #expect(pane.unseenBellCount == 2)
@@ -55,9 +51,7 @@ struct BellFeedCleanupTests {
         let tabB = pane.tabs[1]
         pane.activeTabID = tabA.id
 
-        tabB.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tabB.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tabB.id)
+        store.ringBell(in: tabB)
         #expect(store.bellFeed.entries.first != nil)
         let entryID = store.bellFeed.entries[0].id
 
@@ -82,9 +76,7 @@ struct BellFeedCleanupTests {
         #expect(background.tree.allPanes.count == 2)
 
         let originalTab = originalPane.tabs[0]
-        originalTab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { originalTab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: originalTab.id)
+        store.ringBell(in: originalTab)
 
         #expect(store.bellFeed.entries.count == 1)
         #expect(background.unseenBellCount == 1)
@@ -105,12 +97,8 @@ struct BellFeedCleanupTests {
 
         let pane = background.tree.allPanes[0]
         let tab = pane.tabs[0]
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 1 }
-        store.recordBellTick(forTabID: tab.id)
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount >= 2 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
+        store.ringBell(in: tab)
 
         // #0298: both bare BELs are still unseen and share this tab, so the
         // second collapses into the first rather than appending a second
@@ -137,12 +125,8 @@ struct BellFeedCleanupTests {
         let tabB = pane.tabs[1]
         pane.activeTabID = tabA.id
 
-        tabA.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tabA.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tabA.id)
-        tabB.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tabB.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tabB.id)
+        store.ringBell(in: tabA)
+        store.ringBell(in: tabB)
 
         let backgroundID = background.id
         #expect(store.bellFeed.entries.count == 2)
@@ -160,9 +144,7 @@ struct BellFeedCleanupTests {
         let pane = session.tree.allPanes[0]
         let tab = pane.tabs[0]
 
-        tab.terminal.terminalDidRingBell()
-        await awaitTerminalStatePublish { tab.terminal.bellCount > 0 }
-        store.recordBellTick(forTabID: tab.id)
+        store.ringBell(in: tab)
         #expect(store.bellFeed.entries.first != nil)
         #expect(store.bellFeed.entries.first?.seen == true)
         #expect(session.unseenBellCount == 0)
