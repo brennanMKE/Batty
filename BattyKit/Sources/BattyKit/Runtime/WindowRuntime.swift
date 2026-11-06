@@ -606,7 +606,7 @@ public final class WindowRuntime {
         let victims = pane.tabs.filter { $0.id != keepingTabID }
         let busy = victims.filter { $0.needsConfirmClose }
         if busy.isEmpty {
-            pane.closeOtherTabs(keeping: keepingTabID)
+            closeOtherTabs(in: pane, keeping: keepingTabID)
             return
         }
         let busyCount = busy.count
@@ -623,6 +623,16 @@ public final class WindowRuntime {
         )
     }
 
+    /// Closes every Tab in `pane` except `keptTabID`, removing the closed
+    /// Tabs' Bell Feed rows and unseen counts first, as `closeTab` does.
+    func closeOtherTabs(in pane: PaneRuntime, keeping keptTabID: UUID) {
+        guard pane.tabs.contains(where: { $0.id == keptTabID }) else { return }
+        let victims = Set(pane.tabs.map(\.id)).subtracting([keptTabID])
+        logger.info("closeOtherTabs pane=\(pane.id, privacy: .public) victims=\(victims.count, privacy: .public)")
+        cleanUpBellState(forTabIDs: victims)
+        pane.closeOtherTabs(keeping: keptTabID)
+    }
+
     public func confirmPendingClose() {
         guard let request = pendingCloseRequest else { return }
         pendingCloseRequest = nil
@@ -633,7 +643,7 @@ public final class WindowRuntime {
             guard let pane = sessions
                 .flatMap({ $0.tree.allPanes })
                 .first(where: { $0.id == paneID }) else { return }
-            pane.closeOtherTabs(keeping: keepingTabID)
+            closeOtherTabs(in: pane, keeping: keepingTabID)
         case .session(let sessionID):
             removeSession(id: sessionID)
         }

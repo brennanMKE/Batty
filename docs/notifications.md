@@ -319,7 +319,7 @@ feed coherent with the live model:
 
 - `BellFeedStore.removeEntries(matchingTabIDs:)` — purges every entry
   whose `tabID` is in the supplied set and returns the removed entries.
-- `AppStateStore.cleanUpBellState(forTabIDs:)` — calls
+- `WindowRuntime.cleanUpBellState(forTabIDs:)` — calls
   `removeEntries(matchingTabIDs:)`, then loops over each removed entry
   that was still unseen and runs `decrementUnseen(for:)` so the
   tab/pane/session aggregates stay in sync.
@@ -328,8 +328,14 @@ Wired in:
 
 | Code path | Tab IDs cleared |
 |---|---|
-| `AppStateStore.closeTab(id:)` | `{ tabID }` (the single tab being closed) |
-| `AppStateStore.removeSession(id:)` | Union of every `tab.id` across every pane in the session |
+| `WindowRuntime.closeTab(id:)` | `{ tabID }` (the single tab being closed) |
+| `WindowRuntime.closePane(id:refuseIfAppsLastPane:fromCli:)` | Every Tab in the Pane |
+| `WindowRuntime.closeOtherTabs(in:keeping:)` | Every Tab in the Pane except the kept one (#0559) |
+| `WindowRuntime.removeSession(id:)` | Union of every `tab.id` across every pane in the session |
+| Window close (`RootWindowView.windowWillClose`) | Every Tab in the Window |
+
+Reminder rows are not matched by Tab id; they are purged by Session id
+instead (`removeReminderEntries(forSessionID:)`, #0514).
 
 The result: the feed never shows entries pointing at non-existent tabs,
 and the aggregate counts never drift when tabs disappear out from
@@ -504,7 +510,7 @@ the tab doesn't need a delayed banner for the same bell.
   `sessionID` / `paneID` / `tabID` no longer resolve to a live tab.
   This should be rare because `cleanUpBellState(forTabIDs:)` purges
   entries on tab close; if it happens, the tab was closed via a path
-  that doesn't route through `closeTab(id:)` (worth filing).
+  that doesn't route through `cleanUpBellState(forTabIDs:)` (worth filing).
 - *Why didn't the desktop notification fire even though the sidebar
   badged?* — Three plausible gates: (a) Settings → Notifications →
   "Show system notifications" is off; (b) the session is muted via
