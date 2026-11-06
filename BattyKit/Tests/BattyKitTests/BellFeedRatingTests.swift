@@ -222,6 +222,30 @@ final class BellFeedRatingTests {
         #expect(f.store.rateBellEntry(id: system.id, verdict: .good) == false)
     }
 
+    @Test func reminderEntryIsNeverRatable() throws {
+        let f = makeFixture()
+        let now = Date()
+        let reminder = BellFeedEntry(
+            timestamp: now,
+            windowID: UUID(),
+            sessionID: f.store.sessions[0].id,
+            paneID: UUID(),
+            tabID: f.tabID,
+            surfaceID: f.tabID,
+            message: "Stand up",
+            kind: .reminder,
+            reminderSetAt: now,
+            reminderDueAt: now
+        )
+        f.store.bellFeed.record(reminder)
+        f.store.bellFeed.markCaptured(reminder.id)
+        #expect(f.store.bellRatingAvailability(for: reminder) == .hidden)
+        #expect(f.store.rateBellEntry(id: reminder.id, verdict: .good) == false)
+        #expect(f.store.suggestBellText(id: reminder.id, text: "better") == false)
+        #expect(f.store.bellRatingSnapshot(forEntryID: reminder.id) == nil)
+        #expect(f.store.bellFeed.ratingVerdicts.isEmpty)
+    }
+
     @Test func shownTextTracksSummaryOrMessageAtRatingTime() async throws {
         let summarizer = RatingStubSummarizer(.init(prompt: "p", rawReply: "Tests passed"))
         let f = makeFixture(summarizer: summarizer)

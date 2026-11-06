@@ -92,11 +92,11 @@ its own emitting anything. It goes over XPC (not the fire-and-forget
 `batty://` scheme) so a caller can tell success from silent failure —
 see `AppStateStore.recordCLINotification(tabID:title:body:playSound:)`
 in section 10. It always resolves to a real tab (an explicit `--tab`,
-`BATTY_TAB_ID` env, or the app's focused tab) and rides the same
-`BellFeedEntry` shape as a BEL/OSC-9 entry, unmodified — no new "kind"
-field distinguishes it, so a CLI-originated row looks like any other
-except for its message text (`title`, or `title\nbody` when `--body` is
-given).
+`BATTY_TAB_ID` env, or the app's focused tab) and records a plain
+`kind == .bell` `BellFeedEntry`, the same as a BEL/OSC-9 entry
+(`recordCLINotification` passes no `kind:`, so the default applies).
+Nothing marks a CLI-originated row except its message text (`title`, or
+`title\nbody` when `--body` is given).
 
 A fourth source is not a terminal event at all: a **Session Reminder**
 (#0514), a timer the user set on a Session. `ReminderScheduler` fires it

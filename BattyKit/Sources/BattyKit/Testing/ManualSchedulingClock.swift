@@ -8,7 +8,8 @@ import Foundation
 /// use `TestClock` instead, which also offers sleeper-registration signals.
 ///
 /// Lock-guarded rather than actor-isolated for the same reason as
-/// `SystemClock`: `SchedulingClock` is `nonisolated`, and a cancelled sleeper
+/// `TestClock` (`BattyKitTests/TestClock.swift`): `SchedulingClock` is
+/// `nonisolated`, and a cancelled sleeper
 /// must be removed and resumed from the cancellation handler without an
 /// actor hop.
 public nonisolated final class ManualSchedulingClock: SchedulingClock, @unchecked Sendable {

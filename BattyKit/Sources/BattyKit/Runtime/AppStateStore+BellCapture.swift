@@ -158,6 +158,7 @@ extension AppStateStore {
         guard isBellCaptureEnabled,
               bellFeed.capturedEntryIDs.contains(entryID),
               let entry = bellFeed.entries.first(where: { $0.id == entryID }),
+              entry.kind == .bell,
               entry.sessionID != BellFeedEntry.systemID
         else { return nil }
         return entry
