@@ -101,7 +101,8 @@ extension AppStateStore {
     }
 
     public enum BellRatingAvailability: Equatable, Sendable {
-        /// Capture is off, or the entry is the memory-footprint warning.
+        /// Capture is off, or the entry is the memory-footprint warning or a
+        /// Reminder, which has no summary to rate.
         case hidden
         /// Capture is on but this entry has no `event` record.
         case notCaptured
@@ -109,7 +110,7 @@ extension AppStateStore {
     }
 
     public func bellRatingAvailability(for entry: BellFeedEntry) -> BellRatingAvailability {
-        guard entry.sessionID != BellFeedEntry.systemID, isBellCaptureEnabled else { return .hidden }
+        guard entry.kind == .bell, entry.sessionID != BellFeedEntry.systemID, isBellCaptureEnabled else { return .hidden }
         return bellFeed.capturedEntryIDs.contains(entry.id) ? .available : .notCaptured
     }
 

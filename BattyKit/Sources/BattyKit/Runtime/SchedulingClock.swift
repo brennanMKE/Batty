@@ -42,8 +42,10 @@ public protocol SchedulingClock: AnyObject, Sendable {
 }
 
 /// The real clock. Every production construction site that takes a
-/// `clock:` parameter defaults it to `SystemClock()` and never overrides it
-/// — `ProcessStatusPaneContent` is reached only through
+/// `clock:` parameter defaults it to `SystemClock()` and does not override it
+/// in a normal run (the one exception is `AppStateStore.init`, which swaps in
+/// `ManualSchedulingClock` for the Reminder scheduler when a UI-test launch
+/// sets both `UITestDriver` env vars) — `ProcessStatusPaneContent` is reached only through
 /// `SplitTree.makePane`, which constructs it as
 /// `ProcessStatusPaneContent(target:tabLookup:)` with no `clock:` argument
 /// at all (`SplitTree.swift`), so production genuinely relies on the

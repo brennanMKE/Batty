@@ -26,12 +26,18 @@ public protocol BellNotifying: AnyObject {
     /// should be the paired Bell Feed entry's id so a tap routes through the
     /// same `onTapEntry` path as every other notification.
     func postFootprintWarning(title: String, body: String, identifier: String)
+
+    /// Posts the system notification for a Session Reminder that came due.
+    /// The paired `.reminder` Bell Feed entry's id is the notification
+    /// identifier and `userInfo`, so a tap routes through `onTapEntry`.
+    func postReminder(entry: BellFeedEntry, sessionTitle: String)
 }
 
 extension BellNotifying {
     /// Default no-op so test doubles that only exercise `post(for:...)`
     /// don't need updating for a path most of them don't touch.
     public func postFootprintWarning(title: String, body: String, identifier: String) {}
+    public func postReminder(entry: BellFeedEntry, sessionTitle: String) {}
 }
 
 @MainActor
@@ -139,6 +145,34 @@ public final class BellNotifier: BellNotifying {
         content.userInfo = [Self.entryIdUserInfoKey: identifier]
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         center.add(request, withCompletionHandler: nil)
+    }
+
+    /// The "Show system notifications" setting is checked by the caller
+    /// (`AppStateStore.fireReminder`, against the store's own
+    /// `preferences`); "Play sound" is applied here. Per-Session mute and the
+    /// frontmost-and-seen suppression `post(for:...)` applies do not apply:
+    /// a Reminder is something the user set on purpose, and its entry is
+    /// always unseen when posted. Not recorded in `BellDecisionHistory`,
+    /// which logs the terminal-bell gates (`BellTriggerKind`) a Reminder
+    /// never passes through.
+    public func postReminder(entry: BellFeedEntry, sessionTitle: String) {
+        let content = UNMutableNotificationContent()
+        let text = Self.reminderText(note: entry.message, sessionTitle: sessionTitle)
+        content.title = text.title
+        content.body = text.body
+        if SettingsPreference.resolvedBellSound() {
+            content.sound = .default
+        }
+        content.userInfo = [Self.entryIdUserInfoKey: entry.id.uuidString]
+        let request = UNNotificationRequest(identifier: entry.id.uuidString, content: content, trigger: nil)
+        center.add(request, withCompletionHandler: nil)
+    }
+
+    static func reminderText(note: String?, sessionTitle: String) -> (title: String, body: String) {
+        (
+            String(localized: "Batty — Reminder: \(sessionTitle)"),
+            note?.isEmpty == false ? note! : String(localized: "Time to come back to \(sessionTitle)")
+        )
     }
 }
 

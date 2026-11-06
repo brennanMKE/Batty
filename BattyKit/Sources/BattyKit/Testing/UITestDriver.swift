@@ -26,6 +26,18 @@ public enum UITestDriver {
         environment[scriptEnvVar] != nil && environment[sidebarIconsEnvVar] == "1"
     }
 
+    /// With "manual" alongside the script variable, Reminders run on a
+    /// frozen `ManualSchedulingClock` that only the test-only Command Palette
+    /// entries advance.
+    public static let reminderClockEnvVar = "BATTY_UI_TEST_REMINDER_CLOCK"
+
+    static func reminderClock(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ManualSchedulingClock? {
+        guard environment[scriptEnvVar] != nil, environment[reminderClockEnvVar] == "manual" else { return nil }
+        return ManualSchedulingClock()
+    }
+
     /// Where a UI-test launch keeps `projects.json`, so a test never shares
     /// the guest's real store. Honored only alongside the script variable;
     /// an empty or relative path is ignored.

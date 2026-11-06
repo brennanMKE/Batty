@@ -88,6 +88,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         AppStateStore.shared.nameSuggester = FoundationModelsNameSuggester.makeIfAvailable()
         AppStateStore.shared.notificationSummarizer = FoundationModelsNotificationSummarizer.makeIfAvailable()
         AppStateStore.shared.footprintMonitor.start()
+        AppStateStore.shared.reminderScheduler.observeSystemEvents()
         TerminalHostStore.shared.startOccludedSurfaceTicking()
         TerminalMetalMetricsLogger.startIfEnabled()
         // onAllSessionsClosed is wired per-window in AppStateStore.init and

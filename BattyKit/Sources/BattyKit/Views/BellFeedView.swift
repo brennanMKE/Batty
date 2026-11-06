@@ -57,6 +57,7 @@ public struct BellFeedView: View {
                         .onTapGesture { handleJump(to: entry) }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("bell-feed-entry.\(entry.id.uuidString)")
+                        .modifier(ReminderEntryAccessibility(isReminder: entry.kind == .reminder))
                         .contextMenu { ratingMenu(for: entry) }
                     }
                 }
@@ -159,6 +160,9 @@ public struct BellFeedView: View {
         if entry.sessionID == BellFeedEntry.systemID {
             return String(localized: "Batty")
         }
+        if entry.kind == .reminder {
+            return store.session(id: entry.sessionID)?.title ?? String(localized: "(closed)")
+        }
         // Search all windows' sessions to find the owning session (#0239:
         // entries can belong to any window's sessions, not just windows[0]).
         let allSessions = store.windows.flatMap { $0.sessions }
@@ -187,6 +191,69 @@ private struct BellFeedRow: View {
     let path: String
 
     var body: some View {
+        if entry.kind == .reminder {
+            reminderBody
+        } else {
+            bellBody
+        }
+    }
+
+    /// A Reminder reads differently from a bell: an alarm icon in the accent
+    /// color, "Reminder" with the Session's title, the note (or a prompt to
+    /// come back) and how long ago it was set, or when it was due if it came
+    /// due long before it was delivered, such as across a sleep.
+    private var reminderBody: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(entry.seen ? Color.clear : Color.accentColor)
+                .frame(width: 8, height: 8)
+                .padding(.top, 5)
+            Image(systemName: "alarm")
+                .foregroundStyle(Color.accentColor)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("Reminder")
+                        .font(.callout.weight(.semibold))
+                    Text(path)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityIdentifier("bell-feed-path.\(entry.id.uuidString)")
+                    Spacer()
+                    Text(entry.timestamp, style: .relative)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help(entry.timestamp.formatted(date: .abbreviated, time: .standard))
+                }
+                Text(entry.message ?? String(localized: "Time to come back to \(path)"))
+                    .font(.caption)
+                    .lineLimit(3)
+                    .accessibilityIdentifier("bell-feed-message.\(entry.id.uuidString)")
+                if let line = secondaryLine {
+                    Text(line)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("bell-feed-reminder-detail.\(entry.id.uuidString)")
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private static let lateAfter: TimeInterval = 60
+
+    private var secondaryLine: String? {
+        if let due = entry.reminderDueAt, entry.timestamp.timeIntervalSince(due) > Self.lateAfter {
+            return String(localized: "Due \(ReminderFormat.time(due))")
+        }
+        guard let setAt = entry.reminderSetAt else { return nil }
+        let ago = setAt.formatted(.relative(presentation: .named, unitsStyle: .wide))
+        return String(localized: "Set \(ago)")
+    }
+
+    private var bellBody: some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
                 .fill(entry.seen ? Color.clear : Color.accentColor)
@@ -224,6 +291,20 @@ private struct BellFeedRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Adds the `reminder` value to a Reminder row only, so a bell row's
+/// accessibility value is exactly what it was before Reminders existed.
+private struct ReminderEntryAccessibility: ViewModifier {
+    let isReminder: Bool
+
+    func body(content: Content) -> some View {
+        if isReminder {
+            content.accessibilityValue("reminder")
+        } else {
+            content
+        }
     }
 }
 

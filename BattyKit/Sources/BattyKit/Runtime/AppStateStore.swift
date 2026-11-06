@@ -37,6 +37,11 @@ public final class AppStateStore {
     /// kernel-level process-start-time lookup.
     public let launchDate = Date()
     @ObservationIgnored public var notifier: BellNotifying?
+    /// Fires every Session's Reminder, across all windows (`AppStateStore
+    /// +Reminders.swift`). Not started observing system events here: the
+    /// app delegate calls `observeSystemEvents()`, so a store built in a
+    /// test never subscribes to wake or clock notifications.
+    @ObservationIgnored public let reminderScheduler: ReminderScheduler
     /// Whether Batty is the active app, read once per bell by
     /// `routeRealTabBell`. The default is the live read; tests set it.
     @ObservationIgnored var isBattyActiveProvider: () -> Bool = { NSApplication.shared.isActive }
@@ -423,6 +428,13 @@ public final class AppStateStore {
             logger.info("onAllSessionsClosed windowID=\(runtime.id.value, privacy: .public): no sessions remaining; requesting window close")
             runtime.closeWindowCallback?()
         }
+        runtime.reminderCancelHandler = { [weak self] sessionID in
+            self?.reminderScheduler.cancel(sessionID: sessionID)
+        }
+        runtime.reminderTimeContext = { [weak self] in
+            guard let scheduler = self?.reminderScheduler else { return (Date(), .current) }
+            return (scheduler.now, scheduler.calendar)
+        }
         windows.append(runtime)
         return runtime
     }
@@ -438,6 +450,12 @@ public final class AppStateStore {
         pruneRecentlyKeyWindowID(windowID)
         for request in windows.first(where: { $0.id == windowID })?.pendingStartupTrusts ?? [] {
             cancelStartupTrust(requestID: request.id)
+        }
+        if let closing = windows.first(where: { $0.id == windowID }) {
+            for session in closing.sessions {
+                reminderScheduler.cancel(sessionID: session.id)
+                bellFeed.removeReminderEntries(forSessionID: session.id)
+            }
         }
         windows.removeAll { $0.id == windowID }
         closedWindowIDs.insert(windowID)
@@ -1271,7 +1289,9 @@ public final class AppStateStore {
         preferences: UserDefaults = .standard,
         projectsFileURL: URL? = nil,
         backgroundGate: AppWideBackgroundGate = .live,
-        featureFlags: FeatureFlags = .resolved()
+        featureFlags: FeatureFlags = .resolved(),
+        reminderClock: SchedulingClock? = nil,
+        reminderCalendar: @escaping () -> Calendar = { .current }
     ) {
         self.featureFlags = featureFlags
         self.backgroundGate = backgroundGate
@@ -1288,6 +1308,10 @@ public final class AppStateStore {
         self.nameCache = nameCache
         self.notifier = notifier
         self.preferences = preferences
+        self.reminderScheduler = ReminderScheduler(
+            clock: reminderClock ?? UITestDriver.reminderClock() ?? SystemClock(),
+            calendar: reminderCalendar
+        )
         self.footprintMonitor = FootprintMonitor(defaults: preferences)
         self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme(
             isDark: NSApp?.effectiveAppearance.isDark ?? true,
@@ -1308,6 +1332,16 @@ public final class AppStateStore {
         }
         self.windows = [window]
         self.fallbackWindowID = window.id
+        window.reminderCancelHandler = { [weak self] sessionID in
+            self?.reminderScheduler.cancel(sessionID: sessionID)
+        }
+        window.reminderTimeContext = { [weak self] in
+            guard let scheduler = self?.reminderScheduler else { return (Date(), .current) }
+            return (scheduler.now, scheduler.calendar)
+        }
+        reminderScheduler.onFire = { [weak self] firing in
+            self?.fireReminder(firing)
+        }
         footprintMonitor.onWarn = { [weak self] footprintBytes, step in
             self?.recordFootprintWarning(footprintBytes: footprintBytes, step: step)
         }
@@ -2257,6 +2291,9 @@ public final class AppStateStore {
             nsWindow.makeKeyAndOrderFront(nil)
         }
         owningWindow.jumpToBellEntry(entry)
+        if entry.kind == .reminder {
+            markBellSeen(id: entry.id)
+        }
     }
 
     /// Returns the `NSWindow` registered for `windowID`, if any.
@@ -2593,7 +2630,7 @@ public final class AppStateStore {
     /// searching across all registered windows. Used by the action shims that
     /// route operations by session ID (rename, remove, clear, duplicate) so
     /// they always target the correct window rather than defaulting to windows[0].
-    private func windowOwning(sessionID: UUID) -> WindowRuntime? {
+    func windowOwning(sessionID: UUID) -> WindowRuntime? {
         windows.first { $0.sessions.contains(where: { $0.id == sessionID }) }
     }
 

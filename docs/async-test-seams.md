@@ -39,7 +39,11 @@ samplingTask = Task { [weak self] in
 
 **Production default.** `clock: SchedulingClock = SystemClock()` — a
 defaulted init parameter whose default is the *real* clock. Production
-never overrides it: `ProcessStatusPaneContent` is reached only through
+does not override it in a normal run (the one exception is
+`AppStateStore.init`, which gives the Reminder scheduler a
+`ManualSchedulingClock` when a UI-test launch sets both
+`BATTY_UI_TEST_SCRIPT` and `BATTY_UI_TEST_REMINDER_CLOCK=manual`):
+`ProcessStatusPaneContent` is reached only through
 `SplitTree.makePane`, which constructs it with no `clock:` argument at all
 (`SplitTree.swift`), so production genuinely relies on the default — one
 fresh `SystemClock()` per content instance, since Swift re-evaluates a

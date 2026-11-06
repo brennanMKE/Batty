@@ -255,6 +255,7 @@ A "feed" of bell events across every surface, plus per-tab, per-pane, and per-se
   4. Activates the right tab inside that pane.
   5. Marks the entry seen and decrements unseen counters at every level.
 - A "Clear all" button marks every entry seen.
+- The feed also holds **Reminder** entries: a user-set, per-Session timer (Session menu → Remind Me) that fires an unseen, differently styled entry and a system notification, and whose click brings the Session forward without moving its focused Pane or Tab (see `Concepts.md`: Reminder).
 
 #### System notifications (UserNotifications)
 

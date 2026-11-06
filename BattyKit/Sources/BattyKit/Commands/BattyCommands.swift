@@ -223,6 +223,11 @@ public struct BattyCommands: Commands {
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .layoutPicker))
             .disabled(keyWindow?.selectedSession?.tree.allPanes.count != 1)
 
+            ReminderMenu(store: store, session: keyWindow?.selectedSession, target: {
+                guard let window = actionWindow, let session = window.selectedSession else { return nil }
+                return (window, session)
+            })
+
             Divider()
 
             ForEach(0..<9) { index in

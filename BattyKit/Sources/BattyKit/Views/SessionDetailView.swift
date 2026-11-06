@@ -118,6 +118,13 @@ public struct SessionDetailView: View {
                 onCancel: { windowRuntime.projectPickerShown = false }
             )
         }
+        .sheet(item: reminderSheetBinding) { session in
+            ReminderSheet(
+                store: store,
+                session: session,
+                onClose: { windowRuntime.reminderSheetSessionID = nil }
+            )
+        }
         .sheet(isPresented: $themeSelectorShown) {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)
         }
@@ -342,6 +349,16 @@ public struct SessionDetailView: View {
         Binding(
             get: { windowRuntime.projectPickerShown },
             set: { if windowRuntime.projectPickerShown != $0 { windowRuntime.projectPickerShown = $0 } }
+        )
+    }
+
+    private var reminderSheetBinding: Binding<SessionRuntime?> {
+        Binding(
+            get: { windowRuntime.sessions.first { $0.id == windowRuntime.reminderSheetSessionID } },
+            set: { newValue in
+                guard windowRuntime.reminderSheetSessionID != newValue?.id else { return }
+                windowRuntime.reminderSheetSessionID = newValue?.id
+            }
         )
     }
 

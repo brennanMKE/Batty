@@ -92,6 +92,37 @@ field distinguishes it, so a CLI-originated row looks like any other
 except for its message text (`title`, or `title\nbody` when `--body` is
 given).
 
+A fourth source is not a terminal event at all: a **Session Reminder**
+(#0514), a timer the user set on a Session. `ReminderScheduler` fires it
+into `AppStateStore.fireReminder(_:)`, which records a `BellFeedEntry`
+with `kind == .reminder` (`message` is the note, `reminderSetAt` and
+`reminderDueAt` feed the row's "Set ... ago" / "Due ..." line) and calls
+`BellNotifying.postReminder(entry:sessionTitle:)`. It differs from the
+three sources above in its gating:
+
+- The entry is always recorded **unseen**, even when the Session is
+  selected and Batty is frontmost, and is recorded with `record(_:)`, never
+  `recordOrCollapse`, so two Reminders never merge.
+- It bumps **no** `unseenBellCount`, and `decrementUnseen(for:)` ignores
+  `.reminder` entries, so clearing one never lowers a bell counter.
+- **Per-Session mute does not silence it**, and neither does the
+  frontmost-and-seen suppression in `BellNotifier.evaluateShouldPost`. Only
+  the app-wide "Show system notifications" setting (checked by
+  `fireReminder` against the store's own `preferences`) and "Play sound"
+  apply.
+- It is not recorded in `BellDecisionHistory`, which logs the terminal-bell
+  gates only.
+- Clicking the entry or its notification runs the Session-level jump:
+  `WindowRuntime.jumpToBellEntry` selects the Session and leaves
+  `focusedPaneID` and the active Tab untouched, then the entry is marked
+  seen. Selecting the Session (anything that runs `markActiveTabSeen`) and
+  Clear All also mark it seen.
+- Closing a Tab or Pane does **not** purge a `.reminder` entry, because
+  the Tab it recorded is only whatever was active when it fired
+  (`removeEntries(matchingTabIDs:)` skips them). Closing the Session or its
+  Window purges them by Session id
+  (`BellFeedStore.removeReminderEntries(forSessionID:)`).
+
 ---
 
 ## 3. The bell-feed pipeline
@@ -389,6 +420,7 @@ the tab doesn't need a delayed banner for the same bell.
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/BellNotifier.swift`](../BattyKit/Sources/BattyKit/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, and the tap-to-jump delegate (`onTapEntry`). |
 | [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `recordBellTick`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
 | [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
 | [`../BattyKit/Sources/BattyKit/BellFeedView.swift`](../BattyKit/Sources/BattyKit/BellFeedView.swift) | The popover and `BellFeedRow`. Path-label formatting lives here. |
 | [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) | `recordBellTickIfNeeded()` (returns `Int` delta), `recordDesktopNotificationIfNeeded()` (returns `Bool`), `bellCount` / `unseenBellCount` / `lastBellAt` / `lastBellMessage`. |

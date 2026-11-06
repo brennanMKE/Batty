@@ -46,11 +46,24 @@ public enum QuitConfirmation {
 
         let alert = NSAlert()
         alert.messageText = String(localized: "Quit Batty?")
-        alert.informativeText = String(localized: "There \(openTabs) open terminal(s).")
+        alert.informativeText = informativeText(
+            openTabs: openTabs,
+            pendingReminders: store.pendingReminderCount
+        )
         alert.addButton(withTitle: String(localized: "Quit"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.alertStyle = .warning
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// Quitting adds no confirmation of its own for Reminders; when this
+    /// alert is already up it says that pending ones go with the Sessions.
+    static func informativeText(openTabs: Int, pendingReminders: Int) -> String {
+        var text = String(localized: "There \(openTabs) open terminal(s).")
+        if pendingReminders > 0 {
+            text += " " + String(localized: "\(pendingReminders) pending reminder(s) will be cancelled.")
+        }
+        return text
     }
 
     /// The count `shouldQuitOrPrompt` shows the user ("There are N open

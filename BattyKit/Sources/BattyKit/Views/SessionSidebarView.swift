@@ -33,21 +33,24 @@ public struct SessionSidebarView: View {
 
     /// "selected" / "unselected", then ", N unseen" while the Session has
     /// unseen bell events, then ", Project, <symbol name> symbol" when the Session is
-    /// backed by a Project, and ", background image problem" when its Project's
-    /// image was left out. The row hides its children from accessibility, so
+    /// backed by a Project, ", background image problem" when its Project's
+    /// image was left out, and the Reminder state (", reminder pending: ..." or
+    /// ", reminder due") last. The row hides its children from accessibility, so
     /// this value is the only place its icon and numeric badge are readable.
     static func rowAccessibilityValue(
         for session: SessionRuntime,
         isSelected: Bool,
         projectSymbol: ProjectSymbol? = nil,
         iconName: String? = nil,
-        projectSymbolName: String? = nil
+        projectSymbolName: String? = nil,
+        reminder: String? = nil
     ) -> String {
         var value = isSelected ? "selected" : "unselected"
         if session.unseenBellCount > 0 { value += ", \(session.unseenBellCount) unseen" }
         if let projectSymbol { value += ", Project, \(ProjectAppearance.displayName(symbol: projectSymbol, customName: projectSymbolName)) symbol" }
         if let iconName { value += ", icon \(iconName)" }
         if session.projectBackgroundImageProblem != nil { value += ", background image problem" }
+        if let reminder { value += ", \(reminder)" }
         return value
     }
 
@@ -64,6 +67,21 @@ public struct SessionSidebarView: View {
     /// asks, so VoiceOver never speaks SF Symbol names and tests that compare
     /// the value exactly are unaffected.
     private static let exposesRowIcon = UITestDriver.exposesSidebarIcons()
+
+    /// The Sidebar cell merges every accessibility child into one element,
+    /// concatenating identifiers and values, so the Reminder badge is hidden
+    /// from accessibility and its state rides on the row's value instead:
+    /// "reminder pending: <time and note>" or "reminder due".
+    private func reminderState(for session: SessionRuntime) -> String? {
+        if let reminder = session.reminder {
+            let detail = ReminderActions.detail(for: reminder, store: store)
+            return detail.map { "reminder pending: \($0)" } ?? "reminder pending"
+        }
+        if !store.bellFeed.unseenReminderEntries(forSessionID: session.id).isEmpty {
+            return "reminder due"
+        }
+        return nil
+    }
 
     private func rowIconName(for session: SessionRuntime) -> String? {
         guard Self.exposesRowIcon else { return nil }
@@ -121,34 +139,44 @@ public struct SessionSidebarView: View {
                 } label: {
                     // Without an element of its own, the row's accessible
                     // leaves each inherit the identifier, and folding them
-                    // joins the copies with "-". So the row hides its
-                    // children and states its own label and value. Applied on
-                    // the label content, not on the whole DisclosureGroup, so
-                    // it doesn't also describe the disclosed pane rows below.
-                    SessionRow(
-                        session: session,
-                        store: store,
-                        windowRuntime: windowRuntime,
-                        accent: themeChrome?.accent,
-                        onRename: {
-                            renameDraft = session.title
-                            renamingSessionID = session.id
-                        },
-                        onTheme: {
-                            themingSessionID = session.id
-                        },
-                        onSetColor: {
-                            coloringSessionID = session.id
-                        },
-                        onBackground: {
-                            backgroundSettingsSessionID = session.id
-                        }
-                    )
+                    // joins the copies with "-". So the row, Reminder badge
+                    // included, hides its children and states its own label
+                    // and value; the badge's state rides on that value.
+                    // Applied on the label content, not on the whole
+                    // DisclosureGroup, so it doesn't also describe the
+                    // disclosed pane rows below.
+                    HStack(spacing: 4) {
+                        SessionRow(
+                            session: session,
+                            store: store,
+                            windowRuntime: windowRuntime,
+                            accent: themeChrome?.accent,
+                            onRename: {
+                                renameDraft = session.title
+                                renamingSessionID = session.id
+                            },
+                            onTheme: {
+                                themingSessionID = session.id
+                            },
+                            onSetColor: {
+                                coloringSessionID = session.id
+                            },
+                            onBackground: {
+                                backgroundSettingsSessionID = session.id
+                            }
+                        )
+                        ReminderBadge(
+                            session: session,
+                            store: store,
+                            accent: themeChrome?.accent,
+                            onEdit: { ReminderActions.presentSheet(for: session, in: windowRuntime) }
+                        )
+                    }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Self.rowAccessibilityLabel(for: session))
                     .accessibilityAddTraits(.isStaticText)
                     .accessibilityIdentifier("session-row.\(session.title)")
-                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session), projectSymbolName: session.projectSymbolName))
+                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState(for: session)))
                 }
                 .tag(session.id as UUID?)
                 .modifier(SidebarRowBackground(
@@ -417,6 +445,37 @@ private struct SessionRowIconView: View {
     }
 }
 
+/// The Sidebar row's Reminder marker. A pending Reminder shows a clock that
+/// opens the sheet in edit mode; a Reminder that has fired and whose feed
+/// entry is still unseen shows an accent alarm until the user acknowledges it.
+/// Nothing is drawn otherwise. Any relative time is computed when the
+/// tooltip is rendered; no timer writes observed state.
+private struct ReminderBadge: View {
+    let session: SessionRuntime
+    let store: AppStateStore
+    let accent: Color?
+    let onEdit: () -> Void
+
+    var body: some View {
+        if let reminder = session.reminder {
+            Button(action: onEdit) {
+                Image(systemName: "clock")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(ReminderActions.detail(for: reminder, store: store) ?? "")
+            .accessibilityHidden(true)
+        } else if let due = store.bellFeed.unseenReminderEntries(forSessionID: session.id).first {
+            Image(systemName: "alarm.fill")
+                .imageScale(.small)
+                .foregroundStyle(accent ?? Color.accentColor)
+                .help(due.message ?? String(localized: "Reminder is due"))
+                .accessibilityHidden(true)
+        }
+    }
+}
+
 private struct SessionRow: View {
     @Bindable var session: SessionRuntime
     let store: AppStateStore
@@ -491,6 +550,8 @@ private struct SessionRow: View {
                 : String(localized: "Mute Notifications")) {
                 session.notificationsMuted.toggle()
             }
+            ReminderMenu(store: store, session: session, target: { (windowRuntime, session) })
+                .accessibilityIdentifier("menu.sidebar.remind.\(session.title)")
             let saveMenu = SaveSessionAsProject.menuModel(store: store, session: session)
             Divider()
             if let target = saveMenu.updateTarget {

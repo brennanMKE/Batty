@@ -83,6 +83,11 @@ public final class WindowRuntime {
     /// Command Palette's direct present, the Sidebar footer button); cleared by
     /// the picker's onAction/onCancel and the sheet binding's setter.
     public var projectPickerShown: Bool = false
+    /// The Session whose Reminder sheet is up in this window. Written by the
+    /// event-origin entry points (Session menu, Sidebar context menu,
+    /// Command Palette, the pending badge) and cleared when the sheet
+    /// closes.
+    public var reminderSheetSessionID: UUID?
     /// Projects waiting on the user's answer to the startup-command trust
     /// sheet, oldest first; the sheet shows the first. Written only by
     /// `AppStateStore`: appended by an open request, removed when a sheet
@@ -100,6 +105,13 @@ public final class WindowRuntime {
     /// out of the pure-model layer. `nil` until the window's view tree is
     /// live, so a very early session close does not close the window.
     @ObservationIgnored public var closeWindowCallback: (() -> Void)?
+    /// Called by `removeSession` with the id of a Session that held a
+    /// Reminder, so the app-wide scheduler stops tracking it. Set by
+    /// `AppStateStore`; nil for a bare `WindowRuntime` in a unit test.
+    @ObservationIgnored var reminderCancelHandler: ((UUID) -> Void)?
+    /// The clock and calendar Reminder wording is formatted against; the
+    /// scheduler's, once `AppStateStore` wires it.
+    @ObservationIgnored var reminderTimeContext: () -> (now: Date, calendar: Calendar) = { (Date(), .current) }
 
     // Injected from AppStateStore — global services shared across windows.
     @ObservationIgnored let bellFeed: BellFeedStore
@@ -291,6 +303,15 @@ public final class WindowRuntime {
         AppEventWatcher.shared.send(eventType: sessionEvent.type, payload: sessionEvent)
         let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
         cleanUpBellState(forTabIDs: tabIDsToClear)
+        // Silent: closing the Session was the user's own action, so a
+        // pending Reminder is cancelled without a notification, and a fired
+        // one's feed entries are purged with the rest of the Session's.
+        if session.reminder != nil {
+            session.reminder = nil
+            reminderCancelHandler?(id)
+        }
+        bellFeed.removeReminderEntries(forSessionID: id)
+        if reminderSheetSessionID == id { reminderSheetSessionID = nil }
         for tabID in tabIDsToClear {
             TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
         }
@@ -338,9 +359,14 @@ public final class WindowRuntime {
         }
         let busyCount = busy.count
         let title = session.title
-        let message = busyCount == 1
+        var message = busyCount == 1
             ? String(localized: "\(title) has a tab that is still running a process. Closing it will end that process.")
             : String(localized: "\(title) has \(busyCount) tabs that are still running processes. Closing it will end them.")
+        let context = reminderTimeContext()
+        if let reminder = session.reminder, let due = reminder.fireDate(calendar: context.calendar) {
+            let when = ReminderFormat.phrase(for: due, now: context.now, calendar: context.calendar)
+            message += " " + String(localized: "Its reminder \(when) will be cancelled.")
+        }
         pendingCloseRequest = PendingCloseRequest(kind: .session(sessionID: id), message: message)
     }
 
@@ -1009,6 +1035,10 @@ public final class WindowRuntime {
     }
 
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
+        if entry.kind == .reminder {
+            jumpToReminderEntry(entry)
+            return
+        }
         guard let session = sessions.first(where: { $0.id == entry.sessionID }),
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
               pane.tabs.contains(where: { $0.id == entry.tabID })
@@ -1024,9 +1054,19 @@ public final class WindowRuntime {
         pane.activeTabID = entry.tabID
     }
 
+    /// A Reminder returns the user to the Session as they left it, so unlike
+    /// a bell it selects the Session and leaves the focused Pane and active
+    /// Tab alone: the Pane and Tab the entry recorded are only whatever was
+    /// focused when it fired.
+    private func jumpToReminderEntry(_ entry: BellFeedEntry) {
+        guard sessions.contains(where: { $0.id == entry.sessionID }) else { return }
+        selectedSessionID = entry.sessionID
+    }
+
     // MARK: - Bell state (per-window tab-level counters)
 
     public func markActiveTabSeen() {
+        markSelectedSessionReminderEntriesSeen()
         // `focusedTerminalPane`, not `focusedPaneAnyKind` (#0332 B3): this
         // reads `.activeTabID` (and, below, `.tabs`) to clear bell entries
         // for the now-focused tab. A non-terminal pane's placeholder Tab
@@ -1049,6 +1089,16 @@ public final class WindowRuntime {
         tab.unseenBellCount = 0
         pane.unseenBellCount = max(0, pane.unseenBellCount - residual)
         session.unseenBellCount = max(0, session.unseenBellCount - residual)
+    }
+
+    /// Selecting a Session is how the user acknowledges its due Reminder.
+    /// Runs before `markActiveTabSeen`'s Pane guard, because a Reminder
+    /// belongs to the Session, not to whichever Pane is focused.
+    private func markSelectedSessionReminderEntriesSeen() {
+        guard let sessionID = selectedSessionID else { return }
+        for entry in bellFeed.unseenReminderEntries(forSessionID: sessionID) {
+            _ = bellFeed.markSeen(id: entry.id)
+        }
     }
 
     // MARK: - Internal helpers (accessible within BattyKit module)
@@ -1106,6 +1156,8 @@ public final class WindowRuntime {
     /// Non-collapsed entries have `repeatCount == 1`, so this is a
     /// straight extension of the pre-#0298 behavior, not a change to it.
     func decrementUnseen(for entry: BellFeedEntry) {
+        // A Reminder never incremented a counter.
+        guard entry.kind == .bell else { return }
         let amount = max(1, entry.repeatCount)
         for session in sessions where session.id == entry.sessionID {
             session.unseenBellCount = max(0, session.unseenBellCount - amount)

@@ -117,6 +117,8 @@ struct CommandPaletteView: View {
             action: { AboutPanel.show() }
         ))
 
+        cmds.append(contentsOf: reminderCommands())
+
         cmds.append(PaletteCommand(
             id: "extra:backgroundImages",
             title: String(localized: "Background Images\u{2026}"),
@@ -202,6 +204,72 @@ struct CommandPaletteView: View {
 
         return cmds
     }
+
+    /// Remind Me entries for the key Window's selected Session, plus the
+    /// UI-test entries that advance the frozen Reminder clock. Those exist
+    /// only when a UI-test launch installed that clock
+    /// (`UITestDriver.reminderClock`), never in a normal run.
+    private func reminderCommands() -> [PaletteCommand] {
+        var cmds: [PaletteCommand] = []
+        if let window = store.keyWindowOrFirstRegistered(), let session = window.selectedSession {
+            cmds.append(PaletteCommand(
+                id: "extra:remind:sheet",
+                title: String(localized: "Remind Me About This Session…"),
+                keyHint: nil,
+                action: { runAfterDismiss { ReminderActions.presentSheet(for: session, in: window) } }
+            ))
+            for minutes in ReminderSpec.presetMinutes {
+                cmds.append(PaletteCommand(
+                    id: "extra:remind:\(minutes)",
+                    title: minutes == 60
+                        ? String(localized: "Remind Me in 1 Hour")
+                        : String(localized: "Remind Me in \(minutes) Minutes"),
+                    keyHint: nil,
+                    action: { ReminderActions.set(.after(minutes: minutes), on: session, store: store) }
+                ))
+            }
+            cmds.append(PaletteCommand(
+                id: "extra:remind:tomorrow",
+                title: String(localized: "Remind Me Tomorrow at \(ReminderActions.defaultTomorrowTimeText())"),
+                keyHint: nil,
+                action: { ReminderActions.set(.defaultTomorrow, on: session, store: store) }
+            ))
+            if session.reminder != nil {
+                cmds.append(PaletteCommand(
+                    id: "extra:remind:edit",
+                    title: String(localized: "Edit Reminder…"),
+                    keyHint: nil,
+                    action: { runAfterDismiss { ReminderActions.presentSheet(for: session, in: window) } }
+                ))
+                cmds.append(PaletteCommand(
+                    id: "extra:remind:cancel",
+                    title: String(localized: "Cancel Reminder"),
+                    keyHint: nil,
+                    action: { ReminderActions.cancel(session, store: store) }
+                ))
+            }
+        }
+        if let clock = store.reminderScheduler.manualClock {
+            for (title, seconds) in Self.uiTestClockSteps {
+                cmds.append(PaletteCommand(
+                    id: "uitest:reminderClock:\(Int(seconds))",
+                    title: title,
+                    keyHint: nil,
+                    action: {
+                        clock.advance(by: seconds)
+                    }
+                ))
+            }
+        }
+        return cmds
+    }
+
+    static let uiTestClockSteps: [(title: String, seconds: TimeInterval)] = [
+        ("UI Test: Advance Reminder Clock by one minute", 60),
+        ("UI Test: Advance Reminder Clock by five minutes", 5 * 60),
+        ("UI Test: Advance Reminder Clock by fifteen minutes", 15 * 60),
+        ("UI Test: Advance Reminder Clock by two hours", 2 * 3600),
+    ]
 
     private func saveSessionAsProject(_ destination: SaveSessionAsProject.Destination) {
         let session = store.keyWindowOrFirstRegistered()?.selectedSession

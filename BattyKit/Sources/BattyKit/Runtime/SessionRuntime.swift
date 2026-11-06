@@ -59,6 +59,12 @@ public final class SessionRuntime: Identifiable {
     /// Project is saved. In-memory only, like `projectID`; the Sidebar row
     /// reads this rather than looking the Project up from `body`.
     public internal(set) var projectSymbol: ProjectSymbol?
+    /// The Session's pending Reminder, at most one. The Sidebar row's badge
+    /// reads it. `AppStateStore` writes it together with the app-wide
+    /// `ReminderScheduler`, which is what actually fires it; in-memory only,
+    /// like the Session itself.
+    public internal(set) var reminder: SessionReminder?
+
     /// The backing Project's arbitrary SF Symbol name, when it has one;
     /// wins over `projectSymbol` when drawing.
     public internal(set) var projectSymbolName: String?

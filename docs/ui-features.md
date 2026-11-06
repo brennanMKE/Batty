@@ -350,12 +350,85 @@ session mute behavior, and the app-wide notification settings.
 **Accessibility identifiers:**
 
 - `bell-feed.popover` — the popover root.
-- `bell-feed.entry.<id>` — each entry row; `accessibilityValue` contains the
-  message text.
+- `bell-feed-entry.<id>` — each entry row. A bell row sets no accessibility
+  value. A Reminder row sets the value `reminder`, but the `.contain` row does
+  not expose it to XCUITest (VM run 20261105-154634-20567), so UI tests find a
+  Reminder row by the "Reminder" title text it holds.
 - `accessibilityValue("bell-pending" / "clear")` on `tab-chip.<title>`,
   `pane-terminal.<id>`, and `session-row.<title>`.
 - `menu.sidebar.mute-session.<title>` — the mute/unmute item in the Session
   sidebar context menu.
+
+A Reminder entry (#0514) is a second kind of row in the same list. It shows an
+`alarm` icon in the accent color, "Reminder" with the Session's title, the note
+(or "Time to come back to <Session>"), and a line reading "Set <time> ago" or,
+when it was delivered more than a minute after it was due, "Due <time>". Its
+`bell-feed-entry.<id>` row sets the accessibility value `reminder` (not
+visible to XCUITest; see above); a bell row's value is unchanged. Reminder rows
+offer no rating menu, since they have no summary. It is recorded unseen, adds no unseen-bell count, and
+clicking it selects the Session without moving its focused Pane or Tab. See
+the Session Reminders section below.
+
+---
+
+## Session Reminders
+
+A Reminder is a one-shot timer on one Session (`Concepts.md`: Reminder). The
+design follows the injected-clock rules in `async-test-seams.md`; the fire path
+and its gating are in `notifications.md` §2.
+
+**Entry points** (all act on one Session): Session menu → Remind Me; the same
+submenu in the Sidebar row's context menu; Command Palette entries "Remind Me
+About This Session…", "Remind Me in 5 / 15 / 30 Minutes", "Remind Me in 1
+Hour", "Remind Me Tomorrow at 9:00 AM", and, while one is pending, "Edit
+Reminder…" and "Cancel Reminder". Presets set the Reminder at once with no
+note. Custom… and Edit Reminder… present `ReminderSheet` as a `.sheet` on the
+Window (`WindowRuntime.reminderSheetSessionID`), not a popover, so the Session
+menu and palette work with the Sidebar collapsed. There is no keyboard
+shortcut.
+
+**Badge.** A pending Reminder shows a `clock` button on the Sidebar row that
+opens the sheet in edit mode; a fired one shows `alarm.fill` until its entry
+is seen. The Sidebar cell merges all accessibility children into one element
+(concatenating identifiers and values), so the badge is hidden from
+accessibility and its state is appended to the row's own
+`session-row.<title>` value instead: `, reminder pending: <time and note>` or
+`, reminder due`. A row with no Reminder has exactly the value it had before.
+
+**Invariants:**
+
+- One Reminder per Session; setting replaces. Cancel is immediate, with no
+  confirmation.
+- Closing a Session cancels its Reminder and purges its Reminder entries,
+  silently, on every close path. The Session-close confirmation, when it is
+  already showing, and the Quit confirmation each add one line about pending
+  Reminders; neither is shown just for a Reminder.
+- Nothing writes observed state on a timer: the tooltip's time is computed
+  when it renders, and the scheduler's fire path runs on its own task, not in
+  a view update.
+- Reminders do not survive a quit.
+
+**UI-test clock.** With `BATTY_UI_TEST_SCRIPT` present and
+`BATTY_UI_TEST_REMINDER_CLOCK=manual`, the scheduler runs on a frozen
+`ManualSchedulingClock`. The Command Palette then also lists "UI Test: Advance
+Reminder Clock by one minute / five minutes / fifteen minutes / two hours".
+Neither exists otherwise.
+
+**Accessibility identifiers:**
+
+| Element | Identifier |
+|---|---|
+| Sheet | `reminder-sheet` (title `reminder-sheet.title`, summary line `reminder-sheet.summary`) |
+| Presets | `reminder-sheet.preset.5`, `.preset.15`, `.preset.30`, `.preset.60` |
+| Custom | `reminder-sheet.custom` (toggle), `reminder-sheet.custom.hours`, `reminder-sheet.custom.minutes` |
+| Tomorrow | `reminder-sheet.tomorrow` (toggle), `reminder-sheet.tomorrow-time` |
+| Note | `reminder-sheet.note` |
+| Buttons | `reminder-sheet.set`, `reminder-sheet.cancel`, `reminder-sheet.remove` |
+| Sidebar state | the `session-row.<title>` value ends `reminder pending: <time and note>` or `reminder due` |
+| Context menu | `menu.sidebar.remind.<title>` (UI tests find the item as "Remind Me" inside the menu holding "Reset Name", because the Session menu has its own "Remind Me" that acts on the selected Session) |
+
+`BattyUITests/SessionReminderTests.swift` covers setting from the menu and the
+sheet, cancel, fire-and-jump with a non-default focused Pane, and close.
 
 ---
 
