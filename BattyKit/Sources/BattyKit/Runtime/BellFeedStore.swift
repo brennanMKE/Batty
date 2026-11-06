@@ -204,6 +204,12 @@ public final class BellFeedStore {
     public internal(set) var capturedEntryIDs: Set<UUID> = []
     public internal(set) var ratingVerdicts: [UUID: BellRatingVerdict] = [:]
 
+    /// Called with the ids of rows that left the Feed: Tab or Reminder
+    /// removal, or cap eviction. Not called for a collapse (same row id) or
+    /// `updateSummary`. Set by `AppStateStore` to cancel those rows'
+    /// summarizations.
+    @ObservationIgnored var onEntriesRemoved: ((Set<UUID>) -> Void)?
+
     public init(entries: [BellFeedEntry] = []) {
         self.entries = entries.sorted { $0.timestamp > $1.timestamp }
         if self.entries.count > Self.cap {
@@ -215,8 +221,10 @@ public final class BellFeedStore {
     public func record(_ entry: BellFeedEntry) -> BellFeedEntry {
         entries.insert(entry, at: 0)
         if entries.count > Self.cap {
+            let evicted = Set(entries[Self.cap...].map(\.id))
             entries.removeLast(entries.count - Self.cap)
             pruneRatingState()
+            onEntriesRemoved?(evicted)
         }
         return entry
     }
@@ -362,6 +370,7 @@ public final class BellFeedStore {
         guard !removed.isEmpty else { return [] }
         entries.removeAll { $0.kind == .reminder && $0.sessionID == sessionID }
         pruneRatingState()
+        onEntriesRemoved?(Set(removed.map(\.id)))
         return removed
     }
 
@@ -376,6 +385,7 @@ public final class BellFeedStore {
         guard !removed.isEmpty else { return [] }
         entries.removeAll { $0.kind == .bell && tabIDs.contains($0.tabID) }
         pruneRatingState()
+        onEntriesRemoved?(Set(removed.map(\.id)))
         return removed
     }
 }

@@ -97,6 +97,8 @@ in-memory decision history; the gates are not recomputed.
 | `sanitizedSummary` | string, null | What `NotificationSummary.sanitize` kept |
 | `feedRowText` | string, null | Row text after the update; null if the entry left the feed, including a visit to its Tab (#0556) |
 
+A row that leaves the feed before the model replies, whether by a close, a visit or cap eviction, cancels its summarization: the `summary` record has `status` `cancelled` and `feedRowText` null (#0564).
+
 An app quit before the model replies leaves an `event` with no `summary`.
 That is expected.
 

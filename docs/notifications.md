@@ -335,6 +335,10 @@ feed coherent with the live model:
   `removeEntries(matchingTabIDs:)`, then loops over each removed entry
   that was still unseen and runs `decrementUnseen(for:)` so the
   tab/pane/session aggregates stay in sync.
+- `WindowRuntime.tearDownClosingTabs(_:)` (#0564) — the one per-Tab
+  teardown every close path runs before its Tabs leave the model:
+  `cleanUpBellState(forTabIDs:)`, then cancelling the Tabs' AI Tab-name
+  suggestions. Every row in the table below reaches the cleanup through it.
 
 Wired in:
 
@@ -344,10 +348,15 @@ Wired in:
 | `WindowRuntime.closePane(id:refuseIfAppsLastPane:fromCli:)` | Every Tab in the Pane |
 | `WindowRuntime.closeOtherTabs(in:keeping:)` | Every Tab in the Pane except the kept one (#0559) |
 | `WindowRuntime.removeSession(id:)` | Union of every `tab.id` across every pane in the session |
-| Window close (`RootWindowView.windowWillClose`) | Every Tab in the Window |
+| `WindowRuntime.tearDownForWindowClose()` (called by `RootWindowView.windowWillClose`) | Every Tab in the Window |
 
 Reminder rows are not matched by Tab id; they are purged by Session id
 instead (`removeReminderEntries(forSessionID:)`, #0514).
+
+Any row leaving the Feed (a close, a visit's prune, a Reminder purge, or cap
+eviction) cancels its in-flight AI summarization: `BellFeedStore` reports the
+removed row ids through `onEntriesRemoved`, and `AppStateStore` cancels those
+rows' summarization `Task`s (#0564).
 
 The result: the feed never shows entries pointing at non-existent tabs,
 and the aggregate counts never drift when tabs disappear out from
@@ -483,7 +492,7 @@ the tab doesn't need a delayed banner for the same bell.
 |---|---|
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/BellNotifier.swift`](../BattyKit/Sources/BattyKit/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, and the tap-to-jump delegate (`onTapEntry`). |
-| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (cleanup hooks), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (thin routers; cleanup runs in `WindowRuntime.tearDownClosingTabs(_:)`), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
 | [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
 | [`../BattyKit/Sources/BattyKit/BellFeedView.swift`](../BattyKit/Sources/BattyKit/BellFeedView.swift) | The popover and `BellFeedRow`. Path-label formatting lives here. |

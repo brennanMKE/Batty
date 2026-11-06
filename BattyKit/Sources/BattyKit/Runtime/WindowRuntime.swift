@@ -112,6 +112,15 @@ public final class WindowRuntime {
     /// The clock and calendar Reminder wording is formatted against; the
     /// scheduler's, once `AppStateStore` wires it.
     @ObservationIgnored var reminderTimeContext: () -> (now: Date, calendar: Calendar) = { (Date(), .current) }
+    /// Called by `tearDownClosingTabs(_:)` with the ids of Tabs about to
+    /// close, so their in-flight AI Tab-name suggestions are cancelled. Set
+    /// by `AppStateStore`; nil for a bare `WindowRuntime` in a unit test.
+    @ObservationIgnored var tabsClosingHandler: ((Set<UUID>) -> Void)?
+    /// Called by `removeSession` and `tearDownForWindowClose()` with the id
+    /// of a Session about to close, so its in-flight AI Session-name
+    /// suggestion is cancelled. Set by `AppStateStore`; nil for a bare
+    /// `WindowRuntime` in a unit test.
+    @ObservationIgnored var sessionClosingHandler: ((UUID) -> Void)?
 
     // Injected from AppStateStore — global services shared across windows.
     @ObservationIgnored let bellFeed: BellFeedStore
@@ -302,7 +311,8 @@ public final class WindowRuntime {
         let sessionEvent = WatchEventPayload(type: "session_destroyed", sessionID: id, fromCli: fromCli)
         AppEventWatcher.shared.send(eventType: sessionEvent.type, payload: sessionEvent)
         let tabIDsToClear = Set(session.tree.allPanes.flatMap { $0.tabs.map(\.id) })
-        cleanUpBellState(forTabIDs: tabIDsToClear)
+        tearDownClosingTabs(tabIDsToClear)
+        sessionClosingHandler?(id)
         // Silent: closing the Session was the user's own action, so a
         // pending Reminder is cancelled without a notification, and a fired
         // one's feed entries are purged with the rest of the Session's.
@@ -476,7 +486,7 @@ public final class WindowRuntime {
         logger.info("closeTab tab=\(tabID, privacy: .public) sessions=\(self.sessions.count) totalTabs=\(totalTabs)")
         for session in sessions {
             for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
-                cleanUpBellState(forTabIDs: [tabID])
+                tearDownClosingTabs([tabID])
                 pane.removeTab(id: tabID)
                 logger.info("closeTab removed tab=\(tabID, privacy: .public) pane=\(pane.id, privacy: .public) session=\(session.id, privacy: .public) paneTabsRemaining=\(pane.tabs.count)")
                 if pane.tabs.isEmpty {
@@ -623,13 +633,13 @@ public final class WindowRuntime {
         )
     }
 
-    /// Closes every Tab in `pane` except `keptTabID`, removing the closed
-    /// Tabs' Bell Feed rows and unseen counts first, as `closeTab` does.
+    /// Closes every Tab in `pane` except `keptTabID`, running the closed
+    /// Tabs through `tearDownClosingTabs(_:)` first, as `closeTab` does.
     func closeOtherTabs(in pane: PaneRuntime, keeping keptTabID: UUID) {
         guard pane.tabs.contains(where: { $0.id == keptTabID }) else { return }
         let victims = Set(pane.tabs.map(\.id)).subtracting([keptTabID])
         logger.info("closeOtherTabs pane=\(pane.id, privacy: .public) victims=\(victims.count, privacy: .public)")
-        cleanUpBellState(forTabIDs: victims)
+        tearDownClosingTabs(victims)
         pane.closeOtherTabs(keeping: keptTabID)
     }
 
@@ -744,7 +754,7 @@ public final class WindowRuntime {
             }
             let tabIDs = Set(pane.tabs.map(\.id))
             logger.info("closePane pane=\(paneID, privacy: .public) session=\(session.id, privacy: .public) tabs=\(tabIDs.count, privacy: .public)")
-            cleanUpBellState(forTabIDs: tabIDs)
+            tearDownClosingTabs(tabIDs)
             for tabID in tabIDs {
                 TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
             }
@@ -1256,6 +1266,37 @@ public final class WindowRuntime {
                     tab.unseenBellCount = max(0, tab.unseenBellCount - amount)
                 }
             }
+        }
+    }
+
+    /// The one per-Tab teardown every close path runs before its Tabs leave
+    /// the model: their Bell Feed rows and unseen counts, then their AI
+    /// Tab-name suggestions. Terminal view release and non-terminal content
+    /// teardown stay with each path's structural step. Called by `closeTab`,
+    /// `closeOtherTabs(in:keeping:)`, `closePane`, `removeSession` and
+    /// `tearDownForWindowClose()`.
+    func tearDownClosingTabs(_ tabIDs: Set<UUID>) {
+        guard !tabIDs.isEmpty else { return }
+        cleanUpBellState(forTabIDs: tabIDs)
+        tabsClosingHandler?(tabIDs)
+    }
+
+    /// Everything the Window's model owns that must stop when its NSWindow
+    /// closes with Sessions still in it: every Tab through
+    /// `tearDownClosingTabs(_:)`, every Session's name suggestion, non-terminal
+    /// Pane content, then terminal views. Leaves `sessions` untouched, so no
+    /// `onAllSessionsClosed` fires from inside `windowWillClose`.
+    public func tearDownForWindowClose() {
+        let allTabIDs = Set(sessions.flatMap { session in
+            session.tree.allPanes.flatMap { $0.tabs.map(\.id) }
+        })
+        tearDownClosingTabs(allTabIDs)
+        for session in sessions {
+            sessionClosingHandler?(session.id)
+        }
+        tearDownAllPaneContent()
+        for tabID in allTabIDs {
+            TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
         }
     }
 

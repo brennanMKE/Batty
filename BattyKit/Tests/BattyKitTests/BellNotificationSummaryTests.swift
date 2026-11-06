@@ -433,3 +433,84 @@ struct NotificationSummarizerPromptTests {
         #expect(!prompt.contains("Tab:"))
     }
 }
+
+// MARK: - BellFeedStore.onEntriesRemoved (#0564)
+
+@MainActor
+struct BellFeedStoreRemovalHookTests {
+    private func entry(tabID: UUID = UUID(), sessionID: UUID = UUID(), message: String = "m",
+                       kind: BellFeedEntry.Kind = .bell) -> BellFeedEntry {
+        BellFeedEntry(timestamp: Date(), windowID: UUID(), sessionID: sessionID, paneID: UUID(),
+                      tabID: tabID, surfaceID: UUID(), message: message, kind: kind)
+    }
+
+    private func hooked(_ store: BellFeedStore) -> () -> [Set<UUID>] {
+        final class Box { var calls: [Set<UUID>] = [] }
+        let box = Box()
+        store.onEntriesRemoved = { box.calls.append($0) }
+        return { box.calls }
+    }
+
+    @Test func removeEntriesReportsTheRemovedRowIDs() {
+        let store = BellFeedStore()
+        let tabID = UUID()
+        let a = store.record(entry(tabID: tabID, message: "a"))
+        let b = store.record(entry(tabID: tabID, message: "b"))
+        store.record(entry(message: "other"))
+        let calls = hooked(store)
+
+        store.removeEntries(matchingTabIDs: [tabID])
+
+        #expect(calls() == [[a.id, b.id]])
+    }
+
+    @Test func removeEntriesWithNoMatchDoesNotCallTheHook() {
+        let store = BellFeedStore()
+        store.record(entry(message: "other"))
+        let calls = hooked(store)
+
+        store.removeEntries(matchingTabIDs: [UUID()])
+
+        #expect(calls().isEmpty)
+        #expect(store.entries.count == 1)
+    }
+
+    @Test func removeReminderEntriesReportsTheRemovedRowIDs() {
+        let store = BellFeedStore()
+        let sessionID = UUID()
+        let reminder = store.record(entry(sessionID: sessionID, message: "r", kind: .reminder))
+        store.record(entry(sessionID: sessionID, message: "bell"))
+        let calls = hooked(store)
+
+        store.removeReminderEntries(forSessionID: sessionID)
+
+        #expect(calls() == [[reminder.id]])
+    }
+
+    @Test func capEvictionReportsTheEvictedRowID() {
+        let store = BellFeedStore()
+        let oldest = store.record(entry(message: "oldest"))
+        for index in 1..<BellFeedStore.cap {
+            store.record(entry(message: "e\(index)"))
+        }
+        let calls = hooked(store)
+
+        store.record(entry(message: "newest"))
+
+        #expect(calls() == [[oldest.id]])
+        #expect(store.entries.count == BellFeedStore.cap)
+    }
+
+    @Test func collapseDoesNotCallTheHook() {
+        let store = BellFeedStore()
+        let tabID = UUID()
+        store.recordOrCollapse(entry(tabID: tabID, message: "same"))
+        let calls = hooked(store)
+
+        let outcome = store.recordOrCollapse(entry(tabID: tabID, message: "same"))
+
+        if case .collapsed = outcome {} else { Issue.record("expected a collapse") }
+        #expect(calls().isEmpty)
+        #expect(store.entries.count == 1)
+    }
+}

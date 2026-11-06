@@ -238,9 +238,12 @@ public final class AppStateStore {
     /// Wall clock for `Project.lastOpenedAt`. Tests assign a fixed closure.
     @ObservationIgnored var projectUsageClock: () -> Date = Date.init
 
-    /// Test-only bookkeeping for `scheduleSummarization`'s in-flight `Task`s,
-    /// keyed by `BellFeedEntry.id`. See `summarizationTaskForTesting(entryID:)`.
-    @ObservationIgnored private var summarizationTasksForTesting: [UUID: Task<Void, Never>] = [:]
+    /// `scheduleSummarization`'s `Task`s, keyed by `BellFeedEntry.id`. A
+    /// handle is cancelled when its row leaves the Feed
+    /// (`BellFeedStore.onEntriesRemoved`) and dropped by the next
+    /// `scheduleSummarization`'s membership prune. Tests read it through
+    /// `summarizationTaskForTesting(entryID:)`.
+    @ObservationIgnored private var summarizationTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var bellCaptureWriterStorage: BellCaptureWriter?
     /// Writer for the opt-in Bell Feed capture log (#0523). Created on first
     /// use; tests assign one pointed at a temporary directory beforehand.
@@ -428,13 +431,7 @@ public final class AppStateStore {
             logger.info("onAllSessionsClosed windowID=\(runtime.id.value, privacy: .public): no sessions remaining; requesting window close")
             runtime.closeWindowCallback?()
         }
-        runtime.reminderCancelHandler = { [weak self] sessionID in
-            self?.reminderScheduler.cancel(sessionID: sessionID)
-        }
-        runtime.reminderTimeContext = { [weak self] in
-            guard let scheduler = self?.reminderScheduler else { return (Date(), .current) }
-            return (scheduler.now, scheduler.calendar)
-        }
+        installWindowHooks(on: runtime)
         windows.append(runtime)
         return runtime
     }
@@ -1332,12 +1329,9 @@ public final class AppStateStore {
         }
         self.windows = [window]
         self.fallbackWindowID = window.id
-        window.reminderCancelHandler = { [weak self] sessionID in
-            self?.reminderScheduler.cancel(sessionID: sessionID)
-        }
-        window.reminderTimeContext = { [weak self] in
-            guard let scheduler = self?.reminderScheduler else { return (Date(), .current) }
-            return (scheduler.now, scheduler.calendar)
+        installWindowHooks(on: window)
+        bellFeed.onEntriesRemoved = { [weak self] ids in
+            self?.cancelSummarizations(forEntryIDs: ids)
         }
         reminderScheduler.onFire = { [weak self] firing in
             self?.fireReminder(firing)
@@ -1548,8 +1542,6 @@ public final class AppStateStore {
     /// phantom-event-before-validation defect the old duplicate emission
     /// here had.
     public func removeSession(id: UUID, fromCli: Bool = false) {
-        cancelNameSuggestion(forSessionID: id)
-
         // Locate the owning window by session ID — the session may be in any window.
         windowOwning(sessionID: id)?.removeSession(id: id, fromCli: fromCli)
     }
@@ -1596,7 +1588,6 @@ public final class AppStateStore {
     }
 
     public func closeTab(id tabID: UUID) {
-        cancelTabNameSuggestion(forTabID: tabID)
         // Locate the owning window to route the close to the correct
         // WindowRuntime rather than defaulting to windows[0].
         for window in windows {
@@ -2469,6 +2460,39 @@ public final class AppStateStore {
         }
     }
 
+    /// The per-Window hooks both wiring sites (`init`, `openWindowRuntime`)
+    /// install, so the two can't drift.
+    private func installWindowHooks(on window: WindowRuntime) {
+        window.reminderCancelHandler = { [weak self] sessionID in
+            self?.reminderScheduler.cancel(sessionID: sessionID)
+        }
+        window.reminderTimeContext = { [weak self] in
+            guard let scheduler = self?.reminderScheduler else { return (Date(), .current) }
+            return (scheduler.now, scheduler.calendar)
+        }
+        window.tabsClosingHandler = { [weak self] ids in
+            self?.cancelAIWork(forClosingTabIDs: ids)
+        }
+        window.sessionClosingHandler = { [weak self] id in
+            self?.cancelNameSuggestion(forSessionID: id)
+        }
+    }
+
+    private func cancelAIWork(forClosingTabIDs tabIDs: Set<UUID>) {
+        for tabID in tabIDs {
+            cancelTabNameSuggestion(forTabID: tabID)
+        }
+    }
+
+    /// Cancels without removing, so `summarizationTaskForTesting(entryID:)`
+    /// keeps answering "was one scheduled"; the next
+    /// `scheduleSummarization` prunes the handle.
+    private func cancelSummarizations(forEntryIDs entryIDs: Set<UUID>) {
+        for entryID in entryIDs {
+            summarizationTasks[entryID]?.cancel()
+        }
+    }
+
     private func cancelNameSuggestion(forSessionID sessionID: UUID) {
         guard let inflight = nameSuggestionTasks[sessionID] else { return }
         inflight.task.cancel()
@@ -2488,6 +2512,7 @@ public final class AppStateStore {
         }
         let sessionID = session.id
         let task = Task { [weak self] in
+            guard !Task.isCancelled else { return }
             let raw = await suggester.suggestName(forPath: cwd)
             guard let self, !Task.isCancelled else { return }
             self.nameSuggestionTasks[sessionID] = nil
@@ -2639,6 +2664,7 @@ public final class AppStateStore {
             tabNameSuggestionTasks[tabID] = nil
         }
         let task = Task { [weak self, weak tab] in
+            guard !Task.isCancelled else { return }
             let raw = await suggester.suggestName(forPath: cwd)
             guard let self, !Task.isCancelled else { return }
             self.tabNameSuggestionTasks[tabID] = nil
@@ -2654,10 +2680,12 @@ public final class AppStateStore {
     }
 
     /// Applies an AI suggestion only if the tab hasn't moved on since the
-    /// request was issued: no user rename landed, and the cwd is unchanged.
+    /// request was issued: the tab hasn't closed (its terminal view was not
+    /// released), no user rename landed, and the cwd is unchanged.
     /// Never writes `titleOverride` — same standing as session naming, a
     /// later `cd` re-resolves it.
     private func applySuggestedTabName(_ name: String, tab: TabRuntime, forCWD cwd: String) {
+        guard !TerminalHostStore.shared.isReleased(tabID: tab.id) else { return }
         guard tab.titleOverride == nil else { return }
         let currentCWD = tab.terminal.workingDirectory ?? tab.terminal.configuration.workingDirectory
         guard currentCWD == cwd else { return }
@@ -2908,8 +2936,10 @@ public final class AppStateStore {
     /// the summary is written back when the model responds. A nil summarizer,
     /// disabled toggle, or model error leaves the entry unchanged.
     ///
-    /// The scheduled `Task` is kept in `summarizationTasksForTesting`, keyed
-    /// by entry id, purely so tests can await the real completion signal
+    /// The scheduled `Task` is kept in `summarizationTasks`, keyed by entry
+    /// id, so it can be cancelled when its row leaves the Feed
+    /// (`cancelSummarizations(forEntryIDs:)`; the capture record then reads
+    /// `cancelled`), and so tests can await the real completion signal
     /// (`docs/async-test-seams.md` §4, "returned/exposed Task") instead of
     /// polling with `Task.yield()`. A summarizer that's nil or a toggle
     /// that's off means no `Task` is ever created, which is exactly the
@@ -2967,8 +2997,8 @@ public final class AppStateStore {
             }
         }
         let liveIDs = Set(bellFeed.entries.map(\.id))
-        summarizationTasksForTesting = summarizationTasksForTesting.filter { liveIDs.contains($0.key) }
-        summarizationTasksForTesting[entryID] = task
+        summarizationTasks = summarizationTasks.filter { liveIDs.contains($0.key) }
+        summarizationTasks[entryID] = task
         return .scheduled
     }
 
@@ -2981,6 +3011,6 @@ public final class AppStateStore {
     /// (`BattyKit/Tests/BattyKitTests/ResumeOnce.swift`), not duplicated here
     /// in production source.
     func summarizationTaskForTesting(entryID: UUID) -> Task<Void, Never>? {
-        summarizationTasksForTesting[entryID]
+        summarizationTasks[entryID]
     }
 }

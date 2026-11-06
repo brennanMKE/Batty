@@ -555,7 +555,7 @@ final class AppStateStoreBellCaptureTests {
         #expect(types == ["event", "rating"])
     }
 
-    @Test func summaryForARowVisitedBeforeTheModelRepliesIsWrittenWithNullRowText() async throws {
+    @Test func summaryForARowVisitedBeforeTheModelRepliesIsWrittenAsCancelledWithNullRowText() async throws {
         let summarizer = GatedSummarizer(.init(prompt: "p", rawReply: "late summary"))
         let f = makeFixture(capture: true, summarizer: summarizer)
         f.store.recordCLINotification(tabID: f.tabID, title: "Visited", body: nil, playSound: false)
@@ -572,6 +572,7 @@ final class AppStateStoreBellCaptureTests {
         let summaries = try summaryRecords(f.writer)
         let summary = try #require(summaries.first { $0.entryID == entryID })
         #expect(summary.rawReply == "late summary")
+        #expect(summary.status == .cancelled)
         #expect(summary.feedRowText == nil)
     }
 

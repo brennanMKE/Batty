@@ -10,7 +10,7 @@ import Testing
 ///   - Bell in a non-key window counts as unseen (key-window isFocused term).
 ///   - jumpToBellEntry: dead-window entries no-op and mark seen.
 ///   - jumpToBellEntry: live-window entries navigate to the correct window.
-///   - Window-close bell cleanup via cleanUpBellState(forTabIDs:).
+///   - Window-close bell cleanup via tearDownForWindowClose().
 ///   - QuitConfirmation widens to all windows' sessions.
 ///   - App terminates when last content window is unregistered.
 ///   - onAllSessionsClosed wires to closeWindowCallback, not terminate.
@@ -232,11 +232,9 @@ struct CrossWindowBehaviorTests {
         #expect(store.bellFeed.entries.first?.repeatCount == 2)
         #expect(tab.unseenBellCount == 2)
 
-        // Simulate window-close cleanup (as WindowDelegate.windowWillClose does).
-        let allTabIDs = Set(w2.sessions.flatMap { session in
-            session.tree.allPanes.flatMap { $0.tabs.map(\.id) }
-        })
-        w2.cleanUpBellState(forTabIDs: allTabIDs)
+        // The model half of WindowDelegate.windowWillClose. Releasing terminal
+        // views is harmless here: no views exist in a unit test.
+        w2.tearDownForWindowClose()
 
         #expect(store.bellFeed.entries.isEmpty,
                 "Window-close cleanup must remove all entries for that window's tabs")

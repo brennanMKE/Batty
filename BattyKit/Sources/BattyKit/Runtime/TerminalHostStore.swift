@@ -77,6 +77,10 @@ public final class TerminalHostStore {
     /// are never removed; growth is one UUID per closed tab.
     private var releasedTabIDs: Set<UUID> = []
 
+    /// Whether `tabID` has been passed to ``releaseTerminalView(forTabID:)``,
+    /// i.e. its Tab has closed.
+    func isReleased(tabID: UUID) -> Bool { releasedTabIDs.contains(tabID) }
+
     /// `WindowID` → whether that content window is currently occlusion-visible
     /// (on screen, not minimized, not fully covered by another window, and
     /// not hidden via Cmd-H — see `NSWindow.occlusionState`). Absent entries

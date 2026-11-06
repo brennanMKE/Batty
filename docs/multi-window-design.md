@@ -413,7 +413,8 @@ Two constraints, both binding:
   (`swiftui-observation-rules.md`, AppKit-interop section).
 - The dead-window case (entry's window closed since the bell) falls back to
   no-op plus marking the entry seen — bell-state cleanup on window close
-  reuses `cleanUpBellState(forTabIDs:)` exactly as `removeSession` does.
+  runs `WindowRuntime.tearDownForWindowClose()`, which sends every Tab
+  through the same `tearDownClosingTabs(_:)` funnel `removeSession` uses.
 
 System notification taps route through the same jump, unchanged
 (`Views/RootWindowView.swift` `setUpNotifier`).
