@@ -230,9 +230,9 @@ struct CommandPaletteView: View {
             }
             cmds.append(PaletteCommand(
                 id: "extra:remind:tomorrow",
-                title: String(localized: "Remind Me Tomorrow at \(ReminderActions.defaultTomorrowTimeText())"),
+                title: String(localized: "Remind Me Tomorrow at \(ReminderActions.tomorrowTimeText(store.tomorrowReminderTime, calendar: store.reminderScheduler.calendar))"),
                 keyHint: nil,
-                action: { ReminderActions.set(.defaultTomorrow, on: session, store: store) }
+                action: { ReminderActions.set(store.tomorrowReminderSpec, on: session, store: store) }
             ))
             if session.reminder != nil {
                 cmds.append(PaletteCommand(

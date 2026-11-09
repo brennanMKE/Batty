@@ -49,6 +49,30 @@ public struct SessionReminder: Sendable, Equatable, Identifiable {
     }
 }
 
+/// A time of day for a Tomorrow Reminder, stored as minutes since midnight.
+public struct ReminderTime: Sendable, Equatable {
+    public var hour: Int
+    public var minute: Int
+
+    public init(hour: Int, minute: Int) {
+        self.hour = hour
+        self.minute = minute
+    }
+
+    public static let defaultTomorrow = ReminderTime(
+        hour: ReminderSpec.defaultTomorrowHour, minute: ReminderSpec.defaultTomorrowMinute)
+
+    public var minutesSinceMidnight: Int { hour * 60 + minute }
+
+    /// Nil outside `0..<1440`.
+    public init?(minutesSinceMidnight: Int) {
+        guard (0..<1440).contains(minutesSinceMidnight) else { return nil }
+        self.init(hour: minutesSinceMidnight / 60, minute: minutesSinceMidnight % 60)
+    }
+
+    public var tomorrowSpec: ReminderSpec { .tomorrow(hour: hour, minute: minute) }
+}
+
 /// What the user asked for, before it is resolved against a clock.
 public enum ReminderSpec: Sendable, Equatable {
     case after(minutes: Int)
@@ -59,9 +83,6 @@ public enum ReminderSpec: Sendable, Equatable {
     public static let defaultTomorrowHour = 9
     public static let defaultTomorrowMinute = 0
     public static let presetMinutes: [Int] = [5, 15, 30, 60]
-
-    public static let defaultTomorrow = ReminderSpec.tomorrow(
-        hour: defaultTomorrowHour, minute: defaultTomorrowMinute)
 
     public var isValid: Bool {
         switch self {

@@ -42,6 +42,9 @@ public final class AppStateStore {
     /// app delegate calls `observeSystemEvents()`, so a store built in a
     /// test never subscribes to wake or clock notifications.
     @ObservationIgnored public let reminderScheduler: ReminderScheduler
+    /// The last Tomorrow time chosen in the Reminder sheet, 9:00 AM until
+    /// one is. Observed so the menu and palette labels follow it.
+    public internal(set) var tomorrowReminderTime: ReminderTime = .defaultTomorrow
     /// Whether Batty is the active app, read once per bell by
     /// `routeRealTabBell`. The default is the live read; tests set it.
     @ObservationIgnored var isBattyActiveProvider: () -> Bool = { NSApplication.shared.isActive }
@@ -1305,6 +1308,7 @@ public final class AppStateStore {
         self.nameCache = nameCache
         self.notifier = notifier
         self.preferences = preferences
+        self.tomorrowReminderTime = SettingsPreference.resolvedReminderTomorrowTime(defaults: preferences)
         self.reminderScheduler = ReminderScheduler(
             clock: reminderClock ?? UITestDriver.reminderClock() ?? SystemClock(),
             calendar: reminderCalendar

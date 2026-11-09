@@ -6,6 +6,27 @@ import os
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "AppStateStoreReminders")
 
 extension AppStateStore {
+    /// The default for every Tomorrow request that names no time.
+    public var tomorrowReminderSpec: ReminderSpec { tomorrowReminderTime.tomorrowSpec }
+
+    func rememberTomorrowReminderTime(_ time: ReminderTime) {
+        guard time != tomorrowReminderTime else { return }
+        tomorrowReminderTime = time
+        SettingsPreference.storeReminderTomorrowTime(time, defaults: preferences)
+    }
+
+    /// The Reminder sheet's Set: `editReminder`, and a Tomorrow choice
+    /// becomes the remembered Tomorrow time. Presets and the one-click
+    /// Tomorrow item go through `setReminder` and never change it.
+    @discardableResult
+    public func commitReminderSheet(_ spec: ReminderSpec, note: String?, forSessionID sessionID: UUID) -> SessionReminder? {
+        let result = editReminder(spec, note: note, forSessionID: sessionID)
+        if result != nil, case .tomorrow(let hour, let minute) = spec {
+            rememberTomorrowReminderTime(ReminderTime(hour: hour, minute: minute))
+        }
+        return result
+    }
+
     /// Sets the Session's Reminder, replacing any it already has: one per
     /// Session, and the edit path. Records no feed entry and posts nothing.
     /// Returns nil when the Session is gone or `spec` is out of bounds.

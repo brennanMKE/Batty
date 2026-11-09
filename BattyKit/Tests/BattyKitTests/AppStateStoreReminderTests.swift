@@ -367,11 +367,11 @@ final class AppStateStoreReminderTests {
 
     @Test func editingOnlyTheNoteOfATomorrowReminderKeepsItsResolvedDate() async throws {
         let session = store.sessions[0]
-        let original = try #require(store.setReminder(.defaultTomorrow, note: "a", forSessionID: session.id))
+        let original = try #require(store.setReminder(ReminderTime.defaultTomorrow.tomorrowSpec, note: "a", forSessionID: session.id))
         #expect(await clock.waitForSleepers(1))
         // 01:00 the next day: "tomorrow" would now mean a day later.
         await clock.advance(by: .seconds(10 * 3600))
-        let edited = try #require(store.editReminder(.defaultTomorrow, note: "b", forSessionID: session.id))
+        let edited = try #require(store.editReminder(ReminderTime.defaultTomorrow.tomorrowSpec, note: "b", forSessionID: session.id))
         #expect(edited.target == original.target)
         #expect(edited.id == original.id)
         #expect(edited.note == "b")
@@ -387,5 +387,61 @@ final class AppStateStoreReminderTests {
 
         let message = try #require(store.windows[0].pendingCloseRequest?.message)
         #expect(message.contains("reminder"))
+    }
+    // MARK: - Remembered Tomorrow time
+
+    private func seededStore(_ time: ReminderTime, defaults: TestDefaults) -> AppStateStore {
+        SettingsPreference.storeReminderTomorrowTime(time, defaults: defaults.defaults)
+        return AppStateStore(
+            preferences: defaults.defaults,
+            reminderClock: TestClock(now: ReminderFixture.anchor),
+            reminderCalendar: { ReminderFixture.calendar() })
+    }
+
+    private func storedMinutes(_ store: AppStateStore) -> Int? {
+        store.preferences.object(forKey: SettingsPreference.reminderTomorrowTimeKey) as? Int
+    }
+
+    @Test func aFreshStoreOffersTomorrowAtNine() {
+        #expect(store.tomorrowReminderTime == .defaultTomorrow)
+        #expect(store.tomorrowReminderSpec == .tomorrow(hour: 9, minute: 0))
+    }
+
+    @Test func aStoreSeedsTheRememberedTomorrowTimeFromPreferences() {
+        let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
+        #expect(seeded.tomorrowReminderTime == ReminderTime(hour: 7, minute: 15))
+        #expect(seeded.tomorrowReminderSpec == .tomorrow(hour: 7, minute: 15))
+    }
+
+    @Test func settingATomorrowReminderFromTheSheetRemembersItsTime() throws {
+        let session = store.sessions[0]
+        try #require(store.commitReminderSheet(.tomorrow(hour: 8, minute: 30), note: nil, forSessionID: session.id))
+        #expect(store.tomorrowReminderTime == ReminderTime(hour: 8, minute: 30))
+        #expect(storedMinutes(store) == 510)
+    }
+
+    @Test func presetAndCustomDurationRemindersDoNotChangeTheRememberedTime() throws {
+        let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
+        let session = seeded.sessions[0]
+        try #require(seeded.setReminder(.after(minutes: 15), forSessionID: session.id))
+        try #require(seeded.commitReminderSheet(.after(minutes: 95), note: nil, forSessionID: session.id))
+        try #require(seeded.setReminder(.tomorrow(hour: 10, minute: 0), forSessionID: session.id))
+        #expect(seeded.tomorrowReminderTime == ReminderTime(hour: 7, minute: 15))
+        #expect(storedMinutes(seeded) == 435)
+    }
+
+    @Test func anOutOfBoundsSheetCommitRemembersNothing() {
+        let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
+        #expect(seeded.commitReminderSheet(.tomorrow(hour: 24, minute: 0), note: nil, forSessionID: seeded.sessions[0].id) == nil)
+        #expect(seeded.tomorrowReminderTime == ReminderTime(hour: 7, minute: 15))
+        #expect(storedMinutes(seeded) == 435)
+    }
+
+    @Test func oneClickTomorrowUsesTheRememberedTime() throws {
+        let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
+        let session = seeded.sessions[0]
+        ReminderActions.set(seeded.tomorrowReminderSpec, on: session, store: seeded)
+        let reminder = try #require(session.reminder)
+        #expect(reminder.target == .wallClock(DateComponents(year: 2026, month: 10, day: 15, hour: 7, minute: 15)))
     }
 }

@@ -36,13 +36,13 @@ struct SessionReminderTests {
 
     @Test func tomorrowAtHalfPastMidnightStillMeansTheNextDayNotLaterToday() throws {
         let now = ReminderFixture.date(2026, 10, 14, 0, 30)
-        let reminder = try #require(ReminderSpec.defaultTomorrow.makeReminder(now: now, calendar: calendar, note: nil))
+        let reminder = try #require(ReminderTime.defaultTomorrow.tomorrowSpec.makeReminder(now: now, calendar: calendar, note: nil))
         #expect(reminder.fireDate(calendar: calendar) == ReminderFixture.date(2026, 10, 15, 9, 0))
     }
 
     @Test func tomorrowAcrossFallBackIsFourteenElapsedHoursNotThirteen() throws {
         let now = ReminderFixture.date(2026, 10, 31, 20, 0)
-        let reminder = try #require(ReminderSpec.defaultTomorrow.makeReminder(now: now, calendar: calendar, note: nil))
+        let reminder = try #require(ReminderTime.defaultTomorrow.tomorrowSpec.makeReminder(now: now, calendar: calendar, note: nil))
         let due = try #require(reminder.fireDate(calendar: calendar))
         #expect(due == ReminderFixture.date(2026, 11, 1, 9, 0))
         #expect(due.timeIntervalSince(now) == 14 * 3600)
@@ -50,7 +50,7 @@ struct SessionReminderTests {
 
     @Test func tomorrowFollowsTheCalendarItIsResolvedAgainstButAnInstantDoesNot() throws {
         let newYork = ReminderFixture.calendar(in: TimeZone(identifier: "America/New_York")!)
-        let wallClock = try #require(ReminderSpec.defaultTomorrow
+        let wallClock = try #require(ReminderTime.defaultTomorrow.tomorrowSpec
             .makeReminder(now: ReminderFixture.anchor, calendar: calendar, note: nil))
         let instant = try #require(ReminderSpec.after(minutes: 60)
             .makeReminder(now: ReminderFixture.anchor, calendar: calendar, note: nil))

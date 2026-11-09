@@ -24,6 +24,8 @@ public enum SettingsPreference {
     public static let backgroundImageOpacityKey = "co.sstools.Batty.backgroundImageOpacity"
     public static let backgroundOpacityKey = "co.sstools.Batty.backgroundOpacity"
     public static let backgroundOpacityCellsKey = "co.sstools.Batty.backgroundOpacityCells"
+    /// Int, minutes since midnight: the last Tomorrow time chosen in the Reminder sheet.
+    public static let reminderTomorrowTimeKey = "co.sstools.Batty.reminderTomorrowTime"
 
     public static let defaultFontSize: Double = 13
     public static let defaultCursorStyle: String = "block"
@@ -116,6 +118,19 @@ public enum SettingsPreference {
     static func resolvedPasteStrictness(defaults: UserDefaults) -> PasteStrictness {
         let raw = defaults.string(forKey: pasteStrictnessKey) ?? defaultPasteStrictness
         return PasteStrictness(rawValue: raw) ?? .never
+    }
+
+    /// `object(forKey:) as? Int` rather than `integer(forKey:)`, so a missing
+    /// or non-numeric value falls back to 9:00 AM instead of midnight.
+    static func resolvedReminderTomorrowTime(defaults: UserDefaults) -> ReminderTime {
+        guard let raw = defaults.object(forKey: reminderTomorrowTimeKey) as? Int,
+              let time = ReminderTime(minutesSinceMidnight: raw)
+        else { return .defaultTomorrow }
+        return time
+    }
+
+    static func storeReminderTomorrowTime(_ time: ReminderTime, defaults: UserDefaults) {
+        defaults.set(time.minutesSinceMidnight, forKey: reminderTomorrowTimeKey)
     }
 
     /// The only `resolvedConfirmQuit` — no `.standard`-only zero-arg version

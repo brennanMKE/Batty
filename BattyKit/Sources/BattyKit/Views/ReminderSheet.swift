@@ -23,14 +23,18 @@ struct ReminderDraft: Equatable {
     /// A draft seeded from an existing Reminder, for editing: a Tomorrow
     /// Reminder reopens on Tomorrow at its time, an instant one on Custom
     /// with the time still left (at least a minute).
-    init(editing reminder: SessionReminder?, now: Date) {
+    /// `tomorrow` seeds the Tomorrow picker; a Tomorrow Reminder's own time
+    /// overrides it.
+    init(editing reminder: SessionReminder?, now: Date, tomorrow: ReminderTime = .defaultTomorrow) {
+        tomorrowHour = tomorrow.hour
+        tomorrowMinute = tomorrow.minute
         guard let reminder else { return }
         note = reminder.note ?? ""
         switch reminder.target {
         case .wallClock(let components):
             choice = .tomorrow
-            tomorrowHour = components.hour ?? ReminderSpec.defaultTomorrowHour
-            tomorrowMinute = components.minute ?? ReminderSpec.defaultTomorrowMinute
+            tomorrowHour = components.hour ?? tomorrow.hour
+            tomorrowMinute = components.minute ?? tomorrow.minute
         case .instant(let due):
             let remaining = max(ReminderSpec.minMinutes, Int((due.timeIntervalSince(now) / 60).rounded(.up)))
             let clamped = min(remaining, ReminderSpec.maxMinutes)
@@ -40,7 +44,10 @@ struct ReminderDraft: Equatable {
         }
     }
 
-    init() {}
+    init(tomorrow: ReminderTime = .defaultTomorrow) {
+        tomorrowHour = tomorrow.hour
+        tomorrowMinute = tomorrow.minute
+    }
 
     var spec: ReminderSpec? {
         let made: ReminderSpec
@@ -73,7 +80,8 @@ struct ReminderSheet: View {
         self.session = session
         self.onClose = onClose
         self.isEditing = session.reminder != nil
-        _draft = State(initialValue: ReminderDraft(editing: session.reminder, now: store.reminderScheduler.now))
+        _draft = State(initialValue: ReminderDraft(
+            editing: session.reminder, now: store.reminderScheduler.now, tomorrow: store.tomorrowReminderTime))
     }
 
     var body: some View {
@@ -227,7 +235,7 @@ struct ReminderSheet: View {
 
     private func commit() {
         guard let spec = draft.spec else { return }
-        store.editReminder(spec, note: draft.note, forSessionID: session.id)
+        store.commitReminderSheet(spec, note: draft.note, forSessionID: session.id)
         onClose()
     }
 

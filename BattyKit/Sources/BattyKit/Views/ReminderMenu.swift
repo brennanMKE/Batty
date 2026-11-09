@@ -11,16 +11,18 @@ enum ReminderActions {
         minutes == 60 ? String(localized: "In 1 Hour") : String(localized: "In \(minutes) Minutes")
     }
 
-    static var tomorrowTitle: String {
-        String(localized: "Tomorrow at \(defaultTomorrowTimeText())")
+    static func tomorrowTitle(_ time: ReminderTime, calendar: Calendar, locale: Locale = .autoupdatingCurrent) -> String {
+        String(localized: "Tomorrow at \(tomorrowTimeText(time, calendar: calendar, locale: locale))")
     }
 
-    static func defaultTomorrowTimeText(calendar: Calendar = .current) -> String {
+    static func tomorrowTimeText(_ time: ReminderTime, calendar: Calendar, locale: Locale = .autoupdatingCurrent) -> String {
         var parts = DateComponents()
-        parts.hour = ReminderSpec.defaultTomorrowHour
-        parts.minute = ReminderSpec.defaultTomorrowMinute
-        guard let date = calendar.date(from: parts) else { return "9:00 AM" }
-        return ReminderFormat.time(date, calendar: calendar)
+        parts.hour = time.hour
+        parts.minute = time.minute
+        guard let date = calendar.date(from: parts) else {
+            return String(format: "%d:%02d", time.hour, time.minute)
+        }
+        return ReminderFormat.time(date, calendar: calendar, locale: locale)
     }
 
     /// A preset sets the Reminder at once, with no note. It replaces any
@@ -70,9 +72,9 @@ struct ReminderMenu: View {
                     ReminderActions.set(.after(minutes: minutes), on: target.session, store: store)
                 }
             }
-            Button(ReminderActions.tomorrowTitle) {
+            Button(ReminderActions.tomorrowTitle(store.tomorrowReminderTime, calendar: store.reminderScheduler.calendar)) {
                 guard let target = target() else { return }
-                ReminderActions.set(.defaultTomorrow, on: target.session, store: store)
+                ReminderActions.set(store.tomorrowReminderSpec, on: target.session, store: store)
             }
             Button("Custom…") {
                 guard let target = target() else { return }

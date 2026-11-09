@@ -81,6 +81,57 @@ struct ReminderEntryPointTests {
         #expect(draft.hours * 60 + draft.minutes == 1)
     }
 
+    @Test func newDraftDefaultsTomorrowPickerToRememberedTime() {
+        let remembered = ReminderTime(hour: 7, minute: 15)
+        var draft = ReminderDraft(tomorrow: remembered)
+        draft.choice = .tomorrow
+        #expect(draft.spec == .tomorrow(hour: 7, minute: 15))
+        var fresh = ReminderDraft(editing: nil, now: ReminderFixture.anchor, tomorrow: remembered)
+        fresh.choice = .tomorrow
+        #expect(fresh.spec == .tomorrow(hour: 7, minute: 15))
+    }
+
+    @Test func editingDraftKeepsTheReminderOwnTime() {
+        let reminder = SessionReminder(
+            createdAt: ReminderFixture.anchor,
+            target: .wallClock(DateComponents(year: 2026, month: 10, day: 15, hour: 10, minute: 0)))
+        let draft = ReminderDraft(editing: reminder, now: ReminderFixture.anchor, tomorrow: ReminderTime(hour: 7, minute: 15))
+        #expect(draft.choice == .tomorrow)
+        #expect(draft.spec == .tomorrow(hour: 10, minute: 0))
+    }
+
+    @Test func editingAnInstantReminderKeepsTheRememberedTomorrowTime() {
+        let now = ReminderFixture.anchor
+        let reminder = SessionReminder(createdAt: now, target: .instant(now.addingTimeInterval(600)))
+        let draft = ReminderDraft(editing: reminder, now: now, tomorrow: ReminderTime(hour: 7, minute: 15))
+        #expect(draft.choice == .custom)
+        #expect(draft.tomorrowHour == 7)
+        #expect(draft.tomorrowMinute == 15)
+    }
+
+    @Test func tomorrowMenuTitleUsesRememberedTime() {
+        let title = ReminderActions.tomorrowTitle(
+            ReminderTime(hour: 8, minute: 30), calendar: ReminderFixture.calendar(), locale: Locale(identifier: "en_US"))
+        #expect(title.replacingOccurrences(of: "\u{202F}", with: " ") == "Tomorrow at 8:30 AM")
+    }
+
+    @Test func thePaletteTomorrowEntryUsesTheRememberedTime() throws {
+        SettingsPreference.storeReminderTomorrowTime(ReminderTime(hour: 8, minute: 30), defaults: testDefaults.defaults)
+        let store = AppStateStore(
+            preferences: testDefaults.defaults,
+            reminderClock: TestClock(now: ReminderFixture.anchor),
+            reminderCalendar: { ReminderFixture.calendar() })
+        let session = store.sessions[0]
+        store.selectedSessionID = session.id
+        let entry = try #require(CommandPaletteView(isPresented: .constant(true), store: store)
+            .allCommands.first { $0.id == "extra:remind:tomorrow" })
+        #expect(entry.title.hasPrefix("Remind Me Tomorrow at "))
+        #expect(entry.title.contains("8:30"))
+        entry.action()
+        let reminder = try #require(session.reminder)
+        #expect(reminder.target == .wallClock(DateComponents(year: 2026, month: 10, day: 15, hour: 8, minute: 30)))
+    }
+
     // MARK: - Row value
 
     @Test func theRowValueCarriesTheReminderStateAfterTheExistingParts() {

@@ -68,7 +68,7 @@ struct ReminderSchedulerTests {
         let clock = TestClock(now: now)
         let recorder = FiringRecorder()
         let scheduler = makeScheduler(clock: clock, recorder: recorder)
-        scheduler.set(try reminder(.defaultTomorrow, at: clock), forSessionID: UUID())
+        scheduler.set(try reminder(ReminderTime.defaultTomorrow.tomorrowSpec, at: clock), forSessionID: UUID())
 
         #expect(await clock.waitForSleepers(1))
         #expect(await clock.advance(by: .seconds(13 * 3600)) == 0)
@@ -219,7 +219,7 @@ struct ReminderSchedulerTests {
         scheduler.observeSystemEvents(workspaceCenter: workspaceCenter, systemCenter: systemCenter)
         defer { scheduler.stopObservingSystemEvents() }
         let sessionID = UUID()
-        let made = try reminder(.defaultTomorrow, at: clock, note: "check on PRs")
+        let made = try reminder(ReminderTime.defaultTomorrow.tomorrowSpec, at: clock, note: "check on PRs")
         scheduler.set(made, forSessionID: sessionID)
         #expect(await clock.timers.waitForSleepers(1))
 
@@ -241,7 +241,7 @@ struct ReminderSchedulerTests {
         var zone = ReminderFixture.zone
         let scheduler = makeScheduler(clock: clock, recorder: recorder, calendar: { ReminderFixture.calendar(in: zone) })
         let sessionID = UUID()
-        scheduler.set(try reminder(.defaultTomorrow, at: clock), forSessionID: sessionID)
+        scheduler.set(try reminder(ReminderTime.defaultTomorrow.tomorrowSpec, at: clock), forSessionID: sessionID)
         #expect(await clock.timers.waitForSleepers(1))
 
         // 06:30 PDT on the 15th: before 9:00 PDT, but after 9:00 EDT.
