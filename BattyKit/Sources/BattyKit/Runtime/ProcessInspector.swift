@@ -536,14 +536,27 @@ public enum ProcessInspector {
         return nil
     }
 
-    private static func bsdInfo(pid: pid_t) -> proc_bsdinfo? {
+    struct BSDInfoRead {
+        var info: proc_bsdinfo?
+        var returnValue: Int32
+        var errnoValue: Int32
+    }
+
+    /// Keeps `proc_pidinfo`'s return value and `errno`, so a caller can tell a
+    /// process that is gone (`ESRCH`) from some other failed read.
+    static func bsdInfoResult(pid: pid_t) -> BSDInfoRead {
         var info = proc_bsdinfo()
         let size = Int32(MemoryLayout<proc_bsdinfo>.stride)
         errno = 0
         let rc = withUnsafeMutablePointer(to: &info) {
             proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, size)
         }
-        return rc == size ? info : nil
+        let savedErrno = errno
+        return BSDInfoRead(info: rc == size ? info : nil, returnValue: rc, errnoValue: savedErrno)
+    }
+
+    private static func bsdInfo(pid: pid_t) -> proc_bsdinfo? {
+        bsdInfoResult(pid: pid).info
     }
 
     private static func bsdName(_ info: proc_bsdinfo) -> String {

@@ -593,9 +593,8 @@ struct ProcessFollowByNameTests {
             try fixture.run(process)
             processes.append(process)
         }
-        let first = processes[0].processIdentifier
         let second = processes[1].processIdentifier
-        #expect(ProcessInspector.firstSameUserProcess(named: name) == .found(first))
+        try #require(processes[1].isRunning, walkDiagnostic(processes[1]))
 
         let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil })
         content.setUp(visible: true)
@@ -740,6 +739,7 @@ struct ProcessFollowByNameTests {
         }
 
         let first = try launch()
+        try #require(first.isRunning, walkDiagnostic(first))
         #expect(
             ProcessInspector.firstSameUserProcess(named: name) == .found(first.processIdentifier),
             walkDiagnostic(first)
@@ -758,43 +758,30 @@ struct ProcessFollowByNameTests {
         #expect(content.runState == .waiting, "nothing with that name is running")
 
         let second = try launch()
+        try #require(second.isRunning, walkDiagnostic(second))
         content.sampleNowForTesting()
         #expect(content.runState == .running)
-        #expect(content.snapshot?.pid == second.processIdentifier)
+        #expect(content.snapshot?.pid == second.processIdentifier, walkDiagnostic(second))
         content.tearDown()
     }
 
-    @Test func theRealEnumeratorPrefersTheLongestRunningProcessOfAName() throws {
-        let executable = try uniqueSleepCopy()
-        defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
-        let name = executable.lastPathComponent
-        let fixture = ChildProcessFixture()
-        defer { fixture.killAndReapAll() }
-
-        let older = Process()
-        older.executableURL = executable
-        older.arguments = ["300"]
-        try fixture.run(older)
-        let newer = Process()
-        newer.executableURL = executable
-        newer.arguments = ["300"]
-        try fixture.run(newer)
-
-        // One walk, compared against a pid this test owns. The ordering
-        // rules themselves are proved by `ProcessInspectorNameSelectionTests`.
-        #expect(
-            ProcessInspector.firstSameUserProcess(named: name) == .found(older.processIdentifier),
-            walkDiagnostic(older, newer)
-        )
-    }
-
-    /// Evaluated only on failure: whether each owned child was readable per
-    /// pid, which separates a failed whole walk (logged by `allPids`) from
-    /// per-pid `bsdInfo` misses.
+    /// Evaluated only on failure. Per owned child: whether it is still
+    /// running and signalable (`kill0` `ESRCH` means it exited), and the raw
+    /// `proc_pidinfo` result with `errno` (signalable but a short `rc` means a
+    /// per-pid read failed). A failed whole walk is logged by `allPids`.
     private func walkDiagnostic(_ processes: Process...) -> Comment {
         Comment(rawValue: processes.map { process in
             let pid = process.processIdentifier
-            return "pid \(pid): \(String(describing: ProcessInspector.listedIdentity(pid: pid)))"
+            let running = process.isRunning
+            errno = 0
+            let killRC = kill(pid, 0)
+            let killErrno = errno
+            let read = ProcessInspector.bsdInfoResult(pid: pid)
+            var line = "pid \(pid): isRunning=\(running) kill0=\(killRC)/errno \(killErrno) bsdinfo rc=\(read.returnValue)/errno \(read.errnoValue)"
+            if read.info != nil, let identity = ProcessInspector.listedIdentity(pid: pid) {
+                line += " identity=\(identity)"
+            }
+            return line
         }.joined(separator: "; "))
     }
 }

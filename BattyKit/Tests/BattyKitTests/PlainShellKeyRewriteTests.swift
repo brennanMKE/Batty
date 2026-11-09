@@ -78,17 +78,21 @@ struct PlainShellKeyRewriteTests {
     @Test func groupMemberCountIsExactForSingleAndMultiMemberGroups() throws {
         let leader = try spawnSleeper(joiningGroup: 0)
         let follower = try spawnSleeper(joiningGroup: leader)
+        var followerReaped = false
         defer {
-            kill(follower, SIGKILL)
-            kill(leader, SIGKILL)
             var status: Int32 = 0
-            waitpid(follower, &status, 0)
+            if !followerReaped {
+                kill(follower, SIGKILL)
+                waitpid(follower, &status, 0)
+            }
+            kill(leader, SIGKILL)
             waitpid(leader, &status, 0)
         }
         #expect(PlainShellKeyRewrite.groupMemberCount(of: leader) == 2)
         kill(follower, SIGKILL)
         var status: Int32 = 0
         waitpid(follower, &status, 0)
+        followerReaped = true
         #expect(PlainShellKeyRewrite.groupMemberCount(of: leader) == 1)
     }
 
