@@ -351,7 +351,8 @@ work" rule): `tab new`, `tab close`, `session rename`, `tab rename`, and
 An agent that finishes a step needing a human later (CI to finish, a review
 tomorrow morning) can attach a Reminder to its own Session. It fires exactly
 like one set from the GUI: a Reminder row in the Bell Feed and a
-notification.
+notification. Its notification is scheduled with macOS, so it still arrives
+after Batty quits; the Session does not come back.
 
 ```bash
 batty session remind --in 45m --note "check CI on the PR"

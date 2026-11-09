@@ -79,6 +79,12 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
     private var appearanceObserver: AppearanceObserver?
     private let xpcCoordinator = AppXPCCoordinator()
 
+    // The notification delegate must be set before launch finishes, or a
+    // click on a Reminder that launched Batty is never delivered to it.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        AppStateStore.shared.installNotifier()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             BattyShortcuts.handle(event) ? nil : PlainShellKeyRewrite.rewrite(event)

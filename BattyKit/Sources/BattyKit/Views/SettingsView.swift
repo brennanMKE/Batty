@@ -348,6 +348,7 @@ private struct TerminalBackgroundSettingsSection: View {
 }
 
 private struct NotificationsSettingsView: View {
+    @Environment(\.appStateStore) private var store
     @AppStorage(SettingsPreference.bellSoundKey) private var bellSound: Bool = SettingsPreference.defaultBellSound
     @AppStorage(SettingsPreference.systemNotificationsKey) private var systemNotifications: Bool = SettingsPreference.defaultSystemNotifications
     @AppStorage(SettingsPreference.summarizeNotificationsWithAIKey) private var summarizeWithAI: Bool = SettingsPreference.defaultSummarizeNotificationsWithAI
@@ -362,6 +363,7 @@ private struct NotificationsSettingsView: View {
             Section("Bell") {
                 Toggle("Play sound", isOn: $bellSound)
                 Toggle("Show system notifications", isOn: $systemNotifications)
+                    .onChange(of: systemNotifications) { store?.systemNotificationsSettingChanged() }
                 Toggle("Use Apple Intelligence to summarize notifications", isOn: $summarizeWithAI)
                     .disabled(!aiSummarySupported)
                 if aiSummarySupported {

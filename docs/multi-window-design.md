@@ -417,7 +417,8 @@ Two constraints, both binding:
   through the same `tearDownClosingTabs(_:)` funnel `removeSession` uses.
 
 System notification taps route through the same jump, unchanged
-(`Views/RootWindowView.swift` `setUpNotifier`).
+(`AppStateStore.handleNotificationTap`, routed by
+`notificationTapRoute(for:)` in `Runtime/AppStateStore+Reminders.swift`).
 
 `markActiveTabSeen` and `locate(tabID:)`'s `isFocused` computation gain the
 key-window term (§5) so a bell in window B while window A is key correctly

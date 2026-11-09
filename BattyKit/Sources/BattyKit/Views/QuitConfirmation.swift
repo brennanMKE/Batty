@@ -48,7 +48,8 @@ public enum QuitConfirmation {
         alert.messageText = String(localized: "Quit Batty?")
         alert.informativeText = informativeText(
             openTabs: openTabs,
-            pendingReminders: store.pendingReminderCount
+            pendingReminders: store.pendingReminderCount,
+            remindersStillNotify: store.remindersStillNotifyAfterQuit
         )
         alert.addButton(withTitle: String(localized: "Quit"))
         alert.addButton(withTitle: String(localized: "Cancel"))
@@ -57,11 +58,15 @@ public enum QuitConfirmation {
     }
 
     /// Quitting adds no confirmation of its own for Reminders; when this
-    /// alert is already up it says that pending ones go with the Sessions.
-    static func informativeText(openTabs: Int, pendingReminders: Int) -> String {
+    /// alert is already up it says what happens to pending ones. With system
+    /// notifications on they stay scheduled with macOS and still notify,
+    /// though their Sessions close; otherwise they are cancelled.
+    static func informativeText(openTabs: Int, pendingReminders: Int, remindersStillNotify: Bool) -> String {
         var text = String(localized: "There \(openTabs) open terminal(s).")
         if pendingReminders > 0 {
-            text += " " + String(localized: "\(pendingReminders) pending reminder(s) will be cancelled.")
+            text += " " + (remindersStillNotify
+                ? String(localized: "\(pendingReminders) pending reminder(s) will still notify you, but their Sessions will close.")
+                : String(localized: "\(pendingReminders) pending reminder(s) will be cancelled."))
         }
         return text
     }

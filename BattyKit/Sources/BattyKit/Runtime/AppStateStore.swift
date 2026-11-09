@@ -42,6 +42,10 @@ public final class AppStateStore {
     /// app delegate calls `observeSystemEvents()`, so a store built in a
     /// test never subscribes to wake or clock notifications.
     @ObservationIgnored public let reminderScheduler: ReminderScheduler
+    /// Reminder ids `fireReminder` handled in this launch. A scheduled system
+    /// delivery for one of them arriving after the in-app fire is a duplicate
+    /// of the banner the in-app post already showed.
+    @ObservationIgnored var remindersFiredThisLaunch: Set<UUID> = []
     /// The last Tomorrow time chosen in the Reminder sheet, 9:00 AM until
     /// one is. Observed so the menu and palette labels follow it.
     public internal(set) var tomorrowReminderTime: ReminderTime = .defaultTomorrow
@@ -446,14 +450,19 @@ public final class AppStateStore {
     /// braces alongside `unregisterNSWindow`'s own pruning, since
     /// `WindowDelegate.windowWillClose` calls both in the same teardown and
     /// a test may call this one alone.
+    ///
+    /// Closing the last Window terminates Batty, so it is treated like a
+    /// quit: scheduled system Reminder requests are kept. Closing any other
+    /// Window removes them, as closing each of its Sessions would.
     public func removeWindow(id windowID: WindowID) {
         pruneRecentlyKeyWindowID(windowID)
+        let isLastWindow = !windows.contains { $0.id != windowID }
         for request in windows.first(where: { $0.id == windowID })?.pendingStartupTrusts ?? [] {
             cancelStartupTrust(requestID: request.id)
         }
         if let closing = windows.first(where: { $0.id == windowID }) {
             for session in closing.sessions {
-                reminderScheduler.cancel(sessionID: session.id)
+                cancelReminderState(sessionID: session.id, keepSystemRequest: isLastWindow)
                 bellFeed.removeReminderEntries(forSessionID: session.id)
             }
         }
@@ -2468,7 +2477,7 @@ public final class AppStateStore {
     /// install, so the two can't drift.
     private func installWindowHooks(on window: WindowRuntime) {
         window.reminderCancelHandler = { [weak self] sessionID in
-            self?.reminderScheduler.cancel(sessionID: sessionID)
+            self?.cancelReminderState(sessionID: sessionID, keepSystemRequest: false)
         }
         window.reminderTimeContext = { [weak self] in
             guard let scheduler = self?.reminderScheduler else { return (Date(), .current) }
@@ -2727,7 +2736,7 @@ public final class AppStateStore {
         // An entry is dropped when its Session is muted or when the notifier
         // would decline the banner. Neither posts a banner, so no
         // notification tap can name a dropped entry
-        // (`RootWindowView.setUpNotifier`'s lookup). The #0297 decision
+        // (`AppStateStore.notificationTapRoute(for:)`'s lookup). The #0297 decision
         // history and the #0523 capture log still record the bell.
         guard !location.session.notificationsMuted,
               BellNotifier.evaluateShouldPost(isBattyActive: battyActive, entrySeen: entry.seen) else {

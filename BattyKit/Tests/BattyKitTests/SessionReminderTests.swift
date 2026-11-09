@@ -160,9 +160,17 @@ struct SessionReminderTests {
 
     // MARK: - Quit confirmation
 
-    @Test func quitConfirmationMentionsPendingRemindersOnlyWhenThereAreSome() {
-        let none = QuitConfirmation.informativeText(openTabs: 3, pendingReminders: 0)
-        let some = QuitConfirmation.informativeText(openTabs: 3, pendingReminders: 2)
+    @Test func quitConfirmationTextDescribesScheduledReminders() {
+        let none = QuitConfirmation.informativeText(openTabs: 3, pendingReminders: 0, remindersStillNotify: true)
+        let some = QuitConfirmation.informativeText(openTabs: 3, pendingReminders: 2, remindersStillNotify: true)
+        #expect(!none.contains("reminder"))
+        #expect(some.hasPrefix(none))
+        #expect(some.contains("2 pending reminder(s) will still notify you, but their Sessions will close."))
+    }
+
+    @Test func quitConfirmationTextSaysCancelledWhenNotificationsAreOff() {
+        let none = QuitConfirmation.informativeText(openTabs: 3, pendingReminders: 0, remindersStillNotify: false)
+        let some = QuitConfirmation.informativeText(openTabs: 3, pendingReminders: 2, remindersStillNotify: false)
         #expect(!none.contains("reminder"))
         #expect(some.hasPrefix(none))
         #expect(some.contains("2 pending reminder(s) will be cancelled."))

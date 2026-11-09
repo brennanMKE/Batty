@@ -12,14 +12,33 @@ final class SpyReminderNotifier: BellNotifying {
     }
 
     private(set) var reminders: [Posted] = []
+    private(set) var postedIdentifiers: [String] = []
     private(set) var bells: [BellFeedEntry] = []
+    /// Pending system requests by identifier, with UN semantics: scheduling
+    /// replaces, and an in-app post under the same identifier replaces too.
+    private(set) var scheduled: [String: ScheduledReminderNotification] = [:]
 
     func post(for entry: BellFeedEntry, sessionTitle: String, paneIndex: Int, tabLabel: String, playSound: Bool) {
         bells.append(entry)
     }
 
-    func postReminder(entry: BellFeedEntry, sessionTitle: String) {
+    func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String) {
+        let id = ScheduledReminderNotification.identifier(for: reminderID)
+        scheduled[id] = nil
+        postedIdentifiers.append(id)
         reminders.append(Posted(entry: entry, sessionTitle: sessionTitle))
+    }
+
+    func scheduleReminder(_ notification: ScheduledReminderNotification) {
+        scheduled[notification.identifier] = notification
+    }
+
+    func removeScheduledReminders(ids: [UUID]) {
+        for id in ids { scheduled[ScheduledReminderNotification.identifier(for: id)] = nil }
+    }
+
+    func removeAllScheduledReminders() {
+        scheduled.removeAll()
     }
 }
 
@@ -388,6 +407,206 @@ final class AppStateStoreReminderTests {
         let message = try #require(store.windows[0].pendingCloseRequest?.message)
         #expect(message.contains("reminder"))
     }
+
+    // MARK: - Scheduled system requests (#0566)
+
+    @Test func settingAReminderSchedulesOneSystemRequest() throws {
+        let session = store.addSession(title: "prs")!
+        let reminder = try #require(store.setReminder(.after(minutes: 15), note: "check on PRs", forSessionID: session.id))
+        #expect(notifier.scheduled.count == 1)
+        let request = try #require(notifier.scheduled[ScheduledReminderNotification.identifier(for: reminder.id)])
+        #expect(request.title.contains("prs"))
+        #expect(request.body == "check on PRs")
+        #expect(notifier.reminders.isEmpty)
+    }
+
+    @Test func editingAReminderReplacesItsScheduledRequest() throws {
+        let session = store.addSession(title: "edit")!
+        let first = try #require(store.setReminder(.after(minutes: 15), forSessionID: session.id))
+        let second = try #require(store.setReminder(.after(minutes: 30), forSessionID: session.id))
+        #expect(first.id != second.id)
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: second.id)])
+    }
+
+    @Test func editingOnlyTheNoteOfATomorrowReminderReschedulesUnderTheSameIdentifier() throws {
+        let session = store.addSession(title: "tomorrow")!
+        let first = try #require(store.setReminder(.tomorrow(hour: 9, minute: 0), note: "old", forSessionID: session.id))
+        let edited = try #require(store.editReminder(.tomorrow(hour: 9, minute: 0), note: "new", forSessionID: session.id))
+        #expect(edited.id == first.id)
+        #expect(notifier.scheduled.count == 1)
+        #expect(notifier.scheduled[ScheduledReminderNotification.identifier(for: first.id)]?.body == "new")
+    }
+
+    @Test func aSheetCommitSchedulesAndReplacesTheSystemRequestAndRemembersTheTime() throws {
+        let session = store.addSession(title: "sheet")!
+        let first = try #require(store.commitReminderSheet(.after(minutes: 20), note: "a", forSessionID: session.id))
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: first.id)])
+        let second = try #require(store.commitReminderSheet(.tomorrow(hour: 8, minute: 30), note: "b", forSessionID: session.id))
+        #expect(second.id != first.id)
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: second.id)])
+        #expect(notifier.scheduled.values.first?.body == "b")
+        #expect(store.tomorrowReminderTime == ReminderTime(hour: 8, minute: 30))
+    }
+
+    @Test func cancellingTheReminderRemovesTheScheduledRequest() throws {
+        let session = store.addSession(title: "cancel")!
+        _ = try #require(store.setReminder(.after(minutes: 15), forSessionID: session.id))
+        #expect(notifier.scheduled.count == 1)
+        store.cancelReminder(forSessionID: session.id)
+        #expect(notifier.scheduled.isEmpty)
+    }
+
+    @Test func closingTheSessionRemovesTheScheduledRequest() throws {
+        let doomed = store.addSession(title: "doomed")!
+        let survivor = store.addSession(title: "survivor")!
+        _ = try #require(store.setReminder(.after(minutes: 15), forSessionID: doomed.id))
+        let kept = try #require(store.setReminder(.after(minutes: 20), forSessionID: survivor.id))
+        store.removeSession(id: doomed.id)
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: kept.id)])
+    }
+
+    @Test func closingANonLastWindowRemovesItsScheduledRequests() throws {
+        let extra = store.openWindowRuntime(for: WindowID())
+        let session = extra.addSession(title: "extra")
+        _ = try #require(store.setReminder(.after(minutes: 15), forSessionID: session.id))
+        #expect(notifier.scheduled.count == 1)
+        store.removeWindow(id: extra.id)
+        #expect(notifier.scheduled.isEmpty)
+    }
+
+    @Test func closingTheLastWindowKeepsScheduledRequestsLikeAQuit() throws {
+        let session = store.addSession(title: "last")!
+        let reminder = try #require(store.setReminder(.after(minutes: 15), forSessionID: session.id))
+        let before = notifier.scheduled
+        #expect(store.windows.count == 1)
+        store.terminateHandler = {}
+        store.removeWindow(id: store.windows[0].id)
+        #expect(store.reminderScheduler.pendingCount == 0)
+        #expect(notifier.scheduled == before)
+        #expect(notifier.scheduled[ScheduledReminderNotification.identifier(for: reminder.id)] != nil)
+    }
+
+    @Test func inAppFireRemovesTheScheduledRequestAndPostsOnce() async throws {
+        let session = store.addSession(title: "fire")!
+        let firing = try await fire(5, note: "due", on: session.id)
+        #expect(notifier.scheduled.isEmpty)
+        #expect(notifier.reminders.count == 1)
+        #expect(notifier.postedIdentifiers == [ScheduledReminderNotification.identifier(for: firing.reminder.id)])
+    }
+
+    @Test func systemNotificationsOffSchedulesNothing() throws {
+        testDefaults.defaults.set(false, forKey: SettingsPreference.systemNotificationsKey)
+        let session = store.addSession(title: "off")!
+        _ = try #require(store.setReminder(.after(minutes: 15), forSessionID: session.id))
+        #expect(notifier.scheduled.isEmpty)
+        #expect(store.remindersStillNotifyAfterQuit == false)
+    }
+
+    @Test func turningSystemNotificationsOffRemovesPendingRequests() throws {
+        testDefaults.defaults.set(true, forKey: SettingsPreference.systemNotificationsKey)
+        let session = store.addSession(title: "toggle")!
+        _ = try #require(store.setReminder(.after(minutes: 15), forSessionID: session.id))
+        #expect(notifier.scheduled.count == 1)
+        testDefaults.defaults.set(false, forKey: SettingsPreference.systemNotificationsKey)
+        store.systemNotificationsSettingChanged()
+        #expect(notifier.scheduled.isEmpty)
+    }
+
+    @Test func turningSystemNotificationsOnSchedulesPendingReminders() throws {
+        testDefaults.defaults.set(false, forKey: SettingsPreference.systemNotificationsKey)
+        let session = store.addSession(title: "toggle")!
+        let reminder = try #require(store.setReminder(.after(minutes: 15), forSessionID: session.id))
+        #expect(notifier.scheduled.isEmpty)
+        testDefaults.defaults.set(true, forKey: SettingsPreference.systemNotificationsKey)
+        store.systemNotificationsSettingChanged()
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: reminder.id)])
+        #expect(store.remindersStillNotifyAfterQuit)
+    }
+
+    @Test func theManualUITestClockSchedulesNothing() throws {
+        let spy = SpyReminderNotifier()
+        let manual = AppStateStore(
+            notifier: spy,
+            preferences: testDefaults.defaults,
+            reminderClock: ManualSchedulingClock(start: ReminderFixture.anchor),
+            reminderCalendar: { ReminderFixture.calendar() }
+        )
+        let session = manual.addSession(title: "ui")!
+        _ = try #require(manual.setReminder(.after(minutes: 15), forSessionID: session.id))
+        #expect(spy.scheduled.isEmpty)
+        #expect(manual.remindersStillNotifyAfterQuit == false)
+    }
+
+    @Test func tapOnKnownEntryJumpsToIt() async throws {
+        let target = store.addSession(title: "target")!
+        store.selectedSessionID = store.sessions[0].id
+        try await fire(5, on: target.id)
+        let entry = try #require(store.bellFeed.entries.first)
+        let payload = NotificationTapPayload(entryID: entry.id, reminderID: UUID())
+        #expect(store.notificationTapRoute(for: payload) == .jumpToEntry(entry.id))
+        store.handleNotificationTap(payload)
+        #expect(store.selectedSessionID == target.id)
+        #expect(!store.bellFeed.entries.contains { $0.id == entry.id }, "the jump visits a non-selected Session, which drops the row")
+    }
+
+    @Test func tapOnUnknownReminderWithProjectIDOpensTheProject() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("batty-0566-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let projectStore = AppStateStore(
+            notifier: SpyReminderNotifier(),
+            preferences: testDefaults.defaults,
+            projectsFileURL: base.appendingPathComponent("projects.json")
+        )
+        let project = Project(name: "P", rootPath: base.path, layout: ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab()]))))
+        try projectStore.projectStore.upsert(project)
+        let payload = NotificationTapPayload(reminderID: UUID(), projectID: project.id)
+        #expect(projectStore.notificationTapRoute(for: payload) == .openProject(project.id))
+        projectStore.handleNotificationTap(payload)
+        #expect(projectStore.windows.flatMap(\.sessions).contains { $0.projectID == project.id })
+    }
+
+    @Test func tapOnUnknownReminderWithADeletedProjectOnlyActivates() {
+        let before = store.windows.flatMap(\.sessions).map(\.id)
+        let payload = NotificationTapPayload(reminderID: UUID(), projectID: UUID())
+        #expect(store.notificationTapRoute(for: payload) == .activateOnly)
+        store.handleNotificationTap(payload)
+        #expect(store.windows.flatMap(\.sessions).map(\.id) == before)
+    }
+
+    @Test func tapOnUnknownReminderWithoutProjectIDOnlyActivates() {
+        let before = store.windows.flatMap(\.sessions).map(\.id)
+        let payload = NotificationTapPayload(reminderID: UUID())
+        #expect(store.notificationTapRoute(for: payload) == .activateOnly)
+        store.handleNotificationTap(payload)
+        #expect(store.windows.flatMap(\.sessions).map(\.id) == before)
+    }
+
+    @Test func aLiveReminderIsReportedLiveUntilItFires() async throws {
+        let session = store.addSession(title: "live")!
+        let reminder = try #require(store.setReminder(.after(minutes: 5), forSessionID: session.id))
+        #expect(store.isLiveReminder(id: reminder.id))
+        #expect(store.isLiveReminder(id: UUID()) == false)
+        #expect(await clock.waitForSleepers(1))
+        await clock.advance(by: .seconds(5 * 60))
+        _ = try #require(await recorder.next())
+        #expect(store.isLiveReminder(id: reminder.id) == false)
+    }
+
+    @Test func aScheduledDeliveryAfterTheInAppFireIsSuppressed() async throws {
+        let session = store.addSession(title: "race")!
+        let firing = try await fire(5, note: "once", on: session.id)
+        #expect(store.isLiveReminder(id: firing.reminder.id) == false)
+        #expect(store.presentNotification(NotificationTapPayload(reminderID: firing.reminder.id)) == false)
+        #expect(notifier.reminders.count == 1)
+    }
+
+    @Test func aScheduledDeliveryForAReminderNeverSeenThisLaunchIsPresented() async throws {
+        let session = store.addSession(title: "orphan")!
+        try await fire(5, on: session.id)
+        #expect(store.presentNotification(NotificationTapPayload(reminderID: UUID())))
+    }
+
     // MARK: - Remembered Tomorrow time
 
     private func seededStore(_ time: ReminderTime, defaults: TestDefaults) -> AppStateStore {

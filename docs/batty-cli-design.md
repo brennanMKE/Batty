@@ -125,7 +125,7 @@ only if needed · **[skip]** off-mission for Batty.
 
 ### C. Naming / metadata  [core, 1-way]
 - `batty session rename <name>` · `batty tab rename <name>`. *(herdr `tab.rename`/`workspace.rename`)* — already discussed as the first CLI-context feature.
-- `batty session remind [--session <id>] (--in <5m|2h|1h30m> | --tomorrow [--at HH:MM] | --cancel) [--note <text>] [--json]` — set, replace or cancel the Session's Reminder **[XPC, shipped, #0567]**. `--tomorrow` without `--at` uses the app's one-click Tomorrow time (the last Tomorrow time chosen in the Reminder sheet, 9:00 AM until one is chosen; the CLI never changes it); cancel is idempotent; an unknown Session exits `4`.
+- `batty session remind [--session <id>] (--in <5m|2h|1h30m> | --tomorrow [--at HH:MM] | --cancel) [--note <text>] [--json]` — set, replace or cancel the Session's Reminder **[XPC, shipped, #0567]**. `--tomorrow` without `--at` uses the app's one-click Tomorrow time (the last Tomorrow time chosen in the Reminder sheet, 9:00 AM until one is chosen; the CLI never changes it); cancel is idempotent; an unknown Session exits `4`. Like a GUI-set Reminder, its notification is scheduled with macOS and still arrives after a quit (#0566).
 - `batty tab color <color>` / `batty session color <color>` — per-tab/session tint. *(supacode & cmux have per-tab/repo color)* — optional polish.
 
 ### D. Activity display for agents  [activity, 1-way]  ← the "present agent activity" ask

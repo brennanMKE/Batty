@@ -98,10 +98,14 @@ public enum SettingsPreference {
     }
 
     public static func resolvedBellSound() -> Bool {
-        if UserDefaults.standard.object(forKey: bellSoundKey) == nil {
+        resolvedBellSound(defaults: .standard)
+    }
+
+    static func resolvedBellSound(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: bellSoundKey) == nil {
             return defaultBellSound
         }
-        return UserDefaults.standard.bool(forKey: bellSoundKey)
+        return defaults.bool(forKey: bellSoundKey)
     }
 
     public static func resolvedSystemNotifications() -> Bool {

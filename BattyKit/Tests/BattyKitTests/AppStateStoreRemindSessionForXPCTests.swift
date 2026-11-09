@@ -154,4 +154,40 @@ final class AppStateStoreRemindSessionForXPCTests {
         #expect(decoded.reminder == nil)
         #expect(decoded.id == session.id)
     }
+    /// A CLI set replaces the GUI-set request on its Session, a CLI cancel
+    /// removes it, and another Session's request is left alone throughout.
+    @Test func xpcSessionRemindSchedulesReplacesAndRemovesTheSystemRequest() throws {
+        let spy = SpyReminderNotifier()
+        testDefaults.defaults.set(true, forKey: SettingsPreference.systemNotificationsKey)
+        let store = AppStateStore(
+            notifier: spy,
+            preferences: testDefaults.defaults,
+            reminderClock: clock,
+            reminderCalendar: { ReminderFixture.calendar() }
+        )
+        let target = try #require(store.addSession(title: "cli target"))
+        let bystander = try #require(store.addSession(title: "bystander"))
+        let gui = try #require(store.setReminder(.after(minutes: 45), note: "from the sheet", forSessionID: target.id))
+        let other = try #require(store.setReminder(.after(minutes: 90), forSessionID: bystander.id))
+        let otherID = ScheduledReminderNotification.identifier(for: other.id)
+        #expect(spy.scheduled.count == 2)
+
+        guard case .set(let cli, _) = store.remindSessionForXPC(
+            SessionRemindRequest(sessionID: target.id, action: .after(minutes: 15), note: "from the cli")
+        ) else {
+            Issue.record("expected .set"); return
+        }
+        #expect(cli.id != gui.id)
+        #expect(Set(spy.scheduled.keys) == [ScheduledReminderNotification.identifier(for: cli.id), otherID])
+        #expect(spy.scheduled[ScheduledReminderNotification.identifier(for: cli.id)]?.body == "from the cli")
+
+        guard case .cancelled = store.remindSessionForXPC(
+            SessionRemindRequest(sessionID: target.id, action: .cancel, note: nil)
+        ) else {
+            Issue.record("expected .cancelled"); return
+        }
+        #expect(Array(spy.scheduled.keys) == [otherID])
+        #expect(target.reminder == nil)
+        #expect(bystander.reminder == other)
+    }
 }

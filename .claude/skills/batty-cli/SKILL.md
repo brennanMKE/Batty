@@ -205,7 +205,8 @@ To come back to a Session later, set a Reminder on it instead of polling:
 the app's Reminder sheet, 9:00 AM until one is chosen). Exactly one of `--in`/`--tomorrow`/`--cancel`.
 One Reminder per Session (setting replaces); `--cancel` is idempotent. The
 pending Reminder appears as `reminder` in `session info --json` and
-`list --json`.
+`list --json`. Its notification still arrives if Batty quits first (the
+Session does not come back).
 
 ## 6. Cleaning up: `pane hide`/`pane show`, `session close`
 

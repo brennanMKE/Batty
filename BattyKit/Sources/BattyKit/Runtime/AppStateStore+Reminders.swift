@@ -46,8 +46,13 @@ extension AppStateStore {
             logger.notice("setReminder: spec out of bounds for session \(sessionID, privacy: .public)")
             return nil
         }
+        let previousID = session.reminder?.id
         session.reminder = reminder
         reminderScheduler.set(reminder, forSessionID: sessionID)
+        if let previousID, previousID != reminder.id {
+            notifier?.removeScheduledReminders(ids: [previousID])
+        }
+        scheduleSystemReminder(reminder, session: session)
         return reminder
     }
 
@@ -66,13 +71,137 @@ extension AppStateStore {
         existing.note = SessionReminder.normalizedNote(note)
         session.reminder = existing
         reminderScheduler.set(existing, forSessionID: sessionID)
+        scheduleSystemReminder(existing, session: session)
         return existing
     }
 
     /// Removes the Session's pending Reminder at once, with no confirmation.
     public func cancelReminder(forSessionID sessionID: UUID) {
         session(id: sessionID)?.reminder = nil
+        cancelReminderState(sessionID: sessionID, keepSystemRequest: false)
+    }
+
+    /// Cancels the in-app Reminder and, unless `keepSystemRequest`, its
+    /// scheduled system request. Reads the id from the scheduler because
+    /// `WindowRuntime.removeSession` clears `session.reminder` first.
+    func cancelReminderState(sessionID: UUID, keepSystemRequest: Bool) {
+        if !keepSystemRequest, let id = reminderScheduler.reminder(forSessionID: sessionID)?.id {
+            notifier?.removeScheduledReminders(ids: [id])
+        }
         reminderScheduler.cancel(sessionID: sessionID)
+    }
+
+    /// Nothing is scheduled with the system under the UI-test manual clock:
+    /// a trigger computed from a frozen clock would put real banners in the
+    /// test machine's Notification Center.
+    private var schedulesSystemReminders: Bool {
+        SettingsPreference.resolvedSystemNotifications(defaults: preferences)
+            && reminderScheduler.manualClock == nil
+    }
+
+    private func scheduleSystemReminder(_ reminder: SessionReminder, session: SessionRuntime) {
+        guard let notifier else { return }
+        guard reminderScheduler.manualClock == nil else {
+            logger.debug("scheduleSystemReminder: manual clock; not scheduling \(reminder.id, privacy: .public)")
+            return
+        }
+        guard SettingsPreference.resolvedSystemNotifications(defaults: preferences) else { return }
+        notifier.scheduleReminder(.make(
+            reminder: reminder,
+            sessionTitle: session.title,
+            projectID: session.projectID,
+            playSound: SettingsPreference.resolvedBellSound(defaults: preferences)
+        ))
+    }
+
+    /// Called when "Show system notifications" flips. Off removes every
+    /// scheduled Reminder request, orphans from earlier launches included;
+    /// on schedules every pending Reminder.
+    public func systemNotificationsSettingChanged() {
+        guard let notifier else { return }
+        guard SettingsPreference.resolvedSystemNotifications(defaults: preferences) else {
+            notifier.removeAllScheduledReminders()
+            return
+        }
+        for window in windows {
+            for session in window.sessions {
+                if let reminder = session.reminder {
+                    scheduleSystemReminder(reminder, session: session)
+                }
+            }
+        }
+    }
+
+    /// Whether a Reminder with this id is still pending in some Session.
+    public func isLiveReminder(id: UUID) -> Bool {
+        windows.contains { window in
+            window.sessions.contains { $0.reminder?.id == id }
+        }
+    }
+
+    /// Whether a quit leaves pending Reminders scheduled with the system.
+    public var remindersStillNotifyAfterQuit: Bool { schedulesSystemReminders }
+
+    /// The `willPresent` decision. A suppressed live delivery means the
+    /// system got there before the in-app loop (e.g. App Nap), so the
+    /// scheduler is re-evaluated and fires the one banner now. A delivery
+    /// for a Reminder already fired in-app this launch is a duplicate.
+    func presentNotification(_ payload: NotificationTapPayload) -> Bool {
+        let live = payload.reminderID.map { isLiveReminder(id: $0) } ?? false
+        let fired = payload.reminderID.map { remindersFiredThisLaunch.contains($0) } ?? false
+        let show = ScheduledReminderNotification.shouldPresent(
+            payload: payload,
+            isLiveReminder: live,
+            alreadyFiredInApp: fired,
+            systemNotificationsEnabled: SettingsPreference.resolvedSystemNotifications(defaults: preferences)
+        )
+        if !show && live {
+            reminderScheduler.reevaluate()
+        }
+        return show
+    }
+
+    func notificationTapRoute(for payload: NotificationTapPayload) -> NotificationTapRoute {
+        if let entryID = payload.entryID, bellFeed.entries.contains(where: { $0.id == entryID }) {
+            return .jumpToEntry(entryID)
+        }
+        if let projectID = payload.projectID, projectStore.project(id: projectID) != nil {
+            return .openProject(projectID)
+        }
+        return .activateOnly
+    }
+
+    /// A tap on any Batty notification. Batty itself is activated by the
+    /// notifier delegate.
+    public func handleNotificationTap(_ payload: NotificationTapPayload) {
+        switch notificationTapRoute(for: payload) {
+        case .jumpToEntry(let id):
+            guard let entry = bellFeed.entries.first(where: { $0.id == id }) else { return }
+            markBellSeen(id: id)
+            jumpToBellEntry(entry)
+        case .openProject(let id):
+            requestOpenProject(id: id, mode: .focusExistingOrOpen)
+        case .activateOnly:
+            if let reminderID = payload.reminderID {
+                let why = payload.projectID == nil ? "no project" : "project gone"
+                logger.notice("handleNotificationTap: reminder \(reminderID, privacy: .public) has no live Session (\(why, privacy: .public)); activating only")
+            } else if payload.entryID != nil {
+                logger.notice("handleNotificationTap: entry is no longer in the Bell Feed; activating only")
+            }
+        }
+    }
+
+    /// Builds the system notifier once, wired to this store. Called from the
+    /// app delegate before launch finishes; a no-op when a notifier (e.g. a
+    /// test spy) is already set.
+    public func installNotifier() {
+        guard notifier == nil else { return }
+        let notifier = BellNotifier(
+            onTap: { [weak self] payload in self?.handleNotificationTap(payload) },
+            presentation: { [weak self] payload in self?.presentNotification(payload) ?? true }
+        )
+        self.notifier = notifier
+        notifier.ensureAuthorization()
     }
 
     public enum SessionRemindOutcome: Equatable {
@@ -148,8 +277,15 @@ extension AppStateStore {
             reminderDueAt: firing.dueDate
         )
         bellFeed.record(entry)
+        remindersFiredThisLaunch.insert(firing.reminder.id)
+        notifier?.removeScheduledReminders(ids: [firing.reminder.id])
         if SettingsPreference.resolvedSystemNotifications(defaults: preferences) {
-            notifier?.postReminder(entry: entry, sessionTitle: session.title)
+            notifier?.postReminder(
+                entry: entry,
+                reminderID: firing.reminder.id,
+                projectID: session.projectID,
+                sessionTitle: session.title
+            )
         }
     }
 }

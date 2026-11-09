@@ -3,6 +3,9 @@
 import AppKit
 import Foundation
 import UserNotifications
+import os
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BellNotifier")
 
 @MainActor
 public protocol BellNotifying: AnyObject {
@@ -24,25 +27,37 @@ public protocol BellNotifying: AnyObject {
     /// Posts a system notification not tied to a real Terminal Session —
     /// currently only the memory-footprint warning (#0290). `identifier`
     /// should be the paired Bell Feed entry's id so a tap routes through the
-    /// same `onTapEntry` path as every other notification.
+    /// same tap path as every other notification.
     func postFootprintWarning(title: String, body: String, identifier: String)
 
-    /// Posts the system notification for a Session Reminder that came due.
-    /// The paired `.reminder` Bell Feed entry's id is the notification
-    /// identifier and `userInfo`, so a tap routes through `onTapEntry`.
-    func postReminder(entry: BellFeedEntry, sessionTitle: String)
+    /// Posts the system notification for a Session Reminder that came due,
+    /// under `ScheduledReminderNotification.identifier(for: reminderID)` so
+    /// it replaces the Reminder's scheduled request. `userInfo` carries the
+    /// paired `.reminder` Bell Feed entry's id, so a tap jumps to it.
+    func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String)
+
+    /// Schedules (or replaces) a pending Reminder's request with the system,
+    /// so it still notifies after Batty quits.
+    func scheduleReminder(_ notification: ScheduledReminderNotification)
+    func removeScheduledReminders(ids: [UUID])
+    /// Removes every pending Reminder request, including ones left by an
+    /// earlier launch.
+    func removeAllScheduledReminders()
 }
 
 extension BellNotifying {
     /// Default no-op so test doubles that only exercise `post(for:...)`
     /// don't need updating for a path most of them don't touch.
     public func postFootprintWarning(title: String, body: String, identifier: String) {}
-    public func postReminder(entry: BellFeedEntry, sessionTitle: String) {}
+    public func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String) {}
+    public func scheduleReminder(_ notification: ScheduledReminderNotification) {}
+    public func removeScheduledReminders(ids: [UUID]) {}
+    public func removeAllScheduledReminders() {}
 }
 
 @MainActor
 public final class BellNotifier: BellNotifying {
-    public static let entryIdUserInfoKey = "co.sstools.Batty.bellEntryID"
+    nonisolated public static let entryIdUserInfoKey = "co.sstools.Batty.bellEntryID"
 
     private let center: UNUserNotificationCenter
     private let delegate: BellNotifierDelegate
@@ -51,10 +66,11 @@ public final class BellNotifier: BellNotifying {
 
     public init(
         center: UNUserNotificationCenter = .current(),
-        onTapEntry: @escaping (UUID) -> Void = { _ in }
+        onTap: @escaping @MainActor (NotificationTapPayload) -> Void = { _ in },
+        presentation: @escaping @MainActor (NotificationTapPayload) -> Bool = { _ in true }
     ) {
         self.center = center
-        self.delegate = BellNotifierDelegate(onTapEntry: onTapEntry)
+        self.delegate = BellNotifierDelegate(onTap: onTap, presentation: presentation)
         center.delegate = delegate
     }
 
@@ -155,7 +171,7 @@ public final class BellNotifier: BellNotifying {
     /// always unseen when posted. Not recorded in `BellDecisionHistory`,
     /// which logs the terminal-bell gates (`BellTriggerKind`) a Reminder
     /// never passes through.
-    public func postReminder(entry: BellFeedEntry, sessionTitle: String) {
+    public func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String) {
         let content = UNMutableNotificationContent()
         let text = Self.reminderText(note: entry.message, sessionTitle: sessionTitle)
         content.title = text.title
@@ -163,12 +179,58 @@ public final class BellNotifier: BellNotifying {
         if SettingsPreference.resolvedBellSound() {
             content.sound = .default
         }
-        content.userInfo = [Self.entryIdUserInfoKey: entry.id.uuidString]
-        let request = UNNotificationRequest(identifier: entry.id.uuidString, content: content, trigger: nil)
+        var info: [String: String] = [
+            Self.entryIdUserInfoKey: entry.id.uuidString,
+            ScheduledReminderNotification.reminderIDUserInfoKey: reminderID.uuidString,
+        ]
+        if let projectID {
+            info[ScheduledReminderNotification.projectIDUserInfoKey] = projectID.uuidString
+        }
+        content.userInfo = info
+        let request = UNNotificationRequest(
+            identifier: ScheduledReminderNotification.identifier(for: reminderID),
+            content: content,
+            trigger: nil
+        )
         center.add(request, withCompletionHandler: nil)
     }
 
-    static func reminderText(note: String?, sessionTitle: String) -> (title: String, body: String) {
+    public func scheduleReminder(_ notification: ScheduledReminderNotification) {
+        let content = UNMutableNotificationContent()
+        content.title = notification.title
+        content.body = notification.body
+        if notification.playSound {
+            content.sound = .default
+        }
+        content.userInfo = notification.userInfo
+        let trigger = UNCalendarNotificationTrigger(dateMatching: notification.dateComponents, repeats: false)
+        let request = UNNotificationRequest(identifier: notification.identifier, content: content, trigger: trigger)
+        let id = notification.identifier
+        center.add(request) { error in
+            if let error {
+                logger.notice("scheduleReminder \(id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    public func removeScheduledReminders(ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        center.removePendingNotificationRequests(
+            withIdentifiers: ids.map(ScheduledReminderNotification.identifier(for:))
+        )
+    }
+
+    public func removeAllScheduledReminders() {
+        let center = self.center
+        center.getPendingNotificationRequests { requests in
+            let ids = requests.map(\.identifier).filter { $0.hasPrefix(ScheduledReminderNotification.identifierPrefix) }
+            if !ids.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: ids)
+            }
+        }
+    }
+
+    nonisolated static func reminderText(note: String?, sessionTitle: String) -> (title: String, body: String) {
         (
             String(localized: "Batty — Reminder: \(sessionTitle)"),
             note?.isEmpty == false ? note! : String(localized: "Time to come back to \(sessionTitle)")
@@ -177,10 +239,15 @@ public final class BellNotifier: BellNotifying {
 }
 
 private final class BellNotifierDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
-    let onTapEntry: (UUID) -> Void
+    let onTap: @MainActor (NotificationTapPayload) -> Void
+    let presentation: @MainActor (NotificationTapPayload) -> Bool
 
-    init(onTapEntry: @escaping (UUID) -> Void) {
-        self.onTapEntry = onTapEntry
+    init(
+        onTap: @escaping @MainActor (NotificationTapPayload) -> Void,
+        presentation: @escaping @MainActor (NotificationTapPayload) -> Bool
+    ) {
+        self.onTap = onTap
+        self.presentation = presentation
     }
 
     func userNotificationCenter(
@@ -188,7 +255,13 @@ private final class BellNotifierDelegate: NSObject, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        let payload = NotificationTapPayload(userInfo: notification.request.content.userInfo)
+        let presentation = self.presentation
+        nonisolated(unsafe) let completion = completionHandler
+        DispatchQueue.main.async {
+            let show = MainActor.assumeIsolated { presentation(payload) }
+            completion(show ? [.banner, .sound] : [])
+        }
     }
 
     func userNotificationCenter(
@@ -196,12 +269,14 @@ private final class BellNotifierDelegate: NSObject, UNUserNotificationCenterDele
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let userInfo = response.notification.request.content.userInfo
-        if let raw = userInfo[BellNotifier.entryIdUserInfoKey] as? String,
-           let id = UUID(uuidString: raw) {
-            let handler = onTapEntry
-            DispatchQueue.main.async {
-                handler(id)
+        let payload = NotificationTapPayload(userInfo: response.notification.request.content.userInfo)
+        if payload == NotificationTapPayload() {
+            logger.notice("didReceive: notification carries no recognizable userInfo; activating only")
+        }
+        let handler = onTap
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                handler(payload)
                 NSApp.activate(ignoringOtherApps: true)
             }
         }

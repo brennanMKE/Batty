@@ -105,7 +105,7 @@ A fourth source is not a terminal event at all: a **Session Reminder**
 into `AppStateStore.fireReminder(_:)`, which records a `BellFeedEntry`
 with `kind == .reminder` (`message` is the note, `reminderSetAt` and
 `reminderDueAt` feed the row's "Set ... ago" / "Due ..." line) and calls
-`BellNotifying.postReminder(entry:sessionTitle:)`. It differs from the
+`BellNotifying.postReminder(entry:reminderID:projectID:sessionTitle:)`. It differs from the
 three sources above in its gating:
 
 - The entry is always recorded **unseen**, even when the Session is
@@ -133,6 +133,55 @@ three sources above in its gating:
   (`removeEntries(matchingTabIDs:)` skips them). Closing the Session or its
   Window purges them by Session id
   (`BellFeedStore.removeReminderEntries(forSessionID:)`).
+
+**Scheduled with macOS (#0566).** A pending Reminder is also scheduled as a
+`UNNotificationRequest`, so its notification still arrives after a quit,
+relaunch or crash. The Session itself does not come back.
+
+- **Identifier:** `co.sstools.Batty.reminder.<reminderID>`
+  (`ScheduledReminderNotification.identifier(for:)`). The in-app post uses
+  the same identifier, so it replaces the scheduled request.
+- **Trigger:** `UNCalendarNotificationTrigger`, non-repeating. An instant
+  Reminder ("in N minutes") uses year-through-second components from a UTC
+  Gregorian calendar with `timeZone = UTC`, so a time-zone change does not
+  move it. A Tomorrow Reminder passes its stored wall-clock components with
+  no time zone, so it floats with the local zone like the in-app scheduler.
+- **Set / edit / cancel:** `setReminder` removes the previous Reminder's
+  request and schedules the new one; `editReminder`'s keep-id path
+  reschedules under the same identifier; `cancelReminder` and a Session
+  close remove it. `batty session remind` (`remindSessionForXPC`) goes
+  through `setReminder` and `cancelReminder`, so a CLI set or cancel
+  schedules, replaces and removes requests the same way.
+- **Dedupe.** `fireReminder` removes the scheduled request, then posts. If
+  the system delivers the scheduled one first (the in-app loop ran late),
+  `willPresent` suppresses it while the Reminder is still live and calls
+  `reminderScheduler.reevaluate()`, so the in-app fire shows the one banner.
+  The instant trigger is rounded up to the next whole second, so the
+  in-app fire normally comes first; if the system still delivers just
+  after it, the Reminder is no longer live, so `fireReminder` records the
+  id in `remindersFiredThisLaunch` and `willPresent` suppresses deliveries
+  for those ids too. A scheduled delivery whose Reminder is neither live
+  nor fired this launch (left by an earlier launch) is shown.
+  `ScheduledReminderNotification.shouldPresent` is the pure rule.
+- **Settings.** Turning "Show system notifications" off removes every
+  pending request with the prefix, earlier launches' included, and
+  `willPresent` suppresses scheduled deliveries while it is off. Turning it
+  on schedules every pending Reminder. "Play sound" is captured at schedule
+  time and not resynced. Nothing is scheduled under the UI-test manual clock.
+- **Closing the last Window is a quit.** `removeWindow` on the last Window
+  keeps the requests (Batty terminates next), as Cmd-Q does. Closing any
+  other Window removes its Sessions' requests.
+- **Title is not resynced on rename.** The scheduled content carries the
+  Session title as of the last set or edit. While Batty runs, the in-app
+  post uses the fire-time title; only a post-quit delivery shows the older
+  one.
+- **Taps.** `AppStateStore.handleNotificationTap` routes a known Bell Feed
+  entry to the jump; otherwise a `projectID` that still exists opens or
+  focuses that Project (`requestOpenProject`, trust prompt included);
+  otherwise Batty is only activated and a `notice` is logged. The notifier
+  and its delegate are installed in `applicationWillFinishLaunching`
+  (`AppStateStore.installNotifier()`) so a tap that launched Batty reaches
+  the delegate.
 
 ---
 
@@ -491,7 +540,8 @@ the tab doesn't need a delayed banner for the same bell.
 | File | Role |
 |---|---|
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
-| [`../BattyKit/Sources/BattyKit/BellNotifier.swift`](../BattyKit/Sources/BattyKit/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, and the tap-to-jump delegate (`onTapEntry`). |
+| [`../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift`](../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, scheduling and removing Reminder requests (#0566), and the delegate's `onTap` / `presentation` closures, which `AppStateStore.installNotifier()` wires to `handleNotificationTap` and `presentNotification`. |
+| [`../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift`](../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift) | Pure value types for #0566: the scheduled request (identifier, trigger components, `userInfo`), `NotificationTapPayload`, `NotificationTapRoute`, and the `shouldPresent` rule. |
 | [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (thin routers; cleanup runs in `WindowRuntime.tearDownClosingTabs(_:)`), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
 | [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
