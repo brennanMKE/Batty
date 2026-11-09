@@ -68,9 +68,13 @@ private final class EventRecorder {
 @MainActor
 private func perform(_ service: AppXPCService, verb: String, payload: Data? = nil) async throws -> XPCResponse {
     let requestData = try JSONEncoder().encode(XPCRequest(verb: verb, payload: payload))
-    let responseData: Data = await withCheckedContinuation { continuation in
-        service.perform(requestData) { continuation.resume(returning: $0) }
+    let responseTask = Task { @MainActor in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Data, Never>) in
+            service.perform(requestData) { continuation.resume(returning: $0) }
+        }
     }
+    try #require(await awaitBounded { _ = await responseTask.value }, "no XPC reply for \(verb)")
+    let responseData = await responseTask.value
     return try JSONDecoder().decode(XPCResponse.self, from: responseData)
 }
 
@@ -84,7 +88,6 @@ private func reply(_ response: XPCResponse) throws -> ProjectOpenReply {
 }
 
 @MainActor
-@Suite(.timeLimit(.minutes(1)))
 struct ProjectXPCTests {
     // MARK: - Unknown verbs
 

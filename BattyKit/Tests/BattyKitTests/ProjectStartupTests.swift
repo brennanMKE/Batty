@@ -23,7 +23,11 @@ private final class RecordingSink: StartupInputSink {
         return true
     }
 
-    func waitForEvents(_ count: Int) async {
+    func waitForEvents(_ count: Int) async -> Bool {
+        await awaitBounded { await self.waitForEventsUnbounded(count) }
+    }
+
+    private func waitForEventsUnbounded(_ count: Int) async {
         if events.count >= count { return }
         await withCheckedContinuation { waiters.append((count, $0)) }
     }
@@ -36,12 +40,20 @@ private final class RecordingSink: StartupInputSink {
 }
 
 /// The main queue is FIFO, so once this returns every block queued before it
-/// has run: a stand-in for "no deferred delivery is still pending".
+/// has run: a stand-in for "no deferred delivery is still pending". Returns
+/// whether the bounded wait completed.
 @MainActor
-private func drainMainQueue() async {
-    await withCheckedContinuation { continuation in
-        DispatchQueue.main.async { continuation.resume() }
+private func drainMainQueue() async -> Bool {
+    await awaitBounded {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
+}
+
+@MainActor
+private func finished(_ delivery: StartupCommandDelivery) async -> Bool {
+    await awaitBounded { await delivery.waitUntilFinished() }
 }
 
 @MainActor
@@ -109,7 +121,6 @@ private func report(_ path: String, on tab: TabRuntime) {
 }
 
 @MainActor
-@Suite(.timeLimit(.minutes(1)))
 struct ProjectStartupDeliveryTests {
     @Test func firstPwdReportDeliversTextThenReturnExactlyOnce() async {
         let tab = TabRuntime()
@@ -119,11 +130,11 @@ struct ProjectStartupDeliveryTests {
 
         report("/work", on: tab)
         #expect(sink.events.isEmpty)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(sink.events == ["paste:./build.sh", "return"])
 
         report("/work/src", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events == ["paste:./build.sh", "return"])
     }
 
@@ -134,7 +145,7 @@ struct ProjectStartupDeliveryTests {
         report("/work", on: tab)
         #expect(!delivery.isFinished)
         #expect(sink.events.isEmpty)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(delivery.isFinished)
     }
 
@@ -144,11 +155,11 @@ struct ProjectStartupDeliveryTests {
         report("/work", on: tab)
 
         let delivery = tab.armStartupCommand("claude", sink: sink)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(sink.events == ["paste:claude", "return"])
 
         report("/elsewhere", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events == ["paste:claude", "return"])
     }
 
@@ -160,7 +171,7 @@ struct ProjectStartupDeliveryTests {
         let first = armedFirst.armStartupCommand("a", sink: firstSink)
         store.wireWorkingDirectoryReporting(for: armedFirst)
         report("/one", on: armedFirst)
-        await first.waitUntilFinished()
+        #expect(await finished(first))
         #expect(firstSink.events == ["paste:a", "return"])
         #expect(armedFirst.workingDirectory == "/one")
 
@@ -169,13 +180,13 @@ struct ProjectStartupDeliveryTests {
         store.wireWorkingDirectoryReporting(for: wiredFirst)
         let second = wiredFirst.armStartupCommand("b", sink: secondSink)
         report("/two", on: wiredFirst)
-        await second.waitUntilFinished()
+        #expect(await finished(second))
         #expect(secondSink.events == ["paste:b", "return"])
         #expect(wiredFirst.workingDirectory == "/two")
 
         store.wireWorkingDirectoryReporting(for: wiredFirst)
         report("/three", on: wiredFirst)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(secondSink.events == ["paste:b", "return"])
         #expect(wiredFirst.workingDirectory == "/three")
     }
@@ -185,7 +196,7 @@ struct ProjectStartupDeliveryTests {
         let sink = RecordingSink()
         let delivery = tab.armStartupCommand("cd src\n\n  \nmake\r\nls", sink: sink)
         report("/work", on: tab)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(sink.events == ["paste:cd src", "return", "paste:make", "return", "paste:ls", "return"])
     }
 
@@ -200,10 +211,10 @@ struct ProjectStartupDeliveryTests {
         sink.accepts = false
         let delivery = tab.armStartupCommand("a\nb", sink: sink)
         report("/work", on: tab)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         sink.accepts = true
         report("/work/src", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events.isEmpty)
     }
 }
@@ -327,7 +338,6 @@ struct ProjectStartupTrustLogicTests {
 }
 
 @MainActor
-@Suite(.timeLimit(.minutes(1)))
 struct ProjectStartupOpenTests {
     private func firstTab(of session: SessionRuntime) -> TabRuntime {
         session.tree.allPanes[0].tabs[0]
@@ -346,7 +356,7 @@ struct ProjectStartupOpenTests {
         #expect(store.windows.allSatisfy { $0.pendingStartupTrusts.isEmpty })
         let tab = firstTab(of: session)
         report("/work", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(fixture.sinks.sink(for: tab.id).events.isEmpty)
     }
 
@@ -364,7 +374,7 @@ struct ProjectStartupOpenTests {
         #expect(store.windows.allSatisfy { $0.pendingStartupTrusts.isEmpty })
         let tab = firstTab(of: session)
         report("/work", on: tab)
-        await fixture.sinks.sink(for: tab.id).waitForEvents(2)
+        #expect(await fixture.sinks.sink(for: tab.id).waitForEvents(2))
         #expect(fixture.sinks.sink(for: tab.id).events == ["paste:./build.sh", "return"])
     }
 
@@ -403,7 +413,7 @@ struct ProjectStartupOpenTests {
         #expect(store.projectStore.project(id: project.id)?.approvedCommandsHash == project.startupCommandsHash)
         let tab = firstTab(of: session)
         report("/work", on: tab)
-        await fixture.sinks.sink(for: tab.id).waitForEvents(2)
+        #expect(await fixture.sinks.sink(for: tab.id).waitForEvents(2))
         #expect(fixture.sinks.sink(for: tab.id).events == ["paste:./build.sh", "return"])
 
         var again: Result<AppStateStore.ProjectOpenResult, Error>?
@@ -451,7 +461,7 @@ struct ProjectStartupOpenTests {
         #expect(store.projectStore.project(id: project.id)?.approvedCommandsHash == nil)
         let tab = firstTab(of: session)
         report("/work", on: tab)
-        await fixture.sinks.sink(for: tab.id).waitForEvents(2)
+        #expect(await fixture.sinks.sink(for: tab.id).waitForEvents(2))
         #expect(fixture.sinks.sink(for: tab.id).events == ["paste:./build.sh", "return"])
     }
 
@@ -472,7 +482,7 @@ struct ProjectStartupOpenTests {
         #expect(store.projectStore.project(id: project.id)?.approvedCommandsHash == "stale")
         let tab = firstTab(of: session)
         report("/work", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(fixture.sinks.sink(for: tab.id).events.isEmpty)
     }
 
@@ -528,12 +538,12 @@ struct ProjectStartupOpenTests {
         let panes = try #require(try result?.get().session).tree.allPanes
         for pane in panes { for tab in pane.tabs { report("/work", on: tab) } }
 
-        await fixture.sinks.sink(for: panes[0].tabs[0].id).waitForEvents(2)
+        #expect(await fixture.sinks.sink(for: panes[0].tabs[0].id).waitForEvents(2))
 
         #expect(fixture.sinks.sink(for: panes[0].tabs[0].id).events == ["paste:one", "return"])
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(fixture.sinks.sink(for: panes[1].tabs[0].id).events.isEmpty)
-        await fixture.sinks.sink(for: panes[1].tabs[1].id).waitForEvents(2)
+        #expect(await fixture.sinks.sink(for: panes[1].tabs[1].id).waitForEvents(2))
         #expect(fixture.sinks.sink(for: panes[1].tabs[1].id).events == ["paste:two", "return"])
     }
 
@@ -584,7 +594,7 @@ struct ProjectStartupOpenTests {
         for pane in window.sessions.flatMap({ $0.tree.allPanes }) {
             for tab in pane.tabs { report("/work", on: tab) }
         }
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(fixture.sinks.isEmpty)
     }
 
@@ -606,7 +616,7 @@ struct ProjectStartupOpenTests {
         let session = try #require(try results.first?.get().session)
         #expect(window.pendingStartupTrusts.isEmpty)
         report("/work", on: session.tree.allPanes[0].tabs[0])
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(fixture.sinks.isEmpty)
     }
 
@@ -636,16 +646,16 @@ private func attach(_ tab: TabRuntime) {
 }
 
 /// Advances `clock` past the readiness deadline and returns once the
-/// deadline Task has finished running.
+/// deadline Task has finished running, reporting whether the bounded wait
+/// completed.
 @MainActor
-private func passDeadline(of tab: TabRuntime, on clock: TestClock) async {
+private func passDeadline(of tab: TabRuntime, on clock: TestClock) async -> Bool {
     let task = tab.terminalDelegate.readinessDeadlineTask
     await clock.advance(by: StartupCommandReadiness.deadline)
-    await task?.value
+    return await awaitBounded { await task?.value }
 }
 
 @MainActor
-@Suite(.timeLimit(.minutes(1)))
 struct ProjectStartupReadinessTests {
     @Test func reportBeforeTheDeadlineDeliversOnceAndLeavesNothingScheduled() async {
         let clock = TestClock()
@@ -653,16 +663,16 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         let delivery = tab.armStartupCommand("./build.sh", sink: sink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
+        #expect(await clock.waitForSleepers(1))
 
         report("/work", on: tab)
         #expect(clock.pendingCount == 0)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(sink.events == ["paste:./build.sh", "return"])
         #expect(tab.startupCommandWaiting == nil)
 
         report("/work/src", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events == ["paste:./build.sh", "return"])
     }
 
@@ -672,10 +682,10 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         let delivery = tab.armStartupCommand("cd src\nmake", sink: sink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
+        #expect(await clock.waitForSleepers(1))
         #expect(tab.startupCommandWaiting == nil)
 
-        await passDeadline(of: tab, on: clock)
+        #expect(await passDeadline(of: tab, on: clock))
 
         #expect(tab.startupCommandWaiting == StartupCommandWaiting(command: "cd src\nmake"))
         #expect(sink.events.isEmpty)
@@ -689,17 +699,17 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         let delivery = tab.armStartupCommand("claude", sink: sink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
-        await passDeadline(of: tab, on: clock)
+        #expect(await clock.waitForSleepers(1))
+        #expect(await passDeadline(of: tab, on: clock))
         #expect(tab.startupCommandWaiting != nil)
 
         report("/work", on: tab)
         #expect(tab.startupCommandWaiting == nil)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(sink.events == ["paste:claude", "return"])
 
         report("/work/src", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events == ["paste:claude", "return"])
     }
 
@@ -709,17 +719,17 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         let delivery = tab.armStartupCommand("claude", sink: sink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
-        await passDeadline(of: tab, on: clock)
+        #expect(await clock.waitForSleepers(1))
+        #expect(await passDeadline(of: tab, on: clock))
 
         tab.runWaitingStartupCommand()
         #expect(tab.startupCommandWaiting == nil)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(sink.events == ["paste:claude", "return"])
 
         report("/work", on: tab)
         tab.runWaitingStartupCommand()
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events == ["paste:claude", "return"])
     }
 
@@ -729,15 +739,15 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         tab.armStartupCommand("claude", sink: sink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
-        await passDeadline(of: tab, on: clock)
+        #expect(await clock.waitForSleepers(1))
+        #expect(await passDeadline(of: tab, on: clock))
 
         tab.dismissWaitingStartupCommand()
         #expect(tab.startupCommandWaiting == nil)
 
         report("/work", on: tab)
         tab.runWaitingStartupCommand()
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events.isEmpty)
         #expect(clock.pendingCount == 0)
     }
@@ -748,14 +758,14 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         tab.armStartupCommand("claude", sink: sink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
+        #expect(await clock.waitForSleepers(1))
 
         tab.terminalDelegate.terminalDidClose(processAlive: false)
 
         #expect(clock.pendingCount == 0)
         #expect(tab.startupCommandWaiting == nil)
         report("/work", on: tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(sink.events.isEmpty)
     }
 
@@ -765,8 +775,8 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         tab.armStartupCommand("claude", sink: sink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
-        await passDeadline(of: tab, on: clock)
+        #expect(await clock.waitForSleepers(1))
+        #expect(await passDeadline(of: tab, on: clock))
         #expect(tab.startupCommandWaiting != nil)
 
         tab.terminalDelegate.terminalDidClose(processAlive: false)
@@ -781,15 +791,15 @@ struct ProjectStartupReadinessTests {
         let dismissedSink = RecordingSink()
         let dismissed = dismissedTab.armStartupCommand("a", sink: dismissedSink, clock: clock)
         attach(dismissedTab)
-        await clock.waitForSleepers(1)
-        await passDeadline(of: dismissedTab, on: clock)
+        #expect(await clock.waitForSleepers(1))
+        #expect(await passDeadline(of: dismissedTab, on: clock))
         dismissedTab.dismissWaitingStartupCommand()
-        await dismissed.waitUntilFinished()
+        #expect(await finished(dismissed))
 
         let closedTab = TabRuntime()
         let closed = closedTab.armStartupCommand("b", sink: RecordingSink(), clock: clock)
         closedTab.terminalDelegate.terminalDidClose(processAlive: false)
-        await closed.waitUntilFinished()
+        #expect(await finished(closed))
         #expect(dismissedSink.events.isEmpty)
     }
 
@@ -798,7 +808,7 @@ struct ProjectStartupReadinessTests {
         var tab: TabRuntime? = TabRuntime()
         tab?.armStartupCommand("a", sink: RecordingSink(), clock: clock)
         tab.map(attach)
-        await clock.waitForSleepers(1)
+        #expect(await clock.waitForSleepers(1))
         tab = nil
         #expect(clock.pendingCount == 0)
     }
@@ -810,17 +820,17 @@ struct ProjectStartupReadinessTests {
         let secondSink = RecordingSink()
         let first = tab.armStartupCommand("first", sink: firstSink, clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
+        #expect(await clock.waitForSleepers(1))
 
         let second = tab.armStartupCommand("second", sink: secondSink, clock: clock)
-        await first.waitUntilFinished()
-        await clock.waitForSleepers(1)
+        #expect(await finished(first))
+        #expect(await clock.waitForSleepers(1))
         #expect(clock.pendingCount == 1)
 
-        await passDeadline(of: tab, on: clock)
+        #expect(await passDeadline(of: tab, on: clock))
         #expect(tab.startupCommandWaiting == StartupCommandWaiting(command: "second"))
         report("/work", on: tab)
-        await second.waitUntilFinished()
+        #expect(await finished(second))
         #expect(firstSink.events.isEmpty)
         #expect(secondSink.events == ["paste:second", "return"])
     }
@@ -836,9 +846,9 @@ struct ProjectStartupReadinessTests {
         #expect(tab.startupCommandWaiting == nil)
 
         attach(tab)
-        await clock.waitForSleepers(1)
+        #expect(await clock.waitForSleepers(1))
         #expect(tab.startupCommandWaiting == nil)
-        await passDeadline(of: tab, on: clock)
+        #expect(await passDeadline(of: tab, on: clock))
         #expect(tab.startupCommandWaiting != nil)
     }
 
@@ -847,8 +857,8 @@ struct ProjectStartupReadinessTests {
         let tab = TabRuntime()
         attach(tab)
         tab.armStartupCommand("claude", sink: RecordingSink(), clock: clock)
-        await clock.waitForSleepers(1)
-        await passDeadline(of: tab, on: clock)
+        #expect(await clock.waitForSleepers(1))
+        #expect(await passDeadline(of: tab, on: clock))
         #expect(tab.startupCommandWaiting != nil)
     }
 
@@ -857,7 +867,7 @@ struct ProjectStartupReadinessTests {
         let tab = TabRuntime()
         tab.armStartupCommand("claude", sink: RecordingSink(), clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
+        #expect(await clock.waitForSleepers(1))
         attach(tab)
         #expect(clock.pendingCount == 1)
     }
@@ -868,7 +878,7 @@ struct ProjectStartupReadinessTests {
         let sink = RecordingSink()
         let delivery = tab.armStartupCommand("  \n\t", sink: sink, clock: clock)
         attach(tab)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(clock.pendingCount == 0)
         #expect(sink.events.isEmpty)
         #expect(tab.startupCommandWaiting == nil)
@@ -881,7 +891,7 @@ struct ProjectStartupReadinessTests {
         report("/work", on: tab)
         attach(tab)
         let delivery = tab.armStartupCommand("claude", sink: sink, clock: clock)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(clock.pendingCount == 0)
         #expect(sink.events == ["paste:claude", "return"])
     }
@@ -893,17 +903,16 @@ struct ProjectStartupReadinessTests {
         tab.terminalDelegate.onWorkingDirectoryChange = { reported.append($0) }
         let delivery = tab.armStartupCommand("claude", sink: RecordingSink(), clock: clock)
         attach(tab)
-        await clock.waitForSleepers(1)
-        await passDeadline(of: tab, on: clock)
+        #expect(await clock.waitForSleepers(1))
+        #expect(await passDeadline(of: tab, on: clock))
         report("/a", on: tab)
         report("/b", on: tab)
-        await delivery.waitUntilFinished()
+        #expect(await finished(delivery))
         #expect(reported == ["/a", "/b"])
     }
 }
 
 @MainActor
-@Suite(.timeLimit(.minutes(1)))
 struct ProjectStartupReadinessOpenTests {
     @Test func openingWithCommandsSchedulesTheDeadlineOnTheStoresClock() async throws {
         let fixture = try Fixture()
@@ -918,8 +927,8 @@ struct ProjectStartupReadinessOpenTests {
         #expect(fixture.clock.pendingCount == 0)
 
         attach(tab)
-        await fixture.clock.waitForSleepers(1)
-        await passDeadline(of: tab, on: fixture.clock)
+        #expect(await fixture.clock.waitForSleepers(1))
+        #expect(await passDeadline(of: tab, on: fixture.clock))
 
         #expect(tab.startupCommandWaiting == StartupCommandWaiting(command: "./build.sh"))
         #expect(fixture.sinks.isEmpty)
@@ -936,7 +945,7 @@ struct ProjectStartupReadinessOpenTests {
         let tab = session.tree.allPanes[0].tabs[0]
 
         attach(tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(fixture.clock.pendingCount == 0)
         #expect(tab.startupCommandWaiting == nil)
     }
@@ -955,7 +964,7 @@ struct ProjectStartupReadinessOpenTests {
         let tab = session.tree.allPanes[0].tabs[0]
 
         attach(tab)
-        await drainMainQueue()
+        #expect(await drainMainQueue())
         #expect(fixture.clock.pendingCount == 0)
         #expect(tab.startupCommandWaiting == nil)
     }
