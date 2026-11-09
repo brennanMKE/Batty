@@ -15,6 +15,42 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-3-5">
+            <h2>1.3.5 — 2026-11-09</h2>
+            <p class="meta">Terminal background images and opacity, including see-through terminals.</p>
+            <h3>New</h3>
+            <ul>
+                <li><strong>Terminal background image and opacity.</strong> Settings &rarr; Appearance sets a background
+                image for every terminal, with a size (Fill, Fit, Stretch or Actual Size; Fill is the default), a
+                position, an image opacity and a terminal opacity. Batty keeps its own copy of the image, so moving or
+                deleting the original doesn't break it. (#0372, #0375, #0550)</li>
+                <li><strong>See-through terminals.</strong> Below 100% terminal opacity, the desktop and other apps show
+                through the terminal. The Sidebar, title bar and tab bars stay solid, and full screen is always opaque.
+                (#0539)</li>
+                <li><strong>Per-Session background.</strong> Right-click a Session in the Sidebar and choose
+                <em>Set Session Background…</em> to give it its own background, or <em>Clear Session Background</em> to
+                follow Settings again. (#0376)</li>
+                <li><strong>Per-Pane background.</strong> The gear beside a Pane's eye toggle in the Sidebar sets a
+                background for just that Pane. (#0374)</li>
+                <li><strong>Projects remember a background.</strong> A saved Project stores its background image and
+                opacity, and a Session opened from it uses them. A Shared Project syncs the size, position and opacities
+                to your other Macs; the image itself is chosen on each Mac. (#0540)</li>
+            </ul>
+            <h3>Fixes</h3>
+            <ul>
+                <li><strong>Cmd-Q, Cmd-, and Cmd-V after changing Settings.</strong> Changing the font size or cursor in
+                Settings no longer brings back Ghostty's default key bindings in open Tabs, which stopped those shortcuts
+                from reaching Batty's menus. (#0538)</li>
+                <li><strong>Saved Projects kept safe.</strong> If <code>projects.json</code> can't be read, Batty no longer
+                starts with an empty list that a later save or iCloud sync could write over every saved Project. (#0542)</li>
+                <li><strong>Quitting after closing the last Session.</strong> Closing a window's last Session no longer
+                leaves Batty running with no windows. (#0546)</li>
+                <li><strong>Dragging the window.</strong> The title bar above the terminal drags the window again while
+                terminal opacity is below 100%. (#0548)</li>
+                <li><strong>Accessibility.</strong> A Sidebar row showing a background image warning no longer doubles
+                its accessibility identifier. (#0547)</li>
+            </ul>
+        </article>
         <article id="v1-3-4">
             <h2>1.3.4 — 2026-10-27</h2>
             <p class="meta">Your home folder is no longer treated as a project folder when naming Sessions and Projects.</p>
