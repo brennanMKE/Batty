@@ -21,11 +21,11 @@ extension WindowRuntime {
 
 
 
-    func topologyPayload(includeDimensions: Bool = false) -> TopologyWindowPayload {
+    func topologyPayload(includeDimensions: Bool = false, reminderCalendar: Calendar = .current) -> TopologyWindowPayload {
         TopologyWindowPayload(
             id: id.value,
             selectedSessionID: selectedSessionID,
-            sessions: sessions.map { $0.topologyPayload(isActive: $0.id == selectedSessionID, includeDimensions: includeDimensions) }
+            sessions: sessions.map { $0.topologyPayload(isActive: $0.id == selectedSessionID, includeDimensions: includeDimensions, reminderCalendar: reminderCalendar) }
         )
     }
 
@@ -50,7 +50,7 @@ extension SessionRuntime {
 
 
 
-    func topologyPayload(isActive: Bool, includeDimensions: Bool = false) -> TopologySessionPayload {
+    func topologyPayload(isActive: Bool, includeDimensions: Bool = false, reminderCalendar: Calendar = .current) -> TopologySessionPayload {
         let anchorTab = tree.root.firstLeafPane.tabs.first
         return TopologySessionPayload(
             id: id,
@@ -58,12 +58,31 @@ extension SessionRuntime {
             path: anchorTab?.workingDirectory,
             isActive: isActive,
             focusedPaneID: tree.focusedPaneID,
-            root: tree.root.topologyPayload(focusedPaneID: tree.focusedPaneID, includeDimensions: includeDimensions)
+            root: tree.root.topologyPayload(focusedPaneID: tree.focusedPaneID, includeDimensions: includeDimensions),
+            reminder: reminder?.topologyPayload(calendar: reminderCalendar)
         )
     }
 
 
 
+}
+
+extension SessionReminder {
+    func topologyPayload(calendar: Calendar) -> TopologyReminderPayload {
+        let kind: TopologyReminderPayload.Kind
+        switch target {
+        case .instant: kind = .instant
+        case .wallClock: kind = .tomorrow
+        }
+        let format = Date.ISO8601FormatStyle()
+        return TopologyReminderPayload(
+            id: id,
+            dueAt: fireDate(calendar: calendar).map { $0.formatted(format) },
+            note: note,
+            kind: kind,
+            createdAt: createdAt.formatted(format)
+        )
+    }
 }
 
 extension SplitTreeNode {

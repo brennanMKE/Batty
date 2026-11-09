@@ -346,6 +346,28 @@ work" rule): `tab new`, `tab close`, `session rename`, `tab rename`, and
 `pane zoom` have no CLI verb yet. Do not invent them from
 `batty-cli-design.md`'s forward-looking catalog.
 
+## Setting your Session aside: `session remind`
+
+An agent that finishes a step needing a human later (CI to finish, a review
+tomorrow morning) can attach a Reminder to its own Session. It fires exactly
+like one set from the GUI: a Reminder row in the Bell Feed and a
+notification.
+
+```bash
+batty session remind --in 45m --note "check CI on the PR"
+batty session remind --tomorrow --at 09:00 --note "check PRs"
+batty session info --json | jq .reminder      # null/absent when none
+batty session remind --cancel                 # idempotent
+```
+
+The target resolves like `session close`: `--session`, then
+`BATTY_SESSION_ID`, then the focused Session. A Session holds one Reminder,
+so setting one replaces any existing one. `--tomorrow` without `--at` uses
+the app's one-click Tomorrow time: the last Tomorrow time chosen in the
+Reminder sheet, 9:00 AM until one is chosen (the CLI never changes it). Bad combinations (`--in` with `--cancel`,
+`--at` without `--tomorrow`, `--note` with `--cancel`) and out-of-range
+values are usage errors and nothing is sent; an unknown Session exits `4`.
+
 ## Opening a saved Project
 
 From 1.3.0 a saved Project can be listed and started from the CLI with either

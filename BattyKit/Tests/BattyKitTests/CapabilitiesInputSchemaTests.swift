@@ -155,6 +155,12 @@ struct CapabilitiesInputSchemaTests {
         assertNamesAreInvocable(SessionCloseCommand.capabilitiesInputSchema, helpMessage: SessionCloseCommand.helpMessage())
     }
 
+    @Test func sessionRemindCommandSchemaMatchesStoredProperties() throws {
+        let instance = try SessionRemindCommand.parse(["--cancel"])
+        assertSchemaMatchesStoredProperties(instance, schema: SessionRemindCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(SessionRemindCommand.capabilitiesInputSchema, helpMessage: SessionRemindCommand.helpMessage())
+    }
+
     @Test func paneSplitCommandSchemaMatchesStoredProperties() throws {
         let instance = try PaneSplitCommand.parse([])
         assertSchemaMatchesStoredProperties(instance, schema: PaneSplitCommand.capabilitiesInputSchema)

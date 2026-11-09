@@ -22,12 +22,18 @@ struct CapabilitiesCommandTests {
         let names = Set(CapabilitiesCommand.verbs().map(\.name))
         #expect(names == [
             "new", "ping", "status", "list",
-            "session info", "session focus", "session close",
+            "session info", "session focus", "session close", "session remind",
             "pane split", "pane close", "pane focus", "pane hide", "pane show",
             "tab focus",
             "project list", "project open",
             "id", "notify", "capabilities",
         ])
+    }
+
+    @Test func capabilitiesListsSessionRemind() {
+        #expect(CapabilitiesCommand.verbs().contains { $0.name == "session remind" })
+        #expect(CapabilitiesCommand.annotations(forVerbPath: "session remind")
+            == .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false))
     }
 
     @Test func verbRosterDoesNotAdvertiseWatch() {

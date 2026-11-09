@@ -112,7 +112,8 @@ struct ListCommand: ParsableCommand {
         let flags = session.isActive ? " active" : ""
         let path = session.path.map { " path=\($0)" } ?? ""
         let paneCount = session.allPanes.count
-        return "session \(session.id) \"\(session.name)\"\(flags) panes=\(paneCount)\(path)"
+        let reminder = session.reminder?.dueAt.map { " reminder=\($0)" } ?? ""
+        return "session \(session.id) \"\(session.name)\"\(flags) panes=\(paneCount)\(path)\(reminder)"
     }
 
     private static func paneLine(_ pane: TopologyPanePayload, session: TopologySessionPayload, includeDimensions: Bool) -> String {

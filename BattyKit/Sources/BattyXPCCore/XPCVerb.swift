@@ -101,6 +101,14 @@ public nonisolated enum XPCVerb {
     /// applied here unchanged).
     public static let sessionClose = "sessionClose"
 
+    /// #0567: sets, replaces or cancels the target Session's Reminder
+    /// through `AppStateStore.setReminder` / `cancelReminder`. Request
+    /// payload is `SessionRemindRequest`; replies with `SessionRemindReply`
+    /// (no `reminder` after a cancel). Cancel is idempotent. A failure reply
+    /// covers an unknown/stale `sessionID`, "no session to target," and an
+    /// out-of-range time — the CLI surfaces all three as exit `4`.
+    public static let sessionRemind = "sessionRemind"
+
     /// #0382: the eighth mutating XPC verb. Hides the target pane —
     /// reusing `WindowRuntime.hidePane(id:)` (the eye-toggle's own entry
     /// point) for the mutation. Idempotent: hiding an already-hidden pane

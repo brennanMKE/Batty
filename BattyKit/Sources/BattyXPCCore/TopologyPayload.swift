@@ -206,14 +206,41 @@ public nonisolated struct TopologySessionPayload: Codable, Sendable, Equatable {
     public let isActive: Bool
     public let focusedPaneID: UUID
     public let root: TopologySplitNodePayload
+    /// The pending Reminder (#0567), omitted from the JSON when there is none.
+    public let reminder: TopologyReminderPayload?
 
-    public init(id: UUID, name: String, path: String?, isActive: Bool, focusedPaneID: UUID, root: TopologySplitNodePayload) {
+    public init(id: UUID, name: String, path: String?, isActive: Bool, focusedPaneID: UUID, root: TopologySplitNodePayload, reminder: TopologyReminderPayload? = nil) {
         self.id = id
         self.name = name
         self.path = path
         self.isActive = isActive
         self.focusedPaneID = focusedPaneID
         self.root = root
+        self.reminder = reminder
+    }
+}
+
+/// A Session's pending Reminder. Dates are ISO 8601 UTC strings, since the
+/// CLI's encoders use the default (seconds-since-2001) date strategy.
+public nonisolated struct TopologyReminderPayload: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable {
+        case instant
+        case tomorrow
+    }
+
+    public let id: UUID
+    /// Nil only when a wall-clock target cannot resolve in the app's calendar.
+    public let dueAt: String?
+    public let note: String?
+    public let kind: Kind
+    public let createdAt: String
+
+    public init(id: UUID, dueAt: String?, note: String?, kind: Kind, createdAt: String) {
+        self.id = id
+        self.dueAt = dueAt
+        self.note = note
+        self.kind = kind
+        self.createdAt = createdAt
     }
 }
 

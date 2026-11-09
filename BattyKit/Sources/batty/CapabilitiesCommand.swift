@@ -180,6 +180,8 @@ struct CapabilitiesCommand: ParsableCommand {
         "hide": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
         "show": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
         "id": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        // Worst case: `--in` moves the due time on every call.
+        "remind": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
         "notify": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
         "capabilities": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
     ]
@@ -195,6 +197,7 @@ struct CapabilitiesCommand: ParsableCommand {
         "session info": "info",
         "session focus": "focus",
         "session close": "close",
+        "session remind": "remind",
         "pane split": "split",
         "pane close": "close",
         "pane focus": "focus",

@@ -6,7 +6,8 @@ import os
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "AppStateStoreReminders")
 
 extension AppStateStore {
-    /// The default for every Tomorrow request that names no time.
+    /// The default for every Tomorrow request that names no time: the
+    /// one-click Tomorrow item and `batty session remind --tomorrow`.
     public var tomorrowReminderSpec: ReminderSpec { tomorrowReminderTime.tomorrowSpec }
 
     func rememberTomorrowReminderTime(_ time: ReminderTime) {
@@ -16,8 +17,9 @@ extension AppStateStore {
     }
 
     /// The Reminder sheet's Set: `editReminder`, and a Tomorrow choice
-    /// becomes the remembered Tomorrow time. Presets and the one-click
-    /// Tomorrow item go through `setReminder` and never change it.
+    /// becomes the remembered Tomorrow time. Presets, the one-click
+    /// Tomorrow item and the CLI's `remindSessionForXPC` go through
+    /// `setReminder` and never change it.
     @discardableResult
     public func commitReminderSheet(_ spec: ReminderSpec, note: String?, forSessionID sessionID: UUID) -> SessionReminder? {
         let result = editReminder(spec, note: note, forSessionID: sessionID)
@@ -71,6 +73,40 @@ extension AppStateStore {
     public func cancelReminder(forSessionID sessionID: UUID) {
         session(id: sessionID)?.reminder = nil
         reminderScheduler.cancel(sessionID: sessionID)
+    }
+
+    public enum SessionRemindOutcome: Equatable {
+        case set(SessionReminder, sessionID: UUID)
+        case cancelled(sessionID: UUID)
+        case unknownSession
+        case noSessionToTarget
+        case invalidSpec
+    }
+
+    /// The `sessionRemind` XPC verb. Always a fresh `setReminder` (never
+    /// the sheet's keep-the-date edit rule, never the remembered-time
+    /// write); cancel is idempotent.
+    public func remindSessionForXPC(_ request: SessionRemindRequest) -> SessionRemindOutcome {
+        guard let sessionID = request.sessionID ?? focusedSessionIDFallback() else {
+            return .noSessionToTarget
+        }
+        guard session(id: sessionID) != nil else { return .unknownSession }
+        let spec: ReminderSpec
+        switch request.action {
+        case .cancel:
+            cancelReminder(forSessionID: sessionID)
+            return .cancelled(sessionID: sessionID)
+        case .after(let minutes):
+            spec = .after(minutes: minutes)
+        case .tomorrow(nil):
+            spec = tomorrowReminderSpec
+        case .tomorrow(let time?):
+            spec = .tomorrow(hour: time.hour, minute: time.minute)
+        }
+        guard spec.isValid, let reminder = setReminder(spec, note: request.note, forSessionID: sessionID) else {
+            return .invalidSpec
+        }
+        return .set(reminder, sessionID: sessionID)
     }
 
     /// Pending Reminders across every window, for the quit confirmation.

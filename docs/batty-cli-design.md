@@ -125,6 +125,7 @@ only if needed · **[skip]** off-mission for Batty.
 
 ### C. Naming / metadata  [core, 1-way]
 - `batty session rename <name>` · `batty tab rename <name>`. *(herdr `tab.rename`/`workspace.rename`)* — already discussed as the first CLI-context feature.
+- `batty session remind [--session <id>] (--in <5m|2h|1h30m> | --tomorrow [--at HH:MM] | --cancel) [--note <text>] [--json]` — set, replace or cancel the Session's Reminder **[XPC, shipped, #0567]**. `--tomorrow` without `--at` uses the app's one-click Tomorrow time (the last Tomorrow time chosen in the Reminder sheet, 9:00 AM until one is chosen; the CLI never changes it); cancel is idempotent; an unknown Session exits `4`.
 - `batty tab color <color>` / `batty session color <color>` — per-tab/session tint. *(supacode & cmux have per-tab/repo color)* — optional polish.
 
 ### D. Activity display for agents  [activity, 1-way]  ← the "present agent activity" ask
@@ -157,7 +158,7 @@ renders them in the session sidebar / pane chrome / bell feed it already has.
 - `batty ping` — check whether the broker is reachable **[XPC, shipped]**. *(all three)*
 - `batty status [--json]` — live process and topology counts **[XPC, shipped]**. `--json` also reports every failure state as JSON (**#0384**).
 - `batty list [sessions|panes|tabs] [--json]` — enumerate live state **[XPC, shipped]**. *(all three: `*.list`)*
-- `batty session info [--session <id>] [--json]` — one Session's topology slice **[XPC, shipped]**.
+- `batty session info [--session <id>] [--json]` — one Session's topology slice **[XPC, shipped]**. Both this and `list` carry a `reminder` object (`id`, `dueAt`, `note`, `kind`, `createdAt`; ISO 8601 UTC dates) on a Session with a pending Reminder, omitted otherwise; plain text appends `reminder=<dueAt>` (#0567).
 - `batty capabilities [--json]` — list supported verbs **[static, no XPC round trip]**. **Landed (#0384).** *(cmux)*
 
 ### F. App / window / theme  [core, 1-way]

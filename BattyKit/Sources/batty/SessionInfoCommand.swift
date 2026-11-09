@@ -7,17 +7,17 @@ import Foundation
 
 /// `batty session` — the noun #0257's eventual grammar (`session new`,
 /// `session rename`) will grow siblings under. `info` (#0274), `focus`
-/// (#0381), and `close` (#0382) exist today.
+/// (#0381), `close` (#0382), and `remind` (#0567) exist today.
 struct SessionNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "session",
         abstract: "Inspect or control a Batty session.",
-        subcommands: [SessionInfoCommand.self, SessionFocusCommand.self, SessionCloseCommand.self]
+        subcommands: [SessionInfoCommand.self, SessionFocusCommand.self, SessionCloseCommand.self, SessionRemindCommand.self]
     )
 }
 
 /// Shared `--session` resolution for the `--session`-flag subcommands
-/// (`info`, `close`): explicit flag → `BATTY_SESSION_ID` env → `nil` (let
+/// (`info`, `close`, `remind`): explicit flag → `BATTY_SESSION_ID` env → `nil` (let
 /// the app resolve the focused session). Mirrors `PaneCommand.swift`'s
 /// `resolveTargetPaneID(flag:)` — review round 1 (#0382) found this exact
 /// chain duplicated verbatim across `SessionInfoCommand`/`SessionCloseCommand`
@@ -27,7 +27,7 @@ struct SessionNounCommand: ParsableCommand {
 /// legitimately different, the same way `PaneFocusCommand` keeps its own
 /// positional-argument resolver distinct from this file's flag-based one.
 /// `nonisolated` — called from each subcommand's `nonisolated func run()`.
-private nonisolated func resolveTargetSessionID(flag: String?) throws -> UUID? {
+nonisolated func resolveTargetSessionID(flag: String?) throws -> UUID? {
     switch BattyTargetResolver.resolve(flag: flag, environmentKey: .sessionID) {
     case let .success(id):
         return id
@@ -121,7 +121,8 @@ struct SessionInfoCommand: ParsableCommand {
     private static func printPlainText(_ payload: TopologySessionPayload, includeDimensions: Bool) {
         let flags = payload.isActive ? " active" : ""
         let path = payload.path.map { " path=\($0)" } ?? ""
-        print("session \(payload.id) \"\(payload.name)\"\(flags)\(path)")
+        let reminder = payload.reminder?.dueAt.map { " reminder=\($0)" } ?? ""
+        print("session \(payload.id) \"\(payload.name)\"\(flags)\(path)\(reminder)")
         for pane in payload.allPanes {
             var paneFlags: [String] = []
             if pane.isHidden { paneFlags.append("hidden") }

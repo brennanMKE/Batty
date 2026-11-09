@@ -203,6 +203,22 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0567. The app sets, replaces or cancels the target Session's
+    /// Reminder, or reports a failure (unknown/stale `sessionID`, no session
+    /// to target, an out-of-range time) via `.requestFailed` (exit `4`).
+    static func sessionRemind(
+        endpoint: NSXPCListenerEndpoint,
+        request: SessionRemindRequest,
+        timeout: TimeInterval
+    ) -> Outcome<SessionRemindReply> {
+        let requestPayload = try? JSONEncoder().encode(request)
+        let outcome: Outcome<SessionRemindReply> = perform(verb: XPCVerb.sessionRemind, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "sessionRemind")
+        if case .success(let reply) = outcome {
+            logger.info("sessionRemind -> session=\(reply.sessionID.uuidString, privacy: .public)")
+        }
+        return outcome
+    }
+
     /// #0382. Reuses the same mutating-verb dance. The app either hides the
     /// target pane (idempotent — already-hidden succeeds quietly) or
     /// reports a failure (unknown/stale `paneID`, no pane to target, or a

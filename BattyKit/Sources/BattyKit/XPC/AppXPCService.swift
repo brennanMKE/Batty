@@ -349,6 +349,41 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "refusing to close the app's last session")))
                 }
             }
+        case XPCVerb.sessionRemind:
+            Task { @MainActor [pendingRequests] in
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(SessionRemindRequest.self, from: payloadData)
+                else {
+                    logger.error("perform sessionRemind: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed session remind request")))
+                    return
+                }
+                let reply: SessionRemindReply
+                switch AppStateStore.shared.remindSessionForXPC(request) {
+                case .set(let reminder, let sessionID):
+                    reply = SessionRemindReply(sessionID: sessionID, reminder: reminder.topologyPayload(calendar: AppStateStore.shared.reminderScheduler.calendar))
+                case .cancelled(let sessionID):
+                    reply = SessionRemindReply(sessionID: sessionID, reminder: nil)
+                case .unknownSession:
+                    logger.error("perform sessionRemind: unknown session id")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown session id")))
+                    return
+                case .noSessionToTarget:
+                    logger.error("perform sessionRemind: no session to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no session to target")))
+                    return
+                case .invalidSpec:
+                    logger.error("perform sessionRemind: reminder time out of range")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "reminder time out of range")))
+                    return
+                }
+                guard let replyData = try? JSONEncoder().encode(reply) else {
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode session remind reply")))
+                    return
+                }
+                logger.info("perform sessionRemind -> session=\(reply.sessionID, privacy: .public) set=\(reply.reminder != nil, privacy: .public)")
+                pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+            }
         case XPCVerb.paneHide:
             Task { @MainActor [pendingRequests] in
                 guard let payloadData = decoded.payload,

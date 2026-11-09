@@ -625,7 +625,7 @@ public final class AppStateStore {
     public func topologyPayload(includeDimensions: Bool = false) -> TopologyPayload {
         TopologyPayload(
             pid: ProcessInfo.processInfo.processIdentifier,
-            windows: windows.map { $0.topologyPayload(includeDimensions: includeDimensions) }
+            windows: windows.map { $0.topologyPayload(includeDimensions: includeDimensions, reminderCalendar: reminderScheduler.calendar) }
         )
     }
 
@@ -661,7 +661,7 @@ public final class AppStateStore {
         if let sessionID {
             for window in windows {
                 if let session = window.sessions.first(where: { $0.id == sessionID }) {
-                    return session.topologyPayload(isActive: window.selectedSessionID == session.id, includeDimensions: includeDimensions)
+                    return session.topologyPayload(isActive: window.selectedSessionID == session.id, includeDimensions: includeDimensions, reminderCalendar: reminderScheduler.calendar)
                 }
             }
             return nil
@@ -671,7 +671,7 @@ public final class AppStateStore {
         else {
             return nil
         }
-        return session.topologyPayload(isActive: window.selectedSessionID == session.id, includeDimensions: includeDimensions)
+        return session.topologyPayload(isActive: window.selectedSessionID == session.id, includeDimensions: includeDimensions, reminderCalendar: reminderScheduler.calendar)
     }
 
 

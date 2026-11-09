@@ -389,8 +389,8 @@ Window (`WindowRuntime.reminderSheetSessionID`), not a popover, so the Session
 menu and palette work with the Sidebar collapsed. There is no keyboard
 shortcut. The Tomorrow time is the last one set from the sheet's Tomorrow
 choice, stored as `co.sstools.Batty.reminderTomorrowTime` (minutes since
-midnight) and 9:00 AM until then; presets and the one-click item never
-change it, and there is no Settings row.
+midnight) and 9:00 AM until then; presets, the one-click item and
+`batty session remind` never change it, and there is no Settings row.
 
 **Badge.** A pending Reminder shows a `clock` button on the Sidebar row that
 opens the sheet in edit mode; a fired one shows `alarm.fill` until its entry

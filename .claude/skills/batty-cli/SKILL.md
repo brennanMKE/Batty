@@ -197,6 +197,16 @@ new_pane=$("$BATTY" pane split --horizontal --command "npm run dev")
 "$BATTY" pane focus "$new_pane"
 ```
 
+### Reminders: `session remind`
+
+To come back to a Session later, set a Reminder on it instead of polling:
+`"$BATTY" session remind --in 45m --note "check CI"` or
+`--tomorrow [--at 09:00]` (without `--at`: the last Tomorrow time chosen in
+the app's Reminder sheet, 9:00 AM until one is chosen). Exactly one of `--in`/`--tomorrow`/`--cancel`.
+One Reminder per Session (setting replaces); `--cancel` is idempotent. The
+pending Reminder appears as `reminder` in `session info --json` and
+`list --json`.
+
 ## 6. Cleaning up: `pane hide`/`pane show`, `session close`
 
 `pane hide`/`pane show` are idempotent (hide-when-hidden and
