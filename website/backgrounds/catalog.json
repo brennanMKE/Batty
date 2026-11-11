@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "name": "Batty Backgrounds",
+  "updated": "2026-11-11",
+  "sets": [
+    {
+      "id": "future-cities",
+      "title": "Future Cities",
+      "images": [
+        { "id": "future-cities-01", "title": "Skyline in the Fog",
+          "full": { "url": "future-cities/01-skyline-fog.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "future-cities/01-skyline-fog-thumb.png", "width": 480, "height": 300 } },
+        { "id": "future-cities-02", "title": "Canal After Rain",
+          "full": { "url": "future-cities/02-canal-after-rain.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "future-cities/02-canal-after-rain-thumb.png", "width": 480, "height": 300 } },
+        { "id": "future-cities-03", "title": "Sky Gardens at Dawn",
+          "full": { "url": "future-cities/03-sky-gardens-dawn.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "future-cities/03-sky-gardens-dawn-thumb.png", "width": 480, "height": 300 } },
+        { "id": "future-cities-04", "title": "Maglev at Dusk",
+          "full": { "url": "future-cities/04-maglev-dusk.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "future-cities/04-maglev-dusk-thumb.png", "width": 480, "height": 300 } },
+        { "id": "future-cities-05", "title": "Desert Dome",
+          "full": { "url": "future-cities/05-desert-dome.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "future-cities/05-desert-dome-thumb.png", "width": 480, "height": 300 } }
+      ]
+    },
+    {
+      "id": "cool-vehicles",
+      "title": "Cool Vehicles",
+      "images": [
+        { "id": "cool-vehicles-01", "title": "Café Racer in the Garage",
+          "full": { "url": "cool-vehicles/01-cafe-racer-garage.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "cool-vehicles/01-cafe-racer-garage-thumb.png", "width": 480, "height": 300 } },
+        { "id": "cool-vehicles-02", "title": "Expedition Truck on the Salt Flat",
+          "full": { "url": "cool-vehicles/02-expedition-truck-salt-flat.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "cool-vehicles/02-expedition-truck-salt-flat-thumb.png", "width": 480, "height": 300 } },
+        { "id": "cool-vehicles-03", "title": "Endurance Racer at Night",
+          "full": { "url": "cool-vehicles/03-endurance-racer-night.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "cool-vehicles/03-endurance-racer-night-thumb.png", "width": 480, "height": 300 } },
+        { "id": "cool-vehicles-04", "title": "Pickup in the Fog",
+          "full": { "url": "cool-vehicles/04-pickup-fog.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "cool-vehicles/04-pickup-fog-thumb.png", "width": 480, "height": 300 } },
+        { "id": "cool-vehicles-05", "title": "Electric Bike on the Roof",
+          "full": { "url": "cool-vehicles/05-electric-bike-rooftop.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "cool-vehicles/05-electric-bike-rooftop-thumb.png", "width": 480, "height": 300 } }
+      ]
+    },
+    {
+      "id": "beautiful-landscapes",
+      "title": "Beautiful Landscapes",
+      "images": [
+        { "id": "beautiful-landscapes-01", "title": "Mountain Lake at Blue Hour",
+          "full": { "url": "beautiful-landscapes/01-mountain-lake-blue-hour.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "beautiful-landscapes/01-mountain-lake-blue-hour-thumb.png", "width": 480, "height": 300 } },
+        { "id": "beautiful-landscapes-02", "title": "Dunes at Dusk",
+          "full": { "url": "beautiful-landscapes/02-dunes-dusk.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "beautiful-landscapes/02-dunes-dusk-thumb.png", "width": 480, "height": 300 } },
+        { "id": "beautiful-landscapes-03", "title": "Misty Forest Valley",
+          "full": { "url": "beautiful-landscapes/03-misty-forest-valley.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "beautiful-landscapes/03-misty-forest-valley-thumb.png", "width": 480, "height": 300 } },
+        { "id": "beautiful-landscapes-04", "title": "Aurora over the Tundra",
+          "full": { "url": "beautiful-landscapes/04-aurora-tundra.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "beautiful-landscapes/04-aurora-tundra-thumb.png", "width": 480, "height": 300 } },
+        { "id": "beautiful-landscapes-05", "title": "Sea Cliffs Under Cloud",
+          "full": { "url": "beautiful-landscapes/05-sea-cliffs-overcast.png", "width": 3840, "height": 2400 },
+          "thumbnail": { "url": "beautiful-landscapes/05-sea-cliffs-overcast-thumb.png", "width": 480, "height": 300 } }
+      ]
+    }
+  ]
+}
