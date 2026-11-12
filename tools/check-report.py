@@ -241,7 +241,9 @@ def classify(stage, rc, compile_errors, tests, build_failed=False):
             return "ERROR", "no tests ran", 2
         skipped = tests["skipped"] or 0
         if skipped >= total:
-            return "ERROR", f"no tests ran ({skipped} skipped; slow tests need --full)", 2
+            hint = ("on-request UI tests need their opt-in env, e.g. BATTY_UI_DEMO=1"
+                    if stage == "ui" else "slow tests need --full")
+            return "ERROR", f"no tests ran ({skipped} skipped; {hint})", 2
         return "PASSED", plural(total, "test"), 0
     if rc in (129, 130, 143) and n_err == 0:
         return "ERROR", "interrupted", 2
