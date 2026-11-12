@@ -97,14 +97,14 @@ struct BackgroundCatalogParserTests {
             { "name": "Future Cities",
               "images": [
                 { "title": "Skyline in the Fog", "thumbnail": "future-cities/01-skyline-fog-thumb.png", "full": "future-cities/01-skyline-fog.png" },
-                { "thumbnail": "future-cities/02-night-rail-thumb.png", "full": "future-cities/02-night-rail.png" }
+                { "title": "Night Rail", "thumbnail": "future-cities/02-night-rail-thumb.png", "full": "future-cities/02-night-rail.png" }
               ] }
           ]
         }
         """
         let catalog = try BackgroundCatalogParser.parse(Data(json.utf8), catalogURL: BackgroundCatalog.builtInURL)
         #expect(catalog.sets.map(\.name) == ["Future Cities"])
-        #expect(catalog.allImages.map(\.title) == ["Skyline in the Fog", "02-night-rail"])
+        #expect(catalog.allImages.map(\.title) == ["Skyline in the Fog", "Night Rail"])
         #expect(catalog.allImages[0].full.absoluteString == "https://batty.sstools.co/backgrounds/future-cities/01-skyline-fog.png")
         #expect(catalog.allImages[0].thumbnail.absoluteString == "https://batty.sstools.co/backgrounds/future-cities/01-skyline-fog-thumb.png")
         #expect(catalog.allImages[0].id == catalog.allImages[0].full)
@@ -120,6 +120,7 @@ struct BackgroundCatalogParserTests {
 
     @Test(arguments: [
         "sets", "sets[0].name", "sets[0].images", "sets[0].images[1].full", "sets[0].images[1].thumbnail",
+        "sets[0].images[1].title",
     ])
     func missingRequiredFieldNamesItsPath(_ path: String) {
         let error = CatalogJSON.error(CatalogJSON.setting(path, to: nil))
@@ -135,11 +136,10 @@ struct BackgroundCatalogParserTests {
         #expect(CatalogJSON.error(CatalogJSON.setting(path, to: value)) == .invalid(path: path))
     }
 
-    @Test func missingOrBlankTitleFallsBackToTheFileName() throws {
-        let missing = try CatalogJSON.parse(CatalogJSON.setting("sets[0].images[0].title", to: nil))
-        #expect(missing.allImages[0].title == "one-01")
-        let blank = try CatalogJSON.parse(CatalogJSON.setting("sets[0].images[0].title", to: "  "))
-        #expect(blank.allImages[0].title == "one-01")
+    @Test func nullOrBlankTitleIsRejected() {
+        let path = "sets[0].images[0].title"
+        #expect(CatalogJSON.error(CatalogJSON.setting(path, to: NSNull())) == .invalid(path: path))
+        #expect(CatalogJSON.error(CatalogJSON.setting(path, to: "  ")) == .invalid(path: path))
     }
 
     @Test func duplicateSetNamesAreAllowed() throws {

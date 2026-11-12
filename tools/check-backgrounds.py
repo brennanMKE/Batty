@@ -14,7 +14,6 @@ on Linux too.
 
 import argparse
 import json
-import os
 import struct
 import sys
 import urllib.parse
@@ -76,19 +75,6 @@ def image_info(data):
     return None
 
 
-def fallback_title(full):
-    """The full-size file's name without its extension, as Batty shows it."""
-    name = urllib.parse.unquote(urllib.parse.urlsplit(full).path.rsplit("/", 1)[-1])
-    return os.path.splitext(name)[0]
-
-
-def display_title(im):
-    t = im.get("title")
-    if isinstance(t, str) and t.strip():
-        return t.strip()
-    return fallback_title(im["full"])
-
-
 def _is_remote(url):
     parts = urllib.parse.urlsplit(url)
     return parts.scheme.lower() == "https" and bool(parts.netloc)
@@ -134,8 +120,8 @@ def _schema(cat):
                 else:
                     files.append((f"{ip}.{role}", u, ip, role))
             t = im.get("title")
-            if t is not None and not (isinstance(t, str) and len(t.strip()) <= MAX_TEXT):
-                problems.append(f"{ip}.title: must be a string of at most {MAX_TEXT} characters")
+            if not (isinstance(t, str) and 1 <= len(t.strip()) <= MAX_TEXT):
+                problems.append(f"{ip}.title: must be a non-empty string of at most {MAX_TEXT} characters")
     return problems, files
 
 

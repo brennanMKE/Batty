@@ -203,9 +203,9 @@ case("non-string full", 1, "sets[0].images[0].full: must be a non-empty string",
 case("non-string title", 1, "sets[0].images[0].title:", override=img(0, 0, title=3))
 case("title over 100 characters", 1, "sets[0].images[0].title:", override=img(0, 0, title="t" * 101))
 case("title of 100 characters after trimming passes", 0, "OK:", override=img(0, 0, title="  " + "t" * 100 + "  "))
-case("missing title passes", 0, "OK:", override=drop(0, 0, "title"))
-case("null title passes", 0, "OK:", override=img(0, 0, title=None))
-case("blank title passes", 0, "OK:", override=img(0, 0, title="  "))
+case("missing title", 1, "sets[0].images[0].title:", override=drop(0, 0, "title"))
+case("null title", 1, "sets[0].images[0].title:", override=img(0, 0, title=None))
+case("blank title", 1, "sets[0].images[0].title:", override=img(0, 0, title="  "))
 
 
 def unknown(top, sets):
@@ -239,13 +239,8 @@ case("too many sets", 1, "sets: must be a list of at most 50 sets",
      mutate=whole({"sets": [{"name": f"S{i}", "images": []} for i in range(51)]}))
 case("too many images in a set", 1, "sets[0].images: must be a list of at most 100 images",
      mutate=whole({"sets": [{"name": "S", "images": [
-         {"full": f"{i}.png", "thumbnail": f"{i}-t.png"} for i in range(101)]}]}))
+         {"title": f"T{i}", "full": f"{i}.png", "thumbnail": f"{i}-t.png"} for i in range(101)]}]}))
 case("write option is rejected", 2, "unrecognized arguments", args=["--write"])
-
-for given, want in (("01-skyline-fog.png", "01-skyline-fog"), ("a/b.c.jpg", "b.c"),
-                    ("beta/02%20fourth.png", "02 fourth"), ("https://example.com/x/y.png?v=1", "y")):
-    got = cb.fallback_title(given)
-    results.append((f"fallback title of {given}", got == want, f"got {got!r}; want {want!r}"))
 
 real = cb.check(REAL_CATALOG)
 bad = [p for p in real if "missing file" not in p]

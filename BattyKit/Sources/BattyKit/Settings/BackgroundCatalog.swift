@@ -10,8 +10,7 @@ nonisolated struct HostedBackgroundImage: Sendable, Equatable, Hashable, Identif
 
     var id: URL { full }
 
-    /// The full-size file's name without its extension: the fallback title,
-    /// and the name UI tests find a cell by.
+    /// The full-size file's name without its extension: the name UI tests find a cell by.
     static func fileStem(of url: URL) -> String {
         url.deletingPathExtension().lastPathComponent
     }
@@ -99,8 +98,7 @@ nonisolated enum BackgroundCatalogParser {
                 let full = try fileURL(image["full"], path: "\(imagePath).full", catalogURL: catalogURL)
                 guard fullURLs.insert(full).inserted else { throw .invalid(path: "\(imagePath).full") }
                 let thumbnail = try fileURL(image["thumbnail"], path: "\(imagePath).thumbnail", catalogURL: catalogURL)
-                let title = try optionalString(image["title"], path: "\(imagePath).title", limit: BackgroundCatalogLimits.titleLength)
-                    ?? HostedBackgroundImage.fileStem(of: full)
+                let title = try requiredString(image["title"], path: "\(imagePath).title", limit: BackgroundCatalogLimits.titleLength)
                 images.append(HostedBackgroundImage(title: title, full: full, thumbnail: thumbnail))
             }
             sets.append(BackgroundSet(id: setIndex, name: name, images: images))
@@ -134,15 +132,6 @@ nonisolated enum BackgroundCatalogParser {
         guard let text = raw as? String else { throw .invalid(path: path) }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= limit else { throw .invalid(path: path) }
-        return trimmed
-    }
-
-    private static func optionalString(_ raw: Any?, path: String, limit: Int) throws(BackgroundCatalogError) -> String? {
-        guard let raw, !(raw is NSNull) else { return nil }
-        guard let text = raw as? String else { throw .invalid(path: path) }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        guard trimmed.count <= limit else { throw .invalid(path: path) }
         return trimmed
     }
 }
