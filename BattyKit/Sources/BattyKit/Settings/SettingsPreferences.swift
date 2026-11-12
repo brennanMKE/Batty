@@ -15,6 +15,9 @@ public enum SettingsPreference {
     /// Set the first time Background Sets is shown. No request reaches a
     /// background catalog before then.
     public static let backgroundCatalogsBrowsedKey = "co.sstools.Batty.backgroundCatalogsBrowsed"
+    public static let backgroundCatalogURLsKey = "co.sstools.Batty.backgroundCatalogURLs"
+    public static let backgroundCatalogsAutoCheckKey = "co.sstools.Batty.backgroundCatalogsAutoCheck"
+    static let defaultBackgroundCatalogsAutoCheck = true
     public static let cmdNumberTargetKey = "co.sstools.Batty.cmdNumberTarget"
     public static let autoNameFromFilesKey = "co.sstools.Batty.autoNameFromFiles"
     public static let autoNameWithAIKey = "co.sstools.Batty.autoNameWithAI"
@@ -162,6 +165,33 @@ public enum SettingsPreference {
     static func markBackgroundCatalogsBrowsed(defaults: UserDefaults) {
         guard !resolvedBackgroundCatalogsBrowsed(defaults: defaults) else { return }
         defaults.set(true, forKey: backgroundCatalogsBrowsedKey)
+    }
+
+    /// Normalized, de-duplicated, capped, and never the built-in catalog.
+    static func resolvedBackgroundCatalogURLs(defaults: UserDefaults) -> [URL] {
+        let stored = defaults.array(forKey: backgroundCatalogURLsKey) as? [String] ?? []
+        var urls: [URL] = []
+        for text in stored {
+            guard case .success(let url) = BackgroundCatalogURLs.normalize(text),
+                  url != BackgroundCatalog.builtInURL, !urls.contains(url)
+            else { continue }
+            urls.append(url)
+            if urls.count == BackgroundCatalogURLs.maxUserCatalogs { break }
+        }
+        return urls
+    }
+
+    static func setBackgroundCatalogURLs(_ urls: [URL], defaults: UserDefaults) {
+        let strings = urls.map(\.absoluteString)
+        guard defaults.array(forKey: backgroundCatalogURLsKey) as? [String] != strings else { return }
+        defaults.set(strings, forKey: backgroundCatalogURLsKey)
+    }
+
+    static func resolvedBackgroundCatalogsAutoCheck(defaults: UserDefaults) -> Bool {
+        if defaults.object(forKey: backgroundCatalogsAutoCheckKey) == nil {
+            return defaultBackgroundCatalogsAutoCheck
+        }
+        return defaults.bool(forKey: backgroundCatalogsAutoCheckKey)
     }
 
     static func resolvedAutoNameFromFiles(defaults: UserDefaults) -> Bool {

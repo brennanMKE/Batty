@@ -4,8 +4,10 @@ import Foundation
 
 /// Used only by a UI-test launch that sets the background catalog fixture
 /// folder: serves `https://batty.sstools.co/backgrounds/<rest>` from
-/// `<directory>/<rest>` and appends each requested path to `requests.log`.
-/// While `<directory>/<rest>.hold` exists the request waits.
+/// `<directory>/<rest>`, any other `https://<host>/<path>` from
+/// `<directory>/hosts/<host>/<path>`, and appends each requested path to
+/// `requests.log`. While the served file's `.hold` sibling exists the
+/// request waits.
 nonisolated final class FixtureBackgroundCatalogFetcher: BackgroundCatalogFetching, @unchecked Sendable {
     static let prefix = "https://batty.sstools.co/backgrounds/"
 
@@ -21,12 +23,23 @@ nonisolated final class FixtureBackgroundCatalogFetcher: BackgroundCatalogFetchi
         progress: (@Sendable (Int64) -> Void)?
     ) async throws(HostedFetchError) -> HostedFetchResponse {
         let absolute = request.url.absoluteString
-        guard absolute.hasPrefix(Self.prefix) else { throw .unreachable }
-        let rest = String(absolute.dropFirst(Self.prefix.count))
-        log(rest)
+        let root: URL
+        let rest: String
+        if absolute.hasPrefix(Self.prefix) {
+            root = directory
+            rest = String(absolute.dropFirst(Self.prefix.count))
+            log(rest)
+        } else {
+            guard request.url.scheme == "https", let host = request.url.host, !host.isEmpty, !host.contains("/"), host != ".", host != ".." else { throw .unreachable }
+            root = directory.appendingPathComponent("hosts", isDirectory: true).appendingPathComponent(host, isDirectory: true)
+            rest = String(request.url.path.drop { $0 == "/" })
+            log(host + ": " + rest)
+            var isFolder: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isFolder), isFolder.boolValue else { throw .unreachable }
+        }
         let components = rest.split(separator: "/").map(String.init)
         guard !components.isEmpty, !components.contains(".."), !components.contains(".") else { throw .notFound }
-        let file = components.reduce(directory) { $0.appendingPathComponent($1) }
+        let file = components.reduce(root) { $0.appendingPathComponent($1) }
         // A UI test keeps a download in flight by creating `<rest>.hold`.
         let hold = file.appendingPathExtension("hold")
         while FileManager.default.fileExists(atPath: hold.path) {

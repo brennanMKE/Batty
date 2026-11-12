@@ -15,6 +15,8 @@ nonisolated struct BackgroundCatalogCacheState: Sendable, Equatable, Codable {
     var lastModified: String?
     var lastChecked: Date?
     var lastError: String?
+    /// When the current run of failed checks began; nil after a success.
+    var failingSince: Date?
 
     var validators: HostedValidators { HostedValidators(etag: etag, lastModified: lastModified) }
 }
@@ -83,6 +85,11 @@ actor BackgroundCatalogCache {
         var current = state(for: catalogURL)
         current.lastChecked = date
         current.lastError = error
+        if error == nil {
+            current.failingSince = nil
+        } else if current.failingSince == nil {
+            current.failingSince = date
+        }
         writeState(current, for: catalogURL)
     }
 

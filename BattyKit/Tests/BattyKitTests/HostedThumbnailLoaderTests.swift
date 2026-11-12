@@ -86,4 +86,16 @@ struct HostedThumbnailLoaderTests {
         #expect(await f.store.records().isEmpty)
         #expect(f.fetcher.count(image.full) == 0)
     }
+
+    @Test func overLimitThumbnailHeaderIsRefusedWithoutDecoding() async throws {
+        let decodes = DecodeCounter()
+        let huge = HostedImageFixture.patchingIHDR(try BackgroundTestImage.encoded(width: 16, height: 16), width: 20_000, height: 20_000)
+        let image = try thumbnailImage(thumbnail: huge)
+        let loader = HostedThumbnailLoader(fetcher: f.fetcher, cache: f.cache, decode: { _ in
+            decodes.increment()
+            return nil
+        })
+        #expect(await loader.thumbnail(for: image, catalogURL: f.catalogURL).state == .rejected)
+        #expect(decodes.value == 0)
+    }
 }

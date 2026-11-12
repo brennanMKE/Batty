@@ -41,6 +41,33 @@ nonisolated enum BackgroundCatalogFixture {
         try JSONSerialization.data(withJSONObject: catalog).write(to: folder.appending(path: "catalog.json"))
     }
 
+    /// A user catalog on another host, served from `hosts/<host>/`: one set
+    /// of two small PNGs whose ids start with `setName`'s lowercased words.
+    static func writeHostedCatalog(in folder: URL, host: String, path: String = "catalog.json", setName: String) throws {
+        let root = folder.appending(path: "hosts/\(host)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var images: [[String: Any]] = []
+        for id in hostedImageIDs(setName: setName) {
+            try png(width: 96, height: 64, seed: id.count).write(to: root.appending(path: fullPath(id)))
+            try png(width: 48, height: 32, seed: id.count).write(to: root.appending(path: thumbnailPath(id)))
+            images.append(["title": "Picture \(id)", "full": fullPath(id), "thumbnail": thumbnailPath(id)])
+        }
+        let catalog: [String: Any] = ["sets": [["name": setName, "images": images]]]
+        try JSONSerialization.data(withJSONObject: catalog).write(to: root.appending(path: path))
+    }
+
+    static func hostedImageIDs(setName: String) -> [String] {
+        let stem = setName.lowercased().split(separator: " ").joined(separator: "-")
+        return ["\(stem)-01", "\(stem)-02"]
+    }
+
+    /// An HTML page where a catalog is expected.
+    static func writeHTML(in folder: URL, host: String, path: String = "catalog.json") throws {
+        let root = folder.appending(path: "hosts/\(host)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("<html><body>Not a catalog</body></html>".utf8).write(to: root.appending(path: path))
+    }
+
     static func requests(in folder: URL) -> [String] {
         let text = (try? String(contentsOf: folder.appending(path: "requests.log"), encoding: .utf8)) ?? ""
         return text.split(separator: "\n").map(String.init)

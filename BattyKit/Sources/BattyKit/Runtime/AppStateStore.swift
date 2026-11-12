@@ -148,15 +148,20 @@ public final class AppStateStore {
     /// The Background Images window's and picker's model. Building it touches
     /// no files. A `var` for the same reason as `projectBackgrounds`.
     @ObservationIgnored lazy var backgroundImages: BackgroundImagesModel = makeBackgroundImagesModel()
+    @ObservationIgnored lazy var backgroundCatalogScheduler = BackgroundCatalogScheduler(
+        hosted: backgroundImages.hosted,
+        clock: backgroundImages.hosted.clock,
+        defaults: preferences
+    )
     /// The reclaim started by the last Project Editor close, for tests to await.
     @ObservationIgnored var projectBackgroundReclaim: Task<Void, Never>?
     /// Tab images fetched because a synced selection named them. A `var` for
     /// the same reason as `projectBackgrounds`.
     @ObservationIgnored lazy var downloadedImages: DownloadedImageCache = makeDownloadedImageCache()
-    /// The only hosts a Tab image is downloaded from: the Background Sets
-    /// catalogs'.
+    /// The only hosts a Tab image is downloaded from: the built-in Background
+    /// Sets catalog's.
     @ObservationIgnored lazy var tabImageAllowedHosts: Set<String> = Set(
-        Self.liveHostedDependencies().catalogURLs().compactMap { $0.host?.lowercased() }
+        [BackgroundCatalog.builtInURL].compactMap { $0.host?.lowercased() }
     )
     /// Tab image downloads in flight, by identity, so two Sessions waiting for
     /// one image make one request.
@@ -1319,6 +1324,7 @@ public final class AppStateStore {
         reminderClock: SchedulingClock? = nil,
         reminderCalendar: @escaping () -> Calendar = { .current }
     ) {
+        UITestDriver.resetBackgroundPreferencesForFixture(defaults: preferences)
         self.featureFlags = featureFlags
         self.backgroundGate = backgroundGate
         self.appWideTerminalOpacity = backgroundGate.storedSettings().terminalOpacity
