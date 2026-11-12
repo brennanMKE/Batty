@@ -138,17 +138,11 @@ extension AppStateStore {
             AppWideBackgroundEditor(store: self).removeImage()
         }
         for session in windows.flatMap(\.sessions) {
-            if names(session.projectBackgroundSeed) {
-                session.projectBackgroundSeed = session.projectBackgroundSeed?.withImagePath(nil)
-            }
             if names(session.backgroundOverride) {
                 session.setBackgroundOverride(session.backgroundOverride?.withImagePath(nil))
             }
             for pane in session.tree.allPanes {
                 for tab in pane.tabs {
-                    if names(tab.projectBackgroundSeed) {
-                        tab.projectBackgroundSeed = tab.projectBackgroundSeed?.withImagePath(nil)
-                    }
                     if names(tab.backgroundOverride) {
                         tab.setBackgroundOverride(tab.backgroundOverride?.withImagePath(nil))
                     }
@@ -171,14 +165,13 @@ extension AppStateStore {
         sharedProjectImages?.reconcile(userInitiated: true)
     }
 
-    /// An open Session the user hasn't changed gets the image on both its seed
-    /// and override, so `SaveSessionAsProject` doesn't read this as their edit.
+    /// Only an open Session still waiting for the image gets it; one whose
+    /// background the user changed keeps their value. Applying it ends the
+    /// wait.
     func sharedImageArrived(project: Project, path: String) {
-        for session in windows.flatMap(\.sessions) where session.projectID == project.id {
-            guard let seed = session.projectBackgroundSeed, session.backgroundOverride == seed else { continue }
-            let updated = seed.withImagePath(path)
-            session.projectBackgroundSeed = updated
-            session.setBackgroundOverride(updated)
+        for session in windows.flatMap(\.sessions) where session.projectID == project.id && session.pendingProjectImage {
+            guard let current = session.backgroundOverride else { continue }
+            session.setBackgroundOverride(current.withImagePath(path))
         }
         openProjectEditorModel()?.sharedImageArrived(projectID: project.id, path: path)
     }

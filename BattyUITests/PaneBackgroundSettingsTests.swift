@@ -150,10 +150,15 @@ nonisolated final class PaneBackgroundSettingsTests: XCTestCase {
         app.buttons["tab-background-sheet.done"].click()
 
         expandPaneList(in: app)
-        gears(in: app).firstMatch.click()
+        let gear = gears(in: app).firstMatch
+        XCTAssertTrue(waitForValue(gear, "custom"), "the gear says following while the Tab has its own background")
+        gear.click()
         let paneCustom = app.buttons["pane-background-sheet.custom"]
         XCTAssertTrue(paneCustom.waitForExistence(timeout: 5))
-        paneCustom.click()
+        XCTAssertTrue(waitForValue(paneCustom, "selected"))
+        let terminal = app.sliders["pane-background-sheet.terminal-opacity"]
+        XCTAssertTrue(terminal.waitForExistence(timeout: 5))
+        terminal.adjust(toNormalizedSliderPosition: 0.5)
         app.buttons["pane-background-sheet.done"].click()
 
         openTabBackgroundSheet(in: app)
@@ -161,5 +166,26 @@ nonisolated final class PaneBackgroundSettingsTests: XCTestCase {
         XCTAssertTrue(follow.waitForExistence(timeout: 5))
         XCTAssertTrue(waitForValue(follow, "selected"), "the Pane gear did not replace the Tab's own background")
         app.buttons["tab-background-sheet.cancel"].click()
+    }
+
+    @MainActor
+    func testPaneGearShowsATabsOwnBackgroundAsCustom() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        openTabBackgroundSheet(in: app)
+        let tabCustom = app.buttons["tab-background-sheet.custom"]
+        XCTAssertTrue(tabCustom.waitForExistence(timeout: 5))
+        tabCustom.click()
+        app.buttons["tab-background-sheet.done"].click()
+
+        expandPaneList(in: app)
+        let gear = gears(in: app).firstMatch
+        XCTAssertTrue(waitForValue(gear, "custom"))
+        gear.click()
+        let source = app.staticTexts["pane-background-sheet.source"]
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        app.buttons["pane-background-sheet.cancel"].click()
     }
 }

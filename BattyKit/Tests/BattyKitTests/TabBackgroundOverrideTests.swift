@@ -244,4 +244,17 @@ final class TabBackgroundOverrideTests {
         #expect(BackgroundOverrideScope.tab(tab).identifierPrefix == "tab-background-sheet")
         #expect(BackgroundOverrideScope.tab(tab).customTitle == "Custom for This Tab")
     }
+
+    @Test func tabSheetNamesEachSource() {
+        let pane = pane()
+        let (_, session) = store(pane)
+        let tab = pane.tabs[0]
+        #expect(tab.effectiveBackground(appWide: appWide).source == .settings)
+        session.setBackgroundOverride(Self.sessionValue)
+        #expect(tab.effectiveBackground(appWide: appWide) == EffectiveBackground(value: Self.sessionValue, source: .session))
+        pane.setBackgroundOverride(Self.paneValue)
+        #expect(tab.effectiveBackground(appWide: appWide) == EffectiveBackground(value: Self.paneValue, source: .pane))
+        tab.setBackgroundOverride(Self.sessionValue)
+        #expect(tab.effectiveBackground(appWide: appWide) == EffectiveBackground(value: Self.sessionValue, source: .tab))
+    }
 }

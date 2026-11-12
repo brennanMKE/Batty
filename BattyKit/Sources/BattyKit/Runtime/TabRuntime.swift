@@ -55,14 +55,17 @@ public final class TabRuntime: Identifiable {
     /// follows the Pane. Observed because see-through and the chip menu read it.
     public private(set) var backgroundOverride: TerminalBackgroundSettings?
 
-    /// The value a Project opened this Tab with, so Update Project can tell a
-    /// value the user set from one it seeded.
-    @ObservationIgnored
-    public internal(set) var projectBackgroundSeed: TerminalBackgroundSettings?
-
-    /// The image this Tab opened without because it hadn't reached this Mac.
+    /// The image this Tab opened without because it was missing or hadn't
+    /// reached this Mac. While set, Update Project keeps this identity and an
+    /// arriving image is applied. Any write to this Tab's own value clears it.
     @ObservationIgnored
     var pendingTabImage: ProjectTabImage?
+
+    /// The startup command the Project opened this Tab with, so Update Project
+    /// keeps it on this Tab wherever it moves. New, duplicated and split Tabs
+    /// have none.
+    @ObservationIgnored
+    public internal(set) var projectStartupCommand: String?
 
     /// Observation-tracked mirror of `terminal.workingDirectory`. That
     /// property is Combine `@Published` on an `ObservableObject`
@@ -287,7 +290,10 @@ public final class TabRuntime: Identifiable {
         let previous = backgroundOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride
         paneBackgroundOverride = pane
         sessionBackgroundOverride = session
-        if clearingOwn, backgroundOverride != nil { backgroundOverride = nil }
+        if clearingOwn {
+            pendingTabImage = nil
+            if backgroundOverride != nil { backgroundOverride = nil }
+        }
         guard (backgroundOverride ?? pane ?? session) != previous else { return }
         render()
     }
@@ -298,6 +304,7 @@ public final class TabRuntime: Identifiable {
         guard newOverride != backgroundOverride else { return }
         let previous = backgroundOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride
         backgroundOverride = newOverride
+        pendingTabImage = nil
         guard (newOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride) != previous else { return }
         render()
     }
@@ -580,7 +587,7 @@ public enum BellIntakeEvent: Equatable, Sendable {
 }
 
 extension TabRuntime: BackgroundOverrideHolder {
-    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
-        .effective(tab: nil, pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide)
+    func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
+        .first([(backgroundOverride, .tab), (paneBackgroundOverride, .pane), (sessionBackgroundOverride, .session)], appWide: appWide)
     }
 }

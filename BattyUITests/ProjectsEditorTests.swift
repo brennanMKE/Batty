@@ -300,6 +300,20 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
     }
 
     @MainActor
+    func testPaneBackgroundRowOpensThePaneSheet() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.pane.background.edit", in: app)
+        let follow = app.buttons["project-pane-background-sheet.follow"]
+        XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Pane's Background row did not open its sheet")
+        XCTAssertEqual(follow.value as? String, "selected")
+        XCTAssertTrue(app.staticTexts["project-pane-background-sheet.source"].waitForExistence(timeout: 5))
+        app.buttons["project-pane-background-sheet.cancel"].click()
+    }
+
+    @MainActor
     func testCustomTabBackgroundIsWrittenToTheProject() throws {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }

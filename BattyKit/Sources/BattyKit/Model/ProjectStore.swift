@@ -222,7 +222,7 @@ public final class ProjectStore {
             if case .named(let digest, _)? = record.background?.image {
                 named.insert(digest)
             }
-            for tab in record.layout.panes.flatMap(\.tabs) {
+            for tab in record.layout.backgroundEntries {
                 if let digest = tab.image?.digest { named.insert(digest) }
             }
         }
@@ -432,7 +432,7 @@ public final class ProjectStore {
             func names(_ settings: TerminalBackgroundSettings) -> Bool {
                 settings.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
             }
-            if updated[index].layout.panes.flatMap(\.tabs).contains(where: { $0.background.map(names) ?? false }) {
+            if updated[index].layout.backgroundEntries.contains(where: { $0.background.map(names) ?? false }) {
                 updated[index].layout = updated[index].layout.mappingTabBackgrounds { names($0) ? $0.withImagePath(nil) : $0 }
                 changed = true
             }
@@ -479,15 +479,15 @@ public final class ProjectStore {
         try requireReadableFile()
         guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return false }
         let project = projects[index]
-        guard project.layout.panes.flatMap(\.tabs).contains(where: { $0.image == identity && $0.background != nil && $0.background?.imagePath != path }) else {
+        guard project.layout.backgroundEntries.contains(where: { $0.image == identity && $0.background != nil && $0.background?.imagePath != path }) else {
             return false
         }
         var updated = projects
-        updated[index].layout = project.layout.mappingTabs { tab in
-            guard tab.image == identity, let background = tab.background else { return tab }
-            var tab = tab
-            tab.background = background.withImagePath(path)
-            return tab
+        updated[index].layout = project.layout.mappingBackgroundEntries { entry in
+            guard entry.image == identity, let background = entry.background else { return entry }
+            var entry = entry
+            entry.background = background.withImagePath(path)
+            return entry
         }
         try commitDeviceState(updated, "setResolvedTabImage")
         return true

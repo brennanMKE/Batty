@@ -38,7 +38,7 @@ A Project can carry a terminal background. The **Background** row in the editor 
 
 Opening a Project gives its new session that background, as if you had chosen **Set Session Background…**. Saving the Project doesn't change a session that is already open. **Clear Session Background** then follows Settings, not the Project.
 
-Each Tab card in the editor has its own **Background** row: **Follows Project** until you choose **Custom for This Tab** in its sheet. Opening the Project gives that Tab its own background, and the other Tabs follow the Project's.
+Each Terminal Pane in the editor, and each of its Tab cards, has its own **Background** row. A Tab says **Follows Pane**, **Follows Project** or **Follows Settings** until you choose **Custom for This Tab** in its sheet. A change to a Pane's background replaces its Tabs' own, as the Pane's gear does in the Sidebar. Opening the Project gives each Pane and Tab the background it was saved with.
 
 If the image can't be used, the Project still opens, without the picture but with its other settings. An orange warning triangle shows on the session's row, and the editor says to choose the image again.
 
@@ -50,7 +50,9 @@ On a Shared Project, a Tab's choice of image syncs, but not the file. Another Ma
 
 The **Theme** row in the Project Editor, above Background, shows "Follows Settings" until you choose one. **Edit…** opens a sheet with a **Dark | Light** switch: pick a theme card, or **Follow Settings**, for each appearance separately. An appearance left on Follow Settings uses the theme from Settings.
 
-Opening the Project gives its Session that theme. **Set Session Theme…** and **Clear Session Theme** still work on that Session afterward. **Update Project** saves the Session's theme only if you changed it after opening, and **Save as Project** saves a Session's theme. **Copy from Current Session** leaves the Project's theme alone.
+Opening the Project gives its Session that theme. **Set Session Theme…** and **Clear Session Theme** still work on that Session afterward. **Update Project** and **Save as Project** save the Session's theme. **Copy from Current Session** leaves the Project's theme alone.
+
+A Project is a snapshot of a Session. **Update Project** saves everything the Session shows: its Splits and their sizes, its Tabs with their names, folders and startup commands, which Panes are hidden, the focused Pane and each Pane's active Tab, mute, whether the Sidebar lists its Panes, and the backgrounds and theme at every level. Nothing reaches the Project until you save, and opening the Project again restores it exactly.
 
 If the Project names a theme this version of Batty doesn't have, the editor marks it "not available" with a warning. The Session uses the Settings theme instead, and saving keeps the name.
 

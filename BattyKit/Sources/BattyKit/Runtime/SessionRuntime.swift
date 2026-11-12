@@ -17,19 +17,19 @@ public final class SessionRuntime: Identifiable {
     /// user-set name pins permanently. See `#0089`.
     public var titleOverride: Bool = false
     /// This Session's Theme override, per appearance. An unset or unknown
-    /// slot follows the global `ThemePreference`. Not persisted — resets to
-    /// nil on every launch.
+    /// slot follows the global `ThemePreference`. Not persisted, apart from
+    /// a Project restoring it at open and Update Project capturing it.
     public var themeOverride: ThemePair? = nil
-    /// What the Project seeded at open. Update Project compares against it, so
-    /// a Session that left its Theme alone can't change the Project's.
-    @ObservationIgnored public internal(set) var projectThemeSeed: ThemePair?
     /// This Session's terminal background. `nil` follows the app-wide default;
     /// a non-nil value is complete, and a Pane's own override still beats it.
-    /// Not persisted: resets to nil on every launch.
+    /// Not persisted, apart from a Project restoring it at open and Update
+    /// Project capturing it.
     public private(set) var backgroundOverride: TerminalBackgroundSettings?
-    /// What the Project seeded at open. Update Project compares against it, so
-    /// a Session that left its background alone can't change the Project's.
-    @ObservationIgnored public internal(set) var projectBackgroundSeed: TerminalBackgroundSettings?
+    /// The Session opened without its Project's image (missing, rejected or
+    /// not yet downloaded). While set, Update Project keeps the stored image
+    /// and an arriving one is applied. Device state: any background write
+    /// clears it.
+    @ObservationIgnored var pendingProjectImage = false
     /// Why the Project's image was left out at open, for the Sidebar row. Ends
     /// when the background changes.
     public internal(set) var projectBackgroundImageProblem: BackgroundImageState?
@@ -252,11 +252,21 @@ extension SessionRuntime: BackgroundOverrideHolder {
     public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
         guard newOverride != backgroundOverride else { return }
         backgroundOverride = newOverride
+        pendingProjectImage = false
         if projectBackgroundImageProblem != nil { projectBackgroundImageProblem = nil }
         tree.setSessionBackgroundOverride(newOverride)
     }
 
-    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
-        appWide
+    func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
+        .first([(backgroundOverride, .session)], appWide: appWide)
+    }
+
+    var narrowerLevelsNote: String? {
+        let narrower = tree.allPanes.contains { pane in
+            pane.kind == .terminal && (pane.backgroundOverride != nil || pane.tabs.contains { $0.backgroundOverride != nil })
+        }
+        return narrower
+            ? String(localized: "Some Panes or Tabs have their own background, which this doesn't change.")
+            : nil
     }
 }

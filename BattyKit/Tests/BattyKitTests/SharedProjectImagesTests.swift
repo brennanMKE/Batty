@@ -239,20 +239,21 @@ struct SharedProjectImagesTests {
         #expect(w.fake.calls.isEmpty)
     }
 
-    @Test func arrivalUpdatesAnUnchangedSessionAndItsSeed() async throws {
+    @Test func aSessionStillWaitingGetsTheArrivedImage() async throws {
         let (data, digest) = try w.imageBytes()
         let id = w.receive(digest: digest)
         let session = try open(id)
         await w.pass()
         #expect(session.backgroundOverride == projectBackgroundValue(path: nil))
+        #expect(session.pendingProjectImage)
         w.fake.put(data, digest: digest)
         await w.pass()
         let path = try #require(backgroundPath(id))
         #expect(session.backgroundOverride == projectBackgroundValue(path: path))
-        #expect(session.projectBackgroundSeed == projectBackgroundValue(path: path))
+        #expect(!session.pendingProjectImage, "applying the image ends the wait")
     }
 
-    @Test func arrivalLeavesASessionTheUserChanged() async throws {
+    @Test func aSessionWhoseBackgroundChangedIgnoresTheArrival() async throws {
         let (data, digest) = try w.imageBytes()
         let id = w.receive(digest: digest)
         let session = try open(id)
@@ -261,7 +262,7 @@ struct SharedProjectImagesTests {
         await w.pass()
         #expect(backgroundPath(id) != nil)
         #expect(session.backgroundOverride == secondBackgroundValue(path: nil))
-        #expect(session.projectBackgroundSeed == projectBackgroundValue(path: nil))
+        #expect(!session.pendingProjectImage)
     }
 
     // MARK: - Status

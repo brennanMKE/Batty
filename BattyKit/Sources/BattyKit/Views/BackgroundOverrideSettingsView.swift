@@ -7,8 +7,13 @@ import SwiftUI
 protocol BackgroundOverrideHolder: AnyObject {
     var backgroundOverride: TerminalBackgroundSettings? { get }
     func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?)
-    /// What this level shows while following.
-    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings
+    /// What the visible terminal shows for this level, and which level it
+    /// comes from. The sheet displays it and seeds Custom from it.
+    func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground
+    /// Whether the sheet shows Custom. A Pane counts its Tabs' own values.
+    var isCustomized: Bool { get }
+    /// A caption saying narrower levels keep, or lose, their own values.
+    var narrowerLevelsNote: String? { get }
     /// Whether Cancel should put this path back even if its file is gone,
     /// because a saved value names it and the holder reports that itself.
     func isSavedImagePath(_ path: String) -> Bool
@@ -19,9 +24,39 @@ protocol BackgroundOverrideHolder: AnyObject {
 }
 
 extension BackgroundOverrideHolder {
+    var isCustomized: Bool { backgroundOverride != nil }
+    var narrowerLevelsNote: String? { nil }
     func isSavedImagePath(_ path: String) -> Bool { false }
     func replacedOverrides() -> [UUID: TerminalBackgroundSettings] { [:] }
     func restoreReplacedOverrides(_ overrides: [UUID: TerminalBackgroundSettings]) {}
+}
+
+/// The level a sheet's displayed background comes from.
+enum BackgroundSource: Equatable {
+    case tab, pane, session, project, settings
+
+    var caption: String {
+        switch self {
+        case .tab: String(localized: "Showing this Tab's background")
+        case .pane: String(localized: "Showing this Pane's background")
+        case .session: String(localized: "Showing the Session's background")
+        case .project: String(localized: "Showing the Project's background")
+        case .settings: String(localized: "Showing the background from Settings")
+        }
+    }
+}
+
+struct EffectiveBackground: Equatable {
+    let value: TerminalBackgroundSettings
+    let source: BackgroundSource
+
+    /// The first non-nil level, narrowest first, else Settings.
+    static func first(_ levels: [(TerminalBackgroundSettings?, BackgroundSource)], appWide: TerminalBackgroundSettings) -> Self {
+        for (value, source) in levels {
+            if let value { return Self(value: value, source: source) }
+        }
+        return Self(value: appWide, source: .settings)
+    }
 }
 
 /// The sheet's wording and identifiers for one level. Existing UI tests query
@@ -59,12 +94,28 @@ struct BackgroundOverrideScope {
         )
     }
 
-    static var projectTab: Self {
-        Self(
+    static func projectTab(followsPane: Bool, projectHasBackground: Bool) -> Self {
+        let followTitle: String = if followsPane {
+            String(localized: "Follow Pane")
+        } else if projectHasBackground {
+            String(localized: "Follow Project")
+        } else {
+            String(localized: "Follow Settings")
+        }
+        return Self(
             title: String(localized: "Tab Background"),
-            followTitle: String(localized: "Follow Project"),
+            followTitle: followTitle,
             customTitle: String(localized: "Custom for This Tab"),
             identifierPrefix: "project-tab-background-sheet"
+        )
+    }
+
+    static func projectPane(projectHasBackground: Bool) -> Self {
+        Self(
+            title: String(localized: "Pane Background"),
+            followTitle: projectHasBackground ? String(localized: "Follow Project") : String(localized: "Follow Settings"),
+            customTitle: String(localized: "Custom for This Pane"),
+            identifierPrefix: "project-pane-background-sheet"
         )
     }
 
@@ -96,11 +147,11 @@ struct BackgroundOverrideEditor {
     let originalOverride: TerminalBackgroundSettings?
     var replacedOverrides: [UUID: TerminalBackgroundSettings] = [:]
 
-    var isFollowing: Bool { target.backgroundOverride == nil }
+    var isFollowing: Bool { !target.isCustomized }
 
-    var current: TerminalBackgroundSettings {
-        target.backgroundOverride ?? target.inheritedBackground(appWide: appWide)
-    }
+    var effective: EffectiveBackground { target.effectiveBackground(appWide: appWide) }
+
+    var current: TerminalBackgroundSettings { effective.value }
 
     func selectFollow() {
         target.setBackgroundOverride(nil)
@@ -132,10 +183,11 @@ struct BackgroundOverrideEditor {
     }
 
     /// Ignored while following, so an import that finishes after the user
-    /// went back to following can't create an override.
+    /// went back to following can't create an override. Starts from the value
+    /// shown, so a Pane customized only through its Tabs keeps their image.
     func update(_ transform: (TerminalBackgroundSettings) -> TerminalBackgroundSettings) {
-        guard let override = target.backgroundOverride else { return }
-        target.setBackgroundOverride(transform(override))
+        guard !isFollowing else { return }
+        target.setBackgroundOverride(transform(current))
     }
 }
 
@@ -185,7 +237,9 @@ struct BackgroundOverrideSettingsView: View {
 
     var body: some View {
         let editor = editor
-        let current = editor.current
+        let effective = editor.effective
+        let current = effective.value
+        let note = target.narrowerLevelsNote
         VStack(alignment: .leading, spacing: 14) {
             Text(scope.title)
                 .font(.headline)
@@ -204,6 +258,17 @@ struct BackgroundOverrideSettingsView: View {
                     action: editor.selectCustom
                 )
             }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(effective.source.caption)
+                    .accessibilityIdentifier("\(scope.identifierPrefix).source")
+                if let note {
+                    Text(note)
+                        .accessibilityIdentifier("\(scope.identifierPrefix).note")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             TerminalBackgroundControls(
                 current: current,

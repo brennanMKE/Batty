@@ -142,23 +142,36 @@ struct SessionProjectCaptureTopologyTests {
         #expect(rightNested.layout.root == leftNested.layout.root)
     }
 
-    @Test func aHandResizedTreeCapturesNoRatio() throws {
-        let resized = capture(split(.horizontal, 0.2, split(.vertical, 0.7, terminals(1)[0], terminals(1)[0]), terminals(1)[0]))
-        let even = capture(split(.horizontal, 0.5, split(.vertical, 0.5, terminals(1)[0], terminals(1)[0]), terminals(1)[0]))
-
-        #expect(resized.layout == even.layout)
-        let json = try String(decoding: JSONEncoder().encode(resized.layout), as: UTF8.self)
-        #expect(!json.localizedCaseInsensitiveContains("ratio"))
-        #expect(!json.contains("0.2"))
-        #expect(!json.contains("0.7"))
+    @Test func capturesFractionsOfAFlattenedChain() {
+        // (a | (b | c)) at 0.2, then 0.25 of the rest: a 0.2, b 0.2, c 0.6;
+        // the vertical split inside a is its own list.
+        let a = split(.vertical, 0.7, terminals(1)[0], terminals(1)[0])
+        let captured = capture(split(.horizontal, 0.2, a, split(.horizontal, 0.25, terminals(1)[0], terminals(1)[0])))
+        #expect(captured.layout.splitFractions == [[0.2, 0.2, 0.6], [0.7, 0.3]])
+        #expect(captured.layout.validFractions() != nil)
     }
 
-    @Test func hiddenPanesAreCapturedAsOrdinarySlots() {
-        let captured = capture(split(.horizontal, .leaf(pane(tabs: [tab(root)])), .leaf(pane(tabs: [tab(root + "/src")], hidden: true))))
+    @Test func columnMajorGridPermutesFractions() {
+        let left = split(.vertical, 0.3, terminals(1)[0], terminals(1)[0])
+        let right = split(.vertical, 0.6, terminals(1)[0], terminals(1)[0])
+        let captured = capture(split(.horizontal, 0.4, left, right))
+        #expect(captured.layout.preset == .twoByTwoGrid)
+        #expect(captured.layout.splitFractions == [[0.3, 0.7], [0.4, 0.6], [0.4, 0.6]])
+        #expect(captured.layout.validFractions() != nil)
+    }
 
-        #expect(captured.layout.preset == .horizontalSplit)
-        #expect(captured.layout.panes.map(\.kind) == [.terminal, .terminal])
-        #expect(captured.layout.panes[1].tabs.map(\.workingDirectory) == ["src"])
+    @Test func capturesHiddenPanesActiveTabsAndFocus() {
+        let first = pane(tabs: [tab(root), tab(root), tab(root)])
+        first.activeTabID = first.tabs[2].id
+        let second = pane(tabs: [tab(root)], hidden: true)
+        let third = pane(tabs: [tab(root)])
+        let session = session(split(.horizontal, .leaf(first), split(.horizontal, .leaf(second), .leaf(third))))
+        session.tree.focusedPaneID = third.id
+        let captured = SessionProjectCapture.capture(session: session, root: root, homeDirectory: home)
+        #expect(captured.layout.panes.map(\.isHidden) == [false, true, false])
+        #expect(captured.layout.panes.map(\.activeTab) == [2, nil, nil])
+        #expect(captured.layout.focusedSlot == 2)
+        #expect(captured.paneIDs == [0: first.id, 1: second.id, 2: third.id])
     }
 
     @Test func eachPanesKindIsCapturedAndANonTerminalPlaceholderTabIsNot() {
@@ -350,16 +363,16 @@ struct SessionProjectUpdateDraftTests {
         return Project(name: "Stored", rootPath: root, color: .teal, layout: layout, runStartupCommandsOnOpen: true, approvedCommandsHash: "abc")
     }
 
-    @Test func commandsStayWhereTheSlotAndTabStillLineUp() {
+    @Test func updateTakesTheLayoutWholeAndKeepsIdentityFields() {
+        let project = stored()
         let node = split(.horizontal, .leaf(pane(tabs: [tab(root + "/src"), tab(root), tab(root + "/new")])), .leaf(pane(tabs: [tab(root)])))
-        let draft = capture(node, root: root).updateDraft(of: stored())
-        let panes = draft.makeProject().layout.panes
-
-        #expect(panes[0].tabs.map(\.workingDirectory) == ["src", ".", "new"])
-        #expect(panes[0].tabs.map(\.startupCommand) == ["make", "tail -f log", nil])
-        #expect(panes[0].tabs.map(\.title) == [nil, nil, nil], "titles come from the Session, not the old Project")
-        #expect(panes[1].kind == .terminal, "the slot's kind follows the Session")
-        #expect(panes[1].tabs.map(\.startupCommand) == [nil], "a slot whose kind changed keeps no commands")
+        let captured = capture(node, root: root)
+        let draft = captured.updateDraft(of: project)
+        #expect(draft.layout == captured.layout)
+        #expect(draft.makeProject().layout.panes[0].tabs.map(\.startupCommand) == [nil, nil, nil], "commands come from the Tabs, not the old slots")
+        #expect(draft.id == project.id)
+        #expect(draft.name == "Stored")
+        #expect(draft.approvedCommandsHash == "abc")
     }
 
     @Test func nameRootColorToggleAndApprovalCarryOver() {
@@ -408,5 +421,24 @@ struct CapturedProjectStartupTests {
 
         draft.layout = draftWith(command: "  \n ").layout
         #expect(!draft.showsCommandsOffHint, "a whitespace-only command is not stored")
+    }
+
+    @Test func aCommandFollowsItsTabWhenTabsAreReordered() {
+        let first = tab(root)
+        first.projectStartupCommand = "make"
+        let second = tab(root)
+        second.projectStartupCommand = "tail -f log"
+        let runtime = pane(tabs: [second, first])
+        let captured = capture(.leaf(runtime), root: root)
+        #expect(captured.layout.panes[0].tabs.map(\.startupCommand) == ["tail -f log", "make"])
+    }
+
+    @Test func aNewTabHasNoCommand() {
+        let runtime = pane(tabs: [tab(root)])
+        let opened = runtime.tabs[0]
+        opened.projectStartupCommand = "make"
+        _ = runtime.addTab()
+        let captured = capture(.leaf(runtime), root: root)
+        #expect(captured.layout.panes[0].tabs.map(\.startupCommand) == ["make", nil])
     }
 }

@@ -99,7 +99,7 @@ struct TabImageResolutionTests {
         let path = try #require(tab.backgroundOverride?.imagePath)
         #expect(path.hasPrefix(f.downloadedFolder.path))
         #expect(storedPaths(store, project.id) == [path])
-        #expect(tab.projectBackgroundSeed == tab.backgroundOverride)
+        #expect(tab.pendingTabImage == nil)
     }
 
     @Test func arrivalAppliesToAnUnchangedTabOnly() async throws {
@@ -271,5 +271,48 @@ struct TabImageResolutionTests {
         #expect(!FileManager.default.fileExists(atPath: cached))
         #expect(storedPaths(store, project.id) == [nil])
         #expect(store.projectStore.project(id: project.id)?.layout.panes[0].tabs[0].image == .hosted(url: url, name: "Canal"))
+    }
+
+    // MARK: - Pending images (#0589)
+
+    @Test func aPendingTabGetsItsImageWhenItArrives() async throws {
+        let store = store()
+        let url = try serve("canal")
+        let image = ProjectTabImage.hosted(url: url, name: "Canal")
+        let session = try open(store, tabbed([image]))
+        let tab = tabs(session)[0]
+        #expect(tab.pendingTabImage == image)
+        await settle(store)
+        #expect(tab.pendingTabImage == nil)
+        #expect(tab.backgroundOverride?.imagePath != nil)
+    }
+
+    @Test func aTabChangedWhilePendingKeepsItsValue() async throws {
+        let store = store()
+        let url = try serve("canal")
+        let session = try open(store, tabbed([.hosted(url: url, name: "Canal")]))
+        let tab = tabs(session)[0]
+        tab.setBackgroundOverride(secondBackgroundValue(path: nil))
+        #expect(tab.pendingTabImage == nil, "a user write ends the wait")
+        await settle(store)
+        #expect(tab.backgroundOverride == secondBackgroundValue(path: nil))
+    }
+
+    @Test func aPendingPaneGetsItsImageWhenItArrives() async throws {
+        let store = store()
+        let url = try serve("harbor")
+        let image = ProjectTabImage.hosted(url: url, name: "Harbor")
+        let tabValue = secondBackgroundValue(path: nil)
+        let pane = ProjectPane(kind: .terminal, tabs: [ProjectTab(background: tabValue), ProjectTab()], background: projectBackgroundValue(path: nil), image: image)
+        let project = f.project(name: "Pane", background: nil, layout: ProjectLayout(root: .pane(pane)))
+        let session = try open(store, project)
+        let runtime = session.tree.allPanes[0]
+        #expect(runtime.pendingImage == image)
+        await settle(store)
+        #expect(runtime.pendingImage == nil)
+        let path = try #require(runtime.backgroundOverride?.imagePath)
+        #expect(path.hasPrefix(f.downloadedFolder.path))
+        #expect(runtime.tabs[0].backgroundOverride == tabValue, "the arrival isn't a Pane edit, so the Tab keeps its own value")
+        #expect(store.projectStore.project(id: project.id)?.layout.panes[0].background?.imagePath == path)
     }
 }

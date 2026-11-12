@@ -795,6 +795,9 @@ private struct PaneInspector: View {
                 if let pane = model.selectedPane {
                     switch pane.kind {
                     case .terminal:
+                        if model.showsBackground {
+                            PaneBackgroundRow(model: model, validation: validation, slot: model.selectedSlot)
+                        }
                         TabsEditor(model: model, validation: validation, pane: pane)
                     case .gitStatus:
                         RelativeFolderField(
@@ -891,6 +894,48 @@ private struct RelativeFolderField: View {
                 .accessibilityIdentifier("\(identifier).choose")
             }
             FieldMessages(error: error, warning: warning, identifier: identifier)
+        }
+    }
+}
+
+/// The selected Terminal Pane's background, edited like the Sidebar's Pane
+/// gear: a change replaces the Tabs' own values in this Pane.
+private struct PaneBackgroundRow: View {
+    let model: ProjectEditorViewModel
+    let validation: ProjectEditorValidation
+    let slot: Int
+
+    @State private var isEditing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Background").font(.caption).foregroundStyle(.secondary)
+                Text(model.paneBackgroundSummary(slot: slot))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .accessibilityIdentifier("project-editor.pane.background.summary")
+                Spacer()
+                Button("Edit\u{2026}") { isEditing = true }
+                    .accessibilityIdentifier("project-editor.pane.background.edit")
+            }
+            FieldMessages(
+                error: nil,
+                warning: validation.warnings[.paneBackground(slot: slot)],
+                identifier: "project-editor.pane.background"
+            )
+        }
+        .sheet(isPresented: $isEditing) {
+            if let library = model.backgrounds, let images = model.imageLibrary {
+                BackgroundOverrideSettingsView(
+                    isPresented: $isEditing,
+                    target: model.projectPaneBackgroundTarget(slot: slot),
+                    scope: model.projectPaneBackgroundScope(),
+                    appWide: model.appWideBackgroundValue(),
+                    importer: library.importer,
+                    images: images
+                )
+            }
         }
     }
 }
@@ -1030,7 +1075,7 @@ private struct TabCard: View {
                 BackgroundOverrideSettingsView(
                     isPresented: $isEditingBackground,
                     target: model.projectTabBackgroundTarget(slot: slot, tabID: ids[index]),
-                    scope: .projectTab,
+                    scope: model.projectTabBackgroundScope(slot: slot),
                     appWide: model.appWideBackgroundValue(),
                     importer: library.importer,
                     images: images

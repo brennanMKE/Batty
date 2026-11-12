@@ -78,7 +78,7 @@ struct BackgroundImageUsesTests {
         #expect(store.backgroundImageUses()[try digest(path)] == [.tab(id: tab.id, sessionTitle: "Website")])
     }
 
-    @Test func removeClearsTabValuesSeedsAndProjectTabPaths() async throws {
+    @Test func removeClearsTabValuesAndProjectTabPaths() async throws {
         let path = try await f.copy()
         let layout = ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(background: projectBackgroundValue(path: path))])))
         let project = f.project(background: nil, layout: layout)
@@ -87,7 +87,6 @@ struct BackgroundImageUsesTests {
         pane.addTab()
         pane.setBackgroundOverride(secondBackgroundValue(path: path))
         pane.tabs[0].setBackgroundOverride(projectBackgroundValue(path: path))
-        pane.tabs[1].projectBackgroundSeed = projectBackgroundValue(path: path)
         let store = f.appStore(sessions: [session])
         try store.projectStore.upsert(project)
 
@@ -95,7 +94,6 @@ struct BackgroundImageUsesTests {
 
         #expect(store.projectStore.project(id: project.id)?.layout.panes[0].tabs[0].background == projectBackgroundValue(path: nil))
         #expect(pane.tabs[0].backgroundOverride == projectBackgroundValue(path: nil), "the Pane's own removal keeps the Tab's value")
-        #expect(pane.tabs[1].projectBackgroundSeed == projectBackgroundValue(path: nil))
         #expect(pane.backgroundOverride == secondBackgroundValue(path: nil))
     }
 

@@ -83,7 +83,6 @@ extension AppStateStore {
                 if let path = pane.backgroundOverride?.imagePath { paths.insert(path) }
                 for tab in pane.tabs {
                     if let path = tab.backgroundOverride?.imagePath { paths.insert(path) }
-                    if let path = tab.projectBackgroundSeed?.imagePath { paths.insert(path) }
                 }
             }
         }

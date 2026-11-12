@@ -40,16 +40,19 @@ enum ProjectTreeBuilder {
 
     /// Throws before constructing anything when the Project root is unusable.
     /// A Tab or repository directory that is missing, or that escapes the
-    /// root, falls back to the root instead of failing the open. `tabBackground`
-    /// checks each Tab's own background before its Tab exists; the caller
-    /// records any problem it finds.
+    /// root, falls back to the root instead of failing the open.
+    /// `checkBackground` checks each Pane's and Tab's own background before it
+    /// is applied; the caller records any problem it finds. Sizes, the active
+    /// Tab and each Pane's background are restored here, before any view
+    /// exists; hidden Panes and focus need the Session and are restored by
+    /// `WindowRuntime.addProjectSession`.
     static func build(
         project: Project,
         contentFactory: ContentFactory? = nil,
         gitStatusContent: ((String) -> (any PaneContentLifecycle)?)? = nil,
         isSessionSelected: Bool,
         fileManager: FileManager = .default,
-        tabBackground: (TerminalBackgroundSettings) -> TerminalBackgroundSettings = { $0 }
+        checkBackground: (TerminalBackgroundSettings) -> TerminalBackgroundSettings = { $0 }
     ) throws -> SplitTree {
         guard let rootURL = project.resolve(".") else {
             throw ProjectOpenError.invalidRoot(project.rootPath)
@@ -87,13 +90,13 @@ enum ProjectTreeBuilder {
             case .terminal:
                 let tabs = pane.tabs.map { tab in
                     let title = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let background = tab.background.map(tabBackground)
+                    let background = tab.background.map(checkBackground)
                     let runtime = TabRuntime(
                         titleOverride: (title?.isEmpty ?? true) ? nil : title,
                         workingDirectory: directory(tab.workingDirectory),
                         backgroundOverride: background
                     )
-                    runtime.projectBackgroundSeed = background
+                    runtime.projectStartupCommand = tab.startupCommand
                     if background != nil, background?.imagePath == nil { runtime.pendingTabImage = tab.image }
                     return runtime
                 }
@@ -125,13 +128,24 @@ enum ProjectTreeBuilder {
         )
         let firstPane = tree.focusedPane
 
+        var slotPanes: [(ProjectPane, PaneRuntime)] = []
+        var chains: [[PaneRuntime]] = []
+
         // `anchor` is the existing Pane that becomes `node`'s first leaf.
         // All of a split's siblings are created before any child is
         // expanded, so each split sequence matches the by-hand one
-        // `PaneLayout.apply(to:)` performs for the same arrangement.
+        // `PaneLayout.apply(to:)` performs for the same arrangement. Each
+        // split's anchors are recorded in pre-order, the order of
+        // `ProjectLayout.splitFractions`.
         func expand(_ node: ProjectLayoutNode, anchor: PaneRuntime) {
-            guard case .split(let direction, let children) = node else { return }
+            guard case .split(let direction, let children) = node else {
+                if case .pane(let pane) = node { slotPanes.append((pane, anchor)) }
+                return
+            }
+            let chainIndex = chains.count
+            chains.append([])
             var anchors = [anchor]
+            defer { chains[chainIndex] = anchors }
             var previous = anchor
             for child in children.dropFirst() {
                 let spec = slot(for: child.firstPane)
@@ -156,8 +170,36 @@ enum ProjectTreeBuilder {
         }
         expand(layoutRoot, anchor: firstPane)
 
+        for (stored, runtime) in slotPanes where runtime.kind == .terminal {
+            if let active = stored.activeTab, runtime.tabs.indices.contains(active) {
+                runtime.activeTabID = runtime.tabs[active].id
+            }
+            guard let background = stored.background.map(checkBackground) else { continue }
+            runtime.restoreBackgroundOverride(background)
+            if background.imagePath == nil { runtime.pendingImage = stored.image }
+        }
+        if let fractions = project.layout.validFractions(), fractions.count == chains.count {
+            for (anchors, sizes) in zip(chains, fractions) where anchors.count == sizes.count {
+                for index in 0..<(anchors.count - 1) {
+                    let rest = sizes[index...].reduce(0, +)
+                    guard rest > 0, let splitID = tree.root.splitID(left: anchors[index].id, right: anchors[index + 1].id) else { continue }
+                    tree.updateRatio(forSplitID: splitID, to: sizes[index] / rest)
+                }
+            }
+        }
+
         tree.focusedPaneID = firstPane.id
         return tree
+    }
+}
+
+private extension SplitTreeNode {
+    /// The split whose left side starts at `left` and right side at `right`:
+    /// in a chain built by `splitPane`, the split that sizes `left`'s member.
+    func splitID(left: UUID, right: UUID) -> UUID? {
+        guard case .split(let id, _, _, let leftNode, let rightNode) = self else { return nil }
+        if leftNode.firstLeafPaneID == left, rightNode.firstLeafPaneID == right { return id }
+        return leftNode.splitID(left: left, right: right) ?? rightNode.splitID(left: left, right: right)
     }
 }
 

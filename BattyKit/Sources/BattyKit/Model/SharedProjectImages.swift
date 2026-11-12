@@ -126,7 +126,7 @@ final class SharedProjectImages {
                 items.append(WorkItem(id: project.id, digest: digest, name: name, path: project.background?.imagePath))
             }
             var seen = Set<String>()
-            let tabs = project.layout.panes.flatMap(\.tabs)
+            let tabs = project.layout.backgroundEntries
             for tab in tabs {
                 guard case .custom(let digest, let name)? = tab.image, seen.insert(digest).inserted else { continue }
                 let path = tabs.first { $0.image?.digest == digest && $0.background?.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest }?.background?.imagePath

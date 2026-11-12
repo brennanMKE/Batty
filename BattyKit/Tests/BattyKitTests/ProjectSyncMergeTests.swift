@@ -155,4 +155,24 @@ struct ProjectSyncMergeTests {
         #expect(once == twice)
         #expect(once.map(\.name).contains("Updated 2 2"), "the collision suffix is applied once and then stable")
     }
+
+    @Test func aMergeCarriesThePaneImagePathByIdentity() throws {
+        let digest = String(repeating: "e", count: 64)
+        let path = "/Users/test/Library/ProjectBackgrounds/\(digest)/pane.png"
+        func layout(_ path: String?) -> ProjectLayout {
+            ProjectLayout(root: .pane(ProjectPane(
+                kind: .terminal, tabs: [ProjectTab()],
+                background: projectBackgroundValue(path: path), image: .custom(digest: digest, name: "pane")
+            )))
+        }
+        var mine = local("Site")
+        mine.layout = layout(path)
+        var remote = mine
+        remote.layout = layout(nil)
+        remote.name = "Site 2"
+        remote.modifiedAt = base.addingTimeInterval(10)
+        let result = try #require(merge([mine.id: .record(remote.syncRecord(home: home))], [mine]).first)
+        #expect(result.name == "Site 2")
+        #expect(result.layout.panes[0].background?.imagePath == path)
+    }
 }

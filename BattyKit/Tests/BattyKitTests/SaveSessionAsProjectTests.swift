@@ -78,7 +78,7 @@ private final class Opened {
 
 @MainActor
 struct SessionProjectRoundTripTests {
-    @Test func aHandResizedSessionOpensAsTheSameShapeAtEqualSizes() throws {
+    @Test func aHandResizedSessionOpensAtItsSizes() throws {
         let fixture = try Fixture()
         let store = fixture.store()
         let resized = fixture.session(split(
@@ -86,14 +86,13 @@ struct SessionProjectRoundTripTests {
             split(.vertical, 0.7, .leaf(fixture.pane([fixture.tab()])), .leaf(fixture.pane([fixture.tab("src", title: "src shell")]))),
             .leaf(fixture.pane([fixture.tab("docs")]))
         ))
-        #expect(shape(resized.tree.root).contains("0.2000"), "test setup: the Session really is resized")
 
         let draft = SaveSessionAsProject.draft(for: resized, destination: .newProject, store: store)
         let saved = draft.makeProject()
         try store.projectStore.upsert(saved)
         let result = try store.openProject(id: saved.id, mode: .openNew, contentFactory: noContent)
 
-        #expect(shape(result.session.tree.root) == "(h 0.5000 (v 0.5000 L L) L)")
+        #expect(shape(result.session.tree.root) == "(h 0.2000 (v 0.7000 L L) L)")
         let panes = result.session.tree.allPanes
         #expect(panes.count == 3)
         #expect(panes[1].tabs[0].titleOverride == "src shell")
@@ -101,6 +100,110 @@ struct SessionProjectRoundTripTests {
         #expect(panes[2].tabs[0].terminal.configuration.workingDirectory == fixture.root.appendingPathComponent("docs").path)
         #expect(result.session.title == "Website")
         #expect(result.session.sessionColor == .pink)
+    }
+
+    private static func comparable(_ project: Project) -> Project {
+        var project = project
+        project.modifiedAt = nil
+        project.lastOpenedAt = nil
+        return project
+    }
+
+    /// Every field a Project can hold, set to something other than its default.
+    private func fullProject(_ fixture: ProjectBackgroundFixture) async throws -> Project {
+        try FileManager.default.createDirectory(at: fixture.root.appendingPathComponent("src"), withIntermediateDirectories: true)
+        let sessionImage = try await fixture.copy()
+        let paneImage = try await fixture.copy(width: 128)
+        let tabImage = try await fixture.copy(width: 64)
+        let identity = fixture.appStore().tabImageIdentity
+        let left = ProjectPane(
+            kind: .terminal,
+            tabs: [
+                ProjectTab(title: "build", workingDirectory: "src", startupCommand: "make"),
+                ProjectTab(workingDirectory: ".", startupCommand: "tail -f log", background: secondBackgroundValue(path: tabImage), image: identity.identity(forPath: tabImage, keeping: nil)),
+            ],
+            background: projectBackgroundValue(path: paneImage),
+            image: identity.identity(forPath: paneImage, keeping: nil),
+            activeTab: 1
+        )
+        let hidden = ProjectPane(kind: .terminal, tabs: [ProjectTab(title: "logs")], isHidden: true)
+        let root = ProjectLayoutNode.split(direction: .horizontal, children: [
+            .pane(left),
+            .split(direction: .vertical, children: [.pane(ProjectPane(kind: .gitStatus, repositoryPath: "src")), .pane(hidden), .pane(.terminal())]),
+        ])
+        let layout = ProjectLayout(
+            root: root,
+            preset: SessionProjectCapture.matchingPreset(for: root),
+            focusedSlot: 3,
+            splitFractions: [[0.35, 0.65], [0.2, 0.3, 0.5]]
+        )
+        return Project(
+            name: "Everything", rootPath: fixture.root.path, color: .orange, layout: layout,
+            runStartupCommandsOnOpen: true,
+            background: appWideBackgroundValue(path: sessionImage),
+            theme: ThemePair(dark: "Nord", light: "Solarized Light"),
+            notificationsMuted: true, paneListExpanded: true
+        )
+    }
+
+    private func git(_ fixture: ProjectBackgroundFixture) -> @MainActor (PaneRuntime) -> String? {
+        let path = fixture.root.appendingPathComponent("src").path
+        return { $0.kind == .gitStatus ? path : nil }
+    }
+
+    @Test func openingThenUpdatingReproducesTheProjectExactly() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = try await fullProject(fixture)
+        try store.projectStore.upsert(project)
+        let stored = try #require(store.projectStore.project(id: project.id))
+        let session = try store.openProject(id: project.id, mode: .openNew, contentFactory: noContent).session
+
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store, gitDirectory: git(fixture))
+        #expect(Self.comparable(draft.makeProject()) == Self.comparable(stored))
+    }
+
+    @Test func editsInTheSessionSurviveUpdateAndReopen() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = try await fullProject(fixture)
+        try store.projectStore.upsert(project)
+        let session = try store.openProject(id: project.id, mode: .openNew, contentFactory: noContent).session
+        let window = try #require(store.windows.first { $0.sessions.contains { $0 === session } })
+        let panes = session.tree.allPanes
+
+        window.showPane(id: panes[2].id)
+        window.hidePane(id: panes[3].id)
+        panes[0].activeTabID = panes[0].tabs[0].id
+        panes[0].tabs[0].setBackgroundOverride(projectBackgroundValue(path: nil))
+        panes[0].tabs[1].setBackgroundOverride(nil)
+        session.setBackgroundOverride(nil)
+        session.themeOverride = .both("Nord")
+        session.notificationsMuted = false
+        session.isPaneListExpanded = false
+        session.tree.focusedPaneID = panes[2].id
+        if case .split(let id, _, _, _, _) = session.tree.root { session.tree.updateRatio(forSplitID: id, to: 0.6) }
+
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store, gitDirectory: git(fixture))
+        try store.projectStore.upsert(draft.makeProject())
+        let reopened = try store.openProject(id: project.id, mode: .openNew, contentFactory: noContent).session
+        let again = reopened.tree.allPanes
+
+        #expect(again.map(\.isHidden) == [false, false, false, true])
+        #expect(again[0].activeTabID == again[0].tabs[0].id)
+        #expect(again[0].tabs.map(\.backgroundOverride) == [projectBackgroundValue(path: nil), nil])
+        #expect(again[0].backgroundOverride?.imagePath?.hasPrefix(fixture.projectFolder.path) == true)
+        #expect(again[0].tabs.map(\.projectStartupCommand) == ["make", "tail -f log"])
+        #expect(reopened.backgroundOverride == nil)
+        #expect(reopened.themeOverride == .both("Nord"))
+        #expect(!reopened.notificationsMuted)
+        #expect(!reopened.isPaneListExpanded)
+        #expect(reopened.tree.focusedPaneID == again[2].id)
+        guard case .split(_, _, let ratio, _, _) = reopened.tree.root else {
+            Issue.record("the root is not a split")
+            return
+        }
+        #expect(abs(ratio - 0.6) < 0.0001)
     }
 }
 
@@ -182,7 +285,10 @@ struct SaveSessionAsProjectEntryTests {
         let projectStore = store.projectStore
         try projectStore.upsert(seed)
         let stored = try #require(projectStore.project(id: seed.id))
-        let session = fixture.session(.leaf(fixture.pane([fixture.tab("src")])))
+        let openedTab = fixture.tab("src")
+        openedTab.projectStartupCommand = "make"
+        let session = fixture.session(title: "Stored", .leaf(fixture.pane([openedTab])))
+        session.colorIndex = SessionColor.teal.rawValue
         session.projectID = stored.id
         let opened = Opened()
 
@@ -218,7 +324,9 @@ struct SaveSessionAsProjectEntryTests {
         let unbacked = fixture.session(.leaf(fixture.pane([fixture.tab("src")])))
         let other = fixture.session(.leaf(fixture.pane([fixture.tab("src")])))
         other.projectID = UUID()
-        let backed = fixture.session(.leaf(fixture.pane([fixture.tab("src")])))
+        let backedTab = fixture.tab("src")
+        backedTab.projectStartupCommand = "make"
+        let backed = fixture.session(.leaf(fixture.pane([backedTab])))
         backed.projectID = stored.id
 
         for stale in [unbacked, other] {
@@ -499,7 +607,7 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(draft.captureNotes[.background] == nil)
     }
 
-    @Test func aPaneOverrideIsCapturedIntoEveryTabOfThatPane() throws {
+    @Test func aPaneOverrideIsCapturedAtThePaneLevel() throws {
         let fixture = try ProjectBackgroundFixture()
         let session = fixture.session(2)
         let pane = session.tree.allPanes[1]
@@ -507,7 +615,9 @@ struct SaveSessionAsProjectBackgroundTests {
         pane.setBackgroundOverride(secondBackgroundValue(path: nil))
         let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
         #expect(draft.background == nil)
-        #expect(draft.layout.panes[1].tabs.map(\.background) == [secondBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
+        #expect(draft.layout.panes[1].background == secondBackgroundValue(path: nil))
+        #expect(draft.layout.panes[0].background == nil)
+        #expect(draft.layout.panes[1].tabs.map(\.background) == [nil, nil])
         #expect(draft.layout.panes[0].tabs.map(\.background) == [nil])
         #expect(draft.captureNotes[.background] == nil)
     }
@@ -531,19 +641,6 @@ struct SaveSessionAsProjectBackgroundTests {
         ProjectTab(background: projectBackgroundValue(path: nil)), ProjectTab(),
     ])))
 
-    @Test func updateKeepsStoredTabValuesWhenUnchangedSinceOpen() async throws {
-        let fixture = try ProjectBackgroundFixture()
-        let store = fixture.appStore()
-        let path = try await fixture.copy()
-        let layout = ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(background: projectBackgroundValue(path: path)), ProjectTab()])))
-        let project = fixture.project(background: nil, layout: layout)
-        try fixture.removeFolder(of: path)
-        let session = try openedSession(fixture, store, project)
-        #expect(session.tree.allPanes[0].tabs[0].backgroundOverride?.imagePath == nil, "test setup: the open dropped the image")
-        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
-        #expect(draft.layout.panes[0].tabs.map(\.background) == [projectBackgroundValue(path: path), nil])
-    }
-
     @Test func updateTakesAChangedTabValue() throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()
@@ -554,24 +651,32 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(draft.layout.panes[0].tabs.map(\.background) == [projectBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
     }
 
-    @Test func updateAfterClearingASeededTabFollowsTheProject() throws {
+    @Test func updateWritesWhatTheSessionShowsAtEveryLevel() throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()
-        let project = fixture.project(background: nil, layout: Self.twoTabs)
+        let project = fixture.project(background: projectBackgroundValue(path: nil), layout: Self.twoTabs)
         let session = try openedSession(fixture, store, project)
-        session.tree.allPanes[0].tabs[0].setBackgroundOverride(nil)
+        let pane = session.tree.allPanes[0]
+        pane.setBackgroundOverride(secondBackgroundValue(path: nil))
+        pane.tabs[1].setBackgroundOverride(projectBackgroundValue(path: nil).withTerminalOpacity(0.3))
+        session.setBackgroundOverride(secondBackgroundValue(path: nil).withTerminalOpacity(0.9))
         let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
-        #expect(draft.layout.panes[0].tabs.map(\.background) == [nil, nil])
+        #expect(draft.background == secondBackgroundValue(path: nil).withTerminalOpacity(0.9))
+        #expect(draft.layout.panes[0].background == secondBackgroundValue(path: nil))
+        #expect(draft.layout.panes[0].tabs.map(\.background) == [nil, projectBackgroundValue(path: nil).withTerminalOpacity(0.3)])
     }
 
-    @Test func updateAfterThePaneGearWritesThePaneValueToItsTabs() throws {
+    @Test func updateAfterClearingASessionBackgroundFollowsSettings() throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()
-        let project = fixture.project(background: nil, layout: Self.twoTabs)
+        let project = fixture.project(background: projectBackgroundValue(path: nil), layout: Self.twoTabs)
         let session = try openedSession(fixture, store, project)
-        session.tree.allPanes[0].setBackgroundOverride(secondBackgroundValue(path: nil))
+        session.setBackgroundOverride(nil)
+        session.tree.allPanes[0].tabs[0].setBackgroundOverride(nil)
         let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
-        #expect(draft.layout.panes[0].tabs.map(\.background) == [secondBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
+        #expect(draft.background == nil)
+        #expect(draft.sharedImage == nil)
+        #expect(draft.layout.panes[0].tabs.map(\.background) == [nil, nil])
     }
 
     @Test func aTabImageThatCannotBeCopiedKeepsOpacityAndAddsANote() throws {
@@ -609,28 +714,7 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(draft.captureNotes[.background]?.contains("could not be copied") == true)
     }
 
-    @Test func updateKeepsTheStoredBackgroundWhenTheSessionDidNotChangeIt() async throws {
-        let fixture = try ProjectBackgroundFixture()
-        let store = fixture.appStore()
-        let project = fixture.project(background: projectBackgroundValue(path: try await fixture.copy()))
-        let session = try openedSession(fixture, store, project)
-        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
-        #expect(draft.background == project.background)
-    }
-
-    /// A Session opened before the Project had a background can't erase it.
-    @Test func updateKeepsABackgroundAddedAfterTheOpen() async throws {
-        let fixture = try ProjectBackgroundFixture()
-        let store = fixture.appStore()
-        var project = fixture.project(background: nil)
-        let session = try openedSession(fixture, store, project)
-        project.background = projectBackgroundValue(path: try await fixture.copy())
-        try store.projectStore.upsert(project)
-        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
-        #expect(draft.background == project.background)
-    }
-
-    @Test func updateKeepsAnImageDroppedAtOpen() async throws {
+    @Test func updateKeepsAnImageWithheldAtOpen() async throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()
         let path = try await fixture.copy()
@@ -638,8 +722,22 @@ struct SaveSessionAsProjectBackgroundTests {
         try fixture.removeFolder(of: path)
         let session = try openedSession(fixture, store, project)
         #expect(session.backgroundOverride?.imagePath == nil, "test setup: the open dropped the image")
+        #expect(session.pendingProjectImage)
         let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
         #expect(draft.background?.imagePath == path)
+    }
+
+    @Test func updateAfterChangingAWithheldBackgroundWritesTheNewValue() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let path = try await fixture.copy()
+        let project = fixture.project(background: projectBackgroundValue(path: path))
+        try fixture.removeFolder(of: path)
+        let session = try openedSession(fixture, store, project)
+        session.setBackgroundOverride(secondBackgroundValue(path: nil))
+        #expect(!session.pendingProjectImage)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.background == secondBackgroundValue(path: nil))
     }
 
     @Test func updateTakesAChangedSessionBackground() async throws {
@@ -699,14 +797,14 @@ struct SaveSessionAsProjectThemeTests {
         #expect(draft.theme == .both("Nord"))
     }
 
-    @Test func updateLeavesTheThemeWhenUnchangedSinceOpen() throws {
+    @Test func updateAlwaysWritesTheSessionTheme() throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()
-        var (project, session) = try openedSession(fixture, store, theme: nil)
+        var (project, session) = try openedSession(fixture, store, theme: .both("Nord"))
         project.theme = ThemePair(dark: "Added Later", light: nil)
         try store.projectStore.upsert(project)
         let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
-        #expect(draft.theme == ThemePair(dark: "Added Later", light: nil))
+        #expect(draft.theme == .both("Nord"))
     }
 
     @Test func updateWritesTheThemeWhenChangedAfterOpen() throws {
@@ -727,7 +825,7 @@ struct SaveSessionAsProjectThemeTests {
         #expect(draft.theme == nil)
     }
 
-    @Test func updateKeepsAnUnknownSeededName() throws {
+    @Test func updateKeepsAnUnknownName() throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()
         let pair = ThemePair(dark: "Not In This Batty", light: nil)
@@ -735,5 +833,43 @@ struct SaveSessionAsProjectThemeTests {
         let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
         #expect(draft.theme == pair)
         #expect(draft.makeProject().theme == pair)
+    }
+}
+
+@MainActor
+struct SaveSessionAsProjectSessionStateTests {
+    private func opened(_ fixture: ProjectBackgroundFixture, _ store: AppStateStore, _ project: Project) throws -> SessionRuntime {
+        try store.projectStore.upsert(project)
+        return try store.openProject(id: project.id, mode: .openNew, contentFactory: noContent).session
+    }
+
+    @Test func updateCapturesMuteExpansionNameAndColor() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = fixture.project(background: nil)
+        let session = try opened(fixture, store, project)
+        session.notificationsMuted = true
+        session.isPaneListExpanded = true
+        session.title = "Renamed"
+        session.colorIndex = (project.color.rawValue + 1) % SessionColor.allCases.count
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.notificationsMuted)
+        #expect(draft.paneListExpanded)
+        #expect(draft.name == "Renamed")
+        #expect(draft.color == session.sessionColor)
+        #expect(draft.customColorHex == nil)
+    }
+
+    @Test func anUnchangedPaletteColorKeepsTheCustomHex() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        var project = fixture.project(background: nil)
+        project = Project(id: project.id, name: project.name, rootPath: project.rootPath, color: project.color, layout: project.layout, customColorHex: "#123456")
+        let stored = try #require({ try store.projectStore.upsert(project); return store.projectStore.project(id: project.id) }())
+        let session = try store.openProject(id: stored.id, mode: .openNew, contentFactory: noContent).session
+        session.colorIndex = stored.color.rawValue
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(stored.id), store: store)
+        #expect(draft.customColorHex == stored.customColorHex)
+        #expect(stored.customColorHex != nil)
     }
 }

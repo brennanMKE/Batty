@@ -97,4 +97,11 @@ struct ProjectTabImageTests {
         #expect(!String(decoding: data, as: UTF8.self).contains("\"image\""))
         #expect(try ProjectsFile.encoder.encode(ProjectsFile.decoder.decode(Project.self, from: data)) == data)
     }
+
+    @Test func paneImagesCountAsNamedDigests() {
+        let pane = ProjectPane(kind: .terminal, tabs: [ProjectTab()], background: projectBackgroundValue(path: nil), image: .custom(digest: Self.digestB, name: "B"))
+        let project = Project(name: "A", rootPath: "/tmp", layout: ProjectLayout(root: .pane(pane)))
+        #expect(project.tabCustomDigests == [Self.digestB])
+        #expect(project.tabImages == [.custom(digest: Self.digestB, name: "B")])
+    }
 }

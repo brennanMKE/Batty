@@ -1545,7 +1545,7 @@ public final class AppStateStore {
             project: opened,
             contentFactory: contentFactory,
             isSessionSelected: true,
-            tabBackground: { value in
+            checkBackground: { value in
                 let checked = projectBackgrounds.checked(value)
                 if tabProblem == nil { tabProblem = checked.problem }
                 return checked.settings
@@ -1554,6 +1554,9 @@ public final class AppStateStore {
         let background = opened.background.map(projectBackgrounds.checked)
         let session = target.addProjectSession(opened, tree: tree, background: background?.settings)
         if let problem = background?.problem ?? tabProblem { session.projectBackgroundImageProblem = problem }
+        if opened.background != nil, background?.problem != nil || opened.pendingSharedImage != nil {
+            session.pendingProjectImage = true
+        }
         // A CLI create brings Batty forward like `batty new` does (its
         // `open -a` activates the app). A GUI open normally starts from the
         // content window, but from Settings, Help or the Project Editor the

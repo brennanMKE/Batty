@@ -17,6 +17,7 @@ enum ProjectEditorField: Hashable {
     case tabCommand(slot: Int, tab: Int)
     case background
     case tabBackground(slot: Int, tab: Int)
+    case paneBackground(slot: Int)
     case theme
 }
 
@@ -308,11 +309,30 @@ final class ProjectEditorViewModel {
         return String(localized: "Custom: \(image), terminal \(opacity)%", comment: "Project Editor: the Background row; the arguments are the image name and the terminal opacity")
     }
 
+    private var followsProjectOrSettings: String {
+        draft?.background == nil
+            ? String(localized: "Follows Settings", comment: "Project Editor: a Background row with no background of its own, in a Project with none")
+            : String(localized: "Follows Project", comment: "Project Editor: a Background row with no background of its own")
+    }
+
+    func paneBackgroundSummary(slot: Int) -> String {
+        guard panes.indices.contains(slot), let background = panes[slot].background else {
+            return followsProjectOrSettings
+        }
+        let image = background.imagePath.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension }
+            ?? String(localized: "No image", comment: "Project Editor: the Background row for a Project that hides any image")
+        let opacity = Int((background.terminalOpacity * 100).rounded())
+        return String(localized: "Custom: \(image), terminal \(opacity)%", comment: "Project Editor: the Background row; the arguments are the image name and the terminal opacity")
+    }
+
     func tabBackgroundSummary(slot: Int, index: Int) -> String {
         guard panes.indices.contains(slot), panes[slot].tabs.indices.contains(index),
               let background = panes[slot].tabs[index].background
         else {
-            return String(localized: "Follows Project", comment: "Project Editor: a Tab's Background row with no background of its own")
+            if panes.indices.contains(slot), panes[slot].background != nil {
+                return String(localized: "Follows Pane", comment: "Project Editor: a Tab's Background row with no background of its own, in a Pane with one")
+            }
+            return followsProjectOrSettings
         }
         let image = background.imagePath.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension }
             ?? String(localized: "No image", comment: "Project Editor: the Background row for a Project that hides any image")
@@ -421,6 +441,9 @@ final class ProjectEditorViewModel {
                     if let path = tab.background?.imagePath, let warning = Self.imageWarning(tabImageStates[path] ?? .none) {
                         result.warnings[.tabBackground(slot: slot, tab: index)] = warning
                     }
+                }
+                if let path = pane.background?.imagePath, let warning = Self.imageWarning(tabImageStates[path] ?? .none) {
+                    result.warnings[.paneBackground(slot: slot)] = warning
                 }
             case .gitStatus:
                 checkDirectory(
@@ -1118,6 +1141,72 @@ extension ProjectEditorViewModel {
     func projectTabBackgroundTarget(slot: Int, tabID: UUID) -> ProjectTabBackgroundTarget {
         ProjectTabBackgroundTarget(model: self, slot: slot, tabID: tabID)
     }
+
+    func projectTabBackgroundScope(slot: Int) -> BackgroundOverrideScope {
+        .projectTab(followsPane: panes.indices.contains(slot) && panes[slot].background != nil, projectHasBackground: draft?.background != nil)
+    }
+
+    func projectPaneBackgroundScope() -> BackgroundOverrideScope {
+        .projectPane(projectHasBackground: draft?.background != nil)
+    }
+
+    func projectPaneBackgroundTarget(slot: Int) -> ProjectPaneBackgroundTarget {
+        ProjectPaneBackgroundTarget(model: self, slot: slot)
+    }
+
+    func paneBackground(slot: Int) -> TerminalBackgroundSettings? {
+        guard panes.indices.contains(slot), panes[slot].kind == .terminal else { return nil }
+        return panes[slot].background
+    }
+
+    /// Like the runtime Pane gear, a write here replaces the Tabs' own values
+    /// in this Pane. A newly chosen path is copied into the Project folder.
+    func setPaneBackground(slot: Int, _ newValue: TerminalBackgroundSettings?) {
+        guard let current = draft, panes.indices.contains(slot), panes[slot].kind == .terminal else { return }
+        let field = ProjectEditorField.paneBackground(slot: slot)
+        let pane = panes[slot]
+        let existing = pane.background
+        var value = newValue
+        var adoptFailed = false
+        if let backgrounds, let path = value?.imagePath, path != existing?.imagePath,
+           !(baseline?.allBackgroundImagePaths.contains(path) ?? false) {
+            let adopted = backgrounds.adopt(path: path)
+            adoptFailed = adopted == nil
+            value = value?.withImagePath(adopted)
+        }
+        let note = adoptFailed
+            ? String(localized: "That image could not be copied, so this Pane has no image. Choose it again.", comment: "Project Editor: a Pane background image could not be copied into the Project")
+            : nil
+        // Seeded from a Tab's value, the Pane keeps that Tab's identity, so a
+        // hosted image stays hosted.
+        let levels = [ProjectBackgroundEntry(background: existing, image: pane.image)]
+            + pane.tabs.map { ProjectBackgroundEntry(background: $0.background, image: $0.image) }
+        let sameImage = levels.first { $0.image != nil && $0.background?.imagePath != nil && $0.background?.imagePath == value?.imagePath }?.image
+        let image: ProjectTabImage? = if value == nil {
+            nil
+        } else if let sameImage {
+            sameImage
+        } else {
+            Self.tabImage(forPath: value?.imagePath, keeping: pane.image, previousPath: existing?.imagePath, identity: tabImageIdentity)
+        }
+        let tabsHaveValues = pane.tabs.contains { $0.background != nil }
+        guard value != existing || image != pane.image || tabsHaveValues || note != current.captureNotes[field] else { return }
+        if value != existing || image != pane.image || tabsHaveValues {
+            draft?.layout.root = current.layout.root.mappingPanes { paneSlot, pane in
+                guard paneSlot == slot else { return pane }
+                var edited = pane
+                edited.background = value
+                edited.image = value == nil ? nil : image
+                for index in edited.tabs.indices {
+                    edited.tabs[index].background = nil
+                    edited.tabs[index].image = nil
+                }
+                return edited
+            }
+        }
+        if note != current.captureNotes[field] { draft?.captureNotes[field] = note }
+        refreshTabImageStates()
+    }
 }
 
 /// The sheet's target for one Tab of the draft. Holds no state of its own, so
@@ -1140,11 +1229,71 @@ final class ProjectTabBackgroundTarget: BackgroundOverrideHolder {
         model?.setTabBackground(slot: slot, tabID: tabID, newOverride)
     }
 
-    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
-        model?.draft?.background ?? appWide
+    func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
+        .first([(backgroundOverride, .tab), (model?.paneBackground(slot: slot), .pane), (model?.draft?.background, .project)], appWide: appWide)
     }
 
     func isSavedImagePath(_ path: String) -> Bool { model?.isSavedImagePath(path) ?? false }
+}
+
+/// The sheet's target for one Pane of the draft, matching the runtime Pane
+/// gear: customized while the Pane or any Tab in it has a value, showing the
+/// active Tab's, and a write replaces the Tabs' own values.
+@MainActor
+final class ProjectPaneBackgroundTarget: BackgroundOverrideHolder {
+    weak var model: ProjectEditorViewModel?
+    let slot: Int
+
+    init(model: ProjectEditorViewModel, slot: Int) {
+        self.model = model
+        self.slot = slot
+    }
+
+    private var pane: ProjectPane? {
+        guard let panes = model?.panes, panes.indices.contains(slot) else { return nil }
+        return panes[slot]
+    }
+
+    var backgroundOverride: TerminalBackgroundSettings? { model?.paneBackground(slot: slot) }
+
+    var isCustomized: Bool {
+        guard let pane else { return false }
+        return pane.background != nil || pane.tabs.contains { $0.background != nil }
+    }
+
+    func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        model?.setPaneBackground(slot: slot, newOverride)
+    }
+
+    func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
+        let tabs = pane?.tabs ?? []
+        let active = pane?.activeTab.flatMap { tabs.indices.contains($0) ? $0 : nil } ?? 0
+        let tab = tabs.indices.contains(active) ? tabs[active].background : nil
+        return .first([(tab, .tab), (pane?.background, .pane), (model?.draft?.background, .project)], appWide: appWide)
+    }
+
+    var narrowerLevelsNote: String? {
+        guard let pane, pane.tabs.contains(where: { $0.background != nil }) else { return nil }
+        return String(localized: "Tabs in this Pane have their own backgrounds. A change here replaces them.")
+    }
+
+    func isSavedImagePath(_ path: String) -> Bool { model?.isSavedImagePath(path) ?? false }
+
+    func replacedOverrides() -> [UUID: TerminalBackgroundSettings] {
+        guard let model, let pane else { return [:] }
+        var result: [UUID: TerminalBackgroundSettings] = [:]
+        for (id, tab) in zip(model.tabIDs(slot: slot), pane.tabs) {
+            if let own = tab.background { result[id] = own }
+        }
+        return result
+    }
+
+    func restoreReplacedOverrides(_ overrides: [UUID: TerminalBackgroundSettings]) {
+        guard let model else { return }
+        for id in model.tabIDs(slot: slot) {
+            if let own = overrides[id] { model.setTabBackground(slot: slot, tabID: id, own) }
+        }
+    }
 }
 
 extension ProjectEditorViewModel: BackgroundOverrideHolder {
@@ -1176,8 +1325,8 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
         }
     }
 
-    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
-        appWide
+    func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
+        .first([(backgroundOverride, .project)], appWide: appWide)
     }
 
     func isSavedImagePath(_ path: String) -> Bool {
@@ -1214,11 +1363,17 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
         if let baseline, baseline.tabBackgroundImagePaths.contains(where: { names(TerminalBackgroundSettings(imagePath: $0)) }) {
             self.baseline?.layout = baseline.layout.mappingTabBackgrounds(clear)
         }
-        guard let draft, draft.layout.panes.flatMap(\.tabs).contains(where: { names($0.background) }) else { return }
+        guard let draft, draft.layout.backgroundEntries.contains(where: { names($0.background) }) else { return }
         let baselineTabs = self.baseline?.layout.panes.map(\.tabs) ?? []
         var notes: [ProjectEditorField] = []
+        let baselinePanes = self.baseline?.layout.panes ?? []
         let root = draft.layout.root.mappingPanes { slot, pane in
             var edited = pane
+            if names(pane.background) {
+                edited.background = pane.background?.withImagePath(nil)
+                let stored = baselinePanes.indices.contains(slot) ? baselinePanes[slot].background : nil
+                if stored != edited.background { notes.append(.paneBackground(slot: slot)) }
+            }
             for index in pane.tabs.indices where names(pane.tabs[index].background) {
                 edited.tabs[index].background = pane.tabs[index].background?.withImagePath(nil)
                 let stored = baselineTabs.indices.contains(slot) && baselineTabs[slot].indices.contains(index) ? baselineTabs[slot][index].background : nil
@@ -1228,7 +1383,11 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
         }
         self.draft?.layout.root = root
         for field in notes {
-            self.draft?.captureNotes[field] = String(localized: "The image you chose was removed, so this Tab has no image.", comment: "Project Editor: a Tab's background image was removed in the Background Images window")
+            self.draft?.captureNotes[field] = if case .paneBackground = field {
+                String(localized: "The image you chose was removed, so this Pane has no image.", comment: "Project Editor: a Pane's background image was removed in the Background Images window")
+            } else {
+                String(localized: "The image you chose was removed, so this Tab has no image.", comment: "Project Editor: a Tab's background image was removed in the Background Images window")
+            }
         }
         refreshTabImageStates()
     }
@@ -1238,11 +1397,11 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
     func tabImageArrived(projectID: UUID, identity: ProjectTabImage, path: String) {
         guard let draft, draft.id == projectID, let baseline, baseline.id == projectID else { return }
         func apply(_ layout: ProjectLayout) -> ProjectLayout {
-            layout.mappingTabs { tab in
-                guard tab.image == identity, let background = tab.background, background.imagePath == nil else { return tab }
-                var tab = tab
-                tab.background = background.withImagePath(path)
-                return tab
+            layout.mappingBackgroundEntries { entry in
+                guard entry.image == identity, let background = entry.background, background.imagePath == nil else { return entry }
+                var entry = entry
+                entry.background = background.withImagePath(path)
+                return entry
             }
         }
         let newBaseline = apply(baseline.layout)

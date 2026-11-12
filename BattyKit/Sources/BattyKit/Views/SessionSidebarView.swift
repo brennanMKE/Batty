@@ -636,14 +636,14 @@ struct PaneRow: View {
 
             if pane.kind == .terminal {
                 Button(action: onBackgroundSettings) {
-                    Image(systemName: pane.backgroundOverride == nil ? "gearshape" : "gearshape.fill")
+                    Image(systemName: pane.showsCustomBackground ? "gearshape.fill" : "gearshape")
                         .font(.system(size: 10, weight: .semibold))
                         .frame(width: 18, height: 18)
                 }
                 .buttonStyle(.borderless)
                 .help("Pane Background…")
                 .accessibilityIdentifier("pane-background-settings.\(pane.id.uuidString)")
-                .accessibilityValue(pane.backgroundOverride == nil ? "following" : "custom")
+                .accessibilityValue(pane.showsCustomBackground ? "custom" : "following")
             }
 
             // The single visibility control: shows current state

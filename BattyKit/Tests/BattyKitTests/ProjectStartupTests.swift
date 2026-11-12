@@ -638,6 +638,28 @@ struct ProjectStartupOpenTests {
         #expect(results.count == 1)
         #expect(store.windows.flatMap(\.sessions).count == sessionsAfterFirst)
     }
+
+    @Test func armedCommandsComeFromTheTabsOwnCommand() async throws {
+        let fixture = try Fixture()
+        let store = fixture.store()
+        var project = fixture.project(tabs: [
+            ProjectTab(title: "build", workingDirectory: ".", startupCommand: "./build.sh"),
+            ProjectTab(title: "plain", workingDirectory: "."),
+            ProjectTab(title: "tail", workingDirectory: "src", startupCommand: "tail -f log"),
+        ])
+        project.approvedCommandsHash = project.startupCommandsHash
+        try store.projectStore.upsert(project)
+
+        var result: Result<AppStateStore.ProjectOpenResult, Error>?
+        store.requestOpenProject(id: project.id, completion: { result = $0 })
+
+        let session = try #require(try result?.get().session)
+        let tabs = session.tree.allPanes[0].tabs
+        #expect(tabs.map(\.projectStartupCommand) == ["./build.sh", nil, "tail -f log"])
+        report("/work", on: tabs[2])
+        #expect(await fixture.sinks.sink(for: tabs[2].id).waitForEvents(2))
+        #expect(fixture.sinks.sink(for: tabs[2].id).events == ["paste:tail -f log", "return"])
+    }
 }
 
 @MainActor

@@ -21,8 +21,8 @@ split is enforced by types, not by convention.
 
 | Group | Fields | Syncs |
 |---|---|---|
-| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, each Tab's `background` without its image path and its `image` identity (Background Sets URL or custom digest, in every build), `theme`, `modifiedAt`, and behind the `sharedProjectImages` flag the image's digest and name | yes, when shared |
-| Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath`, each Tab's `background.imagePath`, `sharedImage` as held in `projects.json` | never |
+| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, each Terminal Pane's and Tab's `background` without its image path and its `image` identity (Background Sets URL or custom digest, in every build), each Pane's `isHidden` and `activeTab`, the layout's `focusedSlot` and `splitFractions`, `theme`, `notificationsMuted`, `paneListExpanded`, `modifiedAt`, and behind the `sharedProjectImages` flag the image's digest and name | yes, when shared |
+| Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath`, each Pane's and Tab's `background.imagePath`, `sharedImage` as held in `projects.json` | never |
 | Membership | `isShared` | implied by presence in the shared set; never a field of the synced record |
 
 `ProjectSyncRecord` (`Model/ProjectSync.swift`) holds exactly the Definition
@@ -109,6 +109,8 @@ status without a ubiquity container entitlement can only be proven on real Macs.
 `ICloudDriveImageFolder`, has to change for them.
 
 ## Tab images (#0585)
+
+A Terminal Pane's own background image (#0589) follows every rule below for a Tab's: the same identity type, the same lookup, download and cache, and the same definition/device split.
 
 - **Identity.** A Tab with an image carries a `ProjectTabImage`: `{"url", "name"}`
   for a Background Sets image (the URL, because each Mac re-encodes its download

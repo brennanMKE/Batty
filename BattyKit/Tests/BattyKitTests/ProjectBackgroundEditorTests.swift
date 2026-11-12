@@ -381,7 +381,7 @@ struct ProjectBackgroundEditorTests {
 
     @Test func tabSummaryNamesFollowProjectAndCustom() throws {
         let fixture = try ProjectBackgroundFixture()
-        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs(nil, secondBackgroundValue(path: "/tmp/x/Canal.png")))))
+        let model = model(fixture, try store(fixture, fixture.project(background: projectBackgroundValue(path: nil), layout: Self.twoTabs(nil, secondBackgroundValue(path: "/tmp/x/Canal.png")))))
         #expect(model.tabBackgroundSummary(slot: 0, index: 0) == "Follows Project")
         #expect(model.tabBackgroundSummary(slot: 0, index: 1) == "Custom: Canal, terminal 45%")
     }
@@ -465,8 +465,74 @@ struct ProjectBackgroundEditorTests {
     }
 
     @Test func projectTabScopeNamesFollowProject() {
-        #expect(BackgroundOverrideScope.projectTab.followTitle == "Follow Project")
-        #expect(BackgroundOverrideScope.projectTab.customTitle == "Custom for This Tab")
-        #expect(BackgroundOverrideScope.projectTab.identifierPrefix == "project-tab-background-sheet")
+        let scope = BackgroundOverrideScope.projectTab(followsPane: false, projectHasBackground: true)
+        #expect(scope.followTitle == "Follow Project")
+        #expect(scope.customTitle == "Custom for This Tab")
+        #expect(scope.identifierPrefix == "project-tab-background-sheet")
+    }
+
+    @Test func projectTabFollowsSettingsWhenTheProjectHasNoBackground() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs())))
+        #expect(model.tabBackgroundSummary(slot: 0, index: 0) == "Follows Settings")
+        #expect(model.projectTabBackgroundScope(slot: 0).followTitle == "Follow Settings")
+        #expect(tabTarget(model, 0).effectiveBackground(appWide: .off).source == .settings)
+    }
+
+    // MARK: - Pane backgrounds (#0589)
+
+    private func paneEditor(_ model: ProjectEditorViewModel, appWide: TerminalBackgroundSettings = .off) -> BackgroundOverrideEditor {
+        let target = model.projectPaneBackgroundTarget(slot: 0)
+        return BackgroundOverrideEditor(target: target, appWide: appWide, originalOverride: target.backgroundOverride, replacedOverrides: target.replacedOverrides())
+    }
+
+    @Test func paneBackgroundEditWritesThePaneAndReplacesItsTabs() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs(secondBackgroundValue(path: nil), nil))))
+        let editor = paneEditor(model)
+        #expect(!editor.isFollowing, "a Tab's own value makes the Pane customized")
+        #expect(editor.current == secondBackgroundValue(path: nil), "the sheet shows the active Tab's value")
+        editor.update { $0.withTerminalOpacity(0.3) }
+        let pane = try #require(model.draft?.layout.panes[0])
+        #expect(pane.background == secondBackgroundValue(path: nil).withTerminalOpacity(0.3))
+        #expect(pane.tabs.map(\.background) == [nil, nil])
+        #expect(model.paneBackgroundSummary(slot: 0) == "Custom: No image, terminal 30%")
+    }
+
+    @Test func paneSheetCancelRestoresTabValues() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs(projectBackgroundValue(path: nil), secondBackgroundValue(path: nil)))))
+        let editor = paneEditor(model)
+        editor.update { $0.withTerminalOpacity(0.3) }
+        editor.cancel()
+        #expect(tabs(model).map(\.background) == [projectBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
+        #expect(model.draft?.layout.panes[0].background == nil)
+        #expect(!model.isDirty)
+    }
+
+    @Test func tabSummaryNamesWhatItFollows() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs())))
+        #expect(model.tabBackgroundSummary(slot: 0, index: 0) == "Follows Settings")
+        model.setBackgroundOverride(projectBackgroundValue(path: nil))
+        #expect(model.tabBackgroundSummary(slot: 0, index: 0) == "Follows Project")
+        model.setPaneBackground(slot: 0, secondBackgroundValue(path: nil))
+        #expect(model.tabBackgroundSummary(slot: 0, index: 0) == "Follows Pane")
+        #expect(model.projectTabBackgroundScope(slot: 0).followTitle == "Follow Pane")
+        #expect(tabTarget(model, 0).effectiveBackground(appWide: .off) == EffectiveBackground(value: secondBackgroundValue(path: nil), source: .pane))
+    }
+
+    @Test func paneSheetShowsTheActiveTabsValue() throws {
+        let fixture = try ProjectBackgroundFixture()
+        var layout = Self.twoTabs(projectBackgroundValue(path: nil), secondBackgroundValue(path: nil))
+        layout.root = layout.root.mappingPanes { _, pane in
+            var pane = pane
+            pane.activeTab = 1
+            return pane
+        }
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: layout)))
+        let effective = model.projectPaneBackgroundTarget(slot: 0).effectiveBackground(appWide: .off)
+        #expect(effective == EffectiveBackground(value: secondBackgroundValue(path: nil), source: .tab))
+        #expect(model.projectPaneBackgroundTarget(slot: 0).narrowerLevelsNote != nil)
     }
 }

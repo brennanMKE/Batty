@@ -383,4 +383,41 @@ struct ProjectBackgroundSyncTests {
         #expect(!text.contains("background"))
         #expect(!text.contains("\"image\""))
     }
+
+    // MARK: - Pane level and Session state (#0589)
+
+    private static let paneDigest = String(repeating: "d", count: 64)
+
+    private func withPaneImage(_ project: Project, path: String?) -> Project {
+        var project = project
+        project.layout = ProjectLayout(root: .pane(ProjectPane(
+            kind: .terminal,
+            tabs: [ProjectTab()],
+            background: projectBackgroundValue(path: path),
+            image: .custom(digest: Self.paneDigest, name: "pane")
+        )))
+        return project
+    }
+
+    @Test func syncRecordStripsThePaneImagePathAndKeepsItsIdentity() throws {
+        let project = withPaneImage(shared(background: nil), path: "/Users/test/Library/ProjectBackgrounds/\(Self.paneDigest)/pane.png")
+        let record = project.syncRecord(home: home)
+        #expect(record.layout.panes[0].background?.imagePath == nil)
+        #expect(record.layout.panes[0].image == .custom(digest: Self.paneDigest, name: "pane"))
+        #expect(project.tabCustomDigests.contains(Self.paneDigest))
+    }
+
+    @Test func muteAndPaneListExpansionSync() throws {
+        var project = shared(background: nil)
+        #expect(try encodedObject(project.syncRecord(home: home))["notificationsMuted"] == nil)
+        project.notificationsMuted = true
+        project.paneListExpanded = true
+        let record = project.syncRecord(home: home)
+        let object = try encodedObject(record)
+        #expect(object["notificationsMuted"] as? Bool == true)
+        #expect(object["paneListExpanded"] as? Bool == true)
+        let inserted = try #require(apply(record, to: []).first)
+        #expect(inserted.notificationsMuted)
+        #expect(inserted.paneListExpanded)
+    }
 }

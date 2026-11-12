@@ -318,4 +318,81 @@ final class PaneBackgroundOverrideTests {
         editor(for: pane).update { $0.pickingImage(path: Self.customPath) }
         #expect(pane.backgroundOverride == nil)
     }
+
+    // MARK: - Sheet shows the effective value (#0589)
+
+    private func sheetEditor(for pane: PaneRuntime) -> BackgroundOverrideEditor {
+        BackgroundOverrideEditor(target: pane, appWide: appWide, originalOverride: pane.backgroundOverride, replacedOverrides: pane.replacedOverrides())
+    }
+
+    @Test func paneSheetShowsTheActiveTabsOwnValueAsCustom() {
+        let pane = pane(tabCount: 2)
+        pane.tabs[0].setBackgroundOverride(Self.custom)
+        let editor = sheetEditor(for: pane)
+        #expect(!editor.isFollowing)
+        #expect(editor.current == Self.custom)
+        #expect(editor.effective.source == .tab)
+        #expect(pane.showsCustomBackground)
+    }
+
+    @Test func editingOpacityOnATabSourcedPaneKeepsTheImage() {
+        let pane = pane(tabCount: 2)
+        pane.tabs[0].setBackgroundOverride(Self.custom)
+        sheetEditor(for: pane).update { $0.withImageOpacity(0.7) }
+        #expect(pane.backgroundOverride?.imagePath == Self.customPath)
+        #expect(pane.backgroundOverride?.imageOpacity == 0.7)
+        for tab in pane.tabs {
+            #expect(tab.backgroundOverride == nil)
+            #expect(tab.effectiveBackground(appWide: appWide).value == pane.backgroundOverride)
+        }
+    }
+
+    @Test func customFromFollowingSeedsTheVisibleImage() {
+        let session = SessionRuntime(tree: SplitTree(root: .leaf(pane())))
+        let pane = session.tree.allPanes[0]
+        session.setBackgroundOverride(Self.custom)
+        let editor = sheetEditor(for: pane)
+        #expect(editor.isFollowing)
+        #expect(editor.effective.source == .session)
+        editor.selectCustom()
+        #expect(pane.backgroundOverride?.imagePath == Self.customPath)
+    }
+
+    @Test func cancelAfterAnEditRestoresTheTabsOwnValues() {
+        let pane = pane(tabCount: 2)
+        pane.tabs[1].setBackgroundOverride(Self.custom)
+        let editor = sheetEditor(for: pane)
+        editor.update { $0.withTerminalOpacity(0.2) }
+        #expect(pane.tabs[1].backgroundOverride == nil)
+        editor.cancel()
+        #expect(pane.backgroundOverride == nil)
+        #expect(pane.tabs[1].backgroundOverride == Self.custom)
+    }
+
+    @Test func doneWithoutAnEditWritesNothing() {
+        let pane = pane(tabCount: 2)
+        pane.tabs[0].setBackgroundOverride(Self.custom)
+        _ = sheetEditor(for: pane)
+        #expect(pane.backgroundOverride == nil)
+        #expect(pane.tabs[0].backgroundOverride == Self.custom)
+    }
+
+    @Test func paneIsCustomizedWhileATabHasItsOwnValue() {
+        let pane = pane(tabCount: 2)
+        #expect(!pane.isCustomized)
+        pane.tabs[1].setBackgroundOverride(Self.custom)
+        #expect(pane.isCustomized)
+        pane.tabs[1].setBackgroundOverride(nil)
+        #expect(!pane.isCustomized)
+    }
+
+    @Test func paneNoteAppearsOnlyWhenTabsDiffer() {
+        let pane = pane(tabCount: 2)
+        pane.tabs[0].setBackgroundOverride(Self.custom)
+        #expect(pane.narrowerLevelsNote == nil)
+        pane.tabs[1].setBackgroundOverride(Self.custom.withTerminalOpacity(0.9))
+        #expect(pane.narrowerLevelsNote != nil)
+        pane.tabs[1].setBackgroundOverride(Self.custom)
+        #expect(pane.narrowerLevelsNote == nil)
+    }
 }

@@ -91,16 +91,14 @@ struct BackgroundImagesModelTests {
         #expect(!backgroundLines(pane.tabs[0]).contains { $0.hasPrefix("background-image =") })
     }
 
-    @Test func removingAlsoClearsASessionsProjectSeed() async throws {
+    @Test func removingClearsAProjectSessionsImage() async throws {
         let path = try await f.copy()
         let session = f.session()
-        session.projectBackgroundSeed = projectBackgroundValue(path: path)
         session.setBackgroundOverride(projectBackgroundValue(path: path))
         let store = f.appStore(sessions: [session])
         let model = store.backgroundImages
         await model.remove(try await entry(model, forPath: path))
-        #expect(session.projectBackgroundSeed == projectBackgroundValue(path: nil))
-        #expect(session.backgroundOverride == session.projectBackgroundSeed)
+        #expect(session.backgroundOverride == projectBackgroundValue(path: nil))
     }
 
     @Test func refusesWhileTheProjectsFileIsUnreadable() async throws {

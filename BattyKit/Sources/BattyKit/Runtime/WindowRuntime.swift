@@ -268,13 +268,21 @@ public final class WindowRuntime {
         session.projectID = project.id
         session.projectSymbol = project.symbol
         session.projectSymbolName = project.customSymbolName
-        session.projectBackgroundSeed = background
         session.themeOverride = project.theme
-        session.projectThemeSeed = project.theme
         session.setBackgroundOverride(background)
+        session.notificationsMuted = project.notificationsMuted
         sessions.append(session)
         selectedSessionID = session.id
         setSessionColor(id: session.id, to: project.color.rawValue)
+        let panes = tree.allPanes
+        for (slot, stored) in project.layout.panes.enumerated() where stored.isHidden && panes.indices.contains(slot) {
+            hidePane(id: panes[slot].id)
+        }
+        if let slot = project.layout.focusedSlot, panes.indices.contains(slot), !panes[slot].isHidden {
+            tree.focusedPaneID = panes[slot].id
+        }
+        // Last, because hiding a Pane expands the list.
+        session.isPaneListExpanded = project.paneListExpanded
         return session
     }
 

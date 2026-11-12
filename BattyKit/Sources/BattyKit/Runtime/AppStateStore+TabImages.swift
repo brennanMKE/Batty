@@ -25,7 +25,7 @@ extension AppStateStore {
         let library = projectBackgrounds
         var cachedDigests = Set<String>()
         var found: [ProjectTabImage: String] = [:]
-        for tab in project.layout.panes.flatMap(\.tabs) {
+        for tab in project.layout.backgroundEntries {
             guard let image = tab.image, let background = tab.background, found[image] == nil else { continue }
             if let path = background.imagePath, library.imageState(ofPath: path) == .usable {
                 if path.hasPrefix(identity.downloadedDirectory.path), let digest = TerminalBackgroundImageImporter.digest(ofPath: path) {
@@ -78,7 +78,7 @@ extension AppStateStore {
     func requestTabImages(for project: Project, touching: Set<String> = []) -> Task<Void, Never> {
         let cache = downloadedImages
         var pending: [ProjectTabImage] = []
-        for tab in project.layout.panes.flatMap(\.tabs) {
+        for tab in project.layout.backgroundEntries {
             guard let image = tab.image, tab.background != nil, tab.background?.imagePath == nil, !pending.contains(image) else { continue }
             pending.append(image)
         }
@@ -141,12 +141,11 @@ extension AppStateStore {
         pin(backgroundGate.storedSettings())
         for session in windows.flatMap(\.sessions) {
             pin(session.backgroundOverride)
-            pin(session.projectBackgroundSeed)
             for pane in session.tree.allPanes {
                 pin(pane.backgroundOverride)
+                if let digest = pane.pendingImage?.digest { digests.insert(digest) }
                 for tab in pane.tabs {
                     pin(tab.backgroundOverride)
-                    pin(tab.projectBackgroundSeed)
                     if let digest = tab.pendingTabImage?.digest { digests.insert(digest) }
                 }
             }
@@ -169,8 +168,8 @@ extension AppStateStore {
         }
     }
 
-    /// A Tab the user changed since it opened keeps its value; one that still
-    /// shows what it opened with gets the image on both seed and override.
+    /// Only a Pane or Tab still waiting for this image gets it; one the user
+    /// changed since it opened has stopped waiting and keeps its value.
     func tabImageArrived(projectID: UUID, identity: ProjectTabImage, path: String) {
         do {
             try projectStore.setResolvedTabImage(projectID: projectID, identity: identity, path: path)
@@ -178,12 +177,15 @@ extension AppStateStore {
             logger.error("could not record an arrived Tab image: \(error.localizedDescription, privacy: .public)")
         }
         for session in windows.flatMap(\.sessions) where session.projectID == projectID {
+            for pane in session.tree.allPanes where pane.pendingImage == identity {
+                pane.pendingImage = nil
+                guard let current = pane.backgroundOverride else { continue }
+                pane.restoreBackgroundOverride(current.withImagePath(path))
+            }
             for tab in session.tree.allPanes.flatMap(\.tabs) where tab.pendingTabImage == identity {
                 tab.pendingTabImage = nil
-                guard let seed = tab.projectBackgroundSeed, tab.backgroundOverride == seed else { continue }
-                let updated = seed.withImagePath(path)
-                tab.projectBackgroundSeed = updated
-                tab.setBackgroundOverride(updated)
+                guard let current = tab.backgroundOverride else { continue }
+                tab.setBackgroundOverride(current.withImagePath(path))
             }
         }
         openProjectEditorModel()?.tabImageArrived(projectID: projectID, identity: identity, path: path)
@@ -195,7 +197,7 @@ extension AppStateStore {
         guard !project.tabImages.isEmpty else { return nil }
         let resolved = resolveTabImages(of: project)
         if let model = openProjectEditorModel() {
-            for tab in resolved.project.layout.panes.flatMap(\.tabs) {
+            for tab in resolved.project.layout.backgroundEntries {
                 guard let image = tab.image, let path = tab.background?.imagePath else { continue }
                 model.tabImageArrived(projectID: project.id, identity: image, path: path)
             }

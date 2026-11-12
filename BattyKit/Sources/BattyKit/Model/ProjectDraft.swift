@@ -36,6 +36,9 @@ struct ProjectDraft: Equatable {
     var sharedImage: ProjectSharedImage?
     /// `nil` follows Settings. Edited by the Theme row's sheet.
     var theme: ThemePair?
+    /// Carried through; captured by Update Project, not edited here.
+    var notificationsMuted = false
+    var paneListExpanded = false
     /// Messages about parts of a captured Session that could not be kept as
     /// they were (a folder outside the root), shown as warnings until the
     /// field or the structure around it is edited. Not part of the Project.
@@ -61,6 +64,8 @@ struct ProjectDraft: Equatable {
         background = project.background
         sharedImage = project.sharedImage
         theme = project.theme
+        notificationsMuted = project.notificationsMuted
+        paneListExpanded = project.paneListExpanded
     }
 
     init(
@@ -118,8 +123,8 @@ struct ProjectDraft: Equatable {
     /// non-Terminal Pane would otherwise reach `Project.startupCommands` and
     /// the trust hash.
     func makeProject() -> Project {
-        let normalizedLayout = ProjectLayout(
-            root: layout.root.mappingPanes { _, pane in
+        var normalizedLayout = layout
+        normalizedLayout.root = layout.root.mappingPanes { _, pane in
                 var normalized = pane
                 switch pane.kind {
                 case .terminal:
@@ -134,18 +139,19 @@ struct ProjectDraft: Equatable {
                     }
                     normalized.tabs = tabs.isEmpty ? [ProjectTab()] : tabs
                     normalized.repositoryPath = nil
+                    if normalized.background == nil { normalized.image = nil }
                 case .gitStatus:
                     normalized.tabs = []
                     let path = Self.normalizedRelativePath(pane.repositoryPath)
                     normalized.repositoryPath = path == "." ? nil : path
+                    normalized.clearTerminalOnlyFields()
                 case .processStatus, .systemMetrics, .lmStudioDashboard:
                     normalized.tabs = []
                     normalized.repositoryPath = nil
+                    normalized.clearTerminalOnlyFields()
                 }
                 return normalized
-            },
-            preset: layout.preset
-        )
+            }
         return Project(
             id: id,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -162,7 +168,17 @@ struct ProjectDraft: Equatable {
             customSymbolName: customSymbolName,
             background: background,
             sharedImage: sharedImage,
-            theme: theme?.normalized
+            theme: theme?.normalized,
+            notificationsMuted: notificationsMuted,
+            paneListExpanded: paneListExpanded
         )
+    }
+}
+
+private extension ProjectPane {
+    mutating func clearTerminalOnlyFields() {
+        background = nil
+        image = nil
+        activeTab = nil
     }
 }

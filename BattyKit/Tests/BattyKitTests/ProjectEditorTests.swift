@@ -350,6 +350,34 @@ struct ProjectEditorSaveTests {
         #expect(ProjectEditorViewModel.message(for: .duplicateName("X")).contains("X"))
         #expect(ProjectEditorViewModel.message(for: .noFileURL).isEmpty == false)
     }
+
+    @Test func anEditorSaveKeepsSnapshotOnlyFields() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        var project = fixture.richProject(name: "Snapshot")
+        project.layout.focusedSlot = 2
+        project.layout.splitFractions = [[0.3, 0.7], [0.4, 0.6]]
+        project.layout.root = project.layout.root.mappingPanes { slot, pane in
+            var pane = pane
+            if slot == 0 { pane.activeTab = 1 }
+            if slot == 1 { pane.isHidden = true }
+            return pane
+        }
+        project.notificationsMuted = true
+        project.paneListExpanded = true
+        try store.upsert(project)
+
+        let model = fixture.model(store: store, selecting: project.id)
+        model.setName("Renamed")
+        let saved = try #require(model.save())
+
+        #expect(saved.layout.focusedSlot == 2)
+        #expect(saved.layout.splitFractions == [[0.3, 0.7], [0.4, 0.6]])
+        #expect(saved.layout.panes[0].activeTab == 1)
+        #expect(saved.layout.panes[1].isHidden)
+        #expect(saved.notificationsMuted)
+        #expect(saved.paneListExpanded)
+    }
 }
 
 // MARK: - View model: validation

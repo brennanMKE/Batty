@@ -9,18 +9,19 @@ import Foundation
 /// never runs on quit or on a timer. The result becomes a `ProjectDraft` the
 /// user reviews in the Project Editor; nothing is stored until they click Save.
 ///
-/// Captured: the split topology (direction and nesting), every Pane's kind
-/// (hidden Panes included, as ordinary slots, because a Project has no
-/// hidden state), each Terminal Tab's working directory relative to the root
-/// and its title when the user set one, a Git Status Pane's repository
-/// folder, and the Session's color.
+/// Captured: the split topology (direction and nesting) and each split's
+/// sizes, every Pane's kind and hidden state, the focused Pane, each Terminal
+/// Pane's active Tab, each Terminal Tab's working directory relative to the
+/// root, its title when the user set one and the startup command it was
+/// opened with, a Git Status Pane's repository folder, and the Session's
+/// color.
 ///
-/// Not captured: split ratios and every other size, startup commands (they
-/// are never inferred from running processes), automatic Tab titles (a
-/// process name or folder name would freeze into a wrong label), Process
-/// Status pids, scrollback, non-Terminal Panes' placeholder Tab, and the
-/// backgrounds: `SaveSessionAsProject` reads the Session's, Panes' and Tabs'
-/// overrides through `tabIDs`, because it has to copy files.
+/// Not captured: startup commands are never inferred from running processes,
+/// so a Tab the Project didn't open has none; automatic Tab titles (a process
+/// name or folder name would freeze into a wrong label), Process Status pids,
+/// scrollback, non-Terminal Panes' placeholder Tab, and the backgrounds:
+/// `SaveSessionAsProject` reads the Session's, Panes' and Tabs' overrides
+/// through `paneIDs` and `tabIDs`, because it has to copy files.
 struct SessionProjectCapture: Equatable {
     var layout: ProjectLayout
     /// Absolute and standardized. `NSHomeDirectory()` when the Session has no
@@ -35,6 +36,8 @@ struct SessionProjectCapture: Equatable {
     var notes: [ProjectEditorField: String]
     /// The runtime Tab behind each captured Tab, by slot, for Terminal Panes.
     var tabIDs: [Int: [UUID]] = [:]
+    /// The runtime Pane behind each slot.
+    var paneIDs: [Int: UUID] = [:]
 
     /// Reads the working directory a Tab is in right now, or nil when it has
     /// none that is absolute. The live value is read on purpose: this runs
@@ -84,10 +87,21 @@ struct SessionProjectCapture: Equatable {
         var slot = 0
         var notes: [ProjectEditorField: String] = [:]
         var tabIDs: [Int: [UUID]] = [:]
+        var paneIDs: [Int: UUID] = [:]
+        var focusedSlot = 0
+        var fractions: [[Double]] = []
         if let homeRootNote { notes[.root] = homeRootNote }
 
         func capturePane(_ pane: PaneRuntime) -> ProjectPane {
             defer { slot += 1 }
+            paneIDs[slot] = pane.id
+            if pane.id == tree.focusedPaneID { focusedSlot = slot }
+            var captured = captureContent(of: pane)
+            captured.isHidden = pane.isHidden
+            return captured
+        }
+
+        func captureContent(of pane: PaneRuntime) -> ProjectPane {
             switch pane.kind {
             case .terminal:
                 tabIDs[slot] = pane.tabs.map(\.id)
@@ -104,9 +118,10 @@ struct SessionProjectCapture: Equatable {
                         }
                     }
                     let title = tab.titleOverride?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return ProjectTab(title: title?.isEmpty == false ? title : nil, workingDirectory: directory, startupCommand: nil)
+                    return ProjectTab(title: title?.isEmpty == false ? title : nil, workingDirectory: directory, startupCommand: tab.projectStartupCommand)
                 }
-                return ProjectPane(kind: .terminal, tabs: tabs)
+                let active = pane.tabs.firstIndex { $0.id == pane.activeTabID } ?? 0
+                return ProjectPane(kind: .terminal, tabs: tabs, activeTab: active)
             case .gitStatus:
                 var repository: String?
                 if let path = gitDirectory(pane) {
@@ -126,24 +141,32 @@ struct SessionProjectCapture: Equatable {
             }
         }
 
+        // A same-direction split nested in a split is one n-ary split, so
+        // `(a | (b | c))` and `(a | b | c)` are the same arrangement, and the
+        // second is what the presets are. Each member's size is its share of
+        // the whole chain, so the sizes survive the flattening. Fractions are
+        // recorded in pre-order, the order `validFractions()` reads.
         func captureNode(_ node: SplitTreeNode) -> ProjectLayoutNode {
-            switch node {
-            case .leaf(let pane):
-                return .pane(capturePane(pane))
-            case .split(_, let direction, _, let left, let right):
-                return .split(direction: direction, children: members(of: left, direction) + members(of: right, direction))
+            guard case .split(_, let direction, _, _, _) = node else {
+                if case .leaf(let pane) = node { return .pane(capturePane(pane)) }
+                return .pane(.terminal())
             }
-        }
-
-        // A same-direction split nested in a split is one n-ary split: Panes
-        // open at equal sizes, so `(a | (b | c))` and `(a | b | c)` are the
-        // same arrangement, and the second is what the presets are.
-        func members(of node: SplitTreeNode, _ direction: SplitDirection) -> [ProjectLayoutNode] {
-            let child = captureNode(node)
-            if case .split(let childDirection, let grandchildren) = child, childDirection == direction {
-                return grandchildren
+            let index = fractions.count
+            fractions.append([])
+            var children: [ProjectLayoutNode] = []
+            var shares: [Double] = []
+            func collect(_ member: SplitTreeNode, share: Double) {
+                if case .split(_, let memberDirection, let ratio, let left, let right) = member, memberDirection == direction {
+                    collect(left, share: share * ratio)
+                    collect(right, share: share * (1 - ratio))
+                } else {
+                    children.append(captureNode(member))
+                    shares.append(share)
+                }
             }
-            return [child]
+            collect(node, share: 1)
+            fractions[index] = Self.rounded(shares)
+            return .split(direction: direction, children: children)
         }
 
         var topology = captureNode(tree.root)
@@ -155,6 +178,14 @@ struct SessionProjectCapture: Equatable {
             topology = ProjectLayout.preset(.twoByTwoGrid).root.withPanes(order.map { panes[$0] })
             let swap = [1: 2, 2: 1]
             tabIDs = Dictionary(uniqueKeysWithValues: tabIDs.map { (swap[$0.key] ?? $0.key, $0.value) })
+            paneIDs = Dictionary(uniqueKeysWithValues: paneIDs.map { (swap[$0.key] ?? $0.key, $0.value) })
+            focusedSlot = swap[focusedSlot] ?? focusedSlot
+            // Column-major sizes are [columns], [left rows], [right rows]. A
+            // row-major grid has one row split and the same column split in
+            // each row, so the left column's rows and the column split carry.
+            if fractions.count == 3 {
+                fractions = [fractions[1], fractions[0], fractions[0]]
+            }
             notes = Dictionary(uniqueKeysWithValues: notes.map { field, note in
                 switch field {
                 case .tabDirectory(let slot, let tab): (.tabDirectory(slot: swap[slot] ?? slot, tab: tab), note)
@@ -164,13 +195,28 @@ struct SessionProjectCapture: Equatable {
             })
         }
         return SessionProjectCapture(
-            layout: ProjectLayout(root: topology, preset: matchingPreset(for: topology)),
+            layout: ProjectLayout(
+                root: topology,
+                preset: matchingPreset(for: topology),
+                focusedSlot: focusedSlot,
+                splitFractions: fractions.isEmpty ? nil : fractions
+            ),
             rootPath: root,
             rootIsFallback: rootIsFallback,
             color: session.sessionColor,
             notes: notes,
-            tabIDs: tabIDs
+            tabIDs: tabIDs,
+            paneIDs: paneIDs
         )
+    }
+
+    /// Four decimals, with the last entry taking the rounding so each list
+    /// sums to 1.
+    static func rounded(_ shares: [Double]) -> [Double] {
+        func round4(_ value: Double) -> Double { (value * 10_000).rounded() / 10_000 }
+        var result = shares.dropLast().map(round4)
+        result.append(round4(1 - result.reduce(0, +)))
+        return result
     }
 
     @MainActor
@@ -267,30 +313,14 @@ struct SessionProjectCapture: Equatable {
         return draft
     }
 
-    /// The stored Project with its layout and Tabs replaced by this capture.
-    /// Name, root, color, the run toggle, the approval and the background carry
-    /// over. A
-    /// startup command stays on a Tab when the old Project had a Terminal
-    /// Pane in the same slot with a Tab at the same position. This capture
-    /// must have been made against `project.rootPath`.
+    /// The stored Project with its layout replaced whole by this capture.
+    /// Name, root, symbol, color, the run toggle, the approval, sharing and
+    /// the shared image carry over; `SaveSessionAsProject` fills in the rest
+    /// of the Session's state. This capture must have been made against
+    /// `project.rootPath`.
     func updateDraft(of project: Project) -> ProjectDraft {
         var draft = ProjectDraft(project: project)
-        let oldPanes = project.layout.panes
-        draft.layout.root = layout.root.mappingPanes { slot, pane in
-            guard pane.kind == .terminal, oldPanes.indices.contains(slot), oldPanes[slot].kind == .terminal else { return pane }
-            var merged = pane
-            merged.tabs = pane.tabs.enumerated().map { index, tab in
-                var tab = tab
-                if oldPanes[slot].tabs.indices.contains(index) {
-                    tab.startupCommand = oldPanes[slot].tabs[index].startupCommand
-                    tab.background = oldPanes[slot].tabs[index].background
-                    tab.image = oldPanes[slot].tabs[index].image
-                }
-                return tab
-            }
-            return merged
-        }
-        draft.layout.preset = layout.preset
+        draft.layout = layout
         draft.captureNotes = notes
         return draft
     }

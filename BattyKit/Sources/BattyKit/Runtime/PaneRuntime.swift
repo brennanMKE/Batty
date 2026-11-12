@@ -65,9 +65,15 @@ public final class PaneRuntime: Identifiable {
 
     /// This Pane's terminal background. `nil` follows the Session's override,
     /// then the app-wide default; a non-nil value is complete and ignores later
-    /// changes to either. In memory only: `snapshot()` and Save as Project don't
-    /// carry it.
+    /// changes to either. `snapshot()` doesn't carry it; a Project restores it
+    /// at open and Update Project captures it.
     public private(set) var backgroundOverride: TerminalBackgroundSettings?
+
+    /// The image this Pane opened without, because it was missing, rejected or
+    /// hadn't reached this Mac. Device state: any user write to this Pane's
+    /// background clears it.
+    @ObservationIgnored
+    var pendingImage: ProjectTabImage?
 
     /// A mirror of the owning `SessionRuntime.backgroundOverride`, written only
     /// by `SplitTree`. Observed because `AppStateStore.isWindowSeeThrough` reads
@@ -185,7 +191,16 @@ public final class PaneRuntime: Identifiable {
               newOverride != backgroundOverride || tabs.contains(where: { $0.backgroundOverride != nil })
         else { return }
         if newOverride != backgroundOverride { backgroundOverride = newOverride }
+        pendingImage = nil
         pushOverridesToTabs(clearingOwn: true)
+    }
+
+    /// Opening a Project: sets this Pane's value without replacing the Tabs'
+    /// own, which the Project restores too.
+    func restoreBackgroundOverride(_ value: TerminalBackgroundSettings?) {
+        guard kind == .terminal, value != backgroundOverride else { return }
+        backgroundOverride = value
+        pushOverridesToTabs()
     }
 
     /// Idempotent for the same reason as ``setBackgroundOverride(_:)``.
@@ -335,8 +350,29 @@ public final class PaneRuntime: Identifiable {
 }
 
 extension PaneRuntime: BackgroundOverrideHolder {
-    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
-        .effective(tab: nil, pane: nil, session: sessionBackgroundOverride, appWide: appWide)
+    /// The Pane counts as customized while any Tab in it has its own value, so
+    /// the sheet and the gear never say "following" over a Tab's image.
+    var isCustomized: Bool {
+        backgroundOverride != nil || tabs.contains { $0.backgroundOverride != nil }
+    }
+
+    var showsCustomBackground: Bool { kind == .terminal && isCustomized }
+
+    /// What the active Tab shows, since that is the terminal the user sees.
+    func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
+        if let tab = activeTab { return tab.effectiveBackground(appWide: appWide) }
+        return .first([(backgroundOverride, .pane), (sessionBackgroundOverride, .session)], appWide: appWide)
+    }
+
+    var narrowerLevelsNote: String? {
+        let shown = activeTab?.backgroundOverride ?? backgroundOverride
+        let differs = tabs.contains { tab in
+            guard let own = tab.backgroundOverride else { return false }
+            return own != shown
+        }
+        return differs
+            ? String(localized: "Other Tabs in this Pane have their own backgrounds. A change here replaces them.")
+            : nil
     }
 
     func replacedOverrides() -> [UUID: TerminalBackgroundSettings] {

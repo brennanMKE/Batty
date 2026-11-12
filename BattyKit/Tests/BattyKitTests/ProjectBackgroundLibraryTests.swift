@@ -262,14 +262,12 @@ struct ProjectBackgroundLibraryTests {
     @Test func reclaimKeepsAnOpenTabsImage() async throws {
         let fixture = try ProjectBackgroundFixture()
         let forTab = try await fixture.copy()
-        let forSeed = try await fixture.copy(width: 128)
         let unused = try await fixture.copy(width: 64)
-        for path in [forTab, forSeed, unused] { try fixture.age(folderOf: path) }
+        for path in [forTab, unused] { try fixture.age(folderOf: path) }
         let session = fixture.session()
         let pane = session.tree.allPanes[0]
         pane.addTab()
         pane.tabs[0].setBackgroundOverride(projectBackgroundValue(path: forTab))
-        pane.tabs[1].projectBackgroundSeed = secondBackgroundValue(path: forSeed)
         try fixture.saveProjectsFile()
         let store = fixture.appStore(sessions: [session])
 
@@ -278,7 +276,6 @@ struct ProjectBackgroundLibraryTests {
         await task.value
 
         #expect(FileManager.default.fileExists(atPath: forTab))
-        #expect(FileManager.default.fileExists(atPath: forSeed))
         #expect(!FileManager.default.fileExists(atPath: unused))
     }
     private func cachedCopy(_ fixture: ProjectBackgroundFixture, width: Int = 96) throws -> String {

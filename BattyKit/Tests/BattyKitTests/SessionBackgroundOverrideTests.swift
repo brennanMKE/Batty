@@ -444,4 +444,16 @@ final class SessionBackgroundOverrideTests {
         #expect(BackgroundOverrideScope.pane(pane).followTitle == "Follow Session")
         #expect(BackgroundOverrideScope.pane(pane).identifierPrefix == "pane-background-sheet")
     }
+
+    @Test func sessionSheetNotesNarrowerLevels() {
+        let pane = pane()
+        let session = session(pane)
+        #expect(session.narrowerLevelsNote == nil)
+        #expect(session.effectiveBackground(appWide: appWide).source == .settings)
+        pane.tabs[0].setBackgroundOverride(Self.paneValue)
+        #expect(session.narrowerLevelsNote != nil)
+        pane.tabs[0].setBackgroundOverride(nil)
+        pane.setBackgroundOverride(Self.paneValue)
+        #expect(session.narrowerLevelsNote != nil)
+    }
 }

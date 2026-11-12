@@ -202,4 +202,87 @@ struct ProjectTests {
             #expect(project.lastOpenedAt == nil)
         }
     }
+
+    // MARK: - Snapshot fields (#0589)
+
+    private static let digest = String(repeating: "c", count: 64)
+
+    private func fullProject() -> Project {
+        let left = ProjectPane(
+            kind: .terminal,
+            tabs: [ProjectTab(title: "a"), ProjectTab(title: "b")],
+            background: projectBackgroundValue(path: "/tmp/p/\(Self.digest)/x.png"),
+            image: .custom(digest: Self.digest, name: "x"),
+            isHidden: true,
+            activeTab: 1
+        )
+        let layout = ProjectLayout(
+            root: .split(direction: .horizontal, children: [.pane(left), .pane(.terminal())]),
+            focusedSlot: 1,
+            splitFractions: [[0.3, 0.7]]
+        )
+        return Project(name: "P", rootPath: "/tmp/p", layout: layout, notificationsMuted: true, paneListExpanded: true)
+    }
+
+    @Test func newFieldsRoundTripThroughJSON() throws {
+        let project = fullProject()
+        let decoded = try roundTrip(project)
+        #expect(decoded == project)
+        #expect(decoded.layout.panes[0].isHidden)
+        #expect(decoded.layout.panes[0].activeTab == 1)
+        #expect(decoded.layout.panes[0].image == .custom(digest: Self.digest, name: "x"))
+        #expect(decoded.layout.focusedSlot == 1)
+        #expect(decoded.layout.splitFractions == [[0.3, 0.7]])
+        #expect(decoded.notificationsMuted)
+        #expect(decoded.paneListExpanded)
+    }
+
+    @Test func aProjectWithoutTheNewFieldsEncodesAsBefore() throws {
+        let project = Project(name: "P", rootPath: "/tmp/p", layout: .preset(.horizontalSplit))
+        let text = String(decoding: try ProjectsFile.encoder.encode(project), as: UTF8.self)
+        for key in ["isHidden", "activeTab", "focusedSlot", "splitFractions", "notificationsMuted", "paneListExpanded", "\"background\"", "\"image\""] {
+            #expect(!text.contains(key), "\(key) was written")
+        }
+    }
+
+    @Test func aBadPaneBackgroundCostsOnlyThePaneBackground() throws {
+        let json = projectJSON(pane: #"{"kind":"terminal","tabs":[{"workingDirectory":"."}],"background":"nonsense","isHidden":true,"activeTab":"x"}"#)
+        let project = try decodeProject(json)
+        #expect(project.layout.panes[0].background == nil)
+        #expect(project.layout.panes[0].isHidden)
+        #expect(project.layout.panes[0].activeTab == nil)
+    }
+
+    @Test func fractionsThatDontFitTheTopologyAreInvalid() {
+        var layout = ProjectLayout(root: .split(direction: .horizontal, children: [
+            .pane(.terminal()),
+            .split(direction: .vertical, children: [.pane(.terminal()), .pane(.terminal()), .pane(.terminal())]),
+        ]))
+        layout.splitFractions = [[0.5, 0.5], [0.2, 0.3, 0.5]]
+        #expect(layout.validFractions() == [[0.5, 0.5], [0.2, 0.3, 0.5]])
+        layout.splitFractions = [[0.5, 0.5]]
+        #expect(layout.validFractions() == nil)
+        layout.splitFractions = [[0.5, 0.5], [0.5, 0.5]]
+        #expect(layout.validFractions() == nil)
+        layout.splitFractions = [[1, 0], [0.2, 0.3, 0.5]]
+        #expect(layout.validFractions() == nil)
+        layout.splitFractions = nil
+        #expect(layout.validFractions() == nil)
+    }
+
+    @Test func mappingTabsKeepsFocusAndFractions() {
+        let layout = fullProject().layout
+        let mapped = layout.mappingTabs { tab in
+            var tab = tab
+            tab.title = "x"
+            return tab
+        }
+        #expect(mapped.focusedSlot == 1)
+        #expect(mapped.splitFractions == [[0.3, 0.7]])
+        let stripped = layout.mappingTabBackgrounds { $0.withImagePath(nil) }
+        #expect(stripped.focusedSlot == 1)
+        #expect(stripped.splitFractions == [[0.3, 0.7]])
+        #expect(stripped.panes[0].background?.imagePath == nil)
+        #expect(stripped.panes[0].image != nil)
+    }
 }

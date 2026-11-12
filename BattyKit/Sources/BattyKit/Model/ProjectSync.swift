@@ -83,13 +83,19 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
     public var symbolName: String?
     public var background: ProjectSyncBackground?
     public var theme: ThemePair?
+    /// Written only when true, so a record without them is byte-identical to
+    /// one written before they existed.
+    public var notificationsMuted: Bool?
+    public var paneListExpanded: Bool?
 
     public init(
         id: UUID, name: String, rootPath: String, color: SessionColor, symbol: ProjectSymbol,
         layout: ProjectLayout, runStartupCommandsOnOpen: Bool, modifiedAt: Date?,
         customColor: String? = nil, symbolName: String? = nil,
         background: ProjectSyncBackground? = nil,
-        theme: ThemePair? = nil
+        theme: ThemePair? = nil,
+        notificationsMuted: Bool = false,
+        paneListExpanded: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -103,10 +109,12 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
         self.symbolName = symbolName
         self.background = background
         self.theme = theme
+        self.notificationsMuted = notificationsMuted ? true : nil
+        self.paneListExpanded = paneListExpanded ? true : nil
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, modifiedAt, customColor, symbolName, background, theme
+        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, modifiedAt, customColor, symbolName, background, theme, notificationsMuted, paneListExpanded
     }
 
     /// `background` and `theme` can't fail the record, because the backend's `snapshot()`
@@ -125,6 +133,8 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
         symbolName = try c.decodeIfPresent(String.self, forKey: .symbolName)
         background = (try? c.decodeIfPresent(ProjectSyncBackground.self, forKey: .background)) ?? nil
         theme = ((try? c.decodeIfPresent(ThemePair.self, forKey: .theme)) ?? nil)?.normalized
+        notificationsMuted = ((try? c.decodeIfPresent(Bool.self, forKey: .notificationsMuted)) ?? nil) == true ? true : nil
+        paneListExpanded = ((try? c.decodeIfPresent(Bool.self, forKey: .paneListExpanded)) ?? nil) == true ? true : nil
     }
 }
 
@@ -156,7 +166,9 @@ extension Project {
             modifiedAt: modifiedAt,
             customColor: customColorHex, symbolName: customSymbolName,
             background: background.map { ProjectSyncBackground($0, image: image) },
-            theme: theme)
+            theme: theme,
+            notificationsMuted: notificationsMuted,
+            paneListExpanded: paneListExpanded)
     }
 
     /// A shared Project with no device state. A root that does not decode to
@@ -174,7 +186,9 @@ extension Project {
             customColorHex: record.customColor, customSymbolName: record.symbolName,
             background: record.background?.settings,
             sharedImage: honorsSharedImages ? record.background?.image.projectSharedImage : nil,
-            theme: record.theme)
+            theme: record.theme,
+            notificationsMuted: record.notificationsMuted == true,
+            paneListExpanded: record.paneListExpanded == true)
     }
 
     fileprivate func replacingDefinition(with record: ProjectSyncRecord, name: String, home: String, honorsSharedImages: Bool) -> Project {
