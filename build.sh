@@ -259,11 +259,14 @@ case "$ACTION" in
         XCRESULT="$REPO/build/checks/unit-$(date +%Y%m%d-%H%M%S)-$$.xcresult"
         rm -rf "$XCRESULT"
         print "==> xcodebuild test (BattyKitTests, ${UNIT_TIER}$UNIT_SCHEME) — output captured"
+        # The default on-failure diagnostics policy adds ~12 s after a full
+        # passing run; check-report.py reads only the xcresult summary.
         run_check unit "$XCRESULT" xcodebuild test \
             -workspace "$WORKSPACE" \
             -scheme "$UNIT_SCHEME" \
             -destination "$DESTINATION" \
             -resultBundlePath "$XCRESULT" \
+            -collect-test-diagnostics never \
             "${FILTERS[@]}" || exit $?
         exit 0
         ;;
