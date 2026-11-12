@@ -26,42 +26,20 @@ cb = bp._load_checker(CHECKER)
 REPO_EXAMPLE = HERE.parent / "website" / "examples" / "background-catalog.json"
 
 
-def _file(url, w, h, nbytes=None):
-    f = {"url": url, "width": w, "height": h}
-    if nbytes is not None:
-        f["bytes"] = nbytes
-    return f
-
-
 CATALOG = {
-    "schemaVersion": 1,
-    "name": "Fixture",
     "sets": [
-        {"id": "alpha", "title": "Alpha", "description": "First <set> & more", "images": [
-            {"id": "alpha-01", "title": "Pic", "credit": "Ann <Artist> & Co",
-             "full": _file("alpha/01-pic.png", 160, 100, 1_600_000),
-             "thumbnail": _file("alpha/01-pic-thumb.png", 48, 30)},
-            {"id": "alpha-02", "title": 'Café <Racer> & "Co"',
-             "full": _file("alpha/02-cafe.png", 160, 100, 640_000),
-             "thumbnail": _file("alpha/02-cafe-thumb.png", 48, 30)},
+        {"name": "Alpha", "images": [
+            {"title": "Pic", "full": "alpha/01-pic.png", "thumbnail": "alpha/01-pic-thumb.png"},
+            {"title": 'Café <Racer> & "Co"', "full": "alpha/02-cafe.png", "thumbnail": "alpha/02-cafe-thumb.png"},
         ]},
-        {"id": "beta", "title": "Beta", "images": [
-            {"id": "beta-01", "title": "Third",
-             "full": _file("beta/01-third.jpg", 160, 100),
-             "thumbnail": _file("beta/01-third-thumb.jpg", 48, 30)},
-            {"id": "beta-02", "title": "Fourth",
-             "full": _file("beta/02 fourth.png", 160, 100),
-             "thumbnail": _file("beta/02 fourth-thumb.png", 48, 30)},
+        {"name": "Beta", "images": [
+            {"full": "beta/01-third.jpg", "thumbnail": "beta/01-third-thumb.jpg"},
+            {"title": "Fourth", "full": "beta/02 fourth.png", "thumbnail": "beta/02 fourth-thumb.png"},
         ]},
     ],
 }
 
-EXAMPLE = {
-    "schemaVersion": 1, "name": "Example",
-    "sets": [{"id": "ex", "title": "Ex", "images": [
-        {"id": "ex-01", "title": "One", "full": _file("ex/01.png", 160, 100),
-         "thumbnail": _file("ex/01-thumb.png", 48, 30)}]}],
-}
+EXAMPLE = {"sets": [{"name": "Ex", "images": [{"title": "One", "full": "ex/01.png", "thumbnail": "ex/01-thumb.png"}]}]}
 
 PAGE = """<!doctype html>
 <html><head>
@@ -175,7 +153,7 @@ def _(d):
 @case("thumbnail img has src width height alt lazy async")
 def _(d):
     f = _figure(_sets(_gen(d)), "alpha/01-pic-thumb.png")
-    for want in ('src="backgrounds/alpha/01-pic-thumb.png"', 'width="48"', 'height="30"', 'alt="Pic"',
+    for want in ('src="backgrounds/alpha/01-pic-thumb.png"', 'width="480"', 'height="300"', 'alt="Pic"',
                  'loading="lazy"', 'decoding="async"'):
         assert want in f, want
 
@@ -193,38 +171,41 @@ def _(d):
         assert f'src="backgrounds/{u}"' not in s, u
 
 
-@case("caption shows full dimensions and MB size")
-def _(d):
-    assert "160 × 100 · 1.6 MB" in _figure(_sets(_gen(d)), "01-pic-thumb")
-
-
-@case("caption shows KB size under one MB")
-def _(d):
-    assert "160 × 100 · 640 KB" in _figure(_sets(_gen(d)), "02-cafe-thumb")
-
-
-@case("caption has no size without bytes")
+@case("missing title falls back to the full file name")
 def _(d):
     f = _figure(_sets(_gen(d)), "01-third-thumb")
-    assert '<span class="bg-meta">160 × 100</span>' in f
+    assert 'alt="01-third"' in f and '<span class="bg-title">01-third</span>' in f, f
 
 
-@case("credit shown when present, absent otherwise")
+@case("every img is 480 by 300")
 def _(d):
     s = _sets(_gen(d))
-    assert '<span class="bg-credit">Ann &lt;Artist&gt; &amp; Co</span>' in _figure(s, "01-pic-thumb")
-    assert "bg-credit" not in _figure(s, "02-cafe-thumb")
+    assert s.count('width="480" height="300"') == 4 and s.count("width=") == 4, s
 
 
-@case("description shown when present, absent otherwise")
+@case("section anchor is a slug of the name")
 def _(d):
     s = _sets(_gen(d))
-    alpha, beta = s.split('id="set-beta"')
-    assert '<p class="bg-set-description">First &lt;set&gt; &amp; more</p>' in alpha
-    assert "bg-set-description" not in beta
+    assert 'id="set-alpha"' in s and 'aria-labelledby="set-alpha-title"' in s and 'id="set-alpha-title"' in s
+    s = _sets(_gen(Path(d) / "2", catalog=_variant(lambda c: c["sets"][0].__setitem__("name", " Future Cities! "))))
+    assert 'id="set-future-cities"' in s and '<h2 id="set-future-cities-title">Future Cities!</h2>' in s, s
 
 
-@case("titles and credits are escaped")
+@case("repeated set name gets a numbered anchor")
+def _(d):
+    s = _sets(_gen(d, catalog=_variant(lambda c: c["sets"][1].__setitem__("name", "Alpha"))))
+    assert 'id="set-alpha"' in s and 'id="set-alpha-2"' in s and "set-beta" not in s, s
+
+
+@case("caption has the title only")
+def _(d):
+    s = _sets(_gen(d))
+    for bad in ("bg-meta", "bg-credit", "bg-set-description", "×", " MB", " KB"):
+        assert bad not in s, bad
+    assert '<figcaption><span class="bg-title">Pic</span></figcaption>' in s
+
+
+@case("titles are escaped")
 def _(d):
     f = _figure(_sets(_gen(d)), "02-cafe-thumb")
     esc = "Café &lt;Racer&gt; &amp; &quot;Co&quot;"
@@ -273,7 +254,7 @@ def _(d):
 def _(d):
     fx = _gen(d)
     ex = copy.deepcopy(EXAMPLE)
-    ex["name"] = "Changed"
+    ex["sets"][0]["name"] = "Changed"
     fx.example.write_text(json.dumps(ex), encoding="utf-8")
     code, out = fx.run("--check")
     assert code == 1 and "example block is out of date" in out, out
@@ -313,42 +294,52 @@ def _(d):
 
 @case("invalid catalog exits 1 and writes nothing")
 def _(d):
-    fx = Fx(d, catalog=_variant(lambda c: c.__setitem__("schemaVersion", 2)))
+    fx = Fx(d, catalog=_variant(lambda c: c.pop("sets")))
     code, out = fx.run()
-    assert code == 1 and "schemaVersion" in out and fx.text() == PAGE, out
+    assert code == 1 and "sets" in out and fx.text() == PAGE, out
 
 
 @case("absolute image url is refused")
 def _(d):
-    fx = Fx(d, catalog=_variant(lambda c: c["sets"][0]["images"][0]["full"].__setitem__(
-        "url", "https://example.com/a.png")))
+    fx = Fx(d, catalog=_variant(lambda c: c["sets"][0]["images"][0].__setitem__(
+        "full", "https://example.com/a.png")))
     code, out = fx.run()
-    assert code == 1 and "must be relative" in out and fx.text() == PAGE, out
+    assert code == 1 and "sets[0].images[0].full: must be relative in the built-in catalog" in out and fx.text() == PAGE, out
 
 
 @case("dotdot image url is refused")
 def _(d):
-    fx = Fx(d, catalog=_variant(lambda c: c["sets"][0]["images"][0]["full"].__setitem__(
-        "url", "../outside.png")))
+    fx = Fx(d, catalog=_variant(lambda c: c["sets"][0]["images"][0].__setitem__(
+        "full", "../outside.png")))
     code, out = fx.run()
-    assert code == 1 and ".url:" in out and fx.text() == PAGE, out
+    assert code == 1 and ".full: must not have" in out and fx.text() == PAGE, out
 
 
 @case("invalid example catalog exits 1")
 def _(d):
     ex = copy.deepcopy(EXAMPLE)
     ex["sets"][0]["images"].append(copy.deepcopy(ex["sets"][0]["images"][0]))
-    ex["sets"][0]["images"][1]["full"]["url"] = "ex/02.png"
-    ex["sets"][0]["images"][1]["thumbnail"]["url"] = "ex/02-thumb.png"
     fx = Fx(d, example=ex)
     code, out = fx.run()
-    assert code == 1 and "example: " in out and "duplicate image id" in out and fx.text() == PAGE, out
+    assert code == 1 and "example: " in out and "duplicate full" in out and fx.text() == PAGE, out
 
 
 @case("repo example catalog passes the schema")
 def _(d):
     cat, problems = bp._validate(cb, REPO_EXAMPLE)
     assert cat is not None and problems == [], problems
+    images = [im for st in cat["sets"] for im in st["images"]]
+    assert any("title" not in im for im in images), images
+    assert sorted(Path(im["full"]).suffix for im in images) == [".jpg", ".png"], images
+
+
+@case("example catalog may use an absolute https url")
+def _(d):
+    ex = copy.deepcopy(EXAMPLE)
+    ex["sets"][0]["images"][0].update(full="https://example.com/a.png", thumbnail="https://example.com/a-t.png")
+    fx = Fx(d, example=ex)
+    code, out = fx.run()
+    assert code == 0, out
 
 
 def main():

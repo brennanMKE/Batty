@@ -1,41 +1,37 @@
 #!/usr/bin/env python3
 """Check a hosted background catalog against the files beside it.
 
-    python3 -I tools/check-backgrounds.py [--write] website/backgrounds/catalog.json
+    python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json
 
-The catalog's folder is the root; every `url` must resolve inside it. Prints one
-line per problem, `<json path>: <problem>`, then a summary line. Exit 0 when
-there are no problems, 1 when there are any, 2 for a usage error.
-
---write fills in or corrects `sha256` and `bytes` only, editing the catalog's
-text in place so its hand-formatted layout survives, then runs the check.
-Standard library only, so it runs on Linux too. The format is #0574's.
+The format is in website/backgrounds.html, "Make your own set". The catalog's
+folder is the root; every relative `full` and `thumbnail` must resolve inside
+it. Absolute https URLs are allowed and counted as remote, but never fetched.
+Prints one line per problem, `<json path>: <problem>`, then a summary line, or
+`OK: N sets, N images, N files, N remote`. Exit 0 when there are no problems,
+1 when there are any, 2 for a usage error. Standard library only, so it runs
+on Linux too.
 """
 
 import argparse
-import hashlib
 import json
 import os
-import re
 import struct
 import sys
-import tempfile
 import urllib.parse
 from pathlib import Path
 
-# TerminalBackgroundImageImporter.maxPixelSize: Batty downscales anything larger.
-FULL_MAX_PIXELS = 4096
-# #0577's download limits table.
-FULL_MAX_BYTES = 50 * 1024 * 1024
-THUMB_MAX_BYTES = 2 * 1024 * 1024
-# #0577's limits table: at most 1024 px on a thumbnail's longest side.
+# BackgroundCatalogLimits in BattyKit: the app rejects anything over these.
+FULL_MAX_PIXELS = 8192
+FULL_MAX_BYTES = 50_000_000
+THUMB_MAX_BYTES = 2_000_000
 THUMB_MAX_PIXELS = 1024
+MAX_SETS = 50
+MAX_IMAGES_PER_SET = 100
+MAX_IMAGES = 1000
+MAX_TEXT = 100
 # #0575 Work step 4: a thumbnail keeps its full-size image's aspect ratio, within 1%.
 ASPECT_TOLERANCE = 0.01
 
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
-DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 PNG_SIG = b"\x89PNG\r\n\x1a\n"
 EXT_KIND = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg"}
 KIND_NAME = {"png": "PNG", "jpeg": "JPEG"}
@@ -80,123 +76,83 @@ def image_info(data):
     return None
 
 
-def _is_int(v):
-    return isinstance(v, int) and not isinstance(v, bool)
+def fallback_title(full):
+    """The full-size file's name without its extension, as Batty shows it."""
+    name = urllib.parse.unquote(urllib.parse.urlsplit(full).path.rsplit("/", 1)[-1])
+    return os.path.splitext(name)[0]
 
 
-def _text(v, lo, hi):
-    return isinstance(v, str) and lo <= len(v.strip()) <= hi
+def display_title(im):
+    t = im.get("title")
+    if isinstance(t, str) and t.strip():
+        return t.strip()
+    return fallback_title(im["full"])
 
 
-def _schema_file(f, path):
-    if not isinstance(f, dict):
-        return f"{path}: must be an object"
-    if not isinstance(f.get("url"), str):
-        return f"{path}.url: must be a string"
-    for k in ("width", "height"):
-        if not _is_int(f.get(k)) or f[k] <= 0:
-            return f"{path}.{k}: must be a positive integer"
-    if "sha256" in f and not (isinstance(f["sha256"], str) and SHA_RE.match(f["sha256"])):
-        return f"{path}.sha256: must be 64 lowercase hex digits"
-    if "bytes" in f and not (_is_int(f["bytes"]) and f["bytes"] >= 0):
-        return f"{path}.bytes: must be a non-negative integer"
-    return None
+def _is_remote(url):
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme.lower() == "https" and bool(parts.netloc)
 
 
 def _schema(cat):
-    """Problems, plus [(path, entry, image_path, role)] for every well-formed file entry."""
+    """Problems, plus [(path, url, image_path, role)] for every well-formed file entry."""
     problems, files = [], []
     if not isinstance(cat, dict):
         return ["catalog: top level must be an object"], files
-    sv = cat.get("schemaVersion")
-    top = None
-    if not _is_int(sv) or sv != 1:
-        top = "schemaVersion: must be the integer 1"
-    elif not _text(cat.get("name"), 1, 100):
-        top = "name: must be a string of 1-100 characters"
-    elif "updated" in cat and not (isinstance(cat["updated"], str) and DATE_RE.match(cat["updated"])):
-        top = "updated: must be YYYY-MM-DD"
-    elif "homepage" in cat and not (isinstance(cat["homepage"], str) and cat["homepage"].startswith("https://")):
-        top = "homepage: must start with https://"
-    elif not isinstance(cat.get("sets"), list) or not 1 <= len(cat["sets"]) <= 50:
-        top = "sets: must be a list of 1-50 sets"
-    if top:
-        problems.append(top)
-    sets = cat.get("sets") if isinstance(cat.get("sets"), list) else []
+    sets = cat.get("sets")
+    if not isinstance(sets, list):
+        return ["sets: must be a list"], files
+    if len(sets) > MAX_SETS:
+        problems.append(f"sets: must be a list of at most {MAX_SETS} sets")
+    total = 0
     for si, s in enumerate(sets):
         sp = f"sets[{si}]"
-        bad = None
         if not isinstance(s, dict):
-            bad = f"{sp}: must be an object"
-        elif not (isinstance(s.get("id"), str) and ID_RE.match(s["id"])):
-            bad = f"{sp}.id: must match {ID_RE.pattern}"
-        elif not _text(s.get("title"), 1, 100):
-            bad = f"{sp}.title: must be a string of 1-100 characters"
-        elif "description" in s and not (isinstance(s["description"], str) and len(s["description"]) <= 300):
-            bad = f"{sp}.description: must be a string of at most 300 characters"
-        elif not isinstance(s.get("images"), list) or not 1 <= len(s["images"]) <= 100:
-            bad = f"{sp}.images: must be a list of 1-100 images"
-        if bad:
-            problems.append(bad)
-        if not isinstance(s, dict) or not isinstance(s.get("images"), list):
+            problems.append(f"{sp}: must be an object")
             continue
-        for ii, im in enumerate(s["images"]):
+        name = s.get("name")
+        if not (isinstance(name, str) and 1 <= len(name.strip()) <= MAX_TEXT):
+            problems.append(f"{sp}.name: must be a non-blank string of at most {MAX_TEXT} characters")
+        images = s.get("images")
+        if not isinstance(images, list):
+            problems.append(f"{sp}.images: must be a list")
+            continue
+        total += len(images)
+        if len(images) > MAX_IMAGES_PER_SET:
+            problems.append(f"{sp}.images: must be a list of at most {MAX_IMAGES_PER_SET} images")
+        elif total > MAX_IMAGES:
+            problems.append(f"{sp}.images: the catalog has more than {MAX_IMAGES} images")
+        for ii, im in enumerate(images):
             ip = f"{sp}.images[{ii}]"
-            bad = None
             if not isinstance(im, dict):
                 problems.append(f"{ip}: must be an object")
                 continue
-            if not (isinstance(im.get("id"), str) and ID_RE.match(im["id"])):
-                bad = f"{ip}.id: must match {ID_RE.pattern}"
-            elif not _text(im.get("title"), 1, 100):
-                bad = f"{ip}.title: must be a string of 1-100 characters"
-            elif "credit" in im and not (isinstance(im["credit"], str) and len(im["credit"]) <= 200):
-                bad = f"{ip}.credit: must be a string of at most 200 characters"
-            if bad:
-                problems.append(bad)
             for role in ("full", "thumbnail"):
-                fp = f"{ip}.{role}"
-                fbad = _schema_file(im.get(role), fp)
-                if fbad:
-                    problems.append(fbad)
+                u = im.get(role)
+                if not (isinstance(u, str) and u.strip()):
+                    problems.append(f"{ip}.{role}: must be a non-empty string")
                 else:
-                    files.append((fp, im[role], ip, role))
+                    files.append((f"{ip}.{role}", u, ip, role))
+            t = im.get("title")
+            if t is not None and not (isinstance(t, str) and len(t.strip()) <= MAX_TEXT):
+                problems.append(f"{ip}.title: must be a string of at most {MAX_TEXT} characters")
     return problems, files
 
 
 def _unique(cat, files):
-    problems = []
-    seen_sets, seen_images, seen_urls = {}, {}, {}
-    for si, s in enumerate(cat.get("sets") or []):
-        if not isinstance(s, dict):
-            continue
-        sid = s.get("id")
-        if isinstance(sid, str):
-            if sid in seen_sets:
-                problems.append(f"sets[{si}].id: duplicate set id {sid!r} (also {seen_sets[sid]})")
-            else:
-                seen_sets[sid] = f"sets[{si}]"
-        for ii, im in enumerate(s.get("images") or [] if isinstance(s.get("images"), list) else []):
-            if not isinstance(im, dict) or not isinstance(im.get("id"), str):
-                continue
-            iid, ip = im["id"], f"sets[{si}].images[{ii}]"
-            if iid in seen_images:
-                problems.append(f"{ip}.id: duplicate image id {iid!r} (also {seen_images[iid]})")
-            else:
-                seen_images[iid] = ip
-    for fp, f, _, _ in files:
-        u = f["url"]
-        if u in seen_urls:
-            problems.append(f"{fp}.url: duplicate url {u} (also {seen_urls[u]})")
+    problems, seen = [], {"full": {}, "thumbnail": {}}
+    for fp, u, _, role in files:
+        if u in seen[role]:
+            problems.append(f"{fp}: duplicate {role} {u} (also {seen[role][u]})")
         else:
-            seen_urls[u] = fp
+            seen[role][u] = fp
     return problems
 
 
 def _url_problem(url, root):
     parts = urllib.parse.urlsplit(url)
     if parts.scheme or parts.netloc:
-        return "must be relative, not an absolute URL"
+        return "must be relative or an absolute https URL"
     if parts.query or parts.fragment or "?" in url or "#" in url:
         return "must not have a query or fragment"
     if url.startswith("/") or "\\" in url:
@@ -214,22 +170,26 @@ def _url_problem(url, root):
 
 
 def _run(catalog_path):
-    """(problems, missing, total) for the catalog at catalog_path."""
+    """(problems, missing, local, remote, catalog) for the catalog at catalog_path."""
     catalog_path = Path(catalog_path)
     root = catalog_path.parent
     try:
         cat = json.loads(catalog_path.read_bytes().decode("utf-8"))
     except (OSError, UnicodeDecodeError, ValueError) as e:
-        return [f"catalog: {e}"], 0, 0
+        return [f"catalog: {e}"], 0, 0, 0, None
     problems, files = _schema(cat)
-    problems += _unique(cat, files) if isinstance(cat, dict) else []
-    missing = 0
+    problems += _unique(cat, files)
+    missing = local = remote = 0
     valid_urls = set()
-    for fp, f, ip, role in files:
-        url = f["url"]
+    dims = {}
+    for fp, url, ip, role in files:
+        if _is_remote(url):
+            remote += 1
+            continue
+        local += 1
         up = _url_problem(url, root)
         if up:
-            problems.append(f"{fp}.url: {up}")
+            problems.append(f"{fp}: {up}")
             continue
         valid_urls.add(url)
         path = root / url
@@ -246,39 +206,24 @@ def _run(catalog_path):
         if got[0] != want:
             problems.append(f"{fp}: {url} is {KIND_NAME[got[0]]} data, not {KIND_NAME[want]}")
             continue
-        for k, v in (("width", got[1]), ("height", got[2])):
-            if f[k] != v:
-                problems.append(f"{fp}: {k} {f[k]} in catalog, {v} in file")
-        digest = hashlib.sha256(data).hexdigest()
-        if "sha256" not in f:
-            problems.append(f"{fp}: sha256 missing (run with --write)")
-        elif f["sha256"] != digest:
-            problems.append(f"{fp}: sha256 {f['sha256']} in catalog, {digest} in file")
-        if "bytes" not in f:
-            problems.append(f"{fp}: bytes missing (run with --write)")
-        elif f["bytes"] != len(data):
-            problems.append(f"{fp}: bytes {f['bytes']} in catalog, {len(data)} in file")
+        w, h = got[1], got[2]
+        dims[(ip, role)] = (w, h)
         if role == "full":
-            if f["width"] > FULL_MAX_PIXELS or f["height"] > FULL_MAX_PIXELS:
-                problems.append(f"{fp}: {f['width']}x{f['height']} is over {FULL_MAX_PIXELS} pixels on a side")
+            if w > FULL_MAX_PIXELS or h > FULL_MAX_PIXELS:
+                problems.append(f"{fp}: {w}x{h} is over {FULL_MAX_PIXELS} pixels on a side")
             if len(data) > FULL_MAX_BYTES:
                 problems.append(f"{fp}: {len(data)} bytes is over the {FULL_MAX_BYTES}-byte limit")
         else:
-            if max(f["width"], f["height"]) > THUMB_MAX_PIXELS:
-                problems.append(f"{fp}: longest side {max(f['width'], f['height'])} is over {THUMB_MAX_PIXELS}")
+            if max(w, h) > THUMB_MAX_PIXELS:
+                problems.append(f"{fp}: longest side {max(w, h)} is over {THUMB_MAX_PIXELS}")
             if len(data) > THUMB_MAX_BYTES:
                 problems.append(f"{fp}: {len(data)} bytes is over the {THUMB_MAX_BYTES}-byte limit")
-    # Aspect uses catalog dimensions, so it runs for every pair that passed the schema.
-    pairs = {}
-    for fp, f, ip, role in files:
-        pairs.setdefault(ip, {})[role] = f
-    for ip, pair in pairs.items():
-        if "full" in pair and "thumbnail" in pair:
-            fu, th = pair["full"], pair["thumbnail"]
-            fr, tr = fu["width"] / fu["height"], th["width"] / th["height"]
-            if abs(tr - fr) / fr > ASPECT_TOLERANCE:
-                problems.append(
-                    f"{ip}.thumbnail: aspect {th['width']}x{th['height']} does not match full {fu['width']}x{fu['height']}")
+    for (ip, role), (fw, fh) in dims.items():
+        if role != "full" or (ip, "thumbnail") not in dims or not fw or not fh:
+            continue
+        tw, th = dims[(ip, "thumbnail")]
+        if not th or abs(tw / th - fw / fh) / (fw / fh) > ASPECT_TOLERANCE:
+            problems.append(f"{ip}.thumbnail: aspect {tw}x{th} does not match full {fw}x{fh}")
     if root.is_dir():
         for p in sorted(root.rglob("*")):
             rel = p.relative_to(root)
@@ -288,94 +233,25 @@ def _run(catalog_path):
             if p == catalog_path or r == "catalog.json" or r in valid_urls:
                 continue
             problems.append(f"{r}: orphan file {r} (not in catalog; rsync would publish it)")
-    return problems, missing, len(files)
+    return problems, missing, local, remote, cat
 
 
 def check(catalog_path):
     return _run(catalog_path)[0]
 
 
-def _render(obj):
-    return "{ " + ", ".join(f"{json.dumps(k)}: {json.dumps(v, ensure_ascii=False)}" for k, v in obj.items()) + " }"
-
-
-def write(catalog_path):
-    """Fill in sha256/bytes by editing the catalog's text, then check. Returns problems."""
-    catalog_path = Path(catalog_path)
-    root = catalog_path.parent
-    try:
-        text = catalog_path.read_bytes().decode("utf-8")
-        cat = json.loads(text)
-    except (OSError, UnicodeDecodeError, ValueError) as e:
-        return [f"catalog: {e}"]
-    problems, files = _schema(cat)
-    if isinstance(cat, dict):
-        problems += _unique(cat, files)
-    if problems:
-        return problems
-    new = text
-    for fp, f, _, _ in files:
-        url = f["url"]
-        if _url_problem(url, root):
-            continue
-        path = root / url
-        if not path.is_file():
-            continue
-        data = path.read_bytes()
-        got = image_info(data)
-        if got is None or got[0] != EXT_KIND[Path(url).suffix]:
-            continue
-        matches = list(re.finditer(r'"url"\s*:\s*' + re.escape(json.dumps(url, ensure_ascii=False)), new))
-        if len(matches) != 1:
-            matches = list(re.finditer(r'"url"\s*:\s*' + re.escape(json.dumps(url)), new))
-        if len(matches) != 1:
-            return [f"{fp}: could not find a unique url {url} in the catalog text; nothing written"]
-        m = matches[0]
-        start = new.rfind("{", 0, m.start())
-        end = new.find("}", m.end())
-        try:
-            span = json.loads(new[start:end + 1]) if start >= 0 and end >= 0 else None
-        except ValueError:
-            span = None
-        if span != f:
-            return [f"{fp}: catalog text for {url} does not match its parsed entry; nothing written"]
-        updated = dict(span)
-        updated["sha256"] = hashlib.sha256(data).hexdigest()
-        updated["bytes"] = len(data)
-        new = new[:start] + _render(updated) + new[end + 1:]
-    if new != text:
-        fd, tmp = tempfile.mkstemp(dir=root, prefix=".catalog-", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(new.encode("utf-8"))
-            os.replace(tmp, catalog_path)
-        except BaseException:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
-    return check(catalog_path)
-
-
 def main(argv):
     ap = argparse.ArgumentParser(description="Check a background catalog against its files.")
-    ap.add_argument("--write", action="store_true", help="fill in or correct sha256 and bytes first")
     ap.add_argument("catalog", help="path to catalog.json")
     args = ap.parse_args(argv)
-    if args.write:
-        problems = write(args.catalog)
-    else:
-        problems = None
-    full, missing, total = _run(args.catalog)
-    if problems is None or not any(p.startswith("catalog:") or "nothing written" in p for p in problems):
-        problems = full
+    problems, missing, local, remote, cat = _run(args.catalog)
     for p in problems:
         print(p)
     if problems:
-        print(f"{len(problems)} problems ({missing} of {total} files missing)")
+        print(f"{len(problems)} problems ({missing} of {local} files missing)")
         return 1
-    cat = json.loads(Path(args.catalog).read_text(encoding="utf-8"))
     images = sum(len(s["images"]) for s in cat["sets"])
-    print(f"OK: {len(cat['sets'])} sets, {images} images, {total} files")
+    print(f"OK: {len(cat['sets'])} sets, {images} images, {local} files, {remote} remote")
     return 0
 
 

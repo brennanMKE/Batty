@@ -1,168 +1,42 @@
 {
-  "schemaVersion": 1,
-  "name": "Batty Backgrounds",
-  "updated": "2026-11-11",
   "sets": [
     {
-      "id": "future-cities",
-      "title": "Future Cities",
+      "name": "Future Cities",
       "images": [
-        {
-          "id": "future-cities-01",
-          "title": "Skyline in the Fog",
-          "full": { "url": "future-cities/01-skyline-fog.png", "width": 3840, "height": 2400, "sha256": "61024a520eedb9b12357734251d88c19ddc024acd6172a8095545525908f0ee0", "bytes": 7875921 },
-          "thumbnail": { "url": "future-cities/01-skyline-fog-thumb.png", "width": 480, "height": 300, "sha256": "6e7011aec190669551e95787cd40b1c815774109166d390c3cfb156bc6c480c4", "bytes": 130173 }
-        },
-        {
-          "id": "future-cities-02",
-          "title": "Canal After Rain",
-          "full": { "url": "future-cities/02-canal-after-rain.png", "width": 3840, "height": 2400, "sha256": "c1fb7046aeb7ba09c4d62b551808a4cbacc507f8bdb305de891d5dc4f80e8c67", "bytes": 8492165 },
-          "thumbnail": { "url": "future-cities/02-canal-after-rain-thumb.png", "width": 480, "height": 300, "sha256": "c3e5045dc2115da567b8f670047200b49738d66b80ac9900526d63a249f15951", "bytes": 144361 }
-        },
-        {
-          "id": "future-cities-03",
-          "title": "Sky Gardens at Dawn",
-          "full": { "url": "future-cities/03-sky-gardens-dawn.png", "width": 3840, "height": 2400, "sha256": "b29023715f5a72154a94c1d3384dcb5a15667fe0ac27e5b9ebb4aec7e4f0a28d", "bytes": 8434995 },
-          "thumbnail": { "url": "future-cities/03-sky-gardens-dawn-thumb.png", "width": 480, "height": 300, "sha256": "043fd5906742b8228a237d9390078f589ee3a163b241b27c52c80851298f9043", "bytes": 144062 }
-        },
-        {
-          "id": "future-cities-04",
-          "title": "Maglev at Dusk",
-          "full": { "url": "future-cities/04-maglev-dusk.png", "width": 3840, "height": 2400, "sha256": "154fe18cabaff35b4f9f54f782bd8869600096900efe1febdf50c0837409b8da", "bytes": 8078728 },
-          "thumbnail": { "url": "future-cities/04-maglev-dusk-thumb.png", "width": 480, "height": 300, "sha256": "582e5e4de31ef785181adf46fc33355e1ead7a51ca977967c20553b4d0ed6578", "bytes": 130179 }
-        },
-        {
-          "id": "future-cities-05",
-          "title": "Desert Dome",
-          "full": { "url": "future-cities/05-desert-dome.png", "width": 3840, "height": 2400, "sha256": "12cefabcbf38cc790bc609783c85a62f946deddca0521cf279716bde4759fa70", "bytes": 8190000 },
-          "thumbnail": { "url": "future-cities/05-desert-dome-thumb.png", "width": 480, "height": 300, "sha256": "b8d2044c590435d46eaf3699a880bb2d3df23b952897f28fcea51174d8862460", "bytes": 129202 }
-        },
-        {
-          "id": "future-cities-06",
-          "title": "Harbor Lights",
-          "full": { "url": "future-cities/06-harbor-lights.png", "width": 3840, "height": 2400, "sha256": "714bc5da01b156dd9dbaa9a8947cc8c62bf04a8d76206ec2ac091fdf7f686353", "bytes": 7785651 },
-          "thumbnail": { "url": "future-cities/06-harbor-lights-thumb.png", "width": 480, "height": 300, "sha256": "3571c88a90cd4a2541c50ab0da94f225b9a28e24daa83ed1d0d76ef4fa9aa88d", "bytes": 92243 }
-        },
-        {
-          "id": "future-cities-07",
-          "title": "Floating District",
-          "full": { "url": "future-cities/07-floating-district.png", "width": 3840, "height": 2400, "sha256": "3369dfcb47d001ea43ae5f3370c67bc83229c3b9d2427622b1f8381f8e94ae54", "bytes": 8113372 },
-          "thumbnail": { "url": "future-cities/07-floating-district-thumb.png", "width": 480, "height": 300, "sha256": "2c9e13f6773dd17dd8fa613c1f5902ea0edb137dedc9449154ece14332145bb3", "bytes": 93862 }
-        },
-        {
-          "id": "future-cities-08",
-          "title": "Tower in the Clouds",
-          "full": { "url": "future-cities/08-tower-in-the-clouds.png", "width": 3840, "height": 2400, "sha256": "47f8b5f5f59403e29398688b71a5efbbd0ce0a3a7907338b9fe1b1bdcd134226", "bytes": 7829719 },
-          "thumbnail": { "url": "future-cities/08-tower-in-the-clouds-thumb.png", "width": 480, "height": 300, "sha256": "cc51fc570181b7c8dc98d57826c3d1726d28747fb16e9e7aaa3591fdcf26896b", "bytes": 91998 }
-        }
+        { "title": "Skyline in the Fog", "thumbnail": "future-cities/01-skyline-fog-thumb.png", "full": "future-cities/01-skyline-fog.png" },
+        { "title": "Canal After Rain", "thumbnail": "future-cities/02-canal-after-rain-thumb.png", "full": "future-cities/02-canal-after-rain.png" },
+        { "title": "Sky Gardens at Dawn", "thumbnail": "future-cities/03-sky-gardens-dawn-thumb.png", "full": "future-cities/03-sky-gardens-dawn.png" },
+        { "title": "Maglev at Dusk", "thumbnail": "future-cities/04-maglev-dusk-thumb.png", "full": "future-cities/04-maglev-dusk.png" },
+        { "title": "Desert Dome", "thumbnail": "future-cities/05-desert-dome-thumb.png", "full": "future-cities/05-desert-dome.png" },
+        { "title": "Harbor Lights", "thumbnail": "future-cities/06-harbor-lights-thumb.png", "full": "future-cities/06-harbor-lights.png" },
+        { "title": "Floating District", "thumbnail": "future-cities/07-floating-district-thumb.png", "full": "future-cities/07-floating-district.png" },
+        { "title": "Tower in the Clouds", "thumbnail": "future-cities/08-tower-in-the-clouds-thumb.png", "full": "future-cities/08-tower-in-the-clouds.png" }
       ]
     },
     {
-      "id": "cool-vehicles",
-      "title": "Cool Vehicles",
+      "name": "Cool Vehicles",
       "images": [
-        {
-          "id": "cool-vehicles-01",
-          "title": "Café Racer in the Garage",
-          "full": { "url": "cool-vehicles/01-cafe-racer-garage.png", "width": 3840, "height": 2400, "sha256": "2d9ef606c3c3e5a0da616e51038b57fd8ae4059b992adb30dcee4a9d8469d113", "bytes": 8597678 },
-          "thumbnail": { "url": "cool-vehicles/01-cafe-racer-garage-thumb.png", "width": 480, "height": 300, "sha256": "d2cdc6c2bb56bad854f4df482587999d97d655ec1106192e584165952d7fe530", "bytes": 151236 }
-        },
-        {
-          "id": "cool-vehicles-02",
-          "title": "Expedition Truck on the Salt Flat",
-          "full": { "url": "cool-vehicles/02-expedition-truck-salt-flat.png", "width": 3840, "height": 2400, "sha256": "14190cc283d88f054f49f6b8340426cd936de465ec686a95798f57bcc823e32d", "bytes": 8280648 },
-          "thumbnail": { "url": "cool-vehicles/02-expedition-truck-salt-flat-thumb.png", "width": 480, "height": 300, "sha256": "8bc1ea29e5ceda2741803ed67cbb76a06eceb27aebf7edd875716c1ba2a77368", "bytes": 135573 }
-        },
-        {
-          "id": "cool-vehicles-03",
-          "title": "Endurance Racer at Night",
-          "full": { "url": "cool-vehicles/03-endurance-racer-night.png", "width": 3840, "height": 2400, "sha256": "24d8cfe3ec29ff9276f6b734e794a25d680418e2ccc9da0fa5ba7ca102e329be", "bytes": 8168837 },
-          "thumbnail": { "url": "cool-vehicles/03-endurance-racer-night-thumb.png", "width": 480, "height": 300, "sha256": "5c446e7ce73fe6e9b402442549c49e7a90455d8c059f9f95dfbdce1fe1694981", "bytes": 133614 }
-        },
-        {
-          "id": "cool-vehicles-04",
-          "title": "Pickup in the Fog",
-          "full": { "url": "cool-vehicles/04-pickup-fog.png", "width": 3840, "height": 2400, "sha256": "a105eea8af65aa25428c192d7ef3661417593f098e9b8de9ba991f4defa2c8b8", "bytes": 8187894 },
-          "thumbnail": { "url": "cool-vehicles/04-pickup-fog-thumb.png", "width": 480, "height": 300, "sha256": "1dd9b09038f2206bdcec130096df48e52d83cb986e431cea972aacb1851b1ffc", "bytes": 134343 }
-        },
-        {
-          "id": "cool-vehicles-05",
-          "title": "Electric Bike on the Roof",
-          "full": { "url": "cool-vehicles/05-electric-bike-rooftop.png", "width": 3840, "height": 2400, "sha256": "a0088b8efe58da346d46a25a20f827b9a68b4124d47245654536560f4205caf6", "bytes": 8177049 },
-          "thumbnail": { "url": "cool-vehicles/05-electric-bike-rooftop-thumb.png", "width": 480, "height": 300, "sha256": "079a1c1284794599645e0b3a11af0328f2985c6c622d923dbc99be20cd6388e0", "bytes": 146131 }
-        },
-        {
-          "id": "cool-vehicles-06",
-          "title": "Roadster on the Coast at Dusk",
-          "full": { "url": "cool-vehicles/06-roadster-coast-dusk.png", "width": 3840, "height": 2400, "sha256": "08d2a9902b066844c0159b1db9b4cd5df266e3c1e4ba172d2a2a4c76c374fa7d", "bytes": 7578444 },
-          "thumbnail": { "url": "cool-vehicles/06-roadster-coast-dusk-thumb.png", "width": 480, "height": 300, "sha256": "f47eb4767e0a998cd1e76456a65684bef1c7501581dc5d575147ea04a3db5fa7", "bytes": 98225 }
-        },
-        {
-          "id": "cool-vehicles-07",
-          "title": "Rally Car in the Dust",
-          "full": { "url": "cool-vehicles/07-rally-car-dust.png", "width": 3840, "height": 2400, "sha256": "916cbc428e2fd36246d6b738a9278e1e2d3203dd4f26b7faa08b71c1906c24ed", "bytes": 8241262 },
-          "thumbnail": { "url": "cool-vehicles/07-rally-car-dust-thumb.png", "width": 480, "height": 300, "sha256": "d38e8ed892e59996c316bcf6809ceca1cd50256d3b0e96bbc97c3e1bf8574736", "bytes": 100820 }
-        },
-        {
-          "id": "cool-vehicles-08",
-          "title": "Semi Truck on the Night Highway",
-          "full": { "url": "cool-vehicles/08-semi-truck-night-highway.png", "width": 3840, "height": 2400, "sha256": "b3c2ae9d863784c646d34be822adc5a206ed129ebc455b4b921452507f92022e", "bytes": 6712399 },
-          "thumbnail": { "url": "cool-vehicles/08-semi-truck-night-highway-thumb.png", "width": 480, "height": 300, "sha256": "fd9a4205807b9c707d15ec17b21df3ebeda4d4cec2daf214f3c4ab939d615198", "bytes": 79301 }
-        }
+        { "title": "Café Racer in the Garage", "thumbnail": "cool-vehicles/01-cafe-racer-garage-thumb.png", "full": "cool-vehicles/01-cafe-racer-garage.png" },
+        { "title": "Expedition Truck on the Salt Flat", "thumbnail": "cool-vehicles/02-expedition-truck-salt-flat-thumb.png", "full": "cool-vehicles/02-expedition-truck-salt-flat.png" },
+        { "title": "Endurance Racer at Night", "thumbnail": "cool-vehicles/03-endurance-racer-night-thumb.png", "full": "cool-vehicles/03-endurance-racer-night.png" },
+        { "title": "Pickup in the Fog", "thumbnail": "cool-vehicles/04-pickup-fog-thumb.png", "full": "cool-vehicles/04-pickup-fog.png" },
+        { "title": "Electric Bike on the Roof", "thumbnail": "cool-vehicles/05-electric-bike-rooftop-thumb.png", "full": "cool-vehicles/05-electric-bike-rooftop.png" },
+        { "title": "Roadster on the Coast at Dusk", "thumbnail": "cool-vehicles/06-roadster-coast-dusk-thumb.png", "full": "cool-vehicles/06-roadster-coast-dusk.png" },
+        { "title": "Rally Car in the Dust", "thumbnail": "cool-vehicles/07-rally-car-dust-thumb.png", "full": "cool-vehicles/07-rally-car-dust.png" },
+        { "title": "Semi Truck on the Night Highway", "thumbnail": "cool-vehicles/08-semi-truck-night-highway-thumb.png", "full": "cool-vehicles/08-semi-truck-night-highway.png" }
       ]
     },
     {
-      "id": "beautiful-landscapes",
-      "title": "Beautiful Landscapes",
+      "name": "Beautiful Landscapes",
       "images": [
-        {
-          "id": "beautiful-landscapes-01",
-          "title": "Mountain Lake at Blue Hour",
-          "full": { "url": "beautiful-landscapes/01-mountain-lake-blue-hour.png", "width": 3840, "height": 2400, "sha256": "a162cd6397ab0e90e2d0d2b2c5117652664f47dc73e57fdd2290c4a0e31f5a16", "bytes": 8259661 },
-          "thumbnail": { "url": "beautiful-landscapes/01-mountain-lake-blue-hour-thumb.png", "width": 480, "height": 300, "sha256": "6eb122889497ca0d94f1ad15d48f378ed4a5552cd5f11ad6bf9a2609f55f5727", "bytes": 132637 }
-        },
-        {
-          "id": "beautiful-landscapes-02",
-          "title": "Dunes at Dusk",
-          "full": { "url": "beautiful-landscapes/02-dunes-dusk.png", "width": 3840, "height": 2400, "sha256": "6c551b78547ed24d8eb9993a3af2e0a6d708a13688b17282a5ded4009e33587b", "bytes": 8156519 },
-          "thumbnail": { "url": "beautiful-landscapes/02-dunes-dusk-thumb.png", "width": 480, "height": 300, "sha256": "80f1bb7c6b29863042c84bcb374187548d8bf09ac4275a3e39fa9eaa6030a69f", "bytes": 128439 }
-        },
-        {
-          "id": "beautiful-landscapes-03",
-          "title": "Misty Forest Valley",
-          "full": { "url": "beautiful-landscapes/03-misty-forest-valley.png", "width": 3840, "height": 2400, "sha256": "c35ebcee00a4e9c8f8efa92824c41c8abb1ec1eb4dbf01fb25e0e4a35c040872", "bytes": 8234704 },
-          "thumbnail": { "url": "beautiful-landscapes/03-misty-forest-valley-thumb.png", "width": 480, "height": 300, "sha256": "d7e5999d75e4ca92e12c5ddcbe69f301498d4bbb221039ebf35e1e8e8b61b70c", "bytes": 129595 }
-        },
-        {
-          "id": "beautiful-landscapes-04",
-          "title": "Aurora over the Tundra",
-          "full": { "url": "beautiful-landscapes/04-aurora-tundra.png", "width": 3840, "height": 2400, "sha256": "19c7441a2e5833dda77dcc5dfeca81cf2966f424f9789cfbd21aa46677ae4374", "bytes": 8343479 },
-          "thumbnail": { "url": "beautiful-landscapes/04-aurora-tundra-thumb.png", "width": 480, "height": 300, "sha256": "211296f9520732437e432d7e6a9dc1c142bb2669170dfd9bf8b1a16562b4f712", "bytes": 127862 }
-        },
-        {
-          "id": "beautiful-landscapes-05",
-          "title": "Sea Cliffs Under Cloud",
-          "full": { "url": "beautiful-landscapes/05-sea-cliffs-overcast.png", "width": 3840, "height": 2400, "sha256": "bb0b58241a5d5b022d6e1068358678dd78c6a25850834f3570278a12b6a6a1fa", "bytes": 8359878 },
-          "thumbnail": { "url": "beautiful-landscapes/05-sea-cliffs-overcast-thumb.png", "width": 480, "height": 300, "sha256": "0ab49ff45584b80e60b8a538243fa6e4d3ff227891c44356c81260873f2f023c", "bytes": 139444 }
-        },
-        {
-          "id": "beautiful-landscapes-06",
-          "title": "Glacier Lagoon at Twilight",
-          "full": { "url": "beautiful-landscapes/06-glacier-lagoon-twilight.png", "width": 3840, "height": 2400, "sha256": "f9043b6c0d88d9821851e66c3d3042a3c7745a68a5b0ed1742f0addc29d4fcc3", "bytes": 7617524 },
-          "thumbnail": { "url": "beautiful-landscapes/06-glacier-lagoon-twilight-thumb.png", "width": 480, "height": 300, "sha256": "4b9d611042626945a719cbfc411228da2ea46c3260e26ae745214f8a373a765f", "bytes": 92085 }
-        },
-        {
-          "id": "beautiful-landscapes-07",
-          "title": "Rolling Hills at Night",
-          "full": { "url": "beautiful-landscapes/07-rolling-hills-night.png", "width": 3840, "height": 2400, "sha256": "77b5a7e979a26e1cfe7146d23c46ca4b794e9312f07fcba732af82cbad74bb60", "bytes": 7645390 },
-          "thumbnail": { "url": "beautiful-landscapes/07-rolling-hills-night-thumb.png", "width": 480, "height": 300, "sha256": "b003a6461938db2390604ae33e51c9a13e9f2b393bf91bb6809b7535639c204d", "bytes": 83624 }
-        },
-        {
-          "id": "beautiful-landscapes-08",
-          "title": "Canyon at Dusk",
-          "full": { "url": "beautiful-landscapes/08-canyon-dusk.png", "width": 3840, "height": 2400, "sha256": "0a882b03ee53d43eb9594b8136c148f645a6d4282ed30b5136e50efa8b77d25c", "bytes": 7832840 },
-          "thumbnail": { "url": "beautiful-landscapes/08-canyon-dusk-thumb.png", "width": 480, "height": 300, "sha256": "b0d9e4ad7ac271202fbd23876a8a90cf92936c7898f421b22679f8be21857ca1", "bytes": 100935 }
-        }
+        { "title": "Mountain Lake at Blue Hour", "thumbnail": "beautiful-landscapes/01-mountain-lake-blue-hour-thumb.png", "full": "beautiful-landscapes/01-mountain-lake-blue-hour.png" },
+        { "title": "Dunes at Dusk", "thumbnail": "beautiful-landscapes/02-dunes-dusk-thumb.png", "full": "beautiful-landscapes/02-dunes-dusk.png" },
+        { "title": "Misty Forest Valley", "thumbnail": "beautiful-landscapes/03-misty-forest-valley-thumb.png", "full": "beautiful-landscapes/03-misty-forest-valley.png" },
+        { "title": "Aurora over the Tundra", "thumbnail": "beautiful-landscapes/04-aurora-tundra-thumb.png", "full": "beautiful-landscapes/04-aurora-tundra.png" },
+        { "title": "Sea Cliffs Under Cloud", "thumbnail": "beautiful-landscapes/05-sea-cliffs-overcast-thumb.png", "full": "beautiful-landscapes/05-sea-cliffs-overcast.png" },
+        { "title": "Glacier Lagoon at Twilight", "thumbnail": "beautiful-landscapes/06-glacier-lagoon-twilight-thumb.png", "full": "beautiful-landscapes/06-glacier-lagoon-twilight.png" },
+        { "title": "Rolling Hills at Night", "thumbnail": "beautiful-landscapes/07-rolling-hills-night-thumb.png", "full": "beautiful-landscapes/07-rolling-hills-night.png" },
+        { "title": "Canyon at Dusk", "thumbnail": "beautiful-landscapes/08-canyon-dusk-thumb.png", "full": "beautiful-landscapes/08-canyon-dusk.png" }
       ]
     }
   ]

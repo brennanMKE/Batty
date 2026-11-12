@@ -8,7 +8,6 @@ git, no network.
 """
 
 import contextlib
-import hashlib
 import importlib.util
 import io
 import struct
@@ -45,9 +44,9 @@ def make_jpeg(w, h):
     return b"\xff\xd8" + app0 + sof + b"\xff\xd9"
 
 
-def build_root(d, *, ext_full="png", ext_thumb="png", hashes=True, override=None, files=None,
+def build_root(d, *, ext_full="png", ext_thumb="png", override=None, files=None,
                full_size=(160, 100), thumb_size=(48, 30), mutate=None):
-    """Two sets of two images. override(sets) edits the entries; files maps url -> bytes overrides."""
+    """Two sets of two images. override(top, sets) edits the entries; files maps url -> bytes overrides."""
     d = Path(d)
     sets = []
     blobs = {}
@@ -58,21 +57,11 @@ def build_root(d, *, ext_full="png", ext_thumb="png", hashes=True, override=None
             tu = f"{s}/0{n}-pic-thumb.{ext_thumb}"
             blobs[fu] = (make_png if ext_full == "png" else make_jpeg)(*full_size)
             blobs[tu] = (make_png if ext_thumb == "png" else make_jpeg)(*thumb_size)
-            images.append({"id": f"{s}-0{n}", "title": f"Pic {n}",
-                           "full": {"url": fu, "width": full_size[0], "height": full_size[1]},
-                           "thumbnail": {"url": tu, "width": thumb_size[0], "height": thumb_size[1]}})
-        sets.append({"id": s, "title": s.title(), "images": images})
+            images.append({"title": f"Pic {n}", "thumbnail": tu, "full": fu})
+        sets.append({"name": s.title(), "images": images})
     if files:
         blobs.update(files)
-    if hashes:
-        for st in sets:
-            for im in st["images"]:
-                for role in ("full", "thumbnail"):
-                    b = blobs.get(im[role]["url"])
-                    if b is not None:
-                        im[role]["sha256"] = hashlib.sha256(b).hexdigest()
-                        im[role]["bytes"] = len(b)
-    top = {"schemaVersion": 1, "name": "Test Backgrounds", "updated": "2026-11-11"}
+    top = {}
     if override:
         override(top, sets)
     for url, b in blobs.items():
@@ -81,22 +70,25 @@ def build_root(d, *, ext_full="png", ext_thumb="png", hashes=True, override=None
         p = d / url
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b)
-    lines = ["{"]
-    for k, v in top.items():
-        lines.append(f'  {cb.json.dumps(k)}: {cb.json.dumps(v)},')
-    lines.append('  "sets": [')
-    for si, st in enumerate(sets):
-        lines += ["    {", f'      "id": {cb.json.dumps(st["id"])},', f'      "title": {cb.json.dumps(st["title"])},',
-                  '      "images": [']
-        for ii, im in enumerate(st["images"]):
-            lines.append(f'        {{ "id": {cb.json.dumps(im["id"])}, "title": {cb.json.dumps(im["title"])},')
-            lines.append(f'          "full": {cb._render(im["full"])},')
-            tail = " }" + ("," if ii < len(st["images"]) - 1 else "")
-            lines.append(f'          "thumbnail": {cb._render(im["thumbnail"])}{tail}')
-        lines += ["      ]", "    }" + ("," if si < len(sets) - 1 else "")]
-    lines += ["  ]", "}"]
+    dumps = cb.json.dumps
+    if "sets" in top:
+        body = dumps(top)
+    else:
+        lines = ["{"]
+        for k, v in top.items():
+            lines.append(f"  {dumps(k)}: {dumps(v)},")
+        lines.append('  "sets": [')
+        for si, st in enumerate(sets):
+            head = ", ".join(f"{dumps(k)}: {dumps(v)}" for k, v in st.items() if k != "images")
+            lines.append(f"    {{ {head}{', ' if head else ''}\"images\": [")
+            for ii, im in enumerate(st["images"]):
+                tail = "," if ii < len(st["images"]) - 1 else ""
+                lines.append(f"      {dumps(im)}{tail}")
+            lines.append("    ] }" + ("," if si < len(sets) - 1 else ""))
+        lines += ["  ]", "}"]
+        body = "\n".join(lines)
     cat = d / "catalog.json"
-    cat.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    cat.write_text(body + "\n", encoding="utf-8")
     if mutate:
         mutate(d)
     return cat
@@ -104,9 +96,12 @@ def build_root(d, *, ext_full="png", ext_thumb="png", hashes=True, override=None
 
 def run(args):
     out = io.StringIO()
+    err = io.StringIO()
     try:
-        with contextlib.redirect_stdout(out):
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = cb.main(args)
+    except SystemExit as e:
+        return (e.code, out.getvalue() + err.getvalue())
     except Exception as e:  # a crash is a failure, never an exit code
         return ("raised", f"{type(e).__name__}: {e}")
     return (code, out.getvalue())
@@ -118,12 +113,12 @@ results = []
 def case(name, want_code, want_text=None, **kw):
     setup = kw.pop("setup", None)
     check = kw.pop("check", None)
-    write = kw.pop("write", False)
+    args = kw.pop("args", [])
     with tempfile.TemporaryDirectory() as d:
         cat = build_root(d, **kw)
         if setup:
             setup(Path(d))
-        code, out = run((["--write"] if write else []) + [str(cat)])
+        code, out = run(args + [str(cat)])
         ok = code == want_code and (want_text is None or want_text in out)
         extra = ""
         if ok and check:
@@ -132,66 +127,47 @@ def case(name, want_code, want_text=None, **kw):
         results.append((name, ok, f"got {code} {out.strip()[-300:]!r}{extra}; want {want_code} {want_text!r}"))
 
 
-def set_field(fn):
+def img(si, ii, **kw):
     def override(top, sets):
-        fn(top, sets)
+        sets[si]["images"][ii].update(kw)
     return override
 
 
-def flip_byte(path):
-    def m(d):
-        p = d / path
-        b = bytearray(p.read_bytes())
-        b[-5] ^= 0xFF
-        p.write_bytes(bytes(b))
-    return m
+def drop(si, ii, key):
+    def override(top, sets):
+        sets[si]["images"][ii].pop(key)
+    return override
 
 
-case("good catalog passes", 0, "OK:")
+case("good catalog passes", 0, "8 files, 0 remote")
 case("good catalog with jpeg full and jpeg thumbnail passes", 0, "OK:", ext_full="jpg", ext_thumb="jpeg")
 case("missing full-size file", 1, "(1 of 8 files missing)", setup=lambda d: (d / "alpha/01-pic.png").unlink())
 case("missing thumbnail", 1, "missing file alpha/02-pic-thumb.png",
      setup=lambda d: (d / "alpha/02-pic-thumb.png").unlink())
-case("wrong width in catalog", 1, "width 161 in catalog",
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(width=161, height=100)))
-case("wrong height in file", 1, "height", files={"beta/01-pic.png": make_png(160, 99)}, hashes=True,
-     thumb_size=(48, 30))
-case("one byte changed in full-size image", 1, "sha256", mutate=flip_byte("alpha/01-pic.png"))
-case("wrong bytes", 1, "bytes 1 in catalog",
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(bytes=1)))
-case("sha256 missing without write", 1, "run with --write", hashes=False)
-case("png data with jpg extension", 1, "not JPEG", ext_full="jpg", files={f"alpha/01-pic.jpg": make_png(160, 100)})
+case("png data with jpg extension", 1, "is PNG data, not JPEG", ext_full="jpg",
+     files={"alpha/01-pic.jpg": make_png(160, 100)})
 case("jpeg data with png extension", 1, "not PNG", files={"alpha/01-pic.png": make_jpeg(160, 100)})
 case("not an image", 1, "not a PNG or JPEG", files={"alpha/01-pic.png": b"hello world, not an image"})
-case("truncated jpeg has no SOF", 1, "not a PNG or JPEG", files={"alpha/01-pic.png": b"\xff\xd8\xff\xe0\x00"},
-     ext_full="png")
-case("duplicate set id", 1, "duplicate set id",
-     override=set_field(lambda t, s: s[1].update(id="alpha")))
-case("duplicate image id across sets", 1, "duplicate image id",
-     override=set_field(lambda t, s: s[1]["images"][0].update(id="alpha-01")))
-case("bad image id pattern", 1, ".id: must match",
-     override=set_field(lambda t, s: s[0]["images"][0].update(id="Bad_ID")))
+case("truncated jpeg has no SOF", 1, "not a PNG or JPEG", files={"alpha/01-pic.png": b"\xff\xd8\xff\xe0\x00"})
 
 
 def outside_check(d, out):
-    return " (outside file was named as missing/read)" if "secret" in out and "url" not in out else ""
+    return " (outside file was named as missing/read)" if "missing file ../" in out else ""
 
 
-case("dotdot url", 1, ".url: must not have empty, . or .. segments",
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(url="../outside.png")), check=outside_check)
-case("absolute path url", 1, ".url:",
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(url="/etc/passwd.png")))
-case("https url in built-in catalog", 1, "must be relative",
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(url="https://example.com/a.png")))
-case("unsupported extension", 1, "must end in .png",
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(url="alpha/01-pic.gif")))
+case("dotdot url", 1, ".full: must not have empty, . or .. segments",
+     override=img(0, 0, full="../outside.png"), check=outside_check)
+case("absolute path url", 1, ".full: must be a relative path", override=img(0, 0, full="/etc/passwd.png"))
+case("unsupported extension", 1, "must end in .png", override=img(0, 0, full="alpha/01-pic.gif"))
 case("orphan png", 1, "orphan file alpha/extra.png", setup=lambda d: (d / "alpha/extra.png").write_bytes(make_png(4, 4)))
 case("orphan non-image file", 1, "orphan file notes.txt", setup=lambda d: (d / "notes.txt").write_text("x"))
 case("hidden file is not an orphan", 0, "OK:", setup=lambda d: (d / "alpha/.DS_Store").write_bytes(b"\x00"))
-case("thumbnail aspect mismatch", 1, "aspect", thumb_size=(48, 48))
+case("thumbnail aspect mismatch", 1, "aspect 48x48 does not match full 160x100", thumb_size=(48, 48))
 case("thumbnail longer than 1024", 1, "over 1024", thumb_size=(1600, 1000), full_size=(1600, 1000))
-case("full wider than 4096", 1, "over 4096", full_size=(5000, 3125), thumb_size=(48, 30),
-     files={f"{s}/0{n}-pic.png": make_png_header(5000, 3125) for s in ("alpha", "beta") for n in (1, 2)})
+case("full wider than 8192", 1, "over 8192", full_size=(9000, 5625), thumb_size=(48, 30),
+     files={f"{s}/0{n}-pic.png": make_png_header(9000, 5625) for s in ("alpha", "beta") for n in (1, 2)})
+case("full of 8192 pixels passes", 0, "OK:", full_size=(8192, 5120), thumb_size=(48, 30),
+     files={f"{s}/0{n}-pic.png": make_png_header(8192, 5120) for s in ("alpha", "beta") for n in (1, 2)})
 
 saved = cb.FULL_MAX_BYTES
 cb.FULL_MAX_BYTES = 10
@@ -200,81 +176,80 @@ try:
 finally:
     cb.FULL_MAX_BYTES = saved
 
-case("schemaVersion 2", 1, "schemaVersion", override=set_field(lambda t, s: t.update(schemaVersion=2)))
-case("bool width rejected", 1, "width: must be a positive integer",
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(width=True)))
-case("missing name", 1, "name", override=set_field(lambda t, s: t.pop("name")))
 case("invalid json", 1, "catalog:", mutate=lambda d: (d / "catalog.json").write_text("{ not json"))
 
 
-def hashes_match(d, out):
-    cat = cb.json.loads((d / "catalog.json").read_text())
-    for st in cat["sets"]:
-        for im in st["images"]:
-            for role in ("full", "thumbnail"):
-                f = im[role]
-                b = (d / f["url"]).read_bytes()
-                if f.get("sha256") != hashlib.sha256(b).hexdigest() or f.get("bytes") != len(b):
-                    return f" (wrong values for {f['url']})"
-    return ""
+def whole(cat):
+    def m(d):
+        (d / "catalog.json").write_text(cb.json.dumps(cat))
+    return m
 
 
-case("write fills sha256 and bytes then passes", 0, "OK:", hashes=False, write=True, check=hashes_match)
-
-before_text = {}
-
-
-def keep_format_check(d, out):
-    after = (d / "catalog.json").read_text().splitlines()
-    before = before_text["v"]
-    if len(after) != len(before):
-        return f" (line count {len(before)} -> {len(after)})"
-    for a, b in zip(after, before):
-        if '"url"' not in b and a != b:
-            return f" (changed line {b!r} -> {a!r})"
-    return ""
+def set_override(fn):
+    def override(top, sets):
+        fn(sets)
+    return override
 
 
-case("write keeps formatting", 0, "OK:", hashes=False, write=True,
-     setup=lambda d: before_text.__setitem__("v", (d / "catalog.json").read_text().splitlines()),
-     check=keep_format_check)
-case("write corrects a wrong hash", 0, "OK:", write=True,
-     override=set_field(lambda t, s: s[0]["images"][0]["full"].update(sha256="0" * 64, bytes=3)))
+case("missing sets", 1, "sets: must be a list", mutate=whole({"name": "x"}))
+case("sets not a list", 1, "sets: must be a list", mutate=whole({"sets": {"a": 1}}))
+case("missing set name", 1, "sets[0].name:", override=set_override(lambda s: s[0].pop("name")))
+case("blank set name", 1, "sets[0].name:", override=set_override(lambda s: s[0].update(name="   ")))
+case("set name over 100 characters", 1, "sets[1].name:", override=set_override(lambda s: s[1].update(name="n" * 101)))
+case("missing image full", 1, "sets[0].images[0].full: must be a non-empty string", override=drop(0, 0, "full"))
+case("missing image thumbnail", 1, "sets[0].images[1].thumbnail: must be a non-empty string",
+     override=drop(0, 1, "thumbnail"))
+case("non-string full", 1, "sets[0].images[0].full: must be a non-empty string", override=img(0, 0, full=3))
+case("non-string title", 1, "sets[0].images[0].title:", override=img(0, 0, title=3))
+case("title over 100 characters", 1, "sets[0].images[0].title:", override=img(0, 0, title="t" * 101))
+case("title of 100 characters after trimming passes", 0, "OK:", override=img(0, 0, title="  " + "t" * 100 + "  "))
+case("missing title passes", 0, "OK:", override=drop(0, 0, "title"))
+case("null title passes", 0, "OK:", override=img(0, 0, title=None))
+case("blank title passes", 0, "OK:", override=img(0, 0, title="  "))
 
 
-def idempotent_check(d, out):
-    first = (d / "catalog.json").read_bytes()
-    code, _ = run(["--write", str(d / "catalog.json")])
-    return "" if code == 0 and (d / "catalog.json").read_bytes() == first else " (second write changed the file)"
+def unknown(top, sets):
+    top["extra"] = {"x": 1}
+    sets[0]["extra"] = [1]
+    sets[0]["images"][0]["extra"] = "y"
 
 
-case("write is idempotent", 0, "OK:", hashes=False, write=True, check=idempotent_check)
+case("unknown fields pass", 0, "OK:", override=unknown)
+case("duplicate set name passes", 0, "OK: 2 sets", override=set_override(lambda s: s[1].update(name="Alpha")))
+case("empty sets pass", 0, "OK: 0 sets, 0 images", mutate=lambda d: (
+    (d / "catalog.json").write_text('{"sets": []}'), [p.unlink() for p in d.rglob("*.png")]))
+case("duplicate full", 1, "sets[1].images[0].full: duplicate full alpha/01-pic.png",
+     override=img(1, 0, full="alpha/01-pic.png"))
+case("duplicate thumbnail", 1, "duplicate thumbnail alpha/01-pic-thumb.png",
+     override=img(0, 1, thumbnail="alpha/01-pic-thumb.png"))
 
 
-def rest_filled(d, out):
-    cat = cb.json.loads((d / "catalog.json").read_text())
-    others = [im[r] for st in cat["sets"] for im in st["images"] for r in ("full", "thumbnail")
-              if im[r]["url"] != "alpha/01-pic.png"]
-    return "" if all("sha256" in f and "bytes" in f for f in others) else " (others not filled)"
+def no_orphan(d, out):
+    return " (orphan reported)" if "orphan" in out else ""
 
 
-case("write with a missing file fills the rest", 1, "missing file alpha/01-pic.png", hashes=False, write=True,
-     setup=lambda d: (d / "alpha/01-pic.png").unlink(), check=rest_filled)
+case("absolute https full is skipped and counted", 0, "7 files, 1 remote",
+     override=img(0, 0, full="https://example.com/a.png"), setup=lambda d: (d / "alpha/01-pic.png").unlink(),
+     check=no_orphan)
+case("http url is rejected", 1, "must be relative or an absolute https URL",
+     override=img(0, 0, full="http://example.com/a.png"))
+case("scheme-less host url is rejected", 1, "must be relative or an absolute https URL",
+     override=img(0, 0, full="//example.com/a.png"))
+case("too many sets", 1, "sets: must be a list of at most 50 sets",
+     mutate=whole({"sets": [{"name": f"S{i}", "images": []} for i in range(51)]}))
+case("too many images in a set", 1, "sets[0].images: must be a list of at most 100 images",
+     mutate=whole({"sets": [{"name": "S", "images": [
+         {"full": f"{i}.png", "thumbnail": f"{i}-t.png"} for i in range(101)]}]}))
+case("write option is rejected", 2, "unrecognized arguments", args=["--write"])
 
-invalid_before = {}
-
-
-def invalid_setup(d):
-    invalid_before["v"] = (d / "catalog.json").read_bytes()
-
-
-case("write leaves an invalid catalog untouched", 1, "schemaVersion", hashes=False, write=True,
-     override=set_field(lambda t, s: t.update(schemaVersion=2)), setup=invalid_setup,
-     check=lambda d, out: "" if (d / "catalog.json").read_bytes() == invalid_before["v"] else " (file changed)")
+for given, want in (("01-skyline-fog.png", "01-skyline-fog"), ("a/b.c.jpg", "b.c"),
+                    ("beta/02%20fourth.png", "02 fourth"), ("https://example.com/x/y.png?v=1", "y")):
+    got = cb.fallback_title(given)
+    results.append((f"fallback title of {given}", got == want, f"got {got!r}; want {want!r}"))
 
 real = cb.check(REAL_CATALOG)
 bad = [p for p in real if "missing file" not in p]
-results.append(("real catalog parses and passes the schema", not bad, f"got {bad[:3]!r}; want no schema or id problems"))
+results.append(("real catalog parses and passes the schema", not bad, f"got {bad[:3]!r}; want no schema problems"))
 
 passed = 0
 for name, ok, detail in results:

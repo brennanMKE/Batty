@@ -25,16 +25,14 @@ images.
      generated image isn't close to 16:10, crop it to 16:10 first rather than stretching it.
   4. Confirm: `sips -g pixelWidth -g pixelHeight 06-name.png` must print 3840 and 2400.
 - **Format:** PNG or JPEG. PNG is preferred; JPEG (quality 90 or higher) is fine where PNG is
-  too large. A JPEG file's extension is `.jpg`, and its catalog `url` changes to match.
+  too large. A JPEG file's extension is `.jpg`, and its catalog `full` or `thumbnail` changes to match.
 - **File names and folders:** exactly as listed under each prompt, under `website/backgrounds/`.
 - **Thumbnails:** don't generate them. Make each one from its full-size image, 480 × 300:
   `sips -z 300 480 01-skyline-fog.png --out 01-skyline-fog-thumb.png` (for a JPEG thumbnail, add
   `-s format jpeg` and use `.jpg`).
-- **Catalog:** add each new image to its set in `website/backgrounds/catalog.json`, after
-  image 05, in the same form as the existing entries: `id` (for example `future-cities-06`), a
-  short `title`, and `full` and `thumbnail` objects with `url`, `width` and `height`. Then run
-  `python3 tools/check-backgrounds.py --write website/backgrounds/catalog.json` to fill in
-  `sha256` and `bytes`, and run it again without `--write`; it must print `OK`.
+- **Catalog:** add each new image to its set in `website/backgrounds/catalog.json`, after the
+  last one, as `{ "title": "…", "thumbnail": "…", "full": "…" }` with a short title. Then run
+  `python3 tools/check-backgrounds.py website/backgrounds/catalog.json`; it must print `OK`.
 - **Web page:** run `python3 tools/build-backgrounds-page.py` to rebuild
   `website/backgrounds.html` from the catalog.
 - Adding, checking and deploying: see "Background images" in `website/README.md`.

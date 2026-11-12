@@ -374,15 +374,17 @@ it for the driven experiments.
 ## check-backgrounds.py
 
 Checks the hosted background catalog against the files beside it (#0575): the
-#0574 schema, unique set and image ids, relative URLs that stay inside the
-catalog's folder, that each file exists and is the PNG or JPEG its extension
-says, its dimensions, `sha256` and `bytes`, size limits, thumbnail aspect
-ratio, and orphan files that `rsync` would publish. Standard library only.
+format and its limits (the "Make your own set" section of
+`website/backgrounds.html`), unique `full` and `thumbnail` paths, relative URLs
+that stay inside the catalog's folder (absolute `https` URLs are counted as
+remote and skipped), that each local file exists and is the PNG or JPEG its
+extension says, the app's size limits and the thumbnail's aspect ratio from the
+file headers, and orphan files that `rsync` would publish. Standard library
+only. A clean run prints `OK: 3 sets, 24 images, 48 files, 0 remote`.
 
 ```bash
-python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json          # check
-python3 -I tools/check-backgrounds.py --write website/backgrounds/catalog.json  # fill sha256/bytes, then check
-python3 -I tools/check-backgrounds-selftest.py                                  # self-test
+python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json  # check
+python3 -I tools/check-backgrounds-selftest.py                          # self-test
 ```
 
 Run it before every website deploy; it must exit 0 (see "Background images" in
@@ -393,8 +395,9 @@ Run it before every website deploy; it must exit 0 (see "Background images" in
 Writes the set grid and the example catalog into `website/backgrounds.html`
 from `website/backgrounds/catalog.json` and
 `website/examples/background-catalog.json`. It validates both with
-`check-backgrounds.py`'s schema rules (imported, not copied) and never opens
-image files; sizes come from the catalog.
+`check-backgrounds.py`'s format rules (imported, not copied) and never opens
+image files. Captions are titles only, and the built-in catalog's URLs must be
+relative.
 
 ```bash
 python3 -I tools/build-backgrounds-page.py           # regenerate the page

@@ -64,19 +64,17 @@ update prompt within a few hours.
 
 ## Background images
 
-`backgrounds/catalog.json` is the built-in background catalog (format: issue #0574). It is in git. The images it lists, full-size and thumbnails, are **not**: `.gitignore` excludes `website/backgrounds/**/*.png`, `*.jpg` and `*.jpeg`. Your local `website/backgrounds/<set>/` folders and the server are the only copies, so keep a backup of the originals.
+`backgrounds/catalog.json` is the built-in background catalog (format: the "Make your own set" section of `backgrounds.html`). Its image URLs are relative: a file on another host wouldn't be deployed with the site, and `build-backgrounds-page.py` refuses one. It is in git. The images it lists, full-size and thumbnails, are **not**: `.gitignore` excludes `website/backgrounds/**/*.png`, `*.jpg` and `*.jpeg`. Your local `website/backgrounds/<set>/` folders and the server are the only copies, so keep a backup of the originals.
 
 Adding an image:
 
-1. Generate it from `docs/background-image-prompts.md`, saved at the path named there. PNG is preferred; JPEG is fine (use `.jpg` and change the catalog `url` to match).
+1. Generate it from `docs/background-image-prompts.md`, saved at the path named there. PNG is preferred; JPEG is fine (use `.jpg` and change the catalog's `full` or `thumbnail` to match).
 2. Make the thumbnail from it, never generate one: `sips -z 300 480 <full> --out <thumb>` (for a JPEG thumbnail add `-s format jpeg`).
-3. Add the entry to `catalog.json` with `url`, `width` and `height` for `full` and `thumbnail`.
-4. Fill in the hashes: `python3 -I tools/check-backgrounds.py --write website/backgrounds/catalog.json`.
-5. Regenerate the page: `python3 -I tools/build-backgrounds-page.py`.
-6. Set `updated` to today by hand.
-7. Commit `catalog.json` and `backgrounds.html` only. `git status` must show no image files.
+3. Add `{ "title": …, "thumbnail": …, "full": … }` to its set in `catalog.json`.
+4. Regenerate the page: `python3 -I tools/build-backgrounds-page.py`.
+5. Commit `catalog.json` and `backgrounds.html` only. `git status` must show no image files.
 
-A changed picture gets a new image `id` (#0574); never replace the bytes behind an existing id.
+A changed picture gets a new file name; never replace the bytes behind an existing path. Batty knows a downloaded image by its full-size URL.
 
 `examples/background-catalog.json` is the example catalog that `backgrounds.html` shows and links for download. It lives outside `backgrounds/` so the check never sees it as an orphan, and `build-backgrounds-page.py` validates it on every run.
 

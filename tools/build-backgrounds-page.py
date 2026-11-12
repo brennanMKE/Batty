@@ -5,7 +5,8 @@
 
 Validates the catalog and the example catalog with check-backgrounds.py's schema
 rules, then replaces the text between the page's BEGIN/END marker comments.
-Never opens image files: sizes come from the catalog's width, height and bytes.
+Never opens image files; captions are titles only. The built-in catalog's URLs
+must be relative, since only the files beside it are deployed.
 --check writes nothing and exits 1 when the page is out of date. Exit 0 when
 fine, 1 for any problem, 2 for a usage error. Standard library only.
 """
@@ -38,20 +39,23 @@ def _load_checker(path):
     return mod
 
 
-def _validate(cb, path, prefix=""):
-    """(catalog, problems). Schema, unique ids/urls and relative urls only."""
+def _validate(cb, path, prefix="", builtin=False):
+    """(catalog, problems). Shape, unique files and URLs only."""
     path = Path(path)
     try:
         cat = json.loads(path.read_bytes().decode("utf-8"))
     except (OSError, UnicodeDecodeError, ValueError) as e:
         return None, [f"{prefix}catalog: {e}"]
     problems, files = cb._schema(cat)
-    if isinstance(cat, dict):
-        problems += cb._unique(cat, files)
-    for fp, f, _, _ in files:
-        up = cb._url_problem(f["url"], path.parent)
+    problems += cb._unique(cat, files)
+    for fp, url, _, _ in files:
+        if cb._is_remote(url):
+            if builtin:
+                problems.append(f"{fp}: must be relative in the built-in catalog")
+            continue
+        up = cb._url_problem(url, path.parent)
         if up:
-            problems.append(f"{fp}.url: {up}")
+            problems.append(f"{fp}: {up}")
     return cat, [prefix + p for p in problems]
 
 
@@ -63,36 +67,31 @@ def _href(url):
     return "backgrounds/" + urllib.parse.quote(url, safe="/")
 
 
-def _size(n):
-    if n < 1_000_000:
-        return f"{round(n / 1000)} KB"
-    return f"{n / 1_000_000:.1f} MB"
+def _slug(name):
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "set"
 
 
-def render_sets(cat):
+def render_sets(cb, cat):
     out = []
+    used = set()
     for s in cat["sets"]:
-        sid = _e(s["id"])
+        base = _slug(s["name"])
+        sid, n = base, 1
+        while sid in used:
+            n += 1
+            sid = f"{base}-{n}"
+        used.add(sid)
         out.append(f'<section class="bg-set" id="set-{sid}" aria-labelledby="set-{sid}-title">')
-        out.append(f'    <h2 id="set-{sid}-title">{_e(s["title"])}</h2>')
-        if "description" in s:
-            out.append(f'    <p class="bg-set-description">{_e(s["description"])}</p>')
+        out.append(f'    <h2 id="set-{sid}-title">{_e(s["name"].strip())}</h2>')
         out.append('    <ul class="bg-grid">')
         for im in s["images"]:
-            full, th = im["full"], im["thumbnail"]
-            title = _e(im["title"])
-            meta = f'{full["width"]} × {full["height"]}'
-            if "bytes" in full:
-                meta += " · " + _size(full["bytes"])
-            credit = f' <span class="bg-credit">{_e(im["credit"])}</span>' if "credit" in im else ""
+            title = _e(cb.display_title(im))
             out.append("        <li>")
             out.append('            <figure class="bg-image">')
             out.append(
-                f'                <a href="{_e(_href(full["url"]))}"><img src="{_e(_href(th["url"]))}" '
-                f'width="{th["width"]}" height="{th["height"]}" alt="{title}" loading="lazy" decoding="async"></a>')
-            out.append(
-                f'                <figcaption><span class="bg-title">{title}</span> '
-                f'<span class="bg-meta">{_e(meta)}</span>{credit}</figcaption>')
+                f'                <a href="{_e(_href(im["full"]))}"><img src="{_e(_href(im["thumbnail"]))}" '
+                f'width="480" height="300" alt="{title}" loading="lazy" decoding="async"></a>')
+            out.append(f'                <figcaption><span class="bg-title">{title}</span></figcaption>')
             out.append("            </figure>")
             out.append("        </li>")
         out.append("    </ul>")
@@ -127,7 +126,7 @@ def _og_image_ok(page, cat):
     m = re.search(r'<meta\s+property="og:image"\s+content="([^"]*)"', page)
     if not m:
         return False
-    thumbs = {"backgrounds/" + im["thumbnail"]["url"] for s in cat["sets"] for im in s["images"]}
+    thumbs = {"backgrounds/" + im["thumbnail"] for s in cat["sets"] for im in s["images"]}
     return any(m.group(1).endswith("/" + t) for t in thumbs)
 
 
@@ -141,7 +140,7 @@ def main(argv):
     args = ap.parse_args(argv)
     cb = _load_checker(args.checker)
 
-    cat, problems = _validate(cb, args.catalog)
+    cat, problems = _validate(cb, args.catalog, builtin=True)
     _, ex_problems = _validate(cb, args.example, prefix="example: ")
     problems += ex_problems
     if problems:
@@ -157,7 +156,7 @@ def main(argv):
         print(f"{page_path}: {e}")
         return 1
 
-    new, bad = _replace(page, SETS_BEGIN, SETS_END, render_sets(cat))
+    new, bad = _replace(page, SETS_BEGIN, SETS_END, render_sets(cb, cat))
     if bad is None:
         new, bad = _replace(new, EXAMPLE_BEGIN, EXAMPLE_END, render_example(example_text))
     if bad:

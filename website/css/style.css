@@ -252,8 +252,6 @@ footer nav a {
 
 .bg-set { padding: 32px 0; }
 
-.bg-set-description { color: var(--fg-muted); }
-
 .bg-grid {
     list-style: none;
     padding: 0;
@@ -280,8 +278,6 @@ footer nav a {
 
 .bg-image figcaption { font-size: 14px; margin-top: 8px; }
 .bg-image .bg-title { display: block; color: var(--fg); }
-.bg-image .bg-meta,
-.bg-image .bg-credit { display: block; color: var(--fg-muted); }
 
 .bg-example,
 .prose pre {
