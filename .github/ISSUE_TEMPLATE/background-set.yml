@@ -1,0 +1,47 @@
+name: Background set
+description: Share a Background Catalog of terminal background images
+title: "Background set: "
+labels: ["background-set"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for making a set. See [Backgrounds](https://batty.sstools.co/backgrounds.html) for the catalog format and how to host it.
+  - type: input
+    id: catalog-url
+    attributes:
+      label: Catalog URL
+      placeholder: https://example.com/backgrounds/catalog.json
+    validations:
+      required: true
+  - type: input
+    id: set-names
+    attributes:
+      label: Set names
+    validations:
+      required: true
+  - type: textarea
+    id: about
+    attributes:
+      label: About the images
+      description: What they show and how they were made.
+    validations:
+      required: false
+  - type: input
+    id: license
+    attributes:
+      label: License
+      placeholder: CC BY 4.0
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before you submit
+      options:
+        - label: Batty's Settings → Background Catalogs accepted this URL
+          required: true
+        - label: I have the right to share these images under that license
+          required: true
+        - label: The images have no text, logos or watermarks
+          required: true

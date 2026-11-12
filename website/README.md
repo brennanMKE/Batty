@@ -24,6 +24,7 @@ Pages to spot-check:
 - `/` — landing
 - `/changelog.html`
 - `/privacy.html`
+- `/backgrounds.html` — the Background Sets page, generated from the catalog
 - `/appcast.xml` — should parse as RSS
 - `/backgrounds/catalog.json` — the built-in background catalog
 
@@ -71,12 +72,15 @@ Adding an image:
 2. Make the thumbnail from it, never generate one: `sips -z 300 480 <full> --out <thumb>` (for a JPEG thumbnail add `-s format jpeg`).
 3. Add the entry to `catalog.json` with `url`, `width` and `height` for `full` and `thumbnail`.
 4. Fill in the hashes: `python3 -I tools/check-backgrounds.py --write website/backgrounds/catalog.json`.
-5. Set `updated` to today by hand.
-6. Commit `catalog.json` only. `git status` must show no image files.
+5. Regenerate the page: `python3 -I tools/build-backgrounds-page.py`.
+6. Set `updated` to today by hand.
+7. Commit `catalog.json` and `backgrounds.html` only. `git status` must show no image files.
 
 A changed picture gets a new image `id` (#0574); never replace the bytes behind an existing id.
 
-Before every deploy, `python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json` must exit 0. Then, with the user's go-ahead each time:
+`examples/background-catalog.json` is the example catalog that `backgrounds.html` shows and links for download. It lives outside `backgrounds/` so the check never sees it as an orphan, and `build-backgrounds-page.py` validates it on every run.
+
+Before every deploy, both must exit 0: `python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json` and `python3 -I tools/build-backgrounds-page.py --check`. Then, with the user's go-ahead each time:
 
 ```bash
 rsync -avzn website/ photon:/var/www/vhosts/batty.sstools.co/   # dry run, read it

@@ -226,6 +226,79 @@ footer nav a {
 .changelog ul { padding-left: 22px; }
 .changelog li { margin-bottom: 6px; }
 
+/* --- Backgrounds page ----------------------------------------------- */
+
+.bg-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 40px;
+}
+
+.bg-nav a {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--fg-muted);
+    font-size: 14px;
+}
+
+.bg-nav a:hover {
+    color: var(--accent-strong);
+    border-color: var(--accent);
+    text-decoration: none;
+}
+
+.bg-set { padding: 32px 0; }
+
+.bg-set-description { color: var(--fg-muted); }
+
+.bg-grid {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.bg-image { margin: 0; }
+
+.bg-image img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+}
+
+.bg-image a:hover img { border-color: var(--accent); }
+
+.bg-image figcaption { font-size: 14px; margin-top: 8px; }
+.bg-image .bg-title { display: block; color: var(--fg); }
+.bg-image .bg-meta,
+.bg-image .bg-credit { display: block; color: var(--fg-muted); }
+
+.bg-example,
+.prose pre {
+    overflow-x: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 13px;
+}
+
+.bg-limits { border-collapse: collapse; margin: 16px 0; font-size: 15px; }
+.bg-limits caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
+.bg-limits th,
+.bg-limits td { text-align: left; padding: 6px 16px 6px 0; border-top: 1px solid var(--border); vertical-align: top; }
+.bg-limits th { color: var(--fg-muted); font-weight: normal; }
+
 /* --- Responsive ------------------------------------------------------- */
 
 @media (max-width: 720px) {
@@ -234,4 +307,5 @@ footer nav a {
     .hero { padding: 64px 16px 48px; }
     .hero-icon { width: 144px; height: 144px; }
     .cta-secondary { margin-left: 0; margin-top: 12px; }
+    .bg-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
 }

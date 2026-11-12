@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "name": "Example Backgrounds",
+  "homepage": "https://example.com/backgrounds/",
+  "updated": "2026-11-11",
+  "sets": [
+    {
+      "id": "harbor-nights",
+      "title": "Harbor Nights",
+      "description": "Quiet harbors after dark, kept dim so terminal text stays easy to read.",
+      "images": [
+        { "id": "harbor-nights-01", "title": "Pier in the Fog", "credit": "Your Name, CC BY 4.0",
+          "full": { "url": "harbor-nights/01-pier-fog.png", "width": 2560, "height": 1600 },
+          "thumbnail": { "url": "harbor-nights/01-pier-fog-thumb.png", "width": 480, "height": 300 } },
+        { "id": "harbor-nights-02", "title": "Lanterns on the Water",
+          "full": { "url": "harbor-nights/02-lanterns.jpg", "width": 2560, "height": 1600 },
+          "thumbnail": { "url": "harbor-nights/02-lanterns-thumb.jpg", "width": 480, "height": 300 } }
+      ]
+    }
+  ]
+}

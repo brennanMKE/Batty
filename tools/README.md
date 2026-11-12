@@ -388,6 +388,26 @@ python3 -I tools/check-backgrounds-selftest.py                                  
 Run it before every website deploy; it must exit 0 (see "Background images" in
 `website/README.md`).
 
+## build-backgrounds-page.py
+
+Writes the set grid and the example catalog into `website/backgrounds.html`
+from `website/backgrounds/catalog.json` and
+`website/examples/background-catalog.json`. It validates both with
+`check-backgrounds.py`'s schema rules (imported, not copied) and never opens
+image files; sizes come from the catalog.
+
+```bash
+python3 -I tools/build-backgrounds-page.py           # regenerate the page
+python3 -I tools/build-backgrounds-page.py --check   # exit 1 if the page is out of date
+python3 -I tools/build-backgrounds-page-selftest.py  # self-test
+```
+
+Only the text between the `<!-- BEGIN BACKGROUND SETS … -->` /
+`<!-- END BACKGROUND SETS -->` and `<!-- BEGIN EXAMPLE CATALOG … -->` /
+`<!-- END EXAMPLE CATALOG -->` comments is generated; edit the prose around
+them by hand. `--check` also fails when the page's `og:image` isn't one of the
+catalog's thumbnails. Run it before every website deploy.
+
 ## demo/ (#0505)
 
 `tools/demo/make-demos.sh all` regenerates the nine website demo clips end to end:
