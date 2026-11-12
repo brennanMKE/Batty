@@ -23,10 +23,10 @@ nonisolated enum BackgroundCatalogFixture {
     static func thumbnailPath(_ imageID: String) -> String { "\(imageID)-thumb.png" }
 
     /// `omitting` leaves that image's full-size file out, so choosing it fails.
-    static func write(in folder: URL, omitting: String? = nil) throws {
+    static func write(in folder: URL, omitting: String? = nil, sets setList: [String] = setIDs) throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var sets: [[String: Any]] = []
-        for (setIndex, set) in setIDs.enumerated() {
+        for (setIndex, set) in setList.enumerated() {
             var images: [[String: Any]] = []
             for (index, id) in imageIDs(in: set).enumerated() {
                 let full = try png(width: 96, height: 64, seed: setIndex * 10 + index)

@@ -18,6 +18,8 @@ final class BackgroundImagesWindowController: NSObject, NSWindowDelegate {
 
     private(set) var window: NSWindow?
     private var model: BackgroundImagesModel?
+    /// The latest key-event catalog check; tests await it.
+    private(set) var appearCheck: Task<Void, Never>?
 
     /// Builds the window without ordering it front, or returns the existing one.
     @discardableResult
@@ -50,14 +52,19 @@ final class BackgroundImagesWindowController: NSObject, NSWindowDelegate {
     }
 
     /// A use can change in another window while this one stays open. Its only
-    /// observers are the cells' uses lines, which write nothing back.
+    /// observers are the cells' uses lines, which write nothing back. Catalogs
+    /// due a check are checked too; the model throttles and merges checks.
     func windowDidBecomeKey(_ notification: Notification) {
-        model?.refreshUses()
+        guard let model else { return }
+        model.refreshUses()
+        let hosted = model.hosted
+        appearCheck = Task { await hosted.windowBecameKey() }
     }
 
     func windowWillClose(_ notification: Notification) {
         window?.delegate = nil
         window = nil
         model = nil
+        appearCheck = nil
     }
 }

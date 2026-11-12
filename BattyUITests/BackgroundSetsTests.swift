@@ -217,4 +217,69 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         XCTAssertTrue(requests.contains(BackgroundCatalogFixture.fullPath(second)))
         XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the pick did not set an image")
     }
+
+    @MainActor
+    private func showBackgroundImagesWindow(in app: XCUIApplication) {
+        let menu = openMenu("File", in: app)
+        menuItem("Background Images", in: menu).click()
+        showBackgroundSets(in: app)
+        for set in BackgroundCatalogFixture.setIDs {
+            XCTAssertTrue(setSection(set, in: app).waitForExistence(timeout: 10), "no section for \(set)")
+        }
+    }
+
+    @MainActor
+    private func setSection(_ id: String, in app: XCUIApplication) -> XCUIElement {
+        element("background-sets.set.\(BackgroundCatalogFixture.setName(id))", in: app)
+    }
+
+    @MainActor
+    func testRefreshPicksUpASetAddedToTheCatalog() throws {
+        let app = try launch()
+        defer { app.terminate() }
+        showBackgroundImagesWindow(in: app)
+        try BackgroundCatalogFixture.write(in: catalogFolder, sets: BackgroundCatalogFixture.setIDs + ["deep-space"])
+        XCTAssertFalse(setSection("deep-space", in: app).exists, "the new set showed before Refresh")
+        element("background-sets.refresh", in: app).click()
+        XCTAssertTrue(setSection("deep-space", in: app).waitForExistence(timeout: 10), "Refresh did not pick up the new set")
+    }
+
+    @MainActor
+    func testFilterNarrowsToMatchingSetsAndImages() throws {
+        let app = try launch()
+        defer { app.terminate() }
+        showBackgroundImagesWindow(in: app)
+        let field = element("background-sets.filter", in: app)
+        field.click()
+        field.typeText("COOL")
+        XCTAssertTrue(setSection("cool-vehicles", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(setSection("future-cities", in: app).exists)
+        XCTAssertFalse(setSection("beautiful-landscapes", in: app).exists)
+
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("cities-02")
+        XCTAssertTrue(setSection("future-cities", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(cell("future-cities-02", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(cell("future-cities-01", in: app).exists)
+        XCTAssertFalse(setSection("cool-vehicles", in: app).exists)
+    }
+
+    @MainActor
+    func testFilterWithNoMatchesShowsTheEmptyStateAndClearingRestoresTheGrid() throws {
+        let app = try launch()
+        defer { app.terminate() }
+        showBackgroundImagesWindow(in: app)
+        let field = element("background-sets.filter", in: app)
+        field.click()
+        field.typeText("zzz")
+        XCTAssertTrue(element("background-sets.no-matches", in: app).waitForExistence(timeout: 5))
+        for set in BackgroundCatalogFixture.setIDs {
+            XCTAssertFalse(setSection(set, in: app).exists, "\(set) still shows")
+        }
+        element("background-sets.filter.clear", in: app).click()
+        for set in BackgroundCatalogFixture.setIDs {
+            XCTAssertTrue(setSection(set, in: app).waitForExistence(timeout: 5), "\(set) did not come back")
+        }
+        XCTAssertFalse(element("background-sets.no-matches", in: app).exists)
+    }
 }

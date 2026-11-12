@@ -38,6 +38,37 @@ struct BackgroundImagesWindowControllerTests {
         window.close()
     }
 
+    @Test func becomingKeyChecksTheCatalogsOnceTheIntervalHasPassed() async throws {
+        let store = f.appStore()
+        let catalogURL = BackgroundCatalog.builtInURL
+        try HostedCatalogServer(fetcher: f.catalogFetcher).serve(catalogURL)
+        await store.backgroundImages.hosted.browseAppeared()
+        let controller = BackgroundImagesWindowController()
+        let window = controller.prepare(store: store)
+        let note = Notification(name: NSWindow.didBecomeKeyNotification, object: window)
+
+        controller.windowDidBecomeKey(note)
+        await controller.appearCheck?.value
+        #expect(f.catalogFetcher.count(catalogURL) == 1)
+
+        _ = await f.clock.advance(by: .seconds(6 * 60))
+        controller.windowDidBecomeKey(note)
+        await controller.appearCheck?.value
+        #expect(f.catalogFetcher.count(catalogURL) == 2)
+        window.close()
+    }
+
+    @Test func becomingKeyBeforeTheFirstBrowseFetchesNothing() async throws {
+        let store = f.appStore()
+        try HostedCatalogServer(fetcher: f.catalogFetcher).serve(BackgroundCatalog.builtInURL)
+        let controller = BackgroundImagesWindowController()
+        let window = controller.prepare(store: store)
+        controller.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: window))
+        await controller.appearCheck?.value
+        #expect(f.catalogFetcher.requests.isEmpty)
+        window.close()
+    }
+
     @Test func theWindowIsAuxiliaryNotContent() {
         let store = f.appStore()
         let controller = BackgroundImagesWindowController()

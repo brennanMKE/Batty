@@ -93,16 +93,130 @@ struct HostedBackgroundsModelTests {
         #expect(await hosted.cache.cachedCatalog(for: catalogURL)?.catalog.allImages.count == 2)
     }
 
-    @Test func browseRefreshesAtMostOncePerTenMinutes() async throws {
+    @Test func browseRefreshesAtMostOncePerFiveMinutes() async throws {
         try serveCatalog()
         await hosted.browseAppeared()
         #expect(fetcher.count(catalogURL) == 1)
-        _ = await f.clock.advance(by: .seconds(5 * 60))
+        _ = await f.clock.advance(by: .seconds(4 * 60))
         await hosted.browseAppeared()
         #expect(fetcher.count(catalogURL) == 1)
-        _ = await f.clock.advance(by: .seconds(6 * 60))
+        _ = await f.clock.advance(by: .seconds(2 * 60))
         await hosted.browseAppeared()
         #expect(fetcher.count(catalogURL) == 2)
+        #expect(fetcher.requests.last?.etag == "\"c1\"")
+    }
+
+    @Test func isCheckDueTreatsNeverAndFutureChecksAsDue() {
+        let now = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        #expect(HostedBackgroundsModel.isCheckDue(lastCheck: nil, now: now))
+        #expect(!HostedBackgroundsModel.isCheckDue(lastCheck: now.addingTimeInterval(-4 * 60), now: now))
+        #expect(HostedBackgroundsModel.isCheckDue(lastCheck: now.addingTimeInterval(-5 * 60), now: now))
+        #expect(HostedBackgroundsModel.isCheckDue(lastCheck: now.addingTimeInterval(60 * 60), now: now))
+    }
+
+    @Test func windowBecomingKeyBeforeTheFirstBrowseFetchesNothing() async throws {
+        try serveCatalog()
+        await hosted.windowBecameKey()
+        #expect(fetcher.requests.isEmpty)
+        #expect(!hosted.hasBrowsed)
+    }
+
+    @Test func windowBecomingKeyWithinTheIntervalSendsNoRequest() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        _ = await f.clock.advance(by: .seconds(4 * 60))
+        await hosted.windowBecameKey()
+        #expect(fetcher.count(catalogURL) == 1)
+    }
+
+    @Test func windowBecomingKeyAfterTheIntervalSendsAConditionalRequest() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        _ = await f.clock.advance(by: .seconds(6 * 60))
+        fetcher.set(.notModified, for: catalogURL)
+        await hosted.windowBecameKey()
+        #expect(fetcher.count(catalogURL) == 2)
+        #expect(fetcher.requests.last?.etag == "\"c1\"")
+        #expect(hosted.catalogs.first?.catalog?.allImages.count == 2)
+        #expect(hosted.catalogs.first?.problem == nil)
+    }
+
+    @Test func windowBecomingKeyPicksUpANewSet() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        let one: [String: Any] = ["title": "Picture one", "full": "one.png", "thumbnail": "one-thumb.png"]
+        let nebula: [String: Any] = ["title": "Nebula", "full": "nebula.png", "thumbnail": "nebula-thumb.png"]
+        let body = CatalogJSON.data(["sets": [["name": "Set", "images": [one]], ["name": "Deep Space", "images": [nebula]]]])
+        fetcher.set(.ok(body, etag: "\"c2\""), for: catalogURL)
+        _ = await f.clock.advance(by: .seconds(6 * 60))
+        await hosted.windowBecameKey()
+        #expect(hosted.catalogs.first?.catalog?.sets.count == 2)
+    }
+
+    @Test func aRelaunchWithinTheIntervalUsesThePersistedLastCheck() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        let relaunched = f.appStore().backgroundImages.hosted
+        await relaunched.browseAppeared()
+        #expect(fetcher.count(catalogURL) == 1)
+        _ = await f.clock.advance(by: .seconds(6 * 60))
+        await relaunched.browseAppeared()
+        #expect(fetcher.count(catalogURL) == 2)
+    }
+
+    @Test func refreshAllBypassesTheThrottle() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        await hosted.refreshAll()
+        #expect(fetcher.count(catalogURL) == 2)
+    }
+
+    @Test func refreshAllChecksEveryCatalog() async throws {
+        try serveCatalog()
+        let userURL = URL(string: "https://catalogs.example.com/catalog.json")!
+        try HostedCatalogServer(fetcher: fetcher).serve(userURL)
+        #expect(await hosted.addCatalog(userURL.absoluteString) == .success(userURL))
+        await hosted.browseAppeared()
+        let builtInBefore = fetcher.count(catalogURL)
+        let userBefore = fetcher.count(userURL)
+        await hosted.refreshAll()
+        #expect(fetcher.count(catalogURL) == builtInBefore + 1)
+        #expect(fetcher.count(userURL) == userBefore + 1)
+    }
+
+    @Test func refreshAllIsRefreshingUntilItFinishes() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        let before = fetcher.requests.count
+        fetcher.hold(catalogURL)
+        let running = Task { await hosted.refreshAll() }
+        #expect(await fetcher.waitForRequests(before + 1))
+        #expect(hosted.isRefreshingAll && hosted.isCheckingAny)
+        await hosted.refreshAll()
+        #expect(fetcher.requests.count == before + 1)
+        fetcher.release(catalogURL)
+        await running.value
+        #expect(!hosted.isRefreshingAll)
+        #expect(!hosted.isCheckingAny)
+    }
+
+    @Test func refreshAllFailureShowsTheBanner() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        fetcher.set(.failure(.unreachable), for: catalogURL)
+        await hosted.refreshAll()
+        #expect(hosted.catalogs.first?.problem == .offlineShowingCache("batty.sstools.co"))
+        #expect(hosted.catalogs.first?.catalog != nil)
+    }
+
+    @Test func refreshAllSuccessClearsTheBanner() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        fetcher.set(.failure(.unreachable), for: catalogURL)
+        await hosted.refreshAll()
+        try serveCatalog()
+        await hosted.refreshAll()
+        #expect(hosted.catalogs.first?.problem == nil)
     }
 
     @Test func offlineWithACacheShowsTheLastCopyBanner() async throws {

@@ -59,13 +59,14 @@ struct HostedBackgroundsDependencies {
     var clock: SchedulingClock
 }
 
-/// The Background Sets tab. Nothing is fetched before `browseAppeared`, and a
-/// full-size image only from `select`. Every write follows a user action or an
+/// The Background Sets tab. The built-in catalog is not fetched before
+/// `browseAppeared`; `windowBecameKey` checks only `scheduledCatalogURLs`. A
+/// full-size image comes only from `select`. Every write follows a user action or an
 /// `await`, and writes only on change.
 @MainActor
 @Observable
 final class HostedBackgroundsModel {
-    static let refreshInterval: TimeInterval = 10 * 60
+    nonisolated static let refreshInterval: TimeInterval = 5 * 60
     static let maxConcurrentFetches = 2
 
     private(set) var catalogs: [HostedCatalogState] = []
@@ -74,6 +75,8 @@ final class HostedBackgroundsModel {
     /// In the order added. Written only by `addCatalog` and `removeCatalog`.
     private(set) var userCatalogURLs: [URL]
     private(set) var isAddingCatalog = false
+    /// Written only by `refreshAll`.
+    private(set) var isRefreshingAll = false
 
     @ObservationIgnored let store: HostedImageStore
     @ObservationIgnored let cache: BackgroundCatalogCache
@@ -128,13 +131,48 @@ final class HostedBackgroundsModel {
     func browseAppeared() async {
         SettingsPreference.markBackgroundCatalogsBrowsed(defaults: defaults)
         await loadCachedStates()
-        let urls = catalogURLs
+        await refreshDue(catalogURLs)
+        await reconcileAvailability()
+    }
+
+    /// Runs only from the Background Images window controller's
+    /// `windowDidBecomeKey`. Doesn't mark Browse as opened.
+    func windowBecameKey() async {
+        await loadCachedStates()
+        await refreshDue(scheduledCatalogURLs)
+        await reconcileAvailability()
+    }
+
+    var isCheckingAny: Bool {
+        isRefreshingAll || catalogs.contains(where: \.isChecking)
+    }
+
+    /// The Refresh button: every catalog, ignoring the throttle.
+    func refreshAll() async {
+        guard !isRefreshingAll else { return }
+        isRefreshingAll = true
+        defer { isRefreshingAll = false }
+        for url in catalogURLs { await refresh(url) }
+        await reconcileAvailability()
+    }
+
+    /// A check in the future counts as due, so moving the clock back can't
+    /// silence checks.
+    nonisolated static func isCheckDue(lastCheck: Date?, now: Date, interval: TimeInterval = refreshInterval) -> Bool {
+        guard let lastCheck else { return true }
+        if now < lastCheck { return true }
+        return now.timeIntervalSince(lastCheck) >= interval
+    }
+
+    private func lastCheck(_ url: URL) -> Date? {
+        [lastRefresh[url], state(url)?.lastChecked].compactMap { $0 }.max()
+    }
+
+    private func refreshDue(_ urls: [URL]) async {
         let now = clock.now
-        for url in urls {
-            if let last = lastRefresh[url], now.timeIntervalSince(last) < Self.refreshInterval { continue }
+        for url in urls where Self.isCheckDue(lastCheck: lastCheck(url), now: now) {
             await refresh(url)
         }
-        await reconcileAvailability()
     }
 
     /// Settings' `.task`: cached copies and check state only, no network.

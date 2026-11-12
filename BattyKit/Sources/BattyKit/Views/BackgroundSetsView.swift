@@ -4,8 +4,8 @@ import SwiftUI
 
 /// The Background Sets tab. Shows thumbnails only; a full-size image is fetched
 /// only when it's picked as a background. Nothing in `body` writes observed
-/// state: the model's writes start from `.task` or a click, and each cell's
-/// picture and digest are its own `@State`.
+/// state, and each cell's picture and digest are its own `@State`. The model's writes start from `.task`,
+/// a click or Refresh; `query` is written only by the filter field and its clear button.
 struct BackgroundSetsView: View {
     let hosted: HostedBackgroundsModel
     let uses: [String: [BackgroundImageUse]]
@@ -13,27 +13,75 @@ struct BackgroundSetsView: View {
     let onPick: ((String) -> Void)?
 
     @State private var selected: HostedImageKey?
+    @State private var query = ""
 
     private static let minimumCellWidth: CGFloat = 170
     private static let spacing: CGFloat = 16
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ForEach(hosted.catalogs) { state in
-                    catalogSection(state)
+        let sections = BackgroundCatalogFilter.sections(hosted.catalogs, query: query)
+        let trimmed = BackgroundCatalogFilter.normalizedQuery(query)
+        VStack(spacing: 0) {
+            controls
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    ForEach(sections) { section in
+                        catalogSection(section.state, sets: section.sets, filtering: trimmed != nil)
+                    }
+                    if let trimmed, sections.isEmpty {
+                        Text("No backgrounds match “\(trimmed)”")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                            .accessibilityIdentifier("background-sets.no-matches")
+                    }
                 }
+                .padding(Self.spacing)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(Self.spacing)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .task { await hosted.browseAppeared() }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("background-sets.root")
         }
-        .task { await hosted.browseAppeared() }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("background-sets.root")
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            TextField("Filter", text: $query, prompt: Text("Filter sets and images"))
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 260)
+                .accessibilityIdentifier("background-sets.filter")
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(Text("Clear Filter"))
+                .accessibilityIdentifier("background-sets.filter.clear")
+            }
+            Spacer()
+            if hosted.isCheckingAny {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityIdentifier("background-sets.refreshing")
+            }
+            Button("Refresh") {
+                Task { await hosted.refreshAll() }
+            }
+            .disabled(hosted.isCheckingAny)
+            .help("Check every catalog for new sets")
+            .accessibilityIdentifier("background-sets.refresh")
+        }
+        .padding(.horizontal, Self.spacing)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
-    private func catalogSection(_ state: HostedCatalogState) -> some View {
+    private func catalogSection(_ state: HostedCatalogState, sets: [BackgroundSet], filtering: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if hosted.catalogs.count > 1 {
                 Text(verbatim: Self.header(for: state.url, among: hosted.catalogs.map(\.url)))
@@ -42,11 +90,11 @@ struct BackgroundSetsView: View {
             if let problem = state.problem {
                 banner(problem, url: state.url)
             }
-            if state.catalog == nil, state.problem == nil {
+            if !filtering, state.catalog == nil, state.problem == nil {
                 ProgressView()
                     .frame(maxWidth: .infinity)
             }
-            ForEach(state.catalog?.sets ?? []) { set in
+            ForEach(sets) { set in
                 setSection(set, catalogURL: state.url)
             }
         }
