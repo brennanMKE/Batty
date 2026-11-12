@@ -18,7 +18,7 @@ struct UITestBackgroundCatalogFixtureTests {
         #expect(UITestDriver.backgroundCatalogFixtureDirectory(environment: env) == nil)
     }
 
-    @Test func aFixtureLaunchClearsTheCatalogPreferencesAndOnlyThen() {
+    @Test func aFixtureLaunchClearsTheBackgroundPreferencesAndOnlyThen() {
         let test = TestDefaults()
         defer { test.tearDown() }
         let defaults = test.defaults
@@ -26,18 +26,20 @@ struct UITestBackgroundCatalogFixtureTests {
             defaults.set(["https://catalogs.example.com/catalog.json"], forKey: SettingsPreference.backgroundCatalogURLsKey)
             defaults.set(true, forKey: SettingsPreference.backgroundCatalogsBrowsedKey)
             defaults.set(false, forKey: SettingsPreference.backgroundCatalogsAutoCheckKey)
+            defaults.set("/tmp/picked.png", forKey: SettingsPreference.backgroundImagePathKey)
         }
         let keys = [
             SettingsPreference.backgroundCatalogURLsKey,
             SettingsPreference.backgroundCatalogsBrowsedKey,
             SettingsPreference.backgroundCatalogsAutoCheckKey,
+            SettingsPreference.backgroundImagePathKey,
         ]
         seed()
-        UITestDriver.resetBackgroundCatalogPreferencesForFixture(defaults: defaults, environment: [UITestDriver.scriptEnvVar: "[]"])
+        UITestDriver.resetBackgroundPreferencesForFixture(defaults: defaults, environment: [UITestDriver.scriptEnvVar: "[]"])
         #expect(keys.allSatisfy { defaults.object(forKey: $0) != nil })
 
         let env = [UITestDriver.scriptEnvVar: "[]", UITestDriver.backgroundCatalogDirEnvVar: "/tmp/batty-catalog-fixture"]
-        UITestDriver.resetBackgroundCatalogPreferencesForFixture(defaults: defaults, environment: env)
+        UITestDriver.resetBackgroundPreferencesForFixture(defaults: defaults, environment: env)
         #expect(keys.allSatisfy { defaults.object(forKey: $0) == nil })
     }
 

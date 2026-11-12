@@ -65,11 +65,13 @@ public enum UITestDriver {
     }
 
     /// A fixture launch starts with no user catalogs, the built-in catalog not
-    /// yet browsed and automatic checks at their default. These keys live in
-    /// the app's real defaults domain and outlive the launch, so without this
-    /// one UI test's added catalog would reach the next. An `NSArgumentDomain`
-    /// launch argument can't do it: it would also mask the test's own writes.
-    static func resetBackgroundCatalogPreferencesForFixture(
+    /// yet browsed, automatic checks at their default and no app-wide
+    /// background. These keys live in the app's real defaults domain and
+    /// outlive the launch, so without this one UI test's added catalog or
+    /// picked background would reach the next. An `NSArgumentDomain` launch
+    /// argument can't do it: it would also mask the test's own writes. Runs
+    /// before anything reads the background settings.
+    static func resetBackgroundPreferencesForFixture(
         defaults: UserDefaults,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
@@ -81,6 +83,7 @@ public enum UITestDriver {
         ] {
             defaults.removeObject(forKey: key)
         }
+        SettingsPreference.clearBackground(defaults: defaults)
     }
 
     public static func runIfNeeded(store: AppStateStore) {

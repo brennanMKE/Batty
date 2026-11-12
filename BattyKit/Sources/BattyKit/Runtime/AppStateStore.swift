@@ -1307,6 +1307,7 @@ public final class AppStateStore {
         reminderClock: SchedulingClock? = nil,
         reminderCalendar: @escaping () -> Calendar = { .current }
     ) {
+        UITestDriver.resetBackgroundPreferencesForFixture(defaults: preferences)
         self.featureFlags = featureFlags
         self.backgroundGate = backgroundGate
         self.appWideTerminalOpacity = backgroundGate.storedSettings().terminalOpacity
