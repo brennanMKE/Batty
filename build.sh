@@ -11,7 +11,8 @@
 #   ./build.sh [--verbose]         build (Beta)
 #   ./build.sh clean               clean (Beta)
 #   ./build.sh unit [Suite[/test()] ...]
-#                                  BattyKitTests only — fast, no UI, no machine lock;
+#                                  BattyKitTests only, via the BattyKit Unit Tests scheme;
+#                                  does not build the app; no UI, no machine lock;
 #                                  optional filters become -only-testing:BattyKitTests/<F>
 #   ./build.sh ui [target ...]     UI tests — ONLY inside a disposable Tart VM
 #                                  (delegates to tools/run-ui-tests-vm.sh, #0412)
@@ -63,6 +64,7 @@ WORKSPACE="Batty.xcworkspace"
 DESTINATION="platform=macOS"
 BETA_SCHEME="Batty (Beta)"
 PROD_SCHEME="Batty (Prod)"
+UNIT_SCHEME="BattyKit Unit Tests"
 BETA_APP_NAME="Batty Beta"
 
 zmodload zsh/datetime
@@ -249,10 +251,10 @@ case "$ACTION" in
         mkdir -p "$REPO/build/checks"
         XCRESULT="$REPO/build/checks/unit-$(date +%Y%m%d-%H%M%S)-$$.xcresult"
         rm -rf "$XCRESULT"
-        print "==> xcodebuild test (BattyKitTests, Beta) — output captured"
+        print "==> xcodebuild test (BattyKitTests, $UNIT_SCHEME) — output captured"
         run_check unit "$XCRESULT" xcodebuild test \
             -workspace "$WORKSPACE" \
-            -scheme "$BETA_SCHEME" \
+            -scheme "$UNIT_SCHEME" \
             -destination "$DESTINATION" \
             -resultBundlePath "$XCRESULT" \
             "${FILTERS[@]}" || exit $?
