@@ -145,6 +145,25 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     }
 
     @MainActor
+    func testAFailedDownloadCellLinesUpWithItsRowNeighbour() throws {
+        let missing = "beautiful-landscapes-02"
+        let app = try launch(omitting: missing)
+        defer { app.terminate() }
+        _ = openSettingsChooser(in: app)
+        app.buttons["appearance-background.choose-image"].click()
+        pick(missing, in: app)
+        XCTAssertTrue(element("background-sets.cell.\(missing).failed", in: app).waitForExistence(timeout: 15), "the cell showed no failure")
+        let cell01 = cell("beautiful-landscapes-01", in: app)
+        let cell02 = cell(missing, in: app)
+        XCTAssertTrue(cell01.exists)
+        XCTAssertTrue(cell02.exists)
+        XCTAssertLessThanOrEqual(cell01.frame.maxX, cell02.frame.minX, "the sheet is too narrow for two columns")
+        XCTAssertEqual(cell01.frame.minY, cell02.frame.minY, accuracy: 0.5, "the failed cell's picture does not line up with its neighbour")
+        app.buttons["background-images.picker.cancel"].click()
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
+    }
+
+    @MainActor
     private func openSettingsChooser(in app: XCUIApplication) -> XCUIElement {
         app.typeKey(",", modifierFlags: [.command])
         let appearance = app.toolbars.buttons["Appearance"]

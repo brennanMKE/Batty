@@ -93,7 +93,7 @@ struct BackgroundSetsView: View {
             Text(verbatim: BackgroundCatalogParser.displayText(set.name))
                 .font(.headline)
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: Self.minimumCellWidth), spacing: Self.spacing)],
+                columns: [GridItem(.adaptive(minimum: Self.minimumCellWidth), spacing: Self.spacing, alignment: .top)],
                 alignment: .leading,
                 spacing: Self.spacing
             ) {

@@ -145,7 +145,7 @@ struct BackgroundImagesView: View {
     private func grid(columns: Int) -> some View {
         ScrollView {
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: Self.spacing), count: columns),
+                columns: Array(repeating: GridItem(.flexible(), spacing: Self.spacing, alignment: .top), count: columns),
                 spacing: Self.spacing
             ) {
                 ForEach(model.entries) { entry in
