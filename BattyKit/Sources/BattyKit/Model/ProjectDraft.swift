@@ -127,7 +127,9 @@ struct ProjectDraft: Equatable {
                         ProjectTab(
                             title: Self.trimmedOrNil($0.title),
                             workingDirectory: Self.normalizedRelativePath($0.workingDirectory),
-                            startupCommand: Self.trimmedOrNil($0.startupCommand)
+                            startupCommand: Self.trimmedOrNil($0.startupCommand),
+                            background: $0.background,
+                            image: $0.image
                         )
                     }
                     normalized.tabs = tabs.isEmpty ? [ProjectTab()] : tabs

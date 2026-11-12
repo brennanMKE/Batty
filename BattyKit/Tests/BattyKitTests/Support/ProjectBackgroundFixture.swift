@@ -48,9 +48,12 @@ final class ProjectBackgroundFixture {
     private(set) lazy var library = ProjectBackgroundLibrary(
         directory: projectFolder,
         adoptableFrom: [appWideFolder, paneFolder],
+        downloadedDirectory: downloadedFolder,
         inspect: { [unowned self] path in
             inspections += 1
-            return TerminalBackgroundImageImporter.inspect(path: path, directory: projectFolder)
+            let state = TerminalBackgroundImageImporter.inspect(path: path, directory: projectFolder)
+            if state != .usable, TerminalBackgroundImageImporter.inspect(path: path, directory: downloadedFolder) == .usable { return .usable }
+            return state
         }
     )
 
@@ -68,6 +71,7 @@ final class ProjectBackgroundFixture {
     var projectFolder: URL { base.appendingPathComponent("ProjectBackgrounds", isDirectory: true) }
     var libraryFolder: URL { base.appendingPathComponent("BackgroundImages", isDirectory: true) }
     var hostedFolder: URL { libraryFolder.appendingPathComponent("Hosted", isDirectory: true) }
+    var downloadedFolder: URL { libraryFolder.appendingPathComponent("Downloaded", isDirectory: true) }
     var appWideFolder: URL { base.appendingPathComponent("app-wide", isDirectory: true) }
     var paneFolder: URL { base.appendingPathComponent("pane", isDirectory: true) }
 
@@ -91,6 +95,10 @@ final class ProjectBackgroundFixture {
             backgroundGate: .acceptingEveryImage(defaults: testDefaults.defaults)
         )
         store.projectBackgrounds = library
+        store.downloadedImages = DownloadedImageCache(
+            directory: downloadedFolder, fetcher: catalogFetcher,
+            temporaryRoot: base.appendingPathComponent("downloads", isDirectory: true))
+        store.tabImageAllowedHosts = ["batty.sstools.co"]
         store.backgroundImages = store.makeBackgroundImagesModel(
             library: imageLibrary,
             notificationCenter: notificationCenter,

@@ -41,6 +41,15 @@ final class SharedProjectImages {
     @ObservationIgnored private let ledgerURL: URL?
     /// Puts an arrived image on open Sessions and an open Project Editor.
     @ObservationIgnored var onArrival: (@MainActor (_ project: Project, _ path: String) -> Void)?
+    /// A Tab's custom image arrived; `AppStateStore` applies it.
+    @ObservationIgnored var onTabArrival: (@MainActor (_ projectID: UUID, _ image: ProjectTabImage, _ path: String) -> Void)?
+    /// Where a digest only Tabs name is stored, and what it must not evict.
+    @ObservationIgnored var tabImageCache: @MainActor () -> DownloadedImageCache? = { nil }
+    @ObservationIgnored var pinnedTabDigests: @MainActor () -> Set<String> = { [] }
+    @ObservationIgnored var onTabEviction: (@MainActor ([String]) -> Void)?
+    /// Tab digests the user asked for by opening a Project or showing it in the
+    /// editor. A pass downloads no other Tab digest.
+    @ObservationIgnored private(set) var requestedTabDigests = Set<String>()
 
     @ObservationIgnored private var lastPass: Task<Void, Never>?
     @ObservationIgnored private(set) var retryTask: Task<Void, Never>?
@@ -96,10 +105,13 @@ final class SharedProjectImages {
     }
 
     private struct WorkItem {
+        enum Kind { case project, tab }
+
         let id: UUID
         let digest: String
         let name: String
         let path: String?
+        var kind: Kind = .project
 
         var pathMatches: Bool {
             path.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
@@ -107,10 +119,35 @@ final class SharedProjectImages {
     }
 
     private var workList: [WorkItem] {
-        store.projects.compactMap { project in
-            guard project.isShared, case .named(let digest, let name)? = project.sharedImage else { return nil }
-            return WorkItem(id: project.id, digest: digest, name: name, path: project.background?.imagePath)
+        store.projects.flatMap { project -> [WorkItem] in
+            guard project.isShared else { return [] }
+            var items: [WorkItem] = []
+            if case .named(let digest, let name)? = project.sharedImage {
+                items.append(WorkItem(id: project.id, digest: digest, name: name, path: project.background?.imagePath))
+            }
+            var seen = Set<String>()
+            let tabs = project.layout.panes.flatMap(\.tabs)
+            for tab in tabs {
+                guard case .custom(let digest, let name)? = tab.image, seen.insert(digest).inserted else { continue }
+                let path = tabs.first { $0.image?.digest == digest && $0.background?.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest }?.background?.imagePath
+                    ?? tab.background?.imagePath
+                items.append(WorkItem(id: project.id, digest: digest, name: name, path: path, kind: .tab))
+            }
+            return items
         }
+    }
+
+    /// Opening the Project or showing it in the editor is the user action that
+    /// may reach the folder.
+    @discardableResult
+    func requestTabImage(digest: String, name: String, projectID: UUID) -> Task<Void, Never> {
+        requestedTabDigests.insert(digest)
+        return reconcile(userInitiated: true)
+    }
+
+    /// A Project-level item, or a Tab item someone asked for.
+    private func wantsDownload(_ item: WorkItem) -> Bool {
+        !item.pathMatches && (item.kind == .project || requestedTabDigests.contains(item.digest))
     }
 
     private func runPass(userInitiated: Bool) async {
@@ -120,6 +157,7 @@ final class SharedProjectImages {
         let waitingNow = Set(initial.filter { !$0.pathMatches }.map(\.digest))
         requestedDownloads.formIntersection(waitingNow)
         failedDownloads.formIntersection(waitingNow)
+        requestedTabDigests.formIntersection(waitingNow)
         guard !initial.isEmpty else {
             setMessage(nil)
             updateRetry(waiting: false)
@@ -128,14 +166,14 @@ final class SharedProjectImages {
 
         // A copy this Mac already holds needs no transport, so it runs ahead of
         // the user-action gate.
-        for digest in Set(initial.filter { !$0.pathMatches }.map(\.digest)).sorted() {
+        for digest in Set(initial.filter(wantsDownload).map(\.digest)).sorted() {
             let directory = directory
             let held = await Task.detached { TerminalBackgroundImageImporter.existingCopy(digest: digest, in: directory) }.value
             if let held { applyArrival(digest: digest, path: held) }
         }
 
         let work = workList
-        let waitingForDownload = Set(work.filter { !$0.pathMatches }.map(\.digest)).sorted()
+        let waitingForDownload = Set(work.filter(wantsDownload).map(\.digest)).sorted()
         var uploads: [String: String] = [:]
         for item in work where item.pathMatches {
             if let path = item.path, uploads[item.digest] == nil { uploads[item.digest] = path }
@@ -297,6 +335,20 @@ final class SharedProjectImages {
     /// Drive can leave an old version in place.
     private func readAndStore(digest: String, name: String, outcome: inout PassOutcome) async throws {
         let bytes = try await transport.read(digest: digest)
+        if let cache = tabImageCache(), !workList.contains(where: { $0.digest == digest && $0.kind == .project }) {
+            let verified = await Task.detached { TerminalBackgroundImageImporter.hexDigest(of: bytes) == digest }.value
+            guard verified, let inserted = await cache.insertVerified(bytes: bytes, digest: digest, name: name, pinned: pinnedTabDigests()) else {
+                outcome.waiting = true
+                outcome.message = String(localized: "The copy of \(name) in iCloud Drive doesn't match this Project, so it wasn't used.", comment: "Shared Project images: the file in iCloud Drive failed verification; the argument is the image's name")
+                if requestedDownloads.insert(digest).inserted {
+                    try? await transport.requestDownload(digest: digest)
+                }
+                return
+            }
+            onTabEviction?(inserted.evicted)
+            applyArrival(digest: digest, path: inserted.path)
+            return
+        }
         let directory = directory
         let state = await Task.detached {
             TerminalBackgroundImageImporter.storeVerified(bytes: bytes, digest: digest, name: name, into: directory)
@@ -317,8 +369,13 @@ final class SharedProjectImages {
         // be removed, so a later wait for this digest has to ask again.
         requestedDownloads.remove(digest)
         failedDownloads.remove(digest)
+        requestedTabDigests.remove(digest)
         var applied = false
-        for item in workList where item.digest == digest && !item.pathMatches {
+        for item in workList where item.kind == .tab && item.digest == digest && !item.pathMatches {
+            onTabArrival?(item.id, .custom(digest: digest, name: item.name), path)
+            applied = true
+        }
+        for item in workList where item.kind == .project && item.digest == digest && !item.pathMatches {
             do {
                 guard try store.setResolvedSharedImage(id: item.id, digest: digest, path: path),
                       let project = store.project(id: item.id)

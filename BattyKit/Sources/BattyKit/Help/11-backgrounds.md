@@ -4,17 +4,20 @@ A terminal can show a picture behind its text, let the desktop and other windows
 
 ## Where to set a background
 
-There are three levels, and the most specific one wins.
+There are four levels, and the most specific one wins.
 
-1. **Pane:** the gear on a Pane's row in the sidebar, beside the eye. Expand a session's Pane list to see it. The gear is filled in while the Pane has its own background. Only terminal Panes have one.
-2. **Session:** right-click a session and choose **Set Session Background…**. **Clear Session Background** removes it.
-3. **Everywhere else:** the **Background** section of **Settings → Appearance** (`Cmd-,`). **Restore Defaults** turns it off.
+1. **Tab:** right-click a Tab's chip and choose **Background…**. **Clear Background** removes it, and the Tab follows its Pane again.
+2. **Pane:** the gear on a Pane's row in the sidebar, beside the eye. Expand a session's Pane list to see it. The gear is filled in while the Pane has its own background. Only terminal Panes have one.
+3. **Session:** right-click a session and choose **Set Session Background…**. **Clear Session Background** removes it.
+4. **Everywhere else:** the **Background** section of **Settings → Appearance** (`Cmd-,`). **Restore Defaults** turns it off.
 
 A Pane or Session with no background of its own shows **Follow App Default** selected (**Follow Session** for a Pane whose session has its own background). Choose **Custom for This Pane** or **Custom for This Session** to set values. Changes apply as you make them, so the terminal is your preview. **Cancel** puts back what was there, and **Done** keeps it.
 
+A Tab's background wins over its Pane's, Session's and Settings'. Changing a Pane's background from its gear replaces the Tabs' own backgrounds in that Pane, so the last change wins; **Cancel** in the Pane's sheet puts them back. **Set Session Background…** leaves Pane and Tab backgrounds alone. New Tabs and **Duplicate Tab** follow the Pane.
+
 A custom background is complete, so it ignores later changes to the levels above it. A Pane's background covers all its Tabs, including new ones, and a new split starts out following instead of copying it. A Session's background reaches every terminal Pane in the session, including later ones, except a Pane with its own.
 
-Pane and Session backgrounds aren't saved. They end when you quit Batty, and **Duplicate Session** doesn't copy them. The Settings background is saved. To keep one with a session, save the session as a [Project](10-projects.md).
+Tab, Pane and Session backgrounds aren't saved. They end when you quit Batty, and **Duplicate Session** doesn't copy them. The Settings background is saved. To keep one with a session, save the session as a [Project](10-projects.md).
 
 ## The controls
 

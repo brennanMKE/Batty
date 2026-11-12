@@ -74,13 +74,17 @@ extension AppStateStore {
         terminateIfLastContentWindowGone()
     }
 
-    /// A live Session or Pane may still show a copy its Project has replaced.
+    /// A live Session, Pane or Tab may still show a copy its Project has replaced.
     private var projectBackgroundPathsInUse: Set<String> {
         var paths = Set<String>()
         for session in windows.flatMap(\.sessions) {
             if let path = session.backgroundOverride?.imagePath { paths.insert(path) }
             for pane in session.tree.allPanes {
                 if let path = pane.backgroundOverride?.imagePath { paths.insert(path) }
+                for tab in pane.tabs {
+                    if let path = tab.backgroundOverride?.imagePath { paths.insert(path) }
+                    if let path = tab.projectBackgroundSeed?.imagePath { paths.insert(path) }
+                }
             }
         }
         return paths

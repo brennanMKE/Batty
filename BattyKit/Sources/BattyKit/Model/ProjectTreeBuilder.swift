@@ -40,13 +40,16 @@ enum ProjectTreeBuilder {
 
     /// Throws before constructing anything when the Project root is unusable.
     /// A Tab or repository directory that is missing, or that escapes the
-    /// root, falls back to the root instead of failing the open.
+    /// root, falls back to the root instead of failing the open. `tabBackground`
+    /// checks each Tab's own background before its Tab exists; the caller
+    /// records any problem it finds.
     static func build(
         project: Project,
         contentFactory: ContentFactory? = nil,
         gitStatusContent: ((String) -> (any PaneContentLifecycle)?)? = nil,
         isSessionSelected: Bool,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        tabBackground: (TerminalBackgroundSettings) -> TerminalBackgroundSettings = { $0 }
     ) throws -> SplitTree {
         guard let rootURL = project.resolve(".") else {
             throw ProjectOpenError.invalidRoot(project.rootPath)
@@ -84,10 +87,15 @@ enum ProjectTreeBuilder {
             case .terminal:
                 let tabs = pane.tabs.map { tab in
                     let title = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return TabRuntime(
+                    let background = tab.background.map(tabBackground)
+                    let runtime = TabRuntime(
                         titleOverride: (title?.isEmpty ?? true) ? nil : title,
-                        workingDirectory: directory(tab.workingDirectory)
+                        workingDirectory: directory(tab.workingDirectory),
+                        backgroundOverride: background
                     )
+                    runtime.projectBackgroundSeed = background
+                    if background != nil, background?.imagePath == nil { runtime.pendingTabImage = tab.image }
+                    return runtime
                 }
                 return Slot(kind: .terminal, tabs: tabs.isEmpty ? nil : tabs, path: nil)
             case .gitStatus:

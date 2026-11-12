@@ -137,6 +137,33 @@ final class WindowSeeThroughTests {
         #expect(!store.isWindowSeeThrough(try firstWindow(store)))
     }
 
+    @Test func tabOverrideBelowOneMakesTheWindowSeeThrough() throws {
+        let pane = pane()
+        let store = makeStore(sessions: [session(pane)])
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+        pane.tabs[0].setBackgroundOverride(Self.low)
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func inactiveLowTabCounts() throws {
+        let pane = pane()
+        let store = makeStore(sessions: [session(pane)])
+        let low = pane.tabs[0]
+        pane.addTab()
+        #expect(pane.activeTabID != low.id)
+        low.setBackgroundOverride(Self.low)
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
+    @Test func clearingTheLowTabEndsSeeThrough() throws {
+        let pane = pane()
+        let store = makeStore(sessions: [session(pane)])
+        pane.tabs[0].setBackgroundOverride(Self.low)
+        #expect(store.isWindowSeeThrough(try firstWindow(store)))
+        pane.tabs[0].setBackgroundOverride(nil)
+        #expect(!store.isWindowSeeThrough(try firstWindow(store)))
+    }
+
     // MARK: - Session override
 
     @Test func sessionOverrideBelowOneMakesTheWindowSeeThrough() throws {

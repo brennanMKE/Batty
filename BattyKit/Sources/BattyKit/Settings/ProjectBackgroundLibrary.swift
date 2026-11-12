@@ -13,15 +13,28 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 final class ProjectBackgroundLibrary {
     let directory: URL
     let importer: TerminalBackgroundImageImporter
+    /// The downloaded image cache, whose copies a Tab may show but this
+    /// library never owns or deletes.
+    let downloadedDirectory: URL?
     private let adoptableFrom: [URL]
     private let inspect: (String) -> BackgroundImageState
 
     /// `inspect` is a seam so tests can count reads.
-    init(directory: URL, adoptableFrom: [URL], inspect: ((String) -> BackgroundImageState)? = nil) {
+    init(directory: URL, adoptableFrom: [URL], downloadedDirectory: URL? = nil, inspect: ((String) -> BackgroundImageState)? = nil) {
         self.directory = directory
         self.adoptableFrom = adoptableFrom
+        self.downloadedDirectory = downloadedDirectory
         self.importer = TerminalBackgroundImageImporter(directory: directory, cleanup: .unreferenced)
-        self.inspect = inspect ?? { TerminalBackgroundImageImporter.inspect(path: $0, directory: directory) }
+        let roots = [directory] + (downloadedDirectory.map { [$0] } ?? [])
+        self.inspect = inspect ?? { path in
+            let states = roots.map { TerminalBackgroundImageImporter.inspect(path: path, directory: $0) }
+            return states.contains(.usable) ? .usable : states[0]
+        }
+    }
+
+    private func isCached(_ path: String) -> Bool {
+        guard let downloadedDirectory else { return false }
+        return TerminalBackgroundImageImporter.inspect(path: path, directory: downloadedDirectory) == .usable
     }
 
     /// Beside `projects.json`, so each variant and each test store has its own,
@@ -52,8 +65,10 @@ final class ProjectBackgroundLibrary {
         return (settings.withImagePath(nil), state)
     }
 
+    /// A cached copy stays where it is: the cache owns it.
     func adopt(path: String) -> String? {
-        TerminalBackgroundImageImporter.adopt(path: path, from: adoptableFrom, into: directory)
+        if isCached(path) { return path }
+        return TerminalBackgroundImageImporter.adopt(path: path, from: adoptableFrom, into: directory)
     }
 
     /// Removes copies that this store's list, `projects.json` as it is now and
@@ -78,8 +93,10 @@ final class ProjectBackgroundLibrary {
             logger.notice("not reclaiming project background images: the projects file may name others")
             return nil
         }
-        let keeping = inUse.union(inFile).union(store.projects.compactMap { $0.background?.imagePath })
-        let keepingDigests = digestsInFile.union(store.projects.compactMap { $0.sharedImage?.digest })
+        let keeping = inUse.union(inFile).union(store.projects.flatMap(\.allBackgroundImagePaths))
+        let keepingDigests = digestsInFile
+            .union(store.projects.compactMap { $0.sharedImage?.digest })
+            .union(store.projects.flatMap(\.tabCustomDigests))
         let cutoff = now.addingTimeInterval(-minimumAge)
         let importer = importer
         return Task { await importer.removeUnreferenced(keeping: keeping, keepingDigests: keepingDigests, olderThan: cutoff) }

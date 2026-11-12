@@ -172,17 +172,20 @@ public final class PaneRuntime: Identifiable {
 
     /// The terminal opacity this Pane renders at, given the app-wide default.
     func effectiveTerminalOpacity(appWide: Double) -> Double {
-        (backgroundOverride ?? sessionBackgroundOverride)?.terminalOpacity ?? appWide
+        guard kind == .terminal else { return (backgroundOverride ?? sessionBackgroundOverride)?.terminalOpacity ?? appWide }
+        return tabs.map { ($0.backgroundOverride ?? backgroundOverride ?? sessionBackgroundOverride)?.terminalOpacity ?? appWide }.min() ?? appWide
     }
 
-    /// Applies to every Tab here now, and `addTab` carries it to later ones.
-    /// A non-terminal Pane's one Tab is never rendered, so it has no background
-    /// to set. Idempotent because every observed write notifies, equal values
-    /// included.
+    /// Applies to every Tab here now, replacing their own values, and `addTab`
+    /// carries it to later ones. A non-terminal Pane's one Tab is never
+    /// rendered, so it has no background to set. Idempotent because every
+    /// observed write notifies, equal values included.
     public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
-        guard kind == .terminal, newOverride != backgroundOverride else { return }
-        backgroundOverride = newOverride
-        pushOverridesToTabs()
+        guard kind == .terminal,
+              newOverride != backgroundOverride || tabs.contains(where: { $0.backgroundOverride != nil })
+        else { return }
+        if newOverride != backgroundOverride { backgroundOverride = newOverride }
+        pushOverridesToTabs(clearingOwn: true)
     }
 
     /// Idempotent for the same reason as ``setBackgroundOverride(_:)``.
@@ -192,14 +195,15 @@ public final class PaneRuntime: Identifiable {
         pushOverridesToTabs()
     }
 
-    private func pushOverridesToTabs() {
+    private func pushOverridesToTabs(clearingOwn: Bool = false) {
         for tab in tabs {
-            tab.setBackgroundOverrides(pane: backgroundOverride, session: sessionBackgroundOverride)
+            tab.setBackgroundOverrides(pane: backgroundOverride, session: sessionBackgroundOverride, clearingOwn: clearingOwn)
         }
     }
 
     /// A Pane with an override, or in a Session with one, ignores app-wide
-    /// changes, and a non-terminal Pane's one Tab is never rendered.
+    /// changes, as does a Tab with its own value, and a non-terminal Pane's one
+    /// Tab is never rendered.
     func refreshAppWideBackground(_ appWide: TerminalBackgroundSettings) {
         guard kind == .terminal, backgroundOverride == nil, sessionBackgroundOverride == nil else { return }
         for tab in tabs {
@@ -332,6 +336,19 @@ public final class PaneRuntime: Identifiable {
 
 extension PaneRuntime: BackgroundOverrideHolder {
     func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
-        .effective(pane: nil, session: sessionBackgroundOverride, appWide: appWide)
+        .effective(tab: nil, pane: nil, session: sessionBackgroundOverride, appWide: appWide)
+    }
+
+    func replacedOverrides() -> [UUID: TerminalBackgroundSettings] {
+        tabs.reduce(into: [:]) { result, tab in
+            if let own = tab.backgroundOverride { result[tab.id] = own }
+        }
+    }
+
+    /// Skips Tabs closed since the values were captured.
+    func restoreReplacedOverrides(_ overrides: [UUID: TerminalBackgroundSettings]) {
+        for tab in tabs {
+            if let own = overrides[tab.id] { tab.setBackgroundOverride(own) }
+        }
     }
 }

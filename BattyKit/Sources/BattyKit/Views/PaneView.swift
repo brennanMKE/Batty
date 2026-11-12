@@ -19,6 +19,7 @@ public struct PaneView: View {
     @Environment(\.paneAllottedSize) private var allottedSize
     @State private var bellFlashOpacity: Double = 0
     @State private var renamingTab: TabRuntime?
+    @State private var backgroundTab: TabRuntime?
     @State private var renameDraft: String = ""
     @State private var paneWidth: CGFloat = 0
     @State private var paneHeight: CGFloat = 0
@@ -185,6 +186,18 @@ public struct PaneView: View {
                 },
                 onCancel: { renamingTab = nil }
             )
+        }
+        .sheet(item: $backgroundTab) { tab in
+            if let store = appStore {
+                BackgroundOverrideSettingsView(
+                    isPresented: Binding(get: { backgroundTab != nil }, set: { if !$0 { backgroundTab = nil } }),
+                    target: tab,
+                    scope: .tab(tab),
+                    appWide: store.backgroundGate.settings(),
+                    importer: store.backgroundImageImporter,
+                    images: store.backgroundImages
+                )
+            }
         }
     }
 
@@ -655,6 +668,18 @@ public struct PaneView: View {
             appStore?.updateTabAutoName(for: tab)
         }
         .disabled(tab.titleOverride == nil)
+
+        if appStore != nil {
+            Divider()
+
+            Button("Background\u{2026}") {
+                backgroundTab = tab
+            }
+            Button("Clear Background") {
+                tab.setBackgroundOverride(nil)
+            }
+            .disabled(tab.backgroundOverride == nil)
+        }
 
         Divider()
 

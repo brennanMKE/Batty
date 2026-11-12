@@ -88,17 +88,17 @@ final class SessionBackgroundOverrideTests {
     // MARK: - Resolution
 
     @Test func effectivePaneBeatsSessionBeatsAppWide() {
-        #expect(TerminalBackgroundSettings.effective(pane: Self.paneValue, session: Self.sessionValue, appWide: .off) == Self.paneValue)
+        #expect(TerminalBackgroundSettings.effective(tab: nil, pane: Self.paneValue, session: Self.sessionValue, appWide: .off) == Self.paneValue)
     }
 
     @Test func effectiveSessionBeatsAppWide() {
         let wide = TerminalBackgroundSettings(imagePath: Self.appWidePath)
-        #expect(TerminalBackgroundSettings.effective(pane: nil, session: Self.sessionValue, appWide: wide) == Self.sessionValue)
+        #expect(TerminalBackgroundSettings.effective(tab: nil, pane: nil, session: Self.sessionValue, appWide: wide) == Self.sessionValue)
     }
 
     @Test func effectiveFallsThroughToAppWide() {
         let wide = TerminalBackgroundSettings(imagePath: Self.appWidePath)
-        #expect(TerminalBackgroundSettings.effective(pane: nil, session: nil, appWide: wide) == wide)
+        #expect(TerminalBackgroundSettings.effective(tab: nil, pane: nil, session: nil, appWide: wide) == wide)
     }
 
     // MARK: - Fan-out

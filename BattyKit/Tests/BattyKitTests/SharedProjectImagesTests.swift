@@ -442,4 +442,85 @@ struct SharedProjectImagesTests {
         await w.pass()
         #expect(w.fake.count(.write(digest)) == 1)
     }
+
+    // MARK: - Tab images
+
+    private func tabProject(digest: String, path: String?, shared: Bool = true) -> Project {
+        var project = w.project(name: "Tab Project", path: nil, shared: shared)
+        project.background = nil
+        let tab = ProjectTab(background: projectBackgroundValue(path: path), image: .custom(digest: digest, name: "Tab"))
+        project.layout = ProjectLayout(root: .pane(.terminal(tabs: [tab])))
+        return project
+    }
+
+    private func tabPath(_ id: UUID) -> String? { w.store.project(id: id)?.layout.panes[0].tabs[0].background?.imagePath }
+
+    @Test func aSharedProjectsCustomTabImageUploads() async throws {
+        let path = try await w.fixture.copy()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        try w.store.upsert(tabProject(digest: digest, path: path))
+        await w.pass(userInitiated: false)
+        await w.pass()
+        #expect(w.fake.hasFile(digest: digest))
+    }
+
+    @Test func aTabDigestDownloadsOnlyAfterItIsRequested() async throws {
+        let (data, digest) = try w.imageBytes()
+        w.fake.put(data, digest: digest)
+        let project = tabProject(digest: digest, path: nil)
+        try w.store.upsert(project)
+        await w.pass()
+        #expect(w.fake.count(.read(digest)) == 0)
+        #expect(w.fake.count(.state(digest)) == 0)
+        await w.images.requestTabImage(digest: digest, name: "Tab", projectID: project.id).value
+        #expect(w.fake.count(.read(digest)) == 1)
+        #expect(tabPath(project.id) != nil)
+    }
+
+    @Test func aRequestedTabDigestRetriesOnBackoff() async throws {
+        let (data, digest) = try w.imageBytes()
+        let project = tabProject(digest: digest, path: nil)
+        try w.store.upsert(project)
+        await w.images.requestTabImage(digest: digest, name: "Tab", projectID: project.id).value
+        #expect(tabPath(project.id) == nil)
+        guard await requireSleeper() else { return }
+        w.fake.put(data, digest: digest)
+        let loop = try #require(w.images.retryTask)
+        #expect(await w.clock.advance(by: .seconds(SharedProjectImages.initialRetryDelay)) == 1)
+        await loop.value
+        #expect(tabPath(project.id) != nil)
+    }
+
+    @Test func aDownloadedTabImageLandsInTheCache() async throws {
+        let (data, digest) = try w.imageBytes()
+        w.fake.put(data, digest: digest)
+        let project = tabProject(digest: digest, path: nil)
+        try w.store.upsert(project)
+        await w.images.requestTabImage(digest: digest, name: "Tab", projectID: project.id).value
+        let path = try #require(tabPath(project.id))
+        #expect(path.hasPrefix(w.fixture.downloadedFolder.path))
+        #expect(!FileManager.default.fileExists(atPath: w.fixture.projectFolder.appendingPathComponent(digest).path))
+        #expect(await w.appStore.downloadedImages.allEntries().map(\.digest) == [digest])
+    }
+
+    @Test func aDigestAlsoNamedByTheProjectLandsInProjectBackgrounds() async throws {
+        let (data, digest) = try w.imageBytes()
+        w.fake.put(data, digest: digest)
+        var project = tabProject(digest: digest, path: nil)
+        project.background = projectBackgroundValue(path: nil)
+        project.sharedImage = .named(digest: digest, name: "Harbor")
+        try w.store.upsert(project)
+        await w.images.requestTabImage(digest: digest, name: "Tab", projectID: project.id).value
+        let path = try #require(tabPath(project.id))
+        #expect(path.hasPrefix(w.fixture.projectFolder.path))
+        #expect(await w.appStore.downloadedImages.allEntries().isEmpty)
+    }
+
+    @Test func localProjectTabImageNeverReachesTheTransport() async throws {
+        let path = try await w.fixture.copy()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        try w.store.upsert(tabProject(digest: digest, path: path, shared: false))
+        await w.pass()
+        #expect(!w.fake.calls.contains { $0 == .write(digest) || $0 == .state(digest) || $0 == .read(digest) })
+    }
 }

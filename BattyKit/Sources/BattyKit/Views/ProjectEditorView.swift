@@ -926,6 +926,8 @@ private struct TabCard: View {
     let index: Int
     let canRemove: Bool
 
+    @State private var isEditingBackground = false
+
     private var slot: Int { model.selectedSlot }
     private var number: Int { index + 1 }
     private var tab: ProjectTab? {
@@ -991,6 +993,9 @@ private struct TabCard: View {
                     identifier: "project-editor.tab.\(number).command"
                 )
             }
+            if model.showsBackground {
+                backgroundRow
+            }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor)))
@@ -999,6 +1004,39 @@ private struct TabCard: View {
 
     private func chooseFolder() {
         ProjectEditorPanels.chooseFolder(for: model, tab: index)
+    }
+
+    private var backgroundRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Background").font(.caption).foregroundStyle(.secondary)
+                Text(model.tabBackgroundSummary(slot: slot, index: index))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .accessibilityIdentifier("project-editor.tab.\(number).background.summary")
+                Spacer()
+                Button("Edit\u{2026}") { isEditingBackground = true }
+                    .accessibilityIdentifier("project-editor.tab.\(number).background.edit")
+            }
+            FieldMessages(
+                error: nil,
+                warning: validation.warnings[.tabBackground(slot: slot, tab: index)],
+                identifier: "project-editor.tab.\(number).background"
+            )
+        }
+        .sheet(isPresented: $isEditingBackground) {
+            let ids = model.selectedTabIDs
+            if let library = model.backgrounds, let images = model.imageLibrary, ids.indices.contains(index) {
+                BackgroundOverrideSettingsView(
+                    isPresented: $isEditingBackground,
+                    target: model.projectTabBackgroundTarget(slot: slot, tabID: ids[index]),
+                    scope: .projectTab,
+                    appWide: model.appWideBackgroundValue(),
+                    importer: library.importer,
+                    images: images
+                )
+            }
+        }
     }
 }
 

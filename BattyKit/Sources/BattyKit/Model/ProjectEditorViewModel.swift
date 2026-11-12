@@ -16,6 +16,7 @@ enum ProjectEditorField: Hashable {
     case tabDirectory(slot: Int, tab: Int)
     case tabCommand(slot: Int, tab: Int)
     case background
+    case tabBackground(slot: Int, tab: Int)
     case theme
 }
 
@@ -113,6 +114,11 @@ final class ProjectEditorViewModel {
     /// False where nothing can fetch a waiting image: a routine Beta build reads
     /// the same `projects.json` as a signed one, and has no transport.
     @ObservationIgnored private let sharedImagesAvailable: Bool
+    /// Names a Tab's image for another Mac. Nil names every image by digest.
+    @ObservationIgnored let tabImageIdentity: TabImageIdentity?
+    /// A stored Project was loaded for editing: the user action that may fetch
+    /// its Tabs' images.
+    @ObservationIgnored var projectLoaded: @MainActor (Project) -> Void
 
     private(set) var draft: ProjectDraft?
     private var baseline: Project?
@@ -123,6 +129,9 @@ final class ProjectEditorViewModel {
     /// Stored because `validate()` runs from `body`, which must not read files.
     /// Changes only when a Project loads or the draft's image path changes.
     private(set) var backgroundImageState: BackgroundImageState = .none
+    /// Each Tab image's state, keyed by path, for the same reason as
+    /// `backgroundImageState`.
+    private(set) var tabImageStates: [String: BackgroundImageState] = [:]
 
     /// Panes the draft moved away from, per slot and kind, so Terminal to
     /// Git Status and back keeps the Tabs until Save. A preset change drops
@@ -152,8 +161,12 @@ final class ProjectEditorViewModel {
         imageLibrary: BackgroundImagesModel? = nil,
         appWideBackground: @escaping @MainActor () -> TerminalBackgroundSettings = { .off },
         sharedImagesMessage: @escaping @MainActor () -> String? = { nil },
-        sharedImagesAvailable: Bool = false
+        sharedImagesAvailable: Bool = false,
+        tabImageIdentity: TabImageIdentity? = nil,
+        projectLoaded: @escaping @MainActor (Project) -> Void = { _ in }
     ) {
+        self.tabImageIdentity = tabImageIdentity
+        self.projectLoaded = projectLoaded
         self.sharedImagesMessage = sharedImagesMessage
         self.sharedImagesAvailable = sharedImagesAvailable
         self.backgrounds = backgrounds
@@ -249,11 +262,14 @@ final class ProjectEditorViewModel {
     }
 
     /// One identity per Tab of the selected Pane, in order.
-    var selectedTabIDs: [UUID] {
-        let count = selectedPane?.tabs.count ?? 0
-        let known = tabIdentities[selectedSlot] ?? []
+    var selectedTabIDs: [UUID] { tabIDs(slot: selectedSlot) }
+
+    /// One identity per Tab of `slot`, in order.
+    func tabIDs(slot: Int) -> [UUID] {
+        let count = panes.indices.contains(slot) ? panes[slot].tabs.count : 0
+        let known = tabIdentities[slot] ?? []
         return (0..<count).map { index in
-            index < known.count ? known[index] : Self.fallbackTabID(slot: selectedSlot, index: index)
+            index < known.count ? known[index] : Self.fallbackTabID(slot: slot, index: index)
         }
     }
 
@@ -285,6 +301,18 @@ final class ProjectEditorViewModel {
     var backgroundSummary: String {
         guard let background = draft?.background else {
             return String(localized: "Follows Settings", comment: "Project Editor: the Background row for a Project with no background of its own")
+        }
+        let image = background.imagePath.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension }
+            ?? String(localized: "No image", comment: "Project Editor: the Background row for a Project that hides any image")
+        let opacity = Int((background.terminalOpacity * 100).rounded())
+        return String(localized: "Custom: \(image), terminal \(opacity)%", comment: "Project Editor: the Background row; the arguments are the image name and the terminal opacity")
+    }
+
+    func tabBackgroundSummary(slot: Int, index: Int) -> String {
+        guard panes.indices.contains(slot), panes[slot].tabs.indices.contains(index),
+              let background = panes[slot].tabs[index].background
+        else {
+            return String(localized: "Follows Project", comment: "Project Editor: a Tab's Background row with no background of its own")
         }
         let image = background.imagePath.map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension }
             ?? String(localized: "No image", comment: "Project Editor: the Background row for a Project that hides any image")
@@ -390,6 +418,9 @@ final class ProjectEditorViewModel {
                     if let command = tab.startupCommand, let problem = Self.commandProblem(command) {
                         result.errors[.tabCommand(slot: slot, tab: index)] = problem
                     }
+                    if let path = tab.background?.imagePath, let warning = Self.imageWarning(tabImageStates[path] ?? .none) {
+                        result.warnings[.tabBackground(slot: slot, tab: index)] = warning
+                    }
                 }
             case .gitStatus:
                 checkDirectory(
@@ -400,13 +431,8 @@ final class ProjectEditorViewModel {
                 break
             }
         }
-        switch backgroundImageState {
-        case .none, .usable:
-            break
-        case .missing:
-            result.warnings[.background] = String(localized: "Image not found. Choose it again.")
-        case .rejected:
-            result.warnings[.background] = String(localized: "The saved image can't be used. Choose it again.")
+        if let warning = Self.imageWarning(backgroundImageState) {
+            result.warnings[.background] = warning
         }
         if let name = unavailableThemeNames().first {
             result.warnings[.theme] = String(localized: "“\(name)” isn't available in this version of Batty. Sessions opened from this Project use the Settings Theme instead until it is. Saving keeps it.", comment: "Project Editor: the Project names a Theme this Mac doesn't have; the argument is the name")
@@ -415,6 +441,17 @@ final class ProjectEditorViewModel {
             result.warnings[field] = note
         }
         return result
+    }
+
+    private static func imageWarning(_ state: BackgroundImageState) -> String? {
+        switch state {
+        case .none, .usable:
+            nil
+        case .missing:
+            String(localized: "Image not found. Choose it again.")
+        case .rejected:
+            String(localized: "The saved image can't be used. Choose it again.")
+        }
     }
 
     private func checkDirectory(
@@ -456,18 +493,21 @@ final class ProjectEditorViewModel {
         draft = loaded
         baseline = loaded.makeProject()
         backgroundImageState = imageState(of: loaded.background)
+        refreshTabImageStates(fresh: true)
         selectedSlot = 0
         stash = [:]
         tabIdentities = [:]
         isHandedInDraft = false
         nameIsAutoSuggested = false
         saveError = nil
+        if !project.tabImages.isEmpty { projectLoaded(project) }
     }
 
     private func load(newDraft: ProjectDraft, handedIn: Bool = false, autoSuggestedName: Bool = false) {
         draft = newDraft
         baseline = newDraft.makeProject()
         backgroundImageState = imageState(of: newDraft.background)
+        refreshTabImageStates(fresh: true)
         selectedSlot = 0
         stash = [:]
         tabIdentities = [:]
@@ -691,7 +731,8 @@ final class ProjectEditorViewModel {
         case .terminal:
             if pane.tabs.count > 1 { return true }
             return pane.tabs.contains {
-                !($0.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                $0.background != nil
+                    || !($0.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
                     || !($0.startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
                     || !["", "."].contains($0.workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines))
             }
@@ -1001,6 +1042,111 @@ final class ProjectEditorViewModel {
     }
 }
 
+extension ProjectEditorViewModel {
+    /// Reads files, so it runs only when a Project loads or a Tab path changes.
+    /// `fresh` reads every path again, as a load must.
+    func refreshTabImageStates(fresh: Bool = false) {
+        let paths = Set(draft?.makeProject().tabBackgroundImagePaths ?? [])
+        var states: [String: BackgroundImageState] = [:]
+        for path in paths {
+            states[path] = (fresh ? nil : tabImageStates[path]) ?? backgrounds.map { $0.imageState(ofPath: path) } ?? BackgroundImageState.none
+        }
+        guard states != tabImageStates else { return }
+        tabImageStates = states
+    }
+
+    private func tabIndex(slot: Int, tabID: UUID) -> Int? {
+        tabIDs(slot: slot).firstIndex(of: tabID)
+    }
+
+    func tabBackground(slot: Int, tabID: UUID) -> TerminalBackgroundSettings? {
+        guard let index = tabIndex(slot: slot, tabID: tabID) else { return nil }
+        return panes[slot].tabs[index].background
+    }
+
+    /// Writes nothing when the Tab has been removed since the sheet opened. A
+    /// newly chosen path is copied into the Project folder, as the Project's is.
+    func setTabBackground(slot: Int, tabID: UUID, _ newValue: TerminalBackgroundSettings?) {
+        guard let current = draft, let index = tabIndex(slot: slot, tabID: tabID),
+              panes[slot].kind == .terminal
+        else { return }
+        let field = ProjectEditorField.tabBackground(slot: slot, tab: index)
+        let existing = panes[slot].tabs[index].background
+        var value = newValue
+        var adoptFailed = false
+        if let backgrounds, let path = value?.imagePath, path != existing?.imagePath,
+           !(baseline?.allBackgroundImagePaths.contains(path) ?? false) {
+            let adopted = backgrounds.adopt(path: path)
+            adoptFailed = adopted == nil
+            value = value?.withImagePath(adopted)
+        }
+        let note = adoptFailed
+            ? String(localized: "That image could not be copied, so this Tab has no image. Choose it again.", comment: "Project Editor: a Tab background image could not be copied into the Project")
+            : nil
+        let existingImage = panes[slot].tabs[index].image
+        let image: ProjectTabImage? = if value == nil {
+            nil
+        } else if value?.imagePath == existing?.imagePath {
+            existingImage
+        } else {
+            Self.tabImage(forPath: value?.imagePath, keeping: existingImage, previousPath: existing?.imagePath, identity: tabImageIdentity)
+        }
+        guard value != existing || image != existingImage || note != current.captureNotes[field] else { return }
+        if value != existing || image != existingImage {
+            draft?.layout.root = current.layout.root.mappingPanes { paneSlot, pane in
+                guard paneSlot == slot, pane.tabs.indices.contains(index) else { return pane }
+                var edited = pane
+                edited.tabs[index].background = value
+                edited.tabs[index].image = image
+                return edited
+            }
+        }
+        if note != current.captureNotes[field] { draft?.captureNotes[field] = note }
+        if value?.imagePath != existing?.imagePath { refreshTabImageStates() }
+    }
+
+    /// Without an identity source, an image is named by its digest.
+    static func tabImage(forPath path: String?, keeping: ProjectTabImage?, previousPath: String?, identity: TabImageIdentity?) -> ProjectTabImage? {
+        if let identity { return identity.identity(forPath: path, keeping: keeping, previousPath: previousPath) }
+        guard let path else { return nil }
+        if let keeping, let previousPath, TerminalBackgroundImageImporter.digest(ofPath: previousPath) == TerminalBackgroundImageImporter.digest(ofPath: path) {
+            return keeping
+        }
+        return ProjectTabImage.derive(path: path, hostedRecords: [], cacheEntries: [])
+    }
+
+    func projectTabBackgroundTarget(slot: Int, tabID: UUID) -> ProjectTabBackgroundTarget {
+        ProjectTabBackgroundTarget(model: self, slot: slot, tabID: tabID)
+    }
+}
+
+/// The sheet's target for one Tab of the draft. Holds no state of its own, so
+/// building one in `body` writes nothing.
+@MainActor
+final class ProjectTabBackgroundTarget: BackgroundOverrideHolder {
+    weak var model: ProjectEditorViewModel?
+    let slot: Int
+    let tabID: UUID
+
+    init(model: ProjectEditorViewModel, slot: Int, tabID: UUID) {
+        self.model = model
+        self.slot = slot
+        self.tabID = tabID
+    }
+
+    var backgroundOverride: TerminalBackgroundSettings? { model?.tabBackground(slot: slot, tabID: tabID) }
+
+    func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        model?.setTabBackground(slot: slot, tabID: tabID, newOverride)
+    }
+
+    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
+        model?.draft?.background ?? appWide
+    }
+
+    func isSavedImagePath(_ path: String) -> Bool { model?.isSavedImagePath(path) ?? false }
+}
+
 extension ProjectEditorViewModel: BackgroundOverrideHolder {
     var backgroundOverride: TerminalBackgroundSettings? { draft?.background }
 
@@ -1035,7 +1181,7 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
     }
 
     func isSavedImagePath(_ path: String) -> Bool {
-        baseline?.background?.imagePath == path
+        baseline?.allBackgroundImagePaths.contains(path) ?? false
     }
 
     /// The store has already cleared the saved Project, so the baseline follows
@@ -1051,6 +1197,7 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
             let cleared = baseline?.background?.withImagePath(nil)
             baseline?.background = cleared
         }
+        tabBackgroundImageWasRemoved(names: names)
         guard draftNamed else { return }
         let cleared = draft?.background?.withImagePath(nil)
         draft?.background = cleared
@@ -1058,6 +1205,52 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
         if !baselineNamed {
             draft?.captureNotes[.background] = String(localized: "The image you chose was removed, so this Project has no image.", comment: "Project Editor: the draft's background image was removed in the Background Images window")
         }
+    }
+
+    private func tabBackgroundImageWasRemoved(names: (TerminalBackgroundSettings?) -> Bool) {
+        func clear(_ settings: TerminalBackgroundSettings) -> TerminalBackgroundSettings? {
+            names(settings) ? settings.withImagePath(nil) : settings
+        }
+        if let baseline, baseline.tabBackgroundImagePaths.contains(where: { names(TerminalBackgroundSettings(imagePath: $0)) }) {
+            self.baseline?.layout = baseline.layout.mappingTabBackgrounds(clear)
+        }
+        guard let draft, draft.layout.panes.flatMap(\.tabs).contains(where: { names($0.background) }) else { return }
+        let baselineTabs = self.baseline?.layout.panes.map(\.tabs) ?? []
+        var notes: [ProjectEditorField] = []
+        let root = draft.layout.root.mappingPanes { slot, pane in
+            var edited = pane
+            for index in pane.tabs.indices where names(pane.tabs[index].background) {
+                edited.tabs[index].background = pane.tabs[index].background?.withImagePath(nil)
+                let stored = baselineTabs.indices.contains(slot) && baselineTabs[slot].indices.contains(index) ? baselineTabs[slot][index].background : nil
+                if stored != edited.tabs[index].background { notes.append(.tabBackground(slot: slot, tab: index)) }
+            }
+            return edited
+        }
+        self.draft?.layout.root = root
+        for field in notes {
+            self.draft?.captureNotes[field] = String(localized: "The image you chose was removed, so this Tab has no image.", comment: "Project Editor: a Tab's background image was removed in the Background Images window")
+        }
+        refreshTabImageStates()
+    }
+
+    /// A Tab image was found or arrived. The baseline follows the store and a
+    /// clean editor stays clean; a draft Tab still waiting for it gets it.
+    func tabImageArrived(projectID: UUID, identity: ProjectTabImage, path: String) {
+        guard let draft, draft.id == projectID, let baseline, baseline.id == projectID else { return }
+        func apply(_ layout: ProjectLayout) -> ProjectLayout {
+            layout.mappingTabs { tab in
+                guard tab.image == identity, let background = tab.background, background.imagePath == nil else { return tab }
+                var tab = tab
+                tab.background = background.withImagePath(path)
+                return tab
+            }
+        }
+        let newBaseline = apply(baseline.layout)
+        if newBaseline != baseline.layout { self.baseline?.layout = newBaseline }
+        let newDraft = apply(draft.layout)
+        guard newDraft != draft.layout else { return }
+        self.draft?.layout = newDraft
+        refreshTabImageStates()
     }
 
     /// The user doesn't want the waiting image. Any earlier image goes with it,

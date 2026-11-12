@@ -581,4 +581,26 @@ struct ProjectStoreSharedImageTests {
             #expect(built == expected)
         }
     }
+
+    @Test func clearBackgroundImageClearsTabPathsWithoutStamping() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        let layout = ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(background: Self.background(Self.path(Self.digestA))), ProjectTab(background: Self.background(Self.path(Self.digestB)))])))
+        try store.upsert(Project(name: "Tabs", rootPath: "/tmp/tabs", layout: layout))
+        let stamped = store.projects[0].modifiedAt
+        try store.clearBackgroundImage(digest: Self.digestA)
+        #expect(store.projects[0].layout.panes[0].tabs.map(\.background) == [Self.background(nil), Self.background(Self.path(Self.digestB))])
+        #expect(store.projects[0].modifiedAt == stamped)
+        #expect(ProjectStore(fileURL: url).projects[0].layout.panes[0].tabs[0].background == Self.background(nil))
+    }
+
+    @Test func fileNamesATabImageTheListDoesNot() throws {
+        let url = makeTempURL(); defer { cleanup(url) }
+        let store = imageStore(url)
+        try store.upsert(Project(name: "Mine", rootPath: "/tmp/mine"))
+        let layout = ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(background: Self.background(Self.path(Self.digestA)))])))
+        try imageStore(url).upsert(Project(name: "Theirs", rootPath: "/tmp/theirs", layout: layout))
+        #expect(store.fileNamesImageTheListDoesNot(digest: Self.digestA))
+        #expect(!store.fileNamesImageTheListDoesNot(digest: Self.digestB))
+    }
 }

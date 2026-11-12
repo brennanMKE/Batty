@@ -150,6 +150,19 @@ public final class AppStateStore {
     @ObservationIgnored lazy var backgroundImages: BackgroundImagesModel = makeBackgroundImagesModel()
     /// The reclaim started by the last Project Editor close, for tests to await.
     @ObservationIgnored var projectBackgroundReclaim: Task<Void, Never>?
+    /// Tab images fetched because a synced selection named them. A `var` for
+    /// the same reason as `projectBackgrounds`.
+    @ObservationIgnored lazy var downloadedImages: DownloadedImageCache = makeDownloadedImageCache()
+    /// The only hosts a Tab image is downloaded from: the Background Sets
+    /// catalogs'.
+    @ObservationIgnored lazy var tabImageAllowedHosts: Set<String> = Set(
+        Self.liveHostedDependencies().catalogURLs().compactMap { $0.host?.lowercased() }
+    )
+    /// Tab image downloads in flight, by identity, so two Sessions waiting for
+    /// one image make one request.
+    @ObservationIgnored var tabImageDownloads: [ProjectTabImage: Task<Void, Never>] = [:]
+    /// The last batch `requestTabImages` started, for tests to await.
+    @ObservationIgnored var tabImageRequest: Task<Void, Never>?
 
     /// On in Batty Beta and off in Prod (`docs/feature-flags.md`).
     @ObservationIgnored public let featureFlags: FeatureFlags
@@ -171,6 +184,10 @@ public final class AppStateStore {
                 notificationCenter: sharedImageNotificationCenter
             )
             images.onArrival = { [weak self] project, path in self?.sharedImageArrived(project: project, path: path) }
+            images.onTabArrival = { [weak self] projectID, image, path in self?.tabImageArrived(projectID: projectID, identity: image, path: path) }
+            images.onTabEviction = { [weak self] paths in self?.tabImagesEvicted(paths) }
+            images.pinnedTabDigests = { [weak self] in self?.pinnedDownloadedDigests() ?? [] }
+            images.tabImageCache = { [weak self] in self?.downloadedImages }
             sharedProjectImagesStorage = images
         }
         return store
@@ -1311,7 +1328,8 @@ public final class AppStateStore {
             adoptableFrom: [
                 TerminalBackgroundImageImporter.defaultDirectory(),
                 TerminalBackgroundImageImporter.appWideDirectory(),
-            ]
+            ],
+            downloadedDirectory: DownloadedImageCache.directory(inLibrary: BackgroundImageLibrary.directory(forProjectsFile: self.projectsFileURL))
         )
         self.bellFeed = bellFeed
         self.nameCache = nameCache
@@ -1512,20 +1530,30 @@ public final class AppStateStore {
             AppEventWatcher.shared.send(eventType: event.type, payload: event)
             recordProjectOpen(projectStore, id: projectID)
             reconcileSharedImage(of: project)
+            if !project.tabImages.isEmpty { requestTabImages(for: resolveTabImages(of: project).project) }
             return ProjectOpenResult(session: existing, wasCreated: false)
         }
         guard let target = defaultTargetWindow() else {
             logger.error("openProject: no window available")
             throw ProjectOpenError.noWindow
         }
+        let resolved = project.tabImages.isEmpty ? (project: project, cachedDigests: Set<String>()) : resolveTabImages(of: project)
+        let opened = resolved.project
+        let projectBackgrounds = self.projectBackgrounds
+        var tabProblem: BackgroundImageState?
         let tree = try ProjectTreeBuilder.build(
-            project: project,
+            project: opened,
             contentFactory: contentFactory,
-            isSessionSelected: true
+            isSessionSelected: true,
+            tabBackground: { value in
+                let checked = projectBackgrounds.checked(value)
+                if tabProblem == nil { tabProblem = checked.problem }
+                return checked.settings
+            }
         )
-        let background = project.background.map(projectBackgrounds.checked)
-        let session = target.addProjectSession(project, tree: tree, background: background?.settings)
-        if let problem = background?.problem { session.projectBackgroundImageProblem = problem }
+        let background = opened.background.map(projectBackgrounds.checked)
+        let session = target.addProjectSession(opened, tree: tree, background: background?.settings)
+        if let problem = background?.problem ?? tabProblem { session.projectBackgroundImageProblem = problem }
         // A CLI create brings Batty forward like `batty new` does (its
         // `open -a` activates the app). A GUI open normally starts from the
         // content window, but from Settings, Help or the Project Editor the
@@ -1535,6 +1563,7 @@ public final class AppStateStore {
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
         recordProjectOpen(projectStore, id: projectID)
         reconcileSharedImage(of: project)
+        if !opened.tabImages.isEmpty { requestTabImages(for: opened, touching: resolved.cachedDigests) }
         return ProjectOpenResult(session: session, wasCreated: true)
     }
 

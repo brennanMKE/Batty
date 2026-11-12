@@ -151,7 +151,7 @@ extension Project {
         return ProjectSyncRecord(
             id: id, name: name,
             rootPath: PortablePath.encode(absolute: rootPath, home: home),
-            color: color, symbol: symbol, layout: layout,
+            color: color, symbol: symbol, layout: layout.mappingTabBackgrounds { $0.withImagePath(nil) },
             runStartupCommandsOnOpen: runStartupCommandsOnOpen,
             modifiedAt: modifiedAt,
             customColor: customColorHex, symbolName: customSymbolName,
@@ -167,7 +167,7 @@ extension Project {
         self.init(
             id: record.id, name: record.name,
             rootPath: decoded.hasPrefix("/") ? decoded : "/" + decoded,
-            color: record.color, symbol: record.symbol, layout: record.layout,
+            color: record.color, symbol: record.symbol, layout: record.layout.mappingTabBackgrounds { $0.withImagePath(nil) },
             runStartupCommandsOnOpen: record.runStartupCommandsOnOpen,
             approvedCommandsHash: nil, lastOpenedAt: nil,
             isShared: true, modifiedAt: record.modifiedAt,
@@ -183,6 +183,7 @@ extension Project {
         merged.approvedCommandsHash = approvedCommandsHash
         merged.lastOpenedAt = lastOpenedAt
         merged.background = merged.background?.withImagePath(background?.imagePath)
+        merged.layout = merged.layout.carryingTabImagePaths(from: layout)
         merged.sharedImage = sharedImage
         guard honorsSharedImages else { return merged }
         switch record.background?.image {

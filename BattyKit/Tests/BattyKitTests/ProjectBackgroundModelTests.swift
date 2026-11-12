@@ -173,4 +173,64 @@ struct ProjectBackgroundModelTests {
         value.background = full
         #expect(value.startupCommandsHash == before)
     }
+    private func tabbed(_ tabs: [ProjectTab], background: TerminalBackgroundSettings? = nil) -> Project {
+        Project(id: UUID(), name: "Model", rootPath: "/tmp/model", layout: ProjectLayout(root: .pane(.terminal(tabs: tabs))), background: background)
+    }
+
+    @Test func projectWithNoTabBackgroundsEncodesByteIdentically() throws {
+        let plain = tabbed([ProjectTab(title: "A", startupCommand: "make"), ProjectTab()])
+        let data = try ProjectsFile.encoder.encode(plain)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(!text.contains("background"))
+        #expect(try ProjectsFile.encoder.encode(ProjectsFile.decoder.decode(Project.self, from: data)) == data)
+        let legacy = Data(#"{"title":"A","workingDirectory":".","startupCommand":"make"}"#.utf8)
+        let tab = try ProjectsFile.decoder.decode(ProjectTab.self, from: legacy)
+        #expect(tab == ProjectTab(title: "A", startupCommand: "make"))
+    }
+
+    @Test func tabBackgroundSurvivesEncodeAndDecode() throws {
+        let data = try ProjectsFile.encoder.encode(tabbed([ProjectTab(background: full), ProjectTab()]))
+        let loaded = try ProjectsFile.decoder.decode(Project.self, from: data)
+        #expect(loaded.layout.panes[0].tabs.map(\.background) == [full, nil])
+    }
+
+    @Test func aBadTabBackgroundCostsOnlyThatTab() throws {
+        let value = tabbed([ProjectTab(title: "A", background: full), ProjectTab(title: "B", background: full)])
+        var object = try #require(try JSONSerialization.jsonObject(with: ProjectsFile.encoder.encode(value)) as? [String: Any])
+        var layout = try #require(object["layout"] as? [String: Any])
+        var root = try #require(layout["root"] as? [String: Any])
+        var pane = try #require(root["pane"] as? [String: Any])
+        var tabs = try #require(pane["tabs"] as? [[String: Any]])
+        tabs[0]["background"] = "text"
+        pane["tabs"] = tabs
+        root["pane"] = pane
+        layout["root"] = root
+        object["layout"] = layout
+        let loaded = try ProjectsFile.decoder.decode(Project.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(loaded.id == value.id)
+        #expect(loaded.layout.panes[0].tabs.map(\.title) == ["A", "B"])
+        #expect(loaded.layout.panes[0].tabs.map(\.background) == [nil, full])
+    }
+
+    @Test func makeProjectKeepsTabBackgrounds() {
+        let made = ProjectDraft(project: tabbed([ProjectTab(background: full), ProjectTab()])).makeProject()
+        #expect(made.layout.panes[0].tabs.map(\.background) == [full, nil])
+    }
+
+    @Test func changingATabBackgroundDoesNotChangeTheCommandsHash() {
+        var value = tabbed([ProjectTab(startupCommand: "make")])
+        let before = value.startupCommandsHash
+        value.layout = value.layout.mappingTabBackgrounds { $0 }
+        value.layout.root = .pane(.terminal(tabs: [ProjectTab(startupCommand: "make", background: full)]))
+        #expect(value.startupCommandsHash == before)
+    }
+
+    @Test func allBackgroundImagePathsListsProjectAndTabs() {
+        let other = projectBackgroundValue(path: "/tmp/batty-model-tests/other.png")
+        let value = tabbed([ProjectTab(background: other), ProjectTab(background: full), ProjectTab(background: other)], background: full)
+        #expect(value.tabBackgroundImagePaths == [other.imagePath, full.imagePath].compactMap { $0 })
+        #expect(value.allBackgroundImagePaths == [full.imagePath, other.imagePath].compactMap { $0 })
+        let cleared = value.layout.mappingTabBackgrounds { $0.withImagePath(nil) }
+        #expect(cleared.panes[0].tabs.allSatisfy { $0.background != nil && $0.background?.imagePath == nil })
+    }
 }

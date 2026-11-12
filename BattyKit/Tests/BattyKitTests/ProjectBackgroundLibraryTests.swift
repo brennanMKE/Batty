@@ -230,4 +230,101 @@ struct ProjectBackgroundLibraryTests {
         try await reclaim(fixture, store)
         #expect(FileManager.default.fileExists(atPath: path))
     }
+    private func tabProject(_ fixture: ProjectBackgroundFixture, name: String = "Tabbed", path: String) -> Project {
+        fixture.project(name: name, background: nil, layout: ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(), ProjectTab(background: secondBackgroundValue(path: path))]))))
+    }
+
+    @Test func reclaimKeepsATabOnlyImage() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let named = try await fixture.copy()
+        let unused = try await fixture.copy(width: 128)
+        for path in [named, unused] { try fixture.age(folderOf: path) }
+        let store = ProjectStore(fileURL: fixture.projectsFile)
+        try store.upsert(tabProject(fixture, path: named))
+        try await reclaim(fixture, store)
+        #expect(FileManager.default.fileExists(atPath: named))
+        #expect(!FileManager.default.fileExists(atPath: unused))
+    }
+
+    @Test func reclaimKeepsATabImageOnlyTheFileNames() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let named = try await fixture.copy()
+        let unused = try await fixture.copy(width: 128)
+        for path in [named, unused] { try fixture.age(folderOf: path) }
+        let store = ProjectStore(fileURL: fixture.projectsFile)
+        try ProjectStore(fileURL: fixture.projectsFile).upsert(tabProject(fixture, path: named))
+        #expect(store.projects.isEmpty)
+        try await reclaim(fixture, store)
+        #expect(FileManager.default.fileExists(atPath: named))
+        #expect(!FileManager.default.fileExists(atPath: unused))
+    }
+
+    @Test func reclaimKeepsAnOpenTabsImage() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let forTab = try await fixture.copy()
+        let forSeed = try await fixture.copy(width: 128)
+        let unused = try await fixture.copy(width: 64)
+        for path in [forTab, forSeed, unused] { try fixture.age(folderOf: path) }
+        let session = fixture.session()
+        let pane = session.tree.allPanes[0]
+        pane.addTab()
+        pane.tabs[0].setBackgroundOverride(projectBackgroundValue(path: forTab))
+        pane.tabs[1].projectBackgroundSeed = secondBackgroundValue(path: forSeed)
+        try fixture.saveProjectsFile()
+        let store = fixture.appStore(sessions: [session])
+
+        store.projectEditorDidClose()
+        let task = try #require(store.projectBackgroundReclaim)
+        await task.value
+
+        #expect(FileManager.default.fileExists(atPath: forTab))
+        #expect(FileManager.default.fileExists(atPath: forSeed))
+        #expect(!FileManager.default.fileExists(atPath: unused))
+    }
+    private func cachedCopy(_ fixture: ProjectBackgroundFixture, width: Int = 96) throws -> String {
+        let bytes = try BackgroundTestImage.encoded(width: width, height: 64)
+        let digest = BackgroundTestImage.digest(of: bytes)
+        #expect(TerminalBackgroundImageImporter.storeVerified(bytes: bytes, digest: digest, name: "Cached", into: fixture.downloadedFolder) == .usable)
+        return try #require(TerminalBackgroundImageImporter.existingCopy(digest: digest, in: fixture.downloadedFolder))
+    }
+
+    @Test func reclaimNeverTouchesTheDownloadedFolder() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let cached = try cachedCopy(fixture)
+        try fixture.age(folderOf: cached)
+        let store = ProjectStore(fileURL: fixture.projectsFile)
+        try store.upsert(fixture.project(background: nil))
+        try await reclaim(fixture, store)
+        #expect(FileManager.default.fileExists(atPath: cached))
+    }
+
+    @Test func reclaimKeepsAFolderATabDigestNames() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        let unused = try await fixture.copy(width: 128)
+        for each in [path, unused] { try fixture.age(folderOf: each) }
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        let store = ProjectStore(fileURL: fixture.projectsFile)
+        let tab = ProjectTab(background: projectBackgroundValue(path: nil), image: .custom(digest: digest, name: "Pending"))
+        try store.upsert(fixture.project(background: nil, layout: ProjectLayout(root: .pane(.terminal(tabs: [tab])))))
+        try await reclaim(fixture, store)
+        #expect(FileManager.default.fileExists(atPath: path))
+        #expect(!FileManager.default.fileExists(atPath: unused))
+    }
+
+    @Test func checkedAcceptsACachedTabPath() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let cached = try cachedCopy(fixture)
+        #expect(fixture.library.checked(projectBackgroundValue(path: cached)).problem == nil)
+        let live = ProjectBackgroundLibrary(directory: fixture.projectFolder, adoptableFrom: [], downloadedDirectory: fixture.downloadedFolder)
+        #expect(live.imageState(ofPath: cached) == .usable)
+        #expect(ProjectBackgroundLibrary(directory: fixture.projectFolder, adoptableFrom: []).imageState(ofPath: cached) != .usable)
+    }
+
+    @Test func adoptLeavesACachedPathInPlace() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let cached = try cachedCopy(fixture)
+        #expect(fixture.library.adopt(path: cached) == cached)
+        #expect(!FileManager.default.fileExists(atPath: fixture.projectFolder.path))
+    }
 }

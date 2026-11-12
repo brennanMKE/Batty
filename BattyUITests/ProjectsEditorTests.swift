@@ -286,6 +286,44 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         )
     }
 
+    @MainActor
+    func testTabBackgroundRowOpensTheSheetShowingFollowProject() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.tab.1.background.edit", in: app)
+        let follow = app.buttons["project-tab-background-sheet.follow"]
+        XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Tab's Background row did not open its sheet")
+        XCTAssertEqual(follow.value as? String, "selected")
+        app.buttons["project-tab-background-sheet.cancel"].click()
+    }
+
+    @MainActor
+    func testCustomTabBackgroundIsWrittenToTheProject() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.tab.1.background.edit", in: app)
+        let custom = app.buttons["project-tab-background-sheet.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        custom.click()
+        app.buttons["project-tab-background-sheet.done"].click()
+        click("project-editor.save", in: app)
+
+        XCTAssertTrue(
+            waitFor({
+                let layout = ProjectFixture.read(self.storeFile)?.first?["layout"] as? [String: Any]
+                let root = layout?["root"] as? [String: Any]
+                let pane = root?["pane"] as? [String: Any]
+                let tabs = pane?["tabs"] as? [[String: Any]]
+                return tabs?.first?["background"] != nil
+            }, timeout: 10),
+            "Save did not write the Tab's background"
+        )
+    }
+
     // MARK: - Theme
 
     @MainActor

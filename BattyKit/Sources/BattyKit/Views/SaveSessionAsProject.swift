@@ -36,8 +36,10 @@ enum SaveSessionAsProject {
             return SessionProjectCapture.capture(session: session, root: root)
         }
         if case .update(let id) = destination, session.projectID == id, let project = projectStore.project(id: id) {
-            var draft = capture(root: project.rootPath).updateDraft(of: project)
+            let captured = capture(root: project.rootPath)
+            var draft = captured.updateDraft(of: project)
             captureBackground(of: session, into: &draft, replacingStored: session.backgroundOverride != session.projectBackgroundSeed, store: store)
+            captureTabBackgrounds(of: session, capture: captured, into: &draft, isUpdate: true, store: store)
             if session.themeOverride != session.projectThemeSeed {
                 draft.theme = session.themeOverride
             }
@@ -47,6 +49,7 @@ enum SaveSessionAsProject {
         let name = SessionProjectCapture.suggestedName(session: session, capture: captured, nameForRoot: nameForRoot)
         var draft = captured.newDraft(name: name, existingNames: projectStore.projects.map(\.name))
         captureBackground(of: session, into: &draft, replacingStored: true, store: store)
+        captureTabBackgrounds(of: session, capture: captured, into: &draft, isUpdate: false, store: store)
         draft.theme = session.themeOverride
         return draft
     }
@@ -72,10 +75,55 @@ enum SaveSessionAsProject {
             }
             draft.background = background
         }
-        if session.tree.allPanes.contains(where: { $0.kind == .terminal && $0.backgroundOverride != nil }) {
-            notes.append(String(localized: "A Pane's own background isn't saved. A Project has one background for the whole Session.", comment: "Project Editor: Save as Project from a Session with a per-Pane background"))
-        }
         if !notes.isEmpty { draft.captureNotes[.background] = notes.joined(separator: " ") }
+    }
+
+    /// Each Tab takes its own value, else its Pane's, so a Pane's value becomes
+    /// every Tab's in that Pane. An Update writes a Tab only when its value or
+    /// its Pane's changed since the open; otherwise the stored value stays.
+    private static func captureTabBackgrounds(
+        of session: SessionRuntime,
+        capture: SessionProjectCapture,
+        into draft: inout ProjectDraft,
+        isUpdate: Bool,
+        store: AppStateStore
+    ) {
+        var runtime: [UUID: (tab: TabRuntime, pane: PaneRuntime)] = [:]
+        for pane in session.tree.allPanes where pane.kind == .terminal {
+            for tab in pane.tabs { runtime[tab.id] = (tab, pane) }
+        }
+        var adopted: [String: String?] = [:]
+        var failed: [ProjectEditorField] = []
+        let identity = store.tabImageIdentity
+        let root = draft.layout.root.mappingPanes { slot, pane in
+            guard pane.kind == .terminal, let ids = capture.tabIDs[slot] else { return pane }
+            var edited = pane
+            for index in edited.tabs.indices where ids.indices.contains(index) {
+                guard let (tab, owner) = runtime[ids[index]] else { continue }
+                if isUpdate, tab.backgroundOverride == tab.projectBackgroundSeed, owner.backgroundOverride == nil { continue }
+                var value = tab.backgroundOverride ?? owner.backgroundOverride
+                if let path = value?.imagePath {
+                    let copy = adopted[path] ?? store.projectBackgrounds.adopt(path: path)
+                    adopted[path] = copy
+                    value = value?.withImagePath(copy)
+                    if copy == nil { failed.append(.tabBackground(slot: slot, tab: index)) }
+                }
+                let stored = edited.tabs[index]
+                edited.tabs[index].background = value
+                edited.tabs[index].image = if value == nil {
+                    nil
+                } else if isUpdate, value?.imagePath == stored.background?.imagePath {
+                    stored.image
+                } else {
+                    identity.identity(forPath: value?.imagePath, keeping: isUpdate ? stored.image : nil, previousPath: isUpdate ? stored.background?.imagePath : nil)
+                }
+            }
+            return edited
+        }
+        draft.layout.root = root
+        for field in failed {
+            draft.captureNotes[field] = String(localized: "This Tab's image could not be copied, so it has no image. Choose it again.", comment: "Project Editor: Save as Project could not copy a Tab's background image")
+        }
     }
 
     @discardableResult

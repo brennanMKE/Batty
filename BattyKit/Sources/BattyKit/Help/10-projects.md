@@ -38,9 +38,13 @@ A Project can carry a terminal background. The **Background** row in the editor 
 
 Opening a Project gives its new session that background, as if you had chosen **Set Session Background…**. Saving the Project doesn't change a session that is already open. **Clear Session Background** then follows Settings, not the Project.
 
+Each Tab card in the editor has its own **Background** row: **Follows Project** until you choose **Custom for This Tab** in its sheet. Opening the Project gives that Tab its own background, and the other Tabs follow the Project's.
+
 If the image can't be used, the Project still opens, without the picture but with its other settings. An orange warning triangle shows on the session's row, and the editor says to choose the image again.
 
-**Save Session as Project…** keeps the session's background and copies its image into the Project. A Pane's own background isn't saved, because a Project has one background for the whole session, and the editor says so. **Update "Name"…** replaces the stored background only if the session's background changed since it opened. **Copy from current Session** leaves the background alone.
+**Save Session as Project…** keeps the session's background and copies its image into the Project. Each Tab keeps its own background, or else its Pane's, so a Pane's background becomes the background of every Tab in it. **Update "Name"…** replaces a stored background, the Project's or a Tab's, only if it changed since the session opened. **Copy from current Session** leaves the Project's background alone and drops the Tabs' backgrounds with the Tabs it replaces.
+
+On a Shared Project, a Tab's choice of image syncs, but not the file. Another Mac uses its own copy if it has one, or downloads the image when you open the Project or show it in the editor, and shows the Tab without the picture until it arrives. Downloaded images are kept in a cache of at most 20 images and 500 MB; the least recently used go first, but never one in use. A Background Sets image downloads in every build. Any other image needs iCloud Drive image sharing, which is in Batty Beta only for now.
 
 ## Theme
 

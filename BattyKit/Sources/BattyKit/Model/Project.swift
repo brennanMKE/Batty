@@ -14,11 +14,50 @@ public struct ProjectTab: Codable, Sendable, Hashable {
     /// Relative to the Project root; "." is the root itself.
     public var workingDirectory: String
     public var startupCommand: String?
+    /// `nil` follows the Project's background. A value seeds this Tab's own
+    /// background override when the Project opens. The image path is device
+    /// state and the rest is definition.
+    public var background: TerminalBackgroundSettings?
+    /// Which image `background` shows, in a form another Mac can find. Set only
+    /// with a background; the path in `background` is this Mac's copy of it.
+    public var image: ProjectTabImage?
 
-    public init(title: String? = nil, workingDirectory: String = ".", startupCommand: String? = nil) {
+    public init(title: String? = nil, workingDirectory: String = ".", startupCommand: String? = nil, background: TerminalBackgroundSettings? = nil, image: ProjectTabImage? = nil) {
         self.title = title
         self.workingDirectory = workingDirectory
         self.startupCommand = startupCommand
+        self.background = background
+        self.image = background == nil ? nil : image
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title, workingDirectory, startupCommand, background, image
+    }
+
+    /// Optional keys are written only when set, so a Tab with no background
+    /// encodes as it did before Tabs had one.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encode(workingDirectory, forKey: .workingDirectory)
+        try c.encodeIfPresent(startupCommand, forKey: .startupCommand)
+        try c.encodeIfPresent(background, forKey: .background)
+        try c.encodeIfPresent(background == nil ? nil : image, forKey: .image)
+    }
+
+    /// A bad `background` costs only this Tab its background.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        workingDirectory = try c.decode(String.self, forKey: .workingDirectory)
+        startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
+        if let decoded = try? c.decodeIfPresent(TerminalBackgroundSettings.self, forKey: .background) {
+            background = decoded
+        } else {
+            if c.contains(.background), !((try? c.decodeNil(forKey: .background)) ?? false) { logger.error("unreadable project tab background; following the Project") }
+            background = nil
+        }
+        image = background == nil ? nil : ProjectTabImage.decodeTolerantly(from: c, forKey: .image)
     }
 }
 
@@ -101,6 +140,53 @@ public indirect enum ProjectLayoutNode: Codable, Sendable, Hashable {
         case .pane(let pane): [pane]
         case .split(_, let children): children.flatMap(\.panes)
         }
+    }
+}
+
+extension ProjectLayout {
+    /// Content-addressed: an incoming Tab takes this Mac's path for the same
+    /// identity, wherever that Tab now sits, or no path, which means its image
+    /// hasn't reached this Mac. A Tab with no identity has no image.
+    func carryingTabImagePaths(from local: ProjectLayout) -> ProjectLayout {
+        var paths: [ProjectTabImage: String] = [:]
+        for tab in local.panes.flatMap(\.tabs) {
+            guard let image = tab.image, let path = tab.background?.imagePath, paths[image] == nil else { continue }
+            paths[image] = path
+        }
+        return mappingTabs { tab in
+            var tab = tab
+            tab.background = tab.background?.withImagePath(tab.image.flatMap { paths[$0] })
+            return tab
+        }
+    }
+
+    func mappingTabs(_ transform: (ProjectTab) -> ProjectTab) -> ProjectLayout {
+        ProjectLayout(
+            root: root.mappingPanes { _, pane in
+                var mapped = pane
+                mapped.tabs = pane.tabs.map(transform)
+                return mapped
+            },
+            preset: preset
+        )
+    }
+
+    /// Each Terminal Tab's background replaced by `transform` of it; Tabs with
+    /// none are left alone.
+    func mappingTabBackgrounds(_ transform: (TerminalBackgroundSettings) -> TerminalBackgroundSettings?) -> ProjectLayout {
+        ProjectLayout(
+            root: root.mappingPanes { _, pane in
+                var mapped = pane
+                mapped.tabs = pane.tabs.map { tab in
+                    var tab = tab
+                    tab.background = tab.background.flatMap(transform)
+                    if tab.background == nil { tab.image = nil }
+                    return tab
+                }
+                return mapped
+            },
+            preset: preset
+        )
     }
 }
 
@@ -353,6 +439,27 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
 
     public var paneCount: Int { layout.paneCount }
     public var tabCount: Int { layout.tabCount }
+
+    /// Every Tab's image path, in slot and Tab order, deduped.
+    public var tabBackgroundImagePaths: [String] {
+        var seen = Set<String>()
+        return layout.panes.flatMap(\.tabs).compactMap(\.background?.imagePath).filter { seen.insert($0).inserted }
+    }
+
+    /// Every Tab's image identity.
+    public var tabImages: Set<ProjectTabImage> {
+        Set(layout.panes.flatMap(\.tabs).compactMap(\.image))
+    }
+
+    public var tabCustomDigests: Set<String> {
+        Set(tabImages.compactMap(\.digest))
+    }
+
+    /// The Project's image path and every Tab's, deduped.
+    public var allBackgroundImagePaths: [String] {
+        var seen = Set<String>()
+        return ([background?.imagePath].compactMap { $0 } + tabBackgroundImagePaths).filter { seen.insert($0).inserted }
+    }
 
     /// Non-blank commands in pane/tab order.
     public var startupCommands: [ProjectStartupCommand] {

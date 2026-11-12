@@ -19,8 +19,8 @@ import Foundation
 /// are never inferred from running processes), automatic Tab titles (a
 /// process name or folder name would freeze into a wrong label), Process
 /// Status pids, scrollback, non-Terminal Panes' placeholder Tab, and the
-/// background: `SaveSessionAsProject` reads the Session's override because it
-/// has to copy a file, and a Pane's own override has no Project field.
+/// backgrounds: `SaveSessionAsProject` reads the Session's, Panes' and Tabs'
+/// overrides through `tabIDs`, because it has to copy files.
 struct SessionProjectCapture: Equatable {
     var layout: ProjectLayout
     /// Absolute and standardized. `NSHomeDirectory()` when the Session has no
@@ -33,6 +33,8 @@ struct SessionProjectCapture: Equatable {
     /// Field messages for the editor: Tabs and repositories whose folder lies
     /// outside the root and were stored as the root instead.
     var notes: [ProjectEditorField: String]
+    /// The runtime Tab behind each captured Tab, by slot, for Terminal Panes.
+    var tabIDs: [Int: [UUID]] = [:]
 
     /// Reads the working directory a Tab is in right now, or nil when it has
     /// none that is absolute. The live value is read on purpose: this runs
@@ -81,12 +83,14 @@ struct SessionProjectCapture: Equatable {
 
         var slot = 0
         var notes: [ProjectEditorField: String] = [:]
+        var tabIDs: [Int: [UUID]] = [:]
         if let homeRootNote { notes[.root] = homeRootNote }
 
         func capturePane(_ pane: PaneRuntime) -> ProjectPane {
             defer { slot += 1 }
             switch pane.kind {
             case .terminal:
+                tabIDs[slot] = pane.tabs.map(\.id)
                 let tabs = pane.tabs.enumerated().map { index, tab -> ProjectTab in
                     var directory = "."
                     if let cwd = workingDirectory(of: tab) {
@@ -150,6 +154,7 @@ struct SessionProjectCapture: Equatable {
             let order = [0, 2, 1, 3]
             topology = ProjectLayout.preset(.twoByTwoGrid).root.withPanes(order.map { panes[$0] })
             let swap = [1: 2, 2: 1]
+            tabIDs = Dictionary(uniqueKeysWithValues: tabIDs.map { (swap[$0.key] ?? $0.key, $0.value) })
             notes = Dictionary(uniqueKeysWithValues: notes.map { field, note in
                 switch field {
                 case .tabDirectory(let slot, let tab): (.tabDirectory(slot: swap[slot] ?? slot, tab: tab), note)
@@ -163,7 +168,8 @@ struct SessionProjectCapture: Equatable {
             rootPath: root,
             rootIsFallback: rootIsFallback,
             color: session.sessionColor,
-            notes: notes
+            notes: notes,
+            tabIDs: tabIDs
         )
     }
 
@@ -277,6 +283,8 @@ struct SessionProjectCapture: Equatable {
                 var tab = tab
                 if oldPanes[slot].tabs.indices.contains(index) {
                     tab.startupCommand = oldPanes[slot].tabs[index].startupCommand
+                    tab.background = oldPanes[slot].tabs[index].background
+                    tab.image = oldPanes[slot].tabs[index].image
                 }
                 return tab
             }

@@ -2,8 +2,8 @@
 
 import SwiftUI
 
-/// A level of the background chain the sheet can edit: a Pane, a Session, or a
-/// Project Editor's draft.
+/// A level of the background chain the sheet can edit: a Tab, a Pane, a
+/// Session, or a Project Editor's draft or one of its Tabs.
 protocol BackgroundOverrideHolder: AnyObject {
     var backgroundOverride: TerminalBackgroundSettings? { get }
     func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?)
@@ -12,10 +12,16 @@ protocol BackgroundOverrideHolder: AnyObject {
     /// Whether Cancel should put this path back even if its file is gone,
     /// because a saved value names it and the holder reports that itself.
     func isSavedImagePath(_ path: String) -> Bool
+    /// The narrower levels' own values that a write here replaces, keyed by
+    /// Tab id, so Cancel can put them back.
+    func replacedOverrides() -> [UUID: TerminalBackgroundSettings]
+    func restoreReplacedOverrides(_ overrides: [UUID: TerminalBackgroundSettings])
 }
 
 extension BackgroundOverrideHolder {
     func isSavedImagePath(_ path: String) -> Bool { false }
+    func replacedOverrides() -> [UUID: TerminalBackgroundSettings] { [:] }
+    func restoreReplacedOverrides(_ overrides: [UUID: TerminalBackgroundSettings]) {}
 }
 
 /// The sheet's wording and identifiers for one level. Existing UI tests query
@@ -34,6 +40,31 @@ struct BackgroundOverrideScope {
                 : String(localized: "Follow Session"),
             customTitle: String(localized: "Custom for This Pane"),
             identifierPrefix: "pane-background-sheet"
+        )
+    }
+
+    static func tab(_ tab: TabRuntime) -> Self {
+        let followTitle: String = if tab.paneBackgroundOverride != nil {
+            String(localized: "Follow Pane")
+        } else if tab.sessionBackgroundOverride != nil {
+            String(localized: "Follow Session")
+        } else {
+            String(localized: "Follow App Default")
+        }
+        return Self(
+            title: String(localized: "Tab Background"),
+            followTitle: followTitle,
+            customTitle: String(localized: "Custom for This Tab"),
+            identifierPrefix: "tab-background-sheet"
+        )
+    }
+
+    static var projectTab: Self {
+        Self(
+            title: String(localized: "Tab Background"),
+            followTitle: String(localized: "Follow Project"),
+            customTitle: String(localized: "Custom for This Tab"),
+            identifierPrefix: "project-tab-background-sheet"
         )
     }
 
@@ -63,6 +94,7 @@ struct BackgroundOverrideEditor {
     let target: any BackgroundOverrideHolder
     let appWide: TerminalBackgroundSettings
     let originalOverride: TerminalBackgroundSettings?
+    var replacedOverrides: [UUID: TerminalBackgroundSettings] = [:]
 
     var isFollowing: Bool { target.backgroundOverride == nil }
 
@@ -83,14 +115,20 @@ struct BackgroundOverrideEditor {
     /// A copy-shaped path whose file is gone was removed in the Background
     /// Images window while this sheet was open: new Tabs must not get it back.
     func cancel() {
-        if let path = originalOverride?.imagePath,
+        target.setBackgroundOverride(originalOverride.map(restorable))
+        if !replacedOverrides.isEmpty {
+            target.restoreReplacedOverrides(replacedOverrides.mapValues(restorable))
+        }
+    }
+
+    private func restorable(_ value: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
+        if let path = value.imagePath,
            TerminalBackgroundImageImporter.digest(ofPath: path) != nil,
            !target.isSavedImagePath(path),
            !FileManager.default.fileExists(atPath: path) {
-            target.setBackgroundOverride(originalOverride?.withImagePath(nil))
-        } else {
-            target.setBackgroundOverride(originalOverride)
+            return value.withImagePath(nil)
         }
+        return value
     }
 
     /// Ignored while following, so an import that finishes after the user
@@ -119,6 +157,7 @@ struct BackgroundOverrideSettingsView: View {
     /// `@State` because the presenting view re-inits this struct freely, and
     /// Cancel must restore what was there when the sheet opened.
     @State private var originalOverride: TerminalBackgroundSettings?
+    @State private var replacedOverrides: [UUID: TerminalBackgroundSettings]
     @State private var importError: String?
     @State private var importTask: Task<Void, Never>?
 
@@ -137,10 +176,11 @@ struct BackgroundOverrideSettingsView: View {
         self.importer = importer
         self.images = images
         self._originalOverride = State(initialValue: target.backgroundOverride)
+        self._replacedOverrides = State(initialValue: target.replacedOverrides())
     }
 
     private var editor: BackgroundOverrideEditor {
-        BackgroundOverrideEditor(target: target, appWide: appWide, originalOverride: originalOverride)
+        BackgroundOverrideEditor(target: target, appWide: appWide, originalOverride: originalOverride, replacedOverrides: replacedOverrides)
     }
 
     var body: some View {

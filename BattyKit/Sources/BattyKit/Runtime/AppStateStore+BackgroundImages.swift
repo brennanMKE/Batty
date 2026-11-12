@@ -36,6 +36,8 @@ extension AppStateStore {
         )
     }
 
+    var tabImageIdentity: TabImageIdentity { TabImageIdentity(projectsFile: projectsFileURL) }
+
     /// A UI-test launch with a fixture folder serves the catalog from disk and
     /// keeps its cache beside it, so no run reaches the website.
     static func liveHostedDependencies() -> HostedBackgroundsDependencies {
@@ -66,20 +68,41 @@ extension AppStateStore {
         }
         record(backgroundGate.storedSettings().imagePath, .appWide)
         let projectStore = self.projectStore
+        func digests(_ paths: [String]) -> Set<String> {
+            Set(paths.compactMap(TerminalBackgroundImageImporter.digest(ofPath:)))
+        }
         for project in projectStore.projects {
-            record(project.background?.imagePath, .project(id: project.id, name: project.name, isShared: project.isShared))
+            let use = BackgroundImageUse.project(id: project.id, name: project.name, isShared: project.isShared)
+            var seen = Set<String>()
+            for path in project.allBackgroundImagePaths {
+                guard let digest = TerminalBackgroundImageImporter.digest(ofPath: path), seen.insert(digest).inserted else { continue }
+                record(path, use)
+            }
         }
         if let draft = openProjectEditorModel()?.draft {
-            let saved = projectStore.project(id: draft.id)?.background?.imagePath
+            let saved = projectStore.project(id: draft.id)
+            let savedPath = saved?.background?.imagePath
             let draftPath = draft.background?.imagePath
-            if draftPath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) != saved.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) {
+            if draftPath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) != savedPath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) {
                 record(draftPath, .projectDraft)
+            }
+            let savedTabs = digests(saved?.tabBackgroundImagePaths ?? [])
+            var seen = digests(draftPath.map { [$0] } ?? [])
+            for path in draft.makeProject().tabBackgroundImagePaths {
+                guard let digest = TerminalBackgroundImageImporter.digest(ofPath: path),
+                      !savedTabs.contains(digest), seen.insert(digest).inserted
+                else { continue }
+                record(path, .projectDraft)
             }
         }
         for session in windows.flatMap(\.sessions) {
             record(session.backgroundOverride?.imagePath, .session(id: session.id, title: session.title))
             for pane in session.tree.allPanes {
                 record(pane.backgroundOverride?.imagePath, .pane(id: pane.id, sessionTitle: session.title))
+                guard pane.kind == .terminal else { continue }
+                for tab in pane.tabs {
+                    record(tab.backgroundOverride?.imagePath, .tab(id: tab.id, sessionTitle: session.title))
+                }
             }
         }
         return uses
@@ -108,6 +131,9 @@ extension AppStateStore {
         }
         try projectStore.clearBackgroundImage(digest: digest)
         openProjectEditorModel()?.backgroundImageWasRemoved(digest: digest)
+        // The Tabs keep their identities, so a later open downloads it again.
+        let cache = downloadedImages
+        tabImageRequest = Task { await cache.remove(digest: digest) }
         if names(backgroundGate.storedSettings()) {
             AppWideBackgroundEditor(store: self).removeImage()
         }
@@ -118,8 +144,22 @@ extension AppStateStore {
             if names(session.backgroundOverride) {
                 session.setBackgroundOverride(session.backgroundOverride?.withImagePath(nil))
             }
-            for pane in session.tree.allPanes where names(pane.backgroundOverride) {
-                pane.setBackgroundOverride(pane.backgroundOverride?.withImagePath(nil))
+            for pane in session.tree.allPanes {
+                for tab in pane.tabs {
+                    if names(tab.projectBackgroundSeed) {
+                        tab.projectBackgroundSeed = tab.projectBackgroundSeed?.withImagePath(nil)
+                    }
+                    if names(tab.backgroundOverride) {
+                        tab.setBackgroundOverride(tab.backgroundOverride?.withImagePath(nil))
+                    }
+                }
+                // Removing an image is not a Pane edit, so it keeps the Tabs'
+                // own values that a Pane write would replace.
+                if names(pane.backgroundOverride) {
+                    let kept = pane.replacedOverrides()
+                    pane.setBackgroundOverride(pane.backgroundOverride?.withImagePath(nil))
+                    pane.restoreReplacedOverrides(kept)
+                }
             }
         }
     }

@@ -47,9 +47,22 @@ public final class TabRuntime: Identifiable {
     /// current. Stored here because every config render replaces the whole
     /// override set.
     @ObservationIgnored
-    private var paneBackgroundOverride: TerminalBackgroundSettings?
+    private(set) var paneBackgroundOverride: TerminalBackgroundSettings?
     @ObservationIgnored
-    private var sessionBackgroundOverride: TerminalBackgroundSettings?
+    private(set) var sessionBackgroundOverride: TerminalBackgroundSettings?
+
+    /// This Tab's own background, the narrowest level of the chain. `nil`
+    /// follows the Pane. Observed because see-through and the chip menu read it.
+    public private(set) var backgroundOverride: TerminalBackgroundSettings?
+
+    /// The value a Project opened this Tab with, so Update Project can tell a
+    /// value the user set from one it seeded.
+    @ObservationIgnored
+    public internal(set) var projectBackgroundSeed: TerminalBackgroundSettings?
+
+    /// The image this Tab opened without because it hadn't reached this Mac.
+    @ObservationIgnored
+    var pendingTabImage: ProjectTabImage?
 
     /// Observation-tracked mirror of `terminal.workingDirectory`. That
     /// property is Combine `@Published` on an `ObservableObject`
@@ -165,10 +178,12 @@ public final class TabRuntime: Identifiable {
         lastBellMessage: String? = nil,
         backgroundGate: AppWideBackgroundGate = .live,
         paneBackgroundOverride: TerminalBackgroundSettings? = nil,
-        sessionBackgroundOverride: TerminalBackgroundSettings? = nil
+        sessionBackgroundOverride: TerminalBackgroundSettings? = nil,
+        backgroundOverride: TerminalBackgroundSettings? = nil
     ) {
         self.id = id
         self.backgroundGate = backgroundGate
+        self.backgroundOverride = backgroundOverride
         self.paneBackgroundOverride = paneBackgroundOverride
         self.sessionBackgroundOverride = sessionBackgroundOverride
         self.titleOverride = titleOverride
@@ -180,7 +195,7 @@ public final class TabRuntime: Identifiable {
         if let workingDirectory {
             self.terminal.configuration.workingDirectory = workingDirectory
         }
-        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil, command: command, background: Self.effectiveBackground(pane: paneBackgroundOverride, session: sessionBackgroundOverride, gate: backgroundGate))
+        Self.applyShellAndAppearancePreferences(to: self.terminal, tabID: id, paneID: nil, sessionID: nil, command: command, background: Self.effectiveBackground(tab: backgroundOverride, pane: paneBackgroundOverride, session: sessionBackgroundOverride, gate: backgroundGate))
         self.bellCount = bellCount
         self.unseenBellCount = unseenBellCount
         self.lastBellAt = lastBellAt
@@ -259,41 +274,59 @@ public final class TabRuntime: Identifiable {
         guard self.paneID != paneID || self.sessionID != sessionID else { return }
         self.paneID = paneID
         self.sessionID = sessionID
-        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: Self.effectiveBackground(pane: paneBackgroundOverride, session: sessionBackgroundOverride, gate: backgroundGate))
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: Self.effectiveBackground(tab: backgroundOverride, pane: paneBackgroundOverride, session: sessionBackgroundOverride, gate: backgroundGate))
     }
 
     /// Goes through this Tab's own builder, so the per-Tab lines
     /// (`keybind = clear`, `command`, `copy-on-select`, `env BATTY_*`) survive
     /// the wholesale replace. Renders only if the winning override changed, so
     /// a Pane with its own override learns the Session's value, for when it's
-    /// cleared, without touching its configuration.
-    func setBackgroundOverrides(pane: TerminalBackgroundSettings?, session: TerminalBackgroundSettings?) {
-        let previous = paneBackgroundOverride ?? sessionBackgroundOverride
+    /// cleared, without touching its configuration. `clearingOwn` drops this
+    /// Tab's own value, because a write from the Pane replaces it.
+    func setBackgroundOverrides(pane: TerminalBackgroundSettings?, session: TerminalBackgroundSettings?, clearingOwn: Bool = false) {
+        let previous = backgroundOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride
         paneBackgroundOverride = pane
         sessionBackgroundOverride = session
-        guard (pane ?? session) != previous else { return }
-        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: Self.effectiveBackground(pane: pane, session: session, gate: backgroundGate))
+        if clearingOwn, backgroundOverride != nil { backgroundOverride = nil }
+        guard (backgroundOverride ?? pane ?? session) != previous else { return }
+        render()
+    }
+
+    /// This Tab's own value. Idempotent because every observed write notifies,
+    /// equal values included.
+    public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
+        guard newOverride != backgroundOverride else { return }
+        let previous = backgroundOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride
+        backgroundOverride = newOverride
+        guard (newOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride) != previous else { return }
+        render()
+    }
+
+    private func render() {
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: Self.effectiveBackground(tab: backgroundOverride, pane: paneBackgroundOverride, session: sessionBackgroundOverride, gate: backgroundGate))
     }
 
     /// A new app-wide value, through this Tab's own builder for the same
     /// reason as ``setBackgroundOverrides(pane:session:)``.
     func refreshAppWideBackground(_ appWide: TerminalBackgroundSettings) {
-        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: .effective(pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide))
+        guard backgroundOverride == nil else { return }
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: .effective(tab: nil, pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide))
     }
 
     /// New font and cursor values, through this Tab's own builder for the same
     /// reason as ``setBackgroundOverrides(pane:session:)``. Both arguments come
     /// from the store, whose `UserDefaults` and gate may not be this Tab's.
     func refreshAppearance(_ appearance: TerminalAppearance, appWide: TerminalBackgroundSettings) {
-        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: .effective(pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide), appearance: appearance)
+        Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: .effective(tab: backgroundOverride, pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide), appearance: appearance)
     }
 
     private static func effectiveBackground(
+        tab: TerminalBackgroundSettings?,
         pane: TerminalBackgroundSettings?,
         session: TerminalBackgroundSettings?,
         gate: AppWideBackgroundGate
     ) -> TerminalBackgroundSettings {
-        .effective(pane: pane, session: session, appWide: gate.settings())
+        .effective(tab: tab, pane: pane, session: session, appWide: gate.settings())
     }
 
     /// Left on the zero-arg, `.standard`-only `resolved…()` readers (#0426):
@@ -544,4 +577,10 @@ public final class TabRuntime: Identifiable {
 public enum BellIntakeEvent: Equatable, Sendable {
     case bel(count: Int, at: Date)
     case desktopNotification(message: String?, at: Date)
+}
+
+extension TabRuntime: BackgroundOverrideHolder {
+    func inheritedBackground(appWide: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
+        .effective(tab: nil, pane: paneBackgroundOverride, session: sessionBackgroundOverride, appWide: appWide)
+    }
 }

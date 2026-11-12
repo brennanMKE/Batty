@@ -18,6 +18,7 @@ nonisolated enum HostedImageError: Error, Equatable, Sendable {
     case unsupportedType
     case tooManyPixels
     case importFailed
+    case disallowedHost
 
     func message(host: String) -> String {
         switch self {
@@ -25,6 +26,7 @@ nonisolated enum HostedImageError: Error, Equatable, Sendable {
         case .unsupportedType: "Not a PNG or JPEG image"
         case .tooManyPixels: "The image is too large"
         case .importFailed: "The image couldn't be read"
+        case .disallowedHost: "Not a Background Sets address"
         }
     }
 }
@@ -88,8 +90,14 @@ actor HostedImageStore {
 
     nonisolated var recordsFile: URL { directory.appendingPathComponent("hosted-images.json") }
 
+
     func records() -> [HostedImageRecord] {
-        guard let data = try? Data(contentsOf: recordsFile),
+        Self.records(in: directory)
+    }
+
+    /// A synchronous read of the small records file, for the main actor.
+    nonisolated static func records(in directory: URL) -> [HostedImageRecord] {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("hosted-images.json")),
               let records = try? JSONDecoder().decode([HostedImageRecord].self, from: data)
         else { return [] }
         return records

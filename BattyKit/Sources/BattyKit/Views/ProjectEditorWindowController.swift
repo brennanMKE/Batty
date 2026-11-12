@@ -63,8 +63,10 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
             imageLibrary: store.backgroundImages,
             appWideBackground: { [weak store] in store?.backgroundGate.settings() ?? .off },
             sharedImagesMessage: { [weak store] in store?.sharedProjectImages?.message },
-            sharedImagesAvailable: store.sharedProjectImages != nil
+            sharedImagesAvailable: store.sharedProjectImages != nil,
+            tabImageIdentity: store.tabImageIdentity
         )
+        model.projectLoaded = { [weak store] project in store?.projectEditorShowed(project) }
         if let newDraft { model.requestNavigation(.newDraft(newDraft)) }
         if let project = model.selectedID.flatMap({ projectStore.project(id: $0) }) {
             store.reconcileSharedImage(of: project)
@@ -96,6 +98,9 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
 
         self.model = model
         self.window = window
+        if let project = model.selectedID.flatMap({ projectStore.project(id: $0) }) {
+            store.projectEditorShowed(project)
+        }
         return true
     }
 

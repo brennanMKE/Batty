@@ -248,4 +248,139 @@ struct ProjectBackgroundSyncTests {
         #expect(merged.first?.sharedImage == .named(digest: digestA, name: "Kept"))
         #expect(apply(remote(of: local, image: .named(digest: digestB, name: "N")), to: []).first?.sharedImage == nil)
     }
+    // MARK: - Tab images
+
+    private let url = URL(string: "https://batty.sstools.co/backgrounds/canal.jpg")!
+
+    private func tabbed(_ tabs: [ProjectTab]) -> Project {
+        Project(id: UUID(), name: "Tabs", rootPath: "/Users/test/a",
+                layout: ProjectLayout(root: .pane(.terminal(tabs: tabs))), isShared: true, modifiedAt: earlier)
+    }
+
+    private func remote(_ project: Project, tabs: [ProjectTab]) -> ProjectSyncRecord {
+        var remote = project
+        remote.layout = ProjectLayout(root: .pane(.terminal(tabs: tabs)))
+        remote.modifiedAt = later
+        return remote.syncRecord(home: home)
+    }
+
+    private func tabs(_ project: Project?) -> [ProjectTab] { project?.layout.panes.flatMap(\.tabs) ?? [] }
+
+    private var hostedTab: ProjectTab {
+        ProjectTab(title: "H", background: projectBackgroundValue(path: pathNaming(digestA)), image: .hosted(url: url, name: "Canal"))
+    }
+
+    private var customTab: ProjectTab {
+        ProjectTab(title: "C", background: secondBackgroundValue(path: pathNaming(digestB)), image: .custom(digest: digestB, name: "Mine"))
+    }
+
+    @Test func recordCarriesTabSettingsAndIdentityButNoPath() throws {
+        let record = tabbed([hostedTab, customTab]).syncRecord(home: home)
+        let text = String(decoding: try ProjectsFile.encoder.encode(record), as: UTF8.self)
+        #expect(!text.contains("here.png"))
+        #expect(!text.contains("imagePath"))
+        #expect(text.contains("canal.jpg"))
+        #expect(text.contains(digestB))
+        #expect(record.layout.panes[0].tabs.map(\.background) == [projectBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
+    }
+
+    @Test func recordWithAStrayTabImagePathDropsIt() throws {
+        var record = tabbed([]).syncRecord(home: home)
+        record.layout = ProjectLayout(root: .pane(.terminal(tabs: [hostedTab])))
+        let project = Project(syncRecord: record, home: home)
+        #expect(tabs(project)[0].background == projectBackgroundValue(path: nil))
+        #expect(tabs(project)[0].image == hostedTab.image)
+    }
+
+    @Test func tabSelectionRoundTripsThroughARecord() throws {
+        let record = tabbed([hostedTab, customTab]).syncRecord(home: home)
+        let decoded = try ProjectsFile.decoder.decode(ProjectSyncRecord.self, from: ProjectsFile.encoder.encode(record))
+        let project = Project(syncRecord: decoded, home: home)
+        #expect(tabs(project).map(\.image) == [hostedTab.image, customTab.image])
+    }
+
+    @Test func customDigestIsInTheRecordWithTheFlagOff() throws {
+        let data = try ProjectsFile.encoder.encode(tabbed([customTab]).syncRecord(home: home, carriesSharedImage: false))
+        #expect(String(decoding: data, as: UTF8.self).contains(digestB))
+    }
+
+    @Test func mergeKeepsThisMacsPathForTheSameIdentity() {
+        let local = tabbed([hostedTab, customTab])
+        var changed = customTab
+        changed.background = changed.background?.withTerminalOpacity(0.3)
+        let merged = apply(remote(local, tabs: [hostedTab, changed]), to: [local])
+        #expect(tabs(merged.first).map { $0.background?.imagePath } == [pathNaming(digestA), pathNaming(digestB)])
+        #expect(tabs(merged.first)[1].background?.terminalOpacity == 0.3)
+    }
+
+    @Test func mergeFollowsAnImageWhenTabsAreReordered() {
+        let local = tabbed([hostedTab, customTab])
+        let merged = apply(remote(local, tabs: [customTab, hostedTab]), to: [local])
+        #expect(tabs(merged.first).map { $0.background?.imagePath } == [pathNaming(digestB), pathNaming(digestA)])
+    }
+
+    @Test func mergeOfAnAddedTabDoesNotBorrowANeighboursImage() {
+        let local = tabbed([hostedTab])
+        let added = ProjectTab(title: "New", background: secondBackgroundValue(path: nil))
+        let merged = apply(remote(local, tabs: [added, hostedTab]), to: [local])
+        #expect(tabs(merged.first).map { $0.background?.imagePath } == [nil, pathNaming(digestA)])
+    }
+
+    @Test func mergeLeavesANewIdentityPending() {
+        let local = tabbed([ProjectTab(title: "Plain")])
+        let merged = apply(remote(local, tabs: [customTab]), to: [local])
+        #expect(tabs(merged.first)[0].image == customTab.image)
+        #expect(tabs(merged.first)[0].background?.imagePath == nil)
+        #expect(tabs(merged.first)[0].background == secondBackgroundValue(path: nil))
+    }
+
+    @Test func twoMacsHostedCopiesWithDifferentDigestsMatchByURL() {
+        var mine = hostedTab
+        mine.background = mine.background?.withImagePath(pathNaming(digestB))
+        let local = tabbed([mine])
+        var theirs = hostedTab
+        theirs.background = theirs.background?.withImagePath(pathNaming(digestA))
+        let merged = apply(remote(local, tabs: [theirs]), to: [local])
+        #expect(tabs(merged.first)[0].background?.imagePath == pathNaming(digestB))
+    }
+
+    @Test func remoteFollowOnATabClearsItsImage() {
+        let local = tabbed([hostedTab])
+        let merged = apply(remote(local, tabs: [ProjectTab(title: "H")]), to: [local])
+        #expect(tabs(merged.first)[0].background == nil)
+        #expect(tabs(merged.first)[0].image == nil)
+    }
+
+    @Test func mergeTwiceWithTabImagesEqualsOnce() {
+        let local = tabbed([hostedTab, customTab])
+        let record = remote(local, tabs: [customTab, hostedTab])
+        let once = apply(record, to: [local])
+        #expect(apply(record, to: once) == once)
+    }
+
+    @Test func tabBackgroundsAddLittleToARecord() throws {
+        let plain = Project(id: UUID(), name: "Big", rootPath: "/Users/test/a",
+                            layout: ProjectLayout(root: .split(direction: .horizontal, children: [
+                                .pane(.terminal(tabs: [ProjectTab(), ProjectTab()])), .pane(.terminal(tabs: [ProjectTab(), ProjectTab()])),
+                                .pane(.terminal(tabs: [ProjectTab()])), .pane(.terminal(tabs: [ProjectTab()])),
+                            ])), isShared: true, modifiedAt: earlier)
+        var full = plain
+        full.layout = plain.layout.mappingTabs { tab in
+            var tab = tab
+            tab.background = projectBackgroundValue(path: pathNaming(digestA))
+            tab.image = .hosted(url: url, name: String(repeating: "n", count: ProjectSharedImage.maxNameBytes))
+            return tab
+        }
+        let without = try ProjectsFile.encoder.encode(plain.syncRecord(home: home))
+        let with = try ProjectsFile.encoder.encode(full.syncRecord(home: home))
+        #expect(with.count - without.count < 300 + 6 * 500)
+        #expect(with.count < 1_000_000)
+    }
+
+    @Test func recordWithNoTabBackgroundsIsByteIdenticalToToday() throws {
+        let project = tabbed([ProjectTab(title: "A", startupCommand: "make"), ProjectTab()])
+        let text = String(decoding: try ProjectsFile.encoder.encode(project.syncRecord(home: home)), as: UTF8.self)
+        #expect(!text.contains("background"))
+        #expect(!text.contains("\"image\""))
+    }
 }

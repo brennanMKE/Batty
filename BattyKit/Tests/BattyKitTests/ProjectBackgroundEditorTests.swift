@@ -341,4 +341,132 @@ struct ProjectBackgroundEditorTests {
         #expect(model.draft == draft)
         #expect(!model.isDirty)
     }
+    // MARK: - Tab backgrounds
+
+    private static func twoTabs(_ first: TerminalBackgroundSettings? = nil, _ second: TerminalBackgroundSettings? = nil) -> ProjectLayout {
+        ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(title: "A", background: first), ProjectTab(title: "B", background: second)])))
+    }
+
+    private func tabTarget(_ model: ProjectEditorViewModel, _ index: Int) -> ProjectTabBackgroundTarget {
+        model.projectTabBackgroundTarget(slot: 0, tabID: model.selectedTabIDs[index])
+    }
+
+    private func tabEditor(_ model: ProjectEditorViewModel, _ index: Int, appWide: TerminalBackgroundSettings = .off) -> BackgroundOverrideEditor {
+        let target = tabTarget(model, index)
+        return BackgroundOverrideEditor(target: target, appWide: appWide, originalOverride: target.backgroundOverride)
+    }
+
+    private func tabs(_ model: ProjectEditorViewModel) -> [ProjectTab] { model.draft?.layout.panes[0].tabs ?? [] }
+
+    @Test func tabCustomSeedsFromTheProjectValue() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: projectBackgroundValue(path: nil), layout: Self.twoTabs())))
+        tabEditor(model, 0, appWide: appWideBackgroundValue(path: nil)).selectCustom()
+        #expect(tabs(model)[0].background == projectBackgroundValue(path: nil))
+        #expect(tabs(model)[1].background == nil)
+    }
+
+    @Test func tabEditMakesTheDraftDirtyAndSaveStoresIt() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let project = fixture.project(background: nil, layout: Self.twoTabs())
+        let projectStore = try store(fixture, project)
+        let model = model(fixture, projectStore)
+        #expect(!model.isDirty)
+        tabTarget(model, 1).setBackgroundOverride(secondBackgroundValue(path: nil))
+        #expect(model.isDirty)
+        #expect(model.save() != nil)
+        #expect(projectStore.project(id: project.id)?.layout.panes[0].tabs[1].background == secondBackgroundValue(path: nil))
+        #expect(!model.isDirty)
+    }
+
+    @Test func tabSummaryNamesFollowProjectAndCustom() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs(nil, secondBackgroundValue(path: "/tmp/x/Canal.png")))))
+        #expect(model.tabBackgroundSummary(slot: 0, index: 0) == "Follows Project")
+        #expect(model.tabBackgroundSummary(slot: 0, index: 1) == "Custom: Canal, terminal 45%")
+    }
+
+    @Test func tabPickedImageIsCopiedIntoTheProjectFolder() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let wide = try await fixture.copy(in: fixture.appWideFolder)
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs())))
+        tabEditor(model, 0, appWide: appWideBackgroundValue(path: wide)).selectCustom()
+        let path = try #require(tabs(model)[0].background?.imagePath)
+        #expect(path != wide)
+        #expect(path.hasPrefix(fixture.projectFolder.path))
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func tabMissingImageWarnsAndDoesNotBlockSave() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        try fixture.removeFolder(of: path)
+        let project = fixture.project(background: nil, layout: Self.twoTabs(projectBackgroundValue(path: path)))
+        let projectStore = try store(fixture, project)
+        let model = model(fixture, projectStore)
+        model.setName("Renamed")
+        let validation = model.validate()
+        #expect(validation.warnings[.tabBackground(slot: 0, tab: 0)] != nil)
+        #expect(validation.warnings[.tabBackground(slot: 0, tab: 1)] == nil)
+        #expect(model.canSave(validation))
+        #expect(model.save() != nil)
+        #expect(projectStore.project(id: project.id)?.layout.panes[0].tabs[0].background?.imagePath == path)
+    }
+
+    @Test func removingATabCarriesItsBackgroundAway() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs(projectBackgroundValue(path: nil), secondBackgroundValue(path: nil)))))
+        model.removeTab(at: 0)
+        #expect(tabs(model).map(\.background) == [secondBackgroundValue(path: nil)])
+        #expect(model.tabBackgroundSummary(slot: 0, index: 0) == "Custom: No image, terminal 45%")
+    }
+
+    @Test func aSheetForARemovedTabWritesNothing() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: Self.twoTabs())))
+        let target = tabTarget(model, 1)
+        model.removeTab(at: 1)
+        let before = model.draft
+        target.setBackgroundOverride(projectBackgroundValue(path: nil))
+        #expect(model.draft == before)
+        #expect(target.backgroundOverride == nil)
+    }
+
+    @Test func removedImageClearsTabPathsWithoutDirtying() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy()
+        let projectStore = try store(fixture, fixture.project(background: nil, layout: Self.twoTabs(projectBackgroundValue(path: path))))
+        let model = model(fixture, projectStore)
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        try projectStore.clearBackgroundImage(digest: digest)
+        model.backgroundImageWasRemoved(digest: digest)
+        #expect(tabs(model)[0].background == projectBackgroundValue(path: nil))
+        #expect(!model.isDirty)
+        #expect(model.draft?.captureNotes[.tabBackground(slot: 0, tab: 0)] == nil)
+
+        let wide = try await fixture.copy(in: fixture.appWideFolder)
+        tabTarget(model, 1).setBackgroundOverride(appWideBackgroundValue(path: wide))
+        let adopted = try #require(tabs(model)[1].background?.imagePath)
+        let adoptedDigest = try #require(TerminalBackgroundImageImporter.digest(ofPath: adopted))
+        model.backgroundImageWasRemoved(digest: adoptedDigest)
+        #expect(tabs(model)[1].background?.imagePath == nil)
+        #expect(model.draft?.captureNotes[.tabBackground(slot: 0, tab: 1)] != nil)
+    }
+
+    @Test func presetChangeAsksBeforeDroppingATabBackground() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let layout = ProjectLayout(root: .split(direction: .horizontal, children: [
+            .pane(.terminal()),
+            .pane(.terminal(tabs: [ProjectTab(background: projectBackgroundValue(path: nil))])),
+        ]), preset: .horizontalSplit)
+        let model = model(fixture, try store(fixture, fixture.project(background: nil, layout: layout)))
+        #expect(ProjectEditorViewModel.hasConfiguration(.terminal(tabs: [ProjectTab(background: projectBackgroundValue(path: nil))])))
+        #expect(model.changePreset(to: .singlePane) == .needsConfirmation(droppedSlots: [1]))
+    }
+
+    @Test func projectTabScopeNamesFollowProject() {
+        #expect(BackgroundOverrideScope.projectTab.followTitle == "Follow Project")
+        #expect(BackgroundOverrideScope.projectTab.customTitle == "Custom for This Tab")
+        #expect(BackgroundOverrideScope.projectTab.identifierPrefix == "project-tab-background-sheet")
+    }
 }

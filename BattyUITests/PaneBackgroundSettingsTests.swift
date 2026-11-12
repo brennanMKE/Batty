@@ -95,4 +95,71 @@ nonisolated final class PaneBackgroundSettingsTests: XCTestCase {
         XCTAssertEqual(image.label, "Image Opacity")
         XCTAssertEqual(terminal.label, "Terminal Opacity")
     }
+    // MARK: - Tab chip
+
+    @MainActor
+    private func openTabBackgroundSheet(in app: XCUIApplication) {
+        let chip = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'tab-chip.'")).firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 10), "no Tab chip")
+        chip.rightClick()
+        let item = app.menuItems["Background\u{2026}"]
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "the Tab chip menu has no Background…")
+        item.click()
+    }
+
+    @MainActor
+    func testTabChipMenuOpensTabBackgroundSheet() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        openTabBackgroundSheet(in: app)
+        let follow = app.buttons["tab-background-sheet.follow"]
+        XCTAssertTrue(follow.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForValue(follow, "selected"))
+        app.buttons["tab-background-sheet.cancel"].click()
+    }
+
+    @MainActor
+    func testClearBackgroundIsDisabledWithoutATabValue() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        let chip = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'tab-chip.'")).firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 10), "no Tab chip")
+        chip.rightClick()
+        let clear = app.menuItems["Clear Background"]
+        XCTAssertTrue(clear.waitForExistence(timeout: 5), "the Tab chip menu has no Clear Background")
+        XCTAssertFalse(clear.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    @MainActor
+    func testPaneGearReplacesATabsOwnBackground() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        openTabBackgroundSheet(in: app)
+        let tabCustom = app.buttons["tab-background-sheet.custom"]
+        XCTAssertTrue(tabCustom.waitForExistence(timeout: 5))
+        tabCustom.click()
+        app.buttons["tab-background-sheet.done"].click()
+
+        expandPaneList(in: app)
+        gears(in: app).firstMatch.click()
+        let paneCustom = app.buttons["pane-background-sheet.custom"]
+        XCTAssertTrue(paneCustom.waitForExistence(timeout: 5))
+        paneCustom.click()
+        app.buttons["pane-background-sheet.done"].click()
+
+        openTabBackgroundSheet(in: app)
+        let follow = app.buttons["tab-background-sheet.follow"]
+        XCTAssertTrue(follow.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForValue(follow, "selected"), "the Pane gear did not replace the Tab's own background")
+        app.buttons["tab-background-sheet.cancel"].click()
+    }
 }

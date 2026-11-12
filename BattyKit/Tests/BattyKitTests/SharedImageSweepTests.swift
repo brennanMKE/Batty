@@ -189,4 +189,31 @@ struct SharedImageSweepTests {
         #expect(w.fake.hasFile(digest: try #require(TerminalBackgroundImageImporter.digest(ofPath: first))))
         #expect(w.fake.hasFile(digest: try #require(TerminalBackgroundImageImporter.digest(ofPath: second))))
     }
+
+    @Test func sweepKeepsADigestOnlyATabNames() async throws {
+        let images = w.images
+        let tab = ProjectTab(background: projectBackgroundValue(path: nil), image: .custom(digest: orphan, name: "Tab"))
+        var project = w.project(path: nil, sharedImage: nil)
+        project.layout = ProjectLayout(root: .pane(.terminal(tabs: [tab])))
+        try w.store.upsert(project)
+        w.backend.receive([:])
+        try FileManager.default.removeItem(at: w.fixture.projectsFile)
+        try w.fixture.saveProjectsFile()
+        #expect(w.store.projects.contains { $0.tabCustomDigests == [orphan] })
+        await images.sweepIfAllowed()?.value
+        expectSweepRanAndKeptTheOrphan()
+    }
+
+    @Test func sweepKeepsADigestOnlyARecordsTabNames() async throws {
+        let images = w.images
+        var source = Project(name: "Elsewhere", rootPath: "/tmp/elsewhere", isShared: true)
+        source.layout = ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(background: projectBackgroundValue(path: nil), image: .custom(digest: orphan, name: "Tab"))])))
+        var record = source.syncRecord(home: "/Users/test")
+        record.modifiedAt = .distantPast
+        w.backend.receive([record.id: .record(record)])
+        try w.fixture.saveProjectsFile()
+        #expect(!w.store.projects.contains { !$0.tabCustomDigests.isEmpty })
+        await images.sweepIfAllowed()?.value
+        expectSweepRanAndKeptTheOrphan()
+    }
 }

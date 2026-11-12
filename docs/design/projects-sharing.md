@@ -21,8 +21,8 @@ split is enforced by types, not by convention.
 
 | Group | Fields | Syncs |
 |---|---|---|
-| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, `theme`, `modifiedAt`, and behind the `sharedProjectImages` flag the image's digest and name | yes, when shared |
-| Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath`, `sharedImage` as held in `projects.json` | never |
+| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, each Tab's `background` without its image path and its `image` identity (Background Sets URL or custom digest, in every build), `theme`, `modifiedAt`, and behind the `sharedProjectImages` flag the image's digest and name | yes, when shared |
+| Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath`, each Tab's `background.imagePath`, `sharedImage` as held in `projects.json` | never |
 | Membership | `isShared` | implied by presence in the shared set; never a field of the synced record |
 
 `ProjectSyncRecord` (`Model/ProjectSync.swift`) holds exactly the Definition
@@ -107,6 +107,41 @@ the Project Editor on one. A launch or key-value change does nothing until
 status without a ubiquity container entitlement can only be proven on real Macs.
 `issues/0551.md` has the checklist and the fallbacks, and only one type,
 `ICloudDriveImageFolder`, has to change for them.
+
+## Tab images (#0585)
+
+- **Identity.** A Tab with an image carries a `ProjectTabImage`: `{"url", "name"}`
+  for a Background Sets image (the URL, because each Mac re-encodes its download
+  and so gets its own digest) or `{"digest", "name"}` for any other image. It is
+  written in every build, so Projects saved before the flag turns on already name
+  their images. A bad URL (not `https`, no host, over 2,048 bytes) or digest
+  decodes as no identity, which means no image.
+- **Record.** `syncRecord` strips every Tab's image path and keeps the identity;
+  `Project(syncRecord:)` strips any stray path again.
+- **Merge.** Content-addressed: an incoming Tab takes this Mac's path for the
+  same identity wherever that Tab now sits, or no path, which means pending.
+  Tabs have no id, so a remote add, remove or reorder can't attach the wrong
+  image.
+- **Download.** Only from a user action: opening the Project, or the Project
+  Editor showing it. Never at launch or on a key-value change. A local copy is
+  looked for first (`ProjectBackgrounds/` by digest, `Hosted/` by URL, then the
+  cache). A hosted image downloads from the catalogs' hosts only, through the
+  same checks as a Background Sets pick. A custom image goes through the #0551
+  iCloud Drive transport as a Tab work item, downloaded only when requested, so
+  **in Prod, with `sharedProjectImages` off, a custom Tab image doesn't reach
+  another Mac**: that Mac shows the Tab's opacities without the image until
+  #0554 turns the flag on.
+- **Cache.** Downloads land in `BackgroundImages/Downloaded/`
+  (`downloaded-images.json` indexes digest, URL, name, bytes and last use). At
+  most 20 images and 500 MB, least recently used evicted first after each
+  insert. Pinned, never evicted: images the app-wide default, a Session, Pane or
+  Tab (own value, seed or pending identity) or the open editor draft shows, and
+  downloads in flight. Stored definitions don't pin. Eviction clears the stored
+  Tab paths as device state and keeps the identity, so the next open downloads
+  again. The cache owns its copies: Save never copies them into
+  `ProjectBackgrounds/`, and reclaim never touches the folder.
+- **Sweep.** Tab custom digests in the list, the file and every record count as
+  named, so #0551's sweep keeps a Tab-only image.
 
 ## Portable root
 

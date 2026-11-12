@@ -194,7 +194,7 @@ public final class ProjectStore {
               let file = try? Self.decodeFile(data),
               file.dropped == 0, file.newerVersion == nil
         else { return nil }
-        return Set(file.projects.compactMap { $0.background?.imagePath })
+        return Set(file.projects.flatMap(\.allBackgroundImagePaths))
     }
 
     /// The digests `projects.json`'s `sharedImage` values name, which a Project
@@ -206,7 +206,7 @@ public final class ProjectStore {
               let file = try? Self.decodeFile(data),
               file.dropped == 0, file.newerVersion == nil
         else { return nil }
-        return Set(file.projects.compactMap { $0.sharedImage?.digest })
+        return Set(file.projects.compactMap { $0.sharedImage?.digest }).union(file.projects.flatMap(\.tabCustomDigests))
     }
 
     /// Every digest some Project may still need: the backend's records, this
@@ -216,10 +216,14 @@ public final class ProjectStore {
         guard let backend, backend.snapshotIsAuthoritative, !mayReferenceUnlistedImages else { return nil }
         let snapshot = backend.snapshot()
         guard !backend.snapshotSkippedEntries, imagePathsInFile() != nil, let inFile = sharedImageDigestsInFile() else { return nil }
-        var named = inFile.union(projects.compactMap { $0.sharedImage?.digest })
+        var named = inFile.union(projects.compactMap { $0.sharedImage?.digest }).union(projects.flatMap(\.tabCustomDigests))
         for entry in snapshot.values {
-            if case .record(let record) = entry, case .named(let digest, _)? = record.background?.image {
+            guard case .record(let record) = entry else { continue }
+            if case .named(let digest, _)? = record.background?.image {
                 named.insert(digest)
+            }
+            for tab in record.layout.panes.flatMap(\.tabs) {
+                if let digest = tab.image?.digest { named.insert(digest) }
             }
         }
         return named
@@ -236,7 +240,7 @@ public final class ProjectStore {
     func fileNamesImageTheListDoesNot(digest: String) -> Bool {
         guard let fileURL, let data = try? readFile(fileURL), let file = try? Self.decodeFile(data) else { return false }
         func names(_ project: Project?) -> Bool {
-            project?.background?.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
+            project?.allBackgroundImagePaths.contains { TerminalBackgroundImageImporter.digest(ofPath: $0) == digest } ?? false
         }
         return file.projects.contains { names($0) && !names(project(id: $0.id)) }
     }
@@ -425,9 +429,14 @@ public final class ProjectStore {
                 updated[index].sharedImage = nil
                 changed = true
             }
-            guard let background = updated[index].background,
-                  background.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
-            else { continue }
+            func names(_ settings: TerminalBackgroundSettings) -> Bool {
+                settings.imagePath.flatMap(TerminalBackgroundImageImporter.digest(ofPath:)) == digest
+            }
+            if updated[index].layout.panes.flatMap(\.tabs).contains(where: { $0.background.map(names) ?? false }) {
+                updated[index].layout = updated[index].layout.mappingTabBackgrounds { names($0) ? $0.withImagePath(nil) : $0 }
+                changed = true
+            }
+            guard let background = updated[index].background, names(background) else { continue }
             updated[index].background = background.withImagePath(nil)
             changed = true
         }
@@ -460,6 +469,54 @@ public final class ProjectStore {
         }
         try commit(updated)
         return true
+    }
+
+    /// A Tab's image has been found or has arrived on this Mac. Device state:
+    /// no stamp and no publish. Sets the path on every Tab of the Project that
+    /// names `identity`; false when none does.
+    @discardableResult
+    func setResolvedTabImage(projectID: UUID, identity: ProjectTabImage, path: String) throws -> Bool {
+        try requireReadableFile()
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else { return false }
+        let project = projects[index]
+        guard project.layout.panes.flatMap(\.tabs).contains(where: { $0.image == identity && $0.background != nil && $0.background?.imagePath != path }) else {
+            return false
+        }
+        var updated = projects
+        updated[index].layout = project.layout.mappingTabs { tab in
+            guard tab.image == identity, let background = tab.background else { return tab }
+            var tab = tab
+            tab.background = background.withImagePath(path)
+            return tab
+        }
+        try commitDeviceState(updated, "setResolvedTabImage")
+        return true
+    }
+
+    /// Paths the downloaded cache evicted. Device state, like
+    /// `setResolvedTabImage`: the identities stay, so a later open fetches again.
+    func clearTabImagePaths(_ paths: Set<String>) throws {
+        guard !paths.isEmpty else { return }
+        try requireReadableFile()
+        var updated = projects
+        var changed = false
+        for index in updated.indices where updated[index].tabBackgroundImagePaths.contains(where: paths.contains) {
+            updated[index].layout = updated[index].layout.mappingTabBackgrounds { settings in
+                settings.imagePath.map(paths.contains) == true ? settings.withImagePath(nil) : settings
+            }
+            changed = true
+        }
+        guard changed else { return }
+        try commitDeviceState(updated, "clearTabImagePaths")
+    }
+
+    private func commitDeviceState(_ updated: [Project], _ caller: String) throws {
+        if unreadableOriginal != nil {
+            projects = updated
+            logger.notice("\(caller, privacy: .public): projects file not fully loaded; keeping the change in memory only")
+            return
+        }
+        try commit(updated)
     }
 
     private func commit(_ updated: [Project]) throws {

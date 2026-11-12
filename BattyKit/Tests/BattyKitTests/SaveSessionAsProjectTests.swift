@@ -499,13 +499,105 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(draft.captureNotes[.background] == nil)
     }
 
-    @Test func aPaneOverrideIsNotCapturedAndAddsANote() throws {
+    @Test func aPaneOverrideIsCapturedIntoEveryTabOfThatPane() throws {
         let fixture = try ProjectBackgroundFixture()
         let session = fixture.session(2)
-        session.tree.allPanes[1].setBackgroundOverride(secondBackgroundValue(path: nil))
+        let pane = session.tree.allPanes[1]
+        pane.addTab()
+        pane.setBackgroundOverride(secondBackgroundValue(path: nil))
         let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
         #expect(draft.background == nil)
-        #expect(draft.captureNotes[.background]?.contains("Pane") == true)
+        #expect(draft.layout.panes[1].tabs.map(\.background) == [secondBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
+        #expect(draft.layout.panes[0].tabs.map(\.background) == [nil])
+        #expect(draft.captureNotes[.background] == nil)
+    }
+
+    @Test func aTabOverrideIsCapturedForThatTab() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let path = try await fixture.copy(in: fixture.paneFolder)
+        let session = fixture.session()
+        let pane = session.tree.allPanes[0]
+        pane.addTab()
+        pane.tabs[1].setBackgroundOverride(projectBackgroundValue(path: path))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        let tabs = draft.layout.panes[0].tabs
+        #expect(tabs[0].background == nil)
+        let copied = try #require(tabs[1].background?.imagePath)
+        #expect(copied.hasPrefix(fixture.projectFolder.path))
+        #expect(tabs[1].background == projectBackgroundValue(path: copied))
+    }
+
+    private static let twoTabs = ProjectLayout(root: .pane(.terminal(tabs: [
+        ProjectTab(background: projectBackgroundValue(path: nil)), ProjectTab(),
+    ])))
+
+    @Test func updateKeepsStoredTabValuesWhenUnchangedSinceOpen() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let path = try await fixture.copy()
+        let layout = ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab(background: projectBackgroundValue(path: path)), ProjectTab()])))
+        let project = fixture.project(background: nil, layout: layout)
+        try fixture.removeFolder(of: path)
+        let session = try openedSession(fixture, store, project)
+        #expect(session.tree.allPanes[0].tabs[0].backgroundOverride?.imagePath == nil, "test setup: the open dropped the image")
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.layout.panes[0].tabs.map(\.background) == [projectBackgroundValue(path: path), nil])
+    }
+
+    @Test func updateTakesAChangedTabValue() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = fixture.project(background: nil, layout: Self.twoTabs)
+        let session = try openedSession(fixture, store, project)
+        session.tree.allPanes[0].tabs[1].setBackgroundOverride(secondBackgroundValue(path: nil))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.layout.panes[0].tabs.map(\.background) == [projectBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
+    }
+
+    @Test func updateAfterClearingASeededTabFollowsTheProject() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = fixture.project(background: nil, layout: Self.twoTabs)
+        let session = try openedSession(fixture, store, project)
+        session.tree.allPanes[0].tabs[0].setBackgroundOverride(nil)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.layout.panes[0].tabs.map(\.background) == [nil, nil])
+    }
+
+    @Test func updateAfterThePaneGearWritesThePaneValueToItsTabs() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let project = fixture.project(background: nil, layout: Self.twoTabs)
+        let session = try openedSession(fixture, store, project)
+        session.tree.allPanes[0].setBackgroundOverride(secondBackgroundValue(path: nil))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.layout.panes[0].tabs.map(\.background) == [secondBackgroundValue(path: nil), secondBackgroundValue(path: nil)])
+    }
+
+    @Test func aTabImageThatCannotBeCopiedKeepsOpacityAndAddsANote() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let session = fixture.session()
+        session.tree.allPanes[0].tabs[0].setBackgroundOverride(projectBackgroundValue(path: "/tmp/not-a-batty-copy.png"))
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        #expect(draft.layout.panes[0].tabs[0].background == projectBackgroundValue(path: nil))
+        #expect(draft.captureNotes[.tabBackground(slot: 0, tab: 0)]?.contains("could not be copied") == true)
+    }
+
+    @Test func copyFromCurrentSessionDropsTabBackgroundsWithTheTabs() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let projectStore = ProjectStore(fileURL: fixture.projectsFile)
+        let stored = fixture.project(background: projectBackgroundValue(path: nil), layout: Self.twoTabs)
+        try projectStore.upsert(stored)
+        let session = fixture.session()
+        session.tree.allPanes[0].tabs[0].setBackgroundOverride(secondBackgroundValue(path: nil))
+        let model = ProjectEditorViewModel(
+            store: projectStore,
+            directoryExists: { _ in true },
+            captureSession: { SessionProjectCapture.capture(session: session, root: $0, gitDirectory: { _ in nil }) }
+        )
+        #expect(model.copyFromCurrentSession(confirmDiscard: true) == .applied)
+        #expect(model.draft?.layout.panes.flatMap(\.tabs).allSatisfy { $0.background == nil } == true)
+        #expect(model.draft?.background == projectBackgroundValue(path: nil))
     }
 
     @Test func anUnreadableSessionImageKeepsOpacityAndAddsANote() throws {
