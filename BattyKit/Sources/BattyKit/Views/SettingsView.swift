@@ -333,7 +333,7 @@ private struct TerminalBackgroundSettingsSection: View {
         let importer = store.appWideBackgroundImageImporter
         let editor = editor
         let retaining = editor.stored.imagePath
-        let sources = [store.backgroundImages.library.directory]
+        let sources = store.backgroundImages.pickSources
         importTask = Task {
             let adopted = await importer.adoptImage(path: libraryPath, from: sources, retaining: retaining)
             guard !Task.isCancelled else { return }

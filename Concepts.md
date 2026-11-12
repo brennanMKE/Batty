@@ -177,6 +177,9 @@ The window (File → Background Images…) and the library behind it: every back
 - **Each use keeps its own copy** in its own folder: the app-wide default, a Project, or a Session or Pane. Picking copies from the library into that folder, so no stored path names the library.
 - **Remove** clears every use on this Mac, listing them first, then deletes the image from the library and every other folder. A use's fit, position and opacities stay. A Shared Project changes on this Mac only. It refuses, removing nothing, while a saved Project it can't see might use the image.
 - **What syncs:** behind the `sharedProjectImages` flag (on in Beta, #0551), only an image selected for a Project set to Shared is copied to iCloud Drive. Being in the library, or used by a Pane, a Session, the app-wide default or a local Project, never copies it. Remove leaves the shared copy alone.
+- **Background Catalog** (1.4.0, #0576): a JSON file listing Background Sets, each with a name and images given as full-size and thumbnail URLs plus an optional title (format in #0574, decision 12). The **built-in catalog** is `https://batty.sstools.co/backgrounds/catalog.json`; code is keyed by catalog URL so user catalogs (#0577) add to the list.
+- **Background Set**: a named group of hosted images in a catalog, shown in the window's Background Sets tab with thumbnails only. No request is made before Background Sets is first shown.
+- **Hosted image store**: `BackgroundImages/Hosted/`, Batty's re-encoded copies of hosted images. A hosted image is identified by its full-size URL and downloaded only when it is selected as a background (select-to-download), stays in its set, and never joins My Images; a scan never promotes a digest held there. A use's copy keeps working after the catalog drops the image.
 
 ## Theme
 

@@ -35,6 +35,16 @@ Each Pane draws its own copy of the image, so one picture doesn't span a split, 
 
 If Batty's copy of the image in Settings goes missing or changes, terminals open with no picture and Settings asks you to choose it again.
 
+## Background Sets
+
+**Background Sets**, at the top of the Background Images window and of every **Choose…** sheet, shows sets of pictures from the Batty website, using thumbnails only.
+
+- Nothing is fetched until you first open **Background Sets**.
+- Choosing a picture as a background downloads it once. The sheet stays open while it downloads, and your old background stays until it finishes. After that the picture works offline.
+- Pictures from Background Sets stay in their sets and don't appear under **My Images**.
+- Offline, Background Sets shows the last copy it saw.
+- A picture the website drops keeps working wherever you use it.
+
 ## See-through windows
 
 While any terminal Pane in any session of a window is below 100% **Terminal Opacity**, that window lets the desktop and other apps show through those terminals.

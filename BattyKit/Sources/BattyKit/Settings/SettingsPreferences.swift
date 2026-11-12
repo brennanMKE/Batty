@@ -12,6 +12,9 @@ public enum SettingsPreference {
     public static let systemNotificationsKey = "co.sstools.Batty.systemNotifications"
     public static let pasteStrictnessKey = "co.sstools.Batty.pasteStrictness"
     public static let confirmQuitKey = "co.sstools.Batty.confirmQuit"
+    /// Set the first time Background Sets is shown. No request reaches a
+    /// background catalog before then.
+    public static let backgroundCatalogsBrowsedKey = "co.sstools.Batty.backgroundCatalogsBrowsed"
     public static let cmdNumberTargetKey = "co.sstools.Batty.cmdNumberTarget"
     public static let autoNameFromFilesKey = "co.sstools.Batty.autoNameFromFiles"
     public static let autoNameWithAIKey = "co.sstools.Batty.autoNameWithAI"
@@ -150,6 +153,15 @@ public enum SettingsPreference {
             return defaultConfirmQuit
         }
         return defaults.bool(forKey: confirmQuitKey)
+    }
+
+    static func resolvedBackgroundCatalogsBrowsed(defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: backgroundCatalogsBrowsedKey)
+    }
+
+    static func markBackgroundCatalogsBrowsed(defaults: UserDefaults) {
+        guard !resolvedBackgroundCatalogsBrowsed(defaults: defaults) else { return }
+        defaults.set(true, forKey: backgroundCatalogsBrowsedKey)
     }
 
     static func resolvedAutoNameFromFiles(defaults: UserDefaults) -> Bool {

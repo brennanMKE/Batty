@@ -50,6 +50,20 @@ public enum UITestDriver {
         return URL(fileURLWithPath: path)
     }
 
+    /// A folder that stands in for `https://batty.sstools.co/backgrounds/`, so
+    /// Background Sets never reaches the website in a UI test. Honored only
+    /// alongside the script variable and for an absolute path.
+    public static let backgroundCatalogDirEnvVar = "BATTY_UI_TEST_BACKGROUND_CATALOG_DIR"
+
+    static func backgroundCatalogFixtureDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        guard environment[scriptEnvVar] != nil,
+              let path = environment[backgroundCatalogDirEnvVar],
+              path.hasPrefix("/") else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true)
+    }
+
     public static func runIfNeeded(store: AppStateStore) {
         guard let raw = ProcessInfo.processInfo.environment[scriptEnvVar] else { return }
         guard let data = raw.data(using: .utf8) else {

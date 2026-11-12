@@ -251,7 +251,7 @@ struct BackgroundOverrideSettingsView: View {
         cancelImport()
         let importer = importer
         let editor = editor
-        let sources = [images.library.directory]
+        let sources = images.pickSources
         importTask = Task {
             let adopted = await importer.adoptImage(path: libraryPath, from: sources)
             guard !Task.isCancelled else { return }

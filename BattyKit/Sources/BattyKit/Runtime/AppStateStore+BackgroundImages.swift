@@ -4,25 +4,54 @@ import Foundation
 
 extension AppStateStore {
     /// `library` and `notificationCenter` are seams for tests' own folders.
+    /// `hosting` is the seam for tests' fake fetcher, folders and clock.
     func makeBackgroundImagesModel(
         library: BackgroundImageLibrary? = nil,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        hosting: HostedBackgroundsDependencies? = nil
     ) -> BackgroundImagesModel {
-        BackgroundImagesModel(
+        let libraryDirectory = library?.directory ?? BackgroundImageLibrary.directory(forProjectsFile: projectsFileURL)
+        let hostedDirectory = libraryDirectory.appendingPathComponent("Hosted", isDirectory: true)
+        return BackgroundImagesModel(
             library: library ?? BackgroundImageLibrary(
-                directory: BackgroundImageLibrary.directory(forProjectsFile: projectsFileURL),
+                directory: libraryDirectory,
                 sources: [
                     TerminalBackgroundImageImporter.appWideDirectory(),
                     projectBackgrounds.directory,
                     TerminalBackgroundImageImporter.defaultDirectory(),
-                ]
+                ],
+                hostedDirectory: hostedDirectory
             ),
             thumbnailer: BackgroundImageThumbnailer(),
             uses: { [weak self] in self?.backgroundImageUses() ?? [:] },
             refusal: { [weak self] in self?.removalRefusal(digest: $0) },
             clearUses: { [weak self] in try self?.clearBackgroundImageUses(digest: $0) },
             notificationCenter: notificationCenter,
-            sharedImages: { [weak self] in self?.sharedProjectImages }
+            sharedImages: { [weak self] in self?.sharedProjectImages },
+            hosted: HostedBackgroundsModel(
+                imageDirectory: hostedDirectory,
+                dependencies: hosting ?? Self.liveHostedDependencies(),
+                defaults: preferences
+            )
+        )
+    }
+
+    /// A UI-test launch with a fixture folder serves the catalog from disk and
+    /// keeps its cache beside it, so no run reaches the website.
+    static func liveHostedDependencies() -> HostedBackgroundsDependencies {
+        if let fixture = UITestDriver.backgroundCatalogFixtureDirectory() {
+            return HostedBackgroundsDependencies(
+                fetcher: FixtureBackgroundCatalogFetcher(directory: fixture),
+                cacheRoot: fixture.deletingLastPathComponent().appendingPathComponent("BackgroundCatalogCache", isDirectory: true),
+                temporaryRoot: HostedImageStore.defaultTemporaryRoot(),
+                clock: SystemClock()
+            )
+        }
+        return HostedBackgroundsDependencies(
+            fetcher: URLSessionBackgroundCatalogFetcher(),
+            cacheRoot: BackgroundCatalogCache.defaultRoot(),
+            temporaryRoot: HostedImageStore.defaultTemporaryRoot(),
+            clock: SystemClock()
         )
     }
 

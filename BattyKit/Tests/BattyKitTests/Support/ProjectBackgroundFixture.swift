@@ -42,6 +42,8 @@ enum BackgroundTestImage {
 final class ProjectBackgroundFixture {
     let base = FileManager.default.temporaryDirectory.appendingPathComponent("batty-project-bg-\(UUID().uuidString)", isDirectory: true)
     let testDefaults = TestDefaults()
+    let catalogFetcher = FakeBackgroundCatalogFetcher()
+    let clock = TestClock()
     private(set) var inspections = 0
     private(set) lazy var library = ProjectBackgroundLibrary(
         directory: projectFolder,
@@ -56,7 +58,8 @@ final class ProjectBackgroundFixture {
     let notificationCenter = NotificationCenter()
     private(set) lazy var imageLibrary = BackgroundImageLibrary(
         directory: libraryFolder,
-        sources: [appWideFolder, projectFolder, paneFolder]
+        sources: [appWideFolder, projectFolder, paneFolder],
+        hostedDirectory: hostedFolder
     )
 
     var root: URL { base.appendingPathComponent("root", isDirectory: true) }
@@ -64,6 +67,7 @@ final class ProjectBackgroundFixture {
     var backupFile: URL { base.appendingPathComponent(ProjectStore.backupFileName) }
     var projectFolder: URL { base.appendingPathComponent("ProjectBackgrounds", isDirectory: true) }
     var libraryFolder: URL { base.appendingPathComponent("BackgroundImages", isDirectory: true) }
+    var hostedFolder: URL { libraryFolder.appendingPathComponent("Hosted", isDirectory: true) }
     var appWideFolder: URL { base.appendingPathComponent("app-wide", isDirectory: true) }
     var paneFolder: URL { base.appendingPathComponent("pane", isDirectory: true) }
 
@@ -87,7 +91,16 @@ final class ProjectBackgroundFixture {
             backgroundGate: .acceptingEveryImage(defaults: testDefaults.defaults)
         )
         store.projectBackgrounds = library
-        store.backgroundImages = store.makeBackgroundImagesModel(library: imageLibrary, notificationCenter: notificationCenter)
+        store.backgroundImages = store.makeBackgroundImagesModel(
+            library: imageLibrary,
+            notificationCenter: notificationCenter,
+            hosting: HostedBackgroundsDependencies(
+                fetcher: catalogFetcher,
+                cacheRoot: base.appendingPathComponent("BackgroundCatalogs", isDirectory: true),
+                temporaryRoot: base.appendingPathComponent("downloads", isDirectory: true),
+                clock: clock
+            )
+        )
         return store
     }
 
