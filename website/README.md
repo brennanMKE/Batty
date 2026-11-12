@@ -64,7 +64,7 @@ update prompt within a few hours.
 
 ## Background images
 
-`backgrounds/catalog.json` is the built-in background catalog (format: the "Make your own set" section of `backgrounds.html`). Its image URLs are relative: a file on another host wouldn't be deployed with the site, and `build-backgrounds-page.py` refuses one. It is in git. The images it lists, full-size and thumbnails, are **not**: `.gitignore` excludes `website/backgrounds/**/*.png`, `*.jpg` and `*.jpeg`. Your local `website/backgrounds/<set>/` folders and the server are the only copies, so keep a backup of the originals.
+`backgrounds/catalog.json` is the built-in background catalog (format: the "Make your own set" section of `backgrounds.html`). Its image URLs are relative: a file on another host wouldn't be deployed with the site, and `build-backgrounds-page.py` refuses one. It is in git, and so are the images it lists, full-size and thumbnails: they are the official sets, stored in Git LFS (`.gitattributes` routes `website/backgrounds/**/*.png`, `*.jpg` and `*.jpeg` to LFS). A clone needs `git lfs` installed to get the real files rather than pointer stubs; check with `git lfs ls-files` before deploying.
 
 Adding an image:
 

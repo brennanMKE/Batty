@@ -18,8 +18,4 @@ scripts/.release-integrity-state
 website/demo/*.mp4
 website/demo/*.jpg
 
-# Hosted background images (#0575): local and on the server only, never committed
-website/backgrounds/**/*.png
-website/backgrounds/**/*.jpg
-website/backgrounds/**/*.jpeg
 tools/__pycache__/

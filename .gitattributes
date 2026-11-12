@@ -6,3 +6,7 @@
 *.jpg binary
 *.jpeg binary
 *.png binary
+# Official hosted background sets: stored in Git LFS
+website/backgrounds/**/*.png filter=lfs diff=lfs merge=lfs -text
+website/backgrounds/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+website/backgrounds/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
