@@ -105,7 +105,14 @@ nonisolated final class BackgroundCatalogSettingsTests: ProjectsUITestCase {
     func testRemovingACatalogKeepsTheBackgroundInUse() throws {
         try BackgroundCatalogFixture.writeHostedCatalog(in: catalogFolder, host: host, setName: setName)
         let app = try launch()
-        defer { app.terminate() }
+        // The pick lands in the app's real defaults and TerminalBackgrounds/
+        // folder, which classes launched without the catalog fixture never
+        // reset. A teardown block still runs after a failed assertion stops
+        // the test, where a `defer` would not.
+        addTeardownBlock { @MainActor in
+            self.clearAppWideBackground(in: app)
+            app.terminate()
+        }
         openAppearanceSettings(in: app)
         add(userURL, in: app)
         XCTAssertTrue(row(userURL, in: app).waitForExistence(timeout: 10), "the catalog was not added")
@@ -132,6 +139,18 @@ nonisolated final class BackgroundCatalogSettingsTests: ProjectsUITestCase {
         row(userURL, in: app).buttons["background-catalogs.remove"].click()
         XCTAssertTrue(waitFor({ !self.row(self.userURL, in: app).exists }, timeout: 10), "the catalog was not removed")
         XCTAssertTrue(noImage.isEnabled, "removing the catalog cleared the background")
+    }
+
+    @MainActor
+    private func clearAppWideBackground(in app: XCUIApplication) {
+        guard app.state != .notRunning else { return }
+        if element("background-images.picker.root", in: app).exists {
+            app.typeKey(.escape, modifierFlags: [])
+        }
+        let noImage = app.buttons["appearance-background.no-image"]
+        guard noImage.waitForExistence(timeout: 5), noImage.isEnabled else { return }
+        noImage.click()
+        XCTAssertTrue(waitFor({ !noImage.isEnabled }, timeout: 10), "the app-wide background was not cleared")
     }
 
     @MainActor
