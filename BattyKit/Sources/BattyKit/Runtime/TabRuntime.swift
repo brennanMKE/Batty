@@ -309,6 +309,18 @@ public final class TabRuntime: Identifiable {
         render()
     }
 
+    /// ``setBackgroundOverride(_:)`` without ending the wait for an image:
+    /// a sheet's Cancel or a Pane's restore puts back a value and its pending
+    /// state together.
+    func restoreBackgroundOverride(_ value: TerminalBackgroundSettings?, pendingImage: ProjectTabImage?) {
+        if value != backgroundOverride {
+            let previous = backgroundOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride
+            backgroundOverride = value
+            if (value ?? paneBackgroundOverride ?? sessionBackgroundOverride) != previous { render() }
+        }
+        if pendingTabImage != pendingImage { pendingTabImage = pendingImage }
+    }
+
     private func render() {
         Self.applyShellAndAppearancePreferences(to: terminal, tabID: id, paneID: paneID, sessionID: sessionID, command: commandOverride, background: Self.effectiveBackground(tab: backgroundOverride, pane: paneBackgroundOverride, session: sessionBackgroundOverride, gate: backgroundGate))
     }
@@ -589,5 +601,13 @@ public enum BellIntakeEvent: Equatable, Sendable {
 extension TabRuntime: BackgroundOverrideHolder {
     func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
         .first([(backgroundOverride, .tab), (paneBackgroundOverride, .pane), (sessionBackgroundOverride, .session)], appWide: appWide)
+    }
+
+    func pendingSnapshot() -> BackgroundPendingSnapshot {
+        BackgroundPendingSnapshot(tabs: pendingTabImage.map { [id: $0] } ?? [:])
+    }
+
+    func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot) {
+        restoreBackgroundOverride(value, pendingImage: pending.tabs[id])
     }
 }

@@ -315,4 +315,109 @@ struct TabImageResolutionTests {
         #expect(runtime.tabs[0].backgroundOverride == tabValue, "the arrival isn't a Pane edit, so the Tab keeps its own value")
         #expect(store.projectStore.project(id: project.id)?.layout.panes[0].background?.imagePath == path)
     }
+
+    // MARK: - Cancel keeps pending images (#0590)
+
+    private func sheet(_ target: any BackgroundOverrideHolder) -> BackgroundOverrideEditor {
+        BackgroundOverrideEditor(target: target, appWide: secondBackgroundValue(path: nil), originalOverride: target.backgroundOverride, replacedOverrides: target.replacedOverrides(), pending: target.pendingSnapshot())
+    }
+
+    private func twoTabPane(tabImage: ProjectTabImage, other: TerminalBackgroundSettings = secondBackgroundValue(path: nil), pane: TerminalBackgroundSettings? = nil, paneImage: ProjectTabImage? = nil) -> Project {
+        let tabs = [ProjectTab(background: projectBackgroundValue(path: nil), image: tabImage), ProjectTab(background: other)]
+        return f.project(name: "Pane", background: nil, layout: ProjectLayout(root: .pane(ProjectPane(kind: .terminal, tabs: tabs, background: pane, image: paneImage))))
+    }
+
+    @Test func aPaneSheetCancelWithNoEditKeepsTheTabsPending() async throws {
+        let store = store()
+        let url = try serve("canal")
+        let image = ProjectTabImage.hosted(url: url, name: "Canal")
+        let session = try open(store, twoTabPane(tabImage: image))
+        let pane = session.tree.allPanes[0]
+        let before = pane.tabs.map(\.backgroundOverride)
+        sheet(pane).cancel()
+        #expect(pane.tabs[0].pendingTabImage == image)
+        #expect(pane.tabs.map(\.backgroundOverride) == before)
+        await settle(store)
+        #expect(pane.tabs[0].backgroundOverride?.imagePath?.hasPrefix(f.downloadedFolder.path) == true)
+        #expect(pane.tabs[1].backgroundOverride == secondBackgroundValue(path: nil))
+    }
+
+    @Test func aPaneSheetEditThenCancelKeepsThePanePending() async throws {
+        let store = store()
+        let url = try serve("harbor")
+        let image = ProjectTabImage.hosted(url: url, name: "Harbor")
+        let pane = ProjectPane(kind: .terminal, tabs: [ProjectTab()], background: projectBackgroundValue(path: nil), image: image)
+        let session = try open(store, f.project(name: "Pane", background: nil, layout: ProjectLayout(root: .pane(pane))))
+        let runtime = session.tree.allPanes[0]
+        let editor = sheet(runtime)
+        editor.update { $0.withTerminalOpacity(0.4) }
+        #expect(runtime.pendingImage == nil, "test setup: the edit ended the wait")
+        editor.cancel()
+        #expect(runtime.pendingImage == image)
+        #expect(runtime.backgroundOverride == projectBackgroundValue(path: nil))
+        await settle(store)
+        #expect(runtime.backgroundOverride?.imagePath?.hasPrefix(f.downloadedFolder.path) == true)
+    }
+
+    @Test func aTabSheetEditThenCancelKeepsTheTabPending() async throws {
+        let store = store()
+        let url = try serve("canal")
+        let image = ProjectTabImage.hosted(url: url, name: "Canal")
+        let session = try open(store, tabbed([image]))
+        let tab = tabs(session)[0]
+        let editor = sheet(tab)
+        editor.update { $0.withTerminalOpacity(0.4) }
+        #expect(tab.pendingTabImage == nil, "test setup: the edit ended the wait")
+        editor.cancel()
+        #expect(tab.pendingTabImage == image)
+        #expect(tab.backgroundOverride == projectBackgroundValue(path: nil))
+        await settle(store)
+        #expect(tab.backgroundOverride?.imagePath?.hasPrefix(f.downloadedFolder.path) == true)
+    }
+
+    @Test func removingAPaneImageKeepsItsTabsPending() async throws {
+        let store = store()
+        let url = try serve("canal")
+        let image = ProjectTabImage.hosted(url: url, name: "Canal")
+        let local = try await f.copy()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: local))
+        let session = try open(store, twoTabPane(tabImage: image, pane: secondBackgroundValue(path: local)))
+        let pane = session.tree.allPanes[0]
+        #expect(pane.backgroundOverride?.imagePath == local, "test setup: the Pane shows image A")
+        #expect(pane.tabs[0].pendingTabImage == image)
+        let download = store.tabImageRequest
+        try store.clearBackgroundImageUses(digest: digest)
+        #expect(pane.backgroundOverride == secondBackgroundValue(path: nil))
+        #expect(pane.tabs[0].pendingTabImage == image)
+        #expect(pane.tabs[1].backgroundOverride == secondBackgroundValue(path: nil))
+        await download?.value
+        await settle(store)
+        #expect(pane.tabs[0].backgroundOverride?.imagePath != nil)
+    }
+
+    @Test func aWithheldImageSurvivesSheetCancelThenArrivesAndUpdateKeepsIt() async throws {
+        let store = store()
+        let url = try serve("canal")
+        let image = ProjectTabImage.hosted(url: url, name: "Canal")
+        let project = twoTabPane(tabImage: image)
+        let session = try open(store, project)
+        let pane = session.tree.allPanes[0]
+        sheet(pane).cancel()
+        await settle(store)
+        #expect(pane.tabs[0].backgroundOverride?.imagePath != nil)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.layout.panes[0].tabs[0].image == image)
+    }
+
+    @Test func updateKeepsTabIdentitiesAfterAPaneSheetCancel() async throws {
+        let store = store()
+        let url = try serve("canal")
+        let image = ProjectTabImage.hosted(url: url, name: "Canal")
+        let project = twoTabPane(tabImage: image)
+        let session = try open(store, project)
+        sheet(session.tree.allPanes[0]).cancel()
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.layout.panes[0].tabs[0].image == image)
+        await settle(store)
+    }
 }

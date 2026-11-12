@@ -195,8 +195,9 @@ public final class PaneRuntime: Identifiable {
         pushOverridesToTabs(clearingOwn: true)
     }
 
-    /// Opening a Project: sets this Pane's value without replacing the Tabs'
-    /// own, which the Project restores too.
+    /// Sets this Pane's value without replacing the Tabs' own or ending their
+    /// wait for an image: opening a Project, which restores the Tabs too, a
+    /// sheet's Cancel, and removing an image, which is not a Pane edit.
     func restoreBackgroundOverride(_ value: TerminalBackgroundSettings?) {
         guard kind == .terminal, value != backgroundOverride else { return }
         backgroundOverride = value
@@ -378,6 +379,26 @@ extension PaneRuntime: BackgroundOverrideHolder {
     func replacedOverrides() -> [UUID: TerminalBackgroundSettings] {
         tabs.reduce(into: [:]) { result, tab in
             if let own = tab.backgroundOverride { result[tab.id] = own }
+        }
+    }
+
+    func pendingSnapshot() -> BackgroundPendingSnapshot {
+        BackgroundPendingSnapshot(
+            pane: pendingImage,
+            tabs: tabs.reduce(into: [:]) { result, tab in
+                if let image = tab.pendingTabImage { result[tab.id] = image }
+            }
+        )
+    }
+
+    /// A Tab missing from `replaced` had no own value at open, and any it got
+    /// since came from this sheet. Skips Tabs closed since the open.
+    func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot) {
+        guard kind == .terminal else { return }
+        restoreBackgroundOverride(value)
+        if pendingImage != pending.pane { pendingImage = pending.pane }
+        for tab in tabs {
+            tab.restoreBackgroundOverride(replaced[tab.id], pendingImage: pending.tabs[tab.id])
         }
     }
 

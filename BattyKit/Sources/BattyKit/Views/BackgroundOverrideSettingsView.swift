@@ -21,6 +21,22 @@ protocol BackgroundOverrideHolder: AnyObject {
     /// Tab id, so Cancel can put them back.
     func replacedOverrides() -> [UUID: TerminalBackgroundSettings]
     func restoreReplacedOverrides(_ overrides: [UUID: TerminalBackgroundSettings])
+    /// The images this level and its Tabs are still waiting for, so Cancel
+    /// can put the wait back after a write ended it.
+    func pendingSnapshot() -> BackgroundPendingSnapshot
+    /// Puts back what the sheet found when it opened. Cancel is not an edit,
+    /// so a runtime level restores its pending state too.
+    func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot)
+}
+
+/// A level's pending images when a sheet opened. Opaque to the sheet.
+struct BackgroundPendingSnapshot: Equatable {
+    var sessionPending = false
+    var sessionProblem: BackgroundImageState?
+    var pane: ProjectTabImage?
+    var tabs: [UUID: ProjectTabImage] = [:]
+
+    static let empty = Self()
 }
 
 extension BackgroundOverrideHolder {
@@ -29,6 +45,11 @@ extension BackgroundOverrideHolder {
     func isSavedImagePath(_ path: String) -> Bool { false }
     func replacedOverrides() -> [UUID: TerminalBackgroundSettings] { [:] }
     func restoreReplacedOverrides(_ overrides: [UUID: TerminalBackgroundSettings]) {}
+    func pendingSnapshot() -> BackgroundPendingSnapshot { .empty }
+    func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot) {
+        setBackgroundOverride(value)
+        if !replaced.isEmpty { restoreReplacedOverrides(replaced) }
+    }
 }
 
 /// The level a sheet's displayed background comes from.
@@ -146,6 +167,7 @@ struct BackgroundOverrideEditor {
     let appWide: TerminalBackgroundSettings
     let originalOverride: TerminalBackgroundSettings?
     var replacedOverrides: [UUID: TerminalBackgroundSettings] = [:]
+    var pending: BackgroundPendingSnapshot = .empty
 
     var isFollowing: Bool { !target.isCustomized }
 
@@ -166,10 +188,7 @@ struct BackgroundOverrideEditor {
     /// A copy-shaped path whose file is gone was removed in the Background
     /// Images window while this sheet was open: new Tabs must not get it back.
     func cancel() {
-        target.setBackgroundOverride(originalOverride.map(restorable))
-        if !replacedOverrides.isEmpty {
-            target.restoreReplacedOverrides(replacedOverrides.mapValues(restorable))
-        }
+        target.cancelRestore(originalOverride.map(restorable), replaced: replacedOverrides.mapValues(restorable), pending: pending)
     }
 
     private func restorable(_ value: TerminalBackgroundSettings) -> TerminalBackgroundSettings {
@@ -210,6 +229,7 @@ struct BackgroundOverrideSettingsView: View {
     /// Cancel must restore what was there when the sheet opened.
     @State private var originalOverride: TerminalBackgroundSettings?
     @State private var replacedOverrides: [UUID: TerminalBackgroundSettings]
+    @State private var pending: BackgroundPendingSnapshot
     @State private var importError: String?
     @State private var importTask: Task<Void, Never>?
 
@@ -229,10 +249,11 @@ struct BackgroundOverrideSettingsView: View {
         self.images = images
         self._originalOverride = State(initialValue: target.backgroundOverride)
         self._replacedOverrides = State(initialValue: target.replacedOverrides())
+        self._pending = State(initialValue: target.pendingSnapshot())
     }
 
     private var editor: BackgroundOverrideEditor {
-        BackgroundOverrideEditor(target: target, appWide: appWide, originalOverride: originalOverride, replacedOverrides: replacedOverrides)
+        BackgroundOverrideEditor(target: target, appWide: appWide, originalOverride: originalOverride, replacedOverrides: replacedOverrides, pending: pending)
     }
 
     var body: some View {

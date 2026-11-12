@@ -740,6 +740,49 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(draft.background == secondBackgroundValue(path: nil))
     }
 
+    private func withheldSharedSession(_ fixture: ProjectBackgroundFixture, _ store: AppStateStore) async throws -> (Project, SessionRuntime, String) {
+        let path = try await fixture.copy()
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        var project = fixture.project(background: projectBackgroundValue(path: path))
+        project.isShared = true
+        project.sharedImage = .named(digest: digest, name: "Harbor")
+        try fixture.removeFolder(of: path)
+        let session = try openedSession(fixture, store, project)
+        #expect(session.pendingProjectImage, "test setup: the open withheld the image")
+        return (project, session, path)
+    }
+
+    private func editThenCancel(_ session: SessionRuntime) {
+        let editor = BackgroundOverrideEditor(target: session, appWide: secondBackgroundValue(path: nil), originalOverride: session.backgroundOverride, pending: session.pendingSnapshot())
+        editor.update { $0.withTerminalOpacity(0.4) }
+        #expect(!session.pendingProjectImage, "test setup: the edit ended the wait")
+        editor.cancel()
+    }
+
+    @Test func updateKeepsAWithheldSessionImageAfterSheetEditThenCancel() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let (project, session, path) = try await withheldSharedSession(fixture, store)
+        let problem = session.projectBackgroundImageProblem
+        editThenCancel(session)
+        #expect(session.pendingProjectImage)
+        #expect(session.projectBackgroundImageProblem == problem)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.background?.imagePath == path)
+        #expect(draft.sharedImage == project.sharedImage)
+    }
+
+    @Test func aSessionSheetCancelKeepsWaitingForTheSharedImage() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let (project, session, _) = try await withheldSharedSession(fixture, store)
+        editThenCancel(session)
+        let arrived = try await fixture.copy(in: fixture.paneFolder)
+        store.sharedImageArrived(project: project, path: arrived)
+        #expect(session.backgroundOverride?.imagePath == arrived)
+        #expect(!session.pendingProjectImage)
+    }
+
     @Test func updateTakesAChangedSessionBackground() async throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()

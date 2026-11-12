@@ -257,6 +257,25 @@ extension SessionRuntime: BackgroundOverrideHolder {
         tree.setSessionBackgroundOverride(newOverride)
     }
 
+    /// ``setBackgroundOverride(_:)`` that puts back the wait for a withheld
+    /// image and its problem instead of ending them.
+    func restoreBackgroundOverride(_ value: TerminalBackgroundSettings?, pending: Bool, problem: BackgroundImageState?) {
+        if value != backgroundOverride {
+            backgroundOverride = value
+            tree.setSessionBackgroundOverride(value)
+        }
+        pendingProjectImage = pending
+        if projectBackgroundImageProblem != problem { projectBackgroundImageProblem = problem }
+    }
+
+    func pendingSnapshot() -> BackgroundPendingSnapshot {
+        BackgroundPendingSnapshot(sessionPending: pendingProjectImage, sessionProblem: projectBackgroundImageProblem)
+    }
+
+    func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot) {
+        restoreBackgroundOverride(value, pending: pending.sessionPending, problem: pending.sessionProblem)
+    }
+
     func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {
         .first([(backgroundOverride, .session)], appWide: appWide)
     }

@@ -148,11 +148,9 @@ extension AppStateStore {
                     }
                 }
                 // Removing an image is not a Pane edit, so it keeps the Tabs'
-                // own values that a Pane write would replace.
+                // own values and pending images that a Pane write would end.
                 if names(pane.backgroundOverride) {
-                    let kept = pane.replacedOverrides()
-                    pane.setBackgroundOverride(pane.backgroundOverride?.withImagePath(nil))
-                    pane.restoreReplacedOverrides(kept)
+                    pane.restoreBackgroundOverride(pane.backgroundOverride?.withImagePath(nil))
                 }
             }
         }
