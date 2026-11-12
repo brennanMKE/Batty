@@ -45,6 +45,12 @@ If Batty's copy of the image in Settings goes missing or changes, terminals open
 - Offline, Background Sets shows the last copy it saw.
 - A picture the website drops keeps working wherever you use it.
 
+### Adding your own catalog
+
+A Background Catalog is a JSON file listing Background Sets. Besides the built-in catalog, you can add your own in **Settings → Appearance → Background Catalogs**: type its `https://` address and click **Add**. Batty fetches it once to check it, then lists its sets in **Background Sets** after the built-in ones. Only `https://` addresses can be added, up to 20.
+
+Batty checks each catalog at launch and once a day, unless you turn off **Check background catalogs automatically**. **Check Now** checks one right away, and each row shows its last check or its error. **Remove** takes the catalog out of the list; a picture from it that you already use as a background keeps working.
+
 ## See-through windows
 
 While any terminal Pane in any session of a window is below 100% **Terminal Opacity**, that window lets the desktop and other apps show through those terminals.
