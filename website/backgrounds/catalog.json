@@ -38,6 +38,19 @@
         { "title": "Rolling Hills at Night", "thumbnail": "beautiful-landscapes/07-rolling-hills-night-thumb.png", "full": "beautiful-landscapes/07-rolling-hills-night.png" },
         { "title": "Canyon at Dusk", "thumbnail": "beautiful-landscapes/08-canyon-dusk-thumb.png", "full": "beautiful-landscapes/08-canyon-dusk.png" }
       ]
+    },
+    {
+      "name": "Deep Space",
+      "images": [
+        { "title": "Cruiser Rim Light", "thumbnail": "deep-space/01-cruiser-rim-light-thumb.png", "full": "deep-space/01-cruiser-rim-light.png" },
+        { "title": "Ringed Planet Limb", "thumbnail": "deep-space/02-ringed-planet-limb-thumb.png", "full": "deep-space/02-ringed-planet-limb.png" },
+        { "title": "Emission Nebula", "thumbnail": "deep-space/03-emission-nebula-thumb.png", "full": "deep-space/03-emission-nebula.png" },
+        { "title": "Orbit at Sunrise", "thumbnail": "deep-space/04-orbit-at-sunrise-thumb.png", "full": "deep-space/04-orbit-at-sunrise.png" },
+        { "title": "Engine Trail", "thumbnail": "deep-space/05-engine-trail-thumb.png", "full": "deep-space/05-engine-trail.png" },
+        { "title": "Ring Station", "thumbnail": "deep-space/06-ring-station-thumb.png", "full": "deep-space/06-ring-station.png" },
+        { "title": "Fleet Across the Dust Lane", "thumbnail": "deep-space/07-fleet-dust-lane-thumb.png", "full": "deep-space/07-fleet-dust-lane.png" },
+        { "title": "Distant Galaxy", "thumbnail": "deep-space/08-distant-galaxy-thumb.png", "full": "deep-space/08-distant-galaxy.png" }
+      ]
     }
   ]
 }
