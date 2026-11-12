@@ -16,10 +16,13 @@ public final class SessionRuntime: Identifiable {
     /// CWD, name-cache lookups) check this and skip the rewrite — a
     /// user-set name pins permanently. See `#0089`.
     public var titleOverride: Bool = false
-    /// Per-session theme override. When non-nil, switching to this session
-    /// applies this theme instead of the global `ThemePreference`. Not
-    /// persisted — resets to nil on every launch.
-    public var localThemeName: String? = nil
+    /// This Session's Theme override, per appearance. An unset or unknown
+    /// slot follows the global `ThemePreference`. Not persisted — resets to
+    /// nil on every launch.
+    public var themeOverride: ThemePair? = nil
+    /// What the Project seeded at open. Update Project compares against it, so
+    /// a Session that left its Theme alone can't change the Project's.
+    @ObservationIgnored public internal(set) var projectThemeSeed: ThemePair?
     /// This Session's terminal background. `nil` follows the app-wide default;
     /// a non-nil value is complete, and a Pane's own override still beats it.
     /// Not persisted: resets to nil on every launch.

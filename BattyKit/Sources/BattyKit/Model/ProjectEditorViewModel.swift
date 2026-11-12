@@ -16,6 +16,7 @@ enum ProjectEditorField: Hashable {
     case tabDirectory(slot: Int, tab: Int)
     case tabCommand(slot: Int, tab: Int)
     case background
+    case theme
 }
 
 /// A move away from the current draft that the unsaved-changes question
@@ -291,6 +292,42 @@ final class ProjectEditorViewModel {
         return String(localized: "Custom: \(image), terminal \(opacity)%", comment: "Project Editor: the Background row; the arguments are the image name and the terminal opacity")
     }
 
+    var themeSummary: String {
+        guard let theme = draft?.theme, !theme.isEmpty else {
+            return String(localized: "Follows Settings", comment: "Project Editor: the Theme row for a Project with no Theme of its own")
+        }
+        let follows = String(localized: "Follows Settings", comment: "Project Editor: a Theme slot with no Theme of its own")
+        func display(_ name: String?) -> String {
+            guard let name else { return follows }
+            if BattyThemeCatalog.theme(named: name) == nil {
+                return String(localized: "\(name) (not available)", comment: "Project Editor: a Theme name this Mac doesn't have; the argument is the name")
+            }
+            return name
+        }
+        if theme.dark == theme.light {
+            return String(localized: "Dark and Light: \(display(theme.dark))", comment: "Project Editor: the Theme row when both appearances use one Theme")
+        }
+        return String(localized: "Dark: \(display(theme.dark)) · Light: \(display(theme.light))", comment: "Project Editor: the Theme row; the arguments are the Dark and Light Themes")
+    }
+
+    /// The draft's Theme names this Mac's catalog doesn't have.
+    func unavailableThemeNames() -> [String] {
+        guard let theme = draft?.theme else { return [] }
+        var names: [String] = []
+        for name in [theme.dark, theme.light].compactMap({ $0 }) where BattyThemeCatalog.theme(named: name) == nil && !names.contains(name) {
+            names.append(name)
+        }
+        return names
+    }
+
+    /// Done in the Theme sheet. Guards equal values: `@Observable` notifies
+    /// on every write.
+    func setTheme(_ pair: ThemePair?) {
+        let value = pair?.normalized
+        guard draft != nil, draft?.theme != value else { return }
+        draft?.theme = value
+    }
+
     /// Set only while a Shared Project's image hasn't arrived on this Mac.
     var sharedImageCaption: String? {
         guard sharedImagesAvailable, draft?.isShared == true, case .named(let digest, let name)? = draft?.sharedImage,
@@ -370,6 +407,9 @@ final class ProjectEditorViewModel {
             result.warnings[.background] = String(localized: "Image not found. Choose it again.")
         case .rejected:
             result.warnings[.background] = String(localized: "The saved image can't be used. Choose it again.")
+        }
+        if let name = unavailableThemeNames().first {
+            result.warnings[.theme] = String(localized: "“\(name)” isn't available in this version of Batty. Sessions opened from this Project use the Settings Theme instead until it is. Saving keeps it.", comment: "Project Editor: the Project names a Theme this Mac doesn't have; the argument is the name")
         }
         for (field, note) in draft.captureNotes where result.errors[field] == nil && result.warnings[field] == nil {
             result.warnings[field] = note

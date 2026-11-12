@@ -1406,3 +1406,75 @@ struct ProjectEditorSharingTests {
         #expect(model.listEntries.map(\.isShared) == [true, false])
     }
 }
+
+@MainActor
+struct ProjectEditorThemeTests {
+    private func model(_ fixture: EditorFixture, theme: ThemePair?) throws -> ProjectEditorViewModel {
+        let store = fixture.store()
+        var project = fixture.simpleProject(name: "Themed \(UUID().uuidString.prefix(8))")
+        project.theme = theme
+        try store.upsert(project)
+        return fixture.model(store: store, selecting: project.id)
+    }
+
+    private var known: String { BattyThemeCatalog.allThemes[0].name }
+
+    @Test func themeSummaryForEachShape() throws {
+        let fixture = try EditorFixture()
+        #expect(try model(fixture, theme: nil).themeSummary == "Follows Settings")
+        #expect(try model(fixture, theme: ThemePair(dark: known, light: nil)).themeSummary == "Dark: \(known) · Light: Follows Settings")
+        #expect(try model(fixture, theme: .both(known)).themeSummary == "Dark and Light: \(known)")
+        #expect(try model(fixture, theme: ThemePair(dark: nil, light: "Zzz Missing")).themeSummary == "Dark: Follows Settings · Light: Zzz Missing (not available)")
+    }
+
+    @Test func setThemeIsADirtyEdit() throws {
+        let fixture = try EditorFixture()
+        let model = try model(fixture, theme: nil)
+        #expect(!model.isDirty)
+        model.setTheme(.both(known))
+        #expect(model.isDirty)
+        #expect(model.draft?.theme == .both(known))
+        model.setTheme(ThemePair(dark: nil, light: nil))
+        #expect(model.draft?.theme == nil)
+    }
+
+    @Test func setThemeWithEqualValueDoesNotWrite() throws {
+        let fixture = try EditorFixture()
+        let model = try model(fixture, theme: .both(known))
+        let flag = ThemeChangeFlag()
+        withObservationTracking { _ = model.draft } onChange: { flag.fired = true }
+        model.setTheme(.both(known))
+        #expect(!flag.fired)
+    }
+
+    @Test func unknownThemeIsAWarningNotAnError() throws {
+        let fixture = try EditorFixture()
+        let model = try model(fixture, theme: ThemePair(dark: "Zzz Missing", light: nil))
+        let validation = model.validate()
+        #expect(validation.warnings[.theme]?.contains("Zzz Missing") == true)
+        #expect(validation.errors[.theme] == nil)
+        #expect(model.unavailableThemeNames() == ["Zzz Missing"])
+    }
+
+    @Test func copyFromCurrentSessionKeepsTheDraftTheme() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        var project = fixture.simpleProject(name: "Themed")
+        project.theme = .both(known)
+        try store.upsert(project)
+        let session = SessionRuntime(title: "S", tree: SplitTree(root: .leaf(PaneRuntime(tabs: [TabRuntime(workingDirectory: fixture.root.path)]))))
+        session.themeOverride = .both("Other")
+        let model = ProjectEditorViewModel(
+            store: store,
+            initialSelection: project.id,
+            directoryExists: { _ in true },
+            captureSession: { SessionProjectCapture.capture(session: session, root: $0, gitDirectory: { _ in nil }) }
+        )
+        #expect(model.copyFromCurrentSession(confirmDiscard: true) == .applied)
+        #expect(model.draft?.theme == .both(known))
+    }
+}
+
+private nonisolated final class ThemeChangeFlag: @unchecked Sendable {
+    var fired = false
+}

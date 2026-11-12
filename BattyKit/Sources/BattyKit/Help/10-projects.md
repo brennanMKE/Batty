@@ -42,9 +42,17 @@ If the image can't be used, the Project still opens, without the picture but wit
 
 **Save Session as Project…** keeps the session's background and copies its image into the Project. A Pane's own background isn't saved, because a Project has one background for the whole session, and the editor says so. **Update "Name"…** replaces the stored background only if the session's background changed since it opened. **Copy from current Session** leaves the background alone.
 
+## Theme
+
+The **Theme** row in the Project Editor, above Background, shows "Follows Settings" until you choose one. **Edit…** opens a sheet with a **Dark | Light** switch: pick a theme card, or **Follow Settings**, for each appearance separately. An appearance left on Follow Settings uses the theme from Settings.
+
+Opening the Project gives its Session that theme. **Set Session Theme…** and **Clear Session Theme** still work on that Session afterward. **Update Project** saves the Session's theme only if you changed it after opening, and **Save as Project** saves a Session's theme. **Copy from Current Session** leaves the Project's theme alone.
+
+If the Project names a theme this version of Batty doesn't have, the editor marks it "not available" with a warning. The Session uses the Settings theme instead, and saving keeps the name.
+
 ## Shared
 
-The **Shared** checkbox syncs a Project through iCloud to your other Macs signed into the same Apple ID. Its name, folder, color, symbol, layout, startup commands and background settings sync; which Projects you opened last, which startup commands you approved and the background's image stay on each Mac, so choose the image on each Mac. The folder path must exist on each Mac, or the Project is listed with a "Folder not found" note until it does. If iCloud cannot take the Project (for example it is over iCloud's size limit), Batty says why and leaves the Project unshared.
+The **Shared** checkbox syncs a Project through iCloud to your other Macs signed into the same Apple ID. Its name, folder, color, symbol, layout, startup commands, theme and background settings sync; which Projects you opened last, which startup commands you approved and the background's image stay on each Mac, so choose the image on each Mac. The folder path must exist on each Mac, or the Project is listed with a "Folder not found" note until it does. If iCloud cannot take the Project (for example it is over iCloud's size limit), Batty says why and leaves the Project unshared.
 
 In Batty Beta, a Shared Project's image also travels to your other Macs, through a **Batty Beta** folder in iCloud Drive. Batty copies only the image of a Project set to Shared, when you choose it or share the Project. If you turn off **Shared** or delete the Project, the other Macs keep what they have, and the copy in iCloud Drive is removed after 30 days once no Shared Project names it.
 

@@ -38,12 +38,16 @@ enum SaveSessionAsProject {
         if case .update(let id) = destination, session.projectID == id, let project = projectStore.project(id: id) {
             var draft = capture(root: project.rootPath).updateDraft(of: project)
             captureBackground(of: session, into: &draft, replacingStored: session.backgroundOverride != session.projectBackgroundSeed, store: store)
+            if session.themeOverride != session.projectThemeSeed {
+                draft.theme = session.themeOverride
+            }
             return draft
         }
         let captured = capture(root: nil)
         let name = SessionProjectCapture.suggestedName(session: session, capture: captured, nameForRoot: nameForRoot)
         var draft = captured.newDraft(name: name, existingNames: projectStore.projects.map(\.name))
         captureBackground(of: session, into: &draft, replacingStored: true, store: store)
+        draft.theme = session.themeOverride
         return draft
     }
 

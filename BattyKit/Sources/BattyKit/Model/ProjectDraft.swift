@@ -34,6 +34,8 @@ struct ProjectDraft: Equatable {
     var background: TerminalBackgroundSettings?
     /// Carried through; the store works out what a Save publishes.
     var sharedImage: ProjectSharedImage?
+    /// `nil` follows Settings. Edited by the Theme row's sheet.
+    var theme: ThemePair?
     /// Messages about parts of a captured Session that could not be kept as
     /// they were (a folder outside the root), shown as warnings until the
     /// field or the structure around it is edited. Not part of the Project.
@@ -58,6 +60,7 @@ struct ProjectDraft: Equatable {
         modifiedAt = project.modifiedAt
         background = project.background
         sharedImage = project.sharedImage
+        theme = project.theme
     }
 
     init(
@@ -70,9 +73,11 @@ struct ProjectDraft: Equatable {
         runStartupCommandsOnOpen: Bool = true,
         customColorHex: String? = nil,
         customSymbolName: String? = nil,
-        background: TerminalBackgroundSettings? = nil
+        background: TerminalBackgroundSettings? = nil,
+        theme: ThemePair? = nil
     ) {
         self.background = background
+        self.theme = theme
         self.customColorHex = customColorHex
         self.customSymbolName = customSymbolName
         self.id = id
@@ -154,7 +159,8 @@ struct ProjectDraft: Equatable {
             customColorHex: customColorHex,
             customSymbolName: customSymbolName,
             background: background,
-            sharedImage: sharedImage
+            sharedImage: sharedImage,
+            theme: theme?.normalized
         )
     }
 }

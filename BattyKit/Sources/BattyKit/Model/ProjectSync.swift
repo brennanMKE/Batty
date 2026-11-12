@@ -82,12 +82,14 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
     public var customColor: String?
     public var symbolName: String?
     public var background: ProjectSyncBackground?
+    public var theme: ThemePair?
 
     public init(
         id: UUID, name: String, rootPath: String, color: SessionColor, symbol: ProjectSymbol,
         layout: ProjectLayout, runStartupCommandsOnOpen: Bool, modifiedAt: Date?,
         customColor: String? = nil, symbolName: String? = nil,
-        background: ProjectSyncBackground? = nil
+        background: ProjectSyncBackground? = nil,
+        theme: ThemePair? = nil
     ) {
         self.id = id
         self.name = name
@@ -100,13 +102,14 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
         self.customColor = customColor
         self.symbolName = symbolName
         self.background = background
+        self.theme = theme
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, modifiedAt, customColor, symbolName, background
+        case id, name, rootPath, color, symbol, layout, runStartupCommandsOnOpen, modifiedAt, customColor, symbolName, background, theme
     }
 
-    /// `background` can't fail the record, because the backend's `snapshot()`
+    /// `background` and `theme` can't fail the record, because the backend's `snapshot()`
     /// skips a record it can't decode. The other fields keep what synthesis did.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -121,6 +124,7 @@ public struct ProjectSyncRecord: Codable, Sendable, Hashable, Identifiable {
         customColor = try c.decodeIfPresent(String.self, forKey: .customColor)
         symbolName = try c.decodeIfPresent(String.self, forKey: .symbolName)
         background = (try? c.decodeIfPresent(ProjectSyncBackground.self, forKey: .background)) ?? nil
+        theme = ((try? c.decodeIfPresent(ThemePair.self, forKey: .theme)) ?? nil)?.normalized
     }
 }
 
@@ -151,7 +155,8 @@ extension Project {
             runStartupCommandsOnOpen: runStartupCommandsOnOpen,
             modifiedAt: modifiedAt,
             customColor: customColorHex, symbolName: customSymbolName,
-            background: background.map { ProjectSyncBackground($0, image: image) })
+            background: background.map { ProjectSyncBackground($0, image: image) },
+            theme: theme)
     }
 
     /// A shared Project with no device state. A root that does not decode to
@@ -168,7 +173,8 @@ extension Project {
             isShared: true, modifiedAt: record.modifiedAt,
             customColorHex: record.customColor, customSymbolName: record.symbolName,
             background: record.background?.settings,
-            sharedImage: honorsSharedImages ? record.background?.image.projectSharedImage : nil)
+            sharedImage: honorsSharedImages ? record.background?.image.projectSharedImage : nil,
+            theme: record.theme)
     }
 
     fileprivate func replacingDefinition(with record: ProjectSyncRecord, name: String, home: String, honorsSharedImages: Bool) -> Project {

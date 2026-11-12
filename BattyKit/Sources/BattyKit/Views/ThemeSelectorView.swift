@@ -302,7 +302,7 @@ struct ThemeSelectorView: View {
 }
 
 /// A theme picker scoped to a single session. Selecting a theme sets
-/// `session.localThemeName` without touching the global `ThemePreference`.
+/// `session.themeOverride` (both slots) without touching the global `ThemePreference`.
 /// Cancelling restores whichever theme was active before the picker opened.
 struct SessionThemeSelectorView: View {
     @Binding var isPresented: Bool
@@ -315,16 +315,16 @@ struct SessionThemeSelectorView: View {
     @FocusState private var searchFocused: Bool
     /// See `ThemeSelectorView.pinnedIDs` — loaded in `init`, not `.onAppear`.
     @State private var pinnedIDs: [String]
-    /// The Session's *effective* Theme: `session.localThemeName` if set,
-    /// else the global Theme for the current appearance
+    /// The Session's *effective* Theme: `session.themeOverride`'s slot for
+    /// the current appearance if resolvable, else the global Theme
     /// (`ThemePreference.effectiveTheme`). Deliberately not just
-    /// `session.localThemeName` — a Session with no override still has an
+    /// `session.themeOverride` — a Session with no override still has an
     /// effective Theme (the global one), which is the default state for
     /// every Session on every launch, and must be markable too. Like
     /// `ThemeSelectorView.activeThemeName`, this `let` is re-read on every
     /// re-init of this view struct rather than frozen at presentation; it
     /// holds steady while arrow-key previewing (`applyTheme(_:to:)` never
-    /// writes `localThemeName` or the global preference) and only moves
+    /// writes `themeOverride` or the global preference) and only moves
     /// when a click commits a new choice via `selectTheme` — outline marks
     /// committed, cursor badge marks preview (`#0363`).
     private let activeThemeName: String?
@@ -338,7 +338,7 @@ struct SessionThemeSelectorView: View {
         self._pinnedIDs = State(initialValue: pinned)
 
         let isDark = NSApp?.effectiveAppearance.isDark ?? true
-        let active = ThemePreference.effectiveTheme(localThemeName: session.localThemeName, isDark: isDark)
+        let active = ThemePreference.effectiveTheme(override: session.themeOverride, isDark: isDark)
         self.activeThemeName = active?.name
         self._cursorIndex = State(initialValue: themeCursorIndex(activeThemeName: active?.name, pinnedIDs: pinned))
     }
@@ -491,7 +491,7 @@ struct SessionThemeSelectorView: View {
     }
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
-        session.localThemeName = theme.name
+        session.themeOverride = .both(theme.name)
         store.applyTheme(theme, to: session)
     }
 

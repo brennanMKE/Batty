@@ -21,7 +21,7 @@ split is enforced by types, not by convention.
 
 | Group | Fields | Syncs |
 |---|---|---|
-| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, `modifiedAt`, and behind the `sharedProjectImages` flag the image's digest and name | yes, when shared |
+| Definition | `id`, `name`, `rootPath` (portable form), `color`, `symbol`, `layout`, `runStartupCommandsOnOpen`, `background` without its image path, `theme`, `modifiedAt`, and behind the `sharedProjectImages` flag the image's digest and name | yes, when shared |
 | Device state | `lastOpenedAt`, `approvedCommandsHash`, `background.imagePath`, `sharedImage` as held in `projects.json` | never |
 | Membership | `isShared` | implied by presence in the shared set; never a field of the synced record |
 

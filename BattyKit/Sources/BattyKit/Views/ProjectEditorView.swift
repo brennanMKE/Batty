@@ -338,6 +338,8 @@ private struct ProjectEditorMain: View {
         let validation = model.validate()
         VStack(spacing: 0) {
             ProjectHeaderFields(model: model, validation: validation)
+            ProjectThemeRow(model: model, validation: validation)
+                .id(model.selectedID)
             if model.showsBackground {
                 ProjectBackgroundRow(model: model, validation: validation)
                     // A draft swapped in while the sheet is up ends the sheet, so
@@ -353,6 +355,33 @@ private struct ProjectEditorMain: View {
             }
             Divider()
             ProjectEditorFooter(model: model, validation: validation)
+        }
+    }
+}
+
+private struct ProjectThemeRow: View {
+    let model: ProjectEditorViewModel
+    let validation: ProjectEditorValidation
+    @State private var isEditing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Theme").font(.caption).foregroundStyle(.secondary)
+                Text(model.themeSummary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .accessibilityIdentifier("project-editor.theme.summary")
+                Spacer()
+                Button("Edit\u{2026}") { isEditing = true }
+                    .accessibilityIdentifier("project-editor.theme.edit")
+            }
+            FieldMessages(error: nil, warning: validation.warnings[.theme], identifier: "project-editor.theme")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .sheet(isPresented: $isEditing) {
+            ProjectThemeSheet(isPresented: $isEditing, model: model)
         }
     }
 }

@@ -65,25 +65,26 @@ public enum ThemePreference {
         activeTheme(isDark: NSApp?.effectiveAppearance.isDark ?? true)
     }
 
-    /// Resolves a Session's *effective* Theme: `localThemeName` if it names
-    /// a catalog entry, else the global Theme for `isDark` — the same
-    /// fallback chain `AppStateStore.applyActiveSessionTheme(for:)` applies
-    /// when re-theming surfaces. Used by `SessionThemeSelectorView` (`#0363`)
-    /// to mark which card is "in effect", which is deliberately not the
-    /// same question as "does this Session have a local override" — a
-    /// Session following the global Theme (the default on every launch)
-    /// still has an effective Theme, and it must be markable too.
-    public static func effectiveTheme(localThemeName: String?, isDark: Bool) -> GhosttyThemeDefinition? {
-        effectiveTheme(localThemeName: localThemeName, isDark: isDark, defaults: .standard)
+    /// Resolves a Session's *effective* Theme: the override's slot for
+    /// `isDark` if it names a catalog entry, else the global Theme for
+    /// `isDark`. The single fallback chain every theme application uses.
+    /// `SessionThemeSelectorView` (`#0363`) marks this card as "in effect" —
+    /// a Session following the global Theme still has an effective Theme.
+    public static func effectiveTheme(override: ThemePair?, isDark: Bool) -> GhosttyThemeDefinition? {
+        effectiveTheme(override: override, isDark: isDark, defaults: .standard)
     }
 
     /// Testable overload — see `activeTheme(isDark:defaults:)`.
-    static func effectiveTheme(localThemeName: String?, isDark: Bool, defaults: UserDefaults) -> GhosttyThemeDefinition? {
-        if let localThemeName, !localThemeName.isEmpty,
-           let theme = BattyThemeCatalog.theme(named: localThemeName) {
-            return theme
-        }
-        return activeTheme(isDark: isDark, defaults: defaults)
+    static func effectiveTheme(override: ThemePair?, isDark: Bool, defaults: UserDefaults) -> GhosttyThemeDefinition? {
+        overrideTheme(override, isDark: isDark) ?? activeTheme(isDark: isDark, defaults: defaults)
+    }
+
+    /// The override's Theme for `isDark`, only when that slot is set and the
+    /// catalog has it. `nil` means the Session follows the global Theme in
+    /// this appearance.
+    public static func overrideTheme(_ override: ThemePair?, isDark: Bool) -> GhosttyThemeDefinition? {
+        guard let name = override?.name(isDark: isDark) else { return nil }
+        return BattyThemeCatalog.theme(named: name)
     }
 
     // MARK: - Migration + default seeding
@@ -144,58 +145,56 @@ extension NSAppearance {
 // MARK: - AppStateStore theme application
 
 extension AppStateStore {
-    /// Applies a theme to every session that has no local override. Used by
-    /// the global theme selector — does NOT write `localThemeName` on any
-    /// session, so they remain "following global" and will pick up future
-    /// global-theme changes automatically.
+    /// Applies a theme to every Session that follows the global Theme in the
+    /// current appearance. Does NOT write any Session's `themeOverride`.
     public func applyThemeToAllSurfaces(_ theme: GhosttyThemeDefinition) {
+        applyThemeToAllSurfaces(theme, isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func applyThemeToAllSurfaces(_ theme: GhosttyThemeDefinition, isDark: Bool) {
         // The global theme is app-wide (per-window themes are out of scope —
         // multi-window-design.md §10), so re-theme every window's surfaces,
         // not just windows[0]. The `sessions` shim resolves to windows[0]
         // only; iterating `windows` directly avoids re-theming a single
         // window and leaving the others (and often the key window) stale.
-        let terminalTheme = theme.toTerminalTheme()
-        let unoverridden = windows.flatMap { $0.sessions }.filter { $0.localThemeName == nil }
-        logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) unoverridden=\(unoverridden.count, privacy: .public) windows=\(self.windows.count, privacy: .public)")
-        for session in unoverridden {
-            for pane in session.tree.allPanes {
-                for tab in pane.tabs {
-                    tab.terminal.controller.setTheme(terminalTheme)
-                }
-            }
+        let following = windows.flatMap { $0.sessions }.filter {
+            ThemePreference.overrideTheme($0.themeOverride, isDark: isDark) == nil
         }
-        // windows[0] shim: themeChrome is a single app-wide object; the
-        // decision whether to update it only needs any representative "is there
-        // a local override active?" signal.  windows[0]'s selected session is
-        // acceptable here because global-theme changes always originate from
-        // the Settings panel, which is not tied to a specific content window.
-        if selectedSession?.localThemeName == nil {
+        logger.info("applyThemeToAllSurfaces: theme=\(theme.name, privacy: .public) following=\(following.count, privacy: .public) windows=\(self.windows.count, privacy: .public)")
+        for session in following {
+            applyTerminalTheme(theme, to: session)
+        }
+        // windows[0] shim: themeChrome is a single app-wide object; global-theme
+        // changes originate from Settings, which is not tied to a content window.
+        if ThemePreference.overrideTheme(selectedSession?.themeOverride, isDark: isDark) == nil {
             themeChrome.update(from: theme)
         }
     }
 
-    /// Applies a theme only to the surfaces of one session. Used when setting
-    /// or restoring a session-local theme override.
-    public func applyTheme(_ theme: GhosttyThemeDefinition, to session: SessionRuntime) {
-        logger.info("applyTheme: theme=\(theme.name, privacy: .public) session=\(session.title, privacy: .public)")
+    /// Re-themes one Session's terminal surfaces without touching the chrome.
+    func applyTerminalTheme(_ theme: GhosttyThemeDefinition, to session: SessionRuntime) {
         let terminalTheme = theme.toTerminalTheme()
         // A non-terminal pane's `tabs` holds one structural placeholder
         // `TabRuntime` (`PaneRuntime.kind`'s doc comment) — its
         // `TerminalController` was never attached to a rendered surface, so
-        // reconfiguring it is wasted work, not a visible bug, but there is
-        // no reason to do it (#0315 review round 1, finding 3).
+        // reconfiguring it is wasted work (#0315 review round 1, finding 3).
         for pane in session.tree.allPanes where pane.kind == .terminal {
             for tab in pane.tabs {
                 tab.terminal.controller.setTheme(terminalTheme)
             }
         }
+    }
+
+    /// Applies a theme only to the surfaces of one session, and to the chrome.
+    /// Used when setting or restoring a Session Theme.
+    public func applyTheme(_ theme: GhosttyThemeDefinition, to session: SessionRuntime) {
+        logger.info("applyTheme: theme=\(theme.name, privacy: .public) session=\(session.title, privacy: .public)")
+        applyTerminalTheme(theme, to: session)
         themeChrome.update(from: theme)
     }
 
     /// Applies the effective theme for the currently-selected session.
-    /// Resolves the fallback chain: session-local override → global UserDefaults
-    /// key for the current appearance → system default. Called on every session
-    /// switch and on first appear.
+    /// Called on every session switch and on first appear.
     public func applyActiveSessionTheme() {
         applyActiveSessionTheme(for: selectedSession)
     }
@@ -204,18 +203,16 @@ extension AppStateStore {
     /// per-window views that resolve the selected session from their own
     /// `WindowRuntime` rather than the global forwarding shim.
     public func applyActiveSessionTheme(for session: SessionRuntime?) {
+        applyActiveSessionTheme(for: session, isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func applyActiveSessionTheme(for session: SessionRuntime?, isDark: Bool) {
         guard let session else {
             logger.debug("applyActiveSessionTheme: no selected session")
             return
         }
-        let isDark = NSApp?.effectiveAppearance.isDark ?? true
-        let globalKey = ThemePreference.defaultsKey(isDark: isDark)
-        let themeName = session.localThemeName
-            ?? preferences.string(forKey: globalKey)
-        if let name = themeName, !name.isEmpty,
-           let theme = BattyThemeCatalog.theme(named: name) {
-            let source = session.localThemeName != nil ? "local" : "global(\(isDark ? "dark" : "light"))"
-            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) theme=\(name, privacy: .public) source=\(source, privacy: .public)")
+        if let theme = ThemePreference.effectiveTheme(override: session.themeOverride, isDark: isDark, defaults: preferences) {
+            logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) theme=\(theme.name, privacy: .public)")
             applyTheme(theme, to: session)
         } else {
             logger.info("applyActiveSessionTheme: session=\(session.title, privacy: .public) no theme → resetting chrome")
@@ -223,24 +220,26 @@ extension AppStateStore {
         }
     }
 
-    /// Resolves and applies the global theme for the current appearance to all
-    /// surfaces that follow the global theme (no `localThemeName`). Called when
-    /// the system appearance changes. Sourced from AppKit KVO (event-origin),
-    /// not from view-update code.
+    /// Re-themes every surface for the current appearance: global-following
+    /// Sessions get the global Theme, overriding Sessions get their own slot.
+    /// Called when the system appearance changes. Sourced from AppKit KVO
+    /// (event-origin), not from view-update code.
     public func applyGlobalThemeForCurrentAppearance() {
-        let isDark = NSApp?.effectiveAppearance.isDark ?? true
+        applyGlobalThemeForCurrentAppearance(isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func applyGlobalThemeForCurrentAppearance(isDark: Bool) {
         logger.info("applyGlobalThemeForCurrentAppearance: isDark=\(isDark, privacy: .public)")
         if let theme = ThemePreference.activeTheme(isDark: isDark, defaults: preferences) {
-            applyThemeToAllSurfaces(theme)
-        } else {
-            // No global theme stored for this appearance — reset chrome only
-            // for sessions that follow the global theme.
-            // windows[0] shim: same rationale as applyThemeToAllSurfaces —
-            // themeChrome is app-wide and the appearance-change event
-            // (AppKit KVO) is not scoped to a particular window.
-            if selectedSession?.localThemeName == nil {
-                themeChrome.update(from: nil)
+            applyThemeToAllSurfaces(theme, isDark: isDark)
+        }
+        for session in windows.flatMap({ $0.sessions }) {
+            if let own = ThemePreference.overrideTheme(session.themeOverride, isDark: isDark) {
+                applyTerminalTheme(own, to: session)
             }
         }
+        // windows[0] shim: themeChrome is app-wide and the appearance-change
+        // event (AppKit KVO) is not scoped to a particular window.
+        themeChrome.update(from: ThemePreference.effectiveTheme(override: selectedSession?.themeOverride, isDark: isDark, defaults: preferences))
     }
 }

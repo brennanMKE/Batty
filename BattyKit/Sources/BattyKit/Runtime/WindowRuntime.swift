@@ -269,6 +269,8 @@ public final class WindowRuntime {
         session.projectSymbol = project.symbol
         session.projectSymbolName = project.customSymbolName
         session.projectBackgroundSeed = background
+        session.themeOverride = project.theme
+        session.projectThemeSeed = project.theme
         session.setBackgroundOverride(background)
         sessions.append(session)
         selectedSessionID = session.id

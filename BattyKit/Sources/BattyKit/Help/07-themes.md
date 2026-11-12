@@ -20,6 +20,10 @@ Batty ships with a catalog of community-curated themes — the same set Ghostty 
 
 Your theme choice is saved per-user. Quit Batty, relaunch, and you come back to the theme you left on.
 
+## Session and Project themes
+
+Right-click a Session in the Sidebar and choose **Set Session Theme…** to give just that Session a theme; **Clear Session Theme** puts it back on the Settings theme. A Session theme lasts until the Session closes. To keep one, store it on a Project: see the Projects help.
+
 ## What's *not* a theme
 
 A theme controls the terminal color palette only. It does **not** control:

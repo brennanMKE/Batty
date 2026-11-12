@@ -285,4 +285,51 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
             "Save did not write the Project's background"
         )
     }
+
+    // MARK: - Theme
+
+    @MainActor
+    func testThemeRowOpensTheSheetShowingFollow() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.theme.edit", in: app)
+        let follow = app.buttons["project-theme-sheet.follow"]
+        XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Theme row did not open its sheet")
+        XCTAssertEqual(follow.value as? String, "selected")
+        app.buttons["project-theme-sheet.cancel"].click()
+    }
+
+    @MainActor
+    func testDarkThemeIsWrittenToTheProject() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.theme.edit", in: app)
+        let slot = app.radioButtons["Dark"]
+        XCTAssertTrue(slot.waitForExistence(timeout: 5), "the Theme sheet has no Dark slot")
+        slot.click()
+        // The cards sit in a LazyVGrid sorted by name, so TokyoNight is not
+        // created until the filter narrows the list.
+        let filter = app.descendants(matching: .any)["project-theme-sheet.filter"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5), "the Theme sheet has no filter")
+        filter.click()
+        filter.typeText("TokyoNight")
+        let card = app.descendants(matching: .any)["project-theme-sheet.card.TokyoNight"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "filtering did not show the TokyoNight card")
+        XCTAssertTrue(waitFor({ card.isHittable }, timeout: 5), "the TokyoNight card is not hittable")
+        card.click()
+        app.buttons["project-theme-sheet.done"].click()
+        click("project-editor.save", in: app)
+
+        XCTAssertTrue(
+            waitFor({
+                let theme = ProjectFixture.read(self.storeFile)?.first?["theme"] as? [String: Any]
+                return theme?["dark"] as? String == "TokyoNight" && theme?["light"] == nil
+            }, timeout: 10),
+            "Save did not write the Project's Dark Theme alone"
+        )
+    }
 }

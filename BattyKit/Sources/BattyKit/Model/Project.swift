@@ -295,6 +295,10 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     /// Nil means this Project has never published an image. `.named` with a
     /// digest other than `imagePath`'s means the image hasn't arrived yet.
     public var sharedImage: ProjectSharedImage?
+    /// `nil` follows Settings. A value seeds a Session's Theme override when
+    /// it opens; an unset or unknown slot follows Settings for that
+    /// appearance. Definition; older Batty ignores and drops it on save.
+    public var theme: ThemePair?
 
     public init(
         id: UUID = UUID(),
@@ -311,7 +315,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         customColorHex: String? = nil,
         customSymbolName: String? = nil,
         background: TerminalBackgroundSettings? = nil,
-        sharedImage: ProjectSharedImage? = nil
+        sharedImage: ProjectSharedImage? = nil,
+        theme: ThemePair? = nil
     ) {
         let resolvedColor = ProjectAppearance.resolve(color: color, customHex: customColorHex)
         let resolvedSymbol = ProjectAppearance.resolve(symbol: symbol, customName: customSymbolName)
@@ -330,6 +335,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.modifiedAt = modifiedAt
         self.background = background
         self.sharedImage = sharedImage
+        self.theme = theme?.normalized
     }
 
     /// The image this Mac is still waiting for, if any.
@@ -394,7 +400,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, rootPath, color, customColor, symbol, symbolName, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt, background, sharedImage
+        case id, name, rootPath, color, customColor, symbol, symbolName, layout, runStartupCommandsOnOpen, approvedCommandsHash, lastOpenedAt, isShared, modifiedAt, background, sharedImage, theme
     }
 
     /// `isShared` is written only when true, so a local Project's object is
@@ -416,6 +422,7 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         try c.encodeIfPresent(modifiedAt, forKey: .modifiedAt)
         try c.encodeIfPresent(background, forKey: .background)
         try c.encodeIfPresent(sharedImage, forKey: .sharedImage)
+        try c.encodeIfPresent(theme, forKey: .theme)
     }
 
     public init(from decoder: Decoder) throws {
@@ -473,5 +480,11 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
             background = nil
         }
         sharedImage = (try? c.decodeIfPresent(ProjectSharedImage.self, forKey: .sharedImage)) ?? nil
+        if let decoded = try? c.decodeIfPresent(ThemePair.self, forKey: .theme) {
+            theme = decoded.normalized
+        } else {
+            if c.contains(.theme), !((try? c.decodeNil(forKey: .theme)) ?? false) { logger.error("unreadable project theme; following Settings") }
+            theme = nil
+        }
     }
 }

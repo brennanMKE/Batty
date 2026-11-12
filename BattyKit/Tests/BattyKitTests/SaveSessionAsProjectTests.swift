@@ -589,3 +589,59 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(model.draft?.background == projectBackgroundValue(path: nil))
     }
 }
+
+@MainActor
+struct SaveSessionAsProjectThemeTests {
+    private func openedSession(_ fixture: ProjectBackgroundFixture, _ store: AppStateStore, theme: ThemePair?) throws -> (Project, SessionRuntime) {
+        var project = fixture.project(background: nil)
+        project.theme = theme
+        try store.projectStore.upsert(project)
+        return (project, try store.openProject(id: project.id, mode: .openNew, contentFactory: noContent).session)
+    }
+
+    @Test func saveAsProjectCapturesTheSessionTheme() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let session = fixture.session()
+        session.themeOverride = .both("Nord")
+        let draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: fixture.appStore(), nameForRoot: { _ in nil })
+        #expect(draft.theme == .both("Nord"))
+    }
+
+    @Test func updateLeavesTheThemeWhenUnchangedSinceOpen() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        var (project, session) = try openedSession(fixture, store, theme: nil)
+        project.theme = ThemePair(dark: "Added Later", light: nil)
+        try store.projectStore.upsert(project)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.theme == ThemePair(dark: "Added Later", light: nil))
+    }
+
+    @Test func updateWritesTheThemeWhenChangedAfterOpen() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let (project, session) = try openedSession(fixture, store, theme: ThemePair(dark: "Nord", light: nil))
+        session.themeOverride = .both("Other")
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.theme == .both("Other"))
+    }
+
+    @Test func updateAfterClearClearsTheProjectTheme() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let (project, session) = try openedSession(fixture, store, theme: .both("Nord"))
+        session.themeOverride = nil
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.theme == nil)
+    }
+
+    @Test func updateKeepsAnUnknownSeededName() throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let pair = ThemePair(dark: "Not In This Batty", light: nil)
+        let (project, session) = try openedSession(fixture, store, theme: pair)
+        let draft = SaveSessionAsProject.draft(for: session, destination: .update(project.id), store: store)
+        #expect(draft.theme == pair)
+        #expect(draft.makeProject().theme == pair)
+    }
+}

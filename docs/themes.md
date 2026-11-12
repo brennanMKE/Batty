@@ -343,20 +343,30 @@ app-wide and a **session-local override** that applies to one session.
 The two tiers form a simple fallback chain:
 
 ```
-session.localThemeName  →  ThemePreference (UserDefaults)  →  system default
-       (per-session)              (global)                      (nil palette)
+session.themeOverride slot for appearance (if in catalog)  →  ThemePreference for appearance  →  system default
+              (per-session, ThemePair)                              (global)                    (nil palette)
 ```
+
+`ThemePreference.effectiveTheme(override:isDark:)` is the one resolver;
+`overrideTheme(_:isDark:)` returns only a resolvable override slot, and a
+Session "follows global" in an appearance when it returns nil. An
+appearance change (`applyGlobalThemeForCurrentAppearance`) re-applies the
+global Theme to following Sessions, then each overriding Session's own slot,
+so a Session with only a Dark slot follows the global Light Theme and comes
+back to its Dark Theme. Opening a Project seeds `themeOverride` and
+`projectThemeSeed` from `Project.theme`; Update Project writes the Theme
+back only when `themeOverride != projectThemeSeed` (#0584).
 
 ### Global theme
 
 `ThemePreference.defaultsKey` in `UserDefaults.standard` is the
 global theme. It persists across launches. All sessions whose
-`localThemeName` is `nil` inherit it. This is the same key described
+`themeOverride` has no resolvable slot for the appearance inherit it. This is the same key described
 in section 3.
 
 ### Session-local override
 
-`SessionRuntime.localThemeName: String?` holds a per-session override.
+`SessionRuntime.themeOverride: ThemePair?` holds a per-session override.
 It is `nil` by default and is **not persisted** — every session starts
 `nil` on every launch.
 
@@ -366,7 +376,7 @@ It is `nil` by default and is **not persisted** — every session starts
   Changing the global theme does **not** affect this session.
 
 The session-local picker (`SessionThemeSelectorView`) is the only
-thing that sets `localThemeName`. It sets the override AND calls
+thing that sets `themeOverride` (to `.both(name)`). It sets the override AND calls
 `applyTheme(_:to:)` to apply it immediately.
 
 ### Switching sessions
@@ -375,7 +385,7 @@ thing that sets `localThemeName`. It sets the override AND calls
 resolves the effective theme for the newly-selected session using the
 fallback chain:
 
-1. If `session.localThemeName` is set → use that theme.
+1. If `session.themeOverride` has a catalog slot for the appearance → use that theme.
 2. Else if the global `UserDefaults` key is set → use that theme.
 3. Else → call `themeChrome.update(from: nil)` to revert to the
    system default chrome.
@@ -523,8 +533,7 @@ Two different paths, depending on where the theme comes from:
   The `ThemeStore.userThemeURLs` code in `Theme.swift` already
   contemplates the second path but is not wired into the active
   selection flow.
-- Per-session or per-tab theme overrides. The current model is a
-  single app-wide theme; the per-tab data flow assumes that.
+- Per-tab or per-Pane theme overrides.
 - Theme editing UI inside Batty.
 - Light/dark-mode-aware theme pairs that swap with system appearance.
   `TerminalTheme` already has the slots; the current

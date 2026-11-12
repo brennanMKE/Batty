@@ -195,7 +195,7 @@ struct ThemePreferenceTests {
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
         let theme = ThemePreference.effectiveTheme(
-            localThemeName: ThemePreference.defaultLightThemeName,
+            override: .both(ThemePreference.defaultLightThemeName),
             isDark: true,
             defaults: defaults
         )
@@ -209,7 +209,7 @@ struct ThemePreferenceTests {
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
-        let theme = ThemePreference.effectiveTheme(localThemeName: nil, isDark: true, defaults: defaults)
+        let theme = ThemePreference.effectiveTheme(override: nil, isDark: true, defaults: defaults)
         #expect(theme?.name == ThemePreference.defaultDarkThemeName)
     }
 
@@ -220,7 +220,7 @@ struct ThemePreferenceTests {
         defaults.set(ThemePreference.defaultDarkThemeName, forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
-        let theme = ThemePreference.effectiveTheme(localThemeName: "", isDark: true, defaults: defaults)
+        let theme = ThemePreference.effectiveTheme(override: ThemePair(dark: "", light: nil), isDark: true, defaults: defaults)
         #expect(theme?.name == ThemePreference.defaultDarkThemeName)
     }
 
@@ -232,7 +232,7 @@ struct ThemePreferenceTests {
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
         let theme = ThemePreference.effectiveTheme(
-            localThemeName: "NonExistentThemeName12345",
+            override: .both("NonExistentThemeName12345"),
             isDark: true,
             defaults: defaults
         )
@@ -246,7 +246,13 @@ struct ThemePreferenceTests {
         defaults.set("", forKey: ThemePreference.darkDefaultsKey)
         defaults.set(true, forKey: ThemePreference.migrationDoneKey)
 
-        let theme = ThemePreference.effectiveTheme(localThemeName: nil, isDark: true, defaults: defaults)
+        let theme = ThemePreference.effectiveTheme(override: nil, isDark: true, defaults: defaults)
         #expect(theme == nil)
+    }
+
+    @Test func overrideThemeIgnoresUnknownName() {
+        #expect(ThemePreference.overrideTheme(.both("NonExistentThemeName12345"), isDark: true) == nil)
+        #expect(ThemePreference.overrideTheme(ThemePair(dark: nil, light: ThemePreference.defaultLightThemeName), isDark: true) == nil)
+        #expect(ThemePreference.overrideTheme(ThemePair(dark: nil, light: ThemePreference.defaultLightThemeName), isDark: false)?.name == ThemePreference.defaultLightThemeName)
     }
 }

@@ -189,7 +189,7 @@ Tab:
   - The app bundle (a few defaults shipped).
   - `~/.config/ghostty/themes/` (if present).
 - A "Theme" submenu in the View menu lists all available themes; selection is per-app and persisted.
-- Per-surface theme override is **out of scope for v1**.
+- A Session can override the Theme in memory (Set Session Theme…), and a Project can store an optional Dark and Light Theme that seeds it at open (#0584). Per-Pane Theme override is out of scope.
 
 ### 6.9 Configuration
 
@@ -358,7 +358,7 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 - **Echolocation (the remote feature).** A companion iOS app over the local network that exposes Batty's running terminals to a phone client. The "colony of bats away from the roost, communicating by echo" framing. Modeled on Muxy's mobile companion. Bell feed sync would be a natural extension.
 - **Command palette.** Cmd-Shift-P to fuzzy-search actions, sessions, panes, tabs, and themes.
 - **Session presets.** Save named layouts (e.g. "frontend dev" = three panes with specific cwds) and launch them from a menu. *Delivered by Projects (1.3.0, #0469); no longer "not committed".*
-- **Per-surface theme overrides.**
+- **Per-surface theme overrides.** *Per-Session and per-Project Themes delivered (#0139, #0584); per-Pane remains not committed.*
 - **Bell-event filtering.** Per-session "ignore quiet bells" or pattern matchers for noisy programs.
 - **Background-session freeze.** If memory becomes an issue, snapshot scrollback and kill PTYs for sessions not visited in N minutes; rehydrate on selection.
 

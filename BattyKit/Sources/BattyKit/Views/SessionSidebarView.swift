@@ -530,9 +530,9 @@ private struct SessionRow: View {
             }
             Divider()
             Button("Set Session Theme\u{2026}") { onTheme() }
-            if session.localThemeName != nil {
+            if session.themeOverride != nil {
                 Button("Clear Session Theme") {
-                    session.localThemeName = nil
+                    session.themeOverride = nil
                     if session.id == windowRuntime.selectedSessionID {
                         store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
                     }
