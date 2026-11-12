@@ -1,6 +1,6 @@
 # Background image prompts
 
-Prompts for the 24 images in the three hosted background sets listed in
+Prompts for the images in the hosted background sets listed in
 `website/backgrounds/catalog.json`: eight per set, so each set fills two even rows of four on
 the website's Backgrounds page. Each image sits behind terminal text, usually at reduced
 opacity over a dark theme, so the prompts favour dark, calm, low-contrast pictures with their
@@ -8,8 +8,10 @@ subject kept away from where text sits.
 
 ## What to generate now
 
-Images 01–05 in each set already exist. Generate only **06, 07 and 08** in each set: nine new
-images.
+Sets 1–3 are complete: all eight images in each are in the catalog. Generate only **Set 4: Deep
+Space**, images **01 through 08**: eight new images in `website/backgrounds/deep-space/`. Set 4
+isn't in the catalog yet, so it goes in as a new set named `Deep Space` after Beautiful
+Landscapes (see "Catalog" under "Output"). Then rebuild the web page.
 
 ## Output
 
@@ -21,9 +23,9 @@ images.
      (`realesrgan-ncnn-vulkan-20220424-macos.zip` from
      https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0):
      `realesrgan-ncnn-vulkan -i in.png -o up.png -n realesrgan-x4plus -m <unzipped>/models`
-  3. Resize to exactly 3840 × 2400: `sips -z 2400 3840 up.png --out 06-name.png`. If the
+  3. Resize to exactly 3840 × 2400: `sips -z 2400 3840 up.png --out 01-name.png`. If the
      generated image isn't close to 16:10, crop it to 16:10 first rather than stretching it.
-  4. Confirm: `sips -g pixelWidth -g pixelHeight 06-name.png` must print 3840 and 2400.
+  4. Confirm: `sips -g pixelWidth -g pixelHeight 01-name.png` must print 3840 and 2400.
 - **Format:** PNG or JPEG. PNG is preferred; JPEG (quality 90 or higher) is fine where PNG is
   too large. A JPEG file's extension is `.jpg`, and its catalog `full` or `thumbnail` changes to match.
 - **File names and folders:** exactly as listed under each prompt, under `website/backgrounds/`.
@@ -31,7 +33,9 @@ images.
   `sips -z 300 480 01-skyline-fog.png --out 01-skyline-fog-thumb.png` (for a JPEG thumbnail, add
   `-s format jpeg` and use `.jpg`).
 - **Catalog:** add each new image to its set in `website/backgrounds/catalog.json`, after the
-  last one, as `{ "title": "…", "thumbnail": "…", "full": "…" }` with a short title. Then run
+  last one, as `{ "title": "…", "thumbnail": "…", "full": "…" }` with a short title. A set that
+  isn't in the catalog yet goes in as a new entry, `{ "name": "…", "images": [ … ] }`, at the
+  end of `sets`, with its images in prompt order, 01 first. Then run
   `python3 tools/check-backgrounds.py website/backgrounds/catalog.json`; it must print `OK`.
 - **Web page:** run `python3 tools/build-backgrounds-page.py` to rebuild
   `website/backgrounds.html` from the catalog.
@@ -39,7 +43,8 @@ images.
 
 ## Rules for every image
 
-Add this block to every prompt below.
+Add this block to every prompt below. Set 4 adds a second block, "Space rules", under its
+heading. That block relaxes the star-field rule for Set 4 only. Sets 1–3 keep it as written.
 
 > Background wallpaper for a terminal app, shown behind lines of monospaced text. 16:10
 > landscape. No text, letters, numbers, signs, logos, brand marks, license plates, watermarks,
@@ -187,3 +192,63 @@ Palette: natural and subdued: twilight blues, soft greys, muted greens and sand.
    side of the frame, their smooth, curving strata in deep warm shadow, with the last faint
    light on the topmost edge. Dusky haze fills the canyon's depth. The sky is a dark, even
    gradient from muted plum to deep blue.
+
+## Set 4: Deep Space
+
+Palette: deep navy and near-black, with soft violet and a restrained accent of nebula teal or
+magenta; small cool-white highlights kept well short of pure white. Every spaceship and
+station is an original, unbranded design: no real spacecraft (such as the ISS, the Space
+Shuttle or Starship), no agency, flag or mission markings, and nothing that resembles a ship
+from a film, TV series or game. Every planet is fictional, not Earth, Saturn or any other
+recognizable body.
+
+Space rules. Add this block to every Set 4 prompt, after the block for every image:
+
+> Stars are allowed, but only a handful: small, dim, soft and slightly out of focus, mostly
+> in the lower and right parts of the frame. No dense or sharp pinpoint star field, no Milky
+> Way band, and no stars in the upper-left two-thirds, which stays a smooth dark gradient or a
+> soft, low-contrast nebula wash. Nebulas are dim, wide and smooth, with no fine filaments,
+> sharp edges or bright cores. Spaceships and stations have smooth, simple hull forms lit by a
+> thin rim light, without dense panel lines, greebles or surface clutter. Stars, engine glows
+> and sunlit edges stay soft and dim, never near pure white.
+
+1. **`deep-space/01-cruiser-rim-light.png`** — A close, low three-quarter view of the bow of a
+   vast, original deep-space cruiser, entering from the lower right corner and filling the
+   right third of the frame. Its long, smooth hull is almost black, traced by a single thin,
+   cool-blue rim light from an unseen star. Behind it, a faint violet nebula wash fades into an
+   even, near-black sky.
+
+2. **`deep-space/02-ringed-planet-limb.png`** — The curved limb of a fictional ringed gas giant
+   along the bottom fifth of the frame, its night side nearly black and its edge lit by a thin,
+   soft line of muted teal atmosphere. The rings cross the lower right as a faint, smooth arc,
+   without fine banding. Above, the sky is an empty gradient from deep navy to black.
+
+3. **`deep-space/03-emission-nebula.png`** — A wide, soft emission nebula in dim magenta and
+   violet, lying low across the bottom third and rising on the right like slow smoke lit from
+   within. Keep it smooth, with no filaments, sharp edges or bright core. A few small, soft
+   stars sit in the lower right; the upper left is a smooth, dark gradient.
+
+4. **`deep-space/04-orbit-at-sunrise.png`** — A small original ship in orbit over the night
+   side of a fictional planet, whose dark, curved horizon crosses the bottom quarter. A thin,
+   dim amber line of sunrise is just cresting the horizon at the right. The ship is a simple
+   silhouette above it, with one soft engine glow. The sky above is a smooth, deep navy.
+
+5. **`deep-space/05-engine-trail.png`** — A small original craft, seen from behind in the lower
+   right, heading away into the distance and leaving a long, soft, gently curving engine trail
+   of dim teal light that fades out before the centre of the frame. The background is an even,
+   dark navy-to-black gradient with a handful of soft, dim stars near the bottom.
+
+6. **`deep-space/06-ring-station.png`** — Part of a huge, original ring-shaped space station
+   curves into the frame from the right edge, its smooth inner surface catching soft, warm
+   light from a distant sun, with a few small, dim window lights. The rest of the ring falls
+   away into shadow. The sky behind is a deep, smooth navy gradient.
+
+7. **`deep-space/07-fleet-dust-lane.png`** — A small fleet of distant original ships in
+   silhouette, strung out in a loose line across the lower right, crossing in front of a dark
+   dust lane whose edges glow faintly violet and teal. The ships are simple dark shapes with
+   tiny, soft engine lights. The upper left is empty, smooth darkness.
+
+8. **`deep-space/08-distant-galaxy.png`** — A distant spiral galaxy seen at a low tilt as a
+   soft, dim oval smudge of muted blue-violet light in the lower right, with no sharp arms and
+   no bright core. A single tiny scout ship crosses in front of it as a dark silhouette. The
+   rest of the frame is a smooth gradient from black to deep navy.

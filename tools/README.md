@@ -380,7 +380,7 @@ that stay inside the catalog's folder (absolute `https` URLs are counted as
 remote and skipped), that each local file exists and is the PNG or JPEG its
 extension says, the app's size limits and the thumbnail's aspect ratio from the
 file headers, and orphan files that `rsync` would publish. Standard library
-only. A clean run prints `OK: 3 sets, 24 images, 48 files, 0 remote`.
+only. A clean run prints one line, `OK: <sets> sets, <images> images, <files> files, <remote> remote`.
 
 ```bash
 python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json  # check
