@@ -272,6 +272,22 @@ final class HostedBackgroundsModel {
         }
     }
 
+    /// A click on a cell in a Choose… sheet. A click on the image the sheet's
+    /// pending pick is still downloading cancels that pick instead (a fetch it
+    /// joined keeps running for whoever started it). Returns nil when it
+    /// cancelled.
+    @discardableResult
+    func pickOrCancel(_ image: HostedBackgroundImage, onPicked: @escaping @MainActor (String) -> Void) -> Task<Void, Never>? {
+        let key = HostedImageKey(image)
+        // `fetches[key]` stays `.fetching` until a cancelled fetch unwinds, so
+        // only a live task counts; a click in that window picks afresh.
+        if pendingPick?.key == key, isFetching(key) {
+            supersedePicks()
+            return nil
+        }
+        return pick(image, onPicked: onPicked)
+    }
+
     /// The sheet picked something else, was cancelled or went away: no
     /// earlier hosted pick may deliver, and a fetch it started stops.
     func supersedePicks() {

@@ -143,4 +143,59 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
         XCTAssertEqual(none.isEnabled, hadImage, "the background changed after a failed download")
     }
+
+    @MainActor
+    private func openSettingsChooser(in app: XCUIApplication) -> XCUIElement {
+        app.typeKey(",", modifierFlags: [.command])
+        let appearance = app.toolbars.buttons["Appearance"]
+        XCTAssertTrue(appearance.waitForExistence(timeout: 10))
+        appearance.click()
+        let none = app.buttons["appearance-background.no-image"]
+        XCTAssertTrue(none.waitForExistence(timeout: 5))
+        return none
+    }
+
+    @MainActor
+    func testClickingADownloadingImageAgainCancelsIt() throws {
+        let id = "cool-vehicles-01"
+        let app = try launch()
+        defer { app.terminate() }
+        try BackgroundCatalogFixture.hold(id, in: catalogFolder)
+        defer { BackgroundCatalogFixture.release(id, in: catalogFolder) }
+        let none = openSettingsChooser(in: app)
+        let hadImage = none.isEnabled
+        app.buttons["appearance-background.choose-image"].click()
+        pick(id, in: app)
+        let progress = element("background-sets.cell.\(id).progress", in: app)
+        XCTAssertTrue(progress.waitForExistence(timeout: 10), "no spinner over the downloading cell")
+        XCTAssertFalse(element("background-sets.cell.\(id).cancel", in: app).exists, "the cell still shows a Cancel button")
+        cell(id, in: app).click()
+        XCTAssertTrue(waitFor({ !progress.exists }, timeout: 10), "the second click did not cancel the download")
+        XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed after a cancel")
+        BackgroundCatalogFixture.release(id, in: catalogFolder)
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the cancelled pick was applied")
+        app.buttons["background-images.picker.cancel"].click()
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
+        XCTAssertEqual(none.isEnabled, hadImage, "the background changed after a cancelled download")
+    }
+
+    @MainActor
+    func testClickingAnotherImageWhileOneDownloadsAppliesTheNewOne() throws {
+        let first = "cool-vehicles-01", second = "cool-vehicles-02"
+        let app = try launch()
+        defer { app.terminate() }
+        try BackgroundCatalogFixture.hold(first, in: catalogFolder)
+        defer { BackgroundCatalogFixture.release(first, in: catalogFolder) }
+        let none = openSettingsChooser(in: app)
+        app.buttons["appearance-background.choose-image"].click()
+        pick(first, in: app)
+        XCTAssertTrue(element("background-sets.cell.\(first).progress", in: app).waitForExistence(timeout: 10), "no spinner over the downloading cell")
+        cell(second, in: app).click()
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 15), "the picker stayed open")
+        let requests = fullSizeRequests()
+        XCTAssertTrue(requests.contains(BackgroundCatalogFixture.fullPath(first)))
+        XCTAssertTrue(requests.contains(BackgroundCatalogFixture.fullPath(second)))
+        XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the pick did not set an image")
+    }
 }

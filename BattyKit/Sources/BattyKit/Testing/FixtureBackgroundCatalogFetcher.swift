@@ -5,6 +5,7 @@ import Foundation
 /// Used only by a UI-test launch that sets the background catalog fixture
 /// folder: serves `https://batty.sstools.co/backgrounds/<rest>` from
 /// `<directory>/<rest>` and appends each requested path to `requests.log`.
+/// While `<directory>/<rest>.hold` exists the request waits.
 nonisolated final class FixtureBackgroundCatalogFetcher: BackgroundCatalogFetching, @unchecked Sendable {
     static let prefix = "https://batty.sstools.co/backgrounds/"
 
@@ -26,6 +27,12 @@ nonisolated final class FixtureBackgroundCatalogFetcher: BackgroundCatalogFetchi
         let components = rest.split(separator: "/").map(String.init)
         guard !components.isEmpty, !components.contains(".."), !components.contains(".") else { throw .notFound }
         let file = components.reduce(directory) { $0.appendingPathComponent($1) }
+        // A UI test keeps a download in flight by creating `<rest>.hold`.
+        let hold = file.appendingPathExtension("hold")
+        while FileManager.default.fileExists(atPath: hold.path) {
+            try? await Task.sleep(for: .milliseconds(50))
+            if Task.isCancelled { throw .cancelled }
+        }
         guard let data = try? Data(contentsOf: file) else { throw .notFound }
         guard Int64(data.count) <= request.byteLimit else { throw .tooLarge }
         let etag = "\"\(TerminalBackgroundImageImporter.hexDigest(of: data))\""

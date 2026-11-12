@@ -40,7 +40,7 @@ If Batty's copy of the image in Settings goes missing or changes, terminals open
 **Background Sets**, at the top of the Background Images window and of every **Choose…** sheet, shows sets of pictures from the Batty website, using thumbnails only.
 
 - Nothing is fetched until you first open **Background Sets**.
-- Choosing a picture as a background downloads it once. The sheet stays open while it downloads, and your old background stays until it finishes. After that the picture works offline.
+- Choosing a picture as a background downloads it once. The sheet stays open while it downloads, and your old background stays until it finishes. Click the picture again to stop the download, or click another to download that one instead. After that the picture works offline.
 - Pictures from Background Sets stay in their sets and don't appear under **My Images**.
 - Offline, Background Sets shows the last copy it saw.
 - A picture the website drops keeps working wherever you use it.

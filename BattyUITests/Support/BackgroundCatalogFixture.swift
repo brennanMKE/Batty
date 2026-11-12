@@ -61,4 +61,13 @@ nonisolated enum BackgroundCatalogFixture {
         XCTAssertTrue(CGImageDestinationFinalize(output))
         return data as Data
     }
+
+    /// Keeps the app's download of `imageID`'s full-size file waiting until `release`.
+    static func hold(_ imageID: String, in folder: URL) throws {
+        try Data().write(to: folder.appending(path: fullPath(imageID) + ".hold"))
+    }
+
+    static func release(_ imageID: String, in folder: URL) {
+        try? FileManager.default.removeItem(at: folder.appending(path: fullPath(imageID) + ".hold"))
+    }
 }

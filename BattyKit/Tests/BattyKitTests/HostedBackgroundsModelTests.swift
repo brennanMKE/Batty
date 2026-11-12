@@ -360,6 +360,118 @@ struct HostedBackgroundsModelTests {
         #expect(!hosted.available.contains(HostedImageKey(url: url("one.png"))))
     }
 
+    @Test func clickingTheDownloadingPickAgainCancelsItAndPicksNothing() async throws {
+        try serveCatalog(["one"])
+        await hosted.browseAppeared()
+        let one = try image("one")
+        let key = HostedImageKey(url: url("one.png"))
+        var picked: [String] = []
+        let before = fetcher.requests.count
+        fetcher.hold(one.full)
+        let first = try #require(hosted.pickOrCancel(one) { picked.append($0) })
+        #expect(await fetcher.waitForRequests(before + 1))
+        #expect(hosted.pickOrCancel(one) { picked.append($0) } == nil)
+        fetcher.release(one.full)
+        await first.value
+        #expect(picked.isEmpty)
+        #expect(hosted.fetches[key] == nil)
+        #expect(!hosted.available.contains(key))
+    }
+
+    @Test func clickingAQueuedPickAgainCancelsItAndLeavesTheQueue() async throws {
+        try serveCatalog(["one", "two", "three"])
+        await hosted.browseAppeared()
+        let images = try ["one", "two", "three"].map(image)
+        let third = HostedImageKey(url: url("three.png"))
+        var picked: [String] = []
+        let before = fetcher.requests.count
+        for image in images { fetcher.hold(image.full) }
+        let running = images.prefix(2).map { hosted.select($0) }
+        #expect(await fetcher.waitForRequests(before + 2))
+        var queued: Task<Void, Never>?
+        let didQueue = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            let once = ResumeOnce(continuation)
+            let timeout = DispatchWorkItem { once.resume(false) }
+            once.setOnResumed { timeout.cancel() }
+            hosted.onFetchQueued = { if $0 == third { once.resume(true) } }
+            queued = hosted.pickOrCancel(images[2]) { picked.append($0) }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + TestBounds.hangGuard, execute: timeout)
+        }
+        #expect(didQueue)
+        let queuedTask = try #require(queued)
+        #expect(hosted.pickOrCancel(images[2]) { picked.append($0) } == nil)
+        await queuedTask.value
+        #expect(hosted.fetches[third] == nil)
+        #expect(fetcher.count(images[2].full) == 0)
+        for image in images { fetcher.release(image.full) }
+        for task in running { #expect(await task.value != nil) }
+        #expect(picked.isEmpty)
+    }
+
+    @Test func pickCancelPickFetchesAFreshCopyAndAppliesIt() async throws {
+        try serveCatalog(["one"])
+        await hosted.browseAppeared()
+        let one = try image("one")
+        var picked: [Int] = []
+        let before = fetcher.requests.count
+        fetcher.hold(one.full)
+        let first = try #require(hosted.pickOrCancel(one) { _ in picked.append(1) })
+        #expect(await fetcher.waitForRequests(before + 1))
+        #expect(hosted.pickOrCancel(one) { _ in picked.append(2) } == nil)
+        let third = try #require(hosted.pickOrCancel(one) { _ in picked.append(3) })
+        fetcher.release(one.full)
+        await first.value
+        await third.value
+        #expect(picked == [3])
+        #expect(fetcher.count(one.full) == 2)
+    }
+
+    @Test func clickingAJoinedDownloadAgainDropsThePickButKeepsTheFetch() async throws {
+        try serveCatalog(["one"])
+        await hosted.browseAppeared()
+        let one = try image("one")
+        var picked: [String] = []
+        let before = fetcher.requests.count
+        fetcher.hold(one.full)
+        let elsewhere = hosted.select(one)
+        #expect(await fetcher.waitForRequests(before + 1))
+        let joined = try #require(hosted.pickOrCancel(one) { picked.append($0) })
+        #expect(hosted.pickOrCancel(one) { picked.append($0) } == nil)
+        fetcher.release(one.full)
+        await joined.value
+        #expect(await elsewhere.value != nil)
+        #expect(picked.isEmpty)
+        #expect(hosted.available.contains(HostedImageKey(url: url("one.png"))))
+        #expect(fetcher.count(one.full) == 1)
+    }
+
+    @Test func clickingADifferentImageWhileOneDownloadsCancelsItAndAppliesTheNewOne() async throws {
+        try serveCatalog(["one", "two"])
+        await hosted.browseAppeared()
+        let one = try image("one"), two = try image("two")
+        var picked: [String] = []
+        let before = fetcher.requests.count
+        fetcher.hold(one.full)
+        let first = try #require(hosted.pickOrCancel(one) { picked.append($0) })
+        #expect(await fetcher.waitForRequests(before + 1))
+        await hosted.pickOrCancel(two) { picked.append($0) }?.value
+        fetcher.release(one.full)
+        await first.value
+        #expect(picked == [try #require(await hosted.select(two).value)])
+        #expect(!hosted.available.contains(HostedImageKey(url: url("one.png"))))
+    }
+
+    @Test func clickingACachedImageTwicePicksItBothTimes() async throws {
+        try serveCatalog(["one"])
+        await hosted.browseAppeared()
+        let one = try image("one")
+        let path = try #require(await hosted.select(one).value)
+        var picked: [String] = []
+        await hosted.pickOrCancel(one) { picked.append($0) }?.value
+        await hosted.pickOrCancel(one) { picked.append($0) }?.value
+        #expect(picked == [path, path])
+    }
+
     @Test func imageDroppedFromTheCatalogKeepsItsHostedCopy() async throws {
         try serveCatalog(["one", "two"])
         await hosted.browseAppeared()

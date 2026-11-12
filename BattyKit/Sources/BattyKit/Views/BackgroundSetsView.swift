@@ -108,6 +108,11 @@ struct BackgroundSetsView: View {
                     )
                     .contentShape(Rectangle())
                     .onTapGesture { click(image, key: key) }
+                    .accessibilityActions {
+                        if onPick != nil, hosted.fetches[key] == .fetching {
+                            Button("Cancel Download") { click(image, key: key) }
+                        }
+                    }
                 }
             }
         }
@@ -116,9 +121,13 @@ struct BackgroundSetsView: View {
     }
 
     private func click(_ image: HostedBackgroundImage, key: HostedImageKey) {
-        selected = key
-        guard let onPick else { return }
-        hosted.pick(image) { onPick($0) }
+        guard let onPick else {
+            if selected != key { selected = key }
+            return
+        }
+        // After a cancelling click nothing is being picked, so nothing is highlighted.
+        let next: HostedImageKey? = hosted.pickOrCancel(image) { onPick($0) } == nil ? nil : key
+        if selected != next { selected = next }
     }
 }
 
@@ -134,6 +143,7 @@ private struct HostedBackgroundCell: View {
 
     private var key: HostedImageKey { HostedImageKey(image) }
     private var accessibilityName: String { HostedBackgroundImage.fileStem(of: image.full) }
+    private var isDownloading: Bool { hosted.fetches[key] == .fetching }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -143,6 +153,18 @@ private struct HostedBackgroundCell: View {
                 .aspectRatio(16.0 / 10.0, contentMode: .fit)
                 .frame(maxWidth: .infinity)
                 .overlay { picture }
+                .overlay {
+                    if isDownloading {
+                        ZStack {
+                            Color.black.opacity(0.25)
+                            ProgressView().controlSize(.regular)
+                        }
+                        .allowsHitTesting(false)
+                        .accessibilityElement()
+                        .accessibilityLabel(Text("Downloading"))
+                        .accessibilityIdentifier("background-sets.cell.\(accessibilityName).progress")
+                    }
+                }
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .activeOutline(isHighlighted, cornerRadius: 6)
@@ -167,13 +189,7 @@ private struct HostedBackgroundCell: View {
     private var status: some View {
         switch hosted.fetches[key] {
         case .fetching:
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Button("Cancel") { hosted.cancelFetch(key) }
-                    .controlSize(.small)
-                    .accessibilityIdentifier("background-sets.cell.\(accessibilityName).cancel")
-            }
-            .accessibilityIdentifier("background-sets.cell.\(accessibilityName).progress")
+            EmptyView()
         case .failed(let message):
             Text(verbatim: message)
                 .font(.caption)
