@@ -371,6 +371,23 @@ release-instance sessions. Passive sampling (`sample`, `invariants`) of the
 release instance is read-only and safe to run any time — just never target
 it for the driven experiments.
 
+## check-backgrounds.py
+
+Checks the hosted background catalog against the files beside it (#0575): the
+#0574 schema, unique set and image ids, relative URLs that stay inside the
+catalog's folder, that each file exists and is the PNG or JPEG its extension
+says, its dimensions, `sha256` and `bytes`, size limits, thumbnail aspect
+ratio, and orphan files that `rsync` would publish. Standard library only.
+
+```bash
+python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json          # check
+python3 -I tools/check-backgrounds.py --write website/backgrounds/catalog.json  # fill sha256/bytes, then check
+python3 -I tools/check-backgrounds-selftest.py                                  # self-test
+```
+
+Run it before every website deploy; it must exit 0 (see "Background images" in
+`website/README.md`).
+
 ## demo/ (#0505)
 
 `tools/demo/make-demos.sh all` regenerates the nine website demo clips end to end:

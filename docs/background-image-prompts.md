@@ -7,11 +7,15 @@ subject kept away from where text sits.
 
 ## Output
 
-- **Size:** 3840 × 2400 (16:10), PNG. If the generator can't produce that size, generate the
+- **Size:** 3840 × 2400 (16:10). If the generator can't produce that size, generate the
   largest 16:10 size it supports and record the size used.
+- **Format:** PNG or JPEG. PNG is preferred; JPEG (quality 90 or higher) is fine where PNG is
+  too large. A JPEG file's extension is `.jpg`, and its catalog `url` changes to match.
 - **File names and folders:** exactly as listed under each prompt, under `website/backgrounds/`.
 - **Thumbnails:** don't generate them. Make each one from its full-size image, 480 × 300:
-  `sips -z 300 480 01-skyline-fog.png --out 01-skyline-fog-thumb.png`
+  `sips -z 300 480 01-skyline-fog.png --out 01-skyline-fog-thumb.png` (for a JPEG thumbnail, add
+  `-s format jpeg` and use `.jpg`).
+- Adding, checking and deploying: see "Background images" in `website/README.md`.
 
 ## Rules for every image
 

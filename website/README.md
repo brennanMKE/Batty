@@ -25,6 +25,7 @@ Pages to spot-check:
 - `/changelog.html`
 - `/privacy.html`
 - `/appcast.xml` — should parse as RSS
+- `/backgrounds/catalog.json` — the built-in background catalog
 
 ## Deployment
 
@@ -59,6 +60,32 @@ When `scripts/release.sh` produces `dist/Batty-<sha>.dmg`:
 
 Sparkle picks up the new entry on the next poll. Most users see the
 update prompt within a few hours.
+
+## Background images
+
+`backgrounds/catalog.json` is the built-in background catalog (format: issue #0574). It is in git. The images it lists, full-size and thumbnails, are **not**: `.gitignore` excludes `website/backgrounds/**/*.png`, `*.jpg` and `*.jpeg`. Your local `website/backgrounds/<set>/` folders and the server are the only copies, so keep a backup of the originals.
+
+Adding an image:
+
+1. Generate it from `docs/background-image-prompts.md`, saved at the path named there. PNG is preferred; JPEG is fine (use `.jpg` and change the catalog `url` to match).
+2. Make the thumbnail from it, never generate one: `sips -z 300 480 <full> --out <thumb>` (for a JPEG thumbnail add `-s format jpeg`).
+3. Add the entry to `catalog.json` with `url`, `width` and `height` for `full` and `thumbnail`.
+4. Fill in the hashes: `python3 -I tools/check-backgrounds.py --write website/backgrounds/catalog.json`.
+5. Set `updated` to today by hand.
+6. Commit `catalog.json` only. `git status` must show no image files.
+
+A changed picture gets a new image `id` (#0574); never replace the bytes behind an existing id.
+
+Before every deploy, `python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json` must exit 0. Then, with the user's go-ahead each time:
+
+```bash
+rsync -avzn website/ photon:/var/www/vhosts/batty.sstools.co/   # dry run, read it
+rsync -avz  website/ photon:/var/www/vhosts/batty.sstools.co/
+```
+
+Never add `--delete`: it would remove the older DMGs on the server. Because there's no `--delete`, removing an image from the catalog doesn't remove it from the server; delete it there by hand if needed.
+
+After deploying, check with `curl -sI` that `https://batty.sstools.co/backgrounds/catalog.json` returns 200 with `Content-Type: application/json` and an `ETag` or `Last-Modified` header, and that one full-size and one thumbnail URL return 200 with the expected `Content-Length`.
 
 ## Assets
 

@@ -24,11 +24,35 @@
 
         <h2>Network requests</h2>
         <p>
-            Batty makes exactly one kind of outbound network request: a
-            periodic fetch of <a href="appcast.xml">https://batty.sstools.co/appcast.xml</a>
-            by the Sparkle update framework so the app can notify you when a
-            new version is available. You can disable this check in Batty's
-            Settings → Notifications pane.
+            Batty makes two kinds of outbound network request, and only these:
+        </p>
+        <ul>
+            <li>
+                <strong>Update checks.</strong> A periodic fetch of
+                <a href="appcast.xml">https://batty.sstools.co/appcast.xml</a>
+                by the Sparkle update framework so the app can notify you when a
+                new version is available. You can disable this check in Batty's
+                Settings → Notifications pane.
+            </li>
+            <li>
+                <strong>Background catalogs</strong> (Batty 1.4.0 and later).
+                Batty makes no catalog request until you first open the
+                hosted-sets browser in the Background Images window. After that
+                it fetches the built-in catalog,
+                <a href="backgrounds/catalog.json">https://batty.sstools.co/backgrounds/catalog.json</a>,
+                and any catalog URL you add in Settings, and checks them from
+                time to time for changes. You can turn those checks off in
+                Settings. While you browse the sets it downloads their
+                thumbnails, and it downloads a full-size image only when you
+                select that image as a terminal background.
+                A catalog you add may point at another host; requests for that
+                catalog's images go to that host, under its own privacy terms.
+            </li>
+        </ul>
+        <p>
+            These requests carry nothing that identifies you beyond what any
+            HTTPS request carries: your IP address and standard request
+            headers. No account, cookie or identifier is sent.
         </p>
         <p>
             Anything else that talks to the network is a process YOU started
@@ -62,7 +86,7 @@
             <a href="https://github.com/brennanMKE/Batty/issues">github.com/brennanMKE/Batty/issues</a>.
         </p>
 
-        <p class="meta">Last updated: 2026-05-12.</p>
+        <p class="meta">Last updated: 2026-11-11.</p>
     </main>
     <footer>
         <p class="copyright">© Batty contributors.</p>
