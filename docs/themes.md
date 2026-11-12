@@ -402,28 +402,34 @@ Theme menu, or Settings:
 
 - The name is written to `UserDefaults` (persists).
 - `applyThemeToAllSurfaces(_:)` applies the new theme to **every
-  session whose `localThemeName` is `nil`**. Sessions with a
+  session whose `themeOverride` is `nil`**. Sessions with a
   local override keep their local theme and are not touched.
 - `themeChrome.update(from:)` is called only if the currently-selected
   session has no local override (i.e., it follows global).
 
-`applyThemeToAllSurfaces` must **not** write `localThemeName` on any
+`applyThemeToAllSurfaces` must **not** write `themeOverride` on any
 session — the sessions remain "following global" so that the next
 global-theme change still propagates to them.
 
 ### New-tab initialization
 
-`TabRuntime.init()` calls `Self.activeTheme()` which reads the global
-`UserDefaults` key. This bakes the current global theme into the
-libghostty config before the surface is created. The tab therefore
-displays the correct background immediately, before
-`applyActiveSessionTheme()` fires. Sessions with `localThemeName`
-set will have their terminal re-themed via `setTheme()` when the
-session is next selected (after surface connect).
+A new Tab starts in its Session's effective Theme for the current
+appearance, baked into the libghostty config before the surface is
+created, so it never flashes the app-wide Theme. `SessionRuntime`'s
+`themeOverride` `didSet` mirrors the override to its `SplitTree`, which
+mirrors it to every Pane. `PaneRuntime.addTab` passes the Pane's mirror
+to `TabRuntime.init`, which resolves it with
+`ThemePreference.effectiveTheme(override:isDark:)`
+(`TabRuntime.startingTheme`). A split-created Pane builds its first Tab
+before it joins the tree, so `SplitTree.adopt` gives it the mirror and
+re-themes that Tab with the same helper. The mirror only seeds new Tabs:
+whoever writes `themeOverride` also re-themes the existing ones.
+Project-open Tabs are built before their Session exists and get the
+Session Theme when the new Session is selected.
 
 ### Clearing a local override
 
-Set `session.localThemeName = nil` and call
+Set `session.themeOverride = nil` and call
 `applyActiveSessionTheme()`. The session immediately picks up the
 current global theme.
 
@@ -439,9 +445,9 @@ always off-screen otherwise:
   matching the fallback chain above.** `ThemeSelectorView` uses
   `ThemePreference.activeTheme()` — the global Theme for the current
   appearance. `SessionThemeSelectorView` uses
-  `ThemePreference.effectiveTheme(localThemeName:isDark:)` — the
-  Session's `localThemeName` if set, else the same global Theme.
-  Marking only `localThemeName` would leave every Session that follows
+  `ThemePreference.effectiveTheme(override:isDark:)` — the
+  Session's `themeOverride` if set, else the same global Theme.
+  Marking only `themeOverride` would leave every Session that follows
   the global Theme (the default on every launch) unmarked, so the
   Session selector always resolves the *effective* Theme, not just the
   override.
@@ -472,12 +478,12 @@ always off-screen otherwise:
 
 ### Invariants
 
-- `localThemeName` is never persisted. Every launch starts all
+- `themeOverride` is never persisted. Every launch starts all
   sessions with `nil` (global fallback).
 - `applyThemeToAllSurfaces` is for changing the global theme visually
-  on all unoverridden sessions. It must not touch `localThemeName`.
+  on all unoverridden sessions. It must not touch `themeOverride`.
 - `applyTheme(_:to:)` applies visually to one session but does **not**
-  set `localThemeName`. That is `SessionThemeSelectorView`'s job.
+  set `themeOverride`. That is `SessionThemeSelectorView`'s job.
 - The chrome always matches the selected session's effective theme.
 
 ---

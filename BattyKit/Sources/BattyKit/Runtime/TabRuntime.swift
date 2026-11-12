@@ -182,7 +182,8 @@ public final class TabRuntime: Identifiable {
         backgroundGate: AppWideBackgroundGate = .live,
         paneBackgroundOverride: TerminalBackgroundSettings? = nil,
         sessionBackgroundOverride: TerminalBackgroundSettings? = nil,
-        backgroundOverride: TerminalBackgroundSettings? = nil
+        backgroundOverride: TerminalBackgroundSettings? = nil,
+        sessionThemeOverride: ThemePair? = nil
     ) {
         self.id = id
         self.backgroundGate = backgroundGate
@@ -192,7 +193,7 @@ public final class TabRuntime: Identifiable {
         self.titleOverride = titleOverride
         self.workingDirectory = workingDirectory
         self.commandOverride = command
-        let state = TerminalViewState(theme: Self.activeTheme())
+        let state = TerminalViewState(theme: Self.startingTheme(sessionThemeOverride: sessionThemeOverride))
         self.terminal = state
         self.terminalDelegate = TerminalDelegateProxy(state: state)
         if let workingDirectory {
@@ -221,8 +222,11 @@ public final class TabRuntime: Identifiable {
         }
     }
 
-    private static func activeTheme() -> TerminalTheme {
-        guard let definition = ThemePreference.activeTheme() else { return .default }
+    /// The Theme a new Tab starts in: its Session's effective Theme for the
+    /// current appearance.
+    static func startingTheme(sessionThemeOverride: ThemePair?) -> TerminalTheme {
+        let isDark = NSApp?.effectiveAppearance.isDark ?? true
+        guard let definition = ThemePreference.effectiveTheme(override: sessionThemeOverride, isDark: isDark) else { return .default }
         return definition.toTerminalTheme()
     }
 

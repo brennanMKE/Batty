@@ -19,7 +19,9 @@ public final class SessionRuntime: Identifiable {
     /// This Session's Theme override, per appearance. An unset or unknown
     /// slot follows the global `ThemePreference`. Not persisted, apart from
     /// a Project restoring it at open and Update Project capturing it.
-    public var themeOverride: ThemePair? = nil
+    public var themeOverride: ThemePair? = nil {
+        didSet { tree.setSessionThemeOverride(themeOverride) }
+    }
     /// This Session's terminal background. `nil` follows the app-wide default;
     /// a non-nil value is complete, and a Pane's own override still beats it.
     /// Not persisted, apart from a Project restoring it at open and Update

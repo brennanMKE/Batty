@@ -436,6 +436,7 @@ public final class WindowRuntime {
         // while `nextColorIndex()` tallies usage, so it naturally counts as
         // "in use" and the least-used pick tends to land elsewhere.
         let copy = SessionRuntime(title: String(localized: "\(source.title) Copy"), colorIndex: nextColorIndex())
+        copy.themeOverride = source.themeOverride
         sessions.insert(copy, at: index + 1)
         selectedSessionID = copy.id
         return copy

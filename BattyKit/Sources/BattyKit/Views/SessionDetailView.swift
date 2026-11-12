@@ -219,10 +219,6 @@ public struct SessionDetailView: View {
         .onChange(of: windowRuntime.selectedSession?.tree.focusedPaneID) { _, _ in
             windowRuntime.markActiveTabSeen()
         }
-        .onChange(of: windowRuntime.selectedSession?.tree.allPanes.count) { _, newCount in
-            logger.debug("allPanes.count changed → \(newCount ?? 0, privacy: .public); re-applying theme")
-            store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
-        }
     }
 
     @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {

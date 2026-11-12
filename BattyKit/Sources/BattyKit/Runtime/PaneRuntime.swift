@@ -81,6 +81,11 @@ public final class PaneRuntime: Identifiable {
     /// non-terminal Pane.
     private(set) var sessionBackgroundOverride: TerminalBackgroundSettings?
 
+    /// A mirror of the owning `SessionRuntime.themeOverride`, written only by
+    /// `SplitTree`, so a Tab this Pane creates starts in the Session's Theme.
+    @ObservationIgnored
+    private(set) var sessionThemeOverride: ThemePair?
+
     /// Where a Tab this Pane creates reads the app-wide background. Production
     /// stays on `.live`; tests pass their own.
     @ObservationIgnored
@@ -211,6 +216,10 @@ public final class PaneRuntime: Identifiable {
         pushOverridesToTabs()
     }
 
+    func setSessionThemeOverride(_ newOverride: ThemePair?) {
+        sessionThemeOverride = newOverride
+    }
+
     private func pushOverridesToTabs(clearingOwn: Bool = false) {
         for tab in tabs {
             tab.setBackgroundOverrides(pane: backgroundOverride, session: sessionBackgroundOverride, clearingOwn: clearingOwn)
@@ -256,7 +265,7 @@ public final class PaneRuntime: Identifiable {
             return activeTab ?? tabs[0]
         }
         let cwd = source?.terminal.workingDirectory
-        let tab = TabRuntime(workingDirectory: cwd, backgroundGate: tabBackgroundGate, paneBackgroundOverride: backgroundOverride, sessionBackgroundOverride: sessionBackgroundOverride)
+        let tab = TabRuntime(workingDirectory: cwd, backgroundGate: tabBackgroundGate, paneBackgroundOverride: backgroundOverride, sessionBackgroundOverride: sessionBackgroundOverride, sessionThemeOverride: sessionThemeOverride)
         tabs.append(tab)
         activeTabID = tab.id
         if let sessionID {

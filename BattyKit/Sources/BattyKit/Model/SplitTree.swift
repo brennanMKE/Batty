@@ -169,6 +169,11 @@ public final class SplitTree {
     @ObservationIgnored
     private(set) var sessionBackgroundOverride: TerminalBackgroundSettings?
 
+    /// Held so a Pane created later starts in the Session's Theme. Only seeds
+    /// new Tabs; existing ones are re-themed by whoever writes the override.
+    @ObservationIgnored
+    private(set) var sessionThemeOverride: ThemePair?
+
     public init(root: SplitTreeNode) {
         self.root = root
         // `didSet` never fires for a property's own initializer assignment,
@@ -228,6 +233,13 @@ public final class SplitTree {
         }
     }
 
+    func setSessionThemeOverride(_ newOverride: ThemePair?) {
+        sessionThemeOverride = newOverride
+        for pane in allPanes {
+            pane.setSessionThemeOverride(newOverride)
+        }
+    }
+
     /// Gives a freshly created Pane what the tree's existing Panes already
     /// have, before any of its Tabs can have a surface.
     private func adopt(_ newPane: PaneRuntime) {
@@ -235,6 +247,12 @@ public final class SplitTree {
             newPane.attachToSession(sessionID)
         }
         newPane.setSessionBackgroundOverride(sessionBackgroundOverride)
+        newPane.setSessionThemeOverride(sessionThemeOverride)
+        guard newPane.kind == .terminal else { return }
+        let theme = TabRuntime.startingTheme(sessionThemeOverride: sessionThemeOverride)
+        for tab in newPane.tabs {
+            tab.terminal.controller.setTheme(theme)
+        }
     }
 
     public var focusedPane: PaneRuntime {
