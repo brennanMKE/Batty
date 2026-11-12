@@ -1,20 +1,42 @@
 # Background image prompts
 
-Prompts for the 15 images in the three hosted background sets listed in
-`website/backgrounds/catalog.json`. Each image sits behind terminal text, usually at reduced
+Prompts for the 24 images in the three hosted background sets listed in
+`website/backgrounds/catalog.json`: eight per set, so each set fills two even rows of four on
+the website's Backgrounds page. Each image sits behind terminal text, usually at reduced
 opacity over a dark theme, so the prompts favour dark, calm, low-contrast pictures with their
 subject kept away from where text sits.
 
+## What to generate now
+
+Images 01–05 in each set already exist. Generate only **06, 07 and 08** in each set: nine new
+images.
+
 ## Output
 
-- **Size:** 3840 × 2400 (16:10). If the generator can't produce that size, generate the
-  largest 16:10 size it supports and record the size used.
+- **Size: exactly 3840 × 2400 pixels (16:10).** Every image in the catalog is this size,
+  so the sets match on the website and in Batty. Most image generators can't produce that size directly (the first
+  batch came out at 1586 × 992). If yours can't:
+  1. Generate at the largest size the generator supports, as close to 16:10 as it allows.
+  2. Upscale it 4× with Real-ESRGAN, using the official macOS release
+     (`realesrgan-ncnn-vulkan-20220424-macos.zip` from
+     https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0):
+     `realesrgan-ncnn-vulkan -i in.png -o up.png -n realesrgan-x4plus -m <unzipped>/models`
+  3. Resize to exactly 3840 × 2400: `sips -z 2400 3840 up.png --out 06-name.png`. If the
+     generated image isn't close to 16:10, crop it to 16:10 first rather than stretching it.
+  4. Confirm: `sips -g pixelWidth -g pixelHeight 06-name.png` must print 3840 and 2400.
 - **Format:** PNG or JPEG. PNG is preferred; JPEG (quality 90 or higher) is fine where PNG is
   too large. A JPEG file's extension is `.jpg`, and its catalog `url` changes to match.
 - **File names and folders:** exactly as listed under each prompt, under `website/backgrounds/`.
 - **Thumbnails:** don't generate them. Make each one from its full-size image, 480 × 300:
   `sips -z 300 480 01-skyline-fog.png --out 01-skyline-fog-thumb.png` (for a JPEG thumbnail, add
   `-s format jpeg` and use `.jpg`).
+- **Catalog:** add each new image to its set in `website/backgrounds/catalog.json`, after
+  image 05, in the same form as the existing entries: `id` (for example `future-cities-06`), a
+  short `title`, and `full` and `thumbnail` objects with `url`, `width` and `height`. Then run
+  `python3 tools/check-backgrounds.py --write website/backgrounds/catalog.json` to fill in
+  `sha256` and `bytes`, and run it again without `--write`; it must print `OK`.
+- **Web page:** run `python3 tools/build-backgrounds-page.py` to rebuild
+  `website/backgrounds.html` from the catalog.
 - Adding, checking and deploying: see "Background images" in `website/README.md`.
 
 ## Rules for every image
@@ -34,6 +56,10 @@ Add this block to every prompt below.
 > no recognizable real landmarks, and no real vehicle makes or models: every design is
 > original and unbranded. The image should still read as a pleasant picture when shown at
 > 20–40% opacity over a black background.
+
+Keep them dark. In the first batch, the foggy and overcast images (misty forest, sea cliffs,
+pickup in fog) came out as mid-grey and are the weakest behind text. When in doubt, go darker:
+night or late twilight rather than daytime fog, with large areas close to black.
 
 ## Set 1: Future Cities
 
@@ -62,6 +88,21 @@ Palette: deep indigo, teal and slate, with small warm window lights.
 5. **`future-cities/05-desert-dome.png`** — Seen from far away at night, a glass-domed city
    sits low on a dark desert plain in the lower right, glowing softly from within. Gentle
    haze surrounds it. The sky above is a deep, smooth violet-to-black gradient with no stars.
+
+6. **`future-cities/06-harbor-lights.png`** — A futuristic harbour at night. A long, low
+   seawall lined with soft amber lights runs along the bottom fifth of the frame, and a few
+   slender towers stand on the far right, half lost in sea mist. The water is calm and nearly
+   black. The sky is a smooth, dark teal-to-indigo gradient.
+
+7. **`future-cities/07-floating-district.png`** — At late dusk, a small cluster of floating
+   platforms with softly lit, rounded pavilions hovers above a sea of low cloud in the lower
+   right. The cloud sea is a smooth, dim gradient with no texture. The sky above is a deep,
+   even violet fading to near-black at the top.
+
+8. **`future-cities/08-tower-in-the-clouds.png`** — A single, impossibly tall and slender tower
+   rises from the lower right into a layer of night cloud, its windows a faint vertical line of
+   warm lights that disappears into the cloud. Soft cloud banks drift around its base. The
+   rest of the frame is a deep, smooth blue night sky.
 
 ## Set 2: Cool Vehicles
 
@@ -93,6 +134,21 @@ vehicle is an original, unbranded design.
    side of the frame. A thin teal rim light traces its outline and reflects in the puddles.
    Behind it, distant city lights are blurred into large, dim bokeh against a dark sky.
 
+6. **`cool-vehicles/06-roadster-coast-dusk.png`** — An original 1960s-style open roadster with
+   long, curved fenders, parked on a coastal overlook in the lower right at late dusk, seen in
+   three-quarter profile. A faint warm reflection runs along its bodywork. Beyond it, a dark
+   sea and a smooth sky fading from deep blue to a thin, muted rose band at the horizon.
+
+7. **`cool-vehicles/07-rally-car-dust.png`** — An original rally car sliding through a corner
+   on a gravel road at dusk, small in the lower right, backlit so that a large, soft cloud of
+   dust glows warm amber behind it. The forest beyond is only dark, simplified silhouettes
+   dissolving into haze. Avoid sharp flying stones or debris; keep the dust smooth.
+
+8. **`cool-vehicles/08-semi-truck-night-highway.png`** — An original long-haul semi truck on
+   an empty desert highway at night, small in the lower right, its headlights and amber
+   marker lights glowing softly. The road fades into darkness toward the left. The sky is a
+   deep, even indigo, with a faint glow at the horizon and no stars.
+
 ## Set 3: Beautiful Landscapes
 
 Palette: natural and subdued: twilight blues, soft greys, muted greens and sand.
@@ -118,3 +174,18 @@ Palette: natural and subdued: twilight blues, soft greys, muted greens and sand.
 5. **`beautiful-landscapes/05-sea-cliffs-overcast.png`** — Dark sea cliffs rising on the right
    side of the frame above a long-exposure ocean smoothed into a silky, misty surface. A
    uniform overcast sky in soft silver-grey fills the upper half.
+
+6. **`beautiful-landscapes/06-glacier-lagoon-twilight.png`** — A still glacial lagoon at deep
+   twilight. A few smooth, rounded icebergs float low on the right, faintly pale blue, with
+   soft reflections. A thin mist lies on the water. The sky is an even gradient from dark
+   slate blue at the top to a dim, cold blue at the horizon.
+
+7. **`beautiful-landscapes/07-rolling-hills-night.png`** — Soft rolling hills under a late
+   twilight sky, their smooth curves overlapping across the bottom third in successively
+   darker shades of blue-green. A single small, rounded tree stands in silhouette on a ridge
+   at the right. The upper two-thirds is a clean, deep blue sky.
+
+8. **`beautiful-landscapes/08-canyon-dusk.png`** — Layered sandstone canyon walls on the right
+   side of the frame, their smooth, curving strata in deep warm shadow, with the last faint
+   light on the topmost edge. Dusky haze fills the canyon's depth. The sky is a dark, even
+   gradient from muted plum to deep blue.
