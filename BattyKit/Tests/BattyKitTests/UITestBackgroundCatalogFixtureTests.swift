@@ -18,10 +18,14 @@ struct UITestBackgroundCatalogFixtureTests {
         #expect(UITestDriver.backgroundCatalogFixtureDirectory(environment: env) == nil)
     }
 
-    @Test func aFixtureLaunchClearsTheBackgroundPreferencesAndOnlyThen() {
+    @Test func aFixtureLaunchClearsTheBackgroundPreferencesAndOnlyThen() throws {
         let test = TestDefaults()
         defer { test.tearDown() }
         let defaults = test.defaults
+        let appWide = FileManager.default.temporaryDirectory.appendingPathComponent("batty-appwide-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: appWide) }
+        let picked = appWide.appendingPathComponent(String(repeating: "a", count: 64), isDirectory: true)
+        try FileManager.default.createDirectory(at: picked, withIntermediateDirectories: true)
         func seed() {
             defaults.set(["https://catalogs.example.com/catalog.json"], forKey: SettingsPreference.backgroundCatalogURLsKey)
             defaults.set(true, forKey: SettingsPreference.backgroundCatalogsBrowsedKey)
@@ -35,12 +39,14 @@ struct UITestBackgroundCatalogFixtureTests {
             SettingsPreference.backgroundImagePathKey,
         ]
         seed()
-        UITestDriver.resetBackgroundPreferencesForFixture(defaults: defaults, environment: [UITestDriver.scriptEnvVar: "[]"])
+        UITestDriver.resetBackgroundPreferencesForFixture(defaults: defaults, appWideDirectory: appWide, environment: [UITestDriver.scriptEnvVar: "[]"])
         #expect(keys.allSatisfy { defaults.object(forKey: $0) != nil })
+        #expect(FileManager.default.fileExists(atPath: picked.path))
 
         let env = [UITestDriver.scriptEnvVar: "[]", UITestDriver.backgroundCatalogDirEnvVar: "/tmp/batty-catalog-fixture"]
-        UITestDriver.resetBackgroundPreferencesForFixture(defaults: defaults, environment: env)
+        UITestDriver.resetBackgroundPreferencesForFixture(defaults: defaults, appWideDirectory: appWide, environment: env)
         #expect(keys.allSatisfy { defaults.object(forKey: $0) == nil })
+        #expect(!FileManager.default.fileExists(atPath: picked.path))
     }
 
     @Test func otherHostsAreServedFromTheHostsFolder() async throws {
