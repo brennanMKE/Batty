@@ -33,7 +33,7 @@ CATALOG = {
             {"title": 'Café <Racer> & "Co"', "full": "alpha/02-cafe.png", "thumbnail": "alpha/02-cafe-thumb.png"},
         ]},
         {"name": "Beta", "images": [
-            {"full": "beta/01-third.jpg", "thumbnail": "beta/01-third-thumb.jpg"},
+            {"title": "Third", "full": "beta/01-third.jpg", "thumbnail": "beta/01-third-thumb.jpg"},
             {"title": "Fourth", "full": "beta/02 fourth.png", "thumbnail": "beta/02 fourth-thumb.png"},
         ]},
     ],
@@ -171,10 +171,11 @@ def _(d):
         assert f'src="backgrounds/{u}"' not in s, u
 
 
-@case("missing title falls back to the full file name")
+@case("missing title fails the build and leaves the page alone")
 def _(d):
-    f = _figure(_sets(_gen(d)), "01-third-thumb")
-    assert 'alt="01-third"' in f and '<span class="bg-title">01-third</span>' in f, f
+    fx = Fx(d, catalog=_variant(lambda c: c["sets"][1]["images"][0].pop("title")))
+    code, out = fx.run()
+    assert code == 1 and "sets[1].images[0].title:" in out and fx.text() == PAGE, out
 
 
 @case("every img is 480 by 300")
@@ -329,7 +330,7 @@ def _(d):
     cat, problems = bp._validate(cb, REPO_EXAMPLE)
     assert cat is not None and problems == [], problems
     images = [im for st in cat["sets"] for im in st["images"]]
-    assert any("title" not in im for im in images), images
+    assert all(isinstance(im.get("title"), str) and im["title"].strip() for im in images), images
     assert sorted(Path(im["full"]).suffix for im in images) == [".jpg", ".png"], images
 
 

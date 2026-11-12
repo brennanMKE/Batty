@@ -13,9 +13,15 @@ struct BackgroundImagesView: View {
         case pick(current: String?, onPick: (String) -> Void, onCancel: () -> Void)
     }
 
+    enum Tab: Hashable {
+        case myImages
+        case backgroundSets
+    }
+
     let model: BackgroundImagesModel
     let mode: Mode
 
+    @State private var tab: Tab = .myImages
     @State private var selectedDigest: String?
     @State private var isAdding = false
     @State private var removal: BackgroundImagesModel.RemovalPlan?
@@ -46,7 +52,26 @@ struct BackgroundImagesView: View {
                 .padding(.vertical, 12)
                 Divider()
             }
-            content
+            Picker("", selection: tabBinding) {
+                Text("My Images").tag(Tab.myImages)
+                Text("Background Sets").tag(Tab.backgroundSets)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("background-images.tab")
+            Divider()
+            switch tab {
+            case .myImages:
+                content
+            case .backgroundSets:
+                BackgroundSetsView(
+                    hosted: model.hosted,
+                    uses: model.uses,
+                    onPick: pickHandler
+                )
+            }
             Divider()
             bottomBar
         }
@@ -57,13 +82,16 @@ struct BackgroundImagesView: View {
             idealHeight: isPicking ? 460 : 560
         )
         .task { await model.refresh() }
+        // Touches no observed state: the generation is observation-ignored and
+        // a cancelled fetch clears its cell from its own task.
+        .onDisappear { if isPicking { model.hosted.supersedePicks() } }
         // Writes here, outside the GeometryReader. On the first open of a launch
         // the grid doesn't exist until the scan's `await` writes `entries`, so
         // that flip is an event, not layout.
         .defaultFocus($gridFocused, true, priority: .userInitiated)
-        .onAppear { gridFocused = true }
+        .onAppear { if tab == .myImages { gridFocused = true } }
         .onChange(of: model.entries.isEmpty) { _, isEmpty in
-            if !isEmpty { gridFocused = true }
+            if !isEmpty, tab == .myImages { gridFocused = true }
         }
         .confirmationDialog(
             removal.map(Self.dialogTitle) ?? "",
@@ -156,43 +184,72 @@ struct BackgroundImagesView: View {
         }
     }
 
+    /// The segment's own action is the event that moves focus back to the grid.
+    private var tabBinding: Binding<Tab> {
+        Binding(
+            get: { tab },
+            set: { newValue in
+                guard newValue != tab else { return }
+                tab = newValue
+                if newValue == .myImages { gridFocused = true }
+            }
+        )
+    }
+
+    private var pickHandler: ((String) -> Void)? {
+        guard case .pick(_, let onPick, _) = mode else { return nil }
+        return onPick
+    }
+
     private var bottomBar: some View {
         HStack(spacing: 12) {
-            // On this one button, with the file panel's result handled here: a
-            // modifier on a multi-view container can apply to each member, which
-            // would attach one importer per row.
-            Button("Add from File…") { isAdding = true }
-                .accessibilityIdentifier("background-images.add")
-                .fileImporter(isPresented: $isAdding, allowedContentTypes: [.png, .jpeg]) { result in
-                    switch result {
-                    case .success(let url): add(url)
-                    case .failure: model.reportFileError()
-                    }
-                }
-            if !isPicking {
-                Button("Remove…") { requestRemovalOfSelection() }
-                    .disabled(selectedEntry == nil)
-                    .accessibilityIdentifier("background-images.remove")
-            }
-            if let message = model.message {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .accessibilityIdentifier("background-images.message")
+            if tab == .myImages {
+                myImagesButtons
             }
             Spacer()
-            Text(total)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("background-images.total")
+            if tab == .myImages {
+                Text(total)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("background-images.total")
+            }
             if case .pick(_, _, let onCancel) = mode {
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("background-images.picker.cancel")
+                Button("Cancel") {
+                    model.hosted.supersedePicks()
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+                .accessibilityIdentifier("background-images.picker.cancel")
             }
         }
         .padding(12)
+    }
+
+    @ViewBuilder
+    private var myImagesButtons: some View {
+        // On this one button, with the file panel's result handled here: a
+        // modifier on a multi-view container can apply to each member, which
+        // would attach one importer per row.
+        Button("Add from File…") { isAdding = true }
+            .accessibilityIdentifier("background-images.add")
+            .fileImporter(isPresented: $isAdding, allowedContentTypes: [.png, .jpeg]) { result in
+                switch result {
+                case .success(let url): add(url)
+                case .failure: model.reportFileError()
+                }
+            }
+        if !isPicking {
+            Button("Remove…") { requestRemovalOfSelection() }
+                .disabled(selectedEntry == nil)
+                .accessibilityIdentifier("background-images.remove")
+        }
+        if let message = model.message {
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .accessibilityIdentifier("background-images.message")
+        }
     }
 
     private var total: String {
@@ -231,6 +288,7 @@ struct BackgroundImagesView: View {
     /// and one the check rejects, as "Can't be used" shows, never is.
     private func pick(_ entry: BackgroundImageEntry) {
         guard case .pick(_, let onPick, _) = mode else { return }
+        model.hosted.supersedePicks()
         let thumbnailer = model.thumbnailer
         Task {
             guard await thumbnailer.thumbnail(for: entry).state == .usable else { return }
@@ -239,6 +297,7 @@ struct BackgroundImagesView: View {
     }
 
     private func add(_ url: URL) {
+        if isPicking { model.hosted.supersedePicks() }
         Task {
             guard let entry = await model.add(from: url) else { return }
             selectedDigest = entry.digest

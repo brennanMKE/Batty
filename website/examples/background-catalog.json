@@ -4,7 +4,7 @@
       "name": "Harbor Nights",
       "images": [
         { "title": "Pier in the Fog", "thumbnail": "harbor-nights/01-pier-fog-thumb.png", "full": "harbor-nights/01-pier-fog.png" },
-        { "thumbnail": "harbor-nights/02-lanterns-thumb.jpg", "full": "harbor-nights/02-lanterns.jpg" }
+        { "title": "Lanterns on the Water", "thumbnail": "harbor-nights/02-lanterns-thumb.jpg", "full": "harbor-nights/02-lanterns.jpg" }
       ]
     }
   ]

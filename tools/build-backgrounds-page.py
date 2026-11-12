@@ -85,7 +85,7 @@ def render_sets(cb, cat):
         out.append(f'    <h2 id="set-{sid}-title">{_e(s["name"].strip())}</h2>')
         out.append('    <ul class="bg-grid">')
         for im in s["images"]:
-            title = _e(cb.display_title(im))
+            title = _e(im["title"].strip())
             out.append("        <li>")
             out.append('            <figure class="bg-image">')
             out.append(

@@ -34,6 +34,7 @@ final class BackgroundImagesModel {
     @ObservationIgnored private let clearUses: @MainActor (String) throws -> Void
     @ObservationIgnored private let notificationCenter: NotificationCenter
     @ObservationIgnored private let sharedImages: @MainActor () -> SharedProjectImages?
+    @ObservationIgnored let hosted: HostedBackgroundsModel
 
     init(
         library: BackgroundImageLibrary,
@@ -42,8 +43,10 @@ final class BackgroundImagesModel {
         refusal: @escaping @MainActor (String) -> String?,
         clearUses: @escaping @MainActor (String) throws -> Void,
         notificationCenter: NotificationCenter = .default,
-        sharedImages: @escaping @MainActor () -> SharedProjectImages? = { nil }
+        sharedImages: @escaping @MainActor () -> SharedProjectImages? = { nil },
+        hosted: HostedBackgroundsModel
     ) {
+        self.hosted = hosted
         self.sharedImages = sharedImages
         self.library = library
         self.thumbnailer = thumbnailer
@@ -52,6 +55,9 @@ final class BackgroundImagesModel {
         self.clearUses = clearUses
         self.notificationCenter = notificationCenter
     }
+
+    /// Where a picked path may come from: My Images and the hosted store.
+    var pickSources: [URL] { [library.directory, hosted.imageDirectory] }
 
     var totalBytes: Int64 { entries.reduce(0) { $0 + $1.sizeInBytes } }
 

@@ -149,4 +149,19 @@ struct BackgroundImageLibraryTests {
         _ = await library.remove(digest: entry.digest)
         #expect(await library.scan().isEmpty)
     }
+
+    @Test func scanDoesNotPromoteAHostedDigest() async throws {
+        let hosted = try await f.copy(in: f.hostedFolder, width: 64, named: "hosted.png")
+        let inAppWide = try await f.copy(in: f.appWideFolder, width: 64, named: "hosted.png")
+        #expect(TerminalBackgroundImageImporter.digest(ofPath: hosted) == TerminalBackgroundImageImporter.digest(ofPath: inAppWide))
+        #expect(await library.scan().isEmpty)
+    }
+
+    @Test func scanKeepsAHostedDigestAlreadyInTheLibrary() async throws {
+        let data = try BackgroundTestImage.encoded(width: 64)
+        let entry = try await library.add(from: try sourceNamed("mine.png", data: data))
+        let hosted = try await f.copy(in: f.hostedFolder, width: 64, named: "hosted.png")
+        #expect(TerminalBackgroundImageImporter.digest(ofPath: hosted) == entry.digest)
+        #expect(await library.scan().map(\.digest) == [entry.digest])
+    }
 }

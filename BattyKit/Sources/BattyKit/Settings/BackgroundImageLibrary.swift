@@ -23,10 +23,14 @@ actor BackgroundImageLibrary {
     nonisolated let directory: URL
     private let sources: [URL]
     private let importer: TerminalBackgroundImageImporter
+    private let hostedDirectory: URL?
 
-    init(directory: URL, sources: [URL]) {
+    /// `hostedDirectory` holds hosted images, which stay in their Background
+    /// Sets: a scan never promotes a digest found there.
+    init(directory: URL, sources: [URL], hostedDirectory: URL? = nil) {
         self.directory = directory
         self.sources = sources
+        self.hostedDirectory = hostedDirectory
         self.importer = TerminalBackgroundImageImporter(directory: directory, cleanup: .keepAll)
     }
 
@@ -42,7 +46,7 @@ actor BackgroundImageLibrary {
     /// here is not copied again.
     func scan() -> [BackgroundImageEntry] {
         for source in sources {
-            for digest in digestFolders(in: source) where imageFiles(in: directory, digest: digest).isEmpty {
+            for digest in digestFolders(in: source) where imageFiles(in: directory, digest: digest).isEmpty && !isHosted(digest) {
                 promote(digest: digest, from: source)
             }
         }
@@ -76,6 +80,11 @@ actor BackgroundImageLibrary {
             }
         }
         return failed
+    }
+
+    private func isHosted(_ digest: String) -> Bool {
+        guard let hostedDirectory else { return false }
+        return FileManager.default.fileExists(atPath: hostedDirectory.appendingPathComponent(digest, isDirectory: true).path)
     }
 
     private func promote(digest: String, from source: URL) {
