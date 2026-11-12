@@ -110,6 +110,22 @@ struct URLSessionBackgroundCatalogFetcherTests {
         #expect(!FileManager.default.fileExists(atPath: destination.path))
     }
 
+    @Test func aFailureBeforeTheBodyLeavesAFileTheFetcherDidNotCreate() async throws {
+        defer { StubCatalogProtocol.unregister(host: host) }
+        StubCatalogProtocol.register(host: host) { stub in
+            stub.respond(status: 404)
+            stub.finish()
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("batty-stub-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let destination = folder.appendingPathComponent("download")
+        try Data("someone else's".utf8).write(to: destination)
+        let request = HostedFetchRequest(url: url, byteLimit: 1_000, timeout: 30, destination: .file(destination))
+        #expect(await failure(request) == .notFound)
+        #expect(try Data(contentsOf: destination) == Data("someone else's".utf8))
+    }
+
     @Test func aDeclaredLengthOverTheLimitIsRefusedBeforeTheBody() async throws {
         defer { StubCatalogProtocol.unregister(host: host) }
         StubCatalogProtocol.register(host: host) { stub in

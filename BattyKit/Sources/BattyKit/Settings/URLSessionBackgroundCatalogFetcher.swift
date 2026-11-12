@@ -16,6 +16,7 @@ nonisolated final class URLSessionBackgroundCatalogFetcher: NSObject, Background
         var counter: ByteLimitCounter
         var body = Data()
         var handle: FileHandle?
+        var createdFile = false
         var redirects = 0
         var failure: HostedFetchError?
         var response: HTTPURLResponse?
@@ -120,7 +121,7 @@ nonisolated final class URLSessionBackgroundCatalogFetcher: NSObject, Background
                 return .cancel
             }
             if http.statusCode == 200, case .file(let url) = transfer.request.destination {
-                FileManager.default.createFile(atPath: url.path, contents: nil)
+                transfer.createdFile = FileManager.default.createFile(atPath: url.path, contents: nil)
                 guard let handle = try? FileHandle(forWritingTo: url) else {
                     transfer.failure = .unreachable
                     return .cancel
@@ -161,7 +162,7 @@ nonisolated final class URLSessionBackgroundCatalogFetcher: NSObject, Background
         guard let transfer else { return }
         try? transfer.handle?.close()
         let url = transfer.request.url
-        if transfer.failure != nil || error != nil, case .file(let destination) = transfer.request.destination {
+        if transfer.createdFile, transfer.failure != nil || error != nil, case .file(let destination) = transfer.request.destination {
             try? FileManager.default.removeItem(at: destination)
         }
         if let failure = transfer.failure {

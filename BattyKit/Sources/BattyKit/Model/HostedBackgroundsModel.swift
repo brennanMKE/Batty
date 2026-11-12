@@ -236,8 +236,15 @@ final class HostedBackgroundsModel {
         return await cache.cachedCatalog(for: url)?.catalog
     }
 
+    /// Settings' Check Now. The built-in catalog is never fetched before the
+    /// first Browse, which Help and the privacy page promise.
+    func canCheckNow(_ state: HostedCatalogState) -> Bool {
+        !state.isChecking && (!state.isBuiltIn || hasBrowsed)
+    }
+
     /// The banner's Retry, and the hook a scheduled refresh calls. One per catalog at a time.
     func refresh(_ url: URL) async {
+        if url == BackgroundCatalog.builtInURL, !hasBrowsed { return }
         if let running = refreshing[url] {
             await running.value
             return

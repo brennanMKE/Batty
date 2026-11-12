@@ -27,7 +27,7 @@ nonisolated final class BackgroundCatalogSettingsTests: ProjectsUITestCase {
         let appearance = app.toolbars.buttons["Appearance"]
         XCTAssertTrue(appearance.waitForExistence(timeout: 10))
         appearance.click()
-        XCTAssertTrue(element("background-catalogs.section", in: app).waitForExistence(timeout: 5), "no Background Catalogs section")
+        XCTAssertTrue(element("background-catalogs.auto-check", in: app).waitForExistence(timeout: 5), "no Background Catalogs section")
     }
 
     @MainActor

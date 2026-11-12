@@ -16,7 +16,7 @@ struct BackgroundCatalogsSettingsSection: View {
         Section("Background Catalogs") {
             Toggle("Check background catalogs automatically", isOn: $autoCheck)
                 .accessibilityIdentifier("background-catalogs.auto-check")
-            Text("Batty checks each catalog at launch and once a day, unless automatic checks are off.")
+            Text("Batty checks each catalog you add at launch and once a day, unless automatic checks are off. The built-in catalog is checked only after you first open Background Sets.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(hosted.catalogRows) { state in
@@ -24,8 +24,6 @@ struct BackgroundCatalogsSettingsSection: View {
             }
             addRow
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("background-catalogs.section")
         .task { await hosted.loadCatalogRows() }
     }
 
@@ -45,7 +43,7 @@ struct BackgroundCatalogsSettingsSection: View {
             Button("Check Now") {
                 Task { await hosted.refresh(state.url) }
             }
-            .disabled(state.isChecking)
+            .disabled(!hosted.canCheckNow(state))
             .accessibilityIdentifier("background-catalogs.check-now")
             if !state.isBuiltIn {
                 Button("Remove") {

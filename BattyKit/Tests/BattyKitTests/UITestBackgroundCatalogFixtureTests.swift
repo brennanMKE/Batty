@@ -18,6 +18,29 @@ struct UITestBackgroundCatalogFixtureTests {
         #expect(UITestDriver.backgroundCatalogFixtureDirectory(environment: env) == nil)
     }
 
+    @Test func aFixtureLaunchClearsTheCatalogPreferencesAndOnlyThen() {
+        let test = TestDefaults()
+        defer { test.tearDown() }
+        let defaults = test.defaults
+        func seed() {
+            defaults.set(["https://catalogs.example.com/catalog.json"], forKey: SettingsPreference.backgroundCatalogURLsKey)
+            defaults.set(true, forKey: SettingsPreference.backgroundCatalogsBrowsedKey)
+            defaults.set(false, forKey: SettingsPreference.backgroundCatalogsAutoCheckKey)
+        }
+        let keys = [
+            SettingsPreference.backgroundCatalogURLsKey,
+            SettingsPreference.backgroundCatalogsBrowsedKey,
+            SettingsPreference.backgroundCatalogsAutoCheckKey,
+        ]
+        seed()
+        UITestDriver.resetBackgroundCatalogPreferencesForFixture(defaults: defaults, environment: [UITestDriver.scriptEnvVar: "[]"])
+        #expect(keys.allSatisfy { defaults.object(forKey: $0) != nil })
+
+        let env = [UITestDriver.scriptEnvVar: "[]", UITestDriver.backgroundCatalogDirEnvVar: "/tmp/batty-catalog-fixture"]
+        UITestDriver.resetBackgroundCatalogPreferencesForFixture(defaults: defaults, environment: env)
+        #expect(keys.allSatisfy { defaults.object(forKey: $0) == nil })
+    }
+
     @Test func otherHostsAreServedFromTheHostsFolder() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("batty-fixture-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: folder) }

@@ -12,6 +12,7 @@ extension AppStateStore {
     ) -> BackgroundImagesModel {
         let libraryDirectory = library?.directory ?? BackgroundImageLibrary.directory(forProjectsFile: projectsFileURL)
         let hostedDirectory = libraryDirectory.appendingPathComponent("Hosted", isDirectory: true)
+        if hosting == nil { UITestDriver.resetBackgroundCatalogPreferencesForFixture(defaults: preferences) }
         return BackgroundImagesModel(
             library: library ?? BackgroundImageLibrary(
                 directory: libraryDirectory,

@@ -39,7 +39,7 @@ If Batty's copy of the image in Settings goes missing or changes, terminals open
 
 **Background Sets**, at the top of the Background Images window and of every **Choose…** sheet, shows sets of pictures from the Batty website, using thumbnails only.
 
-- Nothing is fetched until you first open **Background Sets**.
+- Nothing is fetched from the Batty website until you first open **Background Sets**.
 - Choosing a picture as a background downloads it once. The sheet stays open while it downloads, and your old background stays until it finishes. After that the picture works offline.
 - Pictures from Background Sets stay in their sets and don't appear under **My Images**.
 - Offline, Background Sets shows the last copy it saw.
@@ -49,7 +49,7 @@ If Batty's copy of the image in Settings goes missing or changes, terminals open
 
 A Background Catalog is a JSON file listing Background Sets. Besides the built-in catalog, you can add your own in **Settings → Appearance → Background Catalogs**: type its `https://` address and click **Add**. Batty fetches it once to check it, then lists its sets in **Background Sets** after the built-in ones. Only `https://` addresses can be added, up to 20.
 
-Batty checks each catalog at launch and once a day, unless you turn off **Check background catalogs automatically**. **Check Now** checks one right away, and each row shows its last check or its error. **Remove** takes the catalog out of the list; a picture from it that you already use as a background keeps working.
+Batty checks each catalog you add at launch and once a day, unless you turn off **Check background catalogs automatically**. It checks the built-in catalog the same way, but only after you first open **Background Sets**. Opening **Background Sets** also checks them. **Check Now** checks one right away; on the built-in catalog it is available once you have opened **Background Sets**. Each row shows its last check or its error. **Remove** takes the catalog out of the list; a picture from it that you already use as a background keeps working.
 
 ## See-through windows
 

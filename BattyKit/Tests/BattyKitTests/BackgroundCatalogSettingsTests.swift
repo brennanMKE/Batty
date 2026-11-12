@@ -149,6 +149,22 @@ struct BackgroundCatalogSettingsTests {
         #expect(!hosted.hasBrowsed)
     }
 
+    @Test func theBuiltInCatalogCannotBeCheckedBeforeTheFirstBrowse() async throws {
+        try server.serve(builtIn)
+        try server.serve(userURL)
+        _ = await hosted.addCatalog(userURL.absoluteString)
+        let rows = hosted.catalogRows
+        #expect(!hosted.canCheckNow(rows[0]))
+        #expect(hosted.canCheckNow(rows[1]))
+        await hosted.refresh(builtIn)
+        #expect(fetcher.requestedURLs == [userURL])
+        #expect(!hosted.hasBrowsed)
+
+        await hosted.browseAppeared()
+        #expect(hosted.canCheckNow(hosted.catalogRows[0]))
+        #expect(fetcher.requestedURLs.contains(builtIn))
+    }
+
     @Test func userCatalogsAreListedInTheOrderAdded() async throws {
         try server.serve(otherURL)
         try server.serve(userURL)
