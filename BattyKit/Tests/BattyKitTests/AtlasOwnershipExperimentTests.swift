@@ -117,7 +117,10 @@ struct AtlasOwnershipExperimentTests {
         return (window, view, state)
     }
 
-    @Test func secondSurfaceOnSameControllerAtlasDelta() throws {
+    // Several seconds of vmmap and run-loop spins guarding a libghostty
+    // assumption, not Batty logic: full tier only.
+    @Test(.enabled(if: SlowTests.enabled, "slow: run with ./build.sh unit --full"))
+    func secondSurfaceOnSameControllerAtlasDelta() throws {
         let baseline = atlas1040KRegionCount()
         try #require(baseline >= 0, "vmmap failed to run against this process")
 

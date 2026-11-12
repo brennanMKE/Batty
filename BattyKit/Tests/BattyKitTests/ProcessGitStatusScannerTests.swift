@@ -16,12 +16,16 @@ import Testing
 ///
 /// Each test builds its own temp directory under
 /// `FileManager.default.temporaryDirectory` and removes it afterward.
+///
+/// The git fixtures block on `waitUntilExit()`, so the real-git tests and
+/// their helpers are `nonisolated`: on the main actor they would stall every
+/// other test in the run.
 @MainActor
 struct ProcessGitStatusScannerTests {
 
     // MARK: - Fixture helpers
 
-    private static func runGit(_ arguments: [String], in directory: String) {
+    nonisolated private static func runGit(_ arguments: [String], in directory: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git"] + arguments
@@ -32,7 +36,7 @@ struct ProcessGitStatusScannerTests {
         process.waitUntilExit()
     }
 
-    private static func makeTempDirectory() -> String {
+    nonisolated private static func makeTempDirectory() -> String {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("GitStatusScannerTests-\(UUID().uuidString)")
             .path
@@ -42,7 +46,7 @@ struct ProcessGitStatusScannerTests {
 
     /// A repo with local (not global) user config and one commit, so
     /// `git commit` never depends on the test machine's own git identity.
-    private static func makeRepoWithOneCommit() -> String {
+    nonisolated private static func makeRepoWithOneCommit() -> String {
         let dir = makeTempDirectory()
         runGit(["init", "-q", "-b", "main"], in: dir)
         runGit(["config", "user.email", "test@example.com"], in: dir)
@@ -53,13 +57,13 @@ struct ProcessGitStatusScannerTests {
         return dir
     }
 
-    private static func removeTempDirectory(_ path: String) {
+    nonisolated private static func removeTempDirectory(_ path: String) {
         try? FileManager.default.removeItem(atPath: path)
     }
 
     // MARK: - Basic scan
 
-    @Test func scanOfACleanRepoReturnsASnapshotWithTheCorrectBranch() async {
+    @Test nonisolated func scanOfACleanRepoReturnsASnapshotWithTheCorrectBranch() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
 
@@ -77,7 +81,7 @@ struct ProcessGitStatusScannerTests {
 
     // MARK: - Defined non-repo / hostile-path states
 
-    @Test func scanOfABareRepositoryReturnsNotARepository() async {
+    @Test nonisolated func scanOfABareRepositoryReturnsNotARepository() async {
         let dir = Self.makeTempDirectory()
         defer { Self.removeTempDirectory(dir) }
         Self.runGit(["init", "-q", "--bare"], in: dir)
@@ -86,7 +90,7 @@ struct ProcessGitStatusScannerTests {
         #expect(result == .notARepository)
     }
 
-    @Test func scanOfAMissingDirectoryReturnsNotARepository() async {
+    @Test nonisolated func scanOfAMissingDirectoryReturnsNotARepository() async {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("GitStatusScannerTests-missing-\(UUID().uuidString)")
             .path
@@ -94,7 +98,7 @@ struct ProcessGitStatusScannerTests {
         #expect(result == .notARepository)
     }
 
-    @Test func scanOfAPlainDirectoryThatIsNotARepositoryReturnsNotARepository() async {
+    @Test nonisolated func scanOfAPlainDirectoryThatIsNotARepositoryReturnsNotARepository() async {
         let dir = Self.makeTempDirectory()
         defer { Self.removeTempDirectory(dir) }
         // No `git init` — just an ordinary empty directory.
@@ -108,7 +112,7 @@ struct ProcessGitStatusScannerTests {
     /// `cd`'d into any subdirectory of a plain (non-worktree) checkout —
     /// the common case, since `SplitTree.makePane` inherits the source
     /// pane's cwd — must not report a false "Worktree" badge.
-    @Test func scanOfAPlainSubdirectoryIsNotMisidentifiedAsAWorktree() async {
+    @Test nonisolated func scanOfAPlainSubdirectoryIsNotMisidentifiedAsAWorktree() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
         let subdir = dir + "/a/b"
@@ -135,7 +139,7 @@ struct ProcessGitStatusScannerTests {
     /// both halves of the fix: `diff(atPath:)` using the resolved
     /// toplevel returns the real diff, and the toplevel-based absolute
     /// URL for the changed file actually exists on disk.
-    @Test func scanFromASubdirectoryResolvesPathsRelativeToTheRepositoryToplevel() async {
+    @Test nonisolated func scanFromASubdirectoryResolvesPathsRelativeToTheRepositoryToplevel() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
         let srcDir = dir + "/src"
@@ -176,7 +180,7 @@ struct ProcessGitStatusScannerTests {
         #expect(!FileManager.default.fileExists(atPath: wrongURL.path), "sanity check: the pre-fix (directoryPath-based) URL must not exist, or this test isn't exercising R1")
     }
 
-    @Test func scanOfALinkedWorktreeIsIdentifiedAsAWorktreeAtRootAndInASubdirectory() async {
+    @Test nonisolated func scanOfALinkedWorktreeIsIdentifiedAsAWorktreeAtRootAndInASubdirectory() async {
         let main = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(main) }
         let worktreeDir = FileManager.default.temporaryDirectory
@@ -202,7 +206,7 @@ struct ProcessGitStatusScannerTests {
         #expect(subdirRaw.isWorktree == true)
     }
 
-    @Test func scanOfASubmoduleReportsTheSuperprojectName() async {
+    @Test nonisolated func scanOfASubmoduleReportsTheSuperprojectName() async {
         let parent = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(parent) }
         let childSource = Self.makeRepoWithOneCommit()
@@ -225,7 +229,7 @@ struct ProcessGitStatusScannerTests {
     /// already confirmed this directory *is* one; `.scanFailed` (added in
     /// round 1 for exactly this "don't lie about the tree" class) is the
     /// honest answer, carrying the captured stderr.
-    @Test func scanOfARepositoryWithACorruptIndexReturnsScanFailedNotNotARepository() async {
+    @Test nonisolated func scanOfARepositoryWithACorruptIndexReturnsScanFailedNotNotARepository() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
         // A truncated/corrupt index makes `git status` fail with exit 128
@@ -246,7 +250,7 @@ struct ProcessGitStatusScannerTests {
     /// A real, on-disk non-ASCII filename, scanned end to end through the
     /// actual subprocess and parser — not just the pure-parser fixture
     /// test, which can't catch a decode step this class itself owns.
-    @Test func scanHandlesARealNonASCIIFilenameEndToEnd() async {
+    @Test nonisolated func scanHandlesARealNonASCIIFilenameEndToEnd() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
         let fileName = "café.txt"
@@ -264,7 +268,7 @@ struct ProcessGitStatusScannerTests {
 
     // MARK: - diff()
 
-    @Test func diffReturnsTheUnstagedDiffForAModifiedFile() async {
+    @Test nonisolated func diffReturnsTheUnstagedDiffForAModifiedFile() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
         try? "hello\nworld\n".write(toFile: dir + "/README.txt", atomically: true, encoding: .utf8)
@@ -273,7 +277,7 @@ struct ProcessGitStatusScannerTests {
         #expect(diff?.contains("+world") == true)
     }
 
-    @Test func diffReturnsNilForAPathNotInTheRepo() async {
+    @Test nonisolated func diffReturnsNilForAPathNotInTheRepo() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
 
@@ -283,17 +287,17 @@ struct ProcessGitStatusScannerTests {
 
     // MARK: - terminate*() are safe no-ops when nothing is running
 
-    @Test func terminateIfRunningIsASafeNoOpWhenNothingHasEverRun() {
+    @Test nonisolated func terminateIfRunningIsASafeNoOpWhenNothingHasEverRun() {
         let scanner = ProcessGitStatusScanner()
         scanner.terminateIfRunning() // must not crash / raise NSInvalidArgumentException
     }
 
-    @Test func terminateAndWaitBrieflyIsASafeNoOpWhenNothingHasEverRun() {
+    @Test nonisolated func terminateAndWaitBrieflyIsASafeNoOpWhenNothingHasEverRun() {
         let scanner = ProcessGitStatusScanner()
         scanner.terminateAndWaitBriefly() // must not crash and must not block
     }
 
-    @Test func terminateIfRunningAfterAScanCompletedIsASafeNoOp() async {
+    @Test nonisolated func terminateIfRunningAfterAScanCompletedIsASafeNoOp() async {
         let dir = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(dir) }
         let scanner = ProcessGitStatusScanner()
@@ -629,23 +633,23 @@ struct ProcessGitStatusScannerTests {
 
 @MainActor
 extension ProcessGitStatusScannerTests {
-    private static func siblingPath(_ label: String) -> String {
+    nonisolated private static func siblingPath(_ label: String) -> String {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("GitStatusScannerTests-\(label)-\(UUID().uuidString)")
             .path
     }
 
-    private static func worktreeEntries(scanning path: String) async -> [GitWorktreeEntry]? {
+    nonisolated private static func worktreeEntries(scanning path: String) async -> [GitWorktreeEntry]? {
         guard case .snapshot(let raw) = await ProcessGitStatusScanner().scan(atPath: path),
               let output = raw.worktreeListOutput else { return nil }
         return GitWorktreeListParser.ordered(GitWorktreeListParser.parse(output), currentPath: raw.repositoryToplevel)
     }
 
-    private static func resolved(_ path: String) -> String {
+    nonisolated private static func resolved(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
 
-    @Test func aPlainCheckoutListsOnlyItself() async {
+    @Test nonisolated func aPlainCheckoutListsOnlyItself() async {
         let main = Self.makeRepoWithOneCommit()
         defer { Self.removeTempDirectory(main) }
         let entries = await Self.worktreeEntries(scanning: main)
@@ -653,7 +657,7 @@ extension ProcessGitStatusScannerTests {
         #expect(entries?.first?.isCurrent == true)
     }
 
-    @Test func twoLinkedWorktreesListMainFirstThenSortedAndMarkCurrent() async {
+    @Test nonisolated func twoLinkedWorktreesListMainFirstThenSortedAndMarkCurrent() async {
         let main = Self.makeRepoWithOneCommit()
         let wtB = Self.siblingPath("b")
         let wtA = Self.siblingPath("a")
@@ -676,7 +680,7 @@ extension ProcessGitStatusScannerTests {
         #expect(fromLinkedSubdir?.first(where: { Self.resolved($0.path) == Self.resolved(wtA) })?.branch == "branch-a")
     }
 
-    @Test func detachedAndLockedWorktreeReportsBothWithTheReason() async {
+    @Test nonisolated func detachedAndLockedWorktreeReportsBothWithTheReason() async {
         let main = Self.makeRepoWithOneCommit()
         let wt = Self.siblingPath("locked")
         defer { [main, wt].forEach(Self.removeTempDirectory) }
@@ -691,7 +695,7 @@ extension ProcessGitStatusScannerTests {
         #expect(entry?.headSHA?.isEmpty == false)
     }
 
-    @Test func aWorktreeWhoseDirectoryWasRemovedIsPrunableWithAReason() async {
+    @Test nonisolated func aWorktreeWhoseDirectoryWasRemovedIsPrunableWithAReason() async {
         let main = Self.makeRepoWithOneCommit()
         let wt = Self.siblingPath("gone")
         defer { [main, wt].forEach(Self.removeTempDirectory) }
@@ -704,7 +708,7 @@ extension ProcessGitStatusScannerTests {
         #expect(entry?.pruneReason?.isEmpty == false)
     }
 
-    @Test func aWorktreePathContainingASpaceIsListedIntact() async {
+    @Test nonisolated func aWorktreePathContainingASpaceIsListedIntact() async {
         let main = Self.makeRepoWithOneCommit()
         let parent = Self.siblingPath("space dir")
         defer { [main, parent].forEach(Self.removeTempDirectory) }
@@ -716,7 +720,7 @@ extension ProcessGitStatusScannerTests {
         #expect(entries?.contains { Self.resolved($0.path) == Self.resolved(wt) } == true)
     }
 
-    @Test func aLinkedWorktreeOfABareRepositoryListsTheBareEntryFirst() async {
+    @Test nonisolated func aLinkedWorktreeOfABareRepositoryListsTheBareEntryFirst() async {
         let seed = Self.makeRepoWithOneCommit()
         let bare = Self.siblingPath("bare") + ".git"
         let wt = Self.siblingPath("bare-wt")

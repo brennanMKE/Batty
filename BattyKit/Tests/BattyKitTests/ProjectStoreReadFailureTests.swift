@@ -16,6 +16,7 @@ private final class ReadFailureFixture {
     let file: URL
     let gate = ProjectFileReadGate()
     private(set) var bytes = Data()
+    private var aclApplied = false
 
     init(seeded: Bool = true) throws {
         folder = FileManager.default.temporaryDirectory.appendingPathComponent("batty-read-failure-\(UUID().uuidString)")
@@ -33,7 +34,7 @@ private final class ReadFailureFixture {
     func cleanup() {
         try? setMode(0o755, folder)
         try? setMode(0o644, file)
-        try? runChmod(["-N", file.path])
+        if aclApplied { try? runChmod(["-N", file.path]) }
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -68,6 +69,7 @@ private final class ReadFailureFixture {
     }
 
     func denyRead() throws {
+        aclApplied = true
         try runChmod(["+a", "\(NSUserName()) deny read", file.path])
     }
 

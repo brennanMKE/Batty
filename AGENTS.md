@@ -61,6 +61,8 @@ release builds only.
 ./build.sh unit
 ./build.sh unit <Suite>                           # one suite (Swift Testing)
 ./build.sh unit '<Suite>/<test>()'                # one test
+./build.sh unit --full                            # also the slow tier (release preflight)
+cd BattyKit && BATTY_FULL_TESTS=1 swift test     # package equivalent of --full
 
 # Run UI tests -- ONLY inside the Tart VM, never on a host Mac (see below)
 ./build.sh ui                                     # all UI tests
@@ -93,7 +95,7 @@ Any other action passes through to `xcodebuild` under the Beta scheme, so
 
 **Test strategy:**
 
-- **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only, through the `BattyKit Unit Tests` workspace scheme, which does not build the app or `BattyTests` (so `./build.sh` remains the compile check for the app). Warm timings: ~4 s with no change, ~20 s after a typical BattyKit edit, ~50 s for the full suite (~35 s of it is test execution); adding, removing or renaming a BattyKit source file recompiles the whole test target (~45 s or more under load, see #0588). No UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package, so BattyKitTests appear in the Test Navigator. Use the `BattyKit Unit Tests` scheme there for a fast BattyKitTests run, or `Batty (Beta)` for both testables; `Batty (Prod)` also lists them, but Prod is for release builds only.
+- **Unit tests** (`./build.sh unit`) — run `BattyKitTests` only, through the `BattyKit Unit Tests` workspace scheme, which does not build the app or `BattyTests` (so `./build.sh` remains the compile check for the app). Warm timings: ~4 s with no change, ~20 s after a typical BattyKit edit, ~35 s for the full suite (~18 s of it is test execution, the rest mostly xcodebuild's post-run tail; #0592); adding, removing or renaming a BattyKit source file recompiles the whole test target (~45 s or more under load, see #0588). Two tiers: a test is *slow* if it takes over ~1 s on its own, cannot be made fast or taken off the main actor, and guards an external assumption rather than Batty logic (today only `AtlasOwnershipExperimentTests`). Slow tests carry `.enabled(if: SlowTests.enabled, "slow: run with ./build.sh unit --full")`, so the routine run reports them as skipped in the `==> unit:` line; `./build.sh unit --full` runs them, and release preflight uses `--full`. A filtered run in which every test was skipped is `CHECK UNIT: ERROR`. No UI, no machine lock. Run before every `git commit` after any code change. Tests live in the `BattyKit` Swift package (`BattyKit/Tests/BattyKitTests/`) so the package can stand on its own (`cd BattyKit && swift test` works). In Xcode, open `Batty.xcworkspace` (not `Batty.xcodeproj`) — the workspace includes the BattyKit package, so BattyKitTests appear in the Test Navigator. Use the `BattyKit Unit Tests` scheme there for a fast BattyKitTests run, or `Batty (Beta)` for both testables; `Batty (Prod)` also lists them, but Prod is for release builds only.
 - **UI tests** — the `BattyUITests` suite (about 200 tests across 46 classes; over half an hour in sharded VM runs). **Only inside a disposable Tart VM** (see "UI test automation" below), never on a host Mac. Not run per issue: the whole suite runs once a day against `main` and before every release, each real failure is filed as an issue, and that issue is confirmed by re-running only the failing tests ("Daily UI run" in `issues/Issues.md`). New UI features should be covered by new UI tests; check they compile with `./build.sh ui-typecheck`.
 - **Release build** (`./build.sh release archive -archivePath dist/Batty.xcarchive -configuration Release`) — the only path that compiles at `-O`, and the only one that exercises the universal (arm64 + x86_64) slices. **Run it before cutting any release, and after any change to a type with non-trivial generics or deinit.** Debug and Beta builds do not cover it: `-O` reaches optimizer paths Debug never runs, and a Release-only compiler crash went undetected for months because nothing in the routine loop built at `-O` (#0391 — swift-frontend 6.3.3 crashed in the SIL `EarlyPerfInliner` on a generic class's implicit `deinit`, blocking the entire release pipeline).
 
@@ -132,6 +134,9 @@ and no assertions on elapsed wall-clock time. They make tests slow and unreliabl
   scheduler the test advances explicitly, not by letting real time pass.
 - External processes signal readiness through a pipe or file the test awaits as an event
   (e.g. a `FileHandle` readability handler), not by sleeping until they're probably ready.
+- A test that blocks on a child process (`waitUntilExit`, synchronous `git`) must not do it on
+  the main actor, or it stalls every other test in the run: make the test and its fixtures
+  `nonisolated`, as in `ProcessGitStatusScannerTests`.
 - "Returns without blocking" is proven structurally — the work runs on a task or scheduler
   the test controls — not by timing the call.
 - Every await in a test still has an upper bound so a regression fails instead of hanging,

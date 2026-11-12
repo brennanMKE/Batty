@@ -500,8 +500,8 @@ log "Running UI tests in the guest (this runs XCUITest inside the VM only)"
 # "Batty (Beta)" scheme's own Test action was deliberately narrowed to
 # BattyKitTests/BattyTests (#0412), because xcodebuild's test action builds
 # every Testable listed in a scheme regardless of -only-testing filters, so
-# leaving BattyUITests there made ./build.sh unit try (and fail, at the
-# host guard) to build it too.
+# leaving BattyUITests there made a "Batty (Beta)" test run (then also
+# ./build.sh unit's path) try (and fail, at the host guard) to build it too.
 #
 # Run backgrounded and `wait`ed rather than as this script's direct
 # foreground command: with the `tart run` background job (above) also

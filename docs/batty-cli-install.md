@@ -1099,7 +1099,7 @@ Unit tests (Swift Testing, `BattyKit/Tests/BattyKitTests/`):
   session with the right working directory.
 
 Run via the project's standard gate: `./build.sh unit` (runs
-`BattyKitTests` only, no UI, <30 s).
+`BattyKitTests` only, no UI; see `AGENTS.md` for timings).
 
 **Running the CLI standalone**, with no Xcode/app bundle involved:
 

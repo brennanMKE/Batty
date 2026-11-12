@@ -10,10 +10,11 @@
 # Usage:
 #   ./build.sh [--verbose]         build (Beta)
 #   ./build.sh clean               clean (Beta)
-#   ./build.sh unit [Suite[/test()] ...]
+#   ./build.sh unit [--full] [Suite[/test()] ...]
 #                                  BattyKitTests only, via the BattyKit Unit Tests scheme;
 #                                  does not build the app; no UI, no machine lock;
-#                                  optional filters become -only-testing:BattyKitTests/<F>
+#                                  optional filters become -only-testing:BattyKitTests/<F>;
+#                                  --full also runs slow tests (BATTY_FULL_TESTS=1)
 #   ./build.sh ui [target ...]     UI tests — ONLY inside a disposable Tart VM
 #                                  (delegates to tools/run-ui-tests-vm.sh, #0412)
 #   ./build.sh ui-typecheck        type-check BattyUITests on the host with
@@ -236,10 +237,16 @@ case "$ACTION" in
 
     unit)
         shift
-        # Dash options are reserved (e.g. #0528's --full); everything else
-        # is a test filter.
+        # --full enables the slow tier; any other dash option is an error;
+        # everything else is a test filter.
         typeset -a FILTERS=()
+        UNIT_TIER=""
         for f in "$@"; do
+            if [[ "$f" == --full ]]; then
+                UNIT_TIER="full, "
+                export TEST_RUNNER_BATTY_FULL_TESTS=1
+                continue
+            fi
             if [[ "$f" == -* ]]; then
                 print "CHECK UNIT: ERROR (unknown option $f)"
                 exit 2
@@ -251,7 +258,7 @@ case "$ACTION" in
         mkdir -p "$REPO/build/checks"
         XCRESULT="$REPO/build/checks/unit-$(date +%Y%m%d-%H%M%S)-$$.xcresult"
         rm -rf "$XCRESULT"
-        print "==> xcodebuild test (BattyKitTests, $UNIT_SCHEME) — output captured"
+        print "==> xcodebuild test (BattyKitTests, ${UNIT_TIER}$UNIT_SCHEME) — output captured"
         run_check unit "$XCRESULT" xcodebuild test \
             -workspace "$WORKSPACE" \
             -scheme "$UNIT_SCHEME" \
