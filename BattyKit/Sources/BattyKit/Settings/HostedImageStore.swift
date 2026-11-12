@@ -73,13 +73,22 @@ actor HostedImageStore {
     private let temporaryRoot: URL
     private let importer: TerminalBackgroundImageImporter
     private let now: @Sendable () -> Date
+    private let importImage: (@Sendable (URL) async throws -> String)?
 
-    init(directory: URL, fetcher: BackgroundCatalogFetching, temporaryRoot: URL, now: @escaping @Sendable () -> Date = Date.init) {
+    /// `importImage` is a test seam for counting decodes; nil uses the importer.
+    init(
+        directory: URL,
+        fetcher: BackgroundCatalogFetching,
+        temporaryRoot: URL,
+        now: @escaping @Sendable () -> Date = Date.init,
+        importImage: (@Sendable (URL) async throws -> String)? = nil
+    ) {
         self.directory = directory
         self.fetcher = fetcher
         self.temporaryRoot = temporaryRoot
         self.importer = TerminalBackgroundImageImporter(directory: directory, cleanup: .keepAll)
         self.now = now
+        self.importImage = importImage
     }
 
     nonisolated static func defaultTemporaryRoot() -> URL {
@@ -148,7 +157,11 @@ actor HostedImageStore {
         let path: String
         do {
             try fileManager.moveItem(at: download, to: named)
-            path = try await importer.importImage(from: named)
+            if let importImage {
+                path = try await importImage(named)
+            } else {
+                path = try await importer.importImage(from: named)
+            }
         } catch {
             logger.error("could not import a hosted image: \(error.localizedDescription, privacy: .private)")
             throw .importFailed
@@ -158,6 +171,15 @@ actor HostedImageStore {
         updated.append(HostedImageRecord(url: image.full, digest: digest, fetchedAt: now()))
         writeRecords(updated)
         return path
+    }
+
+    /// Leaves every `Hosted/<digest>/` folder: deleting one would let the
+    /// library's next scan promote a use's copy of it into My Images.
+    func removeRecords(for fullURLs: Set<URL>) {
+        let current = records()
+        let kept = current.filter { !fullURLs.contains($0.url) }
+        guard kept.count != current.count else { return }
+        writeRecords(kept)
     }
 
     private func writeRecords(_ records: [HostedImageRecord]) {

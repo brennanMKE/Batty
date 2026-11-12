@@ -32,9 +32,23 @@ nonisolated struct HostedCatalogState: Equatable, Sendable, Identifiable {
     var catalog: BackgroundCatalog?
     var isChecking = false
     var problem: HostedCatalogProblem?
+    var lastChecked: Date?
+    var failingSince: Date?
 
     var id: URL { url }
     var host: String { url.host ?? url.absoluteString }
+
+    static let unreachableAfter: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Only a fetch failure counts, never an invalid body, and by elapsed time
+    /// so repeated Check Now clicks can't trip it.
+    func unreachableSince(now: Date) -> Date? {
+        guard let failingSince, now.timeIntervalSince(failingSince) >= Self.unreachableAfter else { return nil }
+        switch problem {
+        case .offlineShowingCache, .offlineNoCache, .fetchFailed: return failingSince
+        case .invalid, nil: return nil
+        }
+    }
 }
 
 /// What a hosted-background model needs from outside, so tests pass their own.
@@ -43,7 +57,6 @@ struct HostedBackgroundsDependencies {
     var cacheRoot: URL
     var temporaryRoot: URL
     var clock: SchedulingClock
-    var catalogURLs: @MainActor () -> [URL] = { [BackgroundCatalog.builtInURL] }
 }
 
 /// The Background Sets tab. Nothing is fetched before `browseAppeared`, and a
@@ -58,14 +71,16 @@ final class HostedBackgroundsModel {
     private(set) var catalogs: [HostedCatalogState] = []
     private(set) var fetches: [HostedImageKey: HostedFetchState] = [:]
     private(set) var available: Set<HostedImageKey> = []
+    /// In the order added. Written only by `addCatalog` and `removeCatalog`.
+    private(set) var userCatalogURLs: [URL]
+    private(set) var isAddingCatalog = false
 
     @ObservationIgnored let store: HostedImageStore
     @ObservationIgnored let cache: BackgroundCatalogCache
     @ObservationIgnored let thumbnails: HostedThumbnailLoader
     @ObservationIgnored private let fetcher: BackgroundCatalogFetching
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let clock: SchedulingClock
-    @ObservationIgnored private let catalogURLs: @MainActor () -> [URL]
+    @ObservationIgnored let clock: SchedulingClock
     @ObservationIgnored private var running: [HostedImageKey: (id: UUID, task: Task<String?, Never>)] = [:]
     @ObservationIgnored private var lastRefresh: [URL: Date] = [:]
     @ObservationIgnored private var refreshing: [URL: Task<Void, Never>] = [:]
@@ -77,6 +92,9 @@ final class HostedBackgroundsModel {
     @ObservationIgnored private var pendingPick: (key: HostedImageKey, ownsFetch: Bool)?
     /// Test seam: a fetch is waiting for a free slot.
     @ObservationIgnored var onFetchQueued: ((HostedImageKey) -> Void)?
+    /// Test seam: `removeCatalog` has dropped the URL and is about to wait
+    /// for a refresh still running.
+    @ObservationIgnored var onCatalogForgotten: ((URL) -> Void)?
 
     init(imageDirectory: URL, dependencies: HostedBackgroundsDependencies, defaults: UserDefaults) {
         self.fetcher = dependencies.fetcher
@@ -85,7 +103,21 @@ final class HostedBackgroundsModel {
         self.thumbnails = HostedThumbnailLoader(fetcher: dependencies.fetcher, cache: cache)
         self.defaults = defaults
         self.clock = dependencies.clock
-        self.catalogURLs = dependencies.catalogURLs
+        self.userCatalogURLs = SettingsPreference.resolvedBackgroundCatalogURLs(defaults: defaults)
+    }
+
+    var catalogURLs: [URL] { [BackgroundCatalog.builtInURL] + userCatalogURLs }
+
+    /// The built-in catalog waits for the first Browse; a user URL was asked for.
+    var scheduledCatalogURLs: [URL] {
+        hasBrowsed ? catalogURLs : userCatalogURLs
+    }
+
+    /// One per catalog, built-in first, including ones not loaded yet.
+    var catalogRows: [HostedCatalogState] {
+        catalogURLs.map { url in
+            state(url) ?? HostedCatalogState(url: url, isBuiltIn: url == BackgroundCatalog.builtInURL)
+        }
     }
 
     nonisolated var imageDirectory: URL { store.directory }
@@ -95,20 +127,113 @@ final class HostedBackgroundsModel {
     /// Runs only from the Background Sets view's `.task`.
     func browseAppeared() async {
         SettingsPreference.markBackgroundCatalogsBrowsed(defaults: defaults)
-        let urls = catalogURLs()
-        for url in urls where state(url) == nil {
-            let cached = await cache.cachedCatalog(for: url)
-            if state(url) == nil {
-                update(url) { _ in }
-                if let cached { update(url) { $0.catalog = cached.catalog } }
-            }
-        }
+        await loadCachedStates()
+        let urls = catalogURLs
         let now = clock.now
         for url in urls {
             if let last = lastRefresh[url], now.timeIntervalSince(last) < Self.refreshInterval { continue }
             await refresh(url)
         }
         await reconcileAvailability()
+    }
+
+    /// Settings' `.task`: cached copies and check state only, no network.
+    func loadCatalogRows() async {
+        await loadCachedStates()
+    }
+
+    private func loadCachedStates() async {
+        for url in catalogURLs where state(url) == nil {
+            let cached = await cache.cachedCatalog(for: url)
+            let checks = await cache.state(for: url)
+            if state(url) == nil {
+                update(url) {
+                    $0.catalog = cached?.catalog
+                    $0.lastChecked = checks.lastChecked
+                    $0.failingSince = checks.failingSince
+                }
+            }
+        }
+    }
+
+    /// Validates, fetches once and parses before anything is saved. Doesn't
+    /// mark Browse as opened.
+    func addCatalog(_ text: String) async -> Result<URL, BackgroundCatalogURLRefusal> {
+        let url: URL
+        switch BackgroundCatalogURLs.normalize(text) {
+        case .success(let normalized): url = normalized
+        case .failure(let refusal): return .failure(refusal)
+        }
+        if let refusal = addRefusal(for: url) { return .failure(refusal) }
+        guard !isAddingCatalog else { return .failure(.fetch("Another catalog is being added")) }
+        isAddingCatalog = true
+        defer { isAddingCatalog = false }
+
+        let host = url.host ?? url.absoluteString
+        let response: HostedFetchResponse
+        do {
+            response = try await fetcher.fetch(HostedFetchRequest(
+                url: url,
+                byteLimit: Int64(BackgroundCatalogLimits.catalogBytes),
+                timeout: BackgroundCatalogLimits.catalogTimeout
+            ), progress: nil)
+        } catch {
+            return .failure(.fetch(error.message(host: host)))
+        }
+        let body = response.body ?? Data()
+        let catalog: BackgroundCatalog
+        do {
+            catalog = try BackgroundCatalogParser.parse(body, catalogURL: url)
+        } catch {
+            return .failure(.fetch(error.message))
+        }
+        if let refusal = addRefusal(for: url) { return .failure(refusal) }
+
+        let now = clock.now
+        await cache.store(body: body, validators: HostedValidators(etag: response.etag, lastModified: response.lastModified), for: url, at: now)
+        userCatalogURLs.append(url)
+        SettingsPreference.setBackgroundCatalogURLs(userCatalogURLs, defaults: defaults)
+        update(url) {
+            $0.catalog = catalog
+            $0.lastChecked = now
+            $0.failingSince = nil
+            $0.problem = nil
+        }
+        lastRefresh[url] = now
+        logger.info("added a background catalog")
+        return .success(url)
+    }
+
+    private func addRefusal(for url: URL) -> BackgroundCatalogURLRefusal? {
+        if catalogURLs.contains(url) { return .duplicate }
+        if userCatalogURLs.count >= BackgroundCatalogURLs.maxUserCatalogs { return .tooMany }
+        return nil
+    }
+
+    /// Hosted copy files and every use's own copy stay; only this catalog's
+    /// records, cache and row go.
+    func removeCatalog(_ url: URL) async {
+        guard url != BackgroundCatalog.builtInURL, userCatalogURLs.contains(url) else { return }
+        // First, so no refresh or `update` still running can bring it back.
+        userCatalogURLs.removeAll { $0 == url }
+        SettingsPreference.setBackgroundCatalogURLs(userCatalogURLs, defaults: defaults)
+        onCatalogForgotten?(url)
+        if let running = refreshing[url] { await running.value }
+
+        var removedImages = Set(await catalog(for: url)?.allImages.map(\.full) ?? [])
+        for other in catalogURLs {
+            for image in await catalog(for: other)?.allImages ?? [] { removedImages.remove(image.full) }
+        }
+        await store.removeRecords(for: removedImages)
+        await cache.removeAll(for: url)
+        lastRefresh[url] = nil
+        if catalogs.contains(where: { $0.url == url }) { catalogs.removeAll { $0.url == url } }
+        await reconcileAvailability()
+    }
+
+    private func catalog(for url: URL) async -> BackgroundCatalog? {
+        if let held = state(url)?.catalog { return held }
+        return await cache.cachedCatalog(for: url)?.catalog
     }
 
     /// The banner's Retry, and the hook a scheduled refresh calls. One per catalog at a time.
@@ -140,25 +265,14 @@ final class HostedBackgroundsModel {
             timeout: BackgroundCatalogLimits.catalogTimeout
         )
         let host = url.host ?? url.absoluteString
+        let response: HostedFetchResponse
         do {
-            let response = try await fetcher.fetch(request, progress: nil)
-            if response.status == 304 {
-                await cache.markChecked(for: url, at: clock.now, error: nil)
-                update(url) { $0.isChecking = false; $0.problem = nil }
-                return
-            }
-            let body = response.body ?? Data()
-            do {
-                let catalog = try BackgroundCatalogParser.parse(body, catalogURL: url)
-                await cache.store(body: body, validators: HostedValidators(etag: response.etag, lastModified: response.lastModified), for: url, at: clock.now)
-                update(url) { $0.catalog = catalog; $0.isChecking = false; $0.problem = nil }
-            } catch {
-                await cache.markChecked(for: url, at: clock.now, error: error.message)
-                update(url) { $0.isChecking = false; $0.problem = .invalid(error.message) }
-            }
+            response = try await fetcher.fetch(request, progress: nil)
         } catch {
+            guard catalogURLs.contains(url) else { return }
             let message = error.message(host: host)
             await cache.markChecked(for: url, at: clock.now, error: message)
+            await loadChecks(url)
             let problem: HostedCatalogProblem
             switch error {
             case .unreachable, .timedOut:
@@ -167,6 +281,34 @@ final class HostedBackgroundsModel {
                 problem = .fetchFailed(message)
             }
             update(url) { $0.isChecking = false; $0.problem = problem }
+            return
+        }
+        // A catalog removed while this fetch ran must leave no cache behind.
+        guard catalogURLs.contains(url) else { return }
+        if response.status == 304 {
+            await cache.markChecked(for: url, at: clock.now, error: nil)
+            await loadChecks(url)
+            update(url) { $0.isChecking = false; $0.problem = nil }
+            return
+        }
+        let body = response.body ?? Data()
+        do {
+            let catalog = try BackgroundCatalogParser.parse(body, catalogURL: url)
+            await cache.store(body: body, validators: HostedValidators(etag: response.etag, lastModified: response.lastModified), for: url, at: clock.now)
+            await loadChecks(url)
+            update(url) { $0.catalog = catalog; $0.isChecking = false; $0.problem = nil }
+        } catch {
+            await cache.markChecked(for: url, at: clock.now, error: error.message)
+            await loadChecks(url)
+            update(url) { $0.isChecking = false; $0.problem = .invalid(error.message) }
+        }
+    }
+
+    private func loadChecks(_ url: URL) async {
+        let checks = await cache.state(for: url)
+        update(url) {
+            $0.lastChecked = checks.lastChecked
+            $0.failingSince = checks.failingSince
         }
     }
 
@@ -325,6 +467,8 @@ final class HostedBackgroundsModel {
     }
 
     private func update(_ url: URL, _ change: (inout HostedCatalogState) -> Void) {
+        let order = catalogURLs
+        guard order.contains(url) else { return }
         var list = catalogs
         if let index = list.firstIndex(where: { $0.url == url }) {
             change(&list[index])
@@ -333,7 +477,6 @@ final class HostedBackgroundsModel {
             change(&fresh)
             list.append(fresh)
         }
-        let order = catalogURLs()
         list.sort { (order.firstIndex(of: $0.url) ?? .max) < (order.firstIndex(of: $1.url) ?? .max) }
         if list != catalogs { catalogs = list }
     }

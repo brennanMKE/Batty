@@ -29,8 +29,15 @@ nonisolated final class URLSessionBackgroundCatalogFetcher: NSObject, Background
     }
 
     private let lock = NSLock()
+    private let protocolClasses: [AnyClass]
     nonisolated(unsafe) private var transfers: [Int: Transfer] = [:]
     nonisolated(unsafe) private var _session: URLSession?
+
+    /// `protocolClasses` is a test seam for a stub `URLProtocol`; production passes none.
+    init(protocolClasses: [AnyClass] = []) {
+        self.protocolClasses = protocolClasses
+        super.init()
+    }
 
     /// Call with `lock` held.
     private var session: URLSession {
@@ -41,6 +48,9 @@ nonisolated final class URLSessionBackgroundCatalogFetcher: NSObject, Background
         configuration.httpCookieAcceptPolicy = .never
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        if !protocolClasses.isEmpty {
+            configuration.protocolClasses = protocolClasses + (configuration.protocolClasses ?? [])
+        }
         let made = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         _session = made
         return made
@@ -151,6 +161,9 @@ nonisolated final class URLSessionBackgroundCatalogFetcher: NSObject, Background
         guard let transfer else { return }
         try? transfer.handle?.close()
         let url = transfer.request.url
+        if transfer.failure != nil || error != nil, case .file(let destination) = transfer.request.destination {
+            try? FileManager.default.removeItem(at: destination)
+        }
         if let failure = transfer.failure {
             log(failure, url: url)
             return transfer.continuation.resume(throwing: failure)

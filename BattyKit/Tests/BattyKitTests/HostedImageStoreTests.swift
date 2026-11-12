@@ -109,4 +109,40 @@ struct HostedImageStoreTests {
         _ = try await f.store.fetch(image)
         #expect(await f.store.records().count == 1)
     }
+
+    @Test func overLimitHeaderIsRefusedWithoutDecoding() async throws {
+        let imports = DecodeCounter()
+        let store = HostedImageStore(directory: f.hostedFolder, fetcher: f.fetcher, temporaryRoot: f.temporaryRoot, importImage: { _ in
+            imports.increment()
+            throw CancellationError()
+        })
+        let huge = HostedImageFixture.patchingIHDR(try BackgroundTestImage.encoded(width: 16, height: 16), width: 20_000, height: 20_000)
+        let image = f.image(data: huge)
+        do {
+            _ = try await store.fetch(image)
+            Issue.record("expected a refusal")
+        } catch {
+            #expect(error == .tooManyPixels)
+        }
+        #expect(imports.value == 0)
+    }
+
+    @Test func removeRecordsDropsOnlyTheGivenURLsAndKeepsTheFiles() async throws {
+        let one = f.image(id: "one", data: try BackgroundTestImage.encoded(width: 40))
+        let two = f.image(id: "two", data: try BackgroundTestImage.encoded(width: 41))
+        let onePath = try await f.store.fetch(one)
+        _ = try await f.store.fetch(two)
+        await f.store.removeRecords(for: [one.full])
+        #expect(await f.store.records().map(\.url) == [two.full])
+        #expect(FileManager.default.fileExists(atPath: onePath))
+        #expect(f.digestFolders().count == 2)
+    }
+}
+
+/// A thread-safe tally for decode-counting seams.
+nonisolated final class DecodeCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
 }

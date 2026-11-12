@@ -44,4 +44,26 @@ struct BackgroundCatalogCacheTests {
         #expect(!FileManager.default.fileExists(atPath: f.cache.folder(for: f.catalogURL).path))
         #expect(await f.cache.cachedCatalog(for: f.catalogURL) == nil)
     }
+
+    @Test func failingSinceIsSetOnTheFirstErrorAndClearedBySuccess() async throws {
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        await f.cache.markChecked(for: f.catalogURL, at: first, error: "Can't reach host")
+        await f.cache.markChecked(for: f.catalogURL, at: first.addingTimeInterval(86_400), error: "Can't reach host")
+        #expect(await f.cache.state(for: f.catalogURL).failingSince == first)
+        await f.cache.markChecked(for: f.catalogURL, at: first.addingTimeInterval(2 * 86_400), error: nil)
+        #expect(await f.cache.state(for: f.catalogURL).failingSince == nil)
+        await f.cache.markChecked(for: f.catalogURL, at: first.addingTimeInterval(3 * 86_400), error: "Not found (404)")
+        await f.cache.store(body: CatalogJSON.data(CatalogJSON.catalog()), validators: HostedValidators(), for: f.catalogURL, at: first.addingTimeInterval(4 * 86_400))
+        #expect(await f.cache.state(for: f.catalogURL).failingSince == nil)
+    }
+
+    @Test func stateWrittenBeforeFailingSinceStillDecodes() async throws {
+        let file = f.cache.folder(for: f.catalogURL).appendingPathComponent("state.json")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"etag":"\"old\"","lastError":"Server error (500)"}"#.utf8).write(to: file)
+        let state = await f.cache.state(for: f.catalogURL)
+        #expect(state.etag == "\"old\"")
+        #expect(state.lastError == "Server error (500)")
+        #expect(state.failingSince == nil)
+    }
 }

@@ -148,6 +148,11 @@ public final class AppStateStore {
     /// The Background Images window's and picker's model. Building it touches
     /// no files. A `var` for the same reason as `projectBackgrounds`.
     @ObservationIgnored lazy var backgroundImages: BackgroundImagesModel = makeBackgroundImagesModel()
+    @ObservationIgnored lazy var backgroundCatalogScheduler = BackgroundCatalogScheduler(
+        hosted: backgroundImages.hosted,
+        clock: backgroundImages.hosted.clock,
+        defaults: preferences
+    )
     /// The reclaim started by the last Project Editor close, for tests to await.
     @ObservationIgnored var projectBackgroundReclaim: Task<Void, Never>?
 

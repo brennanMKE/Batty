@@ -36,6 +36,14 @@ extension AppStateStore {
         )
     }
 
+    /// Launch and daily catalog checks. A UI-test launch without a catalog
+    /// fixture folder never starts them, so no UI run reaches the website.
+    public func startBackgroundCatalogChecks(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        let isUITestLaunch = environment.keys.contains { $0.hasPrefix("BATTY_UI_TEST_") }
+        if isUITestLaunch, UITestDriver.backgroundCatalogFixtureDirectory(environment: environment) == nil { return }
+        backgroundCatalogScheduler.start()
+    }
+
     /// A UI-test launch with a fixture folder serves the catalog from disk and
     /// keeps its cache beside it, so no run reaches the website.
     static func liveHostedDependencies() -> HostedBackgroundsDependencies {

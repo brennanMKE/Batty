@@ -36,7 +36,7 @@ struct BackgroundSetsView: View {
     private func catalogSection(_ state: HostedCatalogState) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if hosted.catalogs.count > 1 {
-                Text(verbatim: state.host)
+                Text(verbatim: Self.header(for: state.url, among: hosted.catalogs.map(\.url)))
                     .font(.title3.weight(.semibold))
             }
             if let problem = state.problem {
@@ -70,6 +70,14 @@ struct BackgroundSetsView: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.12)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("background-sets.banner")
+    }
+
+    /// Host only, unless another listed catalog shares it.
+    static func header(for url: URL, among urls: [URL]) -> String {
+        if url == BackgroundCatalog.builtInURL { return "Batty" }
+        let host = url.host ?? url.absoluteString
+        let shared = urls.contains { $0 != url && $0.host == url.host }
+        return shared ? host + url.path : host
     }
 
     static func message(for problem: HostedCatalogProblem) -> String {

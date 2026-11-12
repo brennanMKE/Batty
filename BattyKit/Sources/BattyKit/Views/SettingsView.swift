@@ -156,6 +156,7 @@ private struct AppearanceSettingsView: View {
 
             if let store {
                 TerminalBackgroundSettingsSection(store: store, snapshot: $background)
+                BackgroundCatalogsSettingsSection(hosted: store.backgroundImages.hosted)
             }
         }
         .formStyle(.grouped)
