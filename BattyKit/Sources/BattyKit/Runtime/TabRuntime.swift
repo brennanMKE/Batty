@@ -60,6 +60,9 @@ public final class TabRuntime: Identifiable {
     /// arriving image is applied. Any write to this Tab's own value clears it.
     @ObservationIgnored
     var pendingTabImage: ProjectTabImage?
+    /// Images that arrived since the Project opened, so a sheet's Cancel
+    /// doesn't undo one that landed while it was open.
+    @ObservationIgnored var arrivedImages: [ProjectTabImage: String] = [:]
 
     /// The startup command the Project opened this Tab with, so Update Project
     /// keeps it on this Tab wherever it moves. New, duplicated and split Tabs
@@ -612,6 +615,7 @@ extension TabRuntime: BackgroundOverrideHolder {
     }
 
     func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot) {
-        restoreBackgroundOverride(value, pendingImage: pending.tabs[id])
+        let resolved = resolvedForCancel(value, pending: pending.tabs[id], arrived: arrivedImages)
+        restoreBackgroundOverride(resolved.value, pendingImage: resolved.pending)
     }
 }

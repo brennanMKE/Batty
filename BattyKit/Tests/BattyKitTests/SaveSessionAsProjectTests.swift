@@ -783,6 +783,33 @@ struct SaveSessionAsProjectBackgroundTests {
         #expect(!session.pendingProjectImage)
     }
 
+    @Test func aSessionImageThatArrivesWhileItsSheetIsOpenSurvivesCancel() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let (project, session, _) = try await withheldSharedSession(fixture, store)
+        let editor = BackgroundOverrideEditor(target: session, appWide: secondBackgroundValue(path: nil), originalOverride: session.backgroundOverride, pending: session.pendingSnapshot())
+        let arrived = try await fixture.copy(in: fixture.paneFolder)
+        store.sharedImageArrived(project: project, path: arrived)
+        editor.cancel()
+        #expect(session.backgroundOverride?.imagePath == arrived)
+        #expect(!session.pendingProjectImage)
+        #expect(session.projectBackgroundImageProblem == nil)
+    }
+
+    @Test func aSessionImageThatArrivesAfterASheetEditSurvivesCancel() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore()
+        let (project, session, _) = try await withheldSharedSession(fixture, store)
+        let editor = BackgroundOverrideEditor(target: session, appWide: secondBackgroundValue(path: nil), originalOverride: session.backgroundOverride, pending: session.pendingSnapshot())
+        editor.update { $0.withTerminalOpacity(0.4) }
+        let arrived = try await fixture.copy(in: fixture.paneFolder)
+        store.sharedImageArrived(project: project, path: arrived)
+        editor.cancel()
+        #expect(session.backgroundOverride?.imagePath == arrived)
+        #expect(!session.pendingProjectImage)
+        #expect(session.projectBackgroundImageProblem == nil)
+    }
+
     @Test func updateTakesAChangedSessionBackground() async throws {
         let fixture = try ProjectBackgroundFixture()
         let store = fixture.appStore()

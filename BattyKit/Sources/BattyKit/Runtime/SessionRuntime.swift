@@ -32,6 +32,7 @@ public final class SessionRuntime: Identifiable {
     /// and an arriving one is applied. Device state: any background write
     /// clears it.
     @ObservationIgnored var pendingProjectImage = false
+    @ObservationIgnored var arrivedProjectImagePath: String?
     /// Why the Project's image was left out at open, for the Sidebar row. Ends
     /// when the background changes.
     public internal(set) var projectBackgroundImageProblem: BackgroundImageState?
@@ -275,7 +276,11 @@ extension SessionRuntime: BackgroundOverrideHolder {
     }
 
     func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot) {
-        restoreBackgroundOverride(value, pending: pending.sessionPending, problem: pending.sessionProblem)
+        if pending.sessionPending, let path = arrivedProjectImagePath {
+            restoreBackgroundOverride(value?.withImagePath(path), pending: false, problem: nil)
+        } else {
+            restoreBackgroundOverride(value, pending: pending.sessionPending, problem: pending.sessionProblem)
+        }
     }
 
     func effectiveBackground(appWide: TerminalBackgroundSettings) -> EffectiveBackground {

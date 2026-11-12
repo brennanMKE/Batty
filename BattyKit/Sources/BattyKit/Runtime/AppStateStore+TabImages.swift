@@ -177,6 +177,10 @@ extension AppStateStore {
             logger.error("could not record an arrived Tab image: \(error.localizedDescription, privacy: .public)")
         }
         for session in windows.flatMap(\.sessions) where session.projectID == projectID {
+            for pane in session.tree.allPanes {
+                pane.arrivedImages[identity] = path
+                for tab in pane.tabs { tab.arrivedImages[identity] = path }
+            }
             for pane in session.tree.allPanes where pane.pendingImage == identity {
                 pane.pendingImage = nil
                 guard let current = pane.backgroundOverride else { continue }

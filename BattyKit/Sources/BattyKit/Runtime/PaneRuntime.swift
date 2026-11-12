@@ -74,6 +74,9 @@ public final class PaneRuntime: Identifiable {
     /// background clears it.
     @ObservationIgnored
     var pendingImage: ProjectTabImage?
+    /// Images that arrived since the Project opened, so a sheet's Cancel
+    /// doesn't undo one that landed while it was open.
+    @ObservationIgnored var arrivedImages: [ProjectTabImage: String] = [:]
 
     /// A mirror of the owning `SessionRuntime.backgroundOverride`, written only
     /// by `SplitTree`. Observed because `AppStateStore.isWindowSeeThrough` reads
@@ -404,10 +407,12 @@ extension PaneRuntime: BackgroundOverrideHolder {
     /// since came from this sheet. Skips Tabs closed since the open.
     func cancelRestore(_ value: TerminalBackgroundSettings?, replaced: [UUID: TerminalBackgroundSettings], pending: BackgroundPendingSnapshot) {
         guard kind == .terminal else { return }
-        restoreBackgroundOverride(value)
-        if pendingImage != pending.pane { pendingImage = pending.pane }
+        let resolved = resolvedForCancel(value, pending: pending.pane, arrived: arrivedImages)
+        restoreBackgroundOverride(resolved.value)
+        if pendingImage != resolved.pending { pendingImage = resolved.pending }
         for tab in tabs {
-            tab.restoreBackgroundOverride(replaced[tab.id], pendingImage: pending.tabs[tab.id])
+            let tabResolved = resolvedForCancel(replaced[tab.id], pending: pending.tabs[tab.id], arrived: tab.arrivedImages)
+            tab.restoreBackgroundOverride(tabResolved.value, pendingImage: tabResolved.pending)
         }
     }
 
@@ -417,4 +422,14 @@ extension PaneRuntime: BackgroundOverrideHolder {
             if let own = overrides[tab.id] { tab.setBackgroundOverride(own) }
         }
     }
+}
+
+/// An image that arrived while the sheet was open ends the open-time wait.
+func resolvedForCancel(
+    _ value: TerminalBackgroundSettings?,
+    pending: ProjectTabImage?,
+    arrived: [ProjectTabImage: String]
+) -> (value: TerminalBackgroundSettings?, pending: ProjectTabImage?) {
+    guard let pending, let path = arrived[pending] else { return (value, pending) }
+    return (value?.withImagePath(path), nil)
 }

@@ -167,6 +167,9 @@ extension AppStateStore {
     /// background the user changed keeps their value. Applying it ends the
     /// wait.
     func sharedImageArrived(project: Project, path: String) {
+        for session in windows.flatMap(\.sessions) where session.projectID == project.id {
+            session.arrivedProjectImagePath = path
+        }
         for session in windows.flatMap(\.sessions) where session.projectID == project.id && session.pendingProjectImage {
             guard let current = session.backgroundOverride else { continue }
             session.setBackgroundOverride(current.withImagePath(path))
