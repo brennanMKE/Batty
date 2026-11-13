@@ -38,9 +38,15 @@ are routine, layout/focus/geometry-origin flips run inside AppKit machinery
 and must not write. `NSHostingView` runs SwiftUI updates inside AppKit's
 layout pass, so SwiftUI callbacks must never synchronously call
 constraint-dirtying or responder-changing AppKit APIs (`makeFirstResponder`,
-`addSubview`). `@Observable` notifies on every write, including equal-value
-writes. Never "fix" a mutate-during-update violation by hopping the write
-into a `Task` — that trades a crash for a race (the #0229 click regression).
+`addSubview`). Whether an equal write notifies depends on the type: an equal
+`Equatable` value or the same class instance doesn't; a non-`Equatable` value,
+`nil`→`nil` on an optional class reference, and any in-place mutation
+(`dict[k] = v`, `array.removeAll {}`, `entries[i].x = y`) do (see
+`docs/swiftui-observation-rules.md`; pinned by
+`ObservationEqualWriteSemanticsTests`). Keep store mutators idempotent anyway,
+for their other side effects. Never "fix" a mutate-during-update violation by
+hopping the write into a `Task` — that trades a crash for a race (the #0229
+click regression).
 Restructure *which code owns the write* instead.
 
 The `docs/` folder has additional topical guides (see `docs/README.md`).

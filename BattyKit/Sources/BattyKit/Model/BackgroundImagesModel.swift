@@ -9,7 +9,7 @@ extension Notification.Name {
 
 /// What the Background Images window and picker show. Every write starts from
 /// a button action or follows an `await` that real file work needs, never from
-/// `body`, and writes only on change because every observed write notifies.
+/// `body`, and writes only on change.
 @MainActor
 @Observable
 final class BackgroundImagesModel {

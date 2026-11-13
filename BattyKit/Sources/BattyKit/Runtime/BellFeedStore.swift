@@ -233,8 +233,8 @@ public final class BellFeedStore {
         if !capturedEntryIDs.contains(id) { capturedEntryIDs.insert(id) }
     }
 
-    /// Idempotent: re-asserting the current verdict does not write, because
-    /// `@Observable` notifies on equal-value writes.
+    /// Idempotent: `ratingVerdicts[id] = verdict` is an in-place dictionary
+    /// write, which notifies even when the value is unchanged.
     func setVerdict(_ verdict: BellRatingVerdict?, for id: UUID) {
         guard ratingVerdicts[id] != verdict else { return }
         ratingVerdicts[id] = verdict

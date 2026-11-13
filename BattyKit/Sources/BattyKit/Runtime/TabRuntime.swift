@@ -305,8 +305,7 @@ public final class TabRuntime: Identifiable {
         render()
     }
 
-    /// This Tab's own value. Idempotent because every observed write notifies,
-    /// equal values included.
+    /// This Tab's own value. Idempotent, so a re-asserted value doesn't re-render.
     public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
         guard newOverride != backgroundOverride else { return }
         let previous = backgroundOverride ?? paneBackgroundOverride ?? sessionBackgroundOverride

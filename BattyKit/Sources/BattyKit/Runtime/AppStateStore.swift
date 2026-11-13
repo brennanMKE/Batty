@@ -1956,8 +1956,8 @@ public final class AppStateStore {
     ///
     /// Reuses `WindowRuntime.setSelectedSession(id:)` (the sidebar's own
     /// selection entry point, not a direct `selectedSessionID` write) and
-    /// `WindowRuntime.focusPane(id:)` (already idempotent — an equal-value
-    /// write is skipped rather than re-notifying every `PaneView`), and the
+    /// `WindowRuntime.focusPane(id:)` (already idempotent — re-asserting the
+    /// focused pane writes nothing), and the
     /// same pane-owner search shape `splitPane`/`closePane`/`hidePane`/
     /// `showPane` above already use.
     @discardableResult

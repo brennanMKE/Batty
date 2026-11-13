@@ -559,7 +559,7 @@ public final class ProjectStore {
         mergeRemote()
     }
 
-    /// `@Observable` notifies on equal writes, and this runs when a view appears.
+    /// Idempotent; this runs whenever a view appears.
     private func setFileState(_ state: FileState) {
         if fileState != state { fileState = state }
     }

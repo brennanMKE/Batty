@@ -368,8 +368,8 @@ final class ProjectEditorViewModel {
         return names
     }
 
-    /// Done in the Theme sheet. Guards equal values: `@Observable` notifies
-    /// on every write.
+    /// Done in the Theme sheet. Guards equal values: `draft?.theme = value` is
+    /// an in-place mutation, which notifies even when the value is unchanged.
     func setTheme(_ pair: ThemePair?) {
         let value = pair?.normalized
         guard draft != nil, draft?.theme != value else { return }

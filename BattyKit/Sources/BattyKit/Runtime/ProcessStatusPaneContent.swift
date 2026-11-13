@@ -488,8 +488,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             hasNoSelection = false
             if runState != .waiting { runState = .waiting }
         case .lookupFailed:
-            // No observed writes: `@Observable` notifies on equal-value
-            // writes too. `allPids` already logged the error.
+            // Keep the current state; `allPids` already logged the error.
             logger.debug("process-status: name lookup failed, keeping current state")
         case .pid(let pid):
             hasNoSelection = false

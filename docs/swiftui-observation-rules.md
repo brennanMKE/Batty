@@ -98,9 +98,16 @@ legacy or third-party code.
   - re-assigning the same instance to a class-reference property doesn't
     notify (the comparison is identity, `===`);
   - a non-`Equatable` struct notifies on every write, equal or not;
-  - `nil` → `nil` on an optional class-reference property notifies.
+  - `nil` → `nil` on an optional class-reference property notifies;
+  - an in-place mutation notifies even when nothing changes: `dict[k] = v`,
+    `array.removeAll { … }` matching nothing, `entries[i].x = y`, and
+    `draft?.x = y` all go through the generated `_modify`, which always calls
+    `withMutation`, while a whole-value equal assignment of the same
+    `Equatable` collection doesn't notify.
 
-  `ObservationEqualWriteSemanticsTests` pins all four. The store-level
+  `ObservationEqualWriteSemanticsTests` pins all five (the in-place cases in
+  `inPlaceMutationsNotifyEvenWhenNothingChanges` and
+  `equalWholeCollectionAssignmentDoesNotNotify`). The store-level
   idempotence rule above still applies: it keeps a re-asserted mutator's
   *other* side effects from running, and it doesn't depend on the property's
   type.

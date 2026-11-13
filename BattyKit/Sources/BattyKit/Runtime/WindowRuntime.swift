@@ -231,9 +231,8 @@ public final class WindowRuntime {
     /// already counts every live Session's `colorIndex` regardless of
     /// `colorOverride`, so an explicit pick composes with the assigner for
     /// free and needs no change there. No-op for an out-of-range index or a
-    /// redundant write, per the idempotence rule (`setSelectedSession`'s
-    /// pattern) — `@Observable` notifies on every write, equal values
-    /// included.
+    /// redundant write, per the store idempotence rule (`setSelectedSession`'s
+    /// pattern).
     public func setSessionColor(id: UUID, to colorIndex: Int) {
         guard SessionColor.allCases.indices.contains(colorIndex) else {
             logger.warning("setSessionColor: rejected out-of-range colorIndex=\(colorIndex, privacy: .public)")
@@ -524,8 +523,8 @@ public final class WindowRuntime {
     /// derives an implicit selection value from each row's ForEach identity
     /// even without an explicit `.tag()`, so pane rows can offer pane ids and
     /// an empty-area click offers nil (#0258). Both are rejected: while
-    /// sessions exist, some session is always selected. Idempotent — an
-    /// equal-value write on an @Observable still notifies (#0229).
+    /// sessions exist, some session is always selected. Idempotent: re-asserting
+    /// the current Session writes nothing (#0229).
     public func setSelectedSession(id: UUID?) {
         guard let id, sessions.contains(where: { $0.id == id }) else {
             logger.notice("setSelectedSession: rejected id=\(id?.uuidString ?? "nil", privacy: .public) — not a session in this window")
@@ -963,12 +962,10 @@ public final class WindowRuntime {
     public func focusPane(id: UUID) {
         for session in sessions {
             if session.tree.allPanes.contains(where: { $0.id == id }) {
-                // Idempotent: `focusedPaneID` is on an @Observable, and an
-                // equal-value write still fires `withMutation`, re-invalidating
-                // every PaneView. Callers legitimately re-assert the current
-                // pane (chip selection, repeated clicks in the focused
-                // terminal); skipping the equal-value write keeps those from
-                // rippling a no-op invalidation through every pane (#0229).
+                // Idempotent: callers legitimately re-assert the current pane
+                // (chip selection, repeated clicks in the focused terminal).
+                // An equal `UUID` write wouldn't notify anyway; the guard keeps
+                // those re-asserts out of the focus log.
                 if session.tree.focusedPaneID != id {
                     logger.debug("focusPane: \(session.tree.focusedPaneID, privacy: .public) -> \(id, privacy: .public)")
                     session.tree.focusedPaneID = id

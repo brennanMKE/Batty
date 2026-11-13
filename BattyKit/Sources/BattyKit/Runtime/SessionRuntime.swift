@@ -250,8 +250,8 @@ public final class SessionRuntime: Identifiable {
 extension SessionRuntime: BackgroundOverrideHolder {
     /// Reaches every Tab at once, selected Session or not, because
     /// `AppStateStore.isWindowSeeThrough` counts unselected Sessions and nothing
-    /// re-applies a background on selection. Idempotent because every observed
-    /// write notifies, equal values included.
+    /// re-applies a background on selection. Idempotent, so a re-asserted value
+    /// doesn't re-push to the tree.
     public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
         guard newOverride != backgroundOverride else { return }
         backgroundOverride = newOverride

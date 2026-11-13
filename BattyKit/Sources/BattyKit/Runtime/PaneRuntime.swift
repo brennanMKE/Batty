@@ -193,8 +193,8 @@ public final class PaneRuntime: Identifiable {
 
     /// Applies to every Tab here now, replacing their own values, and `addTab`
     /// carries it to later ones. A non-terminal Pane's one Tab is never
-    /// rendered, so it has no background to set. Idempotent because every
-    /// observed write notifies, equal values included.
+    /// rendered, so it has no background to set. Idempotent, so a re-asserted
+    /// value doesn't re-push to the Tabs.
     public func setBackgroundOverride(_ newOverride: TerminalBackgroundSettings?) {
         guard kind == .terminal,
               newOverride != backgroundOverride || tabs.contains(where: { $0.backgroundOverride != nil })
