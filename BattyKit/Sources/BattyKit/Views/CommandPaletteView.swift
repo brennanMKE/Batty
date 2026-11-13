@@ -195,9 +195,7 @@ struct CommandPaletteView: View {
                 title: String(localized: "Theme: \(theme.name)"),
                 keyHint: nil,
                 action: {
-                    let key = ThemePreference.defaultsKey(isDark: NSApp.effectiveAppearance.isDark)
-                    UserDefaults.standard.set(theme.name, forKey: key)
-                    store.applyThemeToAllSurfaces(theme)
+                    store.setGlobalTheme(named: theme.name)
                 }
             ))
         }

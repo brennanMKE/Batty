@@ -128,3 +128,57 @@ struct ThemeSelectorViewTests {
         #expect(withEarlierPinned == baseline)
     }
 }
+
+/// The selectors' inits read the committed Theme from the store's
+/// preferences and never run the migration (a `UserDefaults` write that
+/// `@AppStorage` observers watch) during view construction.
+@MainActor
+struct ThemeSelectorInitPurityTests {
+    private let testDefaults = TestDefaults()
+    private let theme: GhosttyThemeDefinition
+
+    init() {
+        let avoid = Set([ThemePreference.activeTheme(isDark: true)?.name, ThemePreference.activeTheme(isDark: false)?.name].compactMap { $0 })
+        theme = BattyThemeCatalog.allThemes.first { !avoid.contains($0.name) }!
+    }
+
+    private func makeStore() -> AppStateStore {
+        let defaults = testDefaults.defaults
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-selector-init-\(UUID().uuidString)")
+            .appendingPathComponent("session-name-cache.json")
+        let cache = SessionNameCache(fileURL: cacheURL, debounce: .zero, homeDirectory: "/Users/test")
+        let store = AppStateStore(nameCache: cache, preferences: defaults)
+        defaults.set(theme.name, forKey: ThemePreference.darkDefaultsKey)
+        defaults.set(theme.name, forKey: ThemePreference.lightDefaultsKey)
+        defaults.removeObject(forKey: ThemePreference.migrationDoneKey)
+        return store
+    }
+
+    @Test func themeSelectorInitReadsTheStoreDefaultsWithoutMigrating() {
+        let store = makeStore()
+        let view = ThemeSelectorView(isPresented: .constant(true), store: store)
+        #expect(view.activeThemeName == theme.name)
+        #expect(testDefaults.defaults.object(forKey: ThemePreference.migrationDoneKey) == nil)
+    }
+
+    @Test func sessionThemeSelectorInitReadsTheStoreDefaultsWithoutMigrating() throws {
+        let store = makeStore()
+        let session = try #require(store.sessions.first)
+        session.themeOverride = nil
+        let view = SessionThemeSelectorView(isPresented: .constant(true), store: store, session: session)
+        #expect(view.activeThemeName == theme.name)
+        #expect(testDefaults.defaults.object(forKey: ThemePreference.migrationDoneKey) == nil)
+    }
+
+    /// The selector marks whatever the global writer just committed: both
+    /// resolve the appearance slot the same way, so a commit to the current
+    /// appearance's slot is the Theme the next selector init outlines.
+    @Test func themeSelectorMarksTheThemeTheGlobalWriterJustCommitted() throws {
+        let store = makeStore()
+        let committed = try #require(BattyThemeCatalog.allThemes.first { $0.name != theme.name })
+        store.setGlobalTheme(named: committed.name)
+        let view = ThemeSelectorView(isPresented: .constant(true), store: store)
+        #expect(view.activeThemeName == committed.name)
+    }
+}

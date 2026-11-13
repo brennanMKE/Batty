@@ -101,6 +101,11 @@ public final class AppStateStore {
     /// `.standard` through one `cfprefsd` (#0426).
     @ObservationIgnored public let preferences: UserDefaults
 
+    // Transient Theme-preview bookkeeping, owned by the store so a sheet's
+    // `onDismiss` can restore the committed Theme without the view tracking it.
+    @ObservationIgnored var globalThemePreviewPending = false
+    @ObservationIgnored var sessionThemePreviewIDs: Set<UUID> = []
+
     /// The only route from the persisted background keys to a builder.
     @ObservationIgnored let backgroundGate: AppWideBackgroundGate
 

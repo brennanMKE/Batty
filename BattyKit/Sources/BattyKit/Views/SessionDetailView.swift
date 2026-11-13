@@ -123,7 +123,7 @@ public struct SessionDetailView: View {
                 onClose: { windowRuntime.reminderSheetSessionID = nil }
             )
         }
-        .sheet(isPresented: $themeSelectorShown) {
+        .sheet(isPresented: $themeSelectorShown, onDismiss: { store.endGlobalThemePreview() }) {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)
         }
         .sheet(item: startupTrustBinding) { request in

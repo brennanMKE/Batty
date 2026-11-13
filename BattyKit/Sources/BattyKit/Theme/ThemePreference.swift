@@ -52,10 +52,20 @@ public enum ThemePreference {
     /// tests can run the full migration + resolution path in isolation.
     static func activeTheme(isDark: Bool, defaults: UserDefaults) -> GhosttyThemeDefinition? {
         migrateAndSeedIfNeeded(into: defaults)
-        let key = defaultsKey(isDark: isDark)
-        guard let name = defaults.string(forKey: key),
+        return storedTheme(isDark: isDark, defaults: defaults)
+    }
+
+    /// The stored global Theme for `isDark`, without running the migration.
+    /// A pure read, safe from view construction.
+    static func storedTheme(isDark: Bool, defaults: UserDefaults) -> GhosttyThemeDefinition? {
+        guard let name = defaults.string(forKey: defaultsKey(isDark: isDark)),
               !name.isEmpty else { return nil }
         return BattyThemeCatalog.theme(named: name)
+    }
+
+    /// `effectiveTheme` without the migration — see `storedTheme`.
+    static func storedEffectiveTheme(override: ThemePair?, isDark: Bool, defaults: UserDefaults) -> GhosttyThemeDefinition? {
+        overrideTheme(override, isDark: isDark) ?? storedTheme(isDark: isDark, defaults: defaults)
     }
 
     /// Reads the currently-active appearance from `NSApp` and resolves the
@@ -165,11 +175,93 @@ extension AppStateStore {
             applyTerminalTheme(theme, to: session)
         }
         // themeChrome is a single app-wide object that follows the default
-        // target window's selected Session; global-theme changes originate
-        // from Settings, which is not tied to a content window.
+        // target window's selected Session; global-theme changes come from
+        // `setGlobalTheme` or a preview, neither tied to a content window.
         if ThemePreference.overrideTheme(defaultTargetWindow()?.selectedSession?.themeOverride, isDark: isDark) == nil {
             themeChrome.update(from: theme)
         }
+    }
+
+    // MARK: - Global and Session Theme ownership
+
+    /// The single writer of the global Theme keys. Persists `name` into the
+    /// slot for the current appearance and applies it.
+    public func setGlobalTheme(named name: String) {
+        let isDark = NSApp?.effectiveAppearance.isDark ?? true
+        setGlobalTheme(named: name, isDark: isDark, appearanceIsDark: isDark)
+    }
+
+    /// Persists `name` into the `isDark` slot; applies it only when that slot
+    /// is the current appearance's.
+    public func setGlobalTheme(named name: String, isDark: Bool) {
+        setGlobalTheme(named: name, isDark: isDark, appearanceIsDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func setGlobalTheme(named name: String, isDark: Bool, appearanceIsDark: Bool) {
+        logger.info("setGlobalTheme: name=\(name, privacy: .public) isDark=\(isDark, privacy: .public) appearanceIsDark=\(appearanceIsDark, privacy: .public)")
+        preferences.set(name, forKey: ThemePreference.defaultsKey(isDark: isDark))
+        globalThemePreviewPending = false
+        // An empty name ("Default") or an unknown one persists without applying.
+        guard isDark == appearanceIsDark, !name.isEmpty,
+              let theme = BattyThemeCatalog.theme(named: name) else { return }
+        applyThemeToAllSurfaces(theme, isDark: appearanceIsDark)
+    }
+
+    /// Applies `theme` to the global-following surfaces without persisting
+    /// it. `endGlobalThemePreview` undoes it unless a commit came first.
+    public func previewGlobalTheme(_ theme: GhosttyThemeDefinition) {
+        previewGlobalTheme(theme, isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func previewGlobalTheme(_ theme: GhosttyThemeDefinition, isDark: Bool) {
+        globalThemePreviewPending = true
+        applyThemeToAllSurfaces(theme, isDark: isDark)
+    }
+
+    /// Re-applies the committed global Theme if a preview is still pending.
+    /// Called from the Theme Selector sheet's `onDismiss`.
+    public func endGlobalThemePreview() {
+        endGlobalThemePreview(isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func endGlobalThemePreview(isDark: Bool) {
+        guard globalThemePreviewPending else { return }
+        globalThemePreviewPending = false
+        guard let theme = ThemePreference.storedTheme(isDark: isDark, defaults: preferences) else {
+            logger.debug("endGlobalThemePreview: no stored theme to restore")
+            return
+        }
+        logger.info("endGlobalThemePreview: restoring theme=\(theme.name, privacy: .public)")
+        applyThemeToAllSurfaces(theme, isDark: isDark)
+    }
+
+    /// The single writer of `themeOverride` from the Session Theme Selector.
+    public func setSessionTheme(_ theme: GhosttyThemeDefinition, for session: SessionRuntime) {
+        session.themeOverride = .both(theme.name)
+        sessionThemePreviewIDs.remove(session.id)
+        applyTheme(theme, to: session)
+    }
+
+    /// Applies `theme` to `session` without writing `themeOverride`.
+    public func previewSessionTheme(_ theme: GhosttyThemeDefinition, for session: SessionRuntime) {
+        sessionThemePreviewIDs.insert(session.id)
+        applyTheme(theme, to: session)
+    }
+
+    /// Restores the effective Theme of every Session in `window` with an
+    /// uncommitted preview. Scoped by window because the presenter has
+    /// cleared its Session id by the time the sheet's `onDismiss` runs.
+    public func endSessionThemePreviews(in window: WindowRuntime) {
+        endSessionThemePreviews(in: window, isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func endSessionThemePreviews(in window: WindowRuntime, isDark: Bool) {
+        let windowIDs = Set(window.sessions.map(\.id))
+        for session in window.sessions where sessionThemePreviewIDs.contains(session.id) {
+            applyActiveSessionTheme(for: session, isDark: isDark)
+        }
+        let liveIDs = Set(windows.flatMap { $0.sessions }.map(\.id))
+        sessionThemePreviewIDs = sessionThemePreviewIDs.filter { !windowIDs.contains($0) && liveIDs.contains($0) }
     }
 
     /// Re-themes one Session's terminal surfaces without touching the chrome.

@@ -239,13 +239,11 @@ public enum UITestDriver {
             session.tree.swapPanes(id: panes[a].id, with: panes[b].id)
 
         case .applyTheme(let name):
-            guard let theme = BattyThemeCatalog.theme(named: name) else {
+            guard BattyThemeCatalog.theme(named: name) != nil else {
                 logger.notice("ui-test: applyTheme not-found name=\(name, privacy: .public)")
                 return
             }
-            let key = ThemePreference.defaultsKey(isDark: NSApp.effectiveAppearance.isDark)
-            UserDefaults.standard.set(name, forKey: key)
-            store.applyThemeToAllSurfaces(theme)
+            store.setGlobalTheme(named: name)
 
         case .applyThemeToActiveSession(let name):
             guard let theme = BattyThemeCatalog.theme(named: name) else {

@@ -119,7 +119,6 @@ private struct AppearanceSettingsView: View {
     @AppStorage(SettingsPreference.cursorBlinkKey) private var cursorBlink: Bool = SettingsPreference.defaultCursorBlink
     @AppStorage(ThemePreference.darkDefaultsKey) private var darkThemeName: String = ""
     @AppStorage(ThemePreference.lightDefaultsKey) private var lightThemeName: String = ""
-    @Environment(\.colorScheme) private var colorScheme
     @State private var background = AppWideBackgroundEditor.Snapshot.off
 
     var body: some View {
@@ -128,30 +127,27 @@ private struct AppearanceSettingsView: View {
                 HStack {
                     Stepper(
                         "Size: \(Int(fontSize))pt",
-                        value: $fontSize,
+                        value: Binding(get: { fontSize }, set: { fontSize = $0; applyAppearance() }),
                         in: 8...32,
                         step: 1
                     )
                 }
-                .onChange(of: fontSize) { applyAppearance() }
             }
 
             Section("Cursor") {
-                Picker("Style", selection: $cursorStyle) {
+                Picker("Style", selection: Binding(get: { cursorStyle }, set: { cursorStyle = $0; applyAppearance() })) {
                     Text("Block").tag("block")
                     Text("Bar").tag("bar")
                     Text("Underline").tag("underline")
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: cursorStyle) { applyAppearance() }
 
-                Toggle("Blink", isOn: $cursorBlink)
-                    .onChange(of: cursorBlink) { applyAppearance() }
+                Toggle("Blink", isOn: Binding(get: { cursorBlink }, set: { cursorBlink = $0; applyAppearance() }))
             }
 
             Section("Theme") {
-                themePicker("Light", selection: $lightThemeName, appliesNow: colorScheme == .light)
-                themePicker("Dark", selection: $darkThemeName, appliesNow: colorScheme == .dark)
+                themePicker("Light", isDark: false)
+                themePicker("Dark", isDark: true)
             }
 
             if let store {
@@ -176,12 +172,24 @@ private struct AppearanceSettingsView: View {
         }
     }
 
-    /// A per-appearance theme picker. `appliesNow` is true for the slot that
-    /// matches the currently-displayed appearance — only that slot re-themes
-    /// live surfaces on change. The off-appearance slot just persists; the
-    /// `AppearanceObserver` applies it when the system switches to it.
+    /// A per-appearance theme picker. It reads the slot through `@AppStorage`
+    /// and writes through `store.setGlobalTheme`, which re-themes live
+    /// surfaces only when the slot is the current appearance's. Other
+    /// writers of the key just redraw it; nothing here re-applies them.
     @ViewBuilder
-    private func themePicker(_ label: String, selection: Binding<String>, appliesNow: Bool) -> some View {
+    private func themePicker(_ label: String, isDark: Bool) -> some View {
+        let selection = Binding<String>(
+            get: { isDark ? darkThemeName : lightThemeName },
+            set: { name in
+                if let store {
+                    store.setGlobalTheme(named: name, isDark: isDark)
+                } else if isDark {
+                    darkThemeName = name
+                } else {
+                    lightThemeName = name
+                }
+            }
+        )
         Picker(label, selection: selection) {
             Text("Default").tag("")
             ForEach(BattyThemeCatalog.allThemes, id: \.id) { theme in
@@ -189,12 +197,6 @@ private struct AppearanceSettingsView: View {
             }
         }
         .pickerStyle(.menu)
-        .onChange(of: selection.wrappedValue) { _, newValue in
-            guard appliesNow, let store, !newValue.isEmpty,
-                  let theme = BattyThemeCatalog.theme(named: newValue)
-            else { return }
-            store.applyThemeToAllSurfaces(theme)
-        }
     }
 
     private func applyAppearance() {
@@ -363,8 +365,10 @@ private struct NotificationsSettingsView: View {
         Form {
             Section("Bell") {
                 Toggle("Play sound", isOn: $bellSound)
-                Toggle("Show system notifications", isOn: $systemNotifications)
-                    .onChange(of: systemNotifications) { store?.systemNotificationsSettingChanged() }
+                Toggle("Show system notifications", isOn: Binding(
+                    get: { systemNotifications },
+                    set: { systemNotifications = $0; store?.systemNotificationsSettingChanged() }
+                ))
                 Toggle("Use Apple Intelligence to summarize notifications", isOn: $summarizeWithAI)
                     .disabled(!aiSummarySupported)
                 if aiSummarySupported {

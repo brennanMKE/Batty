@@ -133,4 +133,45 @@ nonisolated final class ThemeTests: XCTestCase {
             "Matching Theme must be scrolled into view after narrowing the filter ([[0394]])"
         )
     }
+
+    /// Esc after arrow-key previews keeps the committed Theme marked, and
+    /// the app survives the dismissal's restore.
+    @MainActor
+    func testCancelAfterPreviewKeepsTheCommittedThemeMarked() throws {
+        let app = BattyUITestHarness.launchBatty(script: [
+            ["intent": "applyTheme", "name": "Dracula"]
+        ])
+        defer { app.terminate() }
+
+        XCTAssertNil(BattyUITestHarness.waitForDriverErrors(), "Driver script failed")
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        let root = app.descendants(matching: .any).matching(identifier: "theme-selector.root").firstMatch
+        let card = app.descendants(matching: .any).matching(identifier: "theme-card.Dracula.preview").firstMatch
+        func cardIsMarkedActive() -> Bool {
+            BattyUITestHarness.waitFor({ card.value as? String == "active" }, timeout: 5, description: "Dracula marked active")
+        }
+        func cardState() -> String {
+            "type \(card.elementType.rawValue), value \(String(reflecting: card.value as? String))"
+        }
+
+        app.typeKey("t", modifierFlags: [.command, .shift])
+        XCTAssertTrue(root.waitForExistence(timeout: 5), "Theme Selector must open on Cmd-Shift-T")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(cardIsMarkedActive(), "The committed Theme must be marked on open, got \(cardState())")
+
+        app.typeKey(.downArrow, modifierFlags: [])
+        app.typeKey(.downArrow, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(BattyUITestHarness.waitFor({ !root.exists }, timeout: 5), "Esc must dismiss the Theme Selector")
+
+        app.typeKey("t", modifierFlags: [.command, .shift])
+        XCTAssertTrue(root.waitForExistence(timeout: 5), "Theme Selector must reopen")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(cardIsMarkedActive(), "Cancelling a preview must leave the committed Theme marked, got \(cardState())")
+        let marked = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'theme-card.' AND value == 'active'"))
+        XCTAssertEqual(marked.count, 1, "Only the committed Theme may be marked after cancelling a preview")
+        XCTAssertTrue(app.windows.firstMatch.exists)
+    }
 }

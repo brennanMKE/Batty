@@ -727,12 +727,7 @@ public struct BattyCommands: Commands {
     }
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
-        if colorScheme == .dark {
-            darkThemeName = theme.name
-        } else {
-            lightThemeName = theme.name
-        }
-        store.applyThemeToAllSurfaces(theme)
+        store.setGlobalTheme(named: theme.name, isDark: colorScheme == .dark)
     }
 }
 

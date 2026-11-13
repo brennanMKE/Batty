@@ -150,7 +150,7 @@ public struct SessionSidebarView: View {
                 onCancel: { renamingSessionID = nil }
             )
         }
-        .sheet(item: themingBinding) { session in
+        .sheet(item: themingBinding, onDismiss: { store.endSessionThemePreviews(in: windowRuntime) }) { session in
             SessionThemeSelectorView(
                 isPresented: themingPresentedBinding,
                 store: store,

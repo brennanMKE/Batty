@@ -20,6 +20,20 @@ struct ThemePreferenceTests {
         #expect(ThemePreference.defaultsKey(isDark: false) == ThemePreference.lightDefaultsKey)
     }
 
+    // MARK: - Pure read
+
+    @Test func storedThemeDoesNotRunMigration() throws {
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let defaults = testDefaults.defaults
+        let theme = try #require(BattyThemeCatalog.allThemes.first { $0.name != ThemePreference.defaultDarkThemeName })
+        defaults.set(theme.name, forKey: ThemePreference.darkDefaultsKey)
+
+        #expect(ThemePreference.storedTheme(isDark: true, defaults: defaults)?.name == theme.name)
+        #expect(defaults.object(forKey: ThemePreference.migrationDoneKey) == nil)
+        #expect(defaults.string(forKey: ThemePreference.lightDefaultsKey) == nil)
+    }
+
     // MARK: - Migration from legacy single key
 
     @Test func migrationPreservesLegacyValueInBothSlots() {

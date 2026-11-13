@@ -59,6 +59,16 @@ struct ThemeCard: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The active state rides on a leaf element: the card itself is a
+            // `.contain` group (so the pin button stays reachable). A leaf
+            // with only shapes inside gets the AXGroup role, which does not
+            // expose AXValue to XCUITest; the static-text trait gives it a
+            // value-bearing role, as `SessionSidebarView`'s rows do.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(theme.name))
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityValue(isActive ? "active" : "inactive")
+            .accessibilityIdentifier("theme-card.\(theme.name).preview")
 
             HStack(spacing: 4) {
                 Text(theme.name)

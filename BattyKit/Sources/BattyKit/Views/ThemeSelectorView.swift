@@ -70,24 +70,19 @@ struct ThemeSelectorView: View {
     /// runs too late to affect the initial-state seeding (`#0363`).
     /// `PinnedThemes.load()` is a pure `UserDefaults` read, so this is safe.
     @State private var pinnedIDs: [String]
-    /// The global Theme for the current appearance
-    /// (`ThemePreference.activeTheme()`). This is a `let`, but it is not a
-    /// frozen snapshot: SwiftUI re-initializes this view struct on every
-    /// body re-run of the presenting view, which happens constantly while
-    /// this sheet is open (both presenters read `themeChrome`, and every
-    /// applied Theme calls `themeChrome.update(from:)`), so this property
-    /// is re-read from `UserDefaults` on every one of those re-inits. It
-    /// *looks* stable while the user arrows around only because
-    /// `moveSelection` previews via `applyThemeToAllSurfaces`, which never
-    /// writes the preference — the value this reads simply hasn't moved.
-    /// Clicking a card calls `selectTheme`, which does write the
-    /// preference, so the very next re-init picks up the new value and the
-    /// mark hops there. Net effect: **the outline marks the committed
+    /// The committed global Theme for the current appearance, read from the
+    /// store's preferences without migrating (`ThemePreference.storedTheme`).
+    /// This is a `let`, but it is not a frozen snapshot: SwiftUI
+    /// re-initializes this view struct on every body re-run of the
+    /// presenting view, so it is re-read on every re-init. Arrow-key
+    /// previews go through `store.previewGlobalTheme`, which never writes
+    /// the preference; a click commits through `store.setGlobalTheme`, so
+    /// the next re-init picks up the new value. Net effect: **the outline marks the committed
     /// Theme; the cursor badge (`isCursor`) marks the live preview.**
     /// Distinct from `cursorIndex`, which tracks keyboard navigation and
     /// can end up on a different card than either. `nil` when no Theme is
     /// currently active; the mark then simply doesn't render (`#0363`).
-    private let activeThemeName: String?
+    let activeThemeName: String?
 
     init(isPresented: Binding<Bool>, store: AppStateStore) {
         self._isPresented = isPresented
@@ -96,17 +91,7 @@ struct ThemeSelectorView: View {
         let pinned = PinnedThemes.load()
         self._pinnedIDs = State(initialValue: pinned)
 
-        // `activeTheme()` routes through `migrateAndSeedIfNeeded`, which
-        // writes UserDefaults keys that `@AppStorage` observers watch
-        // (BattyCommands.swift:22-23, SettingsView.swift:120-121) — an
-        // observed-state write during view construction, which the
-        // observation rules forbid. It can't actually fire here:
-        // `AppStateStore.swift:593` already calls `activeTheme()` during
-        // store construction, long before any `RootWindowView` (and so
-        // this sheet) exists, so the migration flag is always already set
-        // by the time this init runs. That's an undocumented launch-order
-        // guarantee this call site relies on, not something it enforces.
-        let active = ThemePreference.activeTheme()
+        let active = ThemePreference.storedTheme(isDark: NSApp?.effectiveAppearance.isDark ?? true, defaults: store.preferences)
         self.activeThemeName = active?.name
         self._cursorIndex = State(initialValue: themeCursorIndex(activeThemeName: active?.name, pinnedIDs: pinned))
     }
@@ -270,9 +255,7 @@ struct ThemeSelectorView: View {
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
         let isDark = NSApp.effectiveAppearance.isDark
         logger.info("selected theme: \(theme.name, privacy: .public) isDark=\(isDark, privacy: .public)")
-        let key = ThemePreference.defaultsKey(isDark: isDark)
-        UserDefaults.standard.set(theme.name, forKey: key)
-        store.applyThemeToAllSurfaces(theme)
+        store.setGlobalTheme(named: theme.name)
     }
 
     private func confirmSelection() {
@@ -292,7 +275,7 @@ struct ThemeSelectorView: View {
         let count = allDisplayed.count
         guard count > 0 else { return }
         cursorIndex = (cursorIndex + delta + count) % count
-        store.applyThemeToAllSurfaces(allDisplayed[cursorIndex])
+        store.previewGlobalTheme(allDisplayed[cursorIndex])
     }
 
     private func togglePin(_ name: String) {
@@ -302,8 +285,11 @@ struct ThemeSelectorView: View {
 }
 
 /// A theme picker scoped to a single session. Selecting a theme sets
-/// `session.themeOverride` (both slots) without touching the global `ThemePreference`.
-/// Cancelling restores whichever theme was active before the picker opened.
+/// `session.themeOverride` (both slots) through `store.setSessionTheme`,
+/// without touching the global `ThemePreference`. Arrow keys preview through
+/// `store.previewSessionTheme`; dismissing without committing restores the
+/// Session's effective Theme through the presenter's `onDismiss`
+/// (`store.endSessionThemePreviews(in:)`).
 struct SessionThemeSelectorView: View {
     @Binding var isPresented: Bool
     let store: AppStateStore
@@ -323,11 +309,11 @@ struct SessionThemeSelectorView: View {
     /// every Session on every launch, and must be markable too. Like
     /// `ThemeSelectorView.activeThemeName`, this `let` is re-read on every
     /// re-init of this view struct rather than frozen at presentation; it
-    /// holds steady while arrow-key previewing (`applyTheme(_:to:)` never
-    /// writes `themeOverride` or the global preference) and only moves
-    /// when a click commits a new choice via `selectTheme` — outline marks
+    /// holds steady while arrow-key previewing (`store.previewSessionTheme`
+    /// never writes `themeOverride` or the global preference) and only moves
+    /// when a click commits through `store.setSessionTheme` — outline marks
     /// committed, cursor badge marks preview (`#0363`).
-    private let activeThemeName: String?
+    let activeThemeName: String?
 
     init(isPresented: Binding<Bool>, store: AppStateStore, session: SessionRuntime) {
         self._isPresented = isPresented
@@ -338,7 +324,7 @@ struct SessionThemeSelectorView: View {
         self._pinnedIDs = State(initialValue: pinned)
 
         let isDark = NSApp?.effectiveAppearance.isDark ?? true
-        let active = ThemePreference.effectiveTheme(override: session.themeOverride, isDark: isDark)
+        let active = ThemePreference.storedEffectiveTheme(override: session.themeOverride, isDark: isDark, defaults: store.preferences)
         self.activeThemeName = active?.name
         self._cursorIndex = State(initialValue: themeCursorIndex(activeThemeName: active?.name, pinnedIDs: pinned))
     }
@@ -491,8 +477,7 @@ struct SessionThemeSelectorView: View {
     }
 
     private func selectTheme(_ theme: GhosttyThemeDefinition) {
-        session.themeOverride = .both(theme.name)
-        store.applyTheme(theme, to: session)
+        store.setSessionTheme(theme, for: session)
     }
 
     private func confirmSelection() {
@@ -512,7 +497,7 @@ struct SessionThemeSelectorView: View {
         let count = allDisplayed.count
         guard count > 0 else { return }
         cursorIndex = (cursorIndex + delta + count) % count
-        store.applyTheme(allDisplayed[cursorIndex], to: session)
+        store.previewSessionTheme(allDisplayed[cursorIndex], for: session)
     }
 
     private func togglePin(_ name: String) {

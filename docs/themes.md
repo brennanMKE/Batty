@@ -20,8 +20,8 @@ touching theme behavior needs to keep three things in mind:
    section 2 below.
 2. **The selection is just a name in `UserDefaults`.** A single string
    key (`ThemePreference.defaultsKey`) is the entire persisted state.
-   Both the Theme menu and the Settings → Appearance picker bind to it
-   via `@AppStorage`.
+   The Theme menu and the Settings → Appearance picker *read* it via
+   `@AppStorage`; every write goes through `AppStateStore.setGlobalTheme`.
 3. **Applying a theme never tears down surfaces.** `setTheme(_:)` on
    the libghostty controller swaps colors in place — no PTY restart,
    no NSView teardown, no rebuild of the SwiftUI tree.
@@ -137,26 +137,14 @@ The complete persistence state is one string in `UserDefaults`:
 @AppStorage(ThemePreference.defaultsKey) private var activeThemeName: String = ""
 ```
 
-`SettingsView`'s `AppearanceSettingsView` declares the same binding
-for the picker. Because `@AppStorage` is backed by `UserDefaults`,
-writes from either control update the value seen by the other —
-selecting in the menu re-renders the Settings picker and vice versa.
-
-The Theme menu's selection handler does two things, in this order:
-
-```swift
-private func selectTheme(_ theme: GhosttyThemeDefinition) {
-    activeThemeName = theme.name
-    store.applyThemeToAllSurfaces(theme)
-}
-```
-
-First persists the name (so a relaunch picks up the new theme), then
-pushes it to every live surface. The Settings picker's `onChange`
-handler runs the same two steps. **Order matters only weakly** — the
-two operations are independent — but persisting first matches the
-"durable state changes before transient state changes" convention used
-elsewhere in the codebase.
+`SettingsView`'s `AppearanceSettingsView` reads the same keys for the
+picker. Both are read-only views of the preference: neither control
+writes it directly. The Theme menu's handler and the Settings picker's
+`Binding` setter both call `AppStateStore.setGlobalTheme(named:isDark:)`,
+which persists the name (so a relaunch picks it up) and, when the slot is
+the current appearance's, pushes it to every live surface. Because
+`@AppStorage` observes `UserDefaults`, a write from any caller redraws
+both controls; nothing re-applies on that redraw.
 
 There is no separate "applied" state. The single source of truth is
 the `UserDefaults` value plus whatever each live surface currently
@@ -295,7 +283,7 @@ The Settings → Appearance pane bundles three orthogonal preferences:
 | Font size stepper | `SettingsPreference.fontSizeKey` | `applyAppearanceToAllSurfaces()` per-surface font size |
 | Cursor style segmented picker | `SettingsPreference.cursorStyleKey` | `TerminalCursorStyle` on every surface |
 | Cursor blink toggle | `SettingsPreference.cursorBlinkKey` | per-surface cursor blink flag |
-| Theme picker | `ThemePreference.defaultsKey` | `applyThemeToAllSurfaces(_:)` palette swap |
+| Theme picker | `ThemePreference.dark/lightDefaultsKey` | `setGlobalTheme(named:isDark:)` from the `Binding` setter; no `onChange` |
 
 Font size, cursor style, and cursor blink are **not** theme state.
 They live in their own `SettingsPreference` keys, propagate through
@@ -316,7 +304,7 @@ goes through `setTerminalConfiguration(_:)`.
 | File | Role |
 |---|---|
 | [`../BattyKit/Sources/BattyKit/Theme.swift`](../BattyKit/Sources/BattyKit/Theme.swift) | Standalone `Theme` / `ThemeParser` / `ThemeStore` for `.ghostty` files. Not on the active selection path; placeholder for future user themes. |
-| [`../BattyKit/Sources/BattyKit/ThemePreference.swift`](../BattyKit/Sources/BattyKit/ThemePreference.swift) | `ThemePreference.defaultsKey` + the `AppStateStore.applyThemeToAllSurfaces(_:)` extension. The whole live-application path is here. |
+| [`../BattyKit/Sources/BattyKit/ThemePreference.swift`](../BattyKit/Sources/BattyKit/ThemePreference.swift) | `ThemePreference.defaultsKey`, the pure `storedTheme`/`storedEffectiveTheme` reads, and the `AppStateStore` extension: `setGlobalTheme`, `previewGlobalTheme`/`endGlobalThemePreview`, `setSessionTheme`, `previewSessionTheme`/`endSessionThemePreviews`, `applyThemeToAllSurfaces(_:)`. The whole live-application path is here. |
 | [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) | `TabRuntime.activeTheme()` reads the preference at tab construction. |
 | [`../BattyKit/Sources/BattyKit/BattyCommands.swift`](../BattyKit/Sources/BattyKit/BattyCommands.swift) | The Theme menu (`CommandMenu("Theme")`) and the `selectTheme(_:)` handler. |
 | [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | Owner of `sessions`. The walk in `applyThemeToAllSurfaces` is over its state. |
@@ -375,9 +363,9 @@ It is `nil` by default and is **not persisted** — every session starts
 - non-nil → this session uses its own theme, regardless of the global.
   Changing the global theme does **not** affect this session.
 
-The session-local picker (`SessionThemeSelectorView`) is the only
-thing that sets `themeOverride` (to `.both(name)`). It sets the override AND calls
-`applyTheme(_:to:)` to apply it immediately.
+The session-local picker (`SessionThemeSelectorView`) commits through
+`AppStateStore.setSessionTheme(_:for:)`, which sets `themeOverride` to
+`.both(name)` and calls `applyTheme(_:to:)` to apply it immediately.
 
 ### Switching sessions
 
@@ -403,9 +391,11 @@ the session was not selected).
 ### Changing the global theme
 
 When the user picks a theme from the global selector (Cmd-Shift-T),
-Theme menu, or Settings:
+the Command Palette, the Theme menu or Settings (and when the UI-test
+driver's `applyTheme` runs), the caller invokes
+`AppStateStore.setGlobalTheme`, the single writer of the global keys:
 
-- The name is written to `UserDefaults` (persists).
+- The name is written to the store's `preferences` (persists).
 - `applyThemeToAllSurfaces(_:)` applies the new theme to **every
   session whose `themeOverride` is `nil`**. Sessions with a
   local override keep their local theme and are not touched.
@@ -450,9 +440,10 @@ always off-screen otherwise:
 
 - **Which Theme counts as "active" differs between the two selectors,
   matching the fallback chain above.** `ThemeSelectorView` uses
-  `ThemePreference.activeTheme()` — the global Theme for the current
-  appearance. `SessionThemeSelectorView` uses
-  `ThemePreference.effectiveTheme(override:isDark:)` — the
+  `ThemePreference.storedTheme(isDark:defaults:)` — the global Theme for
+  the current appearance, read from the store's preferences without
+  running the migration. `SessionThemeSelectorView` uses
+  `ThemePreference.storedEffectiveTheme(override:isDark:defaults:)` — the
   Session's `themeOverride` if set, else the same global Theme.
   Marking only `themeOverride` would leave every Session that follows
   the global Theme (the default on every launch) unmarked, so the
@@ -483,14 +474,31 @@ always off-screen otherwise:
   the filtered results → the mark simply doesn't render; it is never
   pinned to a stale index.
 
+### Preview and cancel
+
+Arrow keys in either selector preview without committing:
+`previewGlobalTheme(_:)` sets the store's `globalThemePreviewPending`
+flag and applies the Theme; `previewSessionTheme(_:for:)` records the
+Session's id in `sessionThemePreviewIDs` and applies to that Session.
+Neither writes a preference or `themeOverride`. The presenting sheet's
+`onDismiss` calls `endGlobalThemePreview()` (`SessionDetailView`) or
+`endSessionThemePreviews(in:)` (`SessionSidebarView`), which re-apply
+the committed Theme if a preview is still pending. A commit
+(`setGlobalTheme` / `setSessionTheme`) clears the pending state, so a
+dismissal after a commit does nothing.
+
 ### Invariants
 
+- Only `AppStateStore.setGlobalTheme` writes the global Theme keys,
+  apart from the one-time `ThemePreference.migrateAndSeedIfNeeded` at
+  store construction.
+- A preview is always undone on dismissal unless it was committed.
 - `themeOverride` is never persisted. Every launch starts all
   sessions with `nil` (global fallback).
 - `applyThemeToAllSurfaces` is for changing the global theme visually
   on all unoverridden sessions. It must not touch `themeOverride`.
 - `applyTheme(_:to:)` applies visually to one session but does **not**
-  set `themeOverride`. That is `SessionThemeSelectorView`'s job.
+  set `themeOverride`. That is `setSessionTheme`'s job.
 - The chrome always matches the selected session's effective theme.
 
 ---
