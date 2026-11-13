@@ -1599,9 +1599,11 @@ public final class AppStateStore {
     /// `contentFactory` is a test seam forwarded to every non-terminal
     /// Pane; production callers leave it nil.
     ///
-    /// The tree is built with `isSessionSelected: true` and the Session is
-    /// selected in the same synchronous call, so every Pane is visible at
-    /// creation.
+    /// The tree is built with `isSessionSelected: target.isWindowVisible` and
+    /// the Session is selected in the same synchronous call, so its
+    /// non-terminal Panes start active only while the target window can be
+    /// seen; in an occluded window they start suspended and
+    /// `WindowRuntime.setWindowVisible(true)` resumes them.
     @discardableResult
     public func openProject(
         id projectID: UUID,
@@ -1638,7 +1640,7 @@ public final class AppStateStore {
         let tree = try ProjectTreeBuilder.build(
             project: opened,
             contentFactory: contentFactory,
-            isSessionSelected: true,
+            isSessionSelected: target.isWindowVisible,
             checkBackground: { value in
                 let checked = projectBackgrounds.checked(value)
                 if tabProblem == nil { tabProblem = checked.problem }

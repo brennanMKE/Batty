@@ -173,4 +173,76 @@ struct WindowRuntimeOcclusionVisibilityTests {
         #expect(pane != nil)
         #expect(content.lifecyclePhase == .suspended)
     }
+
+    /// A store with a Project whose layout has two non-terminal Panes; the
+    /// returned factory records each content it makes.
+    private func withProjectStore(
+        _ body: (AppStateStore, Project, @escaping @MainActor (PaneContentKind) -> (any PaneContentLifecycle)?, () -> [RecordingVisibilityPaneContent]) throws -> Void
+    ) throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("batty-occlusion-\(UUID().uuidString)")
+        let root = base.appendingPathComponent("root")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let store = AppStateStore(
+            nameCache: SessionNameCache(fileURL: base.appendingPathComponent("cache.json")),
+            projectsFileURL: base.appendingPathComponent("projects.json")
+        )
+        let project = Project(
+            name: "Demo", rootPath: root.path, color: .violet,
+            layout: .preset(.mainLeftTwoRight, kinds: [.terminal, .systemMetrics, .processStatus])
+        )
+        try store.projectStore.upsert(project)
+        var contents: [RecordingVisibilityPaneContent] = []
+        let factory: @MainActor (PaneContentKind) -> (any PaneContentLifecycle)? = { kind in
+            guard kind != .terminal else { return nil }
+            let content = RecordingVisibilityPaneContent()
+            contents.append(content)
+            return content
+        }
+        try body(store, project, factory, { contents })
+    }
+
+    @Test func openingAProjectWhileOccludedStartsItsViewPanesSuspended() throws {
+        try withProjectStore { store, project, factory, contents in
+            let window = store.windows[0]
+            window.setWindowVisible(false)
+
+            let result = try store.openProject(id: project.id, contentFactory: factory)
+
+            #expect(result.wasCreated)
+            #expect(contents().count == 2)
+            for content in contents() {
+                #expect(content.lifecyclePhase == .suspended)
+                #expect(content.visibilityCalls.isEmpty)
+            }
+
+            window.setWindowVisible(true)
+
+            for content in contents() {
+                #expect(content.visibilityCalls == [true])
+                #expect(content.lifecyclePhase == .active)
+            }
+        }
+    }
+
+    @Test func openingAProjectIntoAVisibleWindowStartsItsViewPanesActive() throws {
+        try withProjectStore { store, project, factory, contents in
+            let window = store.windows[0]
+
+            let result = try store.openProject(id: project.id, contentFactory: factory)
+
+            #expect(result.wasCreated)
+            #expect(contents().count == 2)
+            for content in contents() {
+                #expect(content.lifecyclePhase == .active)
+            }
+
+            window.setWindowVisible(false)
+
+            for content in contents() {
+                #expect(content.lifecyclePhase == .suspended)
+            }
+        }
+    }
 }
