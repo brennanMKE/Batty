@@ -38,8 +38,9 @@ struct BellFeedVisitTests {
             store.bellFeed.entries.filter { $0.tabID == tabID }
         }
 
-        /// Select `target` the way a fallback does: a direct write, then the
-        /// `onChange` hook's `markActiveTabSeen()`.
+        /// Select `target` the way a fallback does: a direct write (whose
+        /// `didSet` marks seen), then the passive `markActiveTabSeen()` again
+        /// after the focus move.
         func selectTargetByFallback(focusing pane: PaneRuntime? = nil) {
             window.selectedSessionID = target.id
             if let pane { target.tree.focusedPaneID = pane.id }

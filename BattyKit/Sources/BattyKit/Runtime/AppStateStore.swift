@@ -82,7 +82,7 @@ public final class AppStateStore {
     /// sample via `resolvedFootprintSoftLimitBytes(defaults:)`), and the
     /// theme resolution this `init` seeds `themeChrome` from
     /// (`ThemePreference.activeTheme(isDark:defaults:)`) and that
-    /// `applyGlobalThemeForCurrentAppearance`/`applyActiveSessionTheme`
+    /// `applyGlobalThemeForCurrentAppearance`/`applySelectionTheme`
     /// re-resolve on appearance/session changes.
     /// `PasteDispatcher.handlePasteRequest` and `QuitConfirmation
     /// .shouldQuitOrPrompt(store:)` (called from `Batty/BattyApp.swift`)
@@ -1105,7 +1105,7 @@ public final class AppStateStore {
     /// recent position rather than appending a duplicate. Pure and total —
     /// no `NSWindow`/`NSApp` reads — so tests drive it directly, since
     /// `NSApp.keyWindow` can't be controlled headlessly (`CrossWindowBehaviorTests`'
-    /// documented finding). Called from `handleWindowDidBecomeKey(_:)` and,
+    /// documented finding). Called from `contentWindowBecameKey(_:)` and,
     /// as a backstop, from `registerNSWindow` when the window is already key
     /// at registration.
     func noteContentWindowBecameKey(_ id: WindowID) {
@@ -1136,7 +1136,20 @@ public final class AppStateStore {
     /// panels becoming key must not perturb the order (#0439).
     private func handleWindowDidBecomeKey(_ nsWindow: NSWindow) {
         guard let windowID = nsWindowMap[ObjectIdentifier(nsWindow)] else { return }
-        noteContentWindowBecameKey(windowID)
+        contentWindowBecameKey(windowID)
+    }
+
+    /// A content window became key: records it (#0439) and points the
+    /// app-wide chrome at its selected Session's Theme, since the chrome
+    /// follows the default target window. Called from
+    /// `handleWindowDidBecomeKey(_:)` and from `WindowLifecycleController`'s
+    /// off-pass block when the window is already key there. Idempotent:
+    /// re-assigning an equal `ChromePalette` doesn't notify (`@Observable`
+    /// skips equal writes to an `Equatable` property).
+    func contentWindowBecameKey(_ id: WindowID) {
+        noteContentWindowBecameKey(id)
+        guard let window = windows.first(where: { $0.id == id }) else { return }
+        applyChrome(for: window)
     }
 
     /// Single policy resolver for every no-target Window fallback (#0439):
@@ -1951,18 +1964,17 @@ public final class AppStateStore {
     public func focusPaneForXPC(id paneID: UUID) -> PaneFocusOutcome {
         for window in windows {
             guard let session = window.sessions.first(where: { $0.tree.allPanes.contains(where: { $0.id == paneID }) }) else { continue }
-            window.setSelectedSession(id: session.id)
             // #0256's invariant ("focus must never land on a hidden pane")
             // holds for this verb too — un-hide before the focus write
             // below, same as `jumpToBellEntry`'s un-hide-before-navigating
-            // rule, though the session-selection write above happens
-            // first here rather than after (not observable: both are
-            // synchronous main-actor writes with no reconciliation
-            // between them).
+            // rule. The Session is selected last: the selection runs the
+            // focus and mark-seen effects against the Session's focused
+            // Pane at the moment of the write (`WindowRuntime.selectedSessionID`).
             if let pane = session.tree.allPanes.first(where: { $0.id == paneID }), pane.isHidden {
                 window.showPane(id: paneID)
             }
             window.focusPane(id: paneID)
+            window.setSelectedSession(id: session.id)
             window.visitFocusedTab()
             activateWindow(window)
             let event = WatchEventPayload(type: "pane_focused", sessionID: session.id, targetPaneID: paneID, fromCli: true)
@@ -1976,8 +1988,8 @@ public final class AppStateStore {
     /// pane's active tab, and implies focusing that pane — the tab-level
     /// counterpart of `focusPaneForXPC(id:)`, one tier further down, both
     /// activating per the same terminology amendment. Mirrors
-    /// `WindowRuntime.jumpToTab`'s session/pane/tab write order (select
-    /// session, focus pane, set `activeTabID`) and, per #0145, also emits
+    /// `WindowRuntime.jumpToTab`'s write order (focus pane, set
+    /// `activeTabID`, select session last) and, per #0145, also emits
     /// `active_tab_changed` when the write actually flips the active tab —
     /// `jumpToTab` emits it (`WindowRuntime.swift`), and a `batty watch`
     /// subscriber relying on that event to track the active tab must not
@@ -1987,7 +1999,6 @@ public final class AppStateStore {
     public func focusTabForXPC(id tabID: UUID) -> TabFocusOutcome {
         for window in windows {
             guard let location = window.locate(tabID: tabID) else { continue }
-            window.setSelectedSession(id: location.session.id)
             // Same #0256 invariant as `focusPaneForXPC`: un-hide the
             // containing pane before the focus write, since `tab focus`
             // implies focusing its pane.
@@ -2010,6 +2021,8 @@ public final class AppStateStore {
                 )
                 AppEventWatcher.shared.send(eventType: activeTabChangedEvent.type, payload: activeTabChangedEvent)
             }
+            // Selected last, as in `focusPaneForXPC`.
+            window.setSelectedSession(id: location.session.id)
             window.visitFocusedTab()
             activateWindow(window)
             let event = WatchEventPayload(type: "tab_focused", sessionID: location.session.id, targetPaneID: location.pane.id, tabID: tabID, fromCli: true)
@@ -2052,23 +2065,6 @@ public final class AppStateStore {
         }
         nsWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    /// Marks the active tab in the key content window as seen. Falls back to
-    /// `windows.first` when no key window is identified (unit-test context,
-    /// or before the first window registers), and no-ops when `windows` is
-    /// empty (#0316) — reachable from `PaneView`'s
-    /// `onChange(of: pane.activeTabID)` (`markActiveTabSeen` is also this
-    /// method's production caller) during the deliberate post-last-window-
-    /// close turn `terminateIfLastContentWindowGone()` describes. There is no
-    /// tab left to mark seen at that point, so silently no-oping is the
-    /// correct behavior, not a degraded one. In multi-window production, this
-    /// marks seen the bells of whichever tab just became active in the key
-    /// window, without removing them from the feed (real visits go through
-    /// `WindowRuntime.visitFocusedTab()`, #0556) — a tab in a non-key window
-    /// gaining a new active tab doesn't mark its bells seen.
-    public func markActiveTabSeen() {
-        keyWindowOrFirstRegistered()?.markActiveTabSeen()
     }
 
     // MARK: - Bell event routing (global — searches across all windows)
@@ -2529,6 +2525,15 @@ public final class AppStateStore {
         }
         window.sessionClosingHandler = { [weak self] id in
             self?.cancelNameSuggestion(forSessionID: id)
+        }
+        window.selectionThemeHandler = { [weak self] window in
+            self?.applySelectionTheme(for: window)
+        }
+        // A close or hide that moves focus in a non-key window doesn't mark
+        // that window's bells seen: only the default target window's are.
+        window.passiveFocusHandler = { [weak self] window in
+            guard self?.defaultTargetWindow() === window else { return }
+            window.markActiveTabSeen()
         }
     }
 

@@ -33,6 +33,7 @@ struct SessionDetailLayoutConvergenceTests {
         let store: AppStateStore
         let windowRuntime: WindowRuntime
         let probe: LayoutConvergenceProbe
+        var testDefaults: TestDefaults?
 
         @MainActor
         func tearDown() {
@@ -52,8 +53,12 @@ struct SessionDetailLayoutConvergenceTests {
     /// As in production, every Session stays mounted (non-selected ones at
     /// `opacity(0)`): one plain, one split in two, one split in three, one
     /// with two Tabs, plus `extraSessions` split in two.
-    private func makeFixture(extraSessions: Int = 0, size: CGSize = CGSize(width: 1100, height: 700)) -> Fixture {
-        let store = AppStateStore()
+    private func makeFixture(
+        extraSessions: Int = 0,
+        size: CGSize = CGSize(width: 1100, height: 700),
+        store: AppStateStore = AppStateStore(),
+        beforeHosting: (AppStateStore, WindowRuntime) -> Void = { _, _ in }
+    ) -> Fixture {
         let windowRuntime = store.windows[0]
         let second = windowRuntime.addSession()
         if let paneID = second.tree.allPanes.first?.id {
@@ -73,6 +78,7 @@ struct SessionDetailLayoutConvergenceTests {
             }
         }
         windowRuntime.selectSession(at: 0)
+        beforeHosting(store, windowRuntime)
         let probe = LayoutConvergenceProbe(
             DetailTree(store: store, windowRuntime: windowRuntime),
             size: size,
@@ -165,6 +171,76 @@ struct SessionDetailLayoutConvergenceTests {
                 #expect(switched.converged, "size \(size), Session \(index): \(switched)")
             }
         }
+    }
+
+    // MARK: - Session switch request volume
+
+    /// A loose regression guard on `_postWindowNeedsUpdateConstraints`
+    /// requests per Session switch, keyed by `extraSessions`. Measured with
+    /// each case run alone: 444 and 660 at most before the selection effects
+    /// moved out of `SessionDetailView`'s `onChange` into
+    /// `WindowRuntime.selectedSessionID`'s `didSet`, and the same maxima
+    /// after (issues/0602.md). Nearly all of a switch's requests come from
+    /// the selection change itself, so the ceilings are that baseline plus
+    /// about 17%, to catch side effects or a second update round coming
+    /// back into layout without failing on run-to-run noise. `.serialized`
+    /// because two cases settling at once interleave their counts.
+    private static let switchRequestCeiling: [Int: Int] = [0: 520, 12: 770]
+
+    @Test(.serialized, arguments: [0, 12])
+    func sessionSwitchUpdateConstraintRequestsStayUnderCeiling(extraSessions: Int) async throws {
+        let themes = Array(BattyThemeCatalog.allThemes.prefix(2))
+        let global = try #require(themes.first)
+        let sessionTheme = try #require(themes.last)
+        #expect(global.name != sessionTheme.name)
+        let testDefaults = TestDefaults()
+        let defaults = testDefaults.defaults
+        defaults.set(true, forKey: ThemePreference.migrationDoneKey)
+        defaults.set(global.name, forKey: ThemePreference.darkDefaultsKey)
+        defaults.set(global.name, forKey: ThemePreference.lightDefaultsKey)
+        let store = AppStateStore(preferences: defaults)
+        store.isBattyActiveProvider = { false }
+        var decisions: [Bool] = []
+
+        var fixture = makeFixture(extraSessions: extraSessions, store: store) { store, windowRuntime in
+            windowRuntime.sessions[2].themeOverride = ThemePair(dark: sessionTheme.name, light: sessionTheme.name)
+            for index in 1...3 {
+                if let tab = windowRuntime.sessions[index].focusedPaneAnyKind.activeTab {
+                    store.ringBell(in: tab, times: 2)
+                }
+            }
+            windowRuntime.sessions[0].requestClipboardReadConfirmation(kind: .osc52Read) { decisions.append($0) }
+        }
+        fixture.testDefaults = testDefaults
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        for index in 1...3 {
+            #expect(windowRuntime.sessions[index].unseenBellCount == 2, "Session \(index) fixture has no unseen bells")
+        }
+        #expect(windowRuntime.sessions[0].pendingClipboardConfirmation != nil)
+
+        _ = await fixture.probe.settle()
+        let first = await fixture.probe.settle()
+        #expect(first.converged, "first settle: \(first)")
+
+        var perSwitch: [Int] = []
+        var paletteAfter: [Int: ChromePalette] = [:]
+        for index in [1, 2, 3, 0] {
+            windowRuntime.selectSession(at: index)
+            let switched = await fixture.probe.settle()
+            #expect(switched.converged, "Session \(index): \(switched)")
+            perSwitch.append(switched.postNeedsUpdateConstraintsCalls)
+            paletteAfter[index] = store.themeChrome.palette
+        }
+
+        for index in 1...3 {
+            #expect(windowRuntime.sessions[index].unseenBellCount == 0, "Session \(index) was not marked seen")
+        }
+        #expect(paletteAfter[2] == ChromePalette(theme: sessionTheme), "the Session Theme did not reach the chrome")
+        #expect(paletteAfter[3] == ChromePalette(theme: global), "the chrome did not return to the global Theme")
+        #expect(decisions == [false], "Session 0's clipboard request was not denied")
+        let ceiling = try #require(Self.switchRequestCeiling[extraSessions])
+        #expect((perSwitch.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perSwitch=\(perSwitch) ceiling=\(ceiling)")
     }
 
     // MARK: - Terminal placement

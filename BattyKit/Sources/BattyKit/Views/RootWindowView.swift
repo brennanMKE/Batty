@@ -159,6 +159,14 @@ private struct WindowLifecycleController: NSViewRepresentable {
             let visible = window.occlusionState.contains(.visible)
             TerminalHostStore.shared.setWindowOcclusionVisible(visible, forWindowID: id)
             appStore.existingWindowRuntime(for: id)?.setWindowVisible(visible)
+            // Same reason for the key state: a window already key when it
+            // registered missed `didBecomeKeyNotification`, so its chrome is
+            // applied here. Harmless on every update: the key-window record
+            // and the chrome palette (an equal `Equatable` write doesn't
+            // notify) are both idempotent.
+            if window.isKeyWindow {
+                appStore.contentWindowBecameKey(id)
+            }
         }
     }
 

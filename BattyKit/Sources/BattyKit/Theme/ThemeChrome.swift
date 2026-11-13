@@ -24,7 +24,10 @@ public final class ThemeChrome {
     }
 
     /// Recomputes the palette from a Ghostty theme. Pass `nil` to revert
-    /// to the system default chrome.
+    /// to the system default chrome. Every Session switch and key-window
+    /// change calls this; an equal palette doesn't re-notify chrome readers
+    /// because `ChromePalette` is `Equatable` and the `@Observable` setter
+    /// skips equal writes (`shouldNotifyObservers`).
     public func update(from theme: GhosttyThemeDefinition?) {
         palette = ChromePalette(theme: theme)
     }

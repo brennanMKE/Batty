@@ -381,7 +381,8 @@ thing that sets `themeOverride` (to `.both(name)`). It sets the override AND cal
 
 ### Switching sessions
 
-`applyActiveSessionTheme()` fires on every session switch. It
+`AppStateStore.applySelectionTheme(for:)` runs on every session switch,
+from `WindowRuntime.selectedSessionID`'s `didSet` (#0602). It
 resolves the effective theme for the newly-selected session using the
 fallback chain:
 
@@ -390,7 +391,11 @@ fallback chain:
 3. Else → call `themeChrome.update(from: nil)` to revert to the
    system default chrome.
 
-The chrome always reflects the selected session's **effective theme**.
+The chrome is app-wide, so it follows the selected session of the
+**default target window** (the key content window, else the most
+recently key one): a switch in another window re-themes that session's
+surfaces but leaves the chrome alone, and a content window becoming key
+(`contentWindowBecameKey(_:)`) points the chrome at its selected session.
 Terminal surfaces in the selected session are re-themed via
 `setTheme()` on each switch (in case the effective theme changed while
 the session was not selected).
@@ -404,8 +409,10 @@ Theme menu, or Settings:
 - `applyThemeToAllSurfaces(_:)` applies the new theme to **every
   session whose `themeOverride` is `nil`**. Sessions with a
   local override keep their local theme and are not touched.
-- `themeChrome.update(from:)` is called only if the currently-selected
-  session has no local override (i.e., it follows global).
+- `themeChrome.update(from:)` is called only if the default target
+  window's selected session has no local override (i.e., it follows
+  global). An equal palette doesn't re-notify chrome readers:
+  `ChromePalette` is `Equatable`, and `@Observable` skips equal writes.
 
 `applyThemeToAllSurfaces` must **not** write `themeOverride` on any
 session — the sessions remain "following global" so that the next

@@ -286,7 +286,7 @@ public struct PaneView: View {
                         // the model-initiated direction by
                         // TerminalSurfaceFocuser. See
                         // docs/swiftui-observation-rules.md.
-                        .task(id: tab.id) {
+                        .task(id: tab.id) { [appStore, pane, tab] in
                             tab.terminal.onClose = { [weak appStore, weak pane] processAlive in
                                 logger.info("onClose tab=\(tab.id, privacy: .public) processAlive=\(processAlive)")
                                 if let appStore {
@@ -352,9 +352,6 @@ public struct PaneView: View {
             }
             .onChange(of: pane.tabs.map(\.bellCount).reduce(0, +)) { _, _ in
                 triggerBellFlash()
-            }
-            .onChange(of: pane.activeTabID) { _, _ in
-                appStore?.markActiveTabSeen()
             }
         }
     }

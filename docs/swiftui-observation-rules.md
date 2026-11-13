@@ -89,10 +89,21 @@ legacy or third-party code.
 
 ## Observation semantics and dependency granularity
 
-- **Every write notifies — equal-value writes included.** `@Observable` has
-  no equality dedupe; re-assigning the same `focusedPaneID` still fires
-  `withMutation` and re-invalidates every dependent view. Hence the
-  store-level idempotence rule above.
+- **Which equal writes notify depends on the property's type.** On this
+  toolchain (Swift 6.4.2) the `@Observable` setter checks
+  `shouldNotifyObservers` before `withMutation`:
+  - an equal write to an `Equatable` property doesn't notify, so
+    re-assigning the same `focusedPaneID` doesn't invalidate anything
+    (`TabTitleMirrorTests.equalTitleDoesNotRenotifyTheMirror` also pins it);
+  - re-assigning the same instance to a class-reference property doesn't
+    notify (the comparison is identity, `===`);
+  - a non-`Equatable` struct notifies on every write, equal or not;
+  - `nil` → `nil` on an optional class-reference property notifies.
+
+  `ObservationEqualWriteSemanticsTests` pins all four. The store-level
+  idempotence rule above still applies: it keeps a re-asserted mutator's
+  *other* side effects from running, and it doesn't depend on the property's
+  type.
 - **Tracking is per property *read*.** A view depends on exactly what its
   body (and body's callees) read. Computed helpers broaden dependencies
   silently: `PaneView.isPaneFocused` reads `tree.focusedPaneID`, so every
@@ -208,6 +219,17 @@ each path, and delete inferred echoes before reaching for guards.
   exactly such a hop silently broke click-to-focus.
 - If a write is illegal where it happens, restructure **which code owns the
   write** (direction + echo suppression), not *when* it runs.
+
+  Worked example (#0602): a Session switch's side effects (focus the
+  selected Session's terminal, mark its active Tab seen, apply its Session
+  Theme, deny the previous Session's pending clipboard request) used to run
+  in `SessionDetailView`'s `onChange(of: selectedSessionID)`, which SwiftUI
+  flushes inside `NSHostingView.layout`. They now run in
+  `WindowRuntime.selectedSessionID`'s `didSet`, which every selection path
+  writes from its own event handler, so they run in the action that changed
+  the selection, synchronously, and the view only reacts. The cost of a
+  `didSet` is ordering: a path that also moves focus inside the target
+  Session must arrange the focus first and write the selection last.
 
 - **Work that must follow a sheet's dismissal waits for the sheet's
   `onDismiss`.** It is the completion signal, delivered by SwiftUI when the

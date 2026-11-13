@@ -2,8 +2,13 @@
 
 import Foundation
 import GhosttyTheme
+import Observation
 import Testing
 @testable import BattyKit
+
+private nonisolated final class PaletteChangeFlag: @unchecked Sendable {
+    var fired = false
+}
 
 @MainActor
 struct ThemeChromeTests {
@@ -158,5 +163,25 @@ struct ThemeChromeTests {
         #expect(chrome.palette != .default)
         chrome.update(from: nil)
         #expect(chrome.palette == .default)
+    }
+
+    // Pins Observation's equal-write skip for `palette` (`ChromePalette` is
+    // `Equatable`), which the per-update `contentWindowBecameKey` call in
+    // `WindowLifecycleController` relies on to stay a no-op.
+    @Test func equalThemeUpdateDoesNotInvalidateChromeReaders() throws {
+        let themes = Array(BattyThemeCatalog.allThemes.prefix(2))
+        let first = try #require(themes.first)
+        let second = try #require(themes.last)
+        #expect(ChromePalette(theme: first) != ChromePalette(theme: second))
+        let chrome = ThemeChrome()
+        chrome.update(from: first)
+
+        let equal = PaletteChangeFlag()
+        withObservationTracking { _ = chrome.palette } onChange: { equal.fired = true }
+        chrome.update(from: first)
+        #expect(!equal.fired, "an equal palette notified")
+
+        chrome.update(from: second)
+        #expect(equal.fired, "a different palette did not notify")
     }
 }

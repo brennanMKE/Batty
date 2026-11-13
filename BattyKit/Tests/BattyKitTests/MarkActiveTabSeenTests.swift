@@ -30,7 +30,7 @@ struct MarkActiveTabSeenTests {
         store.selectedSessionID = background.id
         background.tree.focusedPaneID = pane.id
         pane.activeTabID = tab.id
-        store.markActiveTabSeen()
+        store.windows[0].markActiveTabSeen()
 
         #expect(store.bellFeed.entries.count == entryCount, "marking seen never removes rows (#0556)")
 
@@ -70,7 +70,7 @@ struct MarkActiveTabSeenTests {
         store.selectedSessionID = background.id
         background.tree.focusedPaneID = pane.id
         pane.activeTabID = tab.id
-        store.markActiveTabSeen()
+        store.windows[0].markActiveTabSeen()
 
         #expect(tab.unseenBellCount == 0)
         #expect(pane.unseenBellCount == 0)
@@ -88,8 +88,8 @@ struct MarkActiveTabSeenTests {
         #expect(pane.unseenBellCount == 0)
         #expect(session.unseenBellCount == 0)
 
-        store.markActiveTabSeen()
-        store.markActiveTabSeen()
+        store.windows[0].markActiveTabSeen()
+        store.windows[0].markActiveTabSeen()
 
         #expect(tab.unseenBellCount == 0)
         #expect(pane.unseenBellCount == 0)
@@ -123,7 +123,7 @@ struct MarkActiveTabSeenTests {
         store.selectedSessionID = background.id
         background.tree.focusedPaneID = pane.id
         pane.activeTabID = firstTab.id
-        store.markActiveTabSeen()
+        store.windows[0].markActiveTabSeen()
 
         #expect(store.bellFeed.entries.count == entryCount, "marking seen never removes rows (#0556)")
 

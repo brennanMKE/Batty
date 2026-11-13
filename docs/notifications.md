@@ -333,19 +333,22 @@ Two paths, split by *what flipped focus* (`docs/swiftui-observation-rules.md`):
   Footprint rows (#0290) carry `BellFeedEntry.systemID` as their tab, so
   no visit removes them.
 
-- **A fallback** — focus that lands on a tab because something closed,
-  a split, a new tab, or a view appearing. `AppStateStore.markActiveTabSeen()`
-  is the "you looked at it, the unread state is acknowledged" hook
-  (per `#0069`); it marks seen and never removes rows.
+- **A fallback** — focus that lands on a tab because the selection
+  changed without a visit (for example `removeSession` reselecting a
+  neighbour) or because something closed or was hidden.
+  `WindowRuntime.markActiveTabSeen()` is the "you looked at it, the unread
+  state is acknowledged" hook (per `#0069`); it marks seen and never removes
+  rows. Both triggers run in the model action, not in a view `onChange`
+  (#0602).
 
 Mark-seen call sites:
 
 | Trigger | Wired in |
 |---|---|
-| Sidebar selection (`store.selectedSessionID` change) | `SessionDetailView.onChange(of: store.selectedSessionID)` |
-| Focused pane change (`session.tree.focusedPaneID`) | `SessionDetailView.onChange(of: store.selectedSession?.tree.focusedPaneID)` |
-| Active tab change (`pane.activeTabID`) | `PaneView.onChange(of: pane.activeTabID)` |
-| Initial appearance | `SessionDetailView.onAppear` |
+| Any selection change (`selectedSessionID` write) | `WindowRuntime.selectedSessionID`'s `didSet` → `applySelectionEffects` |
+| Focus moved by a close or hide (`closeTab`, `closeOtherTabs`, `closePane`, `hidePane`) in the selected Session | `WindowRuntime.notePassiveFocusMove`, through `passiveFocusHandler`, which marks only in the default target window |
+
+A split or a new Tab marks nothing: the new Tab has no bells.
 
 What the method does:
 
@@ -542,13 +545,13 @@ the tab doesn't need a delayed banner for the same bell.
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift`](../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, scheduling and removing Reminder requests (#0566), and the delegate's `onTap` / `presentation` closures, which `AppStateStore.installNotifier()` wires to `handleNotificationTap` and `presentNotification`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift`](../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift) | Pure value types for #0566: the scheduled request (identifier, trigger components, `userInfo`), `NotificationTapPayload`, `NotificationTapRoute`, and the `shouldPresent` rule. |
-| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `markActiveTabSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (thin routers; cleanup runs in `WindowRuntime.tearDownClosingTabs(_:)`), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (thin routers; cleanup runs in `WindowRuntime.tearDownClosingTabs(_:)`), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
 | [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
 | [`../BattyKit/Sources/BattyKit/BellFeedView.swift`](../BattyKit/Sources/BattyKit/BellFeedView.swift) | The popover and `BellFeedRow`. Path-label formatting lives here. |
 | [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) | `receiveRingBell(at:)` / `receiveDesktopNotification(title:body:at:)` (installed on its `TerminalDelegateProxy`), `setBellIntake(_:)` with its pre-wiring buffer, `bellCount` / `unseenBellCount` / `lastBellAt` / `lastBellMessage`. |
-| [`../BattyKit/Sources/BattyKit/PaneView.swift`](../BattyKit/Sources/BattyKit/PaneView.swift) | `.task(id: tab.id)` calls `wireBellReporting(for:)`; also `.onChange(of: pane.activeTabID)` that calls `markActiveTabSeen()`. |
-| [`../BattyKit/Sources/BattyKit/SessionDetailView.swift`](../BattyKit/Sources/BattyKit/SessionDetailView.swift) | `.onChange(of: store.selectedSessionID)` and `.onChange(of: store.selectedSession?.tree.focusedPaneID)` hooks calling `markActiveTabSeen()`. Also receives the `.battyToggleBellFeed` notification to present the popover. |
+| [`../BattyKit/Sources/BattyKit/PaneView.swift`](../BattyKit/Sources/BattyKit/PaneView.swift) | `.task(id: tab.id)` calls `wireBellReporting(for:)`. |
+| [`../BattyKit/Sources/BattyKit/SessionDetailView.swift`](../BattyKit/Sources/BattyKit/SessionDetailView.swift) | Receives the `.battyToggleBellFeed` notification to present the popover. Mark-seen moved to `WindowRuntime` (#0602). |
 | [`../BattyKit/Sources/BattyKit/BattyTabChip.swift`](../BattyKit/Sources/BattyKit/BattyTabChip.swift) | The unseen-bell dot on tab chips. `hasUnseen` + `showsUnseenDot = hasUnseen && !isActive`. |
 | [`../BattyKit/Sources/BattyKit/SessionRuntime.swift`](../BattyKit/Sources/BattyKit/SessionRuntime.swift) | `notificationsMuted` flag (observable). |
 | [`../BattyKit/Sources/BattyKit/SessionSidebarView.swift`](../BattyKit/Sources/BattyKit/SessionSidebarView.swift) | Right-click "Mute Notifications" / "Unmute Notifications" toggle. |

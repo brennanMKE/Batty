@@ -164,9 +164,10 @@ extension AppStateStore {
         for session in following {
             applyTerminalTheme(theme, to: session)
         }
-        // windows[0] shim: themeChrome is a single app-wide object; global-theme
-        // changes originate from Settings, which is not tied to a content window.
-        if ThemePreference.overrideTheme(selectedSession?.themeOverride, isDark: isDark) == nil {
+        // themeChrome is a single app-wide object that follows the default
+        // target window's selected Session; global-theme changes originate
+        // from Settings, which is not tied to a content window.
+        if ThemePreference.overrideTheme(defaultTargetWindow()?.selectedSession?.themeOverride, isDark: isDark) == nil {
             themeChrome.update(from: theme)
         }
     }
@@ -194,14 +195,12 @@ extension AppStateStore {
     }
 
     /// Applies the effective theme for the currently-selected session.
-    /// Called on every session switch and on first appear.
     public func applyActiveSessionTheme() {
         applyActiveSessionTheme(for: selectedSession)
     }
 
-    /// Applies the effective theme for a specific session. Called by
-    /// per-window views that resolve the selected session from their own
-    /// `WindowRuntime` rather than the global forwarding shim.
+    /// Applies the effective theme for a specific session, to its surfaces
+    /// and to the chrome.
     public func applyActiveSessionTheme(for session: SessionRuntime?) {
         applyActiveSessionTheme(for: session, isDark: NSApp?.effectiveAppearance.isDark ?? true)
     }
@@ -238,8 +237,41 @@ extension AppStateStore {
                 applyTerminalTheme(own, to: session)
             }
         }
-        // windows[0] shim: themeChrome is app-wide and the appearance-change
-        // event (AppKit KVO) is not scoped to a particular window.
-        themeChrome.update(from: ThemePreference.effectiveTheme(override: selectedSession?.themeOverride, isDark: isDark, defaults: preferences))
+        // themeChrome is app-wide and follows the default target window's
+        // selected Session; the appearance-change event (AppKit KVO) is not
+        // scoped to a particular window.
+        themeChrome.update(from: ThemePreference.effectiveTheme(override: defaultTargetWindow()?.selectedSession?.themeOverride, isDark: isDark, defaults: preferences))
+    }
+
+    /// The Theme work of a selection change in `window`, run from
+    /// `WindowRuntime.selectedSessionID`'s `didSet` through
+    /// `selectionThemeHandler`. Re-themes the selected Session's surfaces in
+    /// whichever window the selection changed, and the app-wide chrome only
+    /// when `window` is the default target window, so the chrome follows
+    /// the key window's Session.
+    func applySelectionTheme(for window: WindowRuntime) {
+        applySelectionTheme(for: window, isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func applySelectionTheme(for window: WindowRuntime, isDark: Bool) {
+        guard let session = window.selectedSession else { return }
+        let theme = ThemePreference.effectiveTheme(override: session.themeOverride, isDark: isDark, defaults: preferences)
+        if let theme {
+            applyTerminalTheme(theme, to: session)
+        }
+        if defaultTargetWindow() === window {
+            themeChrome.update(from: theme)
+        }
+    }
+
+    /// Points the app-wide chrome at `window`'s selected Session's Theme.
+    /// Chrome only: the Session's surfaces were themed when it was selected.
+    func applyChrome(for window: WindowRuntime) {
+        applyChrome(for: window, isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func applyChrome(for window: WindowRuntime, isDark: Bool) {
+        guard let session = window.selectedSession else { return }
+        themeChrome.update(from: ThemePreference.effectiveTheme(override: session.themeOverride, isDark: isDark, defaults: preferences))
     }
 }

@@ -159,8 +159,8 @@ public struct SessionDetailView: View {
         // means a stale tap against the request the user actually read
         // safely no-ops instead of answering whatever is live now (#0390
         // round 2, B2). Switching Sessions away from a still-pending
-        // request denies it explicitly in the `selectedSessionID`
-        // `onChange` above, rather than relying on this dialog's own
+        // request denies it explicitly in `WindowRuntime.selectedSessionID`'s
+        // `didSet`, rather than relying on this dialog's own
         // dismiss handler below, which by then would be reading the
         // newly-selected Session, not the one that owned the request
         // (#0390 round 2, B3). Dismissing without an explicit answer
@@ -187,33 +187,6 @@ public struct SessionDetailView: View {
         sessionStack
         .navigationTitle(navigationTitle)
         .toolbar { toolbarItems }
-        .onAppear {
-            logger.debug("onAppear: selectedSession=\(windowRuntime.selectedSession?.title ?? "nil", privacy: .public)")
-            focusSelectedSessionTerminal()
-            windowRuntime.markActiveTabSeen()
-            store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
-        }
-        .onChange(of: windowRuntime.selectedSessionID) { old, new in
-            logger.debug("selectedSessionID changed: \(old?.uuidString ?? "nil", privacy: .public) → \(new?.uuidString ?? "nil", privacy: .public)")
-            focusSelectedSessionTerminal()
-            windowRuntime.markActiveTabSeen()
-            store.applyActiveSessionTheme(for: windowRuntime.selectedSession)
-            // #0390 round 2, B3: deny a clipboard confirmation left pending
-            // on the Session being navigated away from, right here and
-            // synchronously — not left for `pendingClipboardConfirmationBinding`'s
-            // dismiss handler, which by the time SwiftUI calls it is
-            // already reading the *new* selectedSession (whose pending is
-            // nil) and so silently no-ops, orphaning the old request until
-            // Session teardown eventually denies it or the user switches
-            // back to a stale, out-of-context prompt.
-            if let old, let previousSession = store.session(id: old),
-               let pending = previousSession.pendingClipboardConfirmation {
-                previousSession.cancelPendingClipboardConfirmation(pending)
-            }
-        }
-        .onChange(of: windowRuntime.selectedSession?.tree.focusedPaneID) { _, _ in
-            windowRuntime.markActiveTabSeen()
-        }
     }
 
     @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
@@ -418,25 +391,5 @@ public struct SessionDetailView: View {
 
     private var navigationTitle: String {
         windowRuntime.selectedSession?.title ?? "Batty"
-    }
-
-    private func focusSelectedSessionTerminal() {
-        guard let session = windowRuntime.selectedSession else { return }
-        // Deliberately `focusedPaneAnyKind`, not `focusedTerminalPane`
-        // (#0332 B4, reverted from an earlier round's gate): gating this on
-        // `.terminal` kind would skip `focusWhenReady`'s `generation += 1`
-        // bump on the early-return path, leaving a still-live retry ladder
-        // from a *previously* focused tab free to keep firing after focus
-        // has moved to a non-terminal pane — the exact stale-retry /
-        // isFocused-echo ping-pong `generation`'s own doc comment
-        // (`TerminalSurfaceFocuser.swift`) says it exists to prevent
-        // (#0229, #0230). `focus(tab:)`'s own `view.window != nil` /
-        // `!view.isHidden` guards make a non-terminal pane's placeholder
-        // tab (`activeTab` here) a harmless no-op target today — this was
-        // already dead code for that case before #0332 touched it, and
-        // gating it here bought nothing but risk in the most fragile area
-        // of the app (`docs/swiftui-observation-rules.md`).
-        guard let activeTab = session.focusedPaneAnyKind.activeTab else { return }
-        TerminalSurfaceFocuser.focusWhenReady(tab: activeTab)
     }
 }

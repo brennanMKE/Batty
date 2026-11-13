@@ -18,8 +18,8 @@ import Testing
 ///     is empty; terminate is deferred off the window-close call stack and
 ///     re-verifies its guards before firing.
 ///   - #0316: every other windows[0] trap site reachable during that
-///     deliberately-empty-windows turn (initialWindowID, addSession,
-///     markActiveTabSeen, and the caller-less action shims) is now total.
+///     deliberately-empty-windows turn (initialWindowID, addSession, and
+///     the caller-less action shims) is now total.
 @MainActor
 struct CrossWindowBehaviorTests {
 
@@ -538,24 +538,6 @@ struct CrossWindowBehaviorTests {
                 "addSession must return nil, not trap, when no window exists")
         #expect(store.windows.isEmpty,
                 "addSession must not create a phantom window when none remain")
-    }
-
-    /// `markActiveTabSeen()` read `(keyWindowRuntime() ?? windows[0])` before
-    /// this issue's fix. Production caller: `PaneView`'s
-    /// `onChange(of: pane.activeTabID)`. There is no tab left to mark seen
-    /// once `windows` is empty, so no-oping is correct behavior, not a
-    /// degraded one.
-    @Test func markActiveTabSeenNoOpsWhenNoWindowsRemain() {
-        let store = AppStateStore()
-        store.isBattyActiveProvider = { false }
-        store.terminateHandler = {}
-        let onlyWindowID = store.windows[0].id
-        store.removeWindow(id: onlyWindowID)
-        #expect(store.windows.isEmpty, "test setup: windows must be empty")
-
-        store.markActiveTabSeen()  // must not trap
-
-        #expect(store.windows.isEmpty)
     }
 
     /// The six `AppStateStore` action shims with no production caller found

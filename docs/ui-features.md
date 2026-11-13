@@ -185,7 +185,9 @@ the developer workflow for adding themes.
 - `applyThemeToAllSurfaces` must not write `localThemeName` on any Session.
 - Window chrome (toolbar, sidebar, pane borders, split dividers, tab bars) must
   visually reflect the active Session's effective theme. Chrome is updated via
-  `applyActiveSessionTheme()` on every Session switch.
+  `AppStateStore.applySelectionTheme(for:)` on every Session switch in the
+  default target (key) window, and via `contentWindowBecameKey(_:)` when
+  another content window becomes key (#0602).
 
 **Regression patterns:**
 

@@ -45,20 +45,31 @@ public enum PaneCloseOutcome: Equatable, Sendable {
 public final class WindowRuntime {
     public let id: WindowID
     public private(set) var sessions: [SessionRuntime]
-    /// The model-level choke point for the non-selected-Session visibility
-    /// fact `docs/pane-view-lifecycle.md` §5 left as an open wiring question
-    /// (#0349): every write — `setSelectedSession(id:)` (sidebar click, and
-    /// the CLI focus verbs), `selectSession(at:)` (Cmd-1..9),
-    /// `addSession`/`removeSession`/`duplicateSession`, and
-    /// `jumpToTab`/`jumpToBellEntry` — funnels through this one property,
-    /// so `didSet` is the single place that delivers `setVisible` to the
-    /// two Sessions a selection change crosses, rather than each call site
-    /// re-deriving it. Not fired for the initial assignment inside `init`
-    /// (Swift suppresses observers for a property's first set within its
-    /// own type's initializer) — harmless, since `PaneRuntime.init` already
-    /// starts a freshly-constructed Session's panes in the right phase
-    /// for the single-Session-at-construction-time production paths
-    /// (`addSession`, a new window's first Session). The multi-Session
+    /// The model-level choke point for a selection change. Every write —
+    /// `setSelectedSession(id:)` (sidebar click, and the CLI focus verbs),
+    /// `selectSession(at:)` (Cmd-1..9), `addSession`/`addProjectSession`/
+    /// `removeSession`/`duplicateSession`, and `jumpToTab`/`jumpToBellEntry`
+    /// — funnels through this one property, so `didSet` is the single place
+    /// that delivers, synchronously in the writer's event-origin context:
+    ///
+    /// - `setVisible` to the two Sessions the change crosses (#0349,
+    ///   `applySelectionVisibility`), and
+    /// - the selection effects (`applySelectionEffects`): deny the previous
+    ///   Session's pending clipboard request, focus the selected Session's
+    ///   focused Tab, mark it seen, and apply the Session's Theme.
+    ///
+    /// **Arrange first, select last.** The effects read the target Session's
+    /// focused Pane and active Tab at the moment of the write, so a path that
+    /// also moves focus inside the target Session must do that before it
+    /// writes this property.
+    ///
+    /// Not fired for the initial assignment inside `init` (Swift suppresses
+    /// observers for a property's first set within its own type's
+    /// initializer) — harmless, since `PaneRuntime.init` already starts a
+    /// freshly-constructed Session's panes in the right phase, `PaneView`'s
+    /// terminal `onAppear` focuses the mounted Session's focused Tab, and a
+    /// new window's chrome is applied when it becomes key
+    /// (`AppStateStore.contentWindowBecameKey`). The multi-Session
     /// `init(sessions:)` overload has no production call site (every
     /// production `WindowRuntime` is created with `sessions: []`); test
     /// code that constructs one directly with several non-empty Sessions
@@ -67,6 +78,7 @@ public final class WindowRuntime {
         didSet {
             guard oldValue != selectedSessionID else { return }
             applySelectionVisibility(deselecting: oldValue, selecting: selectedSessionID)
+            applySelectionEffects(deselecting: oldValue)
         }
     }
     public var pendingCloseRequest: PendingCloseRequest?
@@ -140,6 +152,18 @@ public final class WindowRuntime {
     /// suggestion is cancelled. Set by `AppStateStore`; nil for a bare
     /// `WindowRuntime` in a unit test.
     @ObservationIgnored var sessionClosingHandler: ((UUID) -> Void)?
+
+    /// Focuses a Tab's terminal for a selection change. Defaults to
+    /// `TerminalSurfaceFocuser.focusWhenReady`, which defers the responder
+    /// change; tests replace it to record the target.
+    @ObservationIgnored var focusTerminal: (TabRuntime) -> Void = { TerminalSurfaceFocuser.focusWhenReady(tab: $0) }
+    /// Applies the selected Session's Theme after a selection change. Set by
+    /// `AppStateStore`; nil for a bare `WindowRuntime` in a unit test.
+    @ObservationIgnored var selectionThemeHandler: ((WindowRuntime) -> Void)?
+    /// Marks the newly focused Tab seen after a close or hide moved focus.
+    /// Set by `AppStateStore` so only the default target window marks;
+    /// nil for a bare `WindowRuntime`, which then marks itself.
+    @ObservationIgnored var passiveFocusHandler: ((WindowRuntime) -> Void)?
 
     // Injected from AppStateStore — global services shared across windows.
     @ObservationIgnored let bellFeed: BellFeedStore
@@ -291,7 +315,6 @@ public final class WindowRuntime {
         session.setBackgroundOverride(background)
         session.notificationsMuted = project.notificationsMuted
         sessions.append(session)
-        selectedSessionID = session.id
         setSessionColor(id: session.id, to: project.color.rawValue)
         let panes = tree.allPanes
         for (slot, stored) in project.layout.panes.enumerated() where stored.isHidden && panes.indices.contains(slot) {
@@ -300,8 +323,10 @@ public final class WindowRuntime {
         if let slot = project.layout.focusedSlot, panes.indices.contains(slot), !panes[slot].isHidden {
             tree.focusedPaneID = panes[slot].id
         }
-        // Last, because hiding a Pane expands the list.
+        // After the Panes are hidden, because hiding a Pane expands the list.
         session.isPaneListExpanded = project.paneListExpanded
+        // Arrange first, select last (see `selectedSessionID`).
+        selectedSessionID = session.id
         return session
     }
 
@@ -483,13 +508,15 @@ public final class WindowRuntime {
     }
 
     /// A Sidebar Pane row tap: select its Session, un-hide and focus the Pane.
+    /// Arranges the Pane before selecting, so the selection effects see it
+    /// focused (see `selectedSessionID`).
     public func activatePaneFromSidebar(sessionID: UUID, paneID: UUID) {
-        setSelectedSession(id: sessionID)
         if let pane = sessions.first(where: { $0.id == sessionID })?.tree.allPanes.first(where: { $0.id == paneID }),
            pane.isHidden {
             showPane(id: paneID)
         }
         focusPane(id: paneID)
+        setSelectedSession(id: sessionID)
         visitFocusedTab()
     }
 
@@ -516,6 +543,7 @@ public final class WindowRuntime {
         logger.info("closeTab tab=\(tabID, privacy: .public) sessions=\(self.sessions.count) totalTabs=\(totalTabs)")
         for session in sessions {
             for pane in session.tree.allPanes where pane.tabs.contains(where: { $0.id == tabID }) {
+                let focusBefore = focusSnapshot(of: session)
                 tearDownClosingTabs([tabID])
                 pane.removeTab(id: tabID)
                 logger.info("closeTab removed tab=\(tabID, privacy: .public) pane=\(pane.id, privacy: .public) session=\(session.id, privacy: .public) paneTabsRemaining=\(pane.tabs.count)")
@@ -536,7 +564,10 @@ public final class WindowRuntime {
                         // (below) must hold here too, not only on the
                         // `closePane` branch.
                         resolveHiddenFocusFallback(in: session)
+                        notePassiveFocusMove(in: session, since: focusBefore)
                     }
+                } else {
+                    notePassiveFocusMove(in: session, since: focusBefore)
                 }
                 return
             }
@@ -669,8 +700,13 @@ public final class WindowRuntime {
         guard pane.tabs.contains(where: { $0.id == keptTabID }) else { return }
         let victims = Set(pane.tabs.map(\.id)).subtracting([keptTabID])
         logger.info("closeOtherTabs pane=\(pane.id, privacy: .public) victims=\(victims.count, privacy: .public)")
+        let session = sessions.first { $0.tree.allPanes.contains { $0 === pane } }
+        let focusBefore = session.map(focusSnapshot(of:))
         tearDownClosingTabs(victims)
         pane.closeOtherTabs(keeping: keptTabID)
+        if let session, let focusBefore {
+            notePassiveFocusMove(in: session, since: focusBefore)
+        }
     }
 
     public func confirmPendingClose() {
@@ -783,6 +819,7 @@ public final class WindowRuntime {
                 return .refusedLastPane
             }
             let tabIDs = Set(pane.tabs.map(\.id))
+            let focusBefore = focusSnapshot(of: session)
             logger.info("closePane pane=\(paneID, privacy: .public) session=\(session.id, privacy: .public) tabs=\(tabIDs.count, privacy: .public)")
             tearDownClosingTabs(tabIDs)
             for tabID in tabIDs {
@@ -802,6 +839,7 @@ public final class WindowRuntime {
                 removeSession(id: session.id, fromCli: fromCli)
             } else {
                 resolveHiddenFocusFallback(in: session)
+                notePassiveFocusMove(in: session, since: focusBefore)
             }
             return .closed
         }
@@ -1026,6 +1064,52 @@ public final class WindowRuntime {
         }
     }
 
+    /// The selection effects `selectedSessionID`'s `didSet` runs after
+    /// `applySelectionVisibility`. When the selection became nil, only the
+    /// clipboard deny can apply.
+    private func applySelectionEffects(deselecting previousID: UUID?) {
+        // #0390 round 2, B3: deny a clipboard confirmation left pending on
+        // the Session being navigated away from. The dialog's own dismiss
+        // handler can't: it reads the newly selected Session. A Session
+        // already removed from `sessions` is skipped.
+        if let previousID, let previous = sessions.first(where: { $0.id == previousID }),
+           let pending = previous.pendingClipboardConfirmation {
+            previous.cancelPendingClipboardConfirmation(pending)
+        }
+        guard let session = selectedSession else { return }
+        // Deliberately `focusedPaneAnyKind`, not `focusedTerminalPane`
+        // (#0332 B4): gating this on `.terminal` kind would skip
+        // `focusWhenReady`'s `generation += 1` bump, leaving a still-live
+        // retry ladder from a previously focused Tab free to keep firing
+        // after focus moved to a non-terminal Pane, the stale-retry /
+        // isFocused-echo ping-pong `generation` exists to prevent (#0229,
+        // #0230). `focus(tab:)`'s `view.window != nil` / `!view.isHidden`
+        // guards make a non-terminal Pane's placeholder Tab a no-op target.
+        if let activeTab = session.focusedPaneAnyKind.activeTab {
+            focusTerminal(activeTab)
+        }
+        markActiveTabSeen()
+        selectionThemeHandler?(self)
+    }
+
+    /// The selected Session's focused Pane and its active Tab, taken before
+    /// a close or hide so `notePassiveFocusMove` can tell whether it moved.
+    private func focusSnapshot(of session: SessionRuntime) -> [UUID] {
+        [session.tree.focusedPaneID, session.focusedPaneAnyKind.activeTabID]
+    }
+
+    /// Marks the Tab that a close or hide left in front seen, when `session`
+    /// is still the selected Session and its focus moved since `before`.
+    /// Not a visit (#0556): its rows stay in the Bell Feed.
+    private func notePassiveFocusMove(in session: SessionRuntime, since before: [UUID]) {
+        guard session.id == selectedSessionID, focusSnapshot(of: session) != before else { return }
+        if let passiveFocusHandler {
+            passiveFocusHandler(self)
+        } else {
+            markActiveTabSeen()
+        }
+    }
+
     // MARK: - Pane hide / show
 
     /// Hides the pane with `id`. No-op when the pane is already hidden or when
@@ -1039,6 +1123,7 @@ public final class WindowRuntime {
                 logger.notice("hidePane: refused id=\(id, privacy: .public) — last visible pane in session")
                 return
             }
+            let focusBefore = focusSnapshot(of: session)
             // Move focus before hiding so `focusedPaneID` never references a hidden pane.
             if session.tree.focusedPaneID == id {
                 if let nextVisible = session.tree.visiblePanes.first(where: { $0.id != id }) {
@@ -1077,6 +1162,7 @@ public final class WindowRuntime {
             // the terminal placement above is — `docs/pane-view-lifecycle.md`
             // §5. `nil` for `.terminal` panes, so this is a no-op there.
             pane.content?.setVisible(false)
+            notePassiveFocusMove(in: session, since: focusBefore)
             return
         }
     }
@@ -1126,9 +1212,9 @@ public final class WindowRuntime {
             showPane(id: pane.id)
         }
 
-        selectedSessionID = session.id
         session.tree.focusedPaneID = pane.id
         pane.activeTabID = tabID
+        selectedSessionID = session.id
 
         if let newTab = pane.tabs.first(where: { $0.id == tabID }) {
             let newActiveTabTitle = newTab.titleOverride ?? ""
@@ -1161,9 +1247,9 @@ public final class WindowRuntime {
         if pane.isHidden {
             showPane(id: pane.id)
         }
-        selectedSessionID = session.id
         session.tree.focusedPaneID = pane.id
         pane.activeTabID = entry.tabID
+        selectedSessionID = session.id
         visitFocusedTab()
     }
 
@@ -1194,9 +1280,11 @@ public final class WindowRuntime {
         bellFeed.removeEntries(matchingTabIDs: [pane.activeTabID])
     }
 
-    /// The fallback and focus-change path, run from the `onChange` hooks:
-    /// marks the focused Tab's rows seen and never removes them. Real visits
-    /// go through `visitFocusedTab()` (#0556).
+    /// The passive mark: marks the focused Tab's rows seen and never removes
+    /// them. Runs from `applySelectionEffects` (every `selectedSessionID`
+    /// write), from `notePassiveFocusMove` (close- and hide-driven focus
+    /// moves, when no `passiveFocusHandler` is installed) and from
+    /// `visitFocusedTab()`. Real visits go through `visitFocusedTab()` (#0556).
     public func markActiveTabSeen() {
         markSelectedSessionReminderEntriesSeen()
         // `focusedTerminalPane`, not `focusedPaneAnyKind` (#0332 B3): this

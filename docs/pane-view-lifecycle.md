@@ -522,7 +522,11 @@ composition §4's "what suspended is allowed to cost" and this section's
 write (`SessionDetailView.swift:203`) is unchanged and still the
 view-layer copy of the same fact, used for rendering, not for lifecycle
 delivery — the two are deliberately kept separate (see §2's updated
-"Pane in a non-selected Session" row).
+"Pane in a non-selected Session" row). Since `#0602` the same `didSet`
+also runs the selection effects after the visibility sweep
+(`applySelectionEffects`: clipboard deny, terminal focus, mark seen,
+Session Theme), so a path that moves focus inside the target Session
+arranges that focus before it writes `selectedSessionID`.
 
 A related gap `#0349` also closed, not merely flagged: **a Pane created
 directly into a background Session needs its *initial* effective
