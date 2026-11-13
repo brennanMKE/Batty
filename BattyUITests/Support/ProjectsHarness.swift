@@ -367,6 +367,7 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     func replaceText(in identifier: String, with text: String, app: XCUIApplication) {
         let field = element(identifier, in: app)
         XCTAssertTrue(field.waitForExistence(timeout: 5), "no \(identifier)")
+        revealInEditorInspector(identifier, in: app)
         field.click()
         app.typeKey("a", modifierFlags: .command)
         app.typeText(text)
@@ -395,7 +396,32 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     func click(_ identifier: String, in app: XCUIApplication) {
         let target = element(identifier, in: app)
         XCTAssertTrue(target.waitForExistence(timeout: 10), "no \(identifier)")
+        revealInEditorInspector(identifier, in: app)
         target.click()
+    }
+
+    /// The Pane inspector scrolls, and lower Tab cards fall below its visible area.
+    /// `isHittable` is no guide here: a field clipped by the SwiftUI `ScrollView` still
+    /// reports hittable, and the click lands at its unclipped centre, outside the
+    /// inspector (#0598). So scroll until the field's frame sits inside the inspector's
+    /// frame. A no-op outside the inspector.
+    @MainActor
+    func revealInEditorInspector(_ identifier: String, in app: XCUIApplication) {
+        let inspector = element("project-editor.inspector", in: app)
+        guard inspector.exists else { return }
+        let target = inspector.descendants(matching: .any)[identifier].firstMatch
+        guard target.exists else { return }
+        func visible() -> Bool { inspector.frame.insetBy(dx: 0, dy: 4).contains(target.frame) }
+        guard !visible() else { return }
+        inspector.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).hover()
+        for _ in 0..<30 where target.exists && !visible() {
+            let below = target.frame.midY > inspector.frame.midY
+            inspector.scroll(byDeltaX: 0, deltaY: below ? -60 : 60)
+        }
+        XCTAssertTrue(
+            visible(),
+            "\(identifier) at \(target.frame) is still outside the inspector's visible frame \(inspector.frame)"
+        )
     }
 
     // MARK: - Banners
