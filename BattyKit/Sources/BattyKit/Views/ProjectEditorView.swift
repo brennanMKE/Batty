@@ -338,23 +338,35 @@ private struct ProjectEditorMain: View {
         let validation = model.validate()
         VStack(spacing: 0) {
             ProjectHeaderFields(model: model, validation: validation)
+                .fixedSize(horizontal: false, vertical: true)
             ProjectThemeRow(model: model, validation: validation)
                 .id(model.selectedID)
+                .fixedSize(horizontal: false, vertical: true)
             if model.showsBackground {
                 ProjectBackgroundRow(model: model, validation: validation)
                     // A draft swapped in while the sheet is up ends the sheet, so
                     // its Cancel can't write one Project's value onto another.
                     .id(model.selectedID)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Divider()
             HStack(spacing: 0) {
-                ProjectLayoutSection(model: model, pendingPreset: $pendingPreset, pendingCopy: $pendingCopy)
+                // On a short window the Layout column scrolls instead of pushing
+                // the footer below the window's bottom edge.
+                ViewThatFits(in: .vertical) {
+                    ProjectLayoutSection(model: model, pendingPreset: $pendingPreset, pendingCopy: $pendingCopy)
+                    ScrollView(.vertical) {
+                        ProjectLayoutSection(model: model, pendingPreset: $pendingPreset, pendingCopy: $pendingCopy)
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                }
                 Divider()
                 PaneInspector(model: model, validation: validation)
                     .frame(width: 340)
             }
             Divider()
             ProjectEditorFooter(model: model, validation: validation)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

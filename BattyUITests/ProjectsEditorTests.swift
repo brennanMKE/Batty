@@ -224,6 +224,33 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
     }
 
     @MainActor
+    func testFooterStaysInsideTheWindowWithACustomLayout() throws {
+        let custom = ProjectFixture.project(
+            name: "Custom",
+            root: try makeDirectory("custom-root"),
+            layout: ProjectFixture.terminal(),
+            runStartupCommands: false
+        )
+        let (app, _) = try launchApp(projects: [custom])
+        defer { app.terminate() }
+
+        openEditorFromFileMenu(in: app)
+        click("project-editor.list.row.Custom", in: app)
+        XCTAssertTrue(element("project-editor.layout.custom", in: app).waitForExistence(timeout: 5))
+
+        var window = app.windows["project-editor"]
+        if !window.exists {
+            window = app.windows.containing(.any, identifier: "project-editor.save").firstMatch
+        }
+        XCTAssertTrue(window.waitForExistence(timeout: 5), "no Project Editor window")
+        let windowFrame = window.frame
+        for id in ["project-editor.run-commands", "project-editor.cancel", "project-editor.save", "project-editor.save-open"] {
+            let frame = element(id, in: app).frame
+            XCTAssertTrue(windowFrame.contains(frame), "\(id) at \(frame) is outside the window \(windowFrame)")
+        }
+    }
+
+    @MainActor
     func testSavedSessionProjectHasTheRunToggleOn() throws {
         let (app, _) = try launchApp(script: [["intent": "createSession", "name": "Toggled"]])
         defer { app.terminate() }
