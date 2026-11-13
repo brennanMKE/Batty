@@ -50,18 +50,17 @@ public struct RootWindowView: View {
 
     @ViewBuilder
     private func content(_ windowRuntime: WindowRuntime) -> some View {
-        let isSeeThrough = store.isWindowSeeThrough(windowRuntime)
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SessionSidebarView(store: store, windowRuntime: windowRuntime)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
-        } detail: {
-            SessionDetailView(store: store, windowRuntime: windowRuntime)
-                .environment(\.paneWindowCorners, WindowCorners.detailArea(sidebarHidden: columnVisibility == .detailOnly))
+        WindowSeeThroughScope(store: store, windowRuntime: windowRuntime) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SessionSidebarView(store: store, windowRuntime: windowRuntime)
+                    .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+            } detail: {
+                SessionDetailView(store: store, windowRuntime: windowRuntime)
+                    .environment(\.paneWindowCorners, WindowCorners.detailArea(sidebarHidden: columnVisibility == .detailOnly))
+            }
         }
         .environment(\.appStateStore, store)
         .environment(\.themeChrome, store.themeChrome)
-        .environment(\.windowIsSeeThrough, isSeeThrough)
-        .background(WindowChromeApplier(palette: store.themeChrome.palette, isSeeThrough: isSeeThrough))
         .background(WindowIDRegistrar(windowID: windowID, store: store))
         .background(WindowLifecycleController(windowID: windowID, store: store))
         .task { UITestDriver.runIfNeeded(store: store) }
@@ -297,6 +296,30 @@ public enum SidebarPreference {
         // @SceneStorage value — nil signals "no override needed."
         guard !migrationDone else { return nil }
         return legacyValue
+    }
+}
+
+/// The only view that reads `AppStateStore.isWindowSeeThrough`, which depends
+/// on every Pane and Tab in the window. Splits, closes and Tab edits in any
+/// Session re-evaluate only this view, not its parent, and `content` is
+/// stored, so it is not rebuilt; it receives an equal `Bool` unless the
+/// window actually flips.
+struct WindowSeeThroughScope<Content: View>: View {
+    let store: AppStateStore
+    let windowRuntime: WindowRuntime
+    let content: Content
+
+    init(store: AppStateStore, windowRuntime: WindowRuntime, @ViewBuilder content: () -> Content) {
+        self.store = store
+        self.windowRuntime = windowRuntime
+        self.content = content()
+    }
+
+    var body: some View {
+        let isSeeThrough = store.isWindowSeeThrough(windowRuntime)
+        content
+            .environment(\.windowIsSeeThrough, isSeeThrough)
+            .background(WindowChromeApplier(palette: store.themeChrome.palette, isSeeThrough: isSeeThrough))
     }
 }
 

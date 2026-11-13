@@ -448,6 +448,81 @@ final class WindowSeeThroughTests {
         }
     }
 
+    private final class SetterCountingWindow: NSWindow {
+        var backgroundSets = 0
+        var titlebarSets = 0
+        var ignoresMouseSets = 0
+        var opaqueSets = 0
+
+        override var backgroundColor: NSColor! {
+            get { super.backgroundColor }
+            set { backgroundSets += 1; super.backgroundColor = newValue }
+        }
+        override var titlebarAppearsTransparent: Bool {
+            get { super.titlebarAppearsTransparent }
+            set { titlebarSets += 1; super.titlebarAppearsTransparent = newValue }
+        }
+        override var ignoresMouseEvents: Bool {
+            get { super.ignoresMouseEvents }
+            set { ignoresMouseSets += 1; super.ignoresMouseEvents = newValue }
+        }
+        override var isOpaque: Bool {
+            get { super.isOpaque }
+            set { opaqueSets += 1; super.isOpaque = newValue }
+        }
+
+        func resetCounts() {
+            backgroundSets = 0
+            titlebarSets = 0
+            ignoresMouseSets = 0
+            opaqueSets = 0
+        }
+    }
+
+    private func countingWindow() -> SetterCountingWindow {
+        let window = SetterCountingWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        return window
+    }
+
+    @Test(arguments: [(false, false), (false, true), (true, false), (true, true)])
+    func applyDoesNotRewriteUnchangedWindowProperties(themed: Bool, isSeeThrough: Bool) throws {
+        let palette = themed ? try themedPalette : ChromePalette(theme: nil)
+        let window = countingWindow()
+        WindowSeeThrough.apply(palette: palette, isSeeThrough: isSeeThrough, to: window)
+        window.resetCounts()
+        WindowSeeThrough.apply(palette: palette, isSeeThrough: isSeeThrough, to: window)
+        #expect(window.backgroundSets == 0)
+        #expect(window.titlebarSets == 0)
+        #expect(window.ignoresMouseSets == 0)
+        #expect(window.opaqueSets == 0)
+    }
+
+    @Test func applyWritesOnlyTheChangedProperties() throws {
+        let palette = try themedPalette
+        let window = countingWindow()
+        WindowSeeThrough.apply(palette: palette, isSeeThrough: false, to: window)
+        window.resetCounts()
+
+        WindowSeeThrough.apply(palette: palette, isSeeThrough: true, to: window)
+        #expect(window.opaqueSets == 1)
+        #expect(window.backgroundSets == 1)
+        #expect(window.titlebarSets == 0)
+        #expect(window.ignoresMouseSets == 0)
+        window.resetCounts()
+
+        WindowSeeThrough.apply(palette: palette, isSeeThrough: false, to: window)
+        #expect(window.opaqueSets == 1)
+        #expect(window.backgroundSets == 1)
+        #expect(window.titlebarSets == 0)
+        #expect(window.ignoresMouseSets == 0)
+    }
+
     @Test func opaqueApplyWithNoThemeLeavesAFreshWindowsValues() {
         let fresh = unshownWindow()
         let window = unshownWindow()

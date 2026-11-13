@@ -48,12 +48,14 @@ enum WindowSeeThrough {
     }
 
     /// The `isOpaque` flip changes `NSThemeFrame`'s subviews, so callers must
-    /// run this off the SwiftUI update, never inside the layout pass.
+    /// run this off the SwiftUI update, never inside the layout pass. Writes
+    /// only the properties that differ, since it runs after every applier update.
     static func apply(palette: ChromePalette, isSeeThrough: Bool, to window: NSWindow) {
         if isSeeThrough {
-            window.titlebarAppearsTransparent = palette.windowBackground != nil
-            window.backgroundColor = windowColor
-            window.ignoresMouseEvents = false
+            let transparent = palette.windowBackground != nil
+            if window.titlebarAppearsTransparent != transparent { window.titlebarAppearsTransparent = transparent }
+            if window.backgroundColor != windowColor { window.backgroundColor = windowColor }
+            if window.ignoresMouseEvents { window.ignoresMouseEvents = false }
             if window.isOpaque {
                 window.isOpaque = false
                 window.invalidateShadow()
@@ -61,11 +63,13 @@ enum WindowSeeThrough {
             return
         }
         if let background = palette.windowBackground {
-            window.titlebarAppearsTransparent = true
-            window.backgroundColor = NSColor(background)
+            let color = NSColor(background)
+            if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
+            if window.backgroundColor != color { window.backgroundColor = color }
         } else {
-            window.titlebarAppearsTransparent = false
-            window.backgroundColor = nil
+            if window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = false }
+            // The getter never returns nil; a nil write reads back as the system color.
+            if window.backgroundColor != NSColor.windowBackgroundColor { window.backgroundColor = nil }
         }
         if !window.isOpaque {
             window.isOpaque = true

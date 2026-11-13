@@ -118,7 +118,8 @@ public final class AppStateStore {
     /// closing, splits and overrides need no trigger of their own. Every Session
     /// counts, because selecting only the current one would flip the window on
     /// each Session switch. Native full screen stays opaque, as upstream Ghostty
-    /// does, because its background turns gray.
+    /// does, because its background turns gray. It depends on every Pane, so
+    /// `WindowSeeThroughScope` is its only reader among views.
     public func isWindowSeeThrough(_ window: WindowRuntime) -> Bool {
         guard !window.isNativeFullScreen else { return false }
         return window.sessions.contains { session in
