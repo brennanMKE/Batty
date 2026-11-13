@@ -269,7 +269,10 @@ each path, and delete inferred echoes before reaching for guards.
   writes from its own event handler, so they run in the action that changed
   the selection, synchronously, and the view only reacts. The cost of a
   `didSet` is ordering: a path that also moves focus inside the target
-  Session must arrange the focus first and write the selection last.
+  Session must arrange the focus first and write the selection last. The
+  property's setter is `internal(set)` (#0613), so app-target code can't bind
+  or write it; selection from outside `WindowRuntime` goes through
+  `setSelectedSession(id:)`.
 
 - **Work that must follow a sheet's dismissal waits for the sheet's
   `onDismiss`.** It is the completion signal, delivered by SwiftUI when the

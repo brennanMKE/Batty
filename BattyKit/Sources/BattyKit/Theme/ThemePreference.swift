@@ -184,6 +184,7 @@ extension AppStateStore {
                 tab.terminal.controller.setTheme(terminalTheme)
             }
         }
+        session.appliedTerminalThemeName = theme.name
     }
 
     /// Applies a theme only to the surfaces of one session, and to the chrome.
@@ -256,7 +257,7 @@ extension AppStateStore {
     func applySelectionTheme(for window: WindowRuntime, isDark: Bool) {
         guard let session = window.selectedSession else { return }
         let theme = ThemePreference.effectiveTheme(override: session.themeOverride, isDark: isDark, defaults: preferences)
-        if let theme {
+        if let theme, session.appliedTerminalThemeName != theme.name {
             applyTerminalTheme(theme, to: session)
         }
         if defaultTargetWindow() === window {

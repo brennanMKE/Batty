@@ -16,6 +16,12 @@ public final class SessionRuntime: Identifiable {
     /// CWD, name-cache lookups) check this and skip the rewrite — a
     /// user-set name pins permanently. See `#0089`.
     public var titleOverride: Bool = false
+    /// Name of the Theme `AppStateStore.applyTerminalTheme` last pushed to
+    /// this Session's terminal Tabs. Its only writer is that method.
+    /// `applySelectionTheme` reads it to skip re-theming when the effective
+    /// Theme is unchanged. Not observed: no view reads it.
+    @ObservationIgnored var appliedTerminalThemeName: String?
+
     /// This Session's Theme override, per appearance. An unset or unknown
     /// slot follows the global `ThemePreference`. Not persisted, apart from
     /// a Project restoring it at open and Update Project capturing it.

@@ -86,7 +86,14 @@ public final class WindowRuntime {
     /// production `WindowRuntime` is created with `sessions: []`); test
     /// code that constructs one directly with several non-empty Sessions
     /// does not get this sweep for Sessions beyond the first.
-    public var selectedSessionID: UUID? {
+    ///
+    /// Settable only inside BattyKit, and only from event-origin code: never
+    /// from `body`, an `onChange`/`onAppear`, a representable update, or a
+    /// `Binding` setter that SwiftUI or AppKit can call during an update.
+    /// Production code outside this type selects through
+    /// `setSelectedSession(id:)`. Direct writes are for `WindowRuntime`'s own
+    /// actions and for unit tests (which also write `nil`).
+    public internal(set) var selectedSessionID: UUID? {
         didSet {
             guard oldValue != selectedSessionID else { return }
             applyTerminalVisibility(deselecting: oldValue, selecting: selectedSessionID)

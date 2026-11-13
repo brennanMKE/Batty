@@ -527,4 +527,85 @@ struct WindowRuntimeSelectionEffectsTests {
         #expect(other.tree.focusedPaneID == otherFirst.id)
         #expect(front.unseenBellCount == 2, "a focus move in another Session marked the selected Session's Tab seen")
     }
+
+    // MARK: Skipping re-theming when the effective Theme is unchanged
+
+    /// Sets every terminal Tab's controller Theme directly, bypassing the
+    /// applied-Theme record, so a later re-theme is observable.
+    private func stamp(_ theme: GhosttyThemeDefinition, onto session: SessionRuntime) {
+        for pane in session.tree.allPanes where pane.kind == .terminal {
+            for tab in pane.tabs { tab.terminal.controller.setTheme(theme.toTerminalTheme()) }
+        }
+    }
+
+    private func thirdTheme(_ f: Fixture) throws -> GhosttyThemeDefinition {
+        try #require(BattyThemeCatalog.allThemes.first { $0.name != f.global.name && $0.name != f.sessionTheme.name })
+    }
+
+    @Test func switchingBetweenSessionsWithTheSameThemeDoesNotReapplyTerminalTheme() throws {
+        let f = try Fixture()
+        let b = f.window.addSession()
+        f.window.setSelectedSession(id: b.id)
+        f.window.setSelectedSession(id: f.source.id)
+        stamp(f.sessionTheme, onto: f.source)
+        f.window.setSelectedSession(id: b.id)
+        f.window.setSelectedSession(id: f.source.id)
+        #expect(f.uses(f.sessionTheme, f.source))
+    }
+
+    @Test func switchingToASessionWithADifferentThemeAppliesIt() throws {
+        let f = try Fixture()
+        let b = f.window.addSession()
+        b.themeOverride = f.pair
+        f.window.setSelectedSession(id: b.id)
+        f.window.setSelectedSession(id: f.source.id)
+        f.window.setSelectedSession(id: b.id)
+        #expect(f.uses(f.sessionTheme, b))
+        #expect(f.uses(f.global, f.source))
+        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.sessionTheme))
+    }
+
+    @Test func clearingASessionThemeOverrideReappliesTheGlobalThemeOnNextSelection() throws {
+        let f = try Fixture()
+        let b = f.window.addSession()
+        b.themeOverride = f.pair
+        f.window.setSelectedSession(id: f.source.id)
+        f.window.setSelectedSession(id: b.id)
+        #expect(f.uses(f.sessionTheme, b))
+        f.window.setSelectedSession(id: f.source.id)
+        b.themeOverride = nil
+        f.window.setSelectedSession(id: b.id)
+        #expect(f.uses(f.global, b))
+    }
+
+    @Test func appearanceChangeReappliesAfterASkippedSwitch() throws {
+        let f = try Fixture()
+        let light = try thirdTheme(f)
+        f.files.testDefaults.defaults.set(light.name, forKey: ThemePreference.lightDefaultsKey)
+        let b = f.window.addSession()
+        f.window.setSelectedSession(id: b.id)
+        f.window.setSelectedSession(id: f.source.id)
+        stamp(f.sessionTheme, onto: f.source)
+        f.window.setSelectedSession(id: b.id)
+        f.window.setSelectedSession(id: f.source.id)
+        #expect(f.uses(f.sessionTheme, f.source))
+        f.store.applySelectionTheme(for: f.window, isDark: false)
+        #expect(f.uses(light, f.source))
+        f.store.applyGlobalThemeForCurrentAppearance(isDark: false)
+        stamp(f.sessionTheme, onto: f.source)
+        f.store.applySelectionTheme(for: f.window, isDark: false)
+        #expect(f.uses(f.sessionTheme, f.source))
+    }
+
+    @Test func previewedGlobalThemeIsReplacedOnNextSelection() throws {
+        let f = try Fixture()
+        let third = try thirdTheme(f)
+        let b = f.window.addSession()
+        f.window.setSelectedSession(id: b.id)
+        f.window.setSelectedSession(id: f.source.id)
+        f.store.applyThemeToAllSurfaces(third, isDark: true)
+        #expect(f.uses(third, b))
+        f.window.setSelectedSession(id: b.id)
+        #expect(f.uses(f.global, b))
+    }
 }

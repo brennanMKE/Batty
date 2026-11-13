@@ -1450,8 +1450,9 @@ public final class AppStateStore {
         windows[0].sessions
     }
 
-    public var selectedSessionID: UUID? {
-        // windows[0]: read-only shim used only in unit tests and UITestDriver.
+    public internal(set) var selectedSessionID: UUID? {
+        // windows[0]: shim used only in unit tests and UITestDriver. The
+        // setter is test-only; it writes directly, so `nil` is allowed.
         get { windows[0].selectedSessionID }
         set { windows[0].selectedSessionID = newValue }
     }

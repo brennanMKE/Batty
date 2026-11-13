@@ -125,7 +125,7 @@ public enum UITestDriver {
                 logger.notice("ui-test: selectSession not-found name=\(name, privacy: .public)")
                 return
             }
-            store.selectedSessionID = session.id
+            store.windows[0].setSelectedSession(id: session.id)
 
         case .closeSession(let name):
             guard let session = store.sessions.first(where: { $0.title == name }) else {
