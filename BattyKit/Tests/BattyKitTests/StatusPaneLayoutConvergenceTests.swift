@@ -402,13 +402,14 @@ struct StatusPaneLayoutConvergenceTests {
         windowRuntime.selectSession(at: 0)
 
         let probe = LayoutConvergenceProbe(
-            NavigationSplitView {
-                SessionSidebarView(store: store, windowRuntime: windowRuntime)
-            } detail: {
-                SessionDetailView(store: store, windowRuntime: windowRuntime)
+            WindowChromeScope(store: store, windowRuntime: windowRuntime) {
+                NavigationSplitView {
+                    SessionSidebarView(store: store, windowRuntime: windowRuntime)
+                } detail: {
+                    SessionDetailView(store: store, windowRuntime: windowRuntime)
+                }
             }
-            .environment(\.appStateStore, store)
-            .environment(\.themeChrome, store.themeChrome),
+            .environment(\.appStateStore, store),
             size: CGSize(width: 1100, height: 700),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         )

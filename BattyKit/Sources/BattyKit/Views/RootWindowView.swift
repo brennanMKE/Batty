@@ -50,17 +50,18 @@ public struct RootWindowView: View {
 
     @ViewBuilder
     private func content(_ windowRuntime: WindowRuntime) -> some View {
-        WindowSeeThroughScope(store: store, windowRuntime: windowRuntime) {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                SessionSidebarView(store: store, windowRuntime: windowRuntime)
-                    .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
-            } detail: {
-                SessionDetailView(store: store, windowRuntime: windowRuntime)
-                    .environment(\.paneWindowCorners, WindowCorners.detailArea(sidebarHidden: columnVisibility == .detailOnly))
+        WindowChromeScope(store: store, windowRuntime: windowRuntime) {
+            WindowSeeThroughScope(store: store, windowRuntime: windowRuntime) {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SessionSidebarView(store: store, windowRuntime: windowRuntime)
+                        .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+                } detail: {
+                    SessionDetailView(store: store, windowRuntime: windowRuntime)
+                        .environment(\.paneWindowCorners, WindowCorners.detailArea(sidebarHidden: columnVisibility == .detailOnly))
+                }
             }
         }
         .environment(\.appStateStore, store)
-        .environment(\.themeChrome, store.themeChrome)
         .background(WindowIDRegistrar(windowID: windowID, store: store))
         .background(WindowLifecycleController(windowID: windowID, store: store))
         .task { UITestDriver.runIfNeeded(store: store) }
@@ -109,68 +110,72 @@ public struct RootWindowView: View {
 /// Manages the window lifecycle for a single content window:
 ///   - wires `WindowRuntime.closeWindowCallback` so a "last session closed"
 ///     event closes the NSWindow;
-///   - installs itself as `NSWindowDelegate` to intercept the close button
-///     (`windowShouldClose`) and prompt when live sessions are present;
-///   - tears down the window's terminal host and registry entries on close.
+///   - installs `WindowDelegate` as the `NSWindowDelegate` to intercept the
+///     close button (`windowShouldClose`), track occlusion and full screen,
+///     and tear down the window's terminal host and registry entries on
+///     close.
 ///
-/// Placed in the SwiftUI tree as an invisible `NSViewRepresentable` so it
-/// has access to the hosting `NSWindow` via `updateNSView`. Follows the
-/// same deferred pattern as `WindowChromeApplier`: all AppKit side-effects
-/// are dispatched off the update pass to avoid running inside the layout
-/// pass (`docs/swiftui-observation-rules.md` AppKit interop section).
-/// `WindowIDRegistrar` no longer follows this pattern (#0437) — it
-/// registers synchronously from `viewDidMoveToWindow` instead, because a
-/// deferred registration left a gap where a window could become key before
-/// it was registered.
+/// Both are installed synchronously by `WindowLifecycleNSView` when it moves
+/// into the window, like `WindowIDRegistrar` (#0437). A `WindowGroup`
+/// window gets its content before it is ordered in, so the delegate sees
+/// the order-in as its first occlusion transition. `updateNSView` does
+/// nothing.
 private struct WindowLifecycleController: NSViewRepresentable {
     let windowID: WindowID
     let store: AppStateStore
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
+    func makeNSView(context: Context) -> WindowLifecycleNSView {
+        WindowLifecycleNSView(windowID: windowID, store: store)
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
+    func updateNSView(_ nsView: WindowLifecycleNSView, context: Context) {}
+}
+
+/// The `NSView` backing `WindowLifecycleController`. Installs the window's
+/// delegate and `closeWindowCallback` from `viewDidMoveToWindow`.
+///
+/// Safe even though `viewDidMoveToWindow` can run while SwiftUI is attaching
+/// this view mid-update, for the same reason as `RegistrarNSView`: of what it
+/// writes, not when. `NSWindow.delegate` is a plain AppKit property and
+/// `closeWindowCallback` is `@ObservationIgnored`, so neither notifies an
+/// observer, and neither dirties constraints or changes the first responder.
+/// It deliberately reads no occlusion or key state: writing them here could
+/// suspend Pane content mid-update. `WindowDelegate` and the app-wide
+/// `didBecomeKeyNotification` deliver them as events instead.
+///
+/// Not `private`: `WindowLifecycleNSViewTests` builds it directly.
+final class WindowLifecycleNSView: NSView {
+    private let windowID: WindowID
+    private let store: AppStateStore
+    /// Retained here because `NSWindow.delegate` is weak.
+    let windowDelegate: WindowDelegate
+
+    init(windowID: WindowID, store: AppStateStore) {
+        self.windowID = windowID
+        self.store = store
+        self.windowDelegate = WindowDelegate(windowID: windowID, store: store)
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        if window.delegate !== windowDelegate {
+            window.delegate = windowDelegate
+        }
         let id = windowID
-        let appStore = store
-        DispatchQueue.main.async {
-            guard let window = nsView.window else { return }
-            // Install delegate (idempotent — coordinator is retained by context).
-            if window.delegate == nil || !(window.delegate is WindowDelegate) {
-                window.delegate = context.coordinator
-            }
-            // Wire closeWindowCallback on the runtime so onAllSessionsClosed
-            // (last session closed) closes the NSWindow.
-            if let runtime = appStore.existingWindowRuntime(for: id), runtime.closeWindowCallback == nil {
-                runtime.closeWindowCallback = { [weak window] in
-                    logger.info("closeWindowCallback: closing windowID=\(id.value, privacy: .public)")
-                    window?.performClose(nil)
-                }
-            }
-            // Sync the store's initial occlusion state — the delegate's
-            // windowDidChangeOcclusionState only fires on a subsequent
-            // transition, so a window created already occluded (or this
-            // being the first time occlusion is wired up for it) needs an
-            // explicit read here. Idempotent at the store (#0288) and at
-            // `WindowRuntime.setWindowVisible` (#0601).
-            let visible = window.occlusionState.contains(.visible)
-            TerminalHostStore.shared.setWindowOcclusionVisible(visible, forWindowID: id)
-            appStore.existingWindowRuntime(for: id)?.setWindowVisible(visible)
-            // Same reason for the key state: a window already key when it
-            // registered missed `didBecomeKeyNotification`, so its chrome is
-            // applied here. Harmless on every update: the key-window record
-            // and the chrome palette (an equal `Equatable` write doesn't
-            // notify) are both idempotent.
-            if window.isKeyWindow {
-                appStore.contentWindowBecameKey(id)
+        if let runtime = store.existingWindowRuntime(for: id), runtime.closeWindowCallback == nil {
+            runtime.closeWindowCallback = { [weak window] in
+                logger.info("closeWindowCallback: closing windowID=\(id.value, privacy: .public)")
+                window?.performClose(nil)
             }
         }
-    }
-
-    func makeCoordinator() -> WindowDelegate {
-        WindowDelegate(windowID: windowID, store: store)
     }
 }
 
@@ -299,12 +304,35 @@ public enum SidebarPreference {
     }
 }
 
+/// The only view that reads `AppStateStore.themeChrome(for:)`, which
+/// depends on the window's selected Session, its Theme override and
+/// preview, the global Theme names and preview, and the appearance. Those
+/// changes re-evaluate only this view; `content` is stored, so it is not
+/// rebuilt, and it receives the identical `ThemeChrome` unless the window's
+/// Theme actually changes. Nothing writes the chrome.
+struct WindowChromeScope<Content: View>: View {
+    let store: AppStateStore
+    let windowRuntime: WindowRuntime
+    let content: Content
+
+    init(store: AppStateStore, windowRuntime: WindowRuntime, @ViewBuilder content: () -> Content) {
+        self.store = store
+        self.windowRuntime = windowRuntime
+        self.content = content()
+    }
+
+    var body: some View {
+        content.environment(\.themeChrome, store.themeChrome(for: windowRuntime))
+    }
+}
+
 /// The only view that reads `AppStateStore.isWindowSeeThrough`, which depends
 /// on every Pane and Tab in the window. Splits, closes and Tab edits in any
 /// Session re-evaluate only this view, not its parent, and `content` is
 /// stored, so it is not rebuilt; it receives an equal `Bool` unless the
 /// window actually flips.
 struct WindowSeeThroughScope<Content: View>: View {
+    @Environment(\.themeChrome) private var themeChrome
     let store: AppStateStore
     let windowRuntime: WindowRuntime
     let content: Content
@@ -319,7 +347,7 @@ struct WindowSeeThroughScope<Content: View>: View {
         let isSeeThrough = store.isWindowSeeThrough(windowRuntime)
         content
             .environment(\.windowIsSeeThrough, isSeeThrough)
-            .background(WindowChromeApplier(palette: store.themeChrome.palette, isSeeThrough: isSeeThrough))
+            .background(WindowChromeApplier(palette: themeChrome?.palette ?? .default, isSeeThrough: isSeeThrough))
     }
 }
 

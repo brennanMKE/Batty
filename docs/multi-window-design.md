@@ -261,7 +261,8 @@ cross-cutting services):
   `isFocused` test additionally requires the owning window to be the key
   content window).
 - `bellFeed: BellFeedStore`, `nameCache: SessionNameCache`,
-  `themeChrome` / theme selection, the AI-naming machinery
+  theme selection (each window's chrome is derived per window since
+  #0612), the AI-naming machinery
   (`nameSuggester`, memo, in-flight tasks — keyed by session/path, not
   window), and `notifier`.
 - Process-wide infrastructure unchanged: `SurfaceRegistry`,

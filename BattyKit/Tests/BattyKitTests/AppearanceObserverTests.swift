@@ -15,8 +15,8 @@ import Testing
 /// assumption were ever wrong.
 // `.serialized` because this suite mutates the process-global
 // `NSApp.appearance`, and Swift Testing parallelises suites by default.
-// Every `AppStateStore` construction reads `NSApp.effectiveAppearance` via
-// `ThemePreference.activeTheme(isDark:defaults:)` to seed `themeChrome` —
+// Every `AppStateStore` construction reads `NSApp.effectiveAppearance` to
+// seed `appearanceIsDark` —
 // regardless of which `preferences` it's given — so a sibling suite's own
 // `AppStateStore()` could observe this test's appearance flip mid-init if
 // the two ran concurrently. The theme keys this test pins live on a
@@ -49,12 +49,12 @@ struct AppearanceObserverTests {
         defer { NSApp.appearance = originalAppearance }
 
         let wasDark = NSApp.effectiveAppearance.isDark
-        let before = store.themeChrome.palette
+        let before = store.chromePalette(for: store.windows[0])
 
         NSApp.appearance = NSAppearance(named: wasDark ? .aqua : .darkAqua)
 
         let expectedTheme = ThemePreference.activeTheme(isDark: !wasDark, defaults: defaults)
-        let after = store.themeChrome.palette
+        let after = store.chromePalette(for: store.windows[0])
 
         // Distinct dark/light defaults guarantee `before != expected`, so
         // `after == expected` only holds if the KVO callback actually ran

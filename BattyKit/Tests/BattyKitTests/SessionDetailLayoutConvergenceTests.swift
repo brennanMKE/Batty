@@ -170,7 +170,7 @@ struct SessionDetailLayoutConvergenceTests {
             let switched = await fixture.probe.settle()
             #expect(switched.converged, "Session \(index): \(switched)")
             perSwitch.append(switched.postNeedsUpdateConstraintsCalls)
-            paletteAfter[index] = store.themeChrome.palette
+            paletteAfter[index] = store.chromePalette(for: windowRuntime)
         }
 
         for index in 1...3 {

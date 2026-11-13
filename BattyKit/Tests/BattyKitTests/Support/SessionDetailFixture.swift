@@ -12,13 +12,14 @@ struct SessionDetailTestTree: View {
     let windowRuntime: WindowRuntime
 
     var body: some View {
-        NavigationSplitView {
-            SessionSidebarView(store: store, windowRuntime: windowRuntime)
-        } detail: {
-            SessionDetailView(store: store, windowRuntime: windowRuntime)
+        WindowChromeScope(store: store, windowRuntime: windowRuntime) {
+            NavigationSplitView {
+                SessionSidebarView(store: store, windowRuntime: windowRuntime)
+            } detail: {
+                SessionDetailView(store: store, windowRuntime: windowRuntime)
+            }
         }
         .environment(\.appStateStore, store)
-        .environment(\.themeChrome, store.themeChrome)
     }
 }
 

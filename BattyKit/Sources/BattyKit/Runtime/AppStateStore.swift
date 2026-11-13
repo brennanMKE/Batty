@@ -24,7 +24,6 @@ public final class AppStateStore {
     /// `BattyKit`.
     let bellDecisionHistory = BellDecisionHistory()
     public let nameCache: SessionNameCache
-    public let themeChrome: ThemeChrome
     /// Owns the footprint sampling timer (#0290). Constructed in `init` from
     /// this store's `preferences` — never started here, though: `start()` is
     /// production-only wiring (`BattyAppDelegate`), so constructing an
@@ -80,10 +79,11 @@ public final class AppStateStore {
     /// `applyAppearanceToAllSurfaces`, the footprint soft limit `init` hands
     /// to `footprintMonitor` (`FootprintMonitor(defaults:)`, read on each
     /// sample via `resolvedFootprintSoftLimitBytes(defaults:)`), and the
-    /// theme resolution this `init` seeds `themeChrome` from
-    /// (`ThemePreference.activeTheme(isDark:defaults:)`) and that
-    /// `applyGlobalThemeForCurrentAppearance`/`applySelectionTheme`
-    /// re-resolve on appearance/session changes.
+    /// global Theme names this `init` seeds `globalDarkThemeName` /
+    /// `globalLightThemeName` from (after
+    /// `ThemePreference.migrateAndSeedIfNeeded(into:)`), and the theme
+    /// resolution `applyGlobalThemeForCurrentAppearance`/`applySelectionTheme`
+    /// re-run on appearance/session changes.
     /// `PasteDispatcher.handlePasteRequest` and `QuitConfirmation
     /// .shouldQuitOrPrompt(store:)` (called from `Batty/BattyApp.swift`)
     /// both take a store and read its `preferences` internally.
@@ -101,10 +101,28 @@ public final class AppStateStore {
     /// `.standard` through one `cfprefsd` (#0426).
     @ObservationIgnored public let preferences: UserDefaults
 
-    // Transient Theme-preview bookkeeping, owned by the store so a sheet's
-    // `onDismiss` can restore the committed Theme without the view tracking it.
-    @ObservationIgnored var globalThemePreviewPending = false
-    @ObservationIgnored var sessionThemePreviewIDs: Set<UUID> = []
+    // Observed inputs of every window's derived chrome
+    // (`themeChrome(for:)`). Each has one event-origin writer.
+
+    /// The system appearance. Seeded in `init`; written after that only by
+    /// `applyGlobalThemeForCurrentAppearance(isDark:)`, which runs from the
+    /// appearance KVO observer.
+    public internal(set) var appearanceIsDark: Bool
+    /// The global Theme names for each appearance, `nil` for "Default".
+    /// Seeded in `init`; written after that only by
+    /// `setGlobalTheme(named:isDark:appearanceIsDark:)`.
+    public internal(set) var globalDarkThemeName: String?
+    public internal(set) var globalLightThemeName: String?
+    /// The uncommitted global Theme preview, if any. Set by
+    /// `previewGlobalTheme`; cleared by `endGlobalThemePreview` and
+    /// `setGlobalTheme`. Owned by the store so a sheet's `onDismiss` can
+    /// restore the committed Theme without the view tracking it.
+    var globalThemePreviewName: String?
+    /// Uncommitted Session Theme previews by Session id. Inserted by
+    /// `previewSessionTheme`; removed by `setSessionTheme` and
+    /// `endSessionThemePreviews`.
+    var sessionThemePreviewNames: [UUID: String] = [:]
+    @ObservationIgnored let themeChromeCache = ThemeChromeCache()
 
     /// The only route from the persisted background keys to a builder.
     @ObservationIgnored let backgroundGate: AppWideBackgroundGate
@@ -1153,17 +1171,12 @@ public final class AppStateStore {
         contentWindowBecameKey(windowID)
     }
 
-    /// A content window became key: records it (#0439) and points the
-    /// app-wide chrome at its selected Session's Theme, since the chrome
-    /// follows the default target window. Called from
-    /// `handleWindowDidBecomeKey(_:)` and from `WindowLifecycleController`'s
-    /// off-pass block when the window is already key there. Idempotent:
-    /// re-assigning an equal `ChromePalette` doesn't notify (`@Observable`
-    /// skips equal writes to an `Equatable` property).
+    /// A content window became key. The event-origin key-window hook: its
+    /// only caller is `handleWindowDidBecomeKey(_:)`, an AppKit
+    /// notification, never a view update. Records the key order (#0439).
+    /// The chrome does not depend on key state (`themeChrome(for:)`).
     func contentWindowBecameKey(_ id: WindowID) {
         noteContentWindowBecameKey(id)
-        guard let window = windows.first(where: { $0.id == id }) else { return }
-        applyChrome(for: window)
     }
 
     /// Single policy resolver for every no-target Window fallback (#0439):
@@ -1377,10 +1390,10 @@ public final class AppStateStore {
             calendar: reminderCalendar
         )
         self.footprintMonitor = FootprintMonitor(defaults: preferences)
-        self.themeChrome = ThemeChrome(palette: ChromePalette(theme: ThemePreference.activeTheme(
-            isDark: NSApp?.effectiveAppearance.isDark ?? true,
-            defaults: preferences
-        )))
+        self.appearanceIsDark = NSApp?.effectiveAppearance.isDark ?? true
+        ThemePreference.migrateAndSeedIfNeeded(into: preferences)
+        self.globalDarkThemeName = ThemePreference.storedThemeName(isDark: true, defaults: preferences)
+        self.globalLightThemeName = ThemePreference.storedThemeName(isDark: false, defaults: preferences)
         let window = WindowRuntime(
             sessions: sessions,
             bellFeed: bellFeed,

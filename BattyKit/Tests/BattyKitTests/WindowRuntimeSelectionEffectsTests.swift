@@ -117,7 +117,7 @@ struct WindowRuntimeSelectionEffectsTests {
         #expect(f.window.selectedSessionID == f.source.id)
         #expect(tab.unseenBellCount == 2 && pane.unseenBellCount == 2 && session.unseenBellCount == 2)
         #expect(f.source.pendingClipboardConfirmation != nil)
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.global))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.global))
         #expect(!f.uses(f.sessionTheme, session))
         return Target(project: project, session: session, pane: pane, tab: tab)
     }
@@ -208,7 +208,7 @@ struct WindowRuntimeSelectionEffectsTests {
         let f = try Fixture()
         let t = try existingTarget(f)
         try select(path, t, f)
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.sessionTheme))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.sessionTheme))
         #expect(f.uses(f.sessionTheme, t.session))
     }
 
@@ -225,11 +225,11 @@ struct WindowRuntimeSelectionEffectsTests {
         let f = try Fixture()
         let t = try existingTarget(f)
         f.window.setSelectedSession(id: t.session.id)
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.sessionTheme))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.sessionTheme))
 
         f.window.addSession()
 
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.global))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.global))
     }
 
     @Test func duplicateCarriesTheSourceSessionThemeToItsSurfaces() throws {
@@ -240,7 +240,7 @@ struct WindowRuntimeSelectionEffectsTests {
 
         #expect(copy.themeOverride == f.pair)
         #expect(f.uses(f.sessionTheme, copy))
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.sessionTheme))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.sessionTheme))
     }
 
     @Test func reselectingTheSelectedSessionRunsNoEffects() throws {
@@ -391,32 +391,25 @@ struct WindowRuntimeSelectionEffectsTests {
         return (second, themed)
     }
 
-    @Test func selectionInANonTargetWindowThemesSurfacesButLeavesChromeAlone() throws {
+    @Test func selectionInANonTargetWindowThemesSurfacesButLeavesOtherChromeAlone() throws {
         let f = try Fixture()
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.global))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.global))
 
         let (second, themed) = themedSecondWindow(f)
 
         #expect(f.store.defaultTargetWindow() === f.window)
         #expect(second.selectedSessionID == themed.id)
         #expect(f.uses(f.sessionTheme, themed))
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.global))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.global))
     }
 
-    @Test func contentWindowBecameKeyAppliesThatWindowsChrome() throws {
+    @Test func eachWindowsChromeFollowsItsOwnSelection() throws {
         let f = try Fixture()
         let (second, _) = themedSecondWindow(f)
-        let nsWindow = NSWindow()
-        f.store.registerNSWindow(nsWindow, for: second.id)
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.global))
-
-        f.store.contentWindowBecameKey(second.id)
-
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.sessionTheme))
-        #expect(f.store.defaultTargetWindow() === second)
+        #expect(f.store.chromePalette(for: second) == ChromePalette(theme: f.sessionTheme))
         f.window.addSession()
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.sessionTheme), "a selection in the other window moved the chrome")
-        withExtendedLifetime(nsWindow) {}
+        #expect(f.store.chromePalette(for: second) == ChromePalette(theme: f.sessionTheme), "a selection in the other window moved this window's chrome")
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.global))
     }
 
     // MARK: - Passive focus moves
@@ -562,7 +555,7 @@ struct WindowRuntimeSelectionEffectsTests {
         f.window.setSelectedSession(id: b.id)
         #expect(f.uses(f.sessionTheme, b))
         #expect(f.uses(f.global, f.source))
-        #expect(f.store.themeChrome.palette == ChromePalette(theme: f.sessionTheme))
+        #expect(f.store.chromePalette(for: f.window) == ChromePalette(theme: f.sessionTheme))
     }
 
     @Test func clearingASessionThemeOverrideReappliesTheGlobalThemeOnNextSelection() throws {

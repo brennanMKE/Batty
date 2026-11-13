@@ -182,9 +182,9 @@ struct ThemeSelectionOwnershipTests {
         store.endSessionThemePreviews(in: w1, isDark: true)
         #expect(on(g, s1))
         #expect(on(b, s2))
-        #expect(store.sessionThemePreviewIDs.contains(s2.id))
+        #expect(store.sessionThemePreviewNames[s2.id] == b.name)
         store.endSessionThemePreviews(in: w2, isDark: true)
         #expect(on(g, s2))
-        #expect(store.sessionThemePreviewIDs.isEmpty)
+        #expect(store.sessionThemePreviewNames.isEmpty)
     }
 }

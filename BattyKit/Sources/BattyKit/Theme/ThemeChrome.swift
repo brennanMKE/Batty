@@ -1,35 +1,29 @@
 // ThemeChrome.swift
 
-import Observation
 import SwiftUI
 
-/// Single source of truth for the chrome palette derived from the active
-/// `.ghostty` theme. SwiftUI chrome views (sidebar, tab bar, dividers,
-/// pane border) read these colors via the environment so a theme switch
-/// repaints the chrome live, in lockstep with the libghostty surface
-/// repaint.
+/// A chrome palette derived from a `.ghostty` theme. SwiftUI chrome views
+/// (sidebar, tab bar, dividers, pane border) read these colors via the
+/// environment so a theme switch repaints the chrome live, in lockstep with
+/// the libghostty surface repaint.
+///
+/// Immutable and not observed. Each content window's `WindowChromeScope`
+/// injects `AppStateStore.themeChrome(for:)`, which returns one shared
+/// instance per Theme name (`ThemeChromeCache`). A selection or Theme change
+/// re-runs only that scope, and the readers below it re-render only when the
+/// injected instance changes, that is, when the window's Theme does.
 ///
 /// Every color is optional. `nil` means "fall back to the standard macOS
 /// adaptive chrome" — that's the default state when no theme is selected
 /// or the theme file doesn't expose the needed slot. Chrome views translate
 /// `nil` into their pre-theming default (`.windowBackgroundColor`,
 /// `.accentColor`, `Color.gray.opacity(...)`, etc.).
-@Observable
 @MainActor
 public final class ThemeChrome {
-    public private(set) var palette: ChromePalette
+    public let palette: ChromePalette
 
     public init(palette: ChromePalette = .default) {
         self.palette = palette
-    }
-
-    /// Recomputes the palette from a Ghostty theme. Pass `nil` to revert
-    /// to the system default chrome. Every Session switch and key-window
-    /// change calls this; an equal palette doesn't re-notify chrome readers
-    /// because `ChromePalette` is `Equatable` and the `@Observable` setter
-    /// skips equal writes (`shouldNotifyObservers`).
-    public func update(from theme: GhosttyThemeDefinition?) {
-        palette = ChromePalette(theme: theme)
     }
 
     // Convenience accessors. Chrome views read these directly and fall
@@ -47,6 +41,28 @@ public final class ThemeChrome {
     public var tabActiveStroke: Color? { palette.tabActiveStroke }
     public var tabInactiveStroke: Color? { palette.tabInactiveStroke }
     public var sidebarSelectionTint: Color? { palette.sidebarSelectionTint }
+}
+
+/// One `ThemeChrome` per Theme name, so resolving a window's chrome from
+/// `body` scans `BattyThemeCatalog` only on a miss and an unchanged Theme
+/// yields the identical instance. Not observed: its contents are a pure
+/// function of the name.
+@MainActor
+final class ThemeChromeCache {
+    private var chromes: [String: ThemeChrome] = [:]
+    let systemDefault = ThemeChrome(palette: .default)
+
+    /// `nil` is the system default chrome; a name the catalog lacks gets the
+    /// default palette.
+    func chrome(forThemeNamed name: String?) -> ThemeChrome {
+        guard let name else { return systemDefault }
+        if let cached = chromes[name] { return cached }
+        let chrome = ThemeChrome(palette: ChromePalette(theme: BattyThemeCatalog.theme(named: name)))
+        chromes[name] = chrome
+        return chrome
+    }
+
+    var countForTesting: Int { chromes.count }
 }
 
 public struct ChromePalette: Sendable, Equatable {

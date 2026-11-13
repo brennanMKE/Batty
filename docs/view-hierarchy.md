@@ -143,14 +143,14 @@ Notes on the layout:
 - `RootWindowView.init` is the only view code that can create a runtime,
   through `AppStateStore.runtimeForPresentedWindow`, and keeps the result
   in `@State`. `SessionSidebarView` and `SessionDetailView` receive the
-  `WindowRuntime`; `WindowLifecycleController` and `WindowDelegate` only look
+  `WindowRuntime`; `WindowLifecycleNSView` and `WindowDelegate` only look
   one up, with `existingWindowRuntime(for:)`. SwiftUI can rebuild these views
   after `removeWindow`, so a closed id stays closed (`nil`) rather than
   reviving a runtime with a Session in it (#0546).
 
 ### See-through windows (#0539)
 
-A content window is non-opaque while `AppStateStore.isWindowSeeThrough` is true: the window isn't in native full screen, and some terminal Pane in any of its Sessions is below full terminal opacity. A Pane's opacity resolves through its own override, its Session's, then the app-wide value. The value is computed, not stored, so it has no writer of its own. `WindowSeeThroughScope`, which wraps the `NavigationSplitView` in `RootWindowView`, is its only reader in views and hands it to `WindowChromeApplier` and to `\.windowIsSeeThrough`, so a structural change in any Session re-evaluates only that scope, not `RootWindowView.body` (#0608). `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`, writes only the properties that differ, and runs in the applier's deferred hop, never inside the layout pass. The fills sit in `.background`s below or beside the surface, and the terminal host's position doesn't change.
+A content window is non-opaque while `AppStateStore.isWindowSeeThrough` is true: the window isn't in native full screen, and some terminal Pane in any of its Sessions is below full terminal opacity. A Pane's opacity resolves through its own override, its Session's, then the app-wide value. The value is computed, not stored, so it has no writer of its own. `WindowSeeThroughScope`, which wraps the `NavigationSplitView` in `RootWindowView`, is its only reader in views and hands it to `WindowChromeApplier` and to `\.windowIsSeeThrough`, so a structural change in any Session re-evaluates only that scope, not `RootWindowView.body` (#0608). It sits inside `WindowChromeScope`, the only view that derives the window's chrome (`AppStateStore.themeChrome(for:)`), and takes the palette it hands to `WindowChromeApplier` from `\.themeChrome` (#0612). `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`, writes only the properties that differ, and runs in the applier's deferred hop, never inside the layout pass. The fills sit in `.background`s below or beside the surface, and the terminal host's position doesn't change.
 
 A press on the title strip's empty views doesn't drag a non-opaque window on macOS 27.0, for a reason not known, though it does reach the app (#0548). So `TerminalClickFocusMonitor` calls `performDrag(with:)` for those presses, by an exact class name allowlist in `TitleStripDrag`. Opaque windows don't take this path.
 

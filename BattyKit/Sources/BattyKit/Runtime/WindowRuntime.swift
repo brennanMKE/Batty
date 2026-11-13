@@ -79,9 +79,9 @@ public final class WindowRuntime {
     /// focus moves. The rest is harmless, since `PaneRuntime.init` already
     /// starts a freshly-constructed Session's panes in the right phase,
     /// `AppStateStore.registerNSWindow` focuses the selected Session's
-    /// focused Tab when the window's content first registers, and a
-    /// new window's chrome is applied when it becomes key
-    /// (`AppStateStore.contentWindowBecameKey`). The multi-Session
+    /// focused Tab when the window's content first registers, and the
+    /// window's chrome is derived from its selection
+    /// (`AppStateStore.themeChrome(for:)`). The multi-Session
     /// `init(sessions:)` overload has no production call site (every
     /// production `WindowRuntime` is created with `sessions: []`); test
     /// code that constructs one directly with several non-empty Sessions
@@ -116,10 +116,10 @@ public final class WindowRuntime {
 
     /// Window occlusion for non-terminal Pane content, the counterpart of
     /// `TerminalHostStore.setWindowOcclusionVisible` for terminals. Called
-    /// from `WindowDelegate.windowDidChangeOcclusionState` and the initial
-    /// occlusion read in `WindowLifecycleController`. Suspends or resumes the
-    /// selected Session's visible Panes; hidden Panes and other Sessions are
-    /// already suspended and stay so.
+    /// only from `WindowDelegate.windowDidChangeOcclusionState`; a window
+    /// starts visible and its first order-in is an occlusion transition.
+    /// Suspends or resumes the selected Session's visible Panes; hidden Panes
+    /// and other Sessions are already suspended and stay so.
     public func setWindowVisible(_ visible: Bool) {
         guard isWindowVisible != visible else { return }
         isWindowVisible = visible

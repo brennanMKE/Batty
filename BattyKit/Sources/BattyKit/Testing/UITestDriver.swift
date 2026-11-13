@@ -254,7 +254,7 @@ public enum UITestDriver {
                 logger.notice("ui-test: applyThemeToActiveSession no selected session")
                 return
             }
-            store.applyTheme(theme, to: session)
+            store.setSessionTheme(theme, for: session)
 
         case .beginPaneSwapDrag(let paneIndex):
             guard let session = store.selectedSession else {

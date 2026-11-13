@@ -371,22 +371,46 @@ The session-local picker (`SessionThemeSelectorView`) commits through
 
 `AppStateStore.applySelectionTheme(for:)` runs on every session switch,
 from `WindowRuntime.selectedSessionID`'s `didSet` (#0602). It
-resolves the effective theme for the newly-selected session using the
-fallback chain:
+resolves the effective theme for the newly-selected session (the
+override's slot for the appearance, else the global Theme) and re-themes
+that session's terminal surfaces via `setTheme()` when it differs from
+the theme they last got (`appliedTerminalThemeName`, #0613).
 
-1. If `session.themeOverride` has a catalog slot for the appearance → use that theme.
-2. Else if the global `UserDefaults` key is set → use that theme.
-3. Else → call `themeChrome.update(from: nil)` to revert to the
+### Window chrome (derived, per window; #0612)
+
+Each content window's chrome shows **its own** selected session's
+theme. Nothing writes it: `AppStateStore.themeChrome(for:)` derives it
+from observed inputs, and `WindowChromeScope` (`RootWindowView.swift`),
+the only view that calls it, injects the result as
+`\.themeChrome`. `chromeThemeName(for:)` picks the first of:
+
+1. the selected session's uncommitted preview
+   (`sessionThemePreviewNames[session.id]`);
+2. the session's `themeOverride` slot for `appearanceIsDark`, when the
+   catalog has it;
+3. the uncommitted global preview (`globalThemePreviewName`);
+4. the global Theme name for the appearance
+   (`globalDarkThemeName` / `globalLightThemeName`); `nil` means the
    system default chrome.
 
-The chrome is app-wide, so it follows the selected session of the
-**default target window** (the key content window, else the most
-recently key one): a switch in another window re-themes that session's
-surfaces but leaves the chrome alone, and a content window becoming key
-(`contentWindowBecameKey(_:)`) points the chrome at its selected session.
-Terminal surfaces in the selected session are re-themed via
-`setTheme()` on each switch (in case the effective theme changed while
-the session was not selected).
+Steps 3 and 4 apply only to a session that follows the global Theme,
+the same split `applyThemeToAllSurfaces` uses for surfaces. Each input
+has one event-origin writer:
+
+| Input | Writer |
+|---|---|
+| `WindowRuntime.selectedSessionID` | the selection actions (`setSelectedSession(id:)` and friends) |
+| `SessionRuntime.themeOverride` | `setSessionTheme`, Clear Session Theme, Project open, Duplicate |
+| `sessionThemePreviewNames` | `previewSessionTheme` (insert), `setSessionTheme` and `endSessionThemePreviews` (remove) |
+| `globalThemePreviewName` | `previewGlobalTheme` (set), `setGlobalTheme` and `endGlobalThemePreview` (clear) |
+| `globalDarkThemeName` / `globalLightThemeName` | seeded in `AppStateStore.init`, then only `setGlobalTheme` |
+| `appearanceIsDark` | seeded in `AppStateStore.init`, then only `applyGlobalThemeForCurrentAppearance` (appearance KVO) |
+
+`ThemeChromeCache` returns one immutable `ThemeChrome` per theme name,
+so a change that leaves the window's theme the same (a switch between
+two sessions on the same theme) re-runs only `WindowChromeScope` and
+injects the identical instance; chrome readers re-render only when the
+theme actually changes. Key-window changes do not affect the chrome.
 
 ### Changing the global theme
 
@@ -399,10 +423,9 @@ driver's `applyTheme` runs), the caller invokes
 - `applyThemeToAllSurfaces(_:)` applies the new theme to **every
   session whose `themeOverride` is `nil`**. Sessions with a
   local override keep their local theme and are not touched.
-- `themeChrome.update(from:)` is called only if the default target
-  window's selected session has no local override (i.e., it follows
-  global). An equal palette doesn't re-notify chrome readers:
-  `ChromePalette` is `Equatable`, and `@Observable` skips equal writes.
+- It updates `globalDarkThemeName` / `globalLightThemeName`, so every
+  window whose selected session follows the global Theme re-derives its
+  chrome.
 
 `applyThemeToAllSurfaces` must **not** write `themeOverride` on any
 session — the sessions remain "following global" so that the next
@@ -477,9 +500,10 @@ always off-screen otherwise:
 ### Preview and cancel
 
 Arrow keys in either selector preview without committing:
-`previewGlobalTheme(_:)` sets the store's `globalThemePreviewPending`
-flag and applies the Theme; `previewSessionTheme(_:for:)` records the
-Session's id in `sessionThemePreviewIDs` and applies to that Session.
+`previewGlobalTheme(_:)` sets the store's `globalThemePreviewName` and
+applies the Theme; `previewSessionTheme(_:for:)` records the Theme name
+under the Session's id in `sessionThemePreviewNames` and applies to that
+Session. Both are chrome inputs, so the chrome previews too.
 Neither writes a preference or `themeOverride`. The presenting sheet's
 `onDismiss` calls `endGlobalThemePreview()` (`SessionDetailView`) or
 `endSessionThemePreviews(in:)` (`SessionSidebarView`), which re-apply
@@ -499,7 +523,8 @@ dismissal after a commit does nothing.
   on all unoverridden sessions. It must not touch `themeOverride`.
 - `applyTheme(_:to:)` applies visually to one session but does **not**
   set `themeOverride`. That is `setSessionTheme`'s job.
-- The chrome always matches the selected session's effective theme.
+- Each window's chrome matches its selected session's effective theme,
+  or the uncommitted preview. Nothing writes the chrome palette.
 
 ---
 
