@@ -187,30 +187,6 @@ nonisolated final class ViewGalleryTests: XCTestCase {
 
     // MARK: - Capture
 
-    /// Dismisses notification banners over the app: first the "App Background
-    /// Activity" one raised by #0419's LaunchAgent bootstrap, then Batty's own
-    /// "Notifications may include alerts" one. Both are persistent banners, not
-    /// transient ones, so waiting does not clear them; hovering reveals a Close
-    /// button, with a swipe as the fallback.
-    @MainActor
-    @discardableResult
-    private func dismissBanners() -> Bool {
-        var dismissed = false
-        let center = XCUIApplication(bundleIdentifier: "com.apple.notificationcenterui")
-        let predicate = NSPredicate(format: "label CONTAINS 'can run in the background' OR label CONTAINS 'Notifications may include' OR title CONTAINS 'App Background Activity'")
-        for _ in 0..<4 {
-            let banner = center.descendants(matching: .any).matching(predicate).firstMatch
-            guard banner.exists else { break }
-            dismissed = true
-            banner.hover()
-            let close = center.groups["AXNotificationListItems"].buttons["Close"].firstMatch
-            if close.waitForExistence(timeout: 2) { close.click() } else { banner.swipeRight() }
-            _ = waitFor({ !banner.exists }, timeout: 5)
-        }
-        if dismissed { pause(1.5) }
-        return dismissed
-    }
-
     @MainActor
     private func attachText(_ text: String, name: String) {
         let attachment = XCTAttachment(string: text)

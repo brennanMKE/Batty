@@ -424,25 +424,6 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         )
     }
 
-    // MARK: - Banners
-
-    /// The guest's persistent "App Background Activity" banner covers the top right of
-    /// the screen, where the editor header's Symbol button sits, so a click there lands on
-    /// the banner. Hovers it to reveal Close and clicks that, with a swipe as the fallback.
-    @MainActor
-    func dismissBanners() {
-        let center = XCUIApplication(bundleIdentifier: "com.apple.notificationcenterui")
-        let predicate = NSPredicate(format: "label CONTAINS 'can run in the background' OR label CONTAINS 'Notifications may include' OR title CONTAINS 'App Background Activity'")
-        for _ in 0..<4 {
-            let banner = center.descendants(matching: .any).matching(predicate).firstMatch
-            guard banner.exists else { return }
-            banner.hover()
-            let close = center.groups["AXNotificationListItems"].buttons["Close"].firstMatch
-            if close.waitForExistence(timeout: 2) { close.click() } else { banner.swipeRight() }
-            _ = waitFor({ !banner.exists }, timeout: 5)
-        }
-    }
-
     // MARK: - Sidebar glyph
 
     /// The SF Symbol a Sidebar row draws. The row doesn't expose the icon to

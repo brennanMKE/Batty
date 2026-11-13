@@ -105,36 +105,17 @@ on the host instead of after a ~14-minute clone-to-finish cycle.
 
 ## The golden image
 
-| | |
-|---|---|
-| Name | `batty-uitest-golden`, stopped, only ever cloned |
-| Made | `tart clone changeover-uitest-golden batty-uitest-golden` |
-| Created | 2026-09-23 18:27:59 local (`stat -f %SB ~/.tart/vms/batty-uitest-golden`) |
-| Guest | macOS 26.6.2 (25G83), Xcode 27.0 (27A266a) at `/Applications/Xcode_27.app` |
-| CPU / memory | 6 / 12288 MB (inherited from Changeover's golden) |
-| Disk | 140 GB allocated, 73 GB actual per `tart list` (`du -sh` on the VM's directory: 68G — the two differ by rounding, GB vs GiB, plus filesystem overhead) |
-| Hardening | Inherited from Changeover's golden: Automation Mode needs no authentication, developer mode on, no screen lock or sleep, SSH refuses every user (`com.apple.access_ssh` empty) |
-| Access | `tart exec` only |
-| Batty-specific installs | None — the build needs only Xcode and network access for SwiftPM |
+The runner does not name a per-project golden. `tools/run-ui-tests-vm.sh` resolves the one
+shared golden for every project on this host with `tart-golden require --xcode 27.0` (see the
+Homelab `protocols/tart-golden/PROTOCOL.md`) and clones it into a disposable
+`batty-uitest-<run-id>` VM. Agents never build, rebuild, run or modify a golden; rebuilding
+it (e.g. for a new Xcode) is a user action described in that protocol.
 
-Free disk on the host container (`df -h /`, `/` and `/System/Volumes/Data` share one APFS
-container so both report the same free space): **69 GiB free as of 2026-09-23**, after the
-clone (and after the first full run recorded below). The free space *immediately before* the
-clone was not captured when it was made — that happened in an earlier session than this
-record — so it's unknown here; a future rebuild of this golden should capture `df -h /`
-immediately before `tart clone` to close that gap.
-
-Don't run or modify this image directly, and never touch another project's golden
-(`changeover-uitest-golden`, `curator-uitest-golden`, `quartermaster-uitest-golden`,
-`switchyard-uitest-golden`). Batty's is its own APFS clone and can diverge if it ever needs
-to.
-
-**Rebuilding**, when Changeover's golden is rebuilt (e.g. for a new Xcode):
-
-```sh
-tart delete batty-uitest-golden
-tart clone changeover-uitest-golden batty-uitest-golden
-```
+Recorded 2026-09-23 for the earlier per-project image, and expected to still hold for the
+shared one: Xcode 27.0 at `/Applications/Xcode_27.app`; Automation Mode needs no
+authentication, developer mode on, no screen lock or sleep, SSH refuses every user; access is
+`tart exec` only; no Batty-specific installs (the build needs only Xcode and network access
+for SwiftPM).
 
 ## Running the tests
 
@@ -225,8 +206,12 @@ the file extension) and strips the `_<n>_<UUID>` Xcode appends.
   during the Dark pass; `tearDownWithError` flips it back to Light after every test, so a Dark
   guest never reaches another test class.
 - **Banners.** The "App Background Activity" banner (#0419) and Batty's own "Notifications may
-  include alerts" banner are persistent, not transient. Before each capture the test hovers a
-  banner in `com.apple.notificationcenterui` and clicks its Close button.
+  include alerts" banner are persistent, not transient, and sit over the window's trailing
+  toolbar. Every launch goes through `GuestBanners.settleAfterLaunch()` (called from
+  `launchBatty`), which waits once per runner process for the notifications banner and closes
+  any banner that is up by hovering it in `com.apple.notificationcenterui` and clicking Close.
+  `BattyScreen.openBellFeed` sweeps again before its click, and tests call `dismissBanners()`
+  before their own clicks near the top right (the gallery does so before each capture).
 - **Git fixture.** A Pane runs a script that builds the repository with real `git` (the
   sandboxed runner cannot exec it): a bare origin, a second clone that pushes (behind), local
   commits (ahead), then staged, modified, deleted, renamed and untracked files, a staged-then-

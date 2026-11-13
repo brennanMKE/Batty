@@ -376,6 +376,7 @@ nonisolated enum BattyScreen {
     static func openBellFeed(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let bell = app.toolbars.buttons["Bell Feed"].firstMatch
         XCTAssertTrue(bell.waitForExistence(timeout: 10), "no Bell Feed toolbar button", file: file, line: line)
+        GuestBanners.dismissAll()
         bell.click()
         XCTAssertTrue(
             BattyUITestHarness.waitFor({ app.popovers.firstMatch.exists || element("bell-feed.list", in: app).exists || app.staticTexts["No bell events"].exists }, timeout: 10),

@@ -269,7 +269,7 @@ trap cleanup EXIT
 # --- Preflight ---------------------------------------------------------------
 
 command -v tart >/dev/null || fail "Tart is not installed (brew install cirruslabs/cli/tart)"
-tart list | awk '{ print $2 }' | grep -qx "$GOLDEN" || fail "Golden image '$GOLDEN' not found (see docs/ui-testing-vm.md — tart clone changeover-uitest-golden $GOLDEN)"
+tart list | awk '{ print $2 }' | grep -qx "$GOLDEN" || fail "Golden image '$GOLDEN' not found (it is resolved with tart-golden; see docs/ui-testing-vm.md, \"The golden image\")"
 
 [[ -d "$SLIDINGTABS_REPO/.git" ]] || fail "SlidingTabs repo not found at $SLIDINGTABS_REPO — BattyKit/Package.swift depends on it via a local path"
 
