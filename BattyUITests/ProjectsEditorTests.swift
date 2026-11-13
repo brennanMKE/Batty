@@ -116,8 +116,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         let built = try XCTUnwrap(BattyCLI.waitForTopology(timeout: 20) { $0.sessions.first { $0.name == "Built" }?.visiblePanes.count == 3 }?.sessions.first { $0.name == "Built" })
-        // Hand-sized: Panes open at equal sizes, so drag the divider right of the
-        // leftmost terminal Pane. Split ratios are not captured by Save as Project.
+        // Panes open at equal sizes, so the drag makes sizes a restore can be told apart from.
         let terminals = built.panes.filter { $0.kind == "terminal" }
         let leftmost = try XCTUnwrap(terminals.min { BattyScreen.terminalPane($0.id, in: app).frame.minX < BattyScreen.terminalPane($1.id, in: app).frame.minX })
         let leftFrame = BattyScreen.terminalPane(leftmost.id, in: app).frame
@@ -133,11 +132,12 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
             return (widths.max() ?? 0) - (widths.min() ?? 0)
         }
         let unequal = try XCTUnwrap(
-            BattyCLI.waitForTopology(includeDimensions: true) { spread($0) > 20 },
+            BattyCLI.waitForTopology(includeDimensions: true) { spread($0) > 40 },
             "dragging the divider did not make the Panes unequal (equal sizing would prove nothing)"
         )
         let before = try XCTUnwrap(unequal.session(built.id))
         let kinds = before.panes.map(\.kind)
+        let beforeWidths = before.panes.map { $0.frame?.width }
         let tabCounts = before.panes.map(\.tabIDs.count)
         XCTAssertEqual(kinds.filter { $0 == "system-metrics" }.count, 1)
         XCTAssertEqual(tabCounts.filter { $0 == 2 }.count, 1, "exactly one Pane has the added Tab: \(tabCounts)")
@@ -172,10 +172,22 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         XCTAssertEqual(afterSession.panes.map(\.tabIDs.count), tabCounts, "Tab counts differ after the round trip")
         XCTAssertTrue(BattyUITestHarness.tabChip(named: "Build", in: app).waitForExistence(timeout: 10), "the renamed Tab lost its title")
 
-        let sized = try XCTUnwrap(BattyCLI.waitForTopology(includeDimensions: true) { topology in
-            let widths = topology.session(reopened.id)?.panes.compactMap { $0.frame?.width } ?? []
-            return widths.count >= 2 && (widths.max() ?? 0) - (widths.min() ?? 0) < 12
-        }, "the reopened Project did not open at equal sizes")
+        func matchesBefore(_ widths: [CGFloat?]) -> Bool {
+            widths.count == beforeWidths.count && zip(widths, beforeWidths).allSatisfy { a, b in
+                switch (a, b) {
+                case (nil, nil): true
+                case let (a?, b?): abs(a - b) <= 8
+                default: false
+                }
+            }
+        }
+        let restored = BattyCLI.waitForTopology(timeout: 20, includeDimensions: true) { topology in
+            matchesBefore(topology.session(reopened.id)?.panes.map { $0.frame?.width } ?? [])
+        }
+        let lastWidths = BattyCLI.waitForTopology(includeDimensions: true) { _ in true }?.session(reopened.id)?.panes.map { $0.frame?.width }
+        let sized = try XCTUnwrap(restored, "the reopened Project did not restore the Split sizes captured before saving: before \(beforeWidths), after \(String(describing: lastWidths))")
+        let reopenedWidths = sized.session(reopened.id)?.panes.compactMap { $0.frame?.width } ?? []
+        XCTAssertGreaterThan((reopenedWidths.max() ?? 0) - (reopenedWidths.min() ?? 0), 20, "the reopened Panes are equal; sizes were not restored")
         XCTAssertEqual(sized.session(reopened.id)?.panes.count, 3)
     }
 
