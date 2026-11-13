@@ -283,7 +283,12 @@ Focus routing: `BattyShortcuts.run(_:store:)` re-targets from
 `AppStateStore.shared` to *the key window's* `WindowRuntime`; the
 `Cmd-1..9` / `Cmd-Option-1..9` positional dispatch does the same. Menu
 commands in `Commands/BattyCommands.swift` resolve their target the same
-way. **Every change in this area re-reads
+way. Menu enablement and labels read `AppStateStore.keyContentWindow`,
+backed by the observed `keyContentWindowID`, so the `Commands` body re-runs
+when key moves between content windows or one closes. The id is written only
+by the did-become-key handler (`contentWindowBecameKey(_:)`) and the
+window-close path, never from registration. Actions and the CLI resolve
+through `defaultTargetWindow()`. **Every change in this area re-reads
 [`swiftui-observation-rules.md`](swiftui-observation-rules.md) first**:
 window key/main transitions run inside AppKit responder machinery; writes
 to observed selection/focus state triggered by *window-origin* flips must

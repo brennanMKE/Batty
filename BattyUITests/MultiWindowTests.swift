@@ -75,7 +75,42 @@ nonisolated final class MultiWindowTests: XCTestCase {
         }, timeout: 10), "File → New Window should open a second window")
     }
 
+    /// Pane > Layouts… is enabled only for a single-Pane Session, and its
+    /// enablement must follow the key Window: Window 1 is split, Window 2 is
+    /// not, and switching key between them flips the item.
+    @MainActor
+    func testLayoutsMenuItemFollowsTheKeyWindow() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+
+        app.typeKey("d", modifierFlags: [.command])
+        XCTAssertTrue(waitFor({ !self.layoutsItemIsEnabled(in: app) }, timeout: 5),
+                      "Layouts… should be disabled for the split Session in Window 1")
+
+        app.typeKey("n", modifierFlags: [.command, .shift])
+        XCTAssertTrue(waitFor({ app.windows.count >= 2 }, timeout: 10),
+                      "Second window must appear")
+        XCTAssertTrue(waitFor({ self.layoutsItemIsEnabled(in: app) }, timeout: 5),
+                      "Layouts… should be enabled for Window 2's single-Pane Session")
+
+        app.typeKey("`", modifierFlags: [.command])
+        XCTAssertTrue(waitFor({ !self.layoutsItemIsEnabled(in: app) }, timeout: 5),
+                      "Layouts… should be disabled again once Window 1 is key")
+    }
+
     // MARK: - Helpers
+
+    /// Opens the Pane menu, reads the Layouts… item's enablement, and closes
+    /// the menu again.
+    @MainActor
+    private func layoutsItemIsEnabled(in app: XCUIApplication) -> Bool {
+        app.menuBars.firstMatch.menuBarItems["Pane"].click()
+        let item = app.menuBars.firstMatch.menuItems["Layouts\u{2026}"]
+        let enabled = item.waitForExistence(timeout: 3) && item.isEnabled
+        app.typeKey(.escape, modifierFlags: [])
+        return enabled
+    }
 
     @MainActor
     private func sessionRowCount(in app: XCUIApplication) -> Int {

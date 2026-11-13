@@ -42,10 +42,9 @@ public struct BattyCommands: Commands {
     private var shortcuts: ShortcutsStore { ShortcutsStore.shared }
     /// The key content window's runtime, if any. Menu commands that operate
     /// on sessions, panes, or tabs target this runtime instead of windows[0]
-    /// (#0239: carried over from #0237). Falls back through
-    /// `defaultTargetWindow()`'s full policy (#0439) — most recently key,
-    /// then newest registered, then `windows.first` — so previews/tests
-    /// without a key window still resolve one.
+    /// (#0239: carried over from #0237). Resolves through the observed
+    /// `AppStateStore.keyContentWindowID` (`keyContentWindow`), so switching
+    /// key between content windows, or closing one, re-runs this body.
     ///
     /// Deliberately optional, not `store.windows[0]` (#0311): this `Commands`
     /// body can be re-evaluated by SwiftUI while `windows` is briefly empty —
@@ -53,22 +52,22 @@ public struct BattyCommands: Commands {
     /// AppKit's `terminate:` path can spin the run loop and flush a pending
     /// SwiftUI transaction that re-evaluates this body mid-teardown. An
     /// unguarded `windows[0]` traps (`EXC_BREAKPOINT`) in that window;
-    /// `AppStateStore.keyWindowOrFirstRegistered()` degrades to `nil`
-    /// instead. Every menu item below must guard/disable on this being nil
-    /// rather than force-unwrap it. The fallback logic itself is delegated
-    /// to `AppStateStore` rather than inlined here so it has a real unit
-    /// test — see `keyWindowOrFirstRegistered()`'s doc comment.
-    private var keyWindow: WindowRuntime? { store.keyWindowOrFirstRegistered() }
+    /// `AppStateStore.keyContentWindow` degrades to `nil` instead. Every
+    /// menu item below must guard/disable on this being nil rather than
+    /// force-unwrap it. The resolution lives in `AppStateStore` so it has a
+    /// real unit test (`KeyContentWindowObservationTests`).
+    private var keyWindow: WindowRuntime? { store.keyContentWindow }
 
     /// What a menu action acts on: `keyWindow`, except nil while the Project
     /// Editor, the Open Project picker or another auxiliary window (Settings,
     /// Help) is key, so a menu-routed chord does not reach the content window
     /// behind it (the picker's Cmd-N and Cmd-E are New Session and Pane >
     /// Open View > System Metrics). Read only inside action closures.
-    /// Enablement and labels read `keyWindow`: the `Commands` body can re-run
-    /// while one of those windows is key, and nothing observed changes when
-    /// focus returns to a content window, so anything derived from the
-    /// key-window state there could stay stale.
+    /// Enablement and labels read `keyWindow`, not this: the `Commands` body
+    /// can re-run while one of those windows is key, and nothing observed
+    /// changes when focus returns to the same content window
+    /// (`keyContentWindowID` does not move while an auxiliary window is key),
+    /// so enablement derived from this could stay disabled.
     private var actionWindow: WindowRuntime? { store.menuTargetWindow() }
 
     private var projectFileMenu: ProjectFileMenuModel {

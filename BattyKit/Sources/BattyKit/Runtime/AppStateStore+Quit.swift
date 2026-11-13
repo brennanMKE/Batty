@@ -115,15 +115,11 @@ extension AppStateStore {
 
     /// Whether the Tab menu's Close item is enabled. Disabled only for a
     /// content window with no selected Session. With no content window it
-    /// stays enabled so the item can close the Project Editor. It makes the
-    /// same `keyWindowOrFirstRegistered()` read the item made before, so it
-    /// adds no key-window dependency, and the nil branch reads nothing
-    /// observed. A stale value is benign: a stale true dates from a moment
-    /// when a content window with a selected Session existed, and a stale
-    /// false needs a content window with no selected Session, which is
-    /// transient.
+    /// stays enabled so the item can close the Project Editor. Resolves
+    /// through `keyContentWindow`, so a key change between content windows
+    /// or a window closing re-evaluates it.
     var closeItemIsEnabled: Bool {
-        guard let window = keyWindowOrFirstRegistered() else { return true }
+        guard let window = keyContentWindow else { return true }
         return window.selectedSession != nil
     }
 }

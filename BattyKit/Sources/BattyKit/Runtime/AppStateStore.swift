@@ -330,6 +330,17 @@ public final class AppStateStore {
     /// reason as `nsWindowMap`: populated from AppKit callbacks, not
     /// SwiftUI-update code.
     @ObservationIgnored private var recentlyKeyWindowIDs: [WindowID] = []
+    /// The content window menus target, observed so a `Commands` body that
+    /// reads it re-runs when key moves between content windows or one closes.
+    /// It stays on the last key content window while Settings, Help, the
+    /// Project Editor or another app is key. Written only from window events
+    /// (`contentWindowBecameKey(_:)` and the close path), never from
+    /// `registerNSWindow` or `openWindowRuntime`, which can run inside a
+    /// SwiftUI update (`viewDidMoveToWindow`, `RootWindowView.init`).
+    public private(set) var keyContentWindowID: WindowID?
+    /// Bumped once per Window removed. `windows` is ignored, so readers that
+    /// iterate it (`openProjectIDs`) read this to re-run when a Window closes.
+    private(set) var closedWindowCount = 0
     /// Token for the app-wide `NSWindow.didBecomeKeyNotification` observer
     /// that feeds `recentlyKeyWindowIDs`. Removed in `deinit` so a store
     /// discarded in a test doesn't leave a dangling observer on the shared
@@ -512,7 +523,10 @@ public final class AppStateStore {
                 bellFeed.removeReminderEntries(forSessionID: session.id)
             }
         }
+        let wasPresent = windows.contains { $0.id == windowID }
         windows.removeAll { $0.id == windowID }
+        if wasPresent { closedWindowCount += 1 }
+        refreshKeyContentWindowID()
         closedWindowIDs.insert(windowID)
         if windows.isEmpty, closedWindowIDs.contains(fallbackWindowID) {
             fallbackWindowID = WindowID()
@@ -1111,6 +1125,7 @@ public final class AppStateStore {
             pruneRecentlyKeyWindowID(windowID)
         }
         nsWindowMap.removeValue(forKey: ObjectIdentifier(nsWindow))
+        refreshKeyContentWindowID()
         logger.info("unregisterNSWindow: registered content windows remaining=\(self.nsWindowMap.count, privacy: .public)")
         terminateIfLastContentWindowGone()
     }
@@ -1162,6 +1177,18 @@ public final class AppStateStore {
         recentlyKeyWindowIDs.removeAll { $0 == id }
     }
 
+    /// Points `keyContentWindowID` at the most recently key content window
+    /// that is still registered and still has a runtime, or nil. Called from
+    /// the window-close path only. Assigns only on change, so closing a
+    /// window that was not key notifies nobody.
+    private func refreshKeyContentWindowID() {
+        let registeredIDs = Set(nsWindowMap.values)
+        let next = recentlyKeyWindowIDs.last { id in
+            registeredIDs.contains(id) && windows.contains { $0.id == id }
+        }
+        if next != keyContentWindowID { keyContentWindowID = next }
+    }
+
     /// `NSWindow.didBecomeKeyNotification` handler, installed app-wide
     /// (`object: nil`) in `init`. Filters through `nsWindowMap` so only
     /// content windows feed `recentlyKeyWindowIDs` — Settings, Help, and
@@ -1175,8 +1202,11 @@ public final class AppStateStore {
     /// only caller is `handleWindowDidBecomeKey(_:)`, an AppKit
     /// notification, never a view update. Records the key order (#0439).
     /// The chrome does not depend on key state (`themeChrome(for:)`).
+    /// Also the writer of `keyContentWindowID` when a window becomes key.
     func contentWindowBecameKey(_ id: WindowID) {
         noteContentWindowBecameKey(id)
+        guard windows.contains(where: { $0.id == id }) else { return }
+        if id != keyContentWindowID { keyContentWindowID = id }
     }
 
     /// Single policy resolver for every no-target Window fallback (#0439):
@@ -1213,18 +1243,30 @@ public final class AppStateStore {
         return windows.first
     }
 
-    /// The `WindowRuntime` that `BattyCommands.keyWindow` targets. Delegates
-    /// to `defaultTargetWindow()` (#0439) — kept as its own named entry point
-    /// because `BattyCommands`, `CommandPaletteView`, and the `AppStateStore`
-    /// action shims below already refer to it by this name, and because
-    /// `Commands` bodies can't be unit-tested directly
-    /// (`docs/swiftui-observation-rules.md`'s Commands-body caution), so this
-    /// remains the closest testable seam to `BattyCommands.keyWindow` without
-    /// re-typing its expression into a test. Despite the name, this no
-    /// longer means "first registered" specifically — see
-    /// `defaultTargetWindow()`'s doc comment for the full order.
+    /// The imperative counterpart of `keyContentWindow`, for actions and
+    /// shims rather than view bodies. Delegates to `defaultTargetWindow()`
+    /// (#0439); kept as its own named entry point because
+    /// `CommandPaletteView` and the `AppStateStore` action shims refer to it
+    /// by this name. Despite the name, this no longer means "first
+    /// registered" specifically — see `defaultTargetWindow()`'s doc comment
+    /// for the full order.
     public func keyWindowOrFirstRegistered() -> WindowRuntime? {
         defaultTargetWindow()
+    }
+
+    /// The content window a view or `Commands` body should target. Reads the
+    /// observed `keyContentWindowID` first and unconditionally, which is the
+    /// body's dependency: key moving between content windows, or one closing,
+    /// re-runs it. While a content window is actually key it wins, which
+    /// covers a window that was already key when it registered and so never
+    /// wrote the id. Falls back to `defaultTargetWindow()` before any content
+    /// window has been key. Imperative callers (actions, CLI, XPC, palette
+    /// actions) keep `defaultTargetWindow()` / `menuTargetWindow()`.
+    public var keyContentWindow: WindowRuntime? {
+        let id = keyContentWindowID
+        if let key = keyWindowRuntime() { return key }
+        if let id, let window = windows.first(where: { $0.id == id }) { return window }
+        return defaultTargetWindow()
     }
 
     /// Whether `window` is the Project Editor, judged after walking up from a
@@ -1535,7 +1577,9 @@ public final class AppStateStore {
 
     /// Ids of Projects that currently have an open Session in any Window.
     public var openProjectIDs: Set<UUID> {
-        Set(windows.flatMap(\.sessions).compactMap(\.projectID))
+        // `windows` is ignored; this read is what re-runs readers on a close.
+        _ = closedWindowCount
+        return Set(windows.flatMap(\.sessions).compactMap(\.projectID))
     }
 
     /// Points every open Session backed by `project` at its current symbol,
