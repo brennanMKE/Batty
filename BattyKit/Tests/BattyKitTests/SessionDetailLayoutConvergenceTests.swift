@@ -118,14 +118,15 @@ struct SessionDetailLayoutConvergenceTests {
     /// each case run alone: 444 and 660 at most before the selection effects
     /// moved out of `SessionDetailView`'s `onChange` into
     /// `WindowRuntime.selectedSessionID`'s `didSet`, and the same maxima
-    /// after (issues/0602.md). Nearly all of a switch's requests come from
-    /// the selection change itself, so the ceilings are that baseline plus
-    /// about 17%, to catch side effects or a second update round coming
+    /// after (issues/0602.md). With the Sidebar an `NSOutlineView` whose
+    /// rows are separate hosting cells (#0619), 287 and 350 at most. Nearly
+    /// all of a switch's requests come from the selection change itself, so
+    /// the ceilings are that baseline plus about 17%, to catch side effects or a second update round coming
     /// back into layout without failing on run-to-run noise. A strict
     /// majority of the four switches must be under the ceiling
     /// (`LayoutConvergenceProbe.mostlyWithin`). `.serialized` because two
     /// cases settling at once interleave their counts.
-    private static let switchRequestCeiling: [Int: Int] = [0: 520, 12: 770]
+    private static let switchRequestCeiling: [Int: Int] = [0: 340, 12: 410]
 
     @Test(.serialized, arguments: [0, 12])
     func sessionSwitchUpdateConstraintRequestsStayUnderCeiling(extraSessions: Int) async throws {
@@ -187,13 +188,13 @@ struct SessionDetailLayoutConvergenceTests {
     }
 
     /// How much more a switch among the same four Sessions may request with
-    /// 12 more Sessions in the window than without them: the measured 192
-    /// plus 20 for noise. Before #0604 the difference was 216. Measured with
-    /// the Sidebar alone, a switch re-runs only the two changed rows' bodies,
-    /// yet still costs about 16 requests per row: about 12 go away only when
-    /// the `List(selection:)` binding's value stops changing, and about 4
-    /// remain even then. Lower this when that cost is removed.
-    private static let sessionCountMargin = 212
+    /// 12 more Sessions in the window than without them: the measured
+    /// difference plus 20 for noise. Since #0619 the Sidebar is an
+    /// `NSOutlineView` with one hosting cell per row, so a switch re-renders
+    /// only the two cells whose `isSelected` flips: measured difference 0.
+    /// Before #0619 it was 192 (`List(selection:)` touched every row), and
+    /// before #0604 216.
+    private static let sessionCountMargin = 20
 
     /// Per-switch request counts for two runs of `[1, 2, 3, 0]`, in order.
     private func switchRequests(extraSessions: Int) async -> [Int] {
@@ -213,14 +214,14 @@ struct SessionDetailLayoutConvergenceTests {
         return perSwitch
     }
 
-    /// #0604: Sidebar rows read the per-Session `SessionRuntime.isSelected`,
-    /// so a switch re-renders only the two rows it crosses instead of every
-    /// row comparing itself against `selectedSessionID`. Before the fix, 16
-    /// Sessions requested 216 more than 4; after it, 192 more. The rest is
-    /// the `List` selection binding (see `sessionCountMargin`). Each of the
-    /// eight switches is compared with the same switch among 4 Sessions, and
-    /// a strict majority of the differences must be within the margin
-    /// (`LayoutConvergenceProbe.mostlyWithin`).
+    /// A Session switch's request count must not grow with the number of
+    /// Sessions. Sidebar rows read the per-Session `SessionRuntime.isSelected`
+    /// (#0604), and each row is its own hosting cell in the Sidebar's
+    /// `NSOutlineView` (#0619), so a switch touches only the two rows it
+    /// crosses. Before #0604, 16 Sessions requested 216 more than 4; before
+    /// #0619, 192 more. Each of the eight switches is compared with the same
+    /// switch among 4 Sessions, and a strict majority of the differences must
+    /// be within `sessionCountMargin` (`LayoutConvergenceProbe.mostlyWithin`).
     @Test func sessionSwitchRequestsDoNotScaleWithSessionCount() async {
         let four = await switchRequests(extraSessions: 0)
         let sixteen = await switchRequests(extraSessions: 12)
@@ -229,6 +230,35 @@ struct SessionDetailLayoutConvergenceTests {
             LayoutConvergenceProbe.mostlyWithin(differences, ceiling: Self.sessionCountMargin),
             "4 Sessions \(four); 16 Sessions \(sixteen); differences \(LayoutConvergenceProbe.budgetReport(differences, ceiling: Self.sessionCountMargin))"
         )
+    }
+
+    /// The Sidebar outline's structure calls (reload, expand, collapse) run
+    /// in its representable's update, inside the hosting tree's layout. Each
+    /// structural change must still settle.
+    @Test func sidebarStructureChangesConverge() async throws {
+        let fixture = makeFixture()
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        _ = await fixture.probe.settle()
+        let first = await fixture.probe.settle()
+        #expect(first.converged, "first settle: \(first)")
+
+        func step(_ label: String, _ change: () -> Void) async {
+            change()
+            let result = await fixture.probe.settle()
+            #expect(result.converged, "\(label): \(result)")
+        }
+        await step("expand") { windowRuntime.sessions[1].isPaneListExpanded = true }
+        await step("collapse") { windowRuntime.sessions[1].isPaneListExpanded = false }
+        var added: SessionRuntime?
+        await step("add Session") { added = windowRuntime.addSession() }
+        let selected = try #require(windowRuntime.selectedSession)
+        let paneID = try #require(selected.tree.allPanes.first?.id)
+        await step("expand selected") { selected.isPaneListExpanded = true }
+        await step("split") { _ = fixture.store.splitPane(id: paneID, direction: .horizontal) }
+        await step("move") { windowRuntime.moveSessions(fromOffsets: IndexSet(integer: 0), toOffset: 3) }
+        let addedID = try #require(added?.id)
+        await step("remove Session") { windowRuntime.removeSession(id: addedID) }
     }
 
     // MARK: - Divider drag request volume

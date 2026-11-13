@@ -180,6 +180,21 @@ tick that way until its process list became a `LazyVStack` in the Pane's
 one `ScrollView` (#0606, guarded by
 `StatusPaneLayoutConvergenceTests.systemMetricsTickStaysUnderRequestCeiling`).
 
+**A list whose rows change on a Session switch is an `NSOutlineView`, not a
+SwiftUI `List`.** Any SwiftUI `List` or `Table` posts update-constraints
+requests for every cell when its selection, any row, or an injected
+environment value changes: about 4 to 9 per row, whatever the row content or
+selection plumbing (#0619). The Sidebar is `SessionSidebarOutline`, an
+`NSOutlineView` whose rows are separate `NSHostingView` cells, so a switch
+re-renders only the two cells whose `isSelected` flips
+(`SessionDetailLayoutConvergenceTests.sessionSwitchRequestsDoNotScaleWithSessionCount`).
+Its coordinator syncs the outline only from the representable's update,
+diffing against what the outline already shows, with an
+`applyingModelChange` guard so the selection and expansion notifications
+those calls post are not read as the user's; it never changes a responder.
+The user's direction (click, arrow key, type-select, disclosure, drop) is the
+delegate's event-origin write.
+
 **Sanctioned exceptions** (documented in `view-hierarchy.md`; do not add new
 ones): `TerminalPlaceholderView.body`'s lazy `terminalView(for:)` performs a
 one-time `addSubview` into the persistent host on first mount, and the

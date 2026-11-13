@@ -43,7 +43,7 @@ deterministically:
 
 | Identifier pattern | View |
 |---|---|
-| `session-sidebar` | The List in `SessionSidebarView`. |
+| `session-sidebar` | The `NSOutlineView` in `SessionSidebarOutline` (#0619). |
 | `session-row.<title>` | A row in the session sidebar, keyed by the visible title. |
 | `tab-bar.<paneID>` | The SlidingTabBar inside a `PaneView`. |
 | `tab-chip.<title>` | A single chip inside a tab bar. |

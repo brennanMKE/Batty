@@ -75,37 +75,29 @@ public struct SessionSidebarView: View {
     }
 
     public var body: some View {
-        List(selection: sidebarSelection) {
-            ForEach(windowRuntime.sessions) { session in
-                SessionSidebarRow(
-                    session: session,
-                    store: store,
-                    windowRuntime: windowRuntime,
-                    accent: themeChrome?.accent,
-                    sidebarFill: sidebarFill,
-                    selectionTint: WindowSeeThrough.sidebarSelectionTint(
-                        isSeeThrough: windowIsSeeThrough,
-                        themeTint: themeChrome?.sidebarSelectionTint
-                    ),
-                    onRename: {
-                        renameDraft = session.title
-                        renamingSessionID = session.id
-                    },
-                    onTheme: { themingSessionID = session.id },
-                    onSetColor: { coloringSessionID = session.id },
-                    onBackground: { backgroundSettingsSessionID = session.id },
-                    onPaneBackground: { backgroundSettingsPaneID = $0 }
+        SessionSidebarOutline(
+            windowRuntime: windowRuntime,
+            store: store,
+            style: SidebarRowStyle(
+                accent: themeChrome?.accent,
+                sidebarFill: sidebarFill,
+                selectionTint: WindowSeeThrough.sidebarSelectionTint(
+                    isSeeThrough: windowIsSeeThrough,
+                    themeTint: themeChrome?.sidebarSelectionTint
                 )
-                .tag(session.id as UUID?)
-            }
-            .onMove { source, destination in
-                windowRuntime.moveSessions(fromOffsets: source, toOffset: destination)
-            }
-        }
-        .listStyle(.sidebar)
-        .scrollContentBackground(sidebarFill == nil ? .automatic : .hidden)
+            ),
+            actions: SidebarRowActions(
+                onRename: { session in
+                    renameDraft = session.title
+                    renamingSessionID = session.id
+                },
+                onTheme: { themingSessionID = $0 },
+                onSetColor: { coloringSessionID = $0 },
+                onBackground: { backgroundSettingsSessionID = $0 },
+                onPaneBackground: { backgroundSettingsPaneID = $0 }
+            )
+        )
         .background(sidebarFill ?? Color.clear)
-        .accessibilityIdentifier("session-sidebar")
         .navigationTitle(Text(verbatim: "Batty"))
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
@@ -188,17 +180,6 @@ public struct SessionSidebarView: View {
         }
     }
 
-    /// Routes List selection writes through the validated setter so pane ids
-    /// (implicit-identity selection, #0258) and nil (empty-area click) never
-    /// reach `selectedSessionID`. SwiftUI re-reads the getter after a rejected
-    /// write and the List snaps back to the real selection.
-    private var sidebarSelection: Binding<UUID?> {
-        Binding(
-            get: { windowRuntime.selectedSessionID },
-            set: { windowRuntime.selectSessionFromSidebar(id: $0) }
-        )
-    }
-
     private var renamingBinding: Binding<SessionRuntime?> {
         Binding(
             get: { windowRuntime.sessions.first { $0.id == renamingSessionID } },
@@ -274,26 +255,77 @@ public struct SessionSidebarView: View {
 
 }
 
-/// One Session's Sidebar row: its own view so a selection change, which
-/// flips `isSelected` on only the two Sessions it crosses, re-renders only
-/// those two rows instead of every row in the Sidebar's `ForEach`.
+extension SessionSidebarView {
+    /// A Session cell's SwiftUI root. Each cell is its own hosting root and
+    /// inherits nothing from the window's tree, so it gets the store here.
+    static func sessionCell(
+        session: SessionRuntime,
+        store: AppStateStore,
+        windowRuntime: WindowRuntime,
+        accent: Color?,
+        actions: @escaping () -> SidebarRowActions
+    ) -> AnyView {
+        AnyView(
+            SessionSidebarRow(
+                session: session,
+                store: store,
+                windowRuntime: windowRuntime,
+                accent: accent,
+                onRename: { actions().onRename(session) },
+                onTheme: { actions().onTheme(session.id) },
+                onSetColor: { actions().onSetColor(session.id) },
+                onBackground: { actions().onBackground(session.id) }
+            )
+            .environment(\.appStateStore, store)
+        )
+    }
+
+    static func paneCell(
+        pane: PaneRuntime,
+        session: SessionRuntime,
+        windowRuntime: WindowRuntime,
+        accent: Color?,
+        onBackgroundSettings: @escaping () -> Void
+    ) -> AnyView {
+        AnyView(
+            PaneRow(
+                pane: pane,
+                session: session,
+                windowRuntime: windowRuntime,
+                accent: accent,
+                onBackgroundSettings: onBackgroundSettings
+            )
+            // Without `.contain`, SwiftUI on macOS folds PaneRow's
+            // HStack into a single accessibility leaf and this
+            // identifier spreads to every child — including the
+            // eye toggle's own `pane-eye-toggle.<uuid>` below,
+            // which the outer identifier here would otherwise
+            // silently win over. Same mechanism, same fix, as
+            // the tab bar's `tab-chip.<title>` vs. its children.
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
+        )
+    }
+}
+
+/// One Session's Sidebar row, the root of its outline cell. It reads the
+/// per-Session `isSelected`, so a switch re-renders only the two rows it
+/// crosses (#0604). Pane rows are the outline's children, unselectable
+/// through `SessionSidebarCoordinator`'s `shouldSelectItem`.
 private struct SessionSidebarRow: View {
-    @Bindable var session: SessionRuntime
+    let session: SessionRuntime
     let store: AppStateStore
     let windowRuntime: WindowRuntime
     let accent: Color?
-    let sidebarFill: Color?
-    let selectionTint: Color?
     let onRename: () -> Void
     let onTheme: () -> Void
     let onSetColor: () -> Void
     let onBackground: () -> Void
-    let onPaneBackground: (UUID) -> Void
 
-    /// The Sidebar cell merges every accessibility child into one element,
-    /// concatenating identifiers and values, so the Reminder badge is hidden
-    /// from accessibility and its state rides on the row's value instead:
-    /// "reminder pending: <time and note>" or "reminder due".
+    /// The row merges every accessibility child into one element, so the
+    /// Reminder badge is hidden from accessibility and its state rides on
+    /// the row's value instead: "reminder pending: <time and note>" or
+    /// "reminder due".
     private var reminderState: String? {
         if let reminder = session.reminder {
             let detail = ReminderActions.detail(for: reminder, store: store)
@@ -306,116 +338,35 @@ private struct SessionSidebarRow: View {
     }
 
     var body: some View {
-        // Native outline disclosure per session: the sidebar List
-        // maps DisclosureGroup onto NSOutlineView expansion, which
-        // is the only path that gives the animated height
-        // reveal/collapse (chevron rotates right→down, rows slide
-        // over a duration). Hand-rolled variants — `if` around the
-        // ForEach, empty-data ForEach — apply without animation on
-        // the NSTableView-backed List (#0258 follow-up).
-        //
-        // Pane rows: `selectionDisabled` is required — even without
-        // a `.tag()`, macOS List derives an implicit selection value
-        // from the ForEach identity, and `pane.id` type-matches the
-        // UUID? selection; clicking a row would write a pane id into
-        // selectedSessionID (#0258). Tapping a row instead selects
-        // the owning session and focuses (un-hiding if needed).
-        DisclosureGroup(isExpanded: $session.isPaneListExpanded) {
-            ForEach(session.tree.panesSortedByColumnThenRow) { pane in
-                PaneRow(
-                    pane: pane,
-                    session: session,
-                    windowRuntime: windowRuntime,
-                    accent: accent,
-                    onBackgroundSettings: { onPaneBackground(pane.id) }
-                )
-                .selectionDisabled()
-                .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
-                .modifier(SidebarRowBackground(
-                    sidebarBackground: sidebarFill,
-                    selectionTint: nil,
-                    isSelected: false
-                ))
-                // Without `.contain`, SwiftUI on macOS folds PaneRow's
-                // HStack into a single accessibility leaf and this
-                // identifier spreads to every child — including the
-                // eye toggle's own `pane-eye-toggle.<uuid>` below,
-                // which the outer identifier here would otherwise
-                // silently win over. Same mechanism, same fix, as
-                // the tab bar's `tab-chip.<title>` vs. its children
-                // (`PaneView.swift:219-225`).
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
-            }
-        } label: {
-            // Without an element of its own, the row's accessible
-            // leaves each inherit the identifier, and folding them
-            // joins the copies with "-". So the row, Reminder badge
-            // included, hides its children and states its own label
-            // and value; the badge's state rides on that value.
-            // Applied on the label content, not on the whole
-            // DisclosureGroup, so it doesn't also describe the
-            // disclosed pane rows below.
-            HStack(spacing: 4) {
-                SessionRow(
-                    session: session,
-                    store: store,
-                    windowRuntime: windowRuntime,
-                    accent: accent,
-                    onRename: onRename,
-                    onTheme: onTheme,
-                    onSetColor: onSetColor,
-                    onBackground: onBackground
-                )
-                ReminderBadge(
-                    session: session,
-                    store: store,
-                    accent: accent,
-                    onEdit: { ReminderActions.presentSheet(for: session, in: windowRuntime) }
-                )
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(SessionSidebarView.rowAccessibilityLabel(for: session))
-            .accessibilityAddTraits(.isStaticText)
-            .accessibilityIdentifier("session-row.\(session.title)")
-            .accessibilityValue(SessionSidebarView.rowAccessibilityValue(for: session, isSelected: session.isSelected, projectSymbol: SessionSidebarView.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: SessionSidebarView.rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState))
-        }
-        .modifier(SidebarRowBackground(
-            sidebarBackground: sidebarFill,
-            selectionTint: selectionTint,
-            isSelected: session.isSelected
-        ))
-    }
-}
-
-private struct SidebarRowBackground: ViewModifier {
-    let sidebarBackground: Color?
-    let selectionTint: Color?
-    let isSelected: Bool
-
-    func body(content: Content) -> some View {
-        if sidebarBackground != nil {
-            // Selected: paint sidebarBackground first, then overlay the
-            // subtle selection tint. Unselected: just sidebarBackground.
-            // Painting an explicit row background suppresses SwiftUI's
-            // `.sidebar` default selection chrome — without this, the
-            // system paints a fixed dark gray block on the selected row
-            // that ignores the themed sidebar (see #0135 round 2). The
-            // selection tint is a foreground@12% overlay (#0135 round 5),
-            // adaptive and subtle on every theme.
-            content.listRowBackground(
-                ZStack {
-                    if let sidebarBackground {
-                        sidebarBackground
-                    }
-                    if isSelected, let selectionTint {
-                        selectionTint
-                    }
-                }
+        // Without an element of its own, the row's accessible leaves each
+        // inherit the identifier, and folding them joins the copies with
+        // "-". So the row, Reminder badge included, hides its children and
+        // states its own label and value; the badge's state rides on that
+        // value.
+        HStack(spacing: 4) {
+            SessionRow(
+                session: session,
+                store: store,
+                windowRuntime: windowRuntime,
+                accent: accent,
+                onRename: onRename,
+                onTheme: onTheme,
+                onSetColor: onSetColor,
+                onBackground: onBackground
             )
-        } else {
-            content
+            ReminderBadge(
+                session: session,
+                store: store,
+                accent: accent,
+                onEdit: { ReminderActions.presentSheet(for: session, in: windowRuntime) }
+            )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(SessionSidebarView.rowAccessibilityLabel(for: session))
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityIdentifier("session-row.\(session.title)")
+        .accessibilityValue(SessionSidebarView.rowAccessibilityValue(for: session, isSelected: session.isSelected, projectSymbol: SessionSidebarView.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: SessionSidebarView.rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState))
     }
 }
 
@@ -713,8 +664,8 @@ struct PaneRow: View {
 
     /// Row tap: select the owning session, restore the pane if hidden
     /// (#0256's "selecting a hidden pane's row restores it"), and focus it.
-    /// Event-origin writes; pane rows are `selectionDisabled` so this is the
-    /// row's only activation path (#0258).
+    /// Event-origin writes; the Sidebar outline never selects a pane row, so
+    /// this is the row's only activation path (#0258).
     private func activate() {
         windowRuntime.activatePaneFromSidebar(sessionID: session.id, paneID: pane.id)
     }

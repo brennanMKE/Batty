@@ -87,9 +87,14 @@ BattyApp (Scene)
             └── NavigationSplitView
                 ├── Sidebar column
                 │   └── SessionSidebarView
-                │       ├── List(selection:) over sessions — SessionSidebarRow per
-                │       │   Session; each row reads its own `session.isSelected`,
-                │       │   not the window's selectedSessionID (#0604)
+                │       ├── SessionSidebarOutline — an NSOutlineView in an
+                │       │   NSViewRepresentable, one NSHostingView cell per Session
+                │       │   row (SessionSidebarRow) and Pane row (PaneRow); each row
+                │       │   reads its own `session.isSelected`, not the window's
+                │       │   selectedSessionID (#0604). Not a SwiftUI List: a List
+                │       │   touches every cell on any selection or environment
+                │       │   change, so a Session switch scaled with Session count
+                │       │   (#0619)
                 │       └── .safeAreaInset(.bottom): "+" button (#0065)
                 └── Detail column
                     └── SessionDetailView                                ZStack:

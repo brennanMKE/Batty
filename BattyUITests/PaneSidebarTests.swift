@@ -21,8 +21,8 @@ nonisolated final class PaneSidebarTests: XCTestCase {
 
     // MARK: - Element lookups
 
-    /// The session row's native outline disclosure triangle (DisclosureGroup
-    /// in the sidebar List maps onto NSOutlineView expansion).
+    /// The session row's native disclosure triangle in the Sidebar's
+    /// NSOutlineView.
     @MainActor
     private func chevron(in app: XCUIApplication) -> XCUIElement {
         let triangle = app.disclosureTriangles.firstMatch

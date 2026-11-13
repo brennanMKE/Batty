@@ -4,10 +4,9 @@ import Foundation
 import Testing
 @testable import BattyKit
 
-/// Guards for #0258: sidebar List selection must never leave the window
-/// without a selected session while sessions exist. macOS List offers
-/// implicit selection values from ForEach identity (pane ids) and nil
-/// (empty-area click); `setSelectedSession` rejects both.
+/// Guards for #0258: Sidebar selection must never leave the window without
+/// a selected session while sessions exist. `setSelectedSession` rejects
+/// pane ids and nil.
 @MainActor
 struct SidebarSelectionGuardTests {
 

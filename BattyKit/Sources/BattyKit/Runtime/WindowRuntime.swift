@@ -545,9 +545,9 @@ public final class WindowRuntime {
         visitFocusedTab()
     }
 
-    /// The Sidebar `List` selection binding's setter. A visit only when the
-    /// selection actually changed: macOS `List` re-asserts its own selection
-    /// (#0258), so an equal-value set can't be told from an echo.
+    /// The Sidebar outline's user selection (click, arrow key, type-select).
+    /// A visit only when the selection actually changed, so re-asserting the
+    /// current Session visits nothing.
     public func selectSessionFromSidebar(id: UUID?) {
         let previous = selectedSessionID
         setSelectedSession(id: id)
@@ -569,11 +569,9 @@ public final class WindowRuntime {
         visitFocusedTab()
     }
 
-    /// Single entry point for sidebar `List` selection writes. macOS `List`
-    /// derives an implicit selection value from each row's ForEach identity
-    /// even without an explicit `.tag()`, so pane rows can offer pane ids and
-    /// an empty-area click offers nil (#0258). Both are rejected: while
-    /// sessions exist, some session is always selected. Idempotent: re-asserting
+    /// Single entry point for Sidebar selection writes. Anything that isn't a
+    /// Session in this window — a Pane id, or nil — is rejected (#0258):
+    /// while sessions exist, some session is always selected. Idempotent: re-asserting
     /// the current Session writes nothing (#0229).
     public func setSelectedSession(id: UUID?) {
         guard let id, sessions.contains(where: { $0.id == id }) else {
