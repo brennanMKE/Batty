@@ -1124,8 +1124,10 @@ Command Palette entries are built in `CommandPaletteView.allCommands`.
   made in the Project Editor or by the CLI while the sheet is up; the selection
   stays on its Project by id.
 - The palette's "Open Project..." row presents the picker from the palette's
-  `onDismiss` by calling a closure `SessionDetailView` hands it, which sets this
-  window's `projectPickerShown` directly (#0483). It does not broadcast
+  `onDismiss` by calling a closure `SessionDetailView` hands it, which presents
+  on this window directly (#0483) through `AppStateStore.presentProjectPicker(in:)`.
+  Every presenter goes through that action, which retries a failed
+  `projects.json` read before the sheet appears. It does not broadcast
   `.battyToggleProjectPicker`: that handler is gated on `isKeyWindow`, which is
   not guaranteed to hold inside the palette's `onDismiss`.
 - The File menu items have no key equivalents and there is no new
@@ -1147,7 +1149,7 @@ Command Palette entries are built in `CommandPaletteView.allCommands`.
   window key changes nothing.
 - The Sidebar footer's Open Project button (`session-sidebar.open-project-button`,
   `briefcase`, help "Open Project...") sets its own window's
-  `WindowRuntime.projectPickerShown` through `SidebarFooter.presentProjectPicker`.
+  `WindowRuntime.projectPickerShown` through `AppStateStore.presentProjectPicker(in:)`.
   It posts no notification and checks no key window, so it presents on the
   window it was clicked in and never on another. With no Projects it still
   presents the picker, which shows its empty state. It has no keyboard

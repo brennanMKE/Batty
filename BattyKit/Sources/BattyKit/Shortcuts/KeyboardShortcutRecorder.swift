@@ -12,18 +12,24 @@ import SwiftUI
 struct KeyboardShortcutRecorder: NSViewRepresentable {
     @Binding var binding: ShortcutBinding
 
+    /// Holds the latest binding so a commit from `keyDown` writes through the
+    /// one the current view passed, synchronously, not the make-time capture.
+    final class Coordinator {
+        var binding: Binding<ShortcutBinding>
+        init(binding: Binding<ShortcutBinding>) { self.binding = binding }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(binding: $binding) }
+
     func makeNSView(context: Context) -> RecorderView {
         let view = RecorderView()
         view.binding = binding
-        view.onCommit = { newBinding in
-            Task { @MainActor in
-                self.binding = newBinding
-            }
-        }
+        view.onCommit = { [coordinator = context.coordinator] in coordinator.binding.wrappedValue = $0 }
         return view
     }
 
     func updateNSView(_ nsView: RecorderView, context: Context) {
+        context.coordinator.binding = $binding
         nsView.binding = binding
         nsView.needsDisplay = true
     }

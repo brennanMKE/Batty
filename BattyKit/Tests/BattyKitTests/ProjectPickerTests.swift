@@ -489,6 +489,46 @@ private final class StoreFixture {
 }
 
 @MainActor
+struct ProjectPickerPresentationTests {
+    private func failedReadStore(_ fixture: StoreFixture) throws -> AppStateStore {
+        _ = try fixture.store(seeding: [project("Alpha"), project("Beta")])
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: fixture.projectsFile.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: fixture.projectsFile.path) }
+        let store = try fixture.store()
+        #expect(store.projectStore.unreadableFilePath != nil)
+        #expect(store.projectStore.projects.isEmpty)
+        return store
+    }
+
+    @Test func presentingThePickerRetriesAFailedLoad() throws {
+        let fixture = StoreFixture()
+        let store = try failedReadStore(fixture)
+        store.presentProjectPicker(in: store.windows[0])
+        #expect(store.windows[0].projectPickerShown)
+        #expect(store.projectStore.unreadableFilePath == nil)
+        #expect(Set(store.projectStore.projects.map(\.name)) == ["Alpha", "Beta"])
+    }
+
+    @Test func togglingAShownPickerHidesItWithoutReadingTheFile() throws {
+        let fixture = StoreFixture()
+        let store = try failedReadStore(fixture)
+        store.windows[0].projectPickerShown = true
+        store.toggleProjectPicker(in: store.windows[0])
+        #expect(!store.windows[0].projectPickerShown)
+        #expect(store.projectStore.unreadableFilePath != nil)
+    }
+
+    @Test func togglingAHiddenPickerPresentsAndRetries() throws {
+        let fixture = StoreFixture()
+        let store = try failedReadStore(fixture)
+        store.toggleProjectPicker(in: store.windows[0])
+        #expect(store.windows[0].projectPickerShown)
+        #expect(store.projectStore.unreadableFilePath == nil)
+        #expect(Set(store.projectStore.projects.map(\.name)) == ["Alpha", "Beta"])
+    }
+}
+
+@MainActor
 private final class OpenRecorder {
     private(set) var calls: [(UUID, AppStateStore.ProjectOpenMode)] = []
     func record(_ id: UUID, _ mode: AppStateStore.ProjectOpenMode) { calls.append((id, mode)) }

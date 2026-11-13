@@ -174,3 +174,22 @@ extension AppStateStore {
         }
     }
 }
+
+extension AppStateStore {
+    /// The one action that presents the Open Project picker. A failed
+    /// `projects.json` read is retried here, before the sheet's first update,
+    /// not from the sheet.
+    public func presentProjectPicker(in windowRuntime: WindowRuntime) {
+        projectStore.retryLoadIfNeeded()
+        windowRuntime.projectPickerShown = true
+    }
+
+    /// Hiding never touches `projectStore`.
+    public func toggleProjectPicker(in windowRuntime: WindowRuntime) {
+        if windowRuntime.projectPickerShown {
+            windowRuntime.projectPickerShown = false
+        } else {
+            presentProjectPicker(in: windowRuntime)
+        }
+    }
+}

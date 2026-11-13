@@ -56,7 +56,7 @@ public struct SessionDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleProjectPicker)) { note in
             guard ProjectPickerToggle.shouldHandle(userInfo: note.userInfo, windowID: windowRuntime.id, isKeyWindow: isKeyWindow)
             else { return }
-            windowRuntime.projectPickerShown.toggle()
+            store.toggleProjectPicker(in: windowRuntime)
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleThemeSelector)) { _ in
             guard isKeyWindow else { return }
@@ -113,7 +113,6 @@ public struct SessionDetailView: View {
                 },
                 syncError: { store.projectStore.syncError ?? store.sharedProjectImages?.message },
                 unreadableFilePath: { store.projectStore.unreadableFilePath },
-                onPresented: { store.projectStore.retryLoadIfNeeded() },
                 onCancel: { windowRuntime.projectPickerShown = false }
             )
         }
@@ -326,7 +325,7 @@ public struct SessionDetailView: View {
     }
 
     private func presentProjectPicker() {
-        windowRuntime.projectPickerShown = true
+        store.presentProjectPicker(in: windowRuntime)
     }
 
     private func runAfterCommandPalette() {

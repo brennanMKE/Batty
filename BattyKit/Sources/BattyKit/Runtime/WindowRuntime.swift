@@ -115,10 +115,11 @@ public final class WindowRuntime {
         }
     }
 
-    /// Whether this window's Open Project picker sheet is up. Set by three
-    /// event-origin sites (the window-addressed toggle notification, the
-    /// Command Palette's direct present, the Sidebar footer button); cleared by
-    /// the picker's onAction/onCancel and the sheet binding's setter.
+    /// Whether this window's Open Project picker sheet is up. Set by
+    /// `AppStateStore.presentProjectPicker(in:)` / `toggleProjectPicker(in:)`
+    /// (reached from the window-addressed toggle notification, the Command
+    /// Palette's direct present, the Sidebar footer button); cleared by the
+    /// picker's onAction/onCancel, the sheet binding's setter and the toggle.
     public var projectPickerShown: Bool = false
     /// The Session whose Reminder sheet is up in this window. Written by the
     /// event-origin entry points (Session menu, Sidebar context menu,

@@ -47,11 +47,11 @@ struct SidebarFooterTests {
             let w2 = store.openWindowRuntime(for: WindowID())
             #expect(!w1.projectPickerShown && !w2.projectPickerShown)
 
-            SidebarFooter.presentProjectPicker(in: w1)
+            store.presentProjectPicker(in: w1)
             #expect(w1.projectPickerShown)
             #expect(!w2.projectPickerShown)
 
-            SidebarFooter.presentProjectPicker(in: w2)
+            store.presentProjectPicker(in: w2)
             #expect(w1.projectPickerShown)
             #expect(w2.projectPickerShown)
         }

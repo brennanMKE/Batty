@@ -45,7 +45,7 @@ struct ProjectSymbolPicker: View {
             .accessibilityLabel(Text("Symbol"))
             .accessibilityValue(Text(displayName))
             .accessibilityIdentifier("project-editor.symbol")
-            .sheet(isPresented: $isPresented) {
+            .sheet(isPresented: $isPresented, onDismiss: returnFocus) {
                 ProjectSymbolSheet(selectedName: selectedName, color: color, choose: choose, cancel: cancel)
             }
         }
@@ -62,11 +62,11 @@ struct ProjectSymbolPicker: View {
         .accessibilityLabel(Text("Symbol"))
         .onKeyPress(.return) { isPresented = true; return .handled }
         .onKeyPress(.space) { isPresented = true; return .handled }
-        .onChange(of: isPresented) { _, presented in
-            guard !presented else { return }
-            if returnFocusOnClose { isFieldFocused = true }
-            returnFocusOnClose = false
-        }
+    }
+
+    private func returnFocus() {
+        if returnFocusOnClose { isFieldFocused = true }
+        returnFocusOnClose = false
     }
 
     private func choose(_ name: String) {

@@ -209,7 +209,7 @@ public struct SessionSidebarView: View {
                 .help("New Session")
                 .accessibilityIdentifier(SidebarFooter.addSessionIdentifier)
                 Button {
-                    SidebarFooter.presentProjectPicker(in: windowRuntime)
+                    store.presentProjectPicker(in: windowRuntime)
                 } label: {
                     Image(systemName: SidebarFooter.openProjectSystemName)
                         .frame(width: 22, height: 22)
@@ -396,18 +396,15 @@ private struct SidebarRowBackground: ViewModifier {
 }
 
 /// The Sidebar footer's buttons. The Open Project button presents the picker
-/// on the window that owns the Sidebar: it writes that window's `WindowRuntime`, so no notification and no
-/// key-window check is involved. It reads nothing from `AppStateStore.projectStore`.
+/// on the window that owns the Sidebar through
+/// `AppStateStore.presentProjectPicker(in:)`, so no notification and no
+/// key-window check is involved.
 enum SidebarFooter {
     static let addSessionIdentifier = "session-sidebar.add-session-button"
     static let openProjectIdentifier = "session-sidebar.open-project-button"
     static let openProjectSystemName = "briefcase"
     static let openProjectHelp = "Open Project\u{2026}"
     static let openProjectLabel = "Open Project"
-
-    static func presentProjectPicker(in windowRuntime: WindowRuntime) {
-        windowRuntime.projectPickerShown = true
-    }
 }
 
 /// Which SF Symbol a Sidebar Session row draws. `projectSymbol` is nil for a

@@ -6,7 +6,7 @@ import SwiftUI
 /// per-row reset button. Surfaces collisions and reserved-shortcut conflicts
 /// inline beneath the offending row.
 public struct ShortcutsSettingsView: View {
-    @State private var store = ShortcutsStore.shared
+    private let store = ShortcutsStore.shared
 
     public init() {}
 

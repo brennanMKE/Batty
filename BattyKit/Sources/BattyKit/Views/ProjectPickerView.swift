@@ -33,8 +33,6 @@ struct ProjectPickerView: View {
     let onSetShared: (UUID, Bool) -> Void
     let syncError: () -> String?
     let unreadableFilePath: () -> String?
-    /// Lets the host retry a failed read when the sheet appears.
-    let onPresented: () -> Void
     let onCancel: () -> Void
 
     @State private var base: ProjectPickerModel
@@ -51,7 +49,6 @@ struct ProjectPickerView: View {
         onSetShared: @escaping (UUID, Bool) -> Void,
         syncError: @escaping () -> String? = { nil },
         unreadableFilePath: @escaping () -> String? = { nil },
-        onPresented: @escaping () -> Void = {},
         onCancel: @escaping () -> Void
     ) {
         _base = State(initialValue: ProjectPickerModel(
@@ -62,7 +59,6 @@ struct ProjectPickerView: View {
         self.onSetShared = onSetShared
         self.syncError = syncError
         self.unreadableFilePath = unreadableFilePath
-        self.onPresented = onPresented
         self.onCancel = onCancel
     }
 
@@ -116,7 +112,6 @@ struct ProjectPickerView: View {
         .accessibilityIdentifier("project-picker.root")
         .onAppear {
             filterFocused = true
-            onPresented()
         }
     }
 
