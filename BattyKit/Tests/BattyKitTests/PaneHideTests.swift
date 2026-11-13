@@ -330,17 +330,13 @@ struct PaneHideTests {
         #expect(paneA.isHidden == false)
     }
 
-    // MARK: 9. TerminalHostStore placement is driven on hide
+    // MARK: 9. TerminalHostStore shown state is driven on hide and show
 
-    /// Verifies that hidePane drives TerminalHostStore.setPlacement(isVisible:false)
-    /// for every tab in the pane, so AppTerminalView.isHidden=true is set even
-    /// though TerminalPlaceholderView is unmounted while the pane is hidden.
-    ///
-    /// AppTerminalView creation requires libghostty and cannot run headlessly,
-    /// so we pre-seed a placement via setPlacement and assert it is overwritten
-    /// to isVisible=false. The view-hide half (AppTerminalView.isHidden) is
-    /// covered by the manual UI sign-off checklist in the issue.
-    @Test func hidePaneDrivesHostStorePlacement() {
+    /// `hidePane` marks every Tab in the Pane not shown in `TerminalHostStore`
+    /// (which hides its `AppTerminalView`) even though the
+    /// `TerminalPlaceholderView` unmounts while the Pane is hidden, and forgets
+    /// the reported frame so the remount reports a fresh one (#0605).
+    @Test func hidePaneDrivesHostStoreShownState() {
         let store = AppStateStore()
         let session = store.sessions.first!
         let paneA = session.focusedPaneAnyKind
@@ -348,40 +344,29 @@ struct PaneHideTests {
 
         let hostStore = TerminalHostStore.shared
         let tabAID = paneA.activeTabID
+        defer {
+            for pane in session.tree.allPanes {
+                for tab in pane.tabs { hostStore.releaseTerminalView(forTabID: tab.id) }
+            }
+        }
 
-        // Pre-seed a visible placement so we can detect the overwrite.
-        hostStore.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 400, height: 300), isVisible: true),
-            forTabID: tabAID
-        )
-        #expect(hostStore.placement(forTabID: tabAID)?.isVisible == true)
+        hostStore.reportFrame(NSRect(x: 0, y: 0, width: 400, height: 300), forTabID: tabAID)
+        #expect(hostStore.isTabShown(tabAID))
+        #expect(hostStore.reportedFrame(forTabID: tabAID) != nil)
 
-        // Hide paneA through the real path.
         store.hidePane(id: paneA.id)
         #expect(paneA.isHidden == true)
 
-        // TerminalHostStore must have been told the placement is no longer visible.
-        let placementAfterHide = hostStore.placement(forTabID: tabAID)
-        #expect(placementAfterHide != nil)
-        #expect(placementAfterHide?.isVisible == false)
-
-        // Verify all tabs in the pane had their placements hidden (multi-tab case).
         for tab in paneA.tabs {
-            let p = hostStore.placement(forTabID: tab.id)
-            // Tabs that were seeded should be isVisible=false; un-seeded tabs
-            // (no prior placement) have p==nil which is also not visible.
-            if let p {
-                #expect(p.isVisible == false)
-            }
+            #expect(!hostStore.isTabShown(tab.id))
+            #expect(hostStore.reportedFrame(forTabID: tab.id) == nil)
         }
     }
 
-    /// After showPane the placement is NOT explicitly driven by WindowRuntime —
-    /// TerminalPlaceholderView self-heals on remount. Verify showPane only flips
-    /// isHidden and does not leave a stale isVisible=false placement that would
-    /// prevent the placeholder from re-showing on remount (the placeholder's
-    /// onGeometryChange always overwrites whatever was in the store).
-    @Test func showPaneDoesNotBlockPlaceholderSelfHeal() {
+    /// `showPane` marks the active Tab shown again, in the action. The view is
+    /// revealed by the remounted placeholder's first frame, which this
+    /// headless test has none of, so no frame is recorded yet.
+    @Test func showPaneMarksTheActiveTabShownAndWaitsForAFrame() {
         let store = AppStateStore()
         let session = store.sessions.first!
         let paneA = session.focusedPaneAnyKind
@@ -389,23 +374,20 @@ struct PaneHideTests {
 
         let hostStore = TerminalHostStore.shared
         let tabAID = paneA.activeTabID
+        defer {
+            for pane in session.tree.allPanes {
+                for tab in pane.tabs { hostStore.releaseTerminalView(forTabID: tab.id) }
+            }
+        }
 
-        hostStore.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 400, height: 300), isVisible: true),
-            forTabID: tabAID
-        )
-
+        hostStore.reportFrame(NSRect(x: 0, y: 0, width: 400, height: 300), forTabID: tabAID)
         store.hidePane(id: paneA.id)
-        #expect(hostStore.placement(forTabID: tabAID)?.isVisible == false)
+        #expect(!hostStore.isTabShown(tabAID))
 
         store.showPane(id: paneA.id)
         #expect(paneA.isHidden == false)
-        // The placement record is still isVisible=false here — TerminalPlaceholderView
-        // hasn't remounted yet (we're headless). That is correct: showPane doesn't
-        // touch the store; the placeholder fires setPlacement on remount. The test
-        // confirms pane.isHidden is flipped so SwiftUI will remount the placeholder.
-        // The isVisible=false placement is NOT a blocker — onGeometryChange overwrites it.
-        #expect(hostStore.placement(forTabID: tabAID)?.isVisible == false)
+        #expect(hostStore.isTabShown(tabAID))
+        #expect(hostStore.reportedFrame(forTabID: tabAID) == nil)
     }
 
     // MARK: 10. Non-terminal pane hide must not leak a placement (#0315 review round 1, finding 1)
@@ -413,12 +395,9 @@ struct PaneHideTests {
     /// A non-terminal pane's `tabs` holds one structural placeholder
     /// `TabRuntime` that never mounts a `TerminalPlaceholderView`, so it
     /// never registers a `TerminalHostStore.terminalViews` entry.
-    /// `hidePane`'s per-tab `setPlacement` loop must skip it — writing a
-    /// `placements` entry anyway would be a dead entry `releaseTerminalView`
-    /// can never clean up (its no-registered-view guard returns before
-    /// reaching `placements.removeValue`), leaking one entry per
-    /// open→hide→close cycle for the app's lifetime — the #0285
-    /// unbounded-growth class.
+    /// `hidePane`'s per-tab loop is kind-gated and must skip it, so no shown
+    /// or frame entry is recorded for a Tab that never has a terminal view
+    /// (the #0285 unbounded-growth class).
     @Test func hidingANonTerminalPaneDoesNotLeakATerminalHostStorePlacement() {
         let store = AppStateStore()
         let session = store.sessions.first!

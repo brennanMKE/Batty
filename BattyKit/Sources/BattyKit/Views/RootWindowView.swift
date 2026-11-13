@@ -244,14 +244,13 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
     /// Pauses/resumes rendering for every surface in this window when the
     /// window itself becomes fully occluded (covered by another window),
     /// minimized, or hidden (Cmd-H) — none of which flip any Tab/Pane's own
-    /// `isHidden`/placement state, so the per-Tab occlusion signalling in
-    /// `TerminalHostStore.setPlacement`/`updatePlacements` alone can't see
-    /// it. `NSWindow.occlusionState` is the documented AppKit signal for
+    /// `isHidden`/shown state, so the per-Tab occlusion signalling in
+    /// `TerminalHostStore.reportFrame`/`setTabShown` alone can't see it. `NSWindow.occlusionState` is the documented AppKit signal for
     /// exactly this (#0288). This runs as a genuine `NSWindowDelegate`
     /// callback outside SwiftUI's update pass — not a write from `body`,
     /// `onChange`, or a representable update — so the writes it causes are
     /// event-origin. It forwards to `TerminalHostStore`, which re-derives each
-    /// tab's effective visibility from its own placement (see that method's
+    /// tab's effective visibility from its view's `isHidden` (see that method's
     /// doc comment for why re-showing everything unconditionally would be
     /// wrong), and to `WindowRuntime.setWindowVisible`, which suspends or
     /// resumes the selected Session's non-terminal Pane content (#0601).

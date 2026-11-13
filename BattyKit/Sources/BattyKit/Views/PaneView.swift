@@ -13,7 +13,6 @@ public struct PaneView: View {
     @Bindable public var pane: PaneRuntime
     @Bindable public var tree: SplitTree
     @Environment(\.appStateStore) private var appStore
-    @Environment(\.isSelectedSession) private var isSessionSelected
     @Environment(\.themeChrome) private var themeChrome
     @Environment(\.windowIsSeeThrough) private var windowIsSeeThrough
     @Environment(\.paneAllottedSize) private var allottedSize
@@ -270,7 +269,6 @@ public struct PaneView: View {
                 ForEach(pane.tabs) { tab in
                     TerminalPlaceholderView(
                         tab: tab,
-                        isVisible: tab.id == pane.activeTabID && isSessionSelected,
                         paneID: pane.id,
                         isPaneFocused: isPaneFocused
                     )

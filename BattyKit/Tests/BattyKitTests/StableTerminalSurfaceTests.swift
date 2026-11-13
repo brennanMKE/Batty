@@ -246,10 +246,10 @@ struct StableTerminalSurfaceTests {
         #expect(tab.terminalNSView === original)
     }
 
-    /// `setPlacement` updates one tab without disturbing its siblings.
+    /// `reportFrame` updates one tab without disturbing its siblings.
     /// This is the geometry-settling backstop for #0101 — called from
     /// `TerminalPlaceholderView.onGeometryChange` per visible tab.
-    @Test func setPlacementForSingleTabPreservesSiblings() {
+    @Test func reportFrameForSingleTabPreservesSiblings() {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let firstTab = TabRuntime()
@@ -270,13 +270,8 @@ struct StableTerminalSurfaceTests {
         #expect(firstView.frame == NSRect(x: 0, y: 0, width: 100, height: 100))
         #expect(secondView.frame == NSRect(x: 0, y: 0, width: 200, height: 200))
 
-        store.setPlacement(
-            TerminalHostStore.Placement(
-                frame: NSRect(x: 0, y: 0, width: 300, height: 300),
-                isVisible: true
-            ),
-            forTabID: firstTab.id
-        )
+        store.setTabShown(true, forTabID: firstTab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 300, height: 300), forTabID: firstTab.id)
 
         #expect(firstView.frame == NSRect(x: 0, y: 0, width: 300, height: 300))
         #expect(secondView.frame == NSRect(x: 0, y: 0, width: 200, height: 200))
@@ -284,28 +279,18 @@ struct StableTerminalSurfaceTests {
         #expect(!secondView.isHidden)
     }
 
-    @Test func setPlacementHidesWhenIsVisibleFalse() {
+    @Test func setTabShownFalseHidesTheView() {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
         let view = store.terminalView(for: tab, windowID: windowID)!
 
-        store.setPlacement(
-            TerminalHostStore.Placement(
-                frame: NSRect(x: 0, y: 0, width: 100, height: 100),
-                isVisible: true
-            ),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 100, height: 100), forTabID: tab.id)
         #expect(!view.isHidden)
 
-        store.setPlacement(
-            TerminalHostStore.Placement(
-                frame: NSRect(x: 0, y: 0, width: 100, height: 100),
-                isVisible: false
-            ),
-            forTabID: tab.id
-        )
+        store.setTabShown(false, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 100, height: 100), forTabID: tab.id)
         #expect(view.isHidden)
     }
 
@@ -395,10 +380,8 @@ struct StableTerminalSurfaceTests {
         let view2 = store.terminalView(for: tab2, windowID: window2)!
 
         // Make view2 visible first so we can verify it doesn't get hidden.
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 100, height: 100), isVisible: true),
-            forTabID: tab2.id
-        )
+        store.setTabShown(true, forTabID: tab2.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 100, height: 100), forTabID: tab2.id)
         #expect(!view2.isHidden)
 
         // Update placements for window1 only (empty — should hide view1).

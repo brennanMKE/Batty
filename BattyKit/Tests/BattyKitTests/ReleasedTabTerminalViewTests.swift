@@ -60,19 +60,18 @@ struct ReleasedTabTerminalViewTests {
         #expect(store.hasTerminalView(forTabID: tabB.id))
     }
 
-    @Test func setPlacementForAReleasedTabRecordsNothing() {
+    @Test func shownStateAndFrameForAReleasedTabRecordNothing() {
         let store = TerminalHostStore()
         let windowID = WindowID()
         let tab = TabRuntime()
         _ = store.terminalView(for: tab, windowID: windowID)
         store.releaseTerminalView(forTabID: tab.id)
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: CGRect(x: 10, y: 20, width: 300, height: 200), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(CGRect(x: 10, y: 20, width: 300, height: 200), forTabID: tab.id)
 
         #expect(store.placement(forTabID: tab.id) == nil)
+        #expect(!store.isTabShown(tab.id))
     }
 
     @Test func updatePlacementsSkipsReleasedTabs() throws {
@@ -127,7 +126,7 @@ struct ReleasedTabTerminalViewTests {
     /// `PaneViewRenderTests.host` pattern) and lays it out synchronously,
     /// which evaluates its `body`.
     private func mountPlaceholder(for tab: TabRuntime, windowID: WindowID) -> NSWindow {
-        let content = TerminalPlaceholderView(tab: tab, isVisible: true, paneID: UUID(), isPaneFocused: true)
+        let content = TerminalPlaceholderView(tab: tab, paneID: UUID(), isPaneFocused: true)
             .environment(\.windowID, windowID)
         let size = CGSize(width: 400, height: 300)
         let hostingView = NSHostingView(rootView: content)

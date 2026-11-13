@@ -10,11 +10,23 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 public final class PaneRuntime: Identifiable {
     public let id: UUID
     public var tabs: [TabRuntime]
-    public var activeTabID: UUID
+    /// The Tab this Pane shows. The observer is the one choke point that
+    /// moves the terminal's shown state to the incoming Tab
+    /// (`TerminalHostStore.moveShown`), synchronously, so the outgoing
+    /// terminal is hidden here rather than from a SwiftUI callback inside
+    /// layout (#0605). Every writer must therefore be event-origin (an
+    /// action, a command, a gesture handler), never `body` or a
+    /// layout-driven callback.
+    public var activeTabID: UUID {
+        didSet {
+            guard oldValue != activeTabID, kind == .terminal else { return }
+            TerminalHostStore.shared.moveShown(from: oldValue, to: activeTabID)
+        }
+    }
     public internal(set) var unseenBellCount: Int = 0
     /// Whether this pane is hidden from view. The Ghostty surface (PTY +
-    /// scrollback) keeps running; only the placement in `TerminalHostStore`
-    /// is zeroed. Tree structure is unchanged — hidden is a leaf property.
+    /// scrollback) keeps running; `WindowRuntime.hidePane` marks its Tabs
+    /// not shown in `TerminalHostStore`. Tree structure is unchanged — hidden is a leaf property.
     public var isHidden: Bool = false
 
     /// The owning session, set by ``attachToSession(_:)`` once this pane

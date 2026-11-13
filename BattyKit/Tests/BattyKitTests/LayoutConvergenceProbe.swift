@@ -1,6 +1,7 @@
 // LayoutConvergenceProbe.swift
 
 import AppKit
+import GhosttyTerminal
 import ObjectiveC
 import SwiftUI
 import Testing
@@ -30,6 +31,44 @@ final class ProbeWindow: NSWindow {
     private(set) var postNeedsUpdateConstraintsCalls = 0
     private(set) var postNeedsLayoutCalls = 0
     private(set) var brokeLoop = false
+
+    /// One `makeFirstResponder(_:)` call on this window, including the ones
+    /// AppKit makes itself when it hides the first responder.
+    struct ResponderChange: CustomStringConvertible {
+        var argument: String
+        var argumentIsTerminal: Bool
+        var previousIsTerminal: Bool
+        var inLayout: Bool
+
+        var description: String {
+            "makeFirstResponder(\(argument)) previousIsTerminal=\(previousIsTerminal) inLayout=\(inLayout)"
+        }
+    }
+
+    private(set) var responderChanges: [ResponderChange] = []
+    /// Greater than zero while `layoutIfNeeded()` or the root hosting
+    /// view's `layout()` is on the stack.
+    var layoutDepth = 0
+
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        responderChanges.append(ResponderChange(
+            argument: responder.map { NSStringFromClass(type(of: $0)) } ?? "nil",
+            argumentIsTerminal: responder is AppTerminalView,
+            previousIsTerminal: firstResponder is AppTerminalView,
+            inLayout: layoutDepth > 0
+        ))
+        return super.makeFirstResponder(responder)
+    }
+
+    override func layoutIfNeeded() {
+        layoutDepth += 1
+        defer { layoutDepth -= 1 }
+        super.layoutIfNeeded()
+    }
+
+    func resetResponderChanges() {
+        responderChanges = []
+    }
 
     override func updateConstraintsIfNeeded() {
         updateConstraintsCalls += 1
@@ -88,6 +127,13 @@ final class ProbeHostingView: NSHostingView<AnyView> {
     override func updateConstraints() {
         passes += 1
         super.updateConstraints()
+    }
+
+    override func layout() {
+        let probeWindow = window as? ProbeWindow
+        probeWindow?.layoutDepth += 1
+        defer { probeWindow?.layoutDepth -= 1 }
+        super.layout()
     }
 
     func resetCounts() {

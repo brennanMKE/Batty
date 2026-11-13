@@ -52,6 +52,9 @@ public final class WindowRuntime {
     /// — funnels through this one property, so `didSet` is the single place
     /// that delivers, synchronously in the writer's event-origin context:
     ///
+    /// - which terminals are shown, to the two Sessions the change crosses
+    ///   (#0605, `applyTerminalVisibility`), first, so the focus below
+    ///   targets an already revealed terminal,
     /// - `setVisible` to the two Sessions the change crosses (#0349,
     ///   `applySelectionVisibility`), and
     /// - the selection effects (`applySelectionEffects`): deny the previous
@@ -65,7 +68,9 @@ public final class WindowRuntime {
     ///
     /// Not fired for the initial assignment inside `init` (Swift suppresses
     /// observers for a property's first set within its own type's
-    /// initializer) — harmless, since `PaneRuntime.init` already starts a
+    /// initializer). `init` calls `applyTerminalVisibility` itself, so the
+    /// initial Session's terminals are marked shown. The rest is harmless,
+    /// since `PaneRuntime.init` already starts a
     /// freshly-constructed Session's panes in the right phase, `PaneView`'s
     /// terminal `onAppear` focuses the mounted Session's focused Tab, and a
     /// new window's chrome is applied when it becomes key
@@ -77,6 +82,7 @@ public final class WindowRuntime {
     public var selectedSessionID: UUID? {
         didSet {
             guard oldValue != selectedSessionID else { return }
+            applyTerminalVisibility(deselecting: oldValue, selecting: selectedSessionID)
             applySelectionVisibility(deselecting: oldValue, selecting: selectedSessionID)
             applySelectionEffects(deselecting: oldValue)
         }
@@ -199,6 +205,7 @@ public final class WindowRuntime {
             self.sessions = sessions
             self.selectedSessionID = sessions.first?.id
         }
+        applyTerminalVisibility(deselecting: nil, selecting: selectedSessionID)
     }
 
     /// Least-used round-robin palette assignment, scoped to this window
@@ -855,7 +862,7 @@ public final class WindowRuntime {
     /// already empty — there is no "move to some other visible pane"
     /// branch to take, only un-hiding `focused` itself so the session isn't
     /// rendered blank (#0256's "≥1 visible pane" rule). Un-hiding is
-    /// Runtime-layer work (`TerminalHostStore` placements, content
+    /// Runtime-layer work (`TerminalHostStore` shown state, content
     /// lifecycle via `showPane`), which is why this lives here rather than
     /// inside `SplitTree` itself.
     ///
@@ -1026,6 +1033,35 @@ public final class WindowRuntime {
 
     // MARK: - Session selection visibility
 
+    /// Pushes which terminals are shown (#0605) to the (at most) two
+    /// Sessions a `selectedSessionID` write crosses: none of the deselected
+    /// Session's, and in the selected Session each non-hidden terminal Pane's
+    /// active Tab. Called from that property's `didSet` and from `init`,
+    /// never from a view, so hiding the outgoing terminals (and the first
+    /// responder change that comes with it) happens in the selection action,
+    /// not in SwiftUI's layout pass. Not gated on `isWindowVisible`: window
+    /// occlusion is `TerminalHostStore`'s other input. A Session already
+    /// removed from `sessions` is skipped; `removeSession` released its Tabs.
+    private func applyTerminalVisibility(deselecting previousID: UUID?, selecting newID: UUID?) {
+        let store = TerminalHostStore.shared
+        if let previousID, let previous = sessions.first(where: { $0.id == previousID }) {
+            previous.tree.isInSelectedSession = false
+            for pane in previous.tree.allPanes where pane.kind == .terminal {
+                for tab in pane.tabs {
+                    store.setTabShown(false, forTabID: tab.id)
+                }
+            }
+        }
+        if let newID, let selected = sessions.first(where: { $0.id == newID }) {
+            selected.tree.isInSelectedSession = true
+            for pane in selected.tree.allPanes where pane.kind == .terminal {
+                for tab in pane.tabs {
+                    store.setTabShown(!pane.isHidden && tab.id == pane.activeTabID, forTabID: tab.id)
+                }
+            }
+        }
+    }
+
     /// Delivers the non-selected-Session visibility fact (#0349) to every
     /// non-terminal Pane content in the (at most) two Sessions a
     /// `selectedSessionID` write crosses. Called only from that property's
@@ -1131,32 +1167,25 @@ public final class WindowRuntime {
             // Expand the session's sidebar pane list so the just-hidden
             // pane's restore control is reachable without hunting (#0258).
             session.isPaneListExpanded = true
-            // Hide every terminal view in the pane without releasing it —
-            // TerminalPlaceholderView is unmounted while the pane is hidden
-            // so its onGeometryChange never fires. Drive TerminalHostStore
-            // directly so the AppTerminalView isn't left floating (#0256).
+            // Mark every Tab not shown, which hides its terminal view without
+            // releasing it, here in the action rather than from a view
+            // (#0256, #0605). The placeholder unmounts while the Pane is
+            // hidden, so its frame is forgotten too: `showPane` marks the
+            // active Tab shown, and the remounted placeholder's first frame
+            // reveals it instead of a flash at the old frame.
             //
-            // Kind-gated (#0315 review round 1, finding 1): a non-terminal
-            // pane's tab never mounts a TerminalPlaceholderView and so never
-            // registers a `terminalViews` entry — writing a `placements`
-            // entry for it here would be a dead entry `releaseTerminalView`
-            // can never clean up (its `guard let view = terminalViews
-            // .removeValue(...) else { return }` returns before reaching
-            // `placements.removeValue`), leaking one `placements[id]` per
-            // open→hide→close cycle for the app's lifetime — the #0285
-            // unbounded-growth class.
+            // Kind-gated (#0315): a non-terminal Pane's Tab never mounts a
+            // `TerminalPlaceholderView` and never has a terminal view.
             if pane.kind == .terminal {
                 for tab in pane.tabs {
-                    TerminalHostStore.shared.setPlacement(
-                        TerminalHostStore.Placement(frame: .zero, isVisible: false),
-                        forTabID: tab.id
-                    )
+                    TerminalHostStore.shared.setTabShown(false, forTabID: tab.id)
+                    TerminalHostStore.shared.forgetFrame(forTabID: tab.id)
                 }
             }
             // Non-terminal content (#0303/#0314): suspend periodic
             // sampling/watching to zero cost while hidden, driven directly
             // here rather than from a view's unmount for the same reason
-            // the terminal placement above is — `docs/pane-view-lifecycle.md`
+            // the terminal hide above is — `docs/pane-view-lifecycle.md`
             // §5. `nil` for `.terminal` panes, so this is a no-op there.
             pane.content?.setVisible(false)
             notePassiveFocusMove(in: session, since: focusBefore)
@@ -1170,15 +1199,19 @@ public final class WindowRuntime {
             guard let pane = session.tree.allPanes.first(where: { $0.id == id }) else { continue }
             guard pane.isHidden else { return }
             pane.isHidden = false
+            // Terminal (#0605): the action marks the active Tab shown, only
+            // in the selected Session; the remounted placeholder's first
+            // frame reveals it.
+            if pane.kind == .terminal && session.id == selectedSessionID {
+                TerminalHostStore.shared.setTabShown(true, forTabID: pane.activeTabID)
+            }
             // Non-terminal content (#0303/#0314): resume and perform one
             // immediate refresh, matching `docs/pane-view-lifecycle.md`
-            // §4's "showing resumes and refreshes" rule. Unlike the
-            // terminal path (which relies on `TerminalPlaceholderView`'s
-            // remount to re-report a placement, `docs/pane-view-lifecycle.md`
-            // §5's noted asymmetry), a non-terminal conformer has no
-            // remount to lean on since it isn't torn down and rebuilt by
-            // SwiftUI churn — so this call site drives it explicitly rather
-            // than leaving it to a view lifecycle event that may not fire.
+            // §4's "showing resumes and refreshes" rule. A non-terminal
+            // conformer has no remount to lean on since it isn't torn down
+            // and rebuilt by SwiftUI churn — so this call site drives it
+            // explicitly rather than leaving it to a view lifecycle event
+            // that may not fire.
             // Gated on session selection (#0349): un-hiding a Pane that
             // lives in a non-selected Session must not resume it — only
             // `applySelectionVisibility` (via `selectedSessionID`'s

@@ -6,10 +6,6 @@ private struct EnvironmentAppStateStoreKey: EnvironmentKey {
     static let defaultValue: AppStateStore? = nil
 }
 
-private struct EnvironmentIsSelectedSessionKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
-
 private struct EnvironmentWindowIDKey: EnvironmentKey {
     /// `nil` before the window-aware host is installed; any view that needs
     /// the `WindowID` must sit below a `SessionDetailView` in the tree.
@@ -20,14 +16,6 @@ extension EnvironmentValues {
     public var appStateStore: AppStateStore? {
         get { self[EnvironmentAppStateStoreKey.self] }
         set { self[EnvironmentAppStateStoreKey.self] = newValue }
-    }
-
-    /// True when the surrounding view tree belongs to the currently
-    /// selected session in `AppStateStore`. Used by ``TerminalPlaceholderView``
-    /// to decide whether the host should mark its tab as visible.
-    public var isSelectedSession: Bool {
-        get { self[EnvironmentIsSelectedSessionKey.self] }
-        set { self[EnvironmentIsSelectedSessionKey.self] = newValue }
     }
 
     /// The ``WindowID`` of the content window this view tree belongs to.

@@ -164,19 +164,31 @@ fails the run.
 
 **Sanctioned exceptions** (documented in `view-hierarchy.md`; do not add new
 ones): `TerminalPlaceholderView.body`'s lazy `terminalView(for:)` performs a
-one-time `addSubview` into the persistent host on first mount, and terminal
-placement flows as plain frame and `isHidden` writes on the terminal views
-inside `TerminalHostView` via `TerminalHostStore.setPlacement(_:forTabID:)`.
-Both are bounded by design — first-mount-only and frame-only respectively.
-Frame-only holds because each `AppTerminalView` has
+one-time `addSubview` into the persistent host on first mount, and the
+placeholder's `onGeometryChange` calls `TerminalHostStore.reportFrame(_:forTabID:)`,
+which writes plain frames on the terminal views inside `TerminalHostView`
+and may **reveal** (`isHidden = false`) the view of a Tab the actions
+already marked shown. Both are bounded by design — first-mount-only and
+frame-plus-reveal respectively. The placeholder path never hides a view and
+never decides visibility: hiding the window's first responder makes AppKit
+change the first responder, which must not happen inside layout (#0605).
+Every hide, and the first-responder resignation that comes with it, happens
+in the action that changed Tab, Session or Pane visibility, through
+`TerminalHostStore.setTabShown(_:forTabID:)` (`PaneRuntime.activeTabID`'s
+observer, `WindowRuntime.selectedSessionID`'s `didSet`, `hidePane`/`showPane`,
+`SplitTree`'s new-Pane adoption). A reveal is responder-neutral: AppKit only
+reassigns the first responder when it, or an ancestor, is hidden.
+Frame writes and reveals are constraint-free because each `AppTerminalView` has
 `translatesAutoresizingMaskIntoConstraints = false` and no constraints, so it
 is outside the window's constraint engine. With autoresizing-mask
 constraints (the setting before #0601), every placement write marked the
 detail column's `NSHostingView` as needing update constraints from inside
 SwiftUI's layout pass. `SessionDetailLayoutConvergenceTests.terminalPlacementWriteMarksNoViewAsNeedingUpdateConstraints`
-guards it. The
+guards that, and `tabSwitchDoesNotChangeFirstResponderDuringLayout` /
+`sessionSwitchDoesNotChangeFirstResponderDuringLayout` guard the responder
+side. The
 first-mount bound is enforced by the store: it refuses to create a view or
-record a placement for a released tab id, because SwiftUI can evaluate a
+record a frame or shown state for a released tab id, because SwiftUI can evaluate a
 closing Pane's placeholder after the close (#0535). Anything
 beyond that shape goes through an event handler or the store, not the update.
 
@@ -274,6 +286,7 @@ each path, and delete inferred echoes before reaching for guards.
 | Log spam: a body-adjacent helper's line cycling across all instances (e.g. `chipTitle` over every tab UUID) | Feedback loop, or a write invalidating far too broad a dependency graph |
 | `EXC_BREAKPOINT` via `+[NSApplication _crashOnException:]`, all-AppKit stack with `_NSViewLayout` | Observable write or constraint-dirtying/responder AppKit call landed inside the layout pass — read `asiBacktraces` |
 | `_postWindowNeedsUpdateConstraints` raised under a hit test or `setCursorForMouseLocation:` in `displayCycleUpdateStructuralRegions` | A non-converging update loop earlier in the same display cycle hit AppKit's pass cap; the hit test is only the last requester. Look for "Future marking … might be ignored" in the log (#0601) |
+| First responder changes inside layout on a Tab or Session switch (a `makeFirstResponder` from `NSHostingView.layout`, often to a `SwiftUI.KeyViewProxy`) | A SwiftUI callback hid the first-responder terminal (`isHidden = true`), so AppKit moved the first responder mid-layout. Hide in the action that changed visibility, never from `onChange`/`onGeometryChange` (#0605) |
 | Beachball / "app not idle" timeouts in UI tests | Same loop, pre-crash phase |
 | A fix silences the warning but clicks / focus / keyboard input break | The write moved to the wrong owner or lost a race it used to win — restructure direction, don't re-time |
 | Selection / focus reverts right after a split or new-surface creation | Library churn flipped an observed flag on an untouched object and a handler treated it as intent — look for intent reconstructed from observable effects (`#0230`) |

@@ -262,7 +262,6 @@ public struct SessionDetailView: View {
                     .onPreferenceChange(PaneFramePreferenceKey.self) { newFrames in
                         session.paneFrames.frames = newFrames
                     }
-                    .environment(\.isSelectedSession, session.id == windowRuntime.selectedSessionID)
                     .opacity(session.id == windowRuntime.selectedSessionID ? 1 : 0)
                     .allowsHitTesting(session.id == windowRuntime.selectedSessionID)
             }

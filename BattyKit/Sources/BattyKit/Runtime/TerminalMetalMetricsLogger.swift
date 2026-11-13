@@ -23,8 +23,8 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 ///    scale that mis-sized the surface can correct itself moments later
 ///    while the already-allocated 2x drawable chain stays put (nothing
 ///    re-triggers `synchronizeMetrics` just because the scale changed
-///    back, and `TerminalHostStore.updatePlacements` only touches
-///    `view.frame` for currently-visible placements, so a session
+///    back, and `TerminalHostStore.reportFrame` only touches
+///    `view.frame` for currently-shown Tabs, so a session
 ///    mis-sized once and then hidden keeps it indefinitely). Routing
 ///    `TerminalDebugLog`'s `.metrics` line — `sync view=WxH scale=S
 ///    pixels=PxP`, emitted by `synchronizeMetrics` at the instant it

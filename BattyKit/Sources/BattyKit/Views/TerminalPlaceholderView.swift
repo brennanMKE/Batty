@@ -12,6 +12,12 @@ import SwiftUI
 /// (which is anchored to the host installer's container) so the host can
 /// position the corresponding terminal view to overlay it.
 ///
+/// It never decides whether its terminal is visible. The actions that
+/// change Tab, Session or Pane visibility push that to
+/// ``TerminalHostStore/setTabShown(_:forTabID:)`` outside layout; the frame
+/// report runs inside layout and so may only move or reveal a view, never
+/// hide one (#0605).
+///
 /// Why a named coordinate space and not `.global`? The host is inserted
 /// into the SwiftUI tree as a sibling of the session chrome via
 /// ``TerminalHostInstaller`` (see `SessionDetailView`). The host's
@@ -21,13 +27,10 @@ import SwiftUI
 /// directly into `subview.frame` on the host without further conversion.
 struct TerminalPlaceholderView: View {
     let tab: TabRuntime
-    let isVisible: Bool
     let paneID: UUID
     let isPaneFocused: Bool
 
     @Environment(\.windowID) private var windowID
-
-    @State private var lastFrame: CGRect = .zero
 
     var body: some View {
         // Touch the terminal view eagerly so libghostty starts the PTY
@@ -48,17 +51,7 @@ struct TerminalPlaceholderView: View {
                 for: CGRect.self,
                 of: { $0.frame(in: .named(TerminalHostInstaller.coordinateSpaceName)) }
             ) { frame in
-                lastFrame = frame
-                TerminalHostStore.shared.setPlacement(
-                    TerminalHostStore.Placement(frame: frame, isVisible: isVisible),
-                    forTabID: tab.id
-                )
-            }
-            .onChange(of: isVisible) { _, visible in
-                TerminalHostStore.shared.setPlacement(
-                    TerminalHostStore.Placement(frame: lastFrame, isVisible: visible),
-                    forTabID: tab.id
-                )
+                TerminalHostStore.shared.reportFrame(frame, forTabID: tab.id)
             }
             .accessibilityElement()
             .accessibilityLabel(isPaneFocused ? "focused" : "unfocused")

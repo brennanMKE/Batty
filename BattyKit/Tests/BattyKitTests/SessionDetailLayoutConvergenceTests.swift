@@ -249,12 +249,13 @@ struct SessionDetailLayoutConvergenceTests {
         fixture.probe.allViews().filter(\.needsUpdateConstraints).map { String(NSStringFromClass(type(of: $0)).prefix(80)) }
     }
 
-    /// `TerminalPlaceholderView` calls `TerminalHostStore.setPlacement` from
+    /// `TerminalPlaceholderView` calls `TerminalHostStore.reportFrame` from
     /// `onGeometryChange`, inside SwiftUI's layout pass, for every Tab in
-    /// every mounted Session. That is safe only if a placement write is
-    /// frame-only: it must not mark any view in the window as needing update
-    /// constraints, or each placement asks AppKit for another pass of the
-    /// window it is laying out.
+    /// every mounted Session. That is safe only if a frame write (and the
+    /// reveal it can make) marks no view in the window as needing update
+    /// constraints, or each report asks AppKit for another pass of the window
+    /// it is laying out. The hide and show steps run in actions since #0605,
+    /// and must not dirty constraints either.
     @Test func terminalPlacementWriteMarksNoViewAsNeedingUpdateConstraints() async throws {
         let fixture = makeFixture()
         defer { fixture.tearDown() }
@@ -271,22 +272,90 @@ struct SessionDetailLayoutConvergenceTests {
         #expect(original.width > 0 && original.height > 0)
         let moved = original.insetBy(dx: 10, dy: 10)
 
-        TerminalHostStore.shared.setPlacement(.init(frame: moved, isVisible: true), forTabID: tab.id)
+        #expect(TerminalHostStore.shared.isTabShown(tab.id))
+        TerminalHostStore.shared.reportFrame(moved, forTabID: tab.id)
         let afterFrame = viewsNeedingUpdateConstraints(fixture)
         fixture.probe.window.layoutIfNeeded()
         #expect(terminal.frame == moved, "layout moved the terminal off its placement")
         _ = await fixture.probe.settle()
 
-        TerminalHostStore.shared.setPlacement(.init(frame: original, isVisible: false), forTabID: tab.id)
+        TerminalHostStore.shared.setTabShown(false, forTabID: tab.id)
+        #expect(terminal.isHidden)
         let afterHide = viewsNeedingUpdateConstraints(fixture)
         _ = await fixture.probe.settle()
 
-        TerminalHostStore.shared.setPlacement(.init(frame: original, isVisible: true), forTabID: tab.id)
+        TerminalHostStore.shared.setTabShown(true, forTabID: tab.id)
+        #expect(!terminal.isHidden)
         let afterShow = viewsNeedingUpdateConstraints(fixture)
         _ = await fixture.probe.settle()
 
         #expect(afterFrame.isEmpty, "frame placement marked \(afterFrame.count) views: \(afterFrame)")
         #expect(afterHide.isEmpty, "hide placement marked \(afterHide.count) views: \(afterHide)")
         #expect(afterShow.isEmpty, "show placement marked \(afterShow.count) views: \(afterShow)")
+    }
+
+    // MARK: - First responder during layout (#0605)
+
+    /// Makes `tab`'s terminal the probe window's first responder, drives
+    /// `action`, and checks that the outgoing terminal was hidden and resigned
+    /// by the action itself, so the settle that follows changes no first
+    /// responder inside layout and never strands it on a non-terminal.
+    private func assertSwitchKeepsResponderChangesOutOfLayout(
+        _ fixture: Fixture,
+        outgoing tab: TabRuntime,
+        action: () -> Void,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        let window = fixture.probe.window
+        let terminal = try #require(tab.terminalNSView, sourceLocation: sourceLocation)
+        #expect(!terminal.isHidden, "fixture: the outgoing terminal is not on screen", sourceLocation: sourceLocation)
+        #expect(window.makeFirstResponder(terminal), sourceLocation: sourceLocation)
+        #expect(window.firstResponder === terminal, sourceLocation: sourceLocation)
+        window.resetResponderChanges()
+
+        action()
+
+        #expect(terminal.isHidden, "the action did not hide the outgoing terminal", sourceLocation: sourceLocation)
+        #expect(window.firstResponder !== terminal, "the outgoing terminal is still first responder after the action", sourceLocation: sourceLocation)
+        let afterAction = window.responderChanges.count
+
+        _ = await fixture.probe.settle()
+
+        let duringSettle = Array(window.responderChanges.dropFirst(afterAction))
+        let inLayout = duringSettle.filter(\.inLayout)
+        #expect(inLayout.isEmpty, "first responder changed inside layout: \(inLayout)", sourceLocation: sourceLocation)
+        let stranded = duringSettle.filter { $0.previousIsTerminal && !$0.argumentIsTerminal }
+        #expect(stranded.isEmpty, "the settle moved first responder off a terminal: \(stranded)", sourceLocation: sourceLocation)
+    }
+
+    @Test func tabSwitchDoesNotChangeFirstResponderDuringLayout() async throws {
+        let fixture = makeFixture()
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        windowRuntime.selectSession(at: 3)
+        _ = await fixture.probe.settle()
+        _ = await fixture.probe.settle()
+        let pane = try #require(windowRuntime.selectedSession?.focusedTerminalPane)
+        #expect(pane.tabs.count == 2)
+        let outgoing = try #require(pane.activeTab)
+
+        try await assertSwitchKeepsResponderChangesOutOfLayout(fixture, outgoing: outgoing) {
+            windowRuntime.selectNextTabInFocusedPane()
+        }
+        #expect(pane.activeTabID != outgoing.id)
+    }
+
+    @Test func sessionSwitchDoesNotChangeFirstResponderDuringLayout() async throws {
+        let fixture = makeFixture()
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        _ = await fixture.probe.settle()
+        _ = await fixture.probe.settle()
+        let outgoing = try #require(windowRuntime.selectedSession?.focusedTerminalPane?.activeTab)
+
+        try await assertSwitchKeepsResponderChangesOutOfLayout(fixture, outgoing: outgoing) {
+            windowRuntime.selectSession(at: 1)
+        }
+        #expect(windowRuntime.selectedSessionID == windowRuntime.sessions[1].id)
     }
 }

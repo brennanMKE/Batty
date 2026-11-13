@@ -33,11 +33,11 @@ struct TerminalHostInstaller: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: TerminalHostView, context: Context) {
-        // No-op. Geometry is pushed into the host via
-        // TerminalHostStore.setPlacement(_:forTabID:), called from
-        // TerminalPlaceholderView's onGeometryChange / onChange(of: isVisible)
-        // and from WindowRuntime's hide-Pane path — not by SwiftUI
-        // representable updates.
+        // No-op. Frames reach the host through TerminalHostStore.reportFrame,
+        // called from TerminalPlaceholderView's onGeometryChange, and which
+        // Tabs are shown through TerminalHostStore.setTabShown, called from
+        // the actions that change Tab, Session or Pane visibility — not by
+        // SwiftUI representable updates.
     }
 
     static func dismantleNSView(_ nsView: TerminalHostView, coordinator: ()) {

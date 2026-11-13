@@ -126,14 +126,18 @@ Notes on the layout:
 
 - Non-selected Sessions stay in the tree at `.opacity(0)` and
   `.allowsHitTesting(false)`. They keep their `SplitContainerView`
-  mounted so their placeholders keep reporting frames; the host hides
-  the corresponding terminals via `isHidden = true`.
+  mounted so their placeholders keep reporting frames; their terminals
+  stay hidden (`isHidden = true`) because the selection action marked
+  them not shown (#0605).
 - The placeholder is a `Color.clear` view inside a `GeometryReader`. It
   does **not** host the terminal. It emits geometry through a
   `PreferenceKey` so the host can place the terminal NSView over it.
-- The active-tab toggle inside `PaneView` is the *only* selection
-  signal SwiftUI emits; the host reads it indirectly via the
-  `isVisible` flag in `TerminalPlaceholderView.body`.
+- No view decides which terminal is shown. The actions that change it
+  push it to `TerminalHostStore.setTabShown(_:forTabID:)` synchronously:
+  `PaneRuntime.activeTabID`'s observer (Tab switch, add, close),
+  `WindowRuntime.selectedSessionID`'s `didSet` (Session switch),
+  `hidePane`/`showPane`, and `SplitTree`'s new-Pane adoption. The
+  placeholder only reports frames (#0605).
 - `RootWindowView.init` is the only view code that can create a runtime,
   through `AppStateStore.runtimeForPresentedWindow`, and keeps the result
   in `@State`. `SessionSidebarView` and `SessionDetailView` receive the
@@ -177,8 +181,10 @@ the terminal NSViews live outside SwiftUI's rebuild path entirely.
                                                                        |
         TerminalPlaceholderView                                        |
         (per-tab; geometry probe)                                      |
-            onGeometryChange / onChange(of: isVisible)                 |
-              -> TerminalHostStore.shared.setPlacement(_:forTabID:)    |
+            onGeometryChange (frames only; may reveal, never hides)    |
+              -> TerminalHostStore.shared.reportFrame(_:forTabID:)     |
+        Actions (Tab / Session / Pane visibility)                      |
+              -> TerminalHostStore.shared.setTabShown(_:forTabID:)     |
                                                                        |
                                                                        v
                                                    TerminalHostView (NSView, isFlipped=true)
@@ -214,14 +220,18 @@ and kill the shell. The persistent-host design moves ownership of the
 - `TerminalPlaceholderView` reads its `windowID` from the SwiftUI
   environment (set by `SessionDetailView`) and passes it to
   `terminalView(for:windowID:)`. Geometry reporting goes directly to
-  `TerminalHostStore.setPlacement(_:forTabID:)` via `onGeometryChange`
-  and `onChange(of: isVisible)`.
-- `setPlacement(_:forTabID:)` is the production placement path.
+  `TerminalHostStore.reportFrame(_:forTabID:)` via `onGeometryChange`.
+- A view is shown when its Tab is marked shown **and** its placeholder
+  has reported a frame. `setTabShown(_:forTabID:)` is called only by the
+  actions, outside layout; it hides a view, resigning it as first
+  responder first, and reveals one whose frame is already known.
+  `reportFrame(_:forTabID:)` runs inside layout; it moves a shown Tab's
+  view and reveals it on its first frame, and never hides (#0605).
   `updatePlacements(_:forWindowID:)` is a per-window reconcile, kept
   for tests, scoped so one window's placements cannot affect another
   window's terminals (amendment 4 in §4).
 - The store records every released tab id and refuses to create a view
-  or record a placement for it again. SwiftUI can evaluate a closing
+  or record a frame or shown state for it again. SwiftUI can evaluate a closing
   Pane's placeholder `body` after the close, and without that refusal it
   re-creates a view (and PTY) that nothing ever hides or releases (#0535).
 
@@ -242,7 +252,7 @@ Key files:
   — the `NSViewRepresentable` shim. `makeNSView` returns the per-window
   host; `updateNSView` and `dismantleNSView` are no-ops by design.
 - [`../BattyKit/Sources/BattyKit/Views/TerminalPlaceholderView.swift`](../BattyKit/Sources/BattyKit/Views/TerminalPlaceholderView.swift)
-  — the geometry probe that drives per-tab placement.
+  — the geometry probe that reports per-tab frames (never visibility).
 
 ---
 
@@ -277,8 +287,8 @@ multi-window topology; they do not change single-window behavior.
 - **`updateNSView` is a no-op (or property mutation only).** The
   `TerminalHostInstaller` ships an explicitly empty `updateNSView`. Do
   not add `addSubview`/`removeFromSuperview` to it. Geometry flows
-  through `TerminalHostStore.setPlacement(_:forTabID:)` and
-  `updatePlacements(_:forWindowID:)`, not through representable updates.
+  through `TerminalHostStore.reportFrame(_:forTabID:)` and visibility
+  through `setTabShown(_:forTabID:)`, not through representable updates.
 
 - **The placeholder is empty by design.** Don't put SwiftUI content
   inside `TerminalPlaceholderView` expecting it to overlay the
@@ -376,11 +386,17 @@ each step).
    |    log (libghostty): "io_exec: started subcommand"
    |    log: "attached host to window"  (first mount for this window only)
    |
+   |  Selection actions (Tab / Session switch, hide / show Pane, split)
+   |    -> TerminalHostStore.setTabShown(_:forTabID:), outside layout
+   |    store hides the outgoing view (resigning first responder) and
+   |    reveals the incoming one if its frame is known
+   |
    |  Subsequent SwiftUI activity (selection, splits, sidebar toggle,
    |  pane focus change, window resize, NSViewRepresentable churn)
-   |    placeholder's onGeometryChange / onChange(of: isVisible)
-   |      -> TerminalHostStore.setPlacement(_:forTabID:)
-   |    store mutates view.frame and view.isHidden only
+   |    placeholder's onGeometryChange
+   |      -> TerminalHostStore.reportFrame(_:forTabID:)
+   |    store mutates view.frame, and reveals a shown Tab's view on its
+   |    first frame; it never hides from here
    |    viewDidMoveToWindow does NOT fire again
    |    PTY untouched, scrollback untouched, selection untouched
    |
@@ -391,7 +407,8 @@ each step).
    |  point, #0289]
    |    TerminalHostStore.releaseTerminalView(forTabID:)
    |      terminalViews.removeValue(forKey: id)
-   |      placements.removeValue(forKey: id)
+   |      shownTabIDs / frames entries removed (before the guard, so a
+   |      Tab that never got a view leaves none either)
    |      tabWindowMap.removeValue(forKey: id)
    |      view.controller = nil   (#0289 — see note below)
    |        TerminalSurfaceCoordinator.controller's didSet fires
@@ -497,9 +514,10 @@ Quick diagnostic playbook:
 
 - **Terminal is blank after switching session.** The placeholder is
   reporting frames but the host isn't applying them. Check
-  `TerminalHostStore.setPlacement(_:forTabID:)` is being called from
-  `TerminalPlaceholderView.onGeometryChange`. Check the placement's
-  `isVisible` for the active tab.
+  `TerminalHostStore.reportFrame(_:forTabID:)` is being called from
+  `TerminalPlaceholderView.onGeometryChange`, and that the action that
+  made the Tab visible called `setTabShown(true, …)` for the active tab
+  (`isTabShown`).
 - **Terminal reappears empty after the sidebar collapse.** The
   representable was torn down and `makeNSView` built a *new* host
   instead of returning the window's existing one. Verify
@@ -513,7 +531,7 @@ Quick diagnostic playbook:
 - **Click in a terminal doesn't focus it / clicks pass through the
   terminal area.** Hit-testing on `TerminalHostView` is custom (see the
   file); a `frame` mismatch between the placeholder and the host's
-  subview makes the click miss. Log the `setPlacement` calls and the
+  subview makes the click miss. Log the `reportFrame` calls and the
   host subview's `frame` for the same tab id and compare.
 - **PTY survives after the tab chip is gone.** The PTY belongs to the
   *surface*, not the ghostty app — `ghostty_surface_free` is what kills
@@ -545,15 +563,17 @@ Quick diagnostic playbook:
   `TerminalHostStore.releaseTerminalView(forTabID:)` on `closeTab`.
 - *What happens when SwiftUI tears down a `PaneView`?* — Nothing
   destructive to the terminal. The placeholder stops reporting frames;
-  the host hides the affected subviews on the next placement update;
-  the `AppTerminalView` remains in the host, attached to the window,
-  with its PTY running. If the pane re-appears, the placeholder mounts
-  again and the host re-shows the view at the new frame.
+  the action that removed the Pane from view (`hidePane`) already marked
+  its Tabs not shown, which hid their views; the `AppTerminalView`
+  remains in the host, attached to the window, with its PTY running. If
+  the pane re-appears, `showPane` marks its active Tab shown, the
+  placeholder mounts again, and its first frame report re-shows the view
+  at the new frame.
 - *Where do I look if the terminal is blank?* — Three places, in order:
   (1) is `TerminalHostInstaller` returning the same host for this window
-  (not a fresh one)? (2) is the placeholder reporting a frame with
-  `isVisible == true`? (3) is the host's matching subview unhidden and
-  at the reported frame?
+  (not a fresh one)? (2) is the Tab shown (`isTabShown`) and has the
+  placeholder reported a frame (`reportedFrame(forTabID:)`)? (3) is the
+  host's matching subview unhidden and at the reported frame?
 
 ---
 

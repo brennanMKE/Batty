@@ -169,6 +169,13 @@ public final class SplitTree {
     @ObservationIgnored
     private(set) var sessionBackgroundOverride: TerminalBackgroundSettings?
 
+    /// Whether this tree's Session is its window's selected Session, so a
+    /// Pane created later knows whether its terminal is shown. Written only
+    /// by `WindowRuntime.applyTerminalVisibility` (its `init` and every
+    /// selection change); no view reads it.
+    @ObservationIgnored
+    var isInSelectedSession = false
+
     /// Held so a Pane created later starts in the Session's Theme. Only seeds
     /// new Tabs; existing ones are re-themed by whoever writes the override.
     @ObservationIgnored
@@ -249,6 +256,12 @@ public final class SplitTree {
         newPane.setSessionBackgroundOverride(sessionBackgroundOverride)
         newPane.setSessionThemeOverride(sessionThemeOverride)
         guard newPane.kind == .terminal else { return }
+        // Every split entry point reaches here, including an XPC split aimed
+        // at a background Session, which must stay hidden (#0605).
+        TerminalHostStore.shared.setTabShown(
+            isInSelectedSession && !newPane.isHidden,
+            forTabID: newPane.activeTabID
+        )
         let theme = TabRuntime.startingTheme(sessionThemeOverride: sessionThemeOverride)
         for tab in newPane.tabs {
             tab.terminal.controller.setTheme(theme)

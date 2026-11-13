@@ -70,11 +70,12 @@ enum TerminalSurfaceFocuser {
     /// before keystrokes can land: (1) SwiftUI mounts the placeholder and
     /// `TerminalHostStore.terminalView(for:)` creates and attaches the
     /// `AppTerminalView` (`isHidden = true`); (2) the placeholder reports
-    /// its frame via `onGeometryChange`; (3) `TerminalHostStore.setPlacement`
-    /// unhides the view. The 800 ms tail catches slow cold launches where
-    /// the first preference-key emission carries a stale frame and the
-    /// geometry-settling backstop in `TerminalPlaceholderView` is the one
-    /// that finally unhides the view.
+    /// its frame via `onGeometryChange`; (3) that first
+    /// `TerminalHostStore.reportFrame` reveals the view of a Tab the actions
+    /// marked shown. The 800 ms tail catches slow cold launches where the
+    /// first geometry report carries a stale frame and a later
+    /// `onGeometryChange` in `TerminalPlaceholderView` is the one that
+    /// finally settles the view.
     static func focusWhenReady(tab: TabRuntime) {
         generation += 1
         let requested = generation

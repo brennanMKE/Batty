@@ -27,11 +27,13 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 ///   * Lazily create one `AppTerminalView` per `TabRuntime.id` on first
 ///     request and add it to the owning window's host with `isHidden = true`.
 ///   * Track which window each tab's view was installed into
-///     (`tabWindowMap`) so placement updates flow per window and one
-///     window's preference emissions cannot affect another window's terminals.
-///   * Expose per-window placement mutators (``updatePlacements(_:forWindowID:)``
-///     and ``setPlacement(_:forTabID:)``) that are scoped to the window that
-///     owns each tab.
+///     (`tabWindowMap`) so occlusion and reconciles stay scoped to one window.
+///   * Show a tab's view when two separately owned facts both hold: the
+///     actions that change Tab, Session or Pane visibility have marked the
+///     tab shown (``setTabShown(_:forTabID:)``, ``moveShown(from:to:)``), and
+///     its placeholder has reported a frame (``reportFrame(_:forTabID:)``).
+///     The placeholder only reports where it is; it never decides visibility,
+///     and nothing called from SwiftUI's layout pass ever hides a view (#0605).
 ///   * Release a host only after every one of its tabs has gone through
 ///     ``releaseTerminalView(forTabID:)`` (teardown gating).
 @MainActor
@@ -63,10 +65,17 @@ public final class TerminalHostStore {
     /// the runtime so we can send the dropped paths through its surface.
     private var tabRuntimes: [UUID: WeakTabRuntime] = [:]
 
-    /// `tab.id` → most recent placement (host-local frame + visibility
-    /// flag). Stored so re-applying the latest placement on a re-mount
-    /// is a single dictionary read.
-    private var placements: [UUID: Placement] = [:]
+    /// Tabs whose terminal the actions last marked as shown: the Tab is its
+    /// Pane's active Tab, the Pane is not hidden, and its Session is the
+    /// window's selected Session. Absent means not shown. Written only
+    /// through ``setTabShown(_:forTabID:)``, ``releaseTerminalView(forTabID:)``
+    /// and the test reconcile ``updatePlacements(_:forWindowID:)``.
+    private var shownTabIDs: Set<UUID> = []
+
+    /// `tab.id` → the last host-local frame its placeholder reported. Absent
+    /// means no frame yet, so a shown Tab stays hidden until its placeholder
+    /// reports one.
+    private var frames: [UUID: CGRect] = [:]
 
     /// Every `tab.id` passed to ``releaseTerminalView(forTabID:)``. A
     /// released tab never gets a view or placement again: SwiftUI can
@@ -195,8 +204,8 @@ public final class TerminalHostStore {
         view.isHidden = true
         view.autoresizingMask = []
         // Off, and the view holds no constraints, so it stays out of the
-        // window's constraint engine. `setPlacement` writes this view's frame
-        // and `isHidden` from SwiftUI's layout pass; with autoresizing-mask
+        // window's constraint engine. `reportFrame` writes this view's frame
+        // and may unhide it from SwiftUI's layout pass; with autoresizing-mask
         // constraints each write would mark the window as needing another
         // update-constraints pass (#0601).
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -250,11 +259,25 @@ public final class TerminalHostStore {
         terminalViews.count
     }
 
-    /// The most-recently-applied placement for `id`, or `nil` if no placement
-    /// has been set for this tab. Used by unit tests to verify that hide/show
-    /// paths drive the store correctly.
+    /// The recorded frame and shown state for `id`, or `nil` when neither is
+    /// recorded. Used by unit tests; the frame is `.zero` when only the shown
+    /// state is recorded.
     func placement(forTabID id: UUID) -> Placement? {
-        placements[id]
+        let frame = frames[id]
+        let shown = shownTabIDs.contains(id)
+        guard frame != nil || shown else { return nil }
+        return Placement(frame: frame ?? .zero, isVisible: shown)
+    }
+
+    /// Whether the actions last marked `id`'s terminal as shown.
+    func isTabShown(_ id: UUID) -> Bool {
+        shownTabIDs.contains(id)
+    }
+
+    /// The last frame `id`'s placeholder reported, or `nil` when none is
+    /// recorded. Used by tests.
+    func reportedFrame(forTabID id: UUID) -> CGRect? {
+        frames[id]
     }
 
     /// Remove and release the terminal view for `tabID`. Called only when
@@ -302,11 +325,14 @@ public final class TerminalHostStore {
     /// released, is a no-op (the guard returns before touching anything).
     public func releaseTerminalView(forTabID id: UUID) {
         releasedTabIDs.insert(id)
+        // Before the early return: a Tab whose view was never created can
+        // still have been marked shown (or, in tests, given a frame).
+        shownTabIDs.remove(id)
+        frames.removeValue(forKey: id)
         guard let view = terminalViews.removeValue(forKey: id) else {
             logger.debug("releaseTerminalView tab=\(id, privacy: .public): no view registered (already released, or never created)")
             return
         }
-        placements.removeValue(forKey: id)
         let tab = tabRuntimes.removeValue(forKey: id)?.runtime
         tabWindowMap.removeValue(forKey: id)
         view.controller = nil
@@ -368,98 +394,156 @@ public final class TerminalHostStore {
 
     /// The single source of truth for whether a Tab's surface should be
     /// rendering: it takes Tab/Pane visibility and window occlusion, so
-    /// every call site (``updatePlacements(_:forWindowID:)``,
-    /// ``setPlacement(_:forTabID:)``, ``setWindowOcclusionVisible(_:forWindowID:)``,
-    /// and ``syncOccludedTicker()``) computes the exact same answer from the
+    /// every call site (``reportFrame(_:forTabID:)``,
+    /// ``setTabShown(_:forTabID:)``, ``updatePlacements(_:forWindowID:)``,
+    /// ``setWindowOcclusionVisible(_:forWindowID:)``, and
+    /// ``syncOccludedTicker()``) computes the exact same answer from the
     /// exact same two inputs.
     ///
-    /// `placementVisible` is deliberately a plain `Bool`, not a `Placement?`
-    /// read back out of the `placements` dictionary. An earlier version read
-    /// `placements[id]?.isVisible` here, which drifts: a tab dropped
-    /// entirely from a *subsequent* `updatePlacements` map (rather than
-    /// explicitly re-placed with `isVisible: false`) gets its view hidden,
-    /// but `placements[id]` is only overwritten for ids **present** in the
-    /// new map — the dictionary entry keeps its stale `isVisible == true`.
-    /// A later `setWindowOcclusionVisible(true, ...)` re-deriving from that
-    /// stale entry would then call `setSurfaceVisible(true)` on a genuinely
-    /// hidden view, resuming rendering for a Tab #0288 exists to keep
-    /// suppressed. `view.isHidden` never has this problem — both
-    /// `updatePlacements` and `setPlacement` write it unconditionally on
-    /// every call for every view they touch — so every occlusion call site
-    /// passes `!view.isHidden` here instead of consulting `placements`.
-    /// (`placements` itself stays around only as the frame/isVisible cache
-    /// `setPlacement`/`updatePlacements` apply to `view.frame` and the
-    /// `placement(forTabID:)` test accessor reads back — never as an input
-    /// to this function.)
+    /// Every call site passes `!view.isHidden` as `placementVisible`, not
+    /// `shownTabIDs` membership: a shown Tab whose placeholder has not
+    /// reported a frame yet is still hidden and must not render.
     static func effectiveSurfaceVisible(placementVisible: Bool, windowVisible: Bool) -> Bool {
         placementVisible && windowVisible
     }
 
-    /// Reconcile every known terminal view in `windowID`'s host against the
-    /// supplied placement map. Tabs with a placement become visible at the
-    /// given frame; tabs without a placement (or with `isVisible == false`)
-    /// are hidden but kept attached.
+    /// Records the frame `id`'s placeholder reported, in the host's
+    /// coordinate space. **Only `TerminalPlaceholderView` calls this**, from
+    /// `onGeometryChange`, so it runs inside SwiftUI's layout pass. It moves
+    /// a shown Tab's view and reveals it on its first frame (first mount, or
+    /// the remount after `showPane`), but it never hides a view: hiding the
+    /// window's first responder changes the first responder, which must not
+    /// happen inside layout (#0605). Unhiding never changes the first
+    /// responder, and since #0601 neither write dirties constraints.
     ///
-    /// Tabs owned by *other* windows are untouched: per-window scoping
-    /// ensures one window's preference emissions cannot hide another window's
-    /// terminals (design doc §3, amendment 4).
-    public func updatePlacements(_ newPlacements: [UUID: Placement], forWindowID windowID: WindowID) {
-        for (id, placement) in newPlacements where !releasedTabIDs.contains(id) {
-            placements[id] = placement
-        }
-        let windowVisible = windowOcclusionVisible[windowID] ?? true
-        // Walk only the views belonging to this window.
-        for (id, view) in terminalViews where tabWindowMap[id] == windowID {
-            let placement = newPlacements[id]
-            if let placement, placement.isVisible {
-                if view.frame != placement.frame {
-                    view.frame = placement.frame
-                }
-                if view.isHidden {
-                    view.isHidden = false
-                }
-            } else if !view.isHidden {
-                view.isHidden = true
-            }
-            // Surface occlusion tracks Tab/Pane visibility AND window
-            // occlusion — the view can stay attached (`isHidden == false`)
-            // while its window is fully covered/minimized/hidden, in which
-            // case the surface itself must still stop rendering (#0288).
-            // `!view.isHidden` (not `placement`) is the visibility input —
-            // see `effectiveSurfaceVisible`'s doc comment for why.
-            let effective = Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible)
-            logger.debug("occlusionApply[updatePlacements] tab=\(id, privacy: .public) isHidden=\(view.isHidden, privacy: .public) windowVisible=\(windowVisible, privacy: .public) effective=\(effective, privacy: .public)")
-            view.setSurfaceVisible(effective)
-        }
+    /// A Tab that is not shown only has its frame recorded; its hidden view
+    /// is not moved, so a window resize doesn't resize background PTYs. Every
+    /// report still re-applies the view's effective surface visibility and
+    /// the occluded tick set, so a background Tab's freshly created view is
+    /// told it is not visible (a surface defaults to visible).
+    public func reportFrame(_ frame: CGRect, forTabID id: UUID) {
+        guard !releasedTabIDs.contains(id) else { return }
+        recordFrame(frame, forTabID: id)
+        guard let view = terminalViews[id] else { return }
+        applySurfaceVisibility(forTabID: id, view: view, caller: "reportFrame")
         syncOccludedTicker()
     }
 
-    /// Single-tab placement update that merges into the existing map
-    /// instead of replacing it. The placeholder calls this from its
-    /// `.onGeometryChange` backstop when its frame in the host's named
-    /// coordinate space settles — a path that catches geometry changes
-    /// the `PreferenceKey` flow misses on cold launch (#0101), where the
-    /// first preference emission carries a stale frame and the second
-    /// pass doesn't re-emit because the placeholder's locally proposed
-    /// size didn't change.
-    public func setPlacement(_ placement: Placement, forTabID id: UUID) {
-        guard !releasedTabIDs.contains(id) else { return }
-        placements[id] = placement
-        guard let view = terminalViews[id] else { return }
-        if placement.isVisible {
-            if view.frame != placement.frame {
-                view.frame = placement.frame
-            }
-            if view.isHidden {
-                view.isHidden = false
-            }
-        } else if !view.isHidden {
-            view.isHidden = true
+    /// Marks whether `id`'s terminal is shown: its Session is the window's
+    /// selected Session, its Pane is not hidden, and it is its Pane's active
+    /// Tab. **Only the actions that change one of those facts call this**,
+    /// synchronously in the event that changed the model (`PaneRuntime`'s
+    /// `activeTabID` observer, `WindowRuntime`'s selection, `hidePane` and
+    /// `showPane`, `SplitTree`'s new-Pane adoption), never SwiftUI. So
+    /// hiding the view, and the first-responder change that comes with it,
+    /// happen outside layout (#0605).
+    ///
+    /// Showing reveals the view at once when its placeholder has already
+    /// reported a frame; otherwise ``reportFrame(_:forTabID:)`` reveals it.
+    /// Idempotent: no change in membership is a no-op. The surface visibility
+    /// pass runs only when the view's `isHidden` changed; a view that stays
+    /// hidden gets it from its placeholder's ``reportFrame(_:forTabID:)``.
+    public func setTabShown(_ shown: Bool, forTabID id: UUID) {
+        guard !releasedTabIDs.contains(id), recordShown(shown, forTabID: id),
+              let view = terminalViews[id] else { return }
+        applySurfaceVisibility(forTabID: id, view: view, caller: "setTabShown")
+        syncOccludedTicker()
+    }
+
+    /// The frame half of ``reportFrame(_:forTabID:)``, without the surface
+    /// visibility pass. Never hides a view.
+    private func recordFrame(_ frame: CGRect, forTabID id: UUID) {
+        frames[id] = frame
+        guard shownTabIDs.contains(id), let view = terminalViews[id] else { return }
+        if view.frame != frame {
+            view.frame = frame
         }
+        if view.isHidden {
+            view.isHidden = false
+        }
+    }
+
+    /// The shown half of ``setTabShown(_:forTabID:)``, without the surface
+    /// visibility pass. Returns whether the view's `isHidden` changed.
+    private func recordShown(_ shown: Bool, forTabID id: UUID) -> Bool {
+        guard shownTabIDs.contains(id) != shown else { return false }
+        if shown {
+            shownTabIDs.insert(id)
+        } else {
+            shownTabIDs.remove(id)
+        }
+        guard let view = terminalViews[id] else { return false }
+        if shown {
+            guard let frame = frames[id] else { return false }
+            if view.frame != frame {
+                view.frame = frame
+            }
+            guard view.isHidden else { return false }
+            view.isHidden = false
+            return true
+        }
+        guard !view.isHidden else { return false }
+        resignFirstResponderIfHosting(view)
+        view.isHidden = true
+        return true
+    }
+
+    /// Moves "shown" from a Pane's outgoing active Tab to its incoming one. A
+    /// Tab switch never changes whether the Pane is on screen, so the
+    /// incoming Tab inherits the outgoing Tab's state.
+    public func moveShown(from oldID: UUID, to newID: UUID) {
+        let wasShown = shownTabIDs.contains(oldID)
+        setTabShown(false, forTabID: oldID)
+        setTabShown(wasShown, forTabID: newID)
+    }
+
+    /// Drops `id`'s recorded frame. For a placeholder that unmounts while its
+    /// Tab can be shown again (`hidePane`): the reveal then waits for the
+    /// remounted placeholder's first frame instead of flashing at a stale one.
+    public func forgetFrame(forTabID id: UUID) {
+        frames.removeValue(forKey: id)
+    }
+
+    /// Resigns `view` (or a subview of it) as its window's first responder,
+    /// making the window the first responder. AppKit would otherwise pick the
+    /// next valid key view when the view is hidden, which can be another
+    /// visible terminal. This only resigns; `TerminalSurfaceFocuser` is what
+    /// promotes the incoming terminal. Reached only through
+    /// ``setTabShown(_:forTabID:)``, which runs in actions, and the test
+    /// reconcile ``updatePlacements(_:forWindowID:)``; never from layout.
+    private func resignFirstResponderIfHosting(_ view: AppTerminalView) {
+        guard let window = view.window,
+              let responder = window.firstResponder as? NSView,
+              responder === view || responder.isDescendant(of: view) else { return }
+        window.makeFirstResponder(nil)
+    }
+
+    private func applySurfaceVisibility(forTabID id: UUID, view: AppTerminalView, caller: StaticString) {
         let windowVisible = tabWindowMap[id].flatMap { windowOcclusionVisible[$0] } ?? true
         let effective = Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible)
-        logger.debug("occlusionApply[setPlacement] tab=\(id, privacy: .public) isHidden=\(view.isHidden, privacy: .public) windowVisible=\(windowVisible, privacy: .public) effective=\(effective, privacy: .public)")
+        logger.debug("occlusionApply[\(String(describing: caller), privacy: .public)] tab=\(id, privacy: .public) isHidden=\(view.isHidden, privacy: .public) windowVisible=\(windowVisible, privacy: .public) effective=\(effective, privacy: .public)")
         view.setSurfaceVisible(effective)
+    }
+
+    /// Test reconcile of every terminal view in `windowID`'s host against a
+    /// whole placement map: each listed tab's shown state and frame are set
+    /// as ``setTabShown(_:forTabID:)`` and ``reportFrame(_:forTabID:)`` would
+    /// set them, and this window's tabs absent from the map are marked not
+    /// shown. Tabs owned by other windows are untouched. No production
+    /// caller.
+    func updatePlacements(_ newPlacements: [UUID: Placement], forWindowID windowID: WindowID) {
+        for (id, placement) in newPlacements where !releasedTabIDs.contains(id) {
+            _ = recordShown(placement.isVisible, forTabID: id)
+            recordFrame(placement.frame, forTabID: id)
+        }
+        for id in terminalViews.keys where tabWindowMap[id] == windowID && newPlacements[id] == nil {
+            _ = recordShown(false, forTabID: id)
+        }
+        let windowVisible = windowOcclusionVisible[windowID] ?? true
+        for (id, view) in terminalViews where tabWindowMap[id] == windowID {
+            let effective = Self.effectiveSurfaceVisible(placementVisible: !view.isHidden, windowVisible: windowVisible)
+            view.setSurfaceVisible(effective)
+        }
         syncOccludedTicker()
     }
 
@@ -474,9 +558,9 @@ public final class TerminalHostStore {
     /// of which flip any Tab/Pane's own `isHidden`/placement state.
     ///
     /// Re-deriving from each view's own `isHidden` (rather than blindly
-    /// setting every surface visible again, or trusting the `placements`
-    /// cache — see `effectiveSurfaceVisible`'s doc comment for why not the
-    /// latter) is the guard against un-hiding background tabs when the
+    /// setting every surface visible again, or trusting `shownTabIDs` — see
+    /// `effectiveSurfaceVisible`'s doc comment for why not the latter) is
+    /// the guard against un-hiding background tabs when the
     /// window returns: a tab that was already occluded by pane/tab
     /// visibility stays occluded; only tabs whose view is actually shown
     /// resume rendering.
@@ -514,7 +598,7 @@ public final class TerminalHostStore {
     ///
     /// Deliberately does **not** filter on whether the tab's libghostty
     /// surface has attached yet. An earlier version did (`hasLiveSurface`),
-    /// which went stale: none of the four call sites below re-run when a
+    /// which went stale: none of the call sites below re-run when a
     /// surface attaches asynchronously after `terminalView(for:windowID:)`
     /// creates the view (`viewDidMoveToWindow` → `layout()` →
     /// `rebuildIfReady()`), so a Tab mounting into an already-occluded
@@ -528,7 +612,7 @@ public final class TerminalHostStore {
     ///
     /// Called at the end of every method that can change the two inputs
     /// (view visibility, window occlusion) or the view set itself:
-    /// ``updatePlacements(_:forWindowID:)``, ``setPlacement(_:forTabID:)``,
+    /// ``reportFrame(_:forTabID:)``, ``setTabShown(_:forTabID:)``, ``updatePlacements(_:forWindowID:)``,
     /// ``setWindowOcclusionVisible(_:forWindowID:)``, and
     /// ``releaseTerminalView(forTabID:)`` (so a closed tab's id drops out
     /// immediately rather than lingering until the next unrelated update).
@@ -570,10 +654,11 @@ public final class TerminalHostStore {
 
     // MARK: - Types
 
-    /// Host-local placement for a single terminal view. `frame` is in
-    /// the host's own coordinate space (top-left origin because the
-    /// host is `isFlipped == true`, matching SwiftUI). `isVisible == false`
-    /// keeps the view attached but hidden.
+    /// Host-local placement for a single terminal view, the input of the
+    /// test reconcile ``updatePlacements(_:forWindowID:)`` and the output of
+    /// ``placement(forTabID:)``. `frame` is in the host's own coordinate
+    /// space (top-left origin because the host is `isFlipped == true`,
+    /// matching SwiftUI). `isVisible` is the Tab's shown state.
     public struct Placement: Equatable, Sendable {
         public var frame: NSRect
         public var isVisible: Bool

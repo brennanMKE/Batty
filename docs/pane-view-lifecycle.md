@@ -89,16 +89,16 @@ three call sites, verified against the current tree:
 
 | Fact | Where it's computed | Citation |
 |---|---|---|
-| **Pane in a non-selected Session** | `SessionDetailView` sets an environment value comparing the session's id to the window's selected session id; `PaneView` reads it as `isSessionSelected` — this is the *view-layer* copy of the fact, for rendering. The *model-level* delivery to a `PaneContentLifecycle` conformer (`#0349`) is separate: `WindowRuntime.selectedSessionID`'s `didSet` calls `applySelectionVisibility(deselecting:selecting:)`, which sweeps the deselected Session's unhidden Panes with `setVisible(false)` and the newly selected Session's with `setVisible(true)` — see §5's "Where the calls come from" for the full account, now updated. | `BattyKit/Sources/BattyKit/Views/SessionDetailView.swift:203` (`.environment(\.isSelectedSession, session.id == windowRuntime.selectedSessionID)`); env key declared at `BattyKit/Sources/BattyKit/Commands/FocusedValues.swift:32`; read at `BattyKit/Sources/BattyKit/Views/PaneView.swift:15`; model-level delivery at `BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift` (`selectedSessionID`'s `didSet` and `applySelectionVisibility(deselecting:selecting:)`) |
-| **Inactive Tab (within a Pane)** | `PaneView.body` compares each tab's id to `pane.activeTabID` when constructing its `TerminalPlaceholderView`. | `BattyKit/Sources/BattyKit/Views/PaneView.swift:126` — `isVisible: tab.id == pane.activeTabID && isSessionSelected` |
-| **Hidden Pane** | `WindowRuntime.hidePane(id:)` is the single trigger for **both** halves of hiding, in the same function. It flips `pane.isHidden`, which is what makes `SplitContainerView`'s `SplitNodeView` stop constructing `PaneView` for that leaf (the SwiftUI unmount) — but that unmount is not what hides the terminal. In the same call, `hidePane` also drives `TerminalHostStore.setPlacement(_:forTabID:)` directly, once per tab, with an explicit `isVisible: false` placement. The in-code comment at the call site says why: the placeholder is about to unmount, so its own `onGeometryChange` will never fire to report a hidden placement itself — driving the store directly is how `#0256` fixed exactly this gap (that issue's round-1 blocker: the terminal stayed floating on screen because nothing but the unmount had been wired; `TerminalHostStore.updatePlacements(_:forWindowID:)` — a full-window sweep that *would* have caught this — has no production caller at all, then or now, only test callers). **A non-terminal conformer already has the identical shape provided for it, not something to invent** — see §5's "Where the calls come from" for the direct consequence: `hidePane` is where a conformer's `setVisible(false)` belongs, called the same explicit way. | `BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift:405-431` (the per-tab `setPlacement` loop at `:427-431`); `TerminalHostStore.setPlacement(_:forTabID:)` at `BattyKit/Sources/BattyKit/Runtime/TerminalHostStore.swift:419-434`; `SplitContainerView`'s unmount check at `BattyKit/Sources/BattyKit/Views/SplitContainerView.swift:59-62` |
+| **Pane in a non-selected Session** | `WindowRuntime.selectedSessionID`'s `didSet` is the single delivery point. For terminals it calls `applyTerminalVisibility(deselecting:selecting:)`, which marks every Tab of the deselected Session not shown and each non-hidden Pane's active Tab of the newly selected Session shown, through `TerminalHostStore.setTabShown(_:forTabID:)`, and sets each tree's `isInSelectedSession` so a later split knows (#0605). For a `PaneContentLifecycle` conformer (`#0349`) it calls `applySelectionVisibility(deselecting:selecting:)`, which sweeps the deselected Session's unhidden Panes with `setVisible(false)` and the newly selected Session's with `setVisible(true)` — see §5's "Where the calls come from". No view reads the fact; `SessionDetailView` only uses it for `.opacity`/`.allowsHitTesting`. | `BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift` (`selectedSessionID`'s `didSet`, `applyTerminalVisibility(deselecting:selecting:)`, `applySelectionVisibility(deselecting:selecting:)`) |
+| **Inactive Tab (within a Pane)** | `PaneRuntime.activeTabID`'s observer, the one choke point every Tab-switch, add and close writer goes through, calls `TerminalHostStore.moveShown(from:to:)`: the outgoing Tab is marked not shown (its view hidden, in the action) and the incoming Tab inherits its shown state (#0605). | `BattyKit/Sources/BattyKit/Runtime/PaneRuntime.swift` (`activeTabID`'s `didSet`); `TerminalHostStore.moveShown(from:to:)` |
+| **Hidden Pane** | `WindowRuntime.hidePane(id:)` is the single trigger for **both** halves of hiding, in the same function. It flips `pane.isHidden`, which is what makes `SplitContainerView`'s `SplitNodeView` stop constructing `PaneView` for that leaf (the SwiftUI unmount) — but that unmount is not what hides the terminal. In the same call, `hidePane` marks every Tab of the Pane not shown with `TerminalHostStore.setTabShown(false, forTabID:)` and forgets its frame (`forgetFrame(forTabID:)`), once per tab. The placeholder is about to unmount, so nothing in the view layer would hide it — driving the store directly is how `#0256` fixed exactly this gap (the terminal stayed floating on screen because nothing but the unmount had been wired). `showPane` marks the active Tab shown again when its Session is selected; the remounted placeholder's first frame reveals it. **A non-terminal conformer has the identical shape** — see §5's "Where the calls come from": `hidePane` is where a conformer's `setVisible(false)` belongs, called the same explicit way. | `BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift` (`hidePane(id:)`, `showPane(id:)`); `TerminalHostStore.setTabShown(_:forTabID:)`; `SplitContainerView`'s unmount check in `BattyKit/Sources/BattyKit/Views/SplitContainerView.swift` |
 | **Window occlusion** | Whether the *window* can be seen (not fully covered, minimized or hidden with Cmd-H). For terminals, `TerminalHostStore.effectiveSurfaceVisible(placementVisible:windowVisible:)` folds it into the surface's effective visibility. For non-terminal content (#0601), `WindowRuntime.setWindowVisible(_:)` suspends the selected Session's `!isHidden` Panes when the window stops being visible and resumes them when it returns; `applySelectionVisibility` and `showPane` resume content only while `isWindowVisible`, and `createPane` / `AppStateStore.splitPane` pass it into `isSessionSelected`. Both are driven from `WindowDelegate.windowDidChangeOcclusionState` and the initial read in `WindowLifecycleController`. | `BattyKit/Sources/BattyKit/Runtime/TerminalHostStore.swift` (`effectiveSurfaceVisible`); `BattyKit/Sources/BattyKit/Runtime/WindowRuntime.swift` (`setWindowVisible(_:)`); `BattyKit/Sources/BattyKit/Views/RootWindowView.swift` |
 
 **What this table means for a non-terminal view kind, concretely:** the
 non-selected-Session fact and the hidden-Pane fact are the two that
 matter (the inactive-Tab fact does not apply — see below). Their *value*
-is easy to compute the same way `isVisible` is computed for
-`TerminalPlaceholderView` today: `isSessionSelected` and `!pane.isHidden`.
+is easy to compute the same way the terminal shown state is computed
+today: the Session is the selected one, and `!pane.isHidden`.
 Their *delivery* to a conformer is not automatically solved by that
 computation, and this is exactly where the terminal precedent above stops
 being reusable off the shelf. A non-terminal Pane's content, if it were
@@ -113,7 +113,7 @@ guaranteed to fire synchronously, or on every path a view can stop
 rendering, which is exactly the shape of gap `#0256`'s own first cut hit
 for terminals: hiding a Pane unmounted the SwiftUI subtree but nothing
 told `TerminalHostStore` to hide anything, so the terminal stayed
-floating on screen until the fix made `hidePane` call `setPlacement`
+floating on screen until the fix made `hidePane` drive the store
 explicitly (the Hidden-Pane row above). **§5's "Where the calls come from" names the actual call
 sites and settles conformer ownership so this is a concrete answer, not
 an implicit assumption left for `#0304` to discover the hard way.**
@@ -450,19 +450,18 @@ kind-gated call at any of the five sites.
 **Visibility's call sites are `WindowRuntime.hidePane(id:)` and
 `showPane(id:)` — but the two are not symmetric today, and this document
 says so rather than smoothing it over.** `hidePane` already drives the
-terminal path with an explicit, direct call: its per-tab loop
-(`WindowRuntime.swift:427-431`) calls `TerminalHostStore
-.setPlacement(_:forTabID:)` itself, precisely because the pane's unmount
-alone is silent (§2's Hidden-Pane row; the `#0256` gap that call exists to
-close). `showPane` (`WindowRuntime.swift:438-445`) has no equivalent: it
-flips `pane.isHidden = false` and returns — nothing else. The un-hide is
-delivered by the *remount*: the pane's `PaneView` (and its
+terminal path with an explicit, direct call: its per-tab loop calls
+`TerminalHostStore.setTabShown(false, forTabID:)` itself, precisely
+because the pane's unmount alone is silent (§2's Hidden-Pane row; the
+`#0256` gap that call exists to close). Since #0605 `showPane` also
+marks the active Tab shown directly (when its Session is selected), but
+the reveal still needs the *remount*: the pane's `PaneView` (and its
 `TerminalPlaceholderView`) gets constructed again, and the placeholder's
-own `onGeometryChange`/`onChange(of: isVisible)` calls `setPlacement`
-once it remounts (`TerminalPlaceholderView.swift:44-60`). That works for
-the terminal path because the placeholder is deliberately lightweight and
-remounting it is cheap and side-effect-free — it doesn't restart a PTY,
-only re-reports geometry for a surface that never stopped existing.
+`onGeometryChange` calls `reportFrame`, whose first frame reveals the
+view. That works for the terminal path because the placeholder is
+deliberately lightweight and remounting it is cheap and side-effect-free
+— it doesn't restart a PTY, only re-reports geometry for a surface that
+never stopped existing.
 
 **Resolved by #0314, adopted as the shape every non-terminal kind
 wires: `showPane` gets an explicit `pane.content?.setVisible(true)` call,

@@ -87,7 +87,7 @@ struct TerminalHostStoreOcclusionTests {
 
     /// The central design invariant: window occlusion must NEVER flip
     /// `isHidden` or `frame` — those stay owned entirely by Tab/Pane
-    /// placement (`setPlacement`/`updatePlacements`). If occlusion also
+    /// placement (`setTabShown`/`reportFrame`). If occlusion also
     /// detached/hid the view, a window coming back would need to
     /// re-establish placement from scratch instead of just resuming
     /// rendering, and a hidden background tab would incorrectly reappear
@@ -98,10 +98,8 @@ struct TerminalHostStoreOcclusionTests {
         let tab = TabRuntime()
         let view = store.terminalView(for: tab, windowID: windowID)!
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 100, height: 100), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 100, height: 100), forTabID: tab.id)
         #expect(!view.isHidden)
         let frameBeforeOcclusion = view.frame
 
@@ -152,10 +150,8 @@ struct TerminalHostStoreOcclusionTests {
         let tab = TabRuntime()
         let view = store.terminalView(for: tab, windowID: windowID)!
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: .zero, isVisible: false),
-            forTabID: tab.id
-        )
+        store.setTabShown(false, forTabID: tab.id)
+        store.reportFrame(.zero, forTabID: tab.id)
         #expect(view.isHidden)
 
         store.setWindowOcclusionVisible(false, forWindowID: windowID)
@@ -175,14 +171,10 @@ struct TerminalHostStoreOcclusionTests {
         let view1 = store.terminalView(for: tab1, windowID: window1)!
         let view2 = store.terminalView(for: tab2, windowID: window2)!
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 50, height: 50), isVisible: true),
-            forTabID: tab1.id
-        )
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 50, height: 50), isVisible: true),
-            forTabID: tab2.id
-        )
+        store.setTabShown(true, forTabID: tab1.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 50, height: 50), forTabID: tab1.id)
+        store.setTabShown(true, forTabID: tab2.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 50, height: 50), forTabID: tab2.id)
         #expect(!view1.isHidden)
         #expect(!view2.isHidden)
 
@@ -210,15 +202,12 @@ struct TerminalHostStoreOcclusionTests {
         #expect(TerminalHostStore.effectiveSurfaceVisible(placementVisible: false, windowVisible: false) == false)
     }
 
-    /// Regression test for the `placements`-drift hazard fixed by deriving
-    /// visibility from `!view.isHidden` rather than the `placements` cache:
-    /// a tab dropped entirely from a *subsequent* `updatePlacements` map
-    /// (as opposed to explicitly re-placed with `isVisible: false`) hides
-    /// its view immediately, but the `placements` dictionary entry for it
-    /// is left untouched — stale at its last-applied `isVisible == true`.
-    /// A later `setWindowOcclusionVisible(true, ...)` re-deriving from that
-    /// stale entry would incorrectly resume the view; deriving from
-    /// `!view.isHidden` (ground truth, always current) does not.
+    /// Regression test for the placement-drift hazard fixed by deriving
+    /// visibility from `!view.isHidden` rather than a cached placement: a tab
+    /// dropped entirely from a *subsequent* `updatePlacements` map (as
+    /// opposed to explicitly re-placed with `isVisible: false`) is hidden,
+    /// and a later `setWindowOcclusionVisible(true, ...)` must not resume
+    /// it.
     @Test func windowOcclusionReturningDoesNotResumeATabDroppedFromAPlacementsMapWithoutAnExplicitHide() {
         let store = TerminalHostStore()
         let windowID = WindowID()
@@ -230,21 +219,14 @@ struct TerminalHostStoreOcclusionTests {
         ], forWindowID: windowID)
         #expect(!view.isHidden)
 
-        // Drop the tab from the map entirely — the view is hidden, but the
-        // `placements` cache entry is untouched and stays stale at true.
         store.updatePlacements([:], forWindowID: windowID)
         #expect(view.isHidden)
-        #expect(
-            store.placement(forTabID: tab.id)?.isVisible == true,
-            "sanity check: the cached placement is intentionally stale here — this is what the fix must not trust"
-        )
 
         store.setWindowOcclusionVisible(false, forWindowID: windowID)
         store.setWindowOcclusionVisible(true, forWindowID: windowID)
 
-        // The tab must still be tracked as occluded — a stale `placements`
-        // entry must never make window occlusion returning treat a
-        // genuinely hidden view as visible.
+        // The tab must still be tracked as occluded — window occlusion
+        // returning must never treat a genuinely hidden view as visible.
         #expect(store.occludedTickTargets() == [tab.id])
     }
 
@@ -272,10 +254,8 @@ struct TerminalHostStoreOcclusionTests {
         let tab = TabRuntime()
         _ = store.terminalView(for: tab, windowID: windowID)
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: .zero, isVisible: false),
-            forTabID: tab.id
-        )
+        store.setTabShown(false, forTabID: tab.id)
+        store.reportFrame(.zero, forTabID: tab.id)
 
         #expect(store.occludedTickTargets() == [tab.id])
     }
@@ -286,10 +266,8 @@ struct TerminalHostStoreOcclusionTests {
         let tab = TabRuntime()
         _ = store.terminalView(for: tab, windowID: windowID)
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 10, height: 10), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 10, height: 10), forTabID: tab.id)
 
         #expect(store.occludedTickTargets().isEmpty)
     }
@@ -302,10 +280,8 @@ struct TerminalHostStoreOcclusionTests {
         let windowID = WindowID()
         let tab = TabRuntime()
         _ = store.terminalView(for: tab, windowID: windowID)
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 10, height: 10), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 10, height: 10), forTabID: tab.id)
         #expect(store.occludedTickTargets().isEmpty)
 
         store.setWindowOcclusionVisible(false, forWindowID: windowID)
@@ -324,10 +300,8 @@ struct TerminalHostStoreOcclusionTests {
 
         let tab = TabRuntime()
         _ = store.terminalView(for: tab, windowID: windowID)
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 10, height: 10), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 10, height: 10), forTabID: tab.id)
 
         #expect(store.occludedTickTargets() == [tab.id])
     }
@@ -338,22 +312,16 @@ struct TerminalHostStoreOcclusionTests {
         let tab = TabRuntime()
         _ = store.terminalView(for: tab, windowID: windowID)
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: .zero, isVisible: false),
-            forTabID: tab.id
-        )
+        store.setTabShown(false, forTabID: tab.id)
+        store.reportFrame(.zero, forTabID: tab.id)
         #expect(store.occludedTickTargets() == [tab.id])
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 10, height: 10), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 10, height: 10), forTabID: tab.id)
         #expect(store.occludedTickTargets().isEmpty)
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: .zero, isVisible: false),
-            forTabID: tab.id
-        )
+        store.setTabShown(false, forTabID: tab.id)
+        store.reportFrame(.zero, forTabID: tab.id)
         #expect(store.occludedTickTargets() == [tab.id])
     }
 
@@ -384,10 +352,8 @@ struct TerminalHostStoreOcclusionTests {
         let windowID = WindowID()
         let tab = TabRuntime()
         _ = store.terminalView(for: tab, windowID: windowID)
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: .zero, isVisible: false),
-            forTabID: tab.id
-        )
+        store.setTabShown(false, forTabID: tab.id)
+        store.reportFrame(.zero, forTabID: tab.id)
         #expect(store.occludedTickTargets() == [tab.id])
 
         store.releaseTerminalView(forTabID: tab.id)
@@ -442,7 +408,7 @@ struct TerminalHostStoreOcclusionTests {
     /// booleans reaching the view instead of only the derived
     /// `isHidden`/`windowOcclusionVisible` bookkeeping the rest of this file
     /// covers.
-    @Test func setPlacementCallsSetSurfaceVisibleWithTheEffectiveVisibility() {
+    @Test func setTabShownAndReportFrameCallSetSurfaceVisibleWithTheEffectiveVisibility() {
         let store = TerminalHostStore()
         store.makeTerminalView = { RecordingTerminalView(frame: .zero) }
         let windowID = WindowID()
@@ -452,16 +418,11 @@ struct TerminalHostStoreOcclusionTests {
             return
         }
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 10, height: 10), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 10, height: 10), forTabID: tab.id)
         #expect(view.recordedVisibility == [true])
 
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: .zero, isVisible: false),
-            forTabID: tab.id
-        )
+        store.setTabShown(false, forTabID: tab.id)
         #expect(view.recordedVisibility == [true, false])
     }
 
@@ -496,10 +457,8 @@ struct TerminalHostStoreOcclusionTests {
             Issue.record("expected RecordingTerminalView from the injected makeTerminalView seam")
             return
         }
-        store.setPlacement(
-            TerminalHostStore.Placement(frame: NSRect(x: 0, y: 0, width: 10, height: 10), isVisible: true),
-            forTabID: tab.id
-        )
+        store.setTabShown(true, forTabID: tab.id)
+        store.reportFrame(NSRect(x: 0, y: 0, width: 10, height: 10), forTabID: tab.id)
         #expect(view.recordedVisibility == [true])
 
         store.setWindowOcclusionVisible(false, forWindowID: windowID)

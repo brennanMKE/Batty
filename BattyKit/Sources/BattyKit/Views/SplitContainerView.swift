@@ -59,7 +59,7 @@ private struct SplitNodeView: View {
         switch node {
         case .leaf(let pane):
             // Hidden leaf: zero-size placeholder. The surface stays alive in
-            // TerminalHostStore because no placement is reported and the
+            // TerminalHostStore: hidePane marked its Tabs not shown, so the
             // AppTerminalView stays in the host with isHidden = true (#0256).
             if pane.isHidden {
                 return AnyView(Color.clear.frame(width: 0, height: 0))
