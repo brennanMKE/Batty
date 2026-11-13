@@ -196,7 +196,8 @@ The user has pre-approved every agent session and subagent working in this repo 
 verification. Don't stop to ask first, and don't treat it as interfering with the host's workloads. Everything the runner does on the host is part of
 this approval:
 
-- Clones, boots, and deletes `batty-uitest-<run-id>` VMs from the `batty-uitest-golden` image,
+- Clones, boots, and deletes `batty-uitest-<run-id>` VMs from the shared golden that
+  `tart-golden require --xcode 27.0` resolves,
   and sweeps stale `batty-uitest-*` clones left by a killed run.
 - Takes and releases a `tart-lease` slot. It waits when both slots on the host are in use.
 - Requests memory through the memory-signal protocol when the host is short. The host's
