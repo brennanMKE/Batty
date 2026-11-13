@@ -203,7 +203,13 @@ every sync path must declare a direction, and each direction gets exactly
   follows): the follow-up into AppKit runs on a fresh main-actor turn, never
   inside the update transaction, and carries a staleness guard (generation
   token) so a superseded follow-up can never fire late
-  (`TerminalSurfaceFocuser`).
+  (`TerminalSurfaceFocuser`). The single writer is
+  `WindowRuntime.requestTerminalFocus`, reached from the model setters
+  (`SplitTree.focusedPaneID`, `PaneRuntime.activeTabID`), the
+  `selectedSessionID` write, and a content window's first registration
+  (`AppStateStore.registerNSWindow`); no view infers focus from an observed
+  flip. Requests are keyed per window, and a Session that is not selected in
+  its window issues none (#0611).
 - **AppKit-initiated** (user clicks): the code that *embodies the intent* —
   `TerminalClickFocusMonitor`, during event dispatch — writes the model
   itself, synchronously. The interaction depends on winning that ordering.

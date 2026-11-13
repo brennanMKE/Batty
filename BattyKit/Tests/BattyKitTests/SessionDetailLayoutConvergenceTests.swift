@@ -307,6 +307,16 @@ struct SessionDetailLayoutConvergenceTests {
         let tab = try #require(session.tree.allPanes.first?.activeTab)
         let terminal = try #require(TerminalHostStore.shared.terminalView(for: tab, windowID: fixture.windowRuntime.id))
         #expect(terminal.window === fixture.probe.window)
+        // Hiding the first responder resigns it, and any first-responder
+        // change marks the hosting views as needing update constraints. That
+        // resign belongs to the hide action and is covered by the
+        // `...DoesNotChangeFirstResponderDuringLayout` tests below. Whether
+        // the terminal is first responder here depends on whether the
+        // selection's deferred focus request has landed yet, so take it out
+        // of the measurement.
+        fixture.probe.window.makeFirstResponder(nil)
+        _ = await fixture.probe.settle()
+        #expect(viewsNeedingUpdateConstraints(fixture).isEmpty)
         let original = terminal.frame
         #expect(original.width > 0 && original.height > 0)
         let moved = original.insetBy(dx: 10, dy: 10)

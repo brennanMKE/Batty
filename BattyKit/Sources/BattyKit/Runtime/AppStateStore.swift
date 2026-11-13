@@ -1057,10 +1057,18 @@ public final class AppStateStore {
     /// rather than waiting for a `didBecomeKeyNotification` that already
     /// fired before the window was registered and so was filtered out by
     /// `handleWindowDidBecomeKey`'s `nsWindowMap` lookup.
+    ///
+    /// **First mount focus (#0611).** The first registration of a window
+    /// requests focus for its selected Session's focused Tab, the launch and
+    /// New Window case. The request writes no observed state and makes no
+    /// responder change here: `TerminalSurfaceFocuser.focusWhenReady` runs
+    /// its first attempt on a later turn and retries until the placeholder
+    /// has mounted and revealed the terminal.
     public func registerNSWindow(_ nsWindow: NSWindow, for windowID: WindowID) {
         let wasNew = nsWindowMap[ObjectIdentifier(nsWindow)] == nil
         nsWindowMap[ObjectIdentifier(nsWindow)] = windowID
         if wasNew {
+            windows.first { $0.id == windowID }?.focusSelectedTerminal()
             logger.debug("registerNSWindow: windowID=\(windowID.value, privacy: .public) registeredContentWindows=\(self.nsWindowMap.count, privacy: .public)")
         }
         if nsWindow.isKeyWindow {
@@ -1748,8 +1756,9 @@ public final class AppStateStore {
 
     /// Creates a Tab in the Pane `id` and moves Pane focus there, so the new
     /// Tab is typeable even when another Pane was focused. Both writes happen
-    /// in the caller's event handler, so the Pane is already focused when the
-    /// new Tab mounts and `PaneView`'s `.onAppear` trigger focuses it. Call
+    /// in the caller's event handler and request focus through the model
+    /// setters (`SplitTree.focusedPaneID`, `PaneRuntime.activeTabID`); the
+    /// last, the `activeTabID` write, targets the new Tab. Call
     /// only from user-event handlers (see docs/swiftui-observation-rules.md).
     /// Returns `nil` for an unknown Pane.
     @discardableResult

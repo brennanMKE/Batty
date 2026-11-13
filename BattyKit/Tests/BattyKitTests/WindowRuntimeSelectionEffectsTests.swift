@@ -80,7 +80,8 @@ struct WindowRuntimeSelectionEffectsTests {
 
         /// Gives `pane`'s Tab `tab` unseen bells while it is in front, by
         /// ringing while another Tab is active and then moving the active
-        /// Tab back with a plain model write, which runs no effects.
+        /// Tab back with a plain model write, which runs no selection effects
+        /// (in the selected Session it does request focus, through the tree).
         func ringWhileInFront(_ tab: TabRuntime, in pane: PaneRuntime) {
             let other = pane.tabs.first { $0.id != tab.id } ?? pane.addTab()
             pane.activeTabID = other.id

@@ -165,6 +165,7 @@ public final class SplitTree {
             guard focusedPaneID != oldValue else { return }
             focusHistory.removeAll { $0 == focusedPaneID }
             focusHistory.insert(focusedPaneID, at: 0)
+            noteFocusIntent()
         }
     }
 
@@ -188,6 +189,13 @@ public final class SplitTree {
     @ObservationIgnored
     var isInSelectedSession = false
 
+    /// Receives the Tab to focus when this tree's focused Pane or that
+    /// Pane's active Tab changes while `isInSelectedSession`. Written only by
+    /// `WindowRuntime.applyTerminalVisibility`, next to `isInSelectedSession`;
+    /// it forwards to `WindowRuntime.requestTerminalFocus`.
+    @ObservationIgnored
+    var focusIntentHandler: ((TabRuntime) -> Void)?
+
     /// Held so a Pane created later starts in the Session's Theme. Only seeds
     /// new Tabs; existing ones are re-themed by whoever writes the override.
     @ObservationIgnored
@@ -201,6 +209,25 @@ public final class SplitTree {
         // construction is the first real entry, matching `paneFrames`'s own
         // "starts empty" shape.
         self.focusedPaneID = root.firstLeafPaneID
+        for pane in root.allLeafPanes {
+            pane.tree = self
+        }
+    }
+
+    /// Called by `PaneRuntime.activeTabID`'s `didSet`. Only the focused
+    /// Pane's active Tab is a focus target.
+    func activeTabDidChange(in pane: PaneRuntime) {
+        guard pane.id == focusedPaneID else { return }
+        noteFocusIntent()
+    }
+
+    /// Any kind, not only terminal Panes (#0332 B4): a move to a non-terminal
+    /// Pane must still supersede a stale promotion ladder, and
+    /// `TerminalSurfaceFocuser.focus(tab:)` is a no-op for a Tab with no
+    /// terminal view.
+    private func noteFocusIntent() {
+        guard isInSelectedSession, let tab = focusedPane.activeTab else { return }
+        focusIntentHandler?(tab)
     }
 
     public convenience init() {
@@ -262,6 +289,7 @@ public final class SplitTree {
     /// Gives a freshly created Pane what the tree's existing Panes already
     /// have, before any of its Tabs can have a surface.
     private func adopt(_ newPane: PaneRuntime) {
+        newPane.tree = self
         if let sessionID {
             newPane.attachToSession(sessionID)
         }

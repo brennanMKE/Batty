@@ -61,18 +61,25 @@ public final class WindowRuntime {
     ///   Session's pending clipboard request, focus the selected Session's
     ///   focused Tab, mark it seen, and apply the Session's Theme.
     ///
+    /// Focus moves *within* the selected Session are requested by the model
+    /// setters (`SplitTree.focusedPaneID`, `PaneRuntime.activeTabID`)
+    /// through `requestTerminalFocus`; a non-selected Session's tree issues
+    /// none (#0611).
+    ///
     /// **Arrange first, select last.** The effects read the target Session's
     /// focused Pane and active Tab at the moment of the write, so a path that
     /// also moves focus inside the target Session must do that before it
-    /// writes this property.
+    /// writes this property. Arranging in a non-selected Session issues no
+    /// focus request, so the selection write issues the one request.
     ///
     /// Not fired for the initial assignment inside `init` (Swift suppresses
     /// observers for a property's first set within its own type's
     /// initializer). `init` calls `applyTerminalVisibility` itself, so the
-    /// initial Session's terminals are marked shown. The rest is harmless,
-    /// since `PaneRuntime.init` already starts a
-    /// freshly-constructed Session's panes in the right phase, `PaneView`'s
-    /// terminal `onAppear` focuses the mounted Session's focused Tab, and a
+    /// initial Session's terminals are marked shown and its tree reports
+    /// focus moves. The rest is harmless, since `PaneRuntime.init` already
+    /// starts a freshly-constructed Session's panes in the right phase,
+    /// `AppStateStore.registerNSWindow` focuses the selected Session's
+    /// focused Tab when the window's content first registers, and a
     /// new window's chrome is applied when it becomes key
     /// (`AppStateStore.contentWindowBecameKey`). The multi-Session
     /// `init(sessions:)` overload has no production call site (every
@@ -160,10 +167,11 @@ public final class WindowRuntime {
     /// `WindowRuntime` in a unit test.
     @ObservationIgnored var sessionClosingHandler: ((UUID) -> Void)?
 
-    /// Focuses a Tab's terminal for a selection change. Defaults to
-    /// `TerminalSurfaceFocuser.focusWhenReady`, which defers the responder
-    /// change; tests replace it to record the target.
-    @ObservationIgnored var focusTerminal: (TabRuntime) -> Void = { TerminalSurfaceFocuser.focusWhenReady(tab: $0) }
+    /// Focuses a Tab's terminal. Called only by `requestTerminalFocus`.
+    /// `init` sets it to `TerminalSurfaceFocuser.focusWhenReady` keyed by
+    /// this window, which defers the responder change; tests replace it to
+    /// record the target.
+    @ObservationIgnored var focusTerminal: (TabRuntime) -> Void = { _ in }
     /// Applies the selected Session's Theme after a selection change. Set by
     /// `AppStateStore`; nil for a bare `WindowRuntime` in a unit test.
     @ObservationIgnored var selectionThemeHandler: ((WindowRuntime) -> Void)?
@@ -206,7 +214,34 @@ public final class WindowRuntime {
             self.sessions = sessions
             self.selectedSessionID = sessions.first?.id
         }
+        focusTerminal = { [id] tab in TerminalSurfaceFocuser.focusWhenReady(tab: tab, in: id) }
         applyTerminalVisibility(deselecting: nil, selecting: selectedSessionID)
+    }
+
+    /// The single writer of model-initiated terminal focus (#0611). Reached
+    /// from `SplitTree.focusIntentHandler` (focused Pane and active Tab
+    /// changes) and `focusSelectedTerminal()` (selection changes and first
+    /// registration of a content window). Issues nothing unless
+    /// `sessionID` is this window's selected Session. Writes no observed
+    /// state; the responder change is deferred by `focusTerminal`.
+    func requestTerminalFocus(_ tab: TabRuntime, inSession sessionID: UUID?) {
+        guard let sessionID, sessionID == selectedSessionID else { return }
+        focusTerminal(tab)
+    }
+
+    /// Requests focus for the selected Session's focused Tab.
+    ///
+    /// Deliberately `focusedPaneAnyKind`, not `focusedTerminalPane`
+    /// (#0332 B4): gating this on `.terminal` kind would skip the window's
+    /// generation bump in `TerminalSurfaceFocuser.focusWhenReady`, leaving a
+    /// still-live retry ladder from a previously focused Tab free to keep
+    /// firing after focus moved to a non-terminal Pane, the stale-retry /
+    /// isFocused-echo ping-pong the generation exists to prevent (#0229,
+    /// #0230). `focus(tab:)`'s `view.window != nil` / `!view.isHidden`
+    /// guards make a non-terminal Pane's placeholder Tab a no-op target.
+    func focusSelectedTerminal() {
+        guard let session = selectedSession, let tab = session.focusedPaneAnyKind.activeTab else { return }
+        requestTerminalFocus(tab, inSession: session.id)
     }
 
     /// Least-used round-robin palette assignment, scoped to this window
@@ -1043,10 +1078,13 @@ public final class WindowRuntime {
     /// not in SwiftUI's layout pass. Not gated on `isWindowVisible`: window
     /// occlusion is `TerminalHostStore`'s other input. A Session already
     /// removed from `sessions` is skipped; `removeSession` released its Tabs.
+    /// Also points the selected tree's `focusIntentHandler` at
+    /// `requestTerminalFocus` and clears the deselected tree's.
     private func applyTerminalVisibility(deselecting previousID: UUID?, selecting newID: UUID?) {
         let store = TerminalHostStore.shared
         if let previousID, let previous = sessions.first(where: { $0.id == previousID }) {
             previous.tree.isInSelectedSession = false
+            previous.tree.focusIntentHandler = nil
             for pane in previous.tree.allPanes where pane.kind == .terminal {
                 for tab in pane.tabs {
                     store.setTabShown(false, forTabID: tab.id)
@@ -1055,6 +1093,9 @@ public final class WindowRuntime {
         }
         if let newID, let selected = sessions.first(where: { $0.id == newID }) {
             selected.tree.isInSelectedSession = true
+            selected.tree.focusIntentHandler = { [weak self, weak tree = selected.tree] tab in
+                self?.requestTerminalFocus(tab, inSession: tree?.sessionID)
+            }
             for pane in selected.tree.allPanes where pane.kind == .terminal {
                 for tab in pane.tabs {
                     store.setTabShown(!pane.isHidden && tab.id == pane.activeTabID, forTabID: tab.id)
@@ -1110,18 +1151,8 @@ public final class WindowRuntime {
            let pending = previous.pendingClipboardConfirmation {
             previous.cancelPendingClipboardConfirmation(pending)
         }
-        guard let session = selectedSession else { return }
-        // Deliberately `focusedPaneAnyKind`, not `focusedTerminalPane`
-        // (#0332 B4): gating this on `.terminal` kind would skip
-        // `focusWhenReady`'s `generation += 1` bump, leaving a still-live
-        // retry ladder from a previously focused Tab free to keep firing
-        // after focus moved to a non-terminal Pane, the stale-retry /
-        // isFocused-echo ping-pong `generation` exists to prevent (#0229,
-        // #0230). `focus(tab:)`'s `view.window != nil` / `!view.isHidden`
-        // guards make a non-terminal Pane's placeholder Tab a no-op target.
-        if let activeTab = session.focusedPaneAnyKind.activeTab {
-            focusTerminal(activeTab)
-        }
+        guard selectedSession != nil else { return }
+        focusSelectedTerminal()
         markActiveTabSeen()
         selectionThemeHandler?(self)
     }
@@ -1450,6 +1481,7 @@ public final class WindowRuntime {
         for tabID in allTabIDs {
             TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
         }
+        TerminalSurfaceFocuser.forgetWindow(id)
     }
 
     func cleanUpBellState(forTabIDs tabIDs: Set<UUID>) {

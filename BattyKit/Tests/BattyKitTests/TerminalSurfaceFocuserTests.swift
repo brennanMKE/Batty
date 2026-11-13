@@ -38,4 +38,44 @@ struct TerminalSurfaceFocuserTests {
         tab.terminalNSView = view
         #expect(TerminalSurfaceFocuser.focus(tab: tab) == false)
     }
+
+    // MARK: - Per-window generation
+
+    @Test func aRequestInAnotherWindowDoesNotAdvanceThisWindowsGeneration() {
+        let a = WindowID()
+        let b = WindowID()
+        defer {
+            TerminalSurfaceFocuser.forgetWindow(a)
+            TerminalSurfaceFocuser.forgetWindow(b)
+        }
+        TerminalSurfaceFocuser.focusWhenReady(tab: TabRuntime(), in: a)
+        let before = TerminalSurfaceFocuser.generation(for: a)
+
+        TerminalSurfaceFocuser.focusWhenReady(tab: TabRuntime(), in: b)
+
+        #expect(before == 1)
+        #expect(TerminalSurfaceFocuser.generation(for: a) == before)
+        #expect(TerminalSurfaceFocuser.generation(for: b) == 1)
+    }
+
+    @Test func aNewerRequestInTheSameWindowAdvancesItsGeneration() {
+        let a = WindowID()
+        defer { TerminalSurfaceFocuser.forgetWindow(a) }
+        TerminalSurfaceFocuser.focusWhenReady(tab: TabRuntime(), in: a)
+        let before = TerminalSurfaceFocuser.generation(for: a)
+
+        TerminalSurfaceFocuser.focusWhenReady(tab: TabRuntime(), in: a)
+
+        #expect(TerminalSurfaceFocuser.generation(for: a) == before + 1)
+    }
+
+    @Test func forgettingAWindowDropsItsGeneration() {
+        let a = WindowID()
+        TerminalSurfaceFocuser.focusWhenReady(tab: TabRuntime(), in: a)
+        #expect(TerminalSurfaceFocuser.generation(for: a) == 1)
+
+        TerminalSurfaceFocuser.forgetWindow(a)
+
+        #expect(TerminalSurfaceFocuser.generation(for: a) == 0)
+    }
 }

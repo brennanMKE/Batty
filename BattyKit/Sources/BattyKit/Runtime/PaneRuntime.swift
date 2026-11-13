@@ -14,15 +14,23 @@ public final class PaneRuntime: Identifiable {
     /// moves the terminal's shown state to the incoming Tab
     /// (`TerminalHostStore.moveShown`), synchronously, so the outgoing
     /// terminal is hidden here rather than from a SwiftUI callback inside
-    /// layout (#0605). Every writer must therefore be event-origin (an
-    /// action, a command, a gesture handler), never `body` or a
-    /// layout-driven callback.
+    /// layout (#0605). It then reports the change to the owning tree, which
+    /// requests focus for it when this is the focused Pane of the selected
+    /// Session (`SplitTree.activeTabDidChange`). Every writer must therefore
+    /// be event-origin (an action, a command, a gesture handler), never
+    /// `body` or a layout-driven callback.
     public var activeTabID: UUID {
         didSet {
-            guard oldValue != activeTabID, kind == .terminal else { return }
-            TerminalHostStore.shared.moveShown(from: oldValue, to: activeTabID)
+            guard oldValue != activeTabID else { return }
+            if kind == .terminal {
+                TerminalHostStore.shared.moveShown(from: oldValue, to: activeTabID)
+            }
+            tree?.activeTabDidChange(in: self)
         }
     }
+    /// The tree this Pane is a leaf of. Set by `SplitTree.init(root:)` and
+    /// `SplitTree.adopt`; used only to report active-Tab changes.
+    @ObservationIgnored weak var tree: SplitTree?
     public internal(set) var unseenBellCount: Int = 0
     /// Whether this pane is hidden from view. The Ghostty surface (PTY +
     /// scrollback) keeps running; `WindowRuntime.hidePane` marks its Tabs

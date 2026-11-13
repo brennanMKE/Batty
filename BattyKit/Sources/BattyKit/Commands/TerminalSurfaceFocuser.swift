@@ -47,23 +47,38 @@ enum TerminalSurfaceFocuser {
         return true
     }
 
-    /// Monotonic token. Each `focusWhenReady` call invalidates every
-    /// pending promotion attempt (first or retry) from earlier calls, so
-    /// only the newest focus intent can ever reach `makeFirstResponder`.
-    /// Without this, a stale retry for the previously focused tab can
-    /// re-promote it after focus has moved on, dragging the model back
-    /// through the isFocused echo — the ping-pong loop behind #0229's
-    /// crash and the focus-drag-back regression on the split tests (#0230).
-    private static var generation = 0
+    /// Monotonic token per window. Each `focusWhenReady` call invalidates
+    /// every pending promotion attempt (first or retry) from earlier calls
+    /// in the same window, so only that window's newest focus intent can
+    /// ever reach `makeFirstResponder`. Without this, a stale retry for the
+    /// previously focused tab can re-promote it after focus has moved on,
+    /// dragging the model back through the isFocused echo — the ping-pong
+    /// loop behind #0229's crash and the focus-drag-back regression on the
+    /// split tests (#0230). Keyed by window so a request in one window
+    /// cannot cancel another window's ladder.
+    private static var generations: [WindowID: Int] = [:]
+
+    static func generation(for windowID: WindowID) -> Int {
+        generations[windowID] ?? 0
+    }
+
+    /// Drops `windowID`'s token when its window closes. A ladder still in
+    /// flight for that window then sees a mismatch and stops.
+    static func forgetWindow(_ windowID: WindowID) {
+        generations.removeValue(forKey: windowID)
+    }
 
     /// Retry variant. Every attempt — including the first — runs on a
-    /// subsequent main-actor turn, never synchronously. All call sites are
-    /// SwiftUI-driven callbacks (`onChange` / `onAppear`), which
-    /// `NSHostingView` can execute inside AppKit's layout pass; promoting
-    /// first responder there re-enters layout and flips `isFocused`
-    /// observables mid-pass (the #0229 crash class — see
-    /// docs/swiftui-observation-rules.md). The hop is safe *only* because
-    /// `generation` guarantees a superseded promotion can never fire late.
+    /// subsequent main-actor turn, never synchronously. The only caller is
+    /// `WindowRuntime.requestTerminalFocus`'s `focusTerminal` seam, reached
+    /// from actions and from model setters (`SplitTree.focusedPaneID`,
+    /// `PaneRuntime.activeTabID`). A setter can run from a binding or
+    /// command inside SwiftUI's update, which `NSHostingView` can execute
+    /// inside AppKit's layout pass; promoting first responder there
+    /// re-enters layout and flips `isFocused` observables mid-pass (the
+    /// #0229 crash class — see docs/swiftui-observation-rules.md). The hop
+    /// is safe *only* because the window's generation guarantees a
+    /// superseded promotion can never fire late.
     ///
     /// Why multiple retries: a newly inserted session's pane and its
     /// terminal `AppTerminalView` traverse three independent runloop turns
@@ -76,9 +91,9 @@ enum TerminalSurfaceFocuser {
     /// first geometry report carries a stale frame and a later
     /// `onGeometryChange` in `TerminalPlaceholderView` is the one that
     /// finally settles the view.
-    static func focusWhenReady(tab: TabRuntime) {
-        generation += 1
-        let requested = generation
+    static func focusWhenReady(tab: TabRuntime, in windowID: WindowID) {
+        let requested = generation(for: windowID) + 1
+        generations[windowID] = requested
         Task { @MainActor [weak tab] in
             // nil = no sleep: the first attempt still runs on a fresh
             // main-actor turn, just without added latency.
@@ -92,7 +107,7 @@ enum TerminalSurfaceFocuser {
             ]
             for delay in delays {
                 if let delay { try? await Task.sleep(for: delay) }
-                guard requested == Self.generation else { return }
+                guard requested == Self.generations[windowID] else { return }
                 guard let tab else { return }
                 if focus(tab: tab) { return }
             }

@@ -37,8 +37,8 @@ public struct WindowIDRegistrar: NSViewRepresentable {
     /// currently reachable in production — each content window's `windowID`
     /// is fixed for its `RootWindowView`'s lifetime — but SwiftUI could in
     /// principle reuse this representable's identity across a `windowID`
-    /// change, and re-registering here costs nothing: it only writes the
-    /// `@ObservationIgnored` `nsWindowMap`, not observed state).
+    /// change, and re-registering here writes no observed state: see
+    /// `RegistrarNSView` below).
     public func updateNSView(_ nsView: NSView, context: Context) {
         guard let registrar = nsView as? RegistrarNSView, registrar.windowID != windowID else { return }
         registrar.windowID = windowID
@@ -56,8 +56,11 @@ public struct WindowIDRegistrar: NSViewRepresentable {
 /// window** (i.e. potentially mid-update, not necessarily outside it): the
 /// write touches only `AppStateStore.nsWindowMap`, which is
 /// `@ObservationIgnored` and so notifies no observer and can't feed back
-/// into the update it might be running inside, and it calls no
-/// constraint-dirtying or responder-changing AppKit API (no
+/// into the update it might be running inside. A first registration also
+/// requests terminal focus (`WindowRuntime.focusSelectedTerminal`), which
+/// writes only `TerminalSurfaceFocuser`'s non-observed per-window generation
+/// and defers its `makeFirstResponder` to a later turn. It calls no
+/// constraint-dirtying or responder-changing AppKit API synchronously (no
 /// `makeFirstResponder`, no `addSubview`, no window operation) — the actual
 /// things `docs/swiftui-observation-rules.md`'s AppKit-interop rule forbids
 /// from a SwiftUI-driven callback. What makes registration here safe is

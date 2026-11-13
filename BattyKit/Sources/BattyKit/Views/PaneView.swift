@@ -88,8 +88,8 @@ public struct PaneView: View {
     public var body: some View {
         // Single kind-switch at the top of body, per docs/pane-kinds.md §2.
         // Everything below it — the Tab bar, the ZStack of
-        // TerminalPlaceholderViews, the terminal-specific onChange/onAppear
-        // wiring — exists only in the `.terminal` arm. A non-terminal pane
+        // TerminalPlaceholderViews, the terminal-specific `.task` wiring —
+        // exists only in the `.terminal` arm. A non-terminal pane
         // must never reach TerminalPlaceholderView: its body unconditionally
         // calls TerminalHostStore.terminalView(for:windowID:), which lazily
         // spawns a PTY as a rendering side effect (docs/pane-kinds.md §2).
@@ -282,7 +282,7 @@ public struct PaneView: View {
                         // edge behind #0229's crash. The AppKit-initiated
                         // direction is written by TerminalClickFocusMonitor;
                         // the model-initiated direction by
-                        // TerminalSurfaceFocuser. See
+                        // WindowRuntime.requestTerminalFocus. See
                         // docs/swiftui-observation-rules.md.
                         .task(id: tab.id) { [appStore, pane, tab] in
                             tab.terminal.onClose = { [weak appStore, weak pane] processAlive in
@@ -333,18 +333,6 @@ public struct PaneView: View {
                             tab.syncWorkingDirectoryFromTerminal()
                             appStore?.handleWorkingDirectoryChange(forTabID: tab.id)
                             appStore?.updateTabAutoName(for: tab)
-                        }
-                        .onAppear {
-                            guard tab.id == pane.activeTabID, isPaneFocused else { return }
-                            TerminalSurfaceFocuser.focusWhenReady(tab: tab)
-                        }
-                        .onChange(of: pane.activeTabID) { _, newValue in
-                            guard tab.id == newValue, isPaneFocused else { return }
-                            TerminalSurfaceFocuser.focusWhenReady(tab: tab)
-                        }
-                        .onChange(of: isPaneFocused) { _, focused in
-                            guard focused, tab.id == pane.activeTabID else { return }
-                            TerminalSurfaceFocuser.focusWhenReady(tab: tab)
                         }
                 }
             }
