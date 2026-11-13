@@ -66,7 +66,7 @@ final class SessionBackgroundOverrideTests {
     }
 
     private func session(_ first: PaneRuntime, _ second: PaneRuntime) -> SessionRuntime {
-        SessionRuntime(tree: SplitTree(root: .split(id: UUID(), direction: .horizontal, ratio: 0.5, left: .leaf(first), right: .leaf(second))))
+        SessionRuntime(tree: SplitTree(root: .split(id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5), left: .leaf(first), right: .leaf(second))))
     }
 
     private func session(_ pane: PaneRuntime? = nil) -> SessionRuntime {

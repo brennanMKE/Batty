@@ -14,7 +14,7 @@ private func shape(_ node: SplitTreeNode) -> String {
     case .leaf:
         return "L"
     case .split(_, let direction, let ratio, let left, let right):
-        return "(\(direction == .horizontal ? "h" : "v") \(String(format: "%.4f", ratio)) \(shape(left)) \(shape(right)))"
+        return "(\(direction == .horizontal ? "h" : "v") \(String(format: "%.4f", ratio.value)) \(shape(left)) \(shape(right)))"
     }
 }
 
@@ -67,7 +67,7 @@ private final class Fixture {
 }
 
 private func split(_ direction: SplitDirection, _ ratio: Double, _ left: SplitTreeNode, _ right: SplitTreeNode) -> SplitTreeNode {
-    .split(id: UUID(), direction: direction, ratio: ratio, left: left, right: right)
+    .split(id: UUID(), direction: direction, ratio: SplitRatio(ratio), left: left, right: right)
 }
 
 @MainActor
@@ -203,7 +203,7 @@ struct SessionProjectRoundTripTests {
             Issue.record("the root is not a split")
             return
         }
-        #expect(abs(ratio - 0.6) < 0.0001)
+        #expect(abs(ratio.value - 0.6) < 0.0001)
     }
 }
 

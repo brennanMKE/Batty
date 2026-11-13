@@ -106,7 +106,7 @@ extension SplitTreeNode {
             return .split(
                 id: id,
                 direction: mappedDirection,
-                ratio: ratio,
+                ratio: ratio.value,
                 left: left.topologyPayload(focusedPaneID: focusedPaneID, includeDimensions: includeDimensions),
                 right: right.topologyPayload(focusedPaneID: focusedPaneID, includeDimensions: includeDimensions)
             )

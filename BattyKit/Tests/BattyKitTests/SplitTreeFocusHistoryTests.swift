@@ -26,9 +26,9 @@ struct SplitTreeFocusHistoryTests {
         let sibling = PaneRuntime()
         let focusTarget = PaneRuntime()
         let root = SplitTreeNode.split(
-            id: UUID(), direction: .horizontal, ratio: 0.5,
+            id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5),
             left: .leaf(distraction),
-            right: .split(id: UUID(), direction: .vertical, ratio: 0.5, left: .leaf(sibling), right: .leaf(focusTarget))
+            right: .split(id: UUID(), direction: .vertical, ratio: SplitRatio(0.5), left: .leaf(sibling), right: .leaf(focusTarget))
         )
         let tree = SplitTree(root: root)
         // Never explicitly focused: distraction and sibling should not be
@@ -55,9 +55,9 @@ struct SplitTreeFocusHistoryTests {
         let hiddenSibling = PaneRuntime(isHidden: true)
         let focusTarget = PaneRuntime()
         let root = SplitTreeNode.split(
-            id: UUID(), direction: .horizontal, ratio: 0.5,
+            id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5),
             left: .leaf(distraction),
-            right: .split(id: UUID(), direction: .vertical, ratio: 0.5, left: .leaf(hiddenSibling), right: .leaf(focusTarget))
+            right: .split(id: UUID(), direction: .vertical, ratio: SplitRatio(0.5), left: .leaf(hiddenSibling), right: .leaf(focusTarget))
         )
         let tree = SplitTree(root: root)
         tree.focusedPaneID = focusTarget.id
@@ -156,9 +156,9 @@ struct SplitTreeFocusHistoryTests {
         let victim = PaneRuntime()
         let decoy = PaneRuntime()
         let root = SplitTreeNode.split(
-            id: UUID(), direction: .horizontal, ratio: 0.5,
+            id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5),
             left: .leaf(focused),
-            right: .split(id: UUID(), direction: .vertical, ratio: 0.5, left: .leaf(victim), right: .leaf(decoy))
+            right: .split(id: UUID(), direction: .vertical, ratio: SplitRatio(0.5), left: .leaf(victim), right: .leaf(decoy))
         )
         let tree = SplitTree(root: root)
         #expect(tree.focusedPaneID == focused.id, "precondition: firstLeafPaneID is focused, and it is never explicitly (re)written, so history stays empty")
@@ -182,9 +182,9 @@ struct SplitTreeFocusHistoryTests {
         let focused = PaneRuntime()
         let hiddenSibling = PaneRuntime(isHidden: true)
         let root = SplitTreeNode.split(
-            id: UUID(), direction: .horizontal, ratio: 0.5,
-            left: .split(id: UUID(), direction: .vertical, ratio: 0.5, left: .leaf(hiddenLeftmost), right: .leaf(visibleDeep)),
-            right: .split(id: UUID(), direction: .vertical, ratio: 0.5, left: .leaf(focused), right: .leaf(hiddenSibling))
+            id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5),
+            left: .split(id: UUID(), direction: .vertical, ratio: SplitRatio(0.5), left: .leaf(hiddenLeftmost), right: .leaf(visibleDeep)),
+            right: .split(id: UUID(), direction: .vertical, ratio: SplitRatio(0.5), left: .leaf(focused), right: .leaf(hiddenSibling))
         )
         let tree = SplitTree(root: root)
         tree.focusedPaneID = focused.id

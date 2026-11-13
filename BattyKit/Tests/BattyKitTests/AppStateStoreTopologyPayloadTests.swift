@@ -88,7 +88,7 @@ struct AppStateStoreTopologyPayloadTests {
         #expect(id == treeID)
         #expect(direction == .horizontal)
         #expect(direction.rawValue == treeDirection.rawValue)
-        #expect(ratio == treeRatio)
+        #expect(ratio == treeRatio.value)
         let payloadPaneIDs = Set([left, right].flatMap(\.allPanes).map(\.id))
         #expect(payloadPaneIDs == Set([paneA.id, paneB.id]))
     }
@@ -118,7 +118,7 @@ struct AppStateStoreTopologyPayloadTests {
             case (.split(let id, let direction, let ratio, let left, let right), .split(let payloadID, let payloadDirection, let payloadRatio, let payloadLeft, let payloadRight)):
                 #expect(id == payloadID)
                 #expect(direction.rawValue == payloadDirection.rawValue)
-                #expect(ratio == payloadRatio)
+                #expect(ratio.value == payloadRatio)
                 assertStructurallyEqual(left, payloadLeft)
                 assertStructurallyEqual(right, payloadRight)
             default:

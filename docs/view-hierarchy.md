@@ -29,7 +29,7 @@ recap with implementation pointers.
 Window                           (one WindowRuntime per NSWindow)
 └── Session                      (one sidebar entry)
     └── SplitTree                (recursive layout)
-        ├── Split node           (direction + ratio; arranges children)
+        ├── Split node           (direction + per-split `SplitRatio` box read only by the divider view, so ratio writes leave `SplitTree.root` unchanged; arranges children)
         └── Pane (leaf)          (one visible region)
             └── Tab (×N)         (one TabRuntime per tab chip)
                 └── Terminal Session
@@ -60,7 +60,7 @@ Implementation pointers:
 |---|---|---|
 | Window | `BattyApp` `Window` scene | [`../Batty/BattyApp.swift`](../Batty/BattyApp.swift) |
 | Session | `SessionRuntime` | [`../BattyKit/Sources/BattyKit/SessionRuntime.swift`](../BattyKit/Sources/BattyKit/SessionRuntime.swift) |
-| Split tree | `SplitTree` / `SplitTreeNode` | [`../BattyKit/Sources/BattyKit/SplitTree.swift`](../BattyKit/Sources/BattyKit/SplitTree.swift) |
+| Split tree | `SplitTree` / `SplitTreeNode` | [`../BattyKit/Sources/BattyKit/Model/SplitTree.swift`](../BattyKit/Sources/BattyKit/Model/SplitTree.swift) |
 | Pane | `PaneRuntime` | [`../BattyKit/Sources/BattyKit/PaneRuntime.swift`](../BattyKit/Sources/BattyKit/PaneRuntime.swift) |
 | Tab | `TabRuntime` | [`../BattyKit/Sources/BattyKit/TabRuntime.swift`](../BattyKit/Sources/BattyKit/TabRuntime.swift) |
 | Terminal Session | `TerminalViewState` + `AppTerminalView` | upstream `GhosttyTerminal`; held by `TabRuntime` |
@@ -116,7 +116,7 @@ Key files:
 - [`../BattyKit/Sources/BattyKit/RootWindowView.swift`](../BattyKit/Sources/BattyKit/RootWindowView.swift)
 - [`../BattyKit/Sources/BattyKit/SessionSidebarView.swift`](../BattyKit/Sources/BattyKit/SessionSidebarView.swift)
 - [`../BattyKit/Sources/BattyKit/SessionDetailView.swift`](../BattyKit/Sources/BattyKit/SessionDetailView.swift)
-- [`../BattyKit/Sources/BattyKit/SplitContainerView.swift`](../BattyKit/Sources/BattyKit/SplitContainerView.swift)
+- [`../BattyKit/Sources/BattyKit/Views/SplitContainerView.swift`](../BattyKit/Sources/BattyKit/Views/SplitContainerView.swift)
   (contains both `SplitContainerView` and the private recursive `SplitNodeView`)
 - [`../BattyKit/Sources/BattyKit/PaneView.swift`](../BattyKit/Sources/BattyKit/PaneView.swift)
 - [`../BattyKit/Sources/BattyKit/TerminalPlaceholderView.swift`](../BattyKit/Sources/BattyKit/TerminalPlaceholderView.swift)

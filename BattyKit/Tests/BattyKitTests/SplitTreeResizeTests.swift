@@ -17,8 +17,8 @@ struct SplitTreeResizeTests {
         case .leaf(let pane):
             return pane.id == paneID ? available : nil
         case .split(_, _, let ratio, let left, let right):
-            return fraction(of: paneID, in: left, available: available * ratio)
-                ?? fraction(of: paneID, in: right, available: available * (1.0 - ratio))
+            return fraction(of: paneID, in: left, available: available * ratio.value)
+                ?? fraction(of: paneID, in: right, available: available * (1.0 - ratio.value))
         }
     }
 
@@ -119,11 +119,13 @@ struct SplitTreeResizeTests {
         let paneC = tree.allPanes.first { ![paneA.id, paneB.id].contains($0.id) }!
         #expect(tree.focusedPaneID == paneC.id)
 
-        guard case let .split(vID, .vertical, vRatioBefore, .leaf(leafA), .split(hID, .horizontal, hRatioBefore, .leaf(leafB), .leaf(leafC))) = tree.root,
+        guard case let .split(vID, .vertical, vRatioBox, .leaf(leafA), .split(hID, .horizontal, hRatioBox, .leaf(leafB), .leaf(leafC))) = tree.root,
               leafA.id == paneA.id, leafB.id == paneB.id, leafC.id == paneC.id else {
             Issue.record("unexpected tree shape: \(tree.root)")
             return
         }
+        let vRatioBefore = vRatioBox.value
+        let hRatioBefore = hRatioBox.value
 
         tree.resizeFocusedSplit(.down)
 
@@ -159,11 +161,13 @@ struct SplitTreeResizeTests {
         let paneC = tree.allPanes.first { ![paneA.id, paneB.id].contains($0.id) }!
         #expect(tree.focusedPaneID == paneC.id)
 
-        guard case let .split(hID, .horizontal, hRatioBefore, .leaf(leafA), .split(vID, .vertical, vRatioBefore, .leaf(leafB), .leaf(leafC))) = tree.root,
+        guard case let .split(hID, .horizontal, hRatioBox, .leaf(leafA), .split(vID, .vertical, vRatioBox, .leaf(leafB), .leaf(leafC))) = tree.root,
               leafA.id == paneA.id, leafB.id == paneB.id, leafC.id == paneC.id else {
             Issue.record("unexpected tree shape: \(tree.root)")
             return
         }
+        let vRatioBefore = vRatioBox.value
+        let hRatioBefore = hRatioBox.value
 
         let fractionCBefore = fraction(of: paneC.id, in: tree.root)!
 

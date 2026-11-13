@@ -121,7 +121,7 @@ enum SplitDividerMath {
 
 private struct DraggableSplitView<Left: View, Right: View>: View {
     let direction: SplitDirection
-    let ratio: Double
+    let ratio: SplitRatio
     let onRatioChange: (Double) -> Void
     @ViewBuilder let leftContent: () -> Left
     @ViewBuilder let rightContent: () -> Right
@@ -167,11 +167,12 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
     var body: some View {
         GeometryReader { proxy in
             let totalLength = direction == .horizontal ? proxy.size.width : proxy.size.height
+            let currentRatio = ratio.value
             let usable = max(0, totalLength - Self.dividerThickness)
-            let leftLength = max(0, usable * ratio)
+            let leftLength = max(0, usable * currentRatio)
             let rightLength = max(0, usable - leftLength)
 
-            SplitLayout(direction: direction, ratio: ratio, dividerThickness: Self.dividerThickness) {
+            SplitLayout(direction: direction, ratio: currentRatio, dividerThickness: Self.dividerThickness) {
                 leftContent()
                     .environment(\.paneAllottedSize, allottedSize(containerSize: proxy.size, main: leftLength))
                 divider
@@ -230,7 +231,7 @@ private struct DraggableSplitView<Left: View, Right: View>: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .named(dividerCoordinateSpaceID))
                     .onChanged { value in
                         guard containerLength > 0 else { return }
-                        let startRatio = dragStartRatio ?? ratio
+                        let startRatio = dragStartRatio ?? ratio.value
                         if dragStartRatio == nil { dragStartRatio = startRatio }
                         let newRatio = SplitDividerMath.ratio(
                             direction: direction,

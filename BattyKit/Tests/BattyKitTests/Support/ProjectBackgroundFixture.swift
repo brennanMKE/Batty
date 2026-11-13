@@ -142,7 +142,7 @@ final class ProjectBackgroundFixture {
             PaneRuntime(tabs: [TabRuntime(workingDirectory: root.path, backgroundGate: gate)], tabBackgroundGate: gate)
         }
         guard panes > 1 else { return SessionRuntime(title: "Website", tree: SplitTree(root: .leaf(pane()))) }
-        return SessionRuntime(title: "Website", tree: SplitTree(root: .split(id: UUID(), direction: .horizontal, ratio: 0.5, left: .leaf(pane()), right: .leaf(pane()))))
+        return SessionRuntime(title: "Website", tree: SplitTree(root: .split(id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5), left: .leaf(pane()), right: .leaf(pane()))))
     }
 
     func project(name: String = "Stored", background: TerminalBackgroundSettings?, layout: ProjectLayout = .preset(.singlePane)) -> Project {

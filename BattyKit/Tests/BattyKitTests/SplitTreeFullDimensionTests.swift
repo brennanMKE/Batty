@@ -21,7 +21,7 @@ struct SplitTreeFullDimensionTests {
             return
         }
         #expect(direction == .horizontal)
-        #expect(ratio == 0.5)
+        #expect(ratio.value == 0.5)
         #expect(left.firstLeafPaneID == existing.id)
         #expect(right.firstLeafPaneID == newPane.id)
         #expect(tree.allPanes.count == 2)

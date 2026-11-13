@@ -157,8 +157,8 @@ struct SessionProjectCapture: Equatable {
             var shares: [Double] = []
             func collect(_ member: SplitTreeNode, share: Double) {
                 if case .split(_, let memberDirection, let ratio, let left, let right) = member, memberDirection == direction {
-                    collect(left, share: share * ratio)
-                    collect(right, share: share * (1 - ratio))
+                    collect(left, share: share * ratio.value)
+                    collect(right, share: share * (1 - ratio.value))
                 } else {
                     children.append(captureNode(member))
                     shares.append(share)

@@ -68,7 +68,7 @@ final class TerminalAppearancePushTests {
     }
 
     private func split(_ first: PaneRuntime, _ second: PaneRuntime) -> SessionRuntime {
-        SessionRuntime(tree: SplitTree(root: .split(id: UUID(), direction: .horizontal, ratio: 0.5, left: .leaf(first), right: .leaf(second))))
+        SessionRuntime(tree: SplitTree(root: .split(id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5), left: .leaf(first), right: .leaf(second))))
     }
 
     private func store(_ sessions: [SessionRuntime], gate: AppWideBackgroundGate? = nil) -> AppStateStore {

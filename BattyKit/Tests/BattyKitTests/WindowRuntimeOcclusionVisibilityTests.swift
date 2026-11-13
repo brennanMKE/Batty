@@ -61,7 +61,7 @@ struct WindowRuntimeOcclusionVisibilityTests {
         let visiblePane = PaneRuntime(kind: .systemMetrics, contentFactory: { _ in visible })
         let hiddenPane = PaneRuntime(kind: .systemMetrics, contentFactory: { _ in hidden })
         let selected = SessionRuntime(tree: SplitTree(root: .split(
-            id: UUID(), direction: .horizontal, ratio: 0.5,
+            id: UUID(), direction: .horizontal, ratio: SplitRatio(0.5),
             left: .leaf(visiblePane), right: .leaf(hiddenPane)
         )))
         let backgroundPane = PaneRuntime(kind: .systemMetrics, isSessionSelected: false, contentFactory: { _ in backgroundContent })

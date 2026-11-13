@@ -20,7 +20,7 @@ private func pane(_ kind: PaneContentKind = .terminal, tabs: [TabRuntime]? = nil
 }
 
 private func split(_ direction: SplitDirection, _ ratio: Double, _ left: SplitTreeNode, _ right: SplitTreeNode) -> SplitTreeNode {
-    .split(id: UUID(), direction: direction, ratio: ratio, left: left, right: right)
+    .split(id: UUID(), direction: direction, ratio: SplitRatio(ratio), left: left, right: right)
 }
 
 private func split(_ direction: SplitDirection, _ left: SplitTreeNode, _ right: SplitTreeNode) -> SplitTreeNode {
@@ -311,7 +311,7 @@ struct SessionProjectCaptureRootTests {
         #expect(s.colorIndex == 4)
         #expect(!s.colorOverride && !s.titleOverride)
         #expect(s.tree.allPanes.map(\.id) == before)
-        if case .split(_, _, let ratio, _, _) = s.tree.root { #expect(ratio == 0.3) } else { Issue.record("tree changed shape") }
+        if case .split(_, _, let ratio, _, _) = s.tree.root { #expect(ratio.value == 0.3) } else { Issue.record("tree changed shape") }
     }
 }
 

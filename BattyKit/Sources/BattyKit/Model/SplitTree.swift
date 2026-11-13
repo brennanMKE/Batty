@@ -24,9 +24,21 @@ private enum ChainSearchResult {
     }
 }
 
+// A box rather than a stored Double so a ratio write never reassigns
+// `SplitTree.root`, which every structure reader (sidebar, menus, panes)
+// observes. Only the divider view reads `value`.
+@Observable
+public final class SplitRatio {
+    public internal(set) var value: Double
+
+    public init(_ value: Double) {
+        self.value = value
+    }
+}
+
 public indirect enum SplitTreeNode {
     case leaf(PaneRuntime)
-    case split(id: UUID, direction: SplitDirection, ratio: Double, left: SplitTreeNode, right: SplitTreeNode)
+    case split(id: UUID, direction: SplitDirection, ratio: SplitRatio, left: SplitTreeNode, right: SplitTreeNode)
 }
 
 extension SplitTreeNode {
@@ -339,7 +351,7 @@ public final class SplitTree {
     ) -> PaneRuntime {
         let newPane = Self.makePane(inheritingFrom: source, in: self, isSessionSelected: true, tabLookup: Self.tabLookup(for: self))
         adopt(newPane)
-        root = .split(id: UUID(), direction: direction, ratio: ratio, left: root, right: .leaf(newPane))
+        root = .split(id: UUID(), direction: direction, ratio: SplitRatio(ratio), left: root, right: .leaf(newPane))
         focusedPaneID = newPane.id
         return newPane
     }
@@ -721,7 +733,8 @@ public final class SplitTree {
 
     public func updateRatio(forSplitID id: UUID, to newRatio: Double) {
         let clamped = max(0.05, min(0.95, newRatio))
-        root = SplitTreeNode.updatingRatio(in: root, forID: id, to: clamped)
+        guard let box = root.ratioBox(forSplitID: id), box.value != clamped else { return }
+        box.value = clamped
     }
 
     /// Which arrow of a Cmd-Ctrl-arrow resize was pressed. Deliberately a
@@ -813,24 +826,6 @@ extension SplitTreeNode {
         }
     }
 
-    static func updatingRatio(in node: SplitTreeNode, forID id: UUID, to newRatio: Double) -> SplitTreeNode {
-        switch node {
-        case .leaf:
-            return node
-        case .split(let nodeID, let dir, let ratio, let left, let right):
-            if nodeID == id {
-                return .split(id: nodeID, direction: dir, ratio: newRatio, left: left, right: right)
-            }
-            return .split(
-                id: nodeID,
-                direction: dir,
-                ratio: ratio,
-                left: updatingRatio(in: left, forID: id, to: newRatio),
-                right: updatingRatio(in: right, forID: id, to: newRatio)
-            )
-        }
-    }
-
     /// Deepest ancestor split containing `paneID` whose `direction` matches
     /// `axis` — see `SplitTree.resizeFocusedSplit` for why this walks past a
     /// nearer, perpendicular ancestor instead of stopping there. `nil` when
@@ -861,12 +856,16 @@ extension SplitTreeNode {
 
     /// Current ratio of the split with `id`, or `nil` if not found.
     func ratio(forSplitID id: UUID) -> Double? {
+        ratioBox(forSplitID: id)?.value
+    }
+
+    func ratioBox(forSplitID id: UUID) -> SplitRatio? {
         switch self {
         case .leaf:
             return nil
         case .split(let nodeID, _, let ratio, let left, let right):
             if nodeID == id { return ratio }
-            return left.ratio(forSplitID: id) ?? right.ratio(forSplitID: id)
+            return left.ratioBox(forSplitID: id) ?? right.ratioBox(forSplitID: id)
         }
     }
 
@@ -902,7 +901,7 @@ extension SplitTreeNode {
             return .split(
                 id: UUID(),
                 direction: direction,
-                ratio: ratio,
+                ratio: SplitRatio(ratio),
                 left: .leaf(pane),
                 right: .leaf(newPane)
             )
@@ -1022,7 +1021,7 @@ extension SplitTreeNode {
         switch node {
         case .leaf:
             return node
-        case .split(let id, let dir, _, let left, let right):
+        case .split(let id, let dir, let ratio, let left, let right):
             guard dir == direction else { return node }
             let leftCount = countChainLeaves(left, direction: direction)
             let rightCount = countChainLeaves(right, direction: direction)
@@ -1031,10 +1030,14 @@ extension SplitTreeNode {
                 // All hidden — preserve the stored ratio unchanged.
                 return node
             }
+            // In place: the caller replaces `root` in the same call, and the
+            // existing divider view observes this box.
+            let share = Double(leftCount) / Double(total)
+            if ratio.value != share { ratio.value = share }
             return .split(
                 id: id,
                 direction: dir,
-                ratio: Double(leftCount) / Double(total),
+                ratio: ratio,
                 left: rebalancedChain(left, direction: direction),
                 right: rebalancedChain(right, direction: direction)
             )

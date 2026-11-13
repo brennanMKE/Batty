@@ -243,6 +243,45 @@ struct SessionDetailLayoutConvergenceTests {
         #expect((perSwitch.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perSwitch=\(perSwitch) ceiling=\(ceiling)")
     }
 
+    // MARK: - Divider drag request volume
+
+    /// A loose regression guard on `_postWindowNeedsUpdateConstraints`
+    /// requests per divider-drag tick (`SplitTree.updateRatio`), keyed by
+    /// `extraSessions`, with the Session split in three selected. Measured:
+    /// 57 and 105 per tick before split ratios moved into a per-split
+    /// `SplitRatio` box, when every tick reassigned `SplitTree.root` and
+    /// re-rendered every reader of the tree's structure; 25 and 36 at most
+    /// after (issues/0607.md). The ceilings are the after maxima plus about
+    /// 17%. `.serialized` because two cases settling at once interleave
+    /// their counts.
+    private static let dividerTickRequestCeiling: [Int: Int] = [0: 30, 12: 42]
+
+    @Test(.serialized, arguments: [0, 12])
+    func dividerDragTickRequestsStayUnderCeiling(extraSessions: Int) async throws {
+        let fixture = makeFixture(extraSessions: extraSessions)
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        windowRuntime.selectSession(at: 2)
+        _ = await fixture.probe.settle()
+        let first = await fixture.probe.settle()
+        #expect(first.converged, "first settle: \(first)")
+
+        let tree = windowRuntime.sessions[2].tree
+        guard case .split(let splitID, _, _, _, _) = tree.root else {
+            Issue.record("Session 2 has no split root")
+            return
+        }
+        var perTick: [Int] = []
+        for ratio in [0.30, 0.35, 0.40, 0.45, 0.50, 0.55] {
+            tree.updateRatio(forSplitID: splitID, to: ratio)
+            let ticked = await fixture.probe.settle()
+            #expect(ticked.converged, "ratio \(ratio): \(ticked)")
+            perTick.append(ticked.postNeedsUpdateConstraintsCalls)
+        }
+        let ceiling = try #require(Self.dividerTickRequestCeiling[extraSessions])
+        #expect((perTick.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perTick=\(perTick) ceiling=\(ceiling)")
+    }
+
     // MARK: - Terminal placement
 
     private func viewsNeedingUpdateConstraints(_ fixture: Fixture) -> [String] {

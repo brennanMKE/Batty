@@ -13,8 +13,8 @@ private func fraction(of paneID: UUID, in node: SplitTreeNode, available: Double
     case .leaf(let pane):
         return pane.id == paneID ? available : nil
     case .split(_, _, let ratio, let left, let right):
-        return fraction(of: paneID, in: left, available: available * ratio)
-            ?? fraction(of: paneID, in: right, available: available * (1.0 - ratio))
+        return fraction(of: paneID, in: left, available: available * ratio.value)
+            ?? fraction(of: paneID, in: right, available: available * (1.0 - ratio.value))
     }
 }
 
@@ -278,7 +278,7 @@ struct PaneHideTests {
         let node = SplitTreeNode.split(
             id: UUID(),
             direction: .horizontal,
-            ratio: 0.5,
+            ratio: SplitRatio(0.5),
             left: .leaf(hiddenPane),
             right: .leaf(visiblePane)
         )
@@ -291,7 +291,7 @@ struct PaneHideTests {
         let node = SplitTreeNode.split(
             id: UUID(),
             direction: .horizontal,
-            ratio: 0.5,
+            ratio: SplitRatio(0.5),
             left: .leaf(paneA),
             right: .leaf(paneB)
         )

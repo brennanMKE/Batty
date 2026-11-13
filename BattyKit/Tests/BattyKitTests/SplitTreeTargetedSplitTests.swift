@@ -15,8 +15,8 @@ struct SplitTreeTargetedSplitTests {
         case .leaf(let pane):
             return pane.id == paneID ? available : nil
         case .split(_, _, let ratio, let left, let right):
-            return fraction(of: paneID, in: left, available: available * ratio)
-                ?? fraction(of: paneID, in: right, available: available * (1.0 - ratio))
+            return fraction(of: paneID, in: left, available: available * ratio.value)
+                ?? fraction(of: paneID, in: right, available: available * (1.0 - ratio.value))
         }
     }
 
