@@ -29,8 +29,8 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// `SystemMetricsSampling` (`SystemMetricsSampler` in production, an
 /// `actor`); `performTick()` `await`s `sampleOnce()`, which hops onto that
 /// actor's own executor for the ~6.5ms syscall/IOKit sweep and back only to
-/// assign `snapshot`. `generation` guards the gap that hop opens: a sample
-/// already in flight when `setVisible(false)`/`tearDown()` runs must not
+/// assign `snapshot` and `sortedProcesses`. `generation` guards the gap
+/// that hop opens: a sample already in flight when `setVisible(false)`/`tearDown()` runs must not
 /// land after resuming — `startActive()`/`stopActive()` each bump
 /// `generation`, and `performTick()` discards its result if `generation`
 /// moved while it was awaiting `sampleOnce()`, whether because the pane
@@ -49,6 +49,14 @@ public final class SystemMetricsPaneContent: PaneContentLifecycle {
     public var samplerFactory: () -> SystemMetricsSampling = { SystemMetricsSampler() }
 
     public private(set) var snapshot: SystemMetricsSnapshot = .empty
+
+    /// The process list's sort. Owned here rather than by the view so it
+    /// survives hide/show and so a tick sorts once instead of every `body`.
+    public private(set) var processSort: ProcessRowSort = .default
+
+    /// `snapshot.processes` in `processSort` order, re-sorted on each tick
+    /// and on each sort change.
+    public private(set) var sortedProcesses: [ProcessRow] = []
 
     private let controller = PaneLifecycleController()
     private var sampler: SystemMetricsSampling?
@@ -96,6 +104,13 @@ public final class SystemMetricsPaneContent: PaneContentLifecycle {
         await performTick()
     }
 
+    /// Called from the process list's column header buttons.
+    public func setProcessSort(_ sort: ProcessRowSort) {
+        guard sort != processSort else { return }
+        processSort = sort
+        sortedProcesses = sort.sorted(snapshot.processes)
+    }
+
     private func startActive() {
         generation += 1
         sampler = samplerFactory()
@@ -138,6 +153,7 @@ public final class SystemMetricsPaneContent: PaneContentLifecycle {
         let result = await sampler.sampleOnce()
         guard controller.phase == .active, generation == generationAtStart else { return }
         snapshot = result
+        sortedProcesses = processSort.sorted(result.processes)
     }
 
     // Deliberately no `deinit`-based cleanup: the #0289 lesson this

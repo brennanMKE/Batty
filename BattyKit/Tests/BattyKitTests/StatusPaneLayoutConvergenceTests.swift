@@ -48,10 +48,17 @@ private nonisolated final class InertGitWatcher: GitStatusWatching, @unchecked S
 }
 
 /// Each call returns a different snapshot: new CPU and memory values and a
-/// re-sorted process list, like a real 1 s sample.
+/// re-sorted process list, like a real 1 s sample. `processCount` defaults
+/// to 40 for the size sweeps; the per-tick ceiling test uses realistic
+/// counts (a Mac runs several hundred to over a thousand processes).
 @MainActor
 private final class TickingMetricsSampler: SystemMetricsSampling {
+    private let processCount: Int
     private var tick = 0
+
+    init(processCount: Int = 40) {
+        self.processCount = processCount
+    }
 
     func sampleOnce() async -> SystemMetricsSnapshot {
         tick += 1
@@ -62,7 +69,7 @@ private final class TickingMetricsSampler: SystemMetricsSampling {
             cpu: .unavailable,
             memory: .unavailable,
             loadAverage: .zero,
-            processes: (1...40).map {
+            processes: (1...processCount).map {
                 ProcessRow(
                     pid: pid_t($0),
                     name: "process-\($0)" + String(repeating: "x", count: ($0 + offset) % 7),
@@ -96,9 +103,8 @@ struct StatusPaneLayoutConvergenceTests {
         }
     }
 
-    private func systemMetricsFixture() -> StatusFixture {
-        let content = SystemMetricsPaneContent()
-        content.samplerFactory = { TickingMetricsSampler() }
+    private func systemMetricsFixture(content: SystemMetricsPaneContent = SystemMetricsPaneContent(), processCount: Int = 40) -> StatusFixture {
+        content.samplerFactory = { TickingMetricsSampler(processCount: processCount) }
         let pane = PaneRuntime(kind: .systemMetrics, contentFactory: { _ in content })
         let tree = SplitTree(root: .leaf(pane))
         return StatusFixture(
@@ -266,6 +272,48 @@ struct StatusPaneLayoutConvergenceTests {
 
     @Test func systemMetricsPaneConverges() async {
         await sweep(systemMetricsFixture(), widths: Self.widths)
+    }
+
+    /// Most window update-constraints requests a typical System Metrics
+    /// sample may cause. The nested `List` the process list used to be made
+    /// 216 or more on every tick, scaling with the visible table height; as
+    /// a `LazyVStack` in the Pane's single `ScrollView` most ticks make none,
+    /// with an occasional single tick of 36-160 (#0606). The test therefore
+    /// requires most ticks, not every tick, to stay under the ceiling.
+    private static let systemMetricsTickRequestCeiling = 24
+
+    @Test(arguments: [470, 1100])
+    func systemMetricsTickStaysUnderRequestCeiling(processCount: Int) async {
+        let content = SystemMetricsPaneContent()
+        let fixture = systemMetricsFixture(content: content, processCount: processCount)
+        let probe = LayoutConvergenceProbe(fixture.view, size: CGSize(width: 480, height: 600))
+        defer {
+            fixture.tearDown()
+            probe.window.close()
+        }
+        await probe.pump(until: fixture.ready)
+        #expect(content.sortedProcesses.count == processCount)
+        var ticks: [(label: String, requests: Int)] = []
+        for size in [CGSize(width: 480, height: 600), CGSize(width: 720, height: 900)] {
+            for style in [NSScroller.Style.legacy, .overlay] {
+                let label = "\(processCount) rows \(Int(size.width))x\(Int(size.height)) \(style == .legacy ? "legacy" : "overlay")"
+                probe.resize(to: size)
+                _ = await probe.settle()
+                probe.forceScrollerStyle(style)
+                _ = await probe.settle()
+                for tick in 1...3 {
+                    await content.refreshNow()
+                    let ticked = await probe.settle()
+                    #expect(ticked.converged, "\(label) tick \(tick): \(ticked)")
+                    ticks.append(("\(label) tick \(tick)", ticked.postNeedsUpdateConstraintsCalls))
+                }
+            }
+        }
+        let over = ticks.filter { $0.requests > Self.systemMetricsTickRequestCeiling }
+        #expect(
+            over.count * 2 < ticks.count,
+            "\(over.count) of \(ticks.count) ticks over \(Self.systemMetricsTickRequestCeiling): \(ticks.map { "\($0.label)=\($0.requests)" }.joined(separator: ", "))"
+        )
     }
 
     @Test func processStatusPaneConverges() async {

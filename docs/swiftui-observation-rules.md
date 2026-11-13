@@ -162,6 +162,14 @@ do. It counts the window's update-constraints and layout requests per
 settle, and AppKit's own pass cap fires in that harness, so a real loop
 fails the run.
 
+**Give scrolling one owner inside a hosting tree.** A `List` or `Table`
+nested in a SwiftUI `ScrollView` brings its own `NSScrollView` and
+`NSTableView`, and posts window update-constraints requests for its visible
+rows on every content change. System Metrics' 1 s refresh made hundreds per
+tick that way until its process list became a `LazyVStack` in the Pane's
+one `ScrollView` (#0606, guarded by
+`StatusPaneLayoutConvergenceTests.systemMetricsTickStaysUnderRequestCeiling`).
+
 **Sanctioned exceptions** (documented in `view-hierarchy.md`; do not add new
 ones): `TerminalPlaceholderView.body`'s lazy `terminalView(for:)` performs a
 one-time `addSubview` into the persistent host on first mount, and the

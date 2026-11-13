@@ -53,6 +53,63 @@ public nonisolated struct ProcessRow: Identifiable, Equatable, Sendable {
     }
 }
 
+/// The process list's sort: a column and a direction. Rows whose keys are
+/// equal keep pid-ascending order in both directions, so the many denied
+/// rows (no CPU, no memory) don't reshuffle between ticks.
+public nonisolated struct ProcessRowSort: Equatable, Sendable {
+    public enum Field: String, CaseIterable, Sendable {
+        case name = "Name"
+        case pid = "PID"
+        case cpu = "CPU"
+        case memory = "Memory"
+    }
+
+    public var field: Field
+    public var ascending: Bool
+
+    public init(field: Field, ascending: Bool) {
+        self.field = field
+        self.ascending = ascending
+    }
+
+    public static let `default` = ProcessRowSort(field: .memory, ascending: false)
+
+    /// CPU sorts a denied row (`nil`) as -1 and memory as 0, so denied rows
+    /// come last descending and first ascending.
+    public func sorted(_ rows: [ProcessRow]) -> [ProcessRow] {
+        rows.sorted { lhs, rhs in
+            let order = compare(lhs, rhs)
+            if order == .orderedSame { return lhs.pid < rhs.pid }
+            return ascending ? order == .orderedAscending : order == .orderedDescending
+        }
+    }
+
+    /// The header button's behaviour: the same column flips direction, a
+    /// new column starts descending.
+    public func toggled(for field: Field) -> ProcessRowSort {
+        field == self.field
+            ? ProcessRowSort(field: field, ascending: !ascending)
+            : ProcessRowSort(field: field, ascending: false)
+    }
+
+    private func compare(_ lhs: ProcessRow, _ rhs: ProcessRow) -> ComparisonResult {
+        switch field {
+        case .name:
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+        case .pid:
+            return Self.compare(lhs.pid, rhs.pid)
+        case .cpu:
+            return Self.compare(lhs.cpuPercent ?? -1, rhs.cpuPercent ?? -1)
+        case .memory:
+            return Self.compare(lhs.physFootprintBytes ?? 0, rhs.physFootprintBytes ?? 0)
+        }
+    }
+
+    private static func compare<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+        lhs < rhs ? .orderedAscending : (lhs > rhs ? .orderedDescending : .orderedSame)
+    }
+}
+
 /// Everything one sampling tick produces
 /// (`docs/design/system-metrics-view.md` §3: thermal state, the five
 /// system-wide numbers, the process sweep, and the SMC read, all taken

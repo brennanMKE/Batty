@@ -1,6 +1,7 @@
 // SystemMetricsPaneContentTests.swift
 
 import Foundation
+import Observation
 import Testing
 @testable import BattyKit
 
@@ -24,16 +25,41 @@ private final class SamplerLedger {
 @MainActor
 private final class FakeSystemMetricsSampler: SystemMetricsSampling {
     let ledger: SamplerLedger
+    /// Given the 1-based sample number; `nil` returns `.empty`.
+    let processes: ((Int) -> [ProcessRow])?
 
-    init(ledger: SamplerLedger) {
+    init(ledger: SamplerLedger, processes: ((Int) -> [ProcessRow])? = nil) {
         self.ledger = ledger
+        self.processes = processes
         ledger.recordCreate()
     }
 
     func sampleOnce() async -> SystemMetricsSnapshot {
         ledger.recordSample()
-        return .empty
+        guard let processes else { return .empty }
+        return SystemMetricsSnapshot(
+            thermalState: .nominal,
+            smc: .unavailable,
+            cpu: .unavailable,
+            memory: .unavailable,
+            loadAverage: .zero,
+            processes: processes(ledger.sampleCallCount),
+            sampledAt: Date()
+        )
     }
+}
+
+private nonisolated final class ProcessSortChangeFlag: @unchecked Sendable {
+    var fired = false
+}
+
+/// Out of order for every sort key; values shift with the sample number.
+private func unorderedProcesses(sample: Int) -> [ProcessRow] {
+    [
+        ProcessRow(pid: 30, name: "charlie", path: nil, cpuPercent: Double(5 + sample), physFootprintBytes: 2_000),
+        ProcessRow(pid: 10, name: "Bravo", path: nil, cpuPercent: 50, physFootprintBytes: UInt64(9_000 + sample)),
+        ProcessRow(pid: 20, name: "alpha", path: nil, cpuPercent: 1, physFootprintBytes: 4_000),
+    ]
 }
 
 /// `Thread.isMainThread` itself is unavailable to reference directly from
@@ -132,10 +158,80 @@ private actor GatedSampler: SystemMetricsSampling {
 @MainActor
 struct SystemMetricsPaneContentTests {
 
-    private func makeContent(ledger: SamplerLedger) -> SystemMetricsPaneContent {
+    private func makeContent(
+        ledger: SamplerLedger,
+        processes: ((Int) -> [ProcessRow])? = nil
+    ) -> SystemMetricsPaneContent {
         let content = SystemMetricsPaneContent()
-        content.samplerFactory = { FakeSystemMetricsSampler(ledger: ledger) }
+        content.samplerFactory = { FakeSystemMetricsSampler(ledger: ledger, processes: processes) }
         return content
+    }
+
+    @Test func tickPublishesProcessesSortedByTheCurrentSort() async {
+        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        content.setUp(visible: true)
+        await content.refreshNow()
+
+        #expect(content.processSort == .default)
+        #expect(content.sortedProcesses.map(\.pid) == [10, 20, 30])
+    }
+
+    @Test func changingTheSortResortsWithoutSampling() async {
+        let ledger = SamplerLedger()
+        let content = makeContent(ledger: ledger, processes: unorderedProcesses)
+        content.setUp(visible: true)
+        await content.refreshNow()
+        let samples = ledger.sampleCallCount
+
+        content.setProcessSort(ProcessRowSort(field: .name, ascending: true))
+
+        #expect(content.sortedProcesses.map(\.name) == ["alpha", "Bravo", "charlie"])
+        #expect(ledger.sampleCallCount == samples)
+    }
+
+    @Test func sortIsKeptAcrossTicks() async {
+        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        content.setUp(visible: true)
+        await content.refreshNow()
+        content.setProcessSort(ProcessRowSort(field: .name, ascending: true))
+
+        await content.refreshNow()
+
+        #expect(content.processSort == ProcessRowSort(field: .name, ascending: true))
+        #expect(content.sortedProcesses.map(\.name) == ["alpha", "Bravo", "charlie"])
+        #expect(content.snapshot.processes.map(\.pid) == [30, 10, 20])
+    }
+
+    @Test func settingTheSameSortDoesNotNotifyProcessReaders() async {
+        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        content.setUp(visible: true)
+        await content.refreshNow()
+        let sort = ProcessRowSort(field: .cpu, ascending: true)
+        content.setProcessSort(sort)
+
+        let changed = ProcessSortChangeFlag()
+        withObservationTracking {
+            _ = content.sortedProcesses
+            _ = content.processSort
+        } onChange: {
+            changed.fired = true
+        }
+        content.setProcessSort(sort)
+
+        #expect(!changed.fired)
+        #expect(content.sortedProcesses.map(\.pid) == [20, 30, 10])
+    }
+
+    @Test func sortSurvivesHideAndShow() {
+        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        content.setUp(visible: true)
+        let sort = ProcessRowSort(field: .pid, ascending: true)
+        content.setProcessSort(sort)
+
+        content.setVisible(false)
+        content.setVisible(true)
+
+        #expect(content.processSort == sort)
     }
 
     @Test func createdHiddenNeverBuildsASamplerOrTicks() async {

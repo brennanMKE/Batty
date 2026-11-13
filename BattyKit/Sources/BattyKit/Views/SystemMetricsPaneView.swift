@@ -9,25 +9,15 @@ import SwiftUI
 /// mockup: thermal chip, numeric CPU-temperature/fan tiles, per-core CPU
 /// bars, a system memory bar, load average, and the full process list.
 ///
-/// Reads `content.snapshot`, replaced wholesale by `SystemMetricsPaneContent`
-/// on every 1-second tick while the pane is visible — this view has no
-/// timer, watcher, or state of its own beyond transient UI state (sort
-/// order), matching `docs/pane-view-lifecycle.md` §5's "the conformer is
+/// Reads `content.snapshot` and `content.sortedProcesses`, replaced by
+/// `SystemMetricsPaneContent` on every 1-second tick while the pane is
+/// visible — this view has no timer, watcher, or state of its own (the sort
+/// order lives in the content too), matching `docs/pane-view-lifecycle.md` §5's "the conformer is
 /// model-owned" split between model and view.
 public struct SystemMetricsPaneView: View {
-    private enum SortField: String, CaseIterable {
-        case name = "Name"
-        case pid = "PID"
-        case cpu = "CPU"
-        case memory = "Memory"
-    }
-
     @Environment(\.themeChrome) private var themeChrome
 
     let content: SystemMetricsPaneContent
-
-    @State private var sortField: SortField = .memory
-    @State private var sortAscending = false
 
     private var colors: SystemMetricsColors {
         SystemMetricsColors(palette: themeChrome?.palette)
@@ -316,22 +306,6 @@ public struct SystemMetricsPaneView: View {
 
     // MARK: - Process list
 
-    private var sortedRows: [ProcessRow] {
-        let rows = content.snapshot.processes
-        let sorted: [ProcessRow]
-        switch sortField {
-        case .name:
-            sorted = rows.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case .pid:
-            sorted = rows.sorted { $0.pid < $1.pid }
-        case .cpu:
-            sorted = rows.sorted { ($0.cpuPercent ?? -1) < ($1.cpuPercent ?? -1) }
-        case .memory:
-            sorted = rows.sorted { ($0.physFootprintBytes ?? 0) < ($1.physFootprintBytes ?? 0) }
-        }
-        return sortAscending ? sorted : sorted.reversed()
-    }
-
     private var processSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -348,17 +322,12 @@ public struct SystemMetricsPaneView: View {
         }
     }
 
-    private static let pidColumnWidth: CGFloat = 48
-    private static let cpuColumnWidth: CGFloat = 44
-    private static let memoryColumnWidth: CGFloat = 62
-    private static let columnSpacing: CGFloat = 6
-
     private var processListHeader: some View {
-        HStack(spacing: Self.columnSpacing) {
-            sortHeaderButton(.name, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-            sortHeaderButton(.pid, alignment: .trailing).frame(width: Self.pidColumnWidth, alignment: .trailing)
-            sortHeaderButton(.cpu, alignment: .trailing).frame(width: Self.cpuColumnWidth, alignment: .trailing)
-            sortHeaderButton(.memory, alignment: .trailing).frame(width: Self.memoryColumnWidth, alignment: .trailing)
+        HStack(spacing: Row.columnSpacing) {
+            sortHeaderButton(.name).frame(maxWidth: .infinity, alignment: .leading)
+            sortHeaderButton(.pid).frame(width: Row.pidColumnWidth, alignment: .trailing)
+            sortHeaderButton(.cpu).frame(width: Row.cpuColumnWidth, alignment: .trailing)
+            sortHeaderButton(.memory).frame(width: Row.memoryColumnWidth, alignment: .trailing)
         }
         .font(.system(size: 9.5, weight: .semibold))
         .foregroundStyle(.tertiary)
@@ -367,20 +336,18 @@ public struct SystemMetricsPaneView: View {
         .background(Color.primary.opacity(0.04))
     }
 
-    private func sortHeaderButton(_ field: SortField, alignment: Alignment) -> some View {
-        Button {
-            if sortField == field {
-                sortAscending.toggle()
-            } else {
-                sortField = field
-                sortAscending = false
-            }
+    private typealias Row = SystemMetricsProcessRowView
+
+    private func sortHeaderButton(_ field: ProcessRowSort.Field) -> some View {
+        let sort = content.processSort
+        return Button {
+            content.setProcessSort(content.processSort.toggled(for: field))
         } label: {
             HStack(spacing: 2) {
                 Text(field.rawValue.uppercased())
                     .lineLimit(1)
-                if sortField == field {
-                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                if sort.field == field {
+                    Image(systemName: sort.ascending ? "chevron.up" : "chevron.down")
                         .font(.system(size: 7, weight: .bold))
                 }
             }
@@ -388,66 +355,17 @@ public struct SystemMetricsPaneView: View {
         .buttonStyle(.plain)
     }
 
+    /// Rows scroll with the Pane's one `ScrollView`. A `List` nested here
+    /// (its own `NSScrollView` and `NSTableView`) made hundreds of window
+    /// update-constraints requests on every 1 s tick (#0606).
     private var processList: some View {
-        List(sortedRows) { row in
-            processRow(row)
-                .contextMenu { processContextMenu(for: row) }
+        LazyVStack(spacing: 0) {
+            ForEach(content.sortedProcesses) { row in
+                Row(row: row, colors: colors).equatable()
+            }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(colors.tableBackground == nil ? .automatic : .hidden)
         .background(colors.tableBackground ?? Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 7))
-        .frame(minHeight: 260, idealHeight: 420, maxHeight: 460)
         .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(colors.border))
-    }
-
-    private func processRow(_ row: ProcessRow) -> some View {
-        let denied = row.cpuPercent == nil && row.physFootprintBytes == nil
-        return HStack(spacing: Self.columnSpacing) {
-            Text(row.name)
-                .font(.system(size: 11.5, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(verbatim: String(row.pid))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(colors.mutedForeground.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tertiary))
-                .frame(width: Self.pidColumnWidth, alignment: .trailing)
-            Text(row.cpuPercent.map { SystemMetricsFormatting.percent($0) } ?? "\u{2014}")
-                .monospacedDigit()
-                .frame(width: Self.cpuColumnWidth, alignment: .trailing)
-            Text(row.physFootprintBytes.map(SystemMetricsFormatting.bytes) ?? "\u{2014}")
-                .monospacedDigit()
-                .frame(width: Self.memoryColumnWidth, alignment: .trailing)
-        }
-        .font(.system(size: 12))
-        .foregroundStyle(denied ? mutedRowStyle : primaryRowStyle)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .listRowInsets(EdgeInsets())
-        .listRowSeparator(.visible)
-        .listRowSeparatorTint(colors.separator)
-    }
-
-    private var primaryRowStyle: AnyShapeStyle {
-        colors.foreground.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary)
-    }
-
-    private var mutedRowStyle: AnyShapeStyle {
-        colors.mutedForeground.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tertiary)
-    }
-
-    @ViewBuilder
-    private func processContextMenu(for row: ProcessRow) -> some View {
-        Button("Copy PID") {
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString("\(row.pid)", forType: .string)
-        }
-        Button("Reveal Executable in Finder") {
-            guard let path = row.path else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-        }
-        .disabled(row.path == nil)
     }
 }

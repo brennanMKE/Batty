@@ -596,6 +596,18 @@ magnitude past what was measured here) with a "showing top N of M" note is
 the fallback — not designed further here because nothing measured
 justifies designing it now.
 
+**As built (#0606): a `LazyVStack`, not a `List`.** The rows are a
+`LazyVStack` inside the Pane's single `ScrollView`, keyed by pid, with an
+`Equatable` row view so a tick re-renders only rows whose values changed.
+The first implementation nested a `List` (its own `NSScrollView` and
+`NSTableView`) in that `ScrollView`; in `StatusPaneLayoutConvergenceTests`
+it made 216 to 1,457 window update-constraints requests on every 1 s tick,
+scaling with the visible table height, and was removed. The sort order
+lives in `SystemMetricsPaneContent` (`processSort`, `sortedProcesses`), so
+each tick sorts once and the order survives hide and show. The column
+header is not pinned: a pinned section header brought back occasional
+single-tick spikes.
+
 **Per-row availability, following §1.7's tier finding exactly, including
 its round-2 correction:** name resolves via `proc_name` where it
 succeeds, falls back to the executable path's basename via `proc_pidpath`
