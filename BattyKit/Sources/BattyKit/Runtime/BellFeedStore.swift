@@ -195,7 +195,28 @@ public final class BellFeedStore {
         case collapsed(BellFeedEntry)
     }
 
-    public internal(set) var entries: [BellFeedEntry] = []
+    public internal(set) var entries: [BellFeedEntry] = [] {
+        didSet { refreshAggregates() }
+    }
+
+    /// Views read these stored aggregates instead of scanning `entries`, so a
+    /// Feed write that changes neither value (a collapse, a summary, a seen
+    /// mark on an already-seen entry) doesn't invalidate them. Each is written
+    /// only as a whole value and only when it differs.
+    public private(set) var unseenCount: Int = 0
+    /// Sessions with at least one unseen `.reminder` entry.
+    public private(set) var dueReminderSessionIDs: Set<UUID> = []
+
+    private func refreshAggregates() {
+        var unseen = 0
+        var due: Set<UUID> = []
+        for entry in entries where !entry.seen {
+            unseen += 1
+            if entry.kind == .reminder { due.insert(entry.sessionID) }
+        }
+        if unseen != unseenCount { unseenCount = unseen }
+        if due != dueReminderSessionIDs { dueReminderSessionIDs = due }
+    }
 
     /// Entry ids that have an `event` record in the capture log (#0523), and
     /// the latest verdict given to each this launch (#0524). In-memory only:
@@ -215,6 +236,7 @@ public final class BellFeedStore {
         if self.entries.count > Self.cap {
             self.entries.removeLast(self.entries.count - Self.cap)
         }
+        refreshAggregates()
     }
 
     @discardableResult
@@ -307,10 +329,14 @@ public final class BellFeedStore {
         }) else {
             return .recorded(record(entry))
         }
-        var collapsed = entries.remove(at: matchIndex)
+        // One whole-array write: a remove-then-insert would pass through a
+        // state without the row and flip the aggregates twice.
+        var reordered = entries
+        var collapsed = reordered.remove(at: matchIndex)
         collapsed.repeatCount += 1
         collapsed.timestamp = entry.timestamp
-        entries.insert(collapsed, at: 0)
+        reordered.insert(collapsed, at: 0)
+        entries = reordered
         return .collapsed(collapsed)
     }
 
@@ -329,10 +355,6 @@ public final class BellFeedStore {
             return entries[idx]
         }
         return touched
-    }
-
-    public var unseenCount: Int {
-        entries.lazy.filter { !$0.seen }.count
     }
 
     /// Updates the AI summary for the entry with the given id. A no-op when

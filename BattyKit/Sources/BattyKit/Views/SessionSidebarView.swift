@@ -299,7 +299,7 @@ private struct SessionSidebarRow: View {
             let detail = ReminderActions.detail(for: reminder, store: store)
             return detail.map { "reminder pending: \($0)" } ?? "reminder pending"
         }
-        if !store.bellFeed.unseenReminderEntries(forSessionID: session.id).isEmpty {
+        if store.bellFeed.dueReminderSessionIDs.contains(session.id) {
             return "reminder due"
         }
         return nil
@@ -487,13 +487,25 @@ private struct ReminderBadge: View {
             .buttonStyle(.borderless)
             .help(ReminderActions.detail(for: reminder, store: store) ?? "")
             .accessibilityHidden(true)
-        } else if let due = store.bellFeed.unseenReminderEntries(forSessionID: session.id).first {
-            Image(systemName: "alarm.fill")
-                .imageScale(.small)
-                .foregroundStyle(accent ?? Color.accentColor)
-                .help(due.message ?? String(localized: "Reminder is due"))
-                .accessibilityHidden(true)
+        } else if store.bellFeed.dueReminderSessionIDs.contains(session.id) {
+            DueReminderAlarm(store: store, sessionID: session.id, accent: accent)
         }
+    }
+}
+
+/// Only rows with a due Reminder mount this, so only they track `entries`
+/// for the tooltip text.
+private struct DueReminderAlarm: View {
+    let store: AppStateStore
+    let sessionID: UUID
+    let accent: Color?
+
+    var body: some View {
+        Image(systemName: "alarm.fill")
+            .imageScale(.small)
+            .foregroundStyle(accent ?? Color.accentColor)
+            .help(store.bellFeed.unseenReminderEntries(forSessionID: sessionID).first?.message ?? String(localized: "Reminder is due"))
+            .accessibilityHidden(true)
     }
 }
 

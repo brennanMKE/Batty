@@ -258,6 +258,13 @@ A few important properties of this flow:
 - **`BellFeedStore` is capped at 200 entries.** Oldest entries are
   evicted when the cap is exceeded; see section 5 on auto-clear for
   how this interacts with `markActiveTabSeen()`.
+- **Views read the Feed's stored aggregates, not `entries`.**
+  `unseenCount` and `dueReminderSessionIDs` are stored, refreshed from
+  `entries`' `didSet`, and written only when their value changes, so the
+  toolbar bell, the Bell Feed menu and the sidebar rows don't re-render
+  on a collapse, a summary or other Feed writes that change neither.
+  Only `BellFeedView` (and the due-Reminder alarm leaf for its tooltip)
+  reads `entries`.
 
 Cross-references: see `BellFeedStore.record(_:)`,
 `AppStateStore.recordBell(forTabID:count:at:surfaceID:)`,

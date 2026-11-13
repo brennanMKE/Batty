@@ -218,26 +218,7 @@ public struct SessionDetailView: View {
             .accessibilityIdentifier("toolbar.split-vertical")
             .disabled(windowRuntime.selectedSession == nil)
 
-            Button {
-                bellFeedShown.toggle()
-            } label: {
-                Label(
-                    "Bell Feed",
-                    systemImage: store.bellFeed.unseenCount > 0 ? "bell.badge" : "bell"
-                )
-                .symbolRenderingMode(.hierarchical)
-            }
-            .help("Bell Feed (\u{2318}\u{21E7}N)")
-            .popover(isPresented: $bellFeedShown, arrowEdge: .top) {
-                BellFeedView(
-                    store: store,
-                    onJump: { entry in
-                        bellFeedShown = false
-                        store.jumpToBellEntry(entry)
-                    },
-                    onDismiss: { bellFeedShown = false }
-                )
-            }
+            BellFeedToolbarButton(store: store, isShown: $bellFeedShown)
         }
     }
 
@@ -387,5 +368,35 @@ public struct SessionDetailView: View {
 
     private var navigationTitle: String {
         windowRuntime.selectedSession?.title ?? "Batty"
+    }
+}
+
+/// The only toolbar reader of Bell Feed state, so a Feed change re-renders
+/// this button rather than `SessionDetailView.body`.
+private struct BellFeedToolbarButton: View {
+    let store: AppStateStore
+    @Binding var isShown: Bool
+
+    var body: some View {
+        Button {
+            isShown.toggle()
+        } label: {
+            Label(
+                "Bell Feed",
+                systemImage: store.bellFeed.unseenCount > 0 ? "bell.badge" : "bell"
+            )
+            .symbolRenderingMode(.hierarchical)
+        }
+        .help("Bell Feed (\u{2318}\u{21E7}N)")
+        .popover(isPresented: $isShown, arrowEdge: .top) {
+            BellFeedView(
+                store: store,
+                onJump: { entry in
+                    isShown = false
+                    store.jumpToBellEntry(entry)
+                },
+                onDismiss: { isShown = false }
+            )
+        }
     }
 }
