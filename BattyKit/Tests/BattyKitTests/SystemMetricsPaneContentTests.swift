@@ -160,16 +160,20 @@ struct SystemMetricsPaneContentTests {
 
     private func makeContent(
         ledger: SamplerLedger,
-        processes: ((Int) -> [ProcessRow])? = nil
+        processes: ((Int) -> [ProcessRow])? = nil,
+        clock: SchedulingClock = TestClock()
     ) -> SystemMetricsPaneContent {
-        let content = SystemMetricsPaneContent()
+        let content = SystemMetricsPaneContent(clock: clock)
         content.samplerFactory = { FakeSystemMetricsSampler(ledger: ledger, processes: processes) }
         return content
     }
 
     @Test func tickPublishesProcessesSortedByTheCurrentSort() async {
-        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        let clock = TestClock()
+        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses, clock: clock)
+        defer { content.tearDown() }
         content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
         await content.refreshNow()
 
         #expect(content.processSort == .default)
@@ -178,8 +182,11 @@ struct SystemMetricsPaneContentTests {
 
     @Test func changingTheSortResortsWithoutSampling() async {
         let ledger = SamplerLedger()
-        let content = makeContent(ledger: ledger, processes: unorderedProcesses)
+        let clock = TestClock()
+        let content = makeContent(ledger: ledger, processes: unorderedProcesses, clock: clock)
+        defer { content.tearDown() }
         content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
         await content.refreshNow()
         let samples = ledger.sampleCallCount
 
@@ -190,8 +197,11 @@ struct SystemMetricsPaneContentTests {
     }
 
     @Test func sortIsKeptAcrossTicks() async {
-        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        let clock = TestClock()
+        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses, clock: clock)
+        defer { content.tearDown() }
         content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
         await content.refreshNow()
         content.setProcessSort(ProcessRowSort(field: .name, ascending: true))
 
@@ -203,8 +213,11 @@ struct SystemMetricsPaneContentTests {
     }
 
     @Test func settingTheSameSortDoesNotNotifyProcessReaders() async {
-        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        let clock = TestClock()
+        let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses, clock: clock)
+        defer { content.tearDown() }
         content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
         await content.refreshNow()
         let sort = ProcessRowSort(field: .cpu, ascending: true)
         content.setProcessSort(sort)
@@ -224,6 +237,7 @@ struct SystemMetricsPaneContentTests {
 
     @Test func sortSurvivesHideAndShow() {
         let content = makeContent(ledger: SamplerLedger(), processes: unorderedProcesses)
+        defer { content.tearDown() }
         content.setUp(visible: true)
         let sort = ProcessRowSort(field: .pid, ascending: true)
         content.setProcessSort(sort)
@@ -248,34 +262,44 @@ struct SystemMetricsPaneContentTests {
 
     @Test func createdVisibleBuildsASamplerAndTicks() async {
         let ledger = SamplerLedger()
-        let content = makeContent(ledger: ledger)
+        let clock = TestClock()
+        let content = makeContent(ledger: ledger, clock: clock)
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
+        #expect(ledger.createCount == 1)
+        #expect(ledger.sampleCallCount == 1)
         await content.performTick()
 
         #expect(content.lifecyclePhase == .active)
-        #expect(ledger.createCount == 1)
-        #expect(ledger.sampleCallCount == 1)
+        #expect(ledger.sampleCallCount == 2)
     }
 
     @Test func hidingAnActivePaneStopsTicksImmediately() async {
         let ledger = SamplerLedger()
-        let content = makeContent(ledger: ledger)
+        let clock = TestClock()
+        let content = makeContent(ledger: ledger, clock: clock)
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
         await content.performTick()
         content.setVisible(false)
+        #expect(clock.pendingCount == 0)
         await content.performTick()
         await content.performTick()
+        #expect(await clock.advance(by: SystemMetricsPaneContent.sampleInterval) == 0)
 
         #expect(content.lifecyclePhase == .suspended)
-        // Only the one tick before hide counted.
-        #expect(ledger.sampleCallCount == 1)
+        // The loop's first tick and one driven tick before the hide; nothing after.
+        #expect(ledger.sampleCallCount == 2)
     }
 
     @Test func showingASuspendedPaneBuildsAFreshSamplerAndRefreshesImmediately() {
         let ledger = SamplerLedger()
         let content = makeContent(ledger: ledger)
+        defer { content.tearDown() }
 
         content.setUp(visible: false)
         content.setVisible(true)
@@ -288,6 +312,7 @@ struct SystemMetricsPaneContentTests {
     @Test func hideThenShowDiscardsTheOldSamplerAndBuildsAFreshOne() {
         let ledger = SamplerLedger()
         let content = makeContent(ledger: ledger)
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
         content.setVisible(false)
@@ -302,6 +327,7 @@ struct SystemMetricsPaneContentTests {
     @Test func redundantShowDoesNotRebuildTheSampler() {
         let ledger = SamplerLedger()
         let content = makeContent(ledger: ledger)
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
         content.setVisible(true)
@@ -314,6 +340,8 @@ struct SystemMetricsPaneContentTests {
         let ledger = SamplerLedger()
         let content = makeContent(ledger: ledger)
 
+        // No suspension between setUp and tearDown, so the loop task starts
+        // already cancelled and never ticks; the zero below depends on it.
         content.setUp(visible: true)
         content.tearDown()
         await content.performTick()
@@ -346,12 +374,16 @@ struct SystemMetricsPaneContentTests {
 
     @Test func refreshNowSamplesImmediatelyWhileActive() async {
         let ledger = SamplerLedger()
-        let content = makeContent(ledger: ledger)
+        let clock = TestClock()
+        let content = makeContent(ledger: ledger, clock: clock)
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
         await content.refreshNow()
 
-        #expect(ledger.sampleCallCount == 1)
+        // One for the loop's first tick, one for the refresh.
+        #expect(ledger.sampleCallCount == 2)
     }
 
     @Test func snapshotStartsEmptyBeforeTheFirstTick() {
@@ -383,8 +415,9 @@ struct SystemMetricsPaneContentTests {
 
     @Test func sweepRunsOffTheMainActor() async {
         let recorder = ThreadRecordingSampler()
-        let content = SystemMetricsPaneContent()
+        let content = SystemMetricsPaneContent(clock: TestClock())
         content.samplerFactory = { recorder }
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
         await content.performTick()
@@ -404,8 +437,9 @@ struct SystemMetricsPaneContentTests {
             sampledAt: Date()
         )
         let gated = GatedSampler(result: nonEmptySnapshot)
-        let content = SystemMetricsPaneContent()
+        let content = SystemMetricsPaneContent(clock: TestClock())
         content.samplerFactory = { gated }
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
         let tickTask = Task { await content.performTick() }
@@ -433,8 +467,9 @@ struct SystemMetricsPaneContentTests {
             sampledAt: Date()
         )
         let gated = GatedSampler(result: nonEmptySnapshot)
-        let content = SystemMetricsPaneContent()
+        let content = SystemMetricsPaneContent(clock: TestClock())
         content.samplerFactory = { gated }
+        defer { content.tearDown() }
 
         content.setUp(visible: true)
         let tickTask = Task { await content.performTick() }
@@ -461,7 +496,8 @@ struct SystemMetricsPaneContentTests {
         let staleGated = GatedSampler(result: staleSnapshot)
         let freshLedger = SamplerLedger()
         var handedOutStale = false
-        let content = SystemMetricsPaneContent()
+        let content = SystemMetricsPaneContent(clock: TestClock())
+        defer { content.tearDown() }
         content.samplerFactory = {
             if !handedOutStale {
                 handedOutStale = true
