@@ -68,23 +68,8 @@ public struct SessionSidebarView: View {
     /// the value exactly are unaffected.
     private static let exposesRowIcon = UITestDriver.exposesSidebarIcons()
 
-    /// The Sidebar cell merges every accessibility child into one element,
-    /// concatenating identifiers and values, so the Reminder badge is hidden
-    /// from accessibility and its state rides on the row's value instead:
-    /// "reminder pending: <time and note>" or "reminder due".
-    private func reminderState(for session: SessionRuntime) -> String? {
-        if let reminder = session.reminder {
-            let detail = ReminderActions.detail(for: reminder, store: store)
-            return detail.map { "reminder pending: \($0)" } ?? "reminder pending"
-        }
-        if !store.bellFeed.unseenReminderEntries(forSessionID: session.id).isEmpty {
-            return "reminder due"
-        }
-        return nil
-    }
-
-    private func rowIconName(for session: SessionRuntime) -> String? {
-        guard Self.exposesRowIcon else { return nil }
+    fileprivate static func rowIconName(for session: SessionRuntime) -> String? {
+        guard exposesRowIcon else { return nil }
         let symbol = session.projectID != nil ? (session.projectSymbol ?? .default) : nil
         return SessionRowIcon.systemName(projectSymbol: symbol, customName: session.projectSymbolName)
     }
@@ -92,101 +77,26 @@ public struct SessionSidebarView: View {
     public var body: some View {
         List(selection: sidebarSelection) {
             ForEach(windowRuntime.sessions) { session in
-                // Native outline disclosure per session: the sidebar List
-                // maps DisclosureGroup onto NSOutlineView expansion, which
-                // is the only path that gives the animated height
-                // reveal/collapse (chevron rotates right→down, rows slide
-                // over a duration). Hand-rolled variants — `if` around the
-                // ForEach, empty-data ForEach — apply without animation on
-                // the NSTableView-backed List (#0258 follow-up).
-                //
-                // Pane rows: `selectionDisabled` is required — even without
-                // a `.tag()`, macOS List derives an implicit selection value
-                // from the ForEach identity, and `pane.id` type-matches the
-                // UUID? selection; clicking a row would write a pane id into
-                // selectedSessionID (#0258). Tapping a row instead selects
-                // the owning session and focuses (un-hiding if needed).
-                DisclosureGroup(isExpanded: Binding(
-                    get: { session.isPaneListExpanded },
-                    set: { session.isPaneListExpanded = $0 }
-                )) {
-                    ForEach(session.tree.panesSortedByColumnThenRow) { pane in
-                        PaneRow(
-                            pane: pane,
-                            session: session,
-                            windowRuntime: windowRuntime,
-                            accent: themeChrome?.accent,
-                            onBackgroundSettings: { backgroundSettingsPaneID = pane.id }
-                        )
-                        .selectionDisabled()
-                        .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
-                        .modifier(SidebarRowBackground(
-                            sidebarBackground: sidebarFill,
-                            selectionTint: nil,
-                            isSelected: false
-                        ))
-                        // Without `.contain`, SwiftUI on macOS folds PaneRow's
-                        // HStack into a single accessibility leaf and this
-                        // identifier spreads to every child — including the
-                        // eye toggle's own `pane-eye-toggle.<uuid>` below,
-                        // which the outer identifier here would otherwise
-                        // silently win over. Same mechanism, same fix, as
-                        // the tab bar's `tab-chip.<title>` vs. its children
-                        // (`PaneView.swift:219-225`).
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
-                    }
-                } label: {
-                    // Without an element of its own, the row's accessible
-                    // leaves each inherit the identifier, and folding them
-                    // joins the copies with "-". So the row, Reminder badge
-                    // included, hides its children and states its own label
-                    // and value; the badge's state rides on that value.
-                    // Applied on the label content, not on the whole
-                    // DisclosureGroup, so it doesn't also describe the
-                    // disclosed pane rows below.
-                    HStack(spacing: 4) {
-                        SessionRow(
-                            session: session,
-                            store: store,
-                            windowRuntime: windowRuntime,
-                            accent: themeChrome?.accent,
-                            onRename: {
-                                renameDraft = session.title
-                                renamingSessionID = session.id
-                            },
-                            onTheme: {
-                                themingSessionID = session.id
-                            },
-                            onSetColor: {
-                                coloringSessionID = session.id
-                            },
-                            onBackground: {
-                                backgroundSettingsSessionID = session.id
-                            }
-                        )
-                        ReminderBadge(
-                            session: session,
-                            store: store,
-                            accent: themeChrome?.accent,
-                            onEdit: { ReminderActions.presentSheet(for: session, in: windowRuntime) }
-                        )
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Self.rowAccessibilityLabel(for: session))
-                    .accessibilityAddTraits(.isStaticText)
-                    .accessibilityIdentifier("session-row.\(session.title)")
-                    .accessibilityValue(Self.rowAccessibilityValue(for: session, isSelected: session.id == windowRuntime.selectedSessionID, projectSymbol: Self.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState(for: session)))
-                }
-                .tag(session.id as UUID?)
-                .modifier(SidebarRowBackground(
-                    sidebarBackground: sidebarFill,
+                SessionSidebarRow(
+                    session: session,
+                    store: store,
+                    windowRuntime: windowRuntime,
+                    accent: themeChrome?.accent,
+                    sidebarFill: sidebarFill,
                     selectionTint: WindowSeeThrough.sidebarSelectionTint(
                         isSeeThrough: windowIsSeeThrough,
                         themeTint: themeChrome?.sidebarSelectionTint
                     ),
-                    isSelected: session.id == windowRuntime.selectedSessionID
-                ))
+                    onRename: {
+                        renameDraft = session.title
+                        renamingSessionID = session.id
+                    },
+                    onTheme: { themingSessionID = session.id },
+                    onSetColor: { coloringSessionID = session.id },
+                    onBackground: { backgroundSettingsSessionID = session.id },
+                    onPaneBackground: { backgroundSettingsPaneID = $0 }
+                )
+                .tag(session.id as UUID?)
             }
             .onMove { source, destination in
                 windowRuntime.moveSessions(fromOffsets: source, toOffset: destination)
@@ -362,6 +272,120 @@ public struct SessionSidebarView: View {
         )
     }
 
+}
+
+/// One Session's Sidebar row: its own view so a selection change, which
+/// flips `isSelected` on only the two Sessions it crosses, re-renders only
+/// those two rows instead of every row in the Sidebar's `ForEach`.
+private struct SessionSidebarRow: View {
+    @Bindable var session: SessionRuntime
+    let store: AppStateStore
+    let windowRuntime: WindowRuntime
+    let accent: Color?
+    let sidebarFill: Color?
+    let selectionTint: Color?
+    let onRename: () -> Void
+    let onTheme: () -> Void
+    let onSetColor: () -> Void
+    let onBackground: () -> Void
+    let onPaneBackground: (UUID) -> Void
+
+    /// The Sidebar cell merges every accessibility child into one element,
+    /// concatenating identifiers and values, so the Reminder badge is hidden
+    /// from accessibility and its state rides on the row's value instead:
+    /// "reminder pending: <time and note>" or "reminder due".
+    private var reminderState: String? {
+        if let reminder = session.reminder {
+            let detail = ReminderActions.detail(for: reminder, store: store)
+            return detail.map { "reminder pending: \($0)" } ?? "reminder pending"
+        }
+        if !store.bellFeed.unseenReminderEntries(forSessionID: session.id).isEmpty {
+            return "reminder due"
+        }
+        return nil
+    }
+
+    var body: some View {
+        // Native outline disclosure per session: the sidebar List
+        // maps DisclosureGroup onto NSOutlineView expansion, which
+        // is the only path that gives the animated height
+        // reveal/collapse (chevron rotates right→down, rows slide
+        // over a duration). Hand-rolled variants — `if` around the
+        // ForEach, empty-data ForEach — apply without animation on
+        // the NSTableView-backed List (#0258 follow-up).
+        //
+        // Pane rows: `selectionDisabled` is required — even without
+        // a `.tag()`, macOS List derives an implicit selection value
+        // from the ForEach identity, and `pane.id` type-matches the
+        // UUID? selection; clicking a row would write a pane id into
+        // selectedSessionID (#0258). Tapping a row instead selects
+        // the owning session and focuses (un-hiding if needed).
+        DisclosureGroup(isExpanded: $session.isPaneListExpanded) {
+            ForEach(session.tree.panesSortedByColumnThenRow) { pane in
+                PaneRow(
+                    pane: pane,
+                    session: session,
+                    windowRuntime: windowRuntime,
+                    accent: accent,
+                    onBackgroundSettings: { onPaneBackground(pane.id) }
+                )
+                .selectionDisabled()
+                .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
+                .modifier(SidebarRowBackground(
+                    sidebarBackground: sidebarFill,
+                    selectionTint: nil,
+                    isSelected: false
+                ))
+                // Without `.contain`, SwiftUI on macOS folds PaneRow's
+                // HStack into a single accessibility leaf and this
+                // identifier spreads to every child — including the
+                // eye toggle's own `pane-eye-toggle.<uuid>` below,
+                // which the outer identifier here would otherwise
+                // silently win over. Same mechanism, same fix, as
+                // the tab bar's `tab-chip.<title>` vs. its children
+                // (`PaneView.swift:219-225`).
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
+            }
+        } label: {
+            // Without an element of its own, the row's accessible
+            // leaves each inherit the identifier, and folding them
+            // joins the copies with "-". So the row, Reminder badge
+            // included, hides its children and states its own label
+            // and value; the badge's state rides on that value.
+            // Applied on the label content, not on the whole
+            // DisclosureGroup, so it doesn't also describe the
+            // disclosed pane rows below.
+            HStack(spacing: 4) {
+                SessionRow(
+                    session: session,
+                    store: store,
+                    windowRuntime: windowRuntime,
+                    accent: accent,
+                    onRename: onRename,
+                    onTheme: onTheme,
+                    onSetColor: onSetColor,
+                    onBackground: onBackground
+                )
+                ReminderBadge(
+                    session: session,
+                    store: store,
+                    accent: accent,
+                    onEdit: { ReminderActions.presentSheet(for: session, in: windowRuntime) }
+                )
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(SessionSidebarView.rowAccessibilityLabel(for: session))
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityIdentifier("session-row.\(session.title)")
+            .accessibilityValue(SessionSidebarView.rowAccessibilityValue(for: session, isSelected: session.isSelected, projectSymbol: SessionSidebarView.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: SessionSidebarView.rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState))
+        }
+        .modifier(SidebarRowBackground(
+            sidebarBackground: sidebarFill,
+            selectionTint: selectionTint,
+            isSelected: session.isSelected
+        ))
+    }
 }
 
 private struct SidebarRowBackground: ViewModifier {

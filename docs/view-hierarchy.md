@@ -87,7 +87,9 @@ BattyApp (Scene)
             └── NavigationSplitView
                 ├── Sidebar column
                 │   └── SessionSidebarView
-                │       ├── List(store.sessions) — session rows
+                │       ├── List(selection:) over sessions — SessionSidebarRow per
+                │       │   Session; each row reads its own `session.isSelected`,
+                │       │   not the window's selectedSessionID (#0604)
                 │       └── .safeAreaInset(.bottom): "+" button (#0065)
                 └── Detail column
                     └── SessionDetailView                                ZStack:

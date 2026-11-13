@@ -40,6 +40,12 @@ public final class SessionRuntime: Identifiable {
     /// default; `WindowRuntime.hidePane` expands it so a just-hidden pane's
     /// restore control is always reachable (#0258). Not persisted.
     public var isPaneListExpanded: Bool = false
+    /// Whether this is its window's selected Session. Written only by
+    /// `WindowRuntime.applyTerminalVisibility`, for the (at most) two Sessions
+    /// a selection change crosses, and read by the Sidebar row, so a switch
+    /// invalidates those two rows rather than every row comparing itself
+    /// against the window's `selectedSessionID`.
+    public internal(set) var isSelected: Bool = false
     /// Index into `SessionColor.allCases`. Assigned by `WindowRuntime`'s
     /// least-used round-robin at creation and stable for the Session's
     /// lifetime unless the user explicitly picks a color (#0336, via

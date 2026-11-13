@@ -52,9 +52,9 @@ public final class WindowRuntime {
     /// — funnels through this one property, so `didSet` is the single place
     /// that delivers, synchronously in the writer's event-origin context:
     ///
-    /// - which terminals are shown, to the two Sessions the change crosses
-    ///   (#0605, `applyTerminalVisibility`), first, so the focus below
-    ///   targets an already revealed terminal,
+    /// - which terminals are shown, and each Session's `isSelected`, to the
+    ///   two Sessions the change crosses (#0605, `applyTerminalVisibility`),
+    ///   first, so the focus below targets an already revealed terminal,
     /// - `setVisible` to the two Sessions the change crosses (#0349,
     ///   `applySelectionVisibility`), and
     /// - the selection effects (`applySelectionEffects`): deny the previous
@@ -1072,18 +1072,21 @@ public final class WindowRuntime {
     /// Pushes which terminals are shown (#0605) to the (at most) two
     /// Sessions a `selectedSessionID` write crosses: none of the deselected
     /// Session's, and in the selected Session each non-hidden terminal Pane's
-    /// active Tab. Called from that property's `didSet` and from `init`,
-    /// never from a view, so hiding the outgoing terminals (and the first
-    /// responder change that comes with it) happens in the selection action,
-    /// not in SwiftUI's layout pass. Not gated on `isWindowVisible`: window
-    /// occlusion is `TerminalHostStore`'s other input. A Session already
-    /// removed from `sessions` is skipped; `removeSession` released its Tabs.
+    /// active Tab. The same two Sessions get their `isSelected`, which the
+    /// Sidebar rows read; this is its only writer. Called from that
+    /// property's `didSet` and from `init`, never from a view, so hiding the
+    /// outgoing terminals (and the first responder change that comes with
+    /// it) happens in the selection action, not in SwiftUI's layout pass.
+    /// Not gated on `isWindowVisible`: window occlusion is
+    /// `TerminalHostStore`'s other input. A Session already removed from
+    /// `sessions` is skipped; `removeSession` released its Tabs.
     /// Also points the selected tree's `focusIntentHandler` at
     /// `requestTerminalFocus` and clears the deselected tree's.
     private func applyTerminalVisibility(deselecting previousID: UUID?, selecting newID: UUID?) {
         let store = TerminalHostStore.shared
         if let previousID, let previous = sessions.first(where: { $0.id == previousID }) {
             previous.tree.isInSelectedSession = false
+            previous.isSelected = false
             previous.tree.focusIntentHandler = nil
             for pane in previous.tree.allPanes where pane.kind == .terminal {
                 for tab in pane.tabs {
@@ -1093,6 +1096,7 @@ public final class WindowRuntime {
         }
         if let newID, let selected = sessions.first(where: { $0.id == newID }) {
             selected.tree.isInSelectedSession = true
+            selected.isSelected = true
             selected.tree.focusIntentHandler = { [weak self, weak tree = selected.tree] tab in
                 self?.requestTerminalFocus(tab, inSession: tree?.sessionID)
             }

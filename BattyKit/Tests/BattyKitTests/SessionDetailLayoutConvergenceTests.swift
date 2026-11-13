@@ -12,83 +12,21 @@ import Testing
 @MainActor
 struct SessionDetailLayoutConvergenceTests {
 
-    static let titledStyle: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+    static let titledStyle = SessionDetailFixture.titledStyle
 
-    private struct DetailTree: View {
-        let store: AppStateStore
-        let windowRuntime: WindowRuntime
+    private typealias Fixture = SessionDetailFixture
 
-        var body: some View {
-            NavigationSplitView {
-                SessionSidebarView(store: store, windowRuntime: windowRuntime)
-            } detail: {
-                SessionDetailView(store: store, windowRuntime: windowRuntime)
-            }
-            .environment(\.appStateStore, store)
-            .environment(\.themeChrome, store.themeChrome)
-        }
-    }
-
-    private struct Fixture {
-        let store: AppStateStore
-        let windowRuntime: WindowRuntime
-        let probe: LayoutConvergenceProbe
-        var testDefaults: TestDefaults?
-
-        @MainActor
-        func tearDown() {
-            for session in windowRuntime.sessions {
-                for pane in session.tree.allPanes {
-                    for tab in pane.tabs {
-                        TerminalHostStore.shared.releaseTerminalView(forTabID: tab.id)
-                    }
-                    pane.content?.tearDown()
-                }
-            }
-            TerminalHostStore.shared.releaseHost(forWindowID: windowRuntime.id)
-            probe.window.close()
-        }
-    }
-
-    /// As in production, every Session stays mounted (non-selected ones at
-    /// `opacity(0)`): one plain, one split in two, one split in three, one
-    /// with two Tabs, plus `extraSessions` split in two.
     private func makeFixture(
         extraSessions: Int = 0,
         size: CGSize = CGSize(width: 1100, height: 700),
         store: AppStateStore = AppStateStore(),
         beforeHosting: (AppStateStore, WindowRuntime) -> Void = { _, _ in }
     ) -> Fixture {
-        let windowRuntime = store.windows[0]
-        let second = windowRuntime.addSession()
-        if let paneID = second.tree.allPanes.first?.id {
-            store.splitPane(id: paneID, direction: .horizontal)
-        }
-        let third = windowRuntime.addSession()
-        if let paneID = third.tree.allPanes.first?.id {
-            store.splitPane(id: paneID, direction: .vertical)
-            store.splitPane(id: paneID, direction: .horizontal)
-        }
-        let fourth = windowRuntime.addSession()
-        fourth.tree.allPanes.first?.addTab()
-        for _ in 0..<extraSessions {
-            let extra = windowRuntime.addSession()
-            if let paneID = extra.tree.allPanes.first?.id {
-                store.splitPane(id: paneID, direction: .horizontal)
-            }
-        }
-        windowRuntime.selectSession(at: 0)
-        beforeHosting(store, windowRuntime)
-        let probe = LayoutConvergenceProbe(
-            DetailTree(store: store, windowRuntime: windowRuntime),
-            size: size,
-            styleMask: Self.titledStyle
-        )
-        return Fixture(store: store, windowRuntime: windowRuntime, probe: probe)
+        SessionDetailFixture.standard(extraSessions: extraSessions, size: size, store: store, beforeHosting: beforeHosting)
     }
 
     private func terminalViewCount(_ fixture: Fixture) -> Int {
-        fixture.probe.allViews().filter { NSStringFromClass(type(of: $0)).contains("AppTerminalView") }.count
+        fixture.terminalViewCount()
     }
 
     // MARK: - Controls
@@ -241,6 +179,50 @@ struct SessionDetailLayoutConvergenceTests {
         #expect(decisions == [false], "Session 0's clipboard request was not denied")
         let ceiling = try #require(Self.switchRequestCeiling[extraSessions])
         #expect((perSwitch.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perSwitch=\(perSwitch) ceiling=\(ceiling)")
+    }
+
+    /// How much more a switch among the same four Sessions may request with
+    /// 12 more Sessions in the window than without them: the measured 192
+    /// plus 20 for noise. Before #0604 the difference was 216. Measured with
+    /// the Sidebar alone, a switch re-runs only the two changed rows' bodies,
+    /// yet still costs about 16 requests per row: about 12 go away only when
+    /// the `List(selection:)` binding's value stops changing, and about 4
+    /// remain even then. Lower this when that cost is removed.
+    private static let sessionCountMargin = 212
+
+    /// The lower of two runs' per-switch maxima for `[1, 2, 3, 0]`, which
+    /// damps upward interference from other suites' main-actor work.
+    private func switchRequestMax(extraSessions: Int) async -> (max: Int, runs: [[Int]]) {
+        let fixture = makeFixture(extraSessions: extraSessions)
+        defer { fixture.tearDown() }
+        _ = await fixture.probe.settle()
+        _ = await fixture.probe.settle()
+        var runs: [[Int]] = []
+        for _ in 0..<2 {
+            var perSwitch: [Int] = []
+            for index in [1, 2, 3, 0] {
+                fixture.windowRuntime.selectSession(at: index)
+                let switched = await fixture.probe.settle()
+                #expect(switched.converged, "extraSessions=\(extraSessions), Session \(index): \(switched)")
+                perSwitch.append(switched.postNeedsUpdateConstraintsCalls)
+            }
+            runs.append(perSwitch)
+        }
+        return (runs.map { $0.max() ?? 0 }.min() ?? 0, runs)
+    }
+
+    /// #0604: Sidebar rows read the per-Session `SessionRuntime.isSelected`,
+    /// so a switch re-renders only the two rows it crosses instead of every
+    /// row comparing itself against `selectedSessionID`. Before the fix, 16
+    /// Sessions requested 216 more than 4; after it, 192 more. The rest is
+    /// the `List` selection binding (see `sessionCountMargin`).
+    @Test func sessionSwitchRequestsDoNotScaleWithSessionCount() async {
+        let four = await switchRequestMax(extraSessions: 0)
+        let sixteen = await switchRequestMax(extraSessions: 12)
+        #expect(
+            sixteen.max <= four.max + Self.sessionCountMargin,
+            "4 Sessions \(four.runs) max \(four.max); 16 Sessions \(sixteen.runs) max \(sixteen.max); margin \(Self.sessionCountMargin)"
+        )
     }
 
     // MARK: - Divider drag request volume
