@@ -34,17 +34,17 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     // MARK: - Injectable dependencies
 
-    public var cliExecutableURLProvider: () -> URL? = { LMStudioCLI.resolveExecutableURL() }
-    public var fetchModels: () async throws -> LMStudioModelsResponse = {
+    @ObservationIgnored public var cliExecutableURLProvider: () -> URL? = { LMStudioCLI.resolveExecutableURL() }
+    @ObservationIgnored public var fetchModels: () async throws -> LMStudioModelsResponse = {
         try await LMStudioHTTPClient.fetchModels()
     }
-    public var fetchPsEntries: (URL) async throws -> [LMStudioPsEntry] = { url in
+    @ObservationIgnored public var fetchPsEntries: (URL) async throws -> [LMStudioPsEntry] = { url in
         try await LMStudioCLI.runPsAsync(executableURL: url)
     }
-    public var makeModelStreamProcess: (URL) -> Process = { url in
+    @ObservationIgnored public var makeModelStreamProcess: (URL) -> Process = { url in
         LMStudioCLI.makeLogStreamProcess(executableURL: url, source: "model", includeStats: true)
     }
-    public var makeRuntimeStreamProcess: (URL) -> Process = { url in
+    @ObservationIgnored public var makeRuntimeStreamProcess: (URL) -> Process = { url in
         LMStudioCLI.makeLogStreamProcess(executableURL: url, source: "runtime", includeStats: false)
     }
     /// Where `scheduleTeardownReap` registers a pending reap so
@@ -52,48 +52,48 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     /// left `AppStateStore.windows` (#0425). Defaults to the process-wide
     /// singleton; a test injects a fresh instance so it can't observe
     /// another test's pending reaps.
-    public var teardownReapRegistry: PendingTeardownReapRegistry = .shared
+    @ObservationIgnored public var teardownReapRegistry: PendingTeardownReapRegistry = .shared
     /// Where the models poll, `lms ps` poll, respawn-delay loop, and the
     /// stale-in-flight sweep's own notion of "now" all come from
     /// (`docs/async-test-seams.md` §1, #0428) — defaults to the real clock.
     /// Only `LMStudioDashboardPaneContentTests` overrides it, with
     /// `TestClock`, to drive those loops deterministically instead of
     /// waiting on real time (`AGENTS.md` "Asynchronous tests").
-    public var clock: SchedulingClock = SystemClock()
+    @ObservationIgnored public var clock: SchedulingClock = SystemClock()
     /// Gates `scheduleTeardownReap`'s detached wait/`SIGKILL` escalation
     /// (`docs/async-test-seams.md` §3, #0428) — defaults to always-open in
     /// production. A test holds this closed to prove `tearDown()` returns
     /// without blocking on the reap, structurally, rather than by timing
     /// the call.
-    public var reapGate: TeardownReapGate = OpenTeardownReapGate()
+    @ObservationIgnored public var reapGate: TeardownReapGate = OpenTeardownReapGate()
     /// Where the `SIGTERM` → `SIGKILL` grace period of `teardownWaitBound`
     /// is measured (`TeardownReaper`, `docs/async-test-seams.md` §1) —
     /// defaults to the real clock. Separate from `clock` so a test's
     /// grace-period sleepers never mix with the poll loops' sleepers.
-    public var teardownClock: SchedulingClock = SystemClock()
+    @ObservationIgnored public var teardownClock: SchedulingClock = SystemClock()
 
     // MARK: - Tunables
 
-    public var modelsPollInterval: Duration = .seconds(1)
-    public var psPollInterval: Duration = .seconds(3)
+    @ObservationIgnored public var modelsPollInterval: Duration = .seconds(1)
+    @ObservationIgnored public var psPollInterval: Duration = .seconds(3)
     /// The `/api/v1/models` poll backs off to this cadence once the server
     /// is declared unreachable, rather than stopping — design doc §5.
-    public var reachabilityPollInterval: Duration = .seconds(5)
+    @ObservationIgnored public var reachabilityPollInterval: Duration = .seconds(5)
     /// How long an unmatched `input` event is kept as "in-flight" before
     /// being evicted as stale (design doc §6) — long enough that no real
     /// prediction should still be running, short enough to recover from a
     /// dropped/reconnected log-stream subprocess losing an `output` event.
-    public var staleInFlightWindow: TimeInterval = 5 * 60
+    @ObservationIgnored public var staleInFlightWindow: TimeInterval = 5 * 60
     /// Delay before respawning a log-stream subprocess that exited
     /// unexpectedly while the pane is active and the server is reachable.
-    public var respawnDelay: Duration = .seconds(2)
+    @ObservationIgnored public var respawnDelay: Duration = .seconds(2)
     /// Bound on how long `tearDown()` waits, off the main actor, for a
     /// subprocess to exit after `SIGTERM` before escalating to `SIGKILL`
     /// (#0354), per design doc §7's "a few hundred milliseconds" — matching
     /// `#0289`'s lesson that a log line is not evidence of release,
     /// generalized to subprocess exit. `setVisible(false)` (hiding) sends
     /// `SIGTERM` only and does not wait at all, per design doc §7's table.
-    public var teardownWaitBound: TimeInterval = 0.5
+    @ObservationIgnored public var teardownWaitBound: TimeInterval = 0.5
 
     public static let completionCap = BellFeedStore.cap
     public static let inspectorCap = 5
@@ -140,7 +140,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     /// Newest-first, capped at `inspectorCap`. Always empty unless
     /// `promptInspectorEnabled` is (or very recently was) `true`.
     public private(set) var inspectorEntries: [LMStudioInspectorRecord] = []
-    public private(set) var lastModelsPollAt: Date?
+    @ObservationIgnored public private(set) var lastModelsPollAt: Date?
 
     /// Design doc §2.1 Option A: off by default. Toggling off clears
     /// `inspectorEntries` immediately (§6's "release everything now, not
@@ -171,13 +171,13 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     private var cliAvailable = false
     private var httpReachable = true
     private var hasCompletedFirstModelsPoll = false
-    private var consecutiveModelsPollFailures = 0
+    @ObservationIgnored private var consecutiveModelsPollFailures = 0
     private var isReconnectingStream = false
 
-    private var modelStreamProcess: Process?
-    private var runtimeStreamProcess: Process?
-    private var modelStreamBuffer = NDJSONLineBuffer()
-    private var runtimeStreamBuffer = NDJSONLineBuffer()
+    @ObservationIgnored private var modelStreamProcess: Process?
+    @ObservationIgnored private var runtimeStreamProcess: Process?
+    @ObservationIgnored private var modelStreamBuffer = NDJSONLineBuffer()
+    @ObservationIgnored private var runtimeStreamBuffer = NDJSONLineBuffer()
     /// #0513: the processes this type deliberately terminated, keyed by
     /// identity rather than a per-stream `Bool`. A `Process`'s
     /// `terminationHandler` hops to the main actor through a `Task`, so an
@@ -188,26 +188,26 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     /// cannot accumulate: a handle is only stored after `try process.run()`
     /// succeeds, so every registered process fires its handler exactly once
     /// and removes itself in `handle…StreamTermination`.
-    private var deliberatelyTerminatedStreams: Set<ObjectIdentifier> = []
+    @ObservationIgnored private var deliberatelyTerminatedStreams: Set<ObjectIdentifier> = []
 
-    private var modelsPollTask: Task<Void, Never>?
-    private var psPollTask: Task<Void, Never>?
+    @ObservationIgnored private var modelsPollTask: Task<Void, Never>?
+    @ObservationIgnored private var psPollTask: Task<Void, Never>?
     /// Detached reap tasks `tearDown()` has scheduled (#0354) — kept so
     /// `awaitPendingTeardownReapsForTesting()` can await them deterministically.
-    private var pendingTeardownReapTasks: [Task<Void, Never>] = []
+    @ObservationIgnored private var pendingTeardownReapTasks: [Task<Void, Never>] = []
     /// The `(process, label)` pairs backing `pendingTeardownReapTasks`,
     /// tracked separately so `waitForDeferredTeardown()` (`DeferredTeardownWaiting`,
     /// below) can re-run the same bounded wait/`SIGKILL` synchronously on
     /// the calling thread for the quit path, which cannot rely on the
     /// detached tasks above ever getting scheduled before the process exits.
-    private var pendingTeardownReaps: [(process: Process, label: String)] = []
+    @ObservationIgnored private var pendingTeardownReaps: [(process: Process, label: String)] = []
 
-    private var contextLengthByModelIdentifier: [String: Int] = [:]
+    @ObservationIgnored private var contextLengthByModelIdentifier: [String: Int] = [:]
     /// Raw prompt text for an in-flight request, keyed by that request's
     /// `LMStudioInFlightRequest.id` — only populated while
     /// `promptInspectorEnabled`. Never read except to pair with the
     /// matching completion and move into `inspectorEntries`.
-    private var pendingPrompts: [UUID: String] = [:]
+    @ObservationIgnored private var pendingPrompts: [UUID: String] = [:]
 
     public init() {}
 
@@ -404,8 +404,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
             // keeps the latest entry for a repeated identifier instead.
             psByIdentifier = Dictionary(entries.map { ($0.identifier, $0) }, uniquingKeysWith: { _, latest in latest })
             evictStaleInFlight()
-            inFlight.removeAll { candidate in
-                entries.contains { entry in
+            // An in-place `removeAll` notifies even when nothing matches;
+            // assign only when the cross-check actually evicts something.
+            let kept = inFlight.filter { candidate in
+                !entries.contains { entry in
                     Self.shouldEvictInFlight(
                         candidateModelIdentifier: candidate.modelIdentifier,
                         candidateStartedAt: candidate.startedAt,
@@ -413,6 +415,9 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
                         sampledAt: sampledAt
                     )
                 }
+            }
+            if kept.count != inFlight.count {
+                inFlight = kept
             }
         } catch {
             logger.error("pollPsOnce: failed \(error.localizedDescription, privacy: .public)")
@@ -841,10 +846,10 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
     // import`. Never subscribed to in production — creating one of these
     // streams has no effect on when or whether the underlying work runs.
 
-    private var modelsPollAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
-    private var psPollAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
-    private var lineAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
-    private var streamTerminationHandledContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    @ObservationIgnored private var modelsPollAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    @ObservationIgnored private var psPollAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    @ObservationIgnored private var lineAppliedContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+    @ObservationIgnored private var streamTerminationHandledContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
 
     /// Yields once every time `pollModelsOnce()` completes an attempt,
     /// success or failure.

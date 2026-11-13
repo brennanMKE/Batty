@@ -451,13 +451,13 @@ struct ProcessStatusPaneView: View {
                 .foregroundStyle(.secondary)
             // Review round 1, B5: this must not assert a fact this type never
             // observed. The design specifies "the timestamp of the last
-            // successful sample" — `content.snapshot?.capturedAt` — not the
+            // successful sample" — `content.lastSeenAt` — not the
             // instant the exit was *detected*, which can be up to a full refresh
             // interval later, and is nonexistent for a pid that was already dead
             // the very first time it was sampled (in which case there is no
             // "last seen" to show at all).
-            if let capturedAt = content.snapshot?.capturedAt {
-                Text("Process exited — last seen \(capturedAt.formatted(date: .omitted, time: .standard))")
+            if let lastSeenAt = content.lastSeenAt {
+                Text("Process exited — last seen \(lastSeenAt.formatted(date: .omitted, time: .standard))")
                     .font(.callout)
             } else {
                 Text("Process exited")
@@ -488,7 +488,7 @@ struct ProcessStatusPaneView: View {
     /// alone, so this banner rendered a bare hourglass with no text for
     /// any other target.
     private var waitingBannerText: String {
-        let lastSeen = content.snapshot?.capturedAt.formatted(date: .omitted, time: .standard)
+        let lastSeen = content.lastSeenAt?.formatted(date: .omitted, time: .standard)
         let base: String
         if case .followingName(let name) = content.target {
             base = "Waiting for “\(name)” — no matching process is running"
@@ -516,13 +516,13 @@ struct ProcessStatusPaneView: View {
     /// `.exited`/`.permissionDenied` — the process may still be alive and
     /// sampling may recover on its own next tick, so this reads as "stale,
     /// not confirmed gone," never "Running." Same "last seen" phrasing as
-    /// `exitedBanner`, sourced from the same `snapshot?.capturedAt`.
+    /// `exitedBanner`, sourced from the same `lastSeenAt`.
     private var unavailableBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
-            if let capturedAt = content.snapshot?.capturedAt {
-                Text("Sampling unavailable — last seen \(capturedAt.formatted(date: .omitted, time: .standard))")
+            if let lastSeenAt = content.lastSeenAt {
+                Text("Sampling unavailable — last seen \(lastSeenAt.formatted(date: .omitted, time: .standard))")
                     .font(.callout)
             } else {
                 Text("Sampling unavailable")

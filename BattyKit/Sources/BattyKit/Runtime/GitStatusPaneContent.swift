@@ -676,12 +676,12 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
     /// use — no production construction site overrides it (`PaneRuntime.swift`,
     /// `SplitTree.swift` both construct with only `directoryPath:`).
     private let clock: SchedulingClock
-    private var watcher: (any GitStatusWatching)?
-    private var debounceTask: Task<Void, Never>?
-    private var scanTask: Task<Void, Never>?
-    private var diffTask: Task<Void, Never>?
-    private var isScanning = false
-    private var pendingRescanRequested = false
+    @ObservationIgnored private var watcher: (any GitStatusWatching)?
+    @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var diffTask: Task<Void, Never>?
+    @ObservationIgnored private var isScanning = false
+    @ObservationIgnored private var pendingRescanRequested = false
 
     /// Testability hook only (`internal`, reached via `@testable import` in
     /// `BattyKitTests`) — counts every `handleScanResult` call, including
@@ -708,7 +708,7 @@ public final class GitStatusPaneContent: PaneContentLifecycle {
     /// Bumped on every `activate`/`suspend`/`changeDirectory` so a
     /// debounce/scan `Task` scheduled before a phase change can recognize
     /// it's stale and decline to act on a result nobody wants anymore.
-    private var generation = 0
+    @ObservationIgnored private var generation = 0
 
     public init(
         directoryPath: String,

@@ -132,11 +132,11 @@ struct ProcessStatusPaneLifecycleWiringTests {
         store.hidePane(id: paneID)
 
         #expect(clock.pendingCount == 0, "hiding must cancel the pending sleep synchronously, not just eventually")
-        let capturedAtWhenHidden = processStatusContent(of: pane)?.snapshot?.capturedAt
+        let capturedAtWhenHidden = processStatusContent(of: pane)?.lastSampleAt
 
         await clock.advance(by: .seconds(50)) // many sampling intervals (production cadence: 1s)
 
-        #expect(processStatusContent(of: pane)?.snapshot?.capturedAt == capturedAtWhenHidden)
+        #expect(processStatusContent(of: pane)?.lastSampleAt == capturedAtWhenHidden)
         #expect(clock.pendingCount == 0, "advancing while hidden must not schedule anything new")
     }
 }

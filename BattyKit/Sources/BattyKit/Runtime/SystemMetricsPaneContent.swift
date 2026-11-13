@@ -46,7 +46,7 @@ public final class SystemMetricsPaneContent: PaneContentLifecycle {
     /// instead of making live syscalls every tick — the same
     /// provider-closure testability `FootprintMonitor.footprintBytesProvider`
     /// already establishes for this codebase.
-    public var samplerFactory: () -> SystemMetricsSampling = { SystemMetricsSampler() }
+    @ObservationIgnored public var samplerFactory: () -> SystemMetricsSampling = { SystemMetricsSampler() }
 
     public private(set) var snapshot: SystemMetricsSnapshot = .empty
 
@@ -59,9 +59,9 @@ public final class SystemMetricsPaneContent: PaneContentLifecycle {
     public private(set) var sortedProcesses: [ProcessRow] = []
 
     private let controller = PaneLifecycleController()
-    private var sampler: SystemMetricsSampling?
-    private var task: Task<Void, Never>?
-    private var generation = 0
+    @ObservationIgnored private var sampler: SystemMetricsSampling?
+    @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var generation = 0
 
     public var lifecyclePhase: PaneLifecyclePhase { controller.phase }
 

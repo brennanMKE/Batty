@@ -116,7 +116,7 @@ struct ProcessStatusPaneContentTests {
         // nothing else would ever wake or cancel it.
         defer { content.tearDown() }
         content.setUp(visible: true)
-        let firstCapture = try #require(content.snapshot?.capturedAt)
+        let firstCapture = try #require(content.lastSampleAt)
 
         guard await clock.waitForSleepers(1) else {
             Issue.record("waitForSleepers(1) never reached its threshold before the first tick")
@@ -127,7 +127,7 @@ struct ProcessStatusPaneContentTests {
             Issue.record("waitForSleepers(1) never reached its threshold after the first tick")
             return
         }
-        let secondCapture = try #require(content.snapshot?.capturedAt)
+        let secondCapture = try #require(content.lastSampleAt)
         #expect(secondCapture > firstCapture)
 
         content.setVisible(false)
@@ -137,7 +137,7 @@ struct ProcessStatusPaneContentTests {
         // resumed as part of this same `Task.cancel()` call, before
         // `setVisible` even returns (`docs/async-test-seams.md` §1).
         #expect(clock.pendingCount == 0, "hiding must cancel the pending sleep synchronously, not just eventually")
-        let capturedAtHideTime = content.snapshot?.capturedAt
+        let capturedAtHideTime = content.lastSampleAt
 
         // Advance many sampling intervals while hidden (review round 2,
         // B5's "nothing sampled while hidden" guarantee — comment
@@ -150,14 +150,14 @@ struct ProcessStatusPaneContentTests {
         // this same scheduler, so a leaked `Task` would still be parked on
         // `clock.sleep(for:)` and this advance would fire it.
         _ = await clock.advance(by: .milliseconds(20 * 50))
-        #expect(content.snapshot?.capturedAt == capturedAtHideTime)
+        #expect(content.lastSampleAt == capturedAtHideTime)
         #expect(clock.pendingCount == 0, "advancing while hidden must not schedule anything new")
 
         content.setVisible(true)
         // The resume-and-refresh sample runs synchronously inside
         // `setVisible` itself (`startSampling` calls `performSample()`
         // before scheduling the next tick) — no wait needed.
-        let resumedCapture = try #require(content.snapshot?.capturedAt)
+        let resumedCapture = try #require(content.lastSampleAt)
         #expect(resumedCapture > capturedAtHideTime!)
     }
 
@@ -171,6 +171,122 @@ struct ProcessStatusPaneContentTests {
         #expect(content.snapshot?.name == "launchd")
         #expect(content.snapshot?.commandLine == nil)
         #expect(content.snapshot?.cpuPercent == nil)
+    }
+
+    // MARK: - Idle ticks do not notify (#0614)
+
+    private func notifies<Value>(
+        _ content: ProcessStatusPaneContent,
+        read: @escaping (ProcessStatusPaneContent) -> Value,
+        write: () -> Void
+    ) -> Bool {
+        let flag = ProcessStatusChangeFlag()
+        withObservationTracking { _ = read(content) } onChange: { flag.fired = true }
+        write()
+        return flag.fired
+    }
+
+    private static let fixedMetrics = ProcessInspector.CoreMetrics(
+        residentBytes: 4096,
+        physFootprintBytes: 8192,
+        threadCount: 3,
+        openFileCount: 5,
+        cpuTicksUser: 100,
+        cpuTicksSystem: 50
+    )
+
+    @Test func idleTickDoesNotNotifySnapshotReaders() throws {
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { _ in .success(Self.fixedMetrics) },
+            clock: TestClock()
+        )
+        content.sampleNowForTesting()
+        content.sampleNowForTesting()
+        let snapshot = try #require(content.snapshot)
+        #expect(snapshot.threadCount == 3)
+
+        let fired = notifies(content, read: { ($0.snapshot, $0.runState, $0.hasNoSelection, $0.lastSeenAt) }) {
+            content.sampleNowForTesting()
+        }
+        #expect(!fired, "an idle tick with identical metrics must not notify the view")
+    }
+
+    @Test func permissionDeniedTickDoesNotNotifyWhenIdentityUnchanged() {
+        let content = ProcessStatusPaneContent(target: .pinned(1), tabLookup: { _ in nil }) // launchd
+        content.sampleNowForTesting()
+        content.sampleNowForTesting()
+        #expect(content.runState == .permissionDenied)
+
+        let fired = notifies(content, read: { ($0.snapshot, $0.runState) }) {
+            content.sampleNowForTesting()
+        }
+        #expect(!fired, "an unchanged permission-denied target must not notify every tick")
+    }
+
+    @Test func exitedBannerStillShowsLastSampleTime() async {
+        let sampleTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let clock = TestClock(now: sampleTime)
+        let processGone = FailureSwitch()
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { _ in processGone.on ? .failure(.processNotFound) : .success(Self.fixedMetrics) },
+            clock: clock
+        )
+        content.sampleNowForTesting()
+        #expect(content.runState == .running)
+        #expect(content.lastSeenAt == nil)
+
+        _ = await clock.advance(by: .seconds(5))
+        processGone.on = true
+        content.sampleNowForTesting()
+
+        #expect(content.runState == .exited)
+        #expect(content.lastSeenAt == sampleTime)
+    }
+
+    @Test func repeatedUnavailableTicksDoNotRenotifyLastSeenReaders() async {
+        let sampleTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let clock = TestClock(now: sampleTime)
+        let shouldFail = FailureSwitch()
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { _ in shouldFail.on ? .failure(.unexpected(errno: 99)) : .success(Self.fixedMetrics) },
+            clock: clock
+        )
+        content.sampleNowForTesting()
+        _ = await clock.advance(by: .seconds(5))
+        shouldFail.on = true
+        content.sampleNowForTesting()
+        #expect(content.runState == .unavailable)
+        #expect(content.lastSeenAt == sampleTime)
+
+        let fired = notifies(content, read: { ($0.snapshot, $0.runState, $0.lastSeenAt) }) {
+            content.sampleNowForTesting()
+        }
+        #expect(!fired, "a repeated unavailable tick must not notify the banner")
+        #expect(content.lastSeenAt == sampleTime)
+    }
+
+    @Test func retargetClearsLastSeenAt() {
+        let shouldFail = FailureSwitch()
+        let content = ProcessStatusPaneContent(
+            target: .pinned(getpid()),
+            tabLookup: { _ in nil },
+            coreMetricsProvider: { _ in shouldFail.on ? .failure(.unexpected(errno: 99)) : .success(Self.fixedMetrics) },
+            clock: TestClock(now: Date(timeIntervalSince1970: 1_700_000_000))
+        )
+        content.sampleNowForTesting()
+        shouldFail.on = true
+        content.sampleNowForTesting()
+        #expect(content.lastSeenAt != nil)
+
+        content.retarget(to: .pinned(getpid()))
+        #expect(content.lastSeenAt == nil)
+        #expect(content.lastSampleAt == nil)
     }
 
     // MARK: - Unavailable state on an unexpected errno (#0356)
@@ -578,7 +694,7 @@ struct ProcessStatusPaneContentTests {
             Issue.record("precondition failed: expected .running before the process exits")
             return
         }
-        let lastGoodCapture = try #require(content.snapshot?.capturedAt)
+        let lastGoodCapture = try #require(content.lastSampleAt)
 
         process.waitUntilExit()
         content.sampleNowForTesting()
@@ -590,7 +706,7 @@ struct ProcessStatusPaneContentTests {
         // B5: must be the time of the last successful sample (captured
         // while the process was still alive), never a fresh `Date()`
         // stamped at the moment the exit was merely detected.
-        #expect(content.snapshot?.capturedAt == lastGoodCapture)
+        #expect(content.lastSeenAt == lastGoodCapture)
     }
 
     // MARK: - The sampling Task reference is actually released, not just
@@ -808,4 +924,12 @@ struct ProcessStatusPaneContentTests {
             return
         }
     }
+}
+
+private nonisolated final class ProcessStatusChangeFlag: @unchecked Sendable {
+    var fired = false
+}
+
+private final class FailureSwitch {
+    var on = false
 }

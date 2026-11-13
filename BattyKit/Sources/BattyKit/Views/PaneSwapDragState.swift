@@ -19,8 +19,8 @@ final class PaneSwapDragState {
     static let shared = PaneSwapDragState()
     private(set) var isDragging = false
     private(set) var sourcePaneID: UUID? = nil
-    private var monitor: Any? = nil
-    private var fallbackTimer: Timer? = nil
+    @ObservationIgnored private var monitor: Any? = nil
+    @ObservationIgnored private var fallbackTimer: Timer? = nil
 
     func startDrag(from paneID: UUID) {
         let hadPrior = isDragging

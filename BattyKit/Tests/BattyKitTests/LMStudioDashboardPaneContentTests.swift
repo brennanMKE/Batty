@@ -607,6 +607,105 @@ struct LMStudioDashboardPaneContentTests {
         await content.awaitPendingTeardownReapsForTesting()
     }
 
+    // MARK: - ps poll writes `inFlight` only on a real eviction (#0614)
+
+    private final class PsStatusBox {
+        var status = "generating"
+    }
+
+    /// Drives two `lms ps` polls and reports whether a tracker registered on
+    /// `inFlight` after the first one fired by the end of the second.
+    /// `beforeSecondPoll` runs between them. Returns `nil` after recording an
+    /// issue when a precondition step never happened.
+    private func inFlightNotifiedBySecondPsPoll(
+        withInFlightLine: Bool,
+        box: PsStatusBox,
+        expectedInFlightAfterFirstPoll: Int,
+        beforeSecondPoll: () -> Void = {}
+    ) async -> (fired: Bool, content: LMStudioDashboardPaneContent)? {
+        let content = LMStudioDashboardPaneContent()
+        let clock = TestClock(now: Date())
+        content.clock = clock
+        content.cliExecutableURLProvider = { URL(fileURLWithPath: "/fake/lms") }
+        content.fetchModels = { self.emptyModelsResponse() }
+        content.psPollInterval = .seconds(10)
+        content.modelsPollInterval = .seconds(1000)
+        content.fetchPsEntries = { _ in
+            [LMStudioPsEntry(identifier: "m", modelKey: nil, status: box.status, deviceIdentifier: nil, ttlMs: nil)]
+        }
+        content.makeRuntimeStreamProcess = makeSleepForeverProcess
+        if withInFlightLine {
+            content.makeModelStreamProcess = { _ in
+                let inputLine = self.predictionInputLine(modelIdentifier: "m", timestamp: self.nowMillis())
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/sh")
+                process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; exec sleep 60"]
+                return process
+            }
+        } else {
+            content.makeModelStreamProcess = makeSleepForeverProcess
+        }
+        let lineApplied = EventCounter(content.lineAppliedEventsForTesting())
+        let psPollApplied = EventCounter(content.psPollAppliedEventsForTesting())
+
+        func fail(_ message: String) async -> (fired: Bool, content: LMStudioDashboardPaneContent)? {
+            Issue.record(Comment(rawValue: message))
+            content.tearDown()
+            await content.awaitPendingTeardownReapsForTesting()
+            return nil
+        }
+
+        content.setUp(visible: true)
+        guard await psPollApplied.awaitCount(1) else { return await fail("first ps poll never applied") }
+        if withInFlightLine {
+            guard await lineApplied.awaitCount(1) else { return await fail("input line was never applied") }
+        }
+        #expect(content.inFlight.count == expectedInFlightAfterFirstPoll)
+        beforeSecondPoll()
+        guard await clock.waitForSleepers(2) else { return await fail("both poll loops never parked") }
+
+        let flag = InFlightChangeFlag()
+        withObservationTracking { _ = content.inFlight } onChange: { flag.fired = true }
+        let firedSleepers = await clock.advance(by: content.psPollInterval)
+        #expect(firedSleepers == 1)
+        guard await psPollApplied.awaitCount(2) else { return await fail("second ps poll never applied") }
+        return (flag.fired, content)
+    }
+
+    @Test func psPollWithNothingToEvictDoesNotNotifyInFlightReaders() async {
+        let box = PsStatusBox()
+        guard let result = await inFlightNotifiedBySecondPsPoll(
+            withInFlightLine: true, box: box, expectedInFlightAfterFirstPoll: 1
+        ) else { return }
+        #expect(!result.fired, "a ps poll that evicts nothing must not notify inFlight readers")
+        #expect(result.content.inFlight.count == 1)
+        result.content.tearDown()
+        await result.content.awaitPendingTeardownReapsForTesting()
+    }
+
+    @Test func psPollWithNothingInFlightDoesNotNotifyInFlightReaders() async {
+        let box = PsStatusBox()
+        box.status = "idle"
+        guard let result = await inFlightNotifiedBySecondPsPoll(
+            withInFlightLine: false, box: box, expectedInFlightAfterFirstPoll: 0
+        ) else { return }
+        #expect(!result.fired, "an idle connected dashboard must not notify inFlight readers every ps poll")
+        result.content.tearDown()
+        await result.content.awaitPendingTeardownReapsForTesting()
+    }
+
+    @Test func psPollEvictsAFinishedRequest() async {
+        let box = PsStatusBox()
+        guard let result = await inFlightNotifiedBySecondPsPoll(
+            withInFlightLine: true, box: box, expectedInFlightAfterFirstPoll: 1,
+            beforeSecondPoll: { box.status = "idle" }
+        ) else { return }
+        #expect(result.fired, "a real eviction must still notify")
+        #expect(result.content.inFlight.isEmpty)
+        result.content.tearDown()
+        await result.content.awaitPendingTeardownReapsForTesting()
+    }
+
     // MARK: - Subprocess teardown (review round 1, B3; #0354)
 
     /// The contract `issues/0313.md` binds — "log evidence, a counter, a
@@ -1366,4 +1465,8 @@ nonisolated private final class EventCounter: @unchecked Sendable {
 @MainActor
 private func killAndReap(_ process: Process?) {
     ChildProcessFixture.killAndReap(process)
+}
+
+private nonisolated final class InFlightChangeFlag: @unchecked Sendable {
+    var fired = false
 }

@@ -47,7 +47,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     ///
     /// `.exited` carries no timestamp of its own (review round 1, B5) —
     /// the design specifies showing "the timestamp of the last successful
-    /// sample," which is `snapshot?.capturedAt`, not the instant this
+    /// sample," which is `lastSeenAt`, not the instant this
     /// process detected the exit. The two can differ by up to one refresh
     /// interval, and for a pid that was already dead the very first time
     /// it was sampled, there is no successful sample to date at all.
@@ -94,7 +94,6 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         public var residentBytes: UInt64?
         public var threadCount: Int?
         public var openFileCount: Int?
-        public var capturedAt: Date
     }
 
     private enum Resolution {
@@ -139,13 +138,23 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// `.exited` or `.unavailable` (#0356), so the view can show "what it
     /// was," not a blank space (design §3.5's tombstone banner; #0356's
     /// unavailable banner reuses the same shape). `.exited`'s displayed
-    /// time (`snapshot?.capturedAt`) is therefore the real
+    /// time (`lastSeenAt`) is therefore the real
     /// last-successful-sample instant, never a fabricated one (review
     /// round 1, B5). **`.permissionDenied` is different**: that branch in
     /// `sample(pid:)` *replaces* `snapshot` with a freshly-resolved,
     /// identity-only `Snapshot` (all metrics `nil`) rather than leaving
     /// the prior one in place.
     public private(set) var snapshot: Snapshot?
+    /// When the latest successful (or permission-denied) sample was taken.
+    /// Written every tick, so unobserved; `lastSeenAt` is the observed copy
+    /// the stale-state banners read. Kept out of `Snapshot` so an idle
+    /// tick's equal `Snapshot` write does not notify.
+    @ObservationIgnored private(set) var lastSampleAt: Date?
+    /// `lastSampleAt` as of the most recent entry into `.exited`,
+    /// `.waiting` or `.unavailable` — the "last seen" time their banners
+    /// show. Repeated stale ticks write the same value, which does not
+    /// notify.
+    public private(set) var lastSeenAt: Date?
     /// `true` when no target resolves at all — no pinned pid, no
     /// followable terminal Tab (§2's "No process selected" state).
     /// Distinct from `runState`, which describes a *resolved* target's
@@ -226,7 +235,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     }
     @ObservationIgnored private var followed: FollowedProcess?
     @ObservationIgnored var followedPid: pid_t? { followed?.pid }
-    private var samplingTask: Task<Void, Never>?
+    @ObservationIgnored private var samplingTask: Task<Void, Never>?
     /// `#0314` merge: the pid-keyed CPU-delta baseline (review round 1,
     /// B2 — mode B's followed pid changes tick to tick, and delta-ing
     /// process B's current CPU time against process A's previous sample
@@ -238,7 +247,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// appear in the tracker's next internal baseline, which is exactly
     /// "reset on pid change" for a single-sample-per-tick caller like
     /// this one.
-    private var cpuTracker = ProcessCPUDeltaTracker()
+    @ObservationIgnored private var cpuTracker = ProcessCPUDeltaTracker()
     /// The errno last logged at `.error` for the current `.unavailable`
     /// run — lets `sample(pid:)` tell "just became unavailable" and "the
     /// failure reason itself changed" (both worth an `.error` line) apart
@@ -251,7 +260,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// from `.unavailable`, so the `.unexpected` branch's own
     /// `runState != .unavailable` check logs at `.error` on the next
     /// failure regardless of whatever errno is left over in this property.
-    private var lastUnavailableErrno: Int32?
+    @ObservationIgnored private var lastUnavailableErrno: Int32?
 
     /// Testability hook only (`internal`, reached via `@testable import`
     /// in `BattyKitTests`) — lets a test assert the sampling `Task` is
@@ -355,6 +364,8 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         hasNoSelection = newTarget == nil
         runState = .running
         snapshot = nil
+        lastSampleAt = nil
+        lastSeenAt = nil
         // Reset directly, not via `refreshDisclosuresForNewPid()` — there is
         // no `snapshot` yet to reload against (it was just cleared above),
         // so an immediate reload attempt here would read `.unavailable`
@@ -478,7 +489,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
         switch resolveTarget() {
         case .sourceTabGone:
             logger.info("process-status: followed tab gone, tombstoning")
-            runState = .exited
+            enterStaleState(.exited)
             hasNoSelection = false
             samplingTask?.cancel()
             samplingTask = nil
@@ -486,7 +497,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             hasNoSelection = true
         case .waitingForName:
             hasNoSelection = false
-            if runState != .waiting { runState = .waiting }
+            enterStaleState(.waiting)
         case .lookupFailed:
             // Keep the current state; `allPids` already logged the error.
             logger.debug("process-status: name lookup failed, keeping current state")
@@ -516,6 +527,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             let pidChanged = snapshot?.pid != pid
             runState = .running
             lastUnavailableErrno = nil
+            lastSampleAt = clock.now
             let identity = ProcessInspector.identity(pid: pid)
             let commandLine = try? ProcessInspector.commandLine(pid: pid).get()
             let name = identity.name ?? basename(of: identity.executablePath) ?? "pid \(pid)"
@@ -540,16 +552,15 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 physFootprintBytes: metrics.physFootprintBytes,
                 residentBytes: metrics.residentBytes,
                 threadCount: metrics.threadCount,
-                openFileCount: metrics.openFileCount,
-                capturedAt: Date()
+                openFileCount: metrics.openFileCount
             )
             if pidChanged {
                 refreshDisclosuresForNewPid()
             }
         case .failure(.processNotFound):
             // Deliberately does not touch `snapshot` — the last
-            // successful sample (if any) stays put, and its
-            // `capturedAt` is what `.exited` displays (B5).
+            // successful sample (if any) stays put, and `lastSampleAt`
+            // becomes the `lastSeenAt` that `.exited` displays (B5).
             cpuTracker.reset()
             if case .followingName(let name) = target {
                 logger.info("process-status: followed name=\(name, privacy: .public) pid=\(pid, privacy: .public) exited, looking for a successor")
@@ -557,7 +568,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 if canReresolve, case .pid(let successor) = reresolve(name: name, lost: pid) {
                     sample(pid: successor, canReresolve: false)
                 } else {
-                    runState = .waiting
+                    enterStaleState(.waiting)
                 }
                 return
             }
@@ -576,11 +587,11 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             // left running so the next tick re-resolves.
             if case .followingTab = target {
                 logger.info("process-status: followed tab's pid=\(pid, privacy: .public) exited, waiting for the next foreground process")
-                runState = .waiting
+                enterStaleState(.waiting)
                 return
             }
             logger.info("process-status: pid=\(pid, privacy: .public) exited")
-            runState = .exited
+            enterStaleState(.exited)
             samplingTask?.cancel()
             samplingTask = nil
         case .failure(.permissionDenied):
@@ -593,6 +604,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
             let pidChanged = snapshot?.pid != pid
             runState = .permissionDenied
             cpuTracker.reset()
+            lastSampleAt = clock.now
             let identity = ProcessInspector.identity(pid: pid)
             snapshot = Snapshot(
                 pid: pid,
@@ -604,8 +616,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 physFootprintBytes: nil,
                 residentBytes: nil,
                 threadCount: nil,
-                openFileCount: nil,
-                capturedAt: Date()
+                openFileCount: nil
             )
             if pidChanged {
                 refreshDisclosuresForNewPid()
@@ -635,7 +646,7 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
                 logger.debug("process-status: pid=\(pid, privacy: .public) still unavailable — errno=\(code, privacy: .public)")
             }
             lastUnavailableErrno = code
-            runState = .unavailable
+            enterStaleState(.unavailable)
             cpuTracker.reset()
         }
     }
@@ -650,6 +661,11 @@ public final class ProcessStatusPaneContent: PaneContentLifecycle {
     /// target can't produce.
     func cpuPercent(for sample: ProcessSample) -> Double? {
         cpuTracker.percentages(for: [sample], at: clock.now)[sample.pid]
+    }
+
+    private func enterStaleState(_ state: RunState) {
+        runState = state
+        lastSeenAt = lastSampleAt
     }
 
     private func basename(of path: String?) -> String? {
