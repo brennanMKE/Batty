@@ -160,7 +160,10 @@ that first. To check that a new hosting composition settles, host it in
 as `SessionDetailLayoutConvergenceTests` and `StatusPaneLayoutConvergenceTests`
 do. It counts the window's update-constraints and layout requests per
 settle, and AppKit's own pass cap fires in that harness, so a real loop
-fails the run.
+fails the run. A settle counts as converged when it ends with no dirty view
+and the controls' breaker did not trip, however many main-queue turns it
+took. Request-volume ceilings pass when a strict majority of samples is
+under the ceiling (`LayoutConvergenceProbe.mostlyWithin`).
 
 **Geometry has one home.** Geometry that only commands consume goes from
 `onGeometryChange` straight into unobserved storage (`PaneFrameTracker`,

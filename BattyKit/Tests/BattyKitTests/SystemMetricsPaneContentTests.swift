@@ -361,6 +361,24 @@ struct SystemMetricsPaneContentTests {
         #expect(content.lifecyclePhase == .notSetUp)
     }
 
+    /// The sampling loop waits on the injected clock between ticks, so a
+    /// test that drives its own ticks sees no wall-clock tick in between.
+    @Test func samplingLoopTicksOnlyWhenItsClockAdvances() async {
+        let ledger = SamplerLedger()
+        let clock = TestClock()
+        let content = SystemMetricsPaneContent(clock: clock)
+        content.samplerFactory = { FakeSystemMetricsSampler(ledger: ledger) }
+        defer { content.tearDown() }
+
+        content.setUp(visible: true)
+        #expect(await clock.waitForSleepers(1))
+        #expect(ledger.sampleCallCount == 1)
+
+        #expect(await clock.advance(by: SystemMetricsPaneContent.sampleInterval) == 1)
+        #expect(await clock.waitForSleepers(1))
+        #expect(ledger.sampleCallCount == 2)
+    }
+
     // MARK: - #0350: off-main-actor sampling
 
     @Test func sweepRunsOffTheMainActor() async {

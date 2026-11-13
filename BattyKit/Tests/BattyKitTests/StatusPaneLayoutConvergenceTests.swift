@@ -103,7 +103,7 @@ struct StatusPaneLayoutConvergenceTests {
         }
     }
 
-    private func systemMetricsFixture(content: SystemMetricsPaneContent = SystemMetricsPaneContent(), processCount: Int = 40) -> StatusFixture {
+    private func systemMetricsFixture(content: SystemMetricsPaneContent = SystemMetricsPaneContent(clock: TestClock()), processCount: Int = 40) -> StatusFixture {
         content.samplerFactory = { TickingMetricsSampler(processCount: processCount) }
         let pane = PaneRuntime(kind: .systemMetrics, contentFactory: { _ in content })
         let tree = SplitTree(root: .leaf(pane))
@@ -277,14 +277,17 @@ struct StatusPaneLayoutConvergenceTests {
     /// Most window update-constraints requests a typical System Metrics
     /// sample may cause. The nested `List` the process list used to be made
     /// 216 or more on every tick, scaling with the visible table height; as
-    /// a `LazyVStack` in the Pane's single `ScrollView` most ticks make none,
-    /// with an occasional single tick of 36-160 (#0606). The test therefore
-    /// requires most ticks, not every tick, to stay under the ceiling.
+    /// a `LazyVStack` in the Pane's single `ScrollView` a driven tick makes
+    /// none. The occasional 36-160 request ticks #0606 saw were the content's
+    /// own 1 s sampling loop landing a second tick inside a settle; the
+    /// fixtures now give it a `TestClock`, so only driven ticks land (#0620).
+    /// The ceiling is still checked against a strict majority of ticks
+    /// (`LayoutConvergenceProbe.mostlyWithin`), like every probe ceiling.
     private static let systemMetricsTickRequestCeiling = 24
 
     @Test(arguments: [470, 1100])
     func systemMetricsTickStaysUnderRequestCeiling(processCount: Int) async {
-        let content = SystemMetricsPaneContent()
+        let content = SystemMetricsPaneContent(clock: TestClock())
         let fixture = systemMetricsFixture(content: content, processCount: processCount)
         let probe = LayoutConvergenceProbe(fixture.view, size: CGSize(width: 480, height: 600))
         defer {
@@ -309,10 +312,10 @@ struct StatusPaneLayoutConvergenceTests {
                 }
             }
         }
-        let over = ticks.filter { $0.requests > Self.systemMetricsTickRequestCeiling }
+        let requests = ticks.map(\.requests)
         #expect(
-            over.count * 2 < ticks.count,
-            "\(over.count) of \(ticks.count) ticks over \(Self.systemMetricsTickRequestCeiling): \(ticks.map { "\($0.label)=\($0.requests)" }.joined(separator: ", "))"
+            LayoutConvergenceProbe.mostlyWithin(requests, ceiling: Self.systemMetricsTickRequestCeiling),
+            "\(LayoutConvergenceProbe.budgetReport(requests, ceiling: Self.systemMetricsTickRequestCeiling)); \(ticks.map { "\($0.label)=\($0.requests)" }.joined(separator: ", "))"
         )
     }
 
@@ -365,7 +368,7 @@ struct StatusPaneLayoutConvergenceTests {
     @Test func statusPanesConvergeInTheSessionDetailTree() async throws {
         let store = AppStateStore()
         let windowRuntime = store.windows[0]
-        let metrics = SystemMetricsPaneContent()
+        let metrics = SystemMetricsPaneContent(clock: TestClock())
         metrics.samplerFactory = { TickingMetricsSampler() }
         var processSample = 0
         let process = ProcessStatusPaneContent(

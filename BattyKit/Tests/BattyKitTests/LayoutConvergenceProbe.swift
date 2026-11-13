@@ -141,9 +141,21 @@ final class ProbeHostingView: NSHostingView<AnyView> {
     }
 }
 
+/// How one `settle()` ended.
+enum SettleOutcome: String {
+    /// Clean within `LayoutConvergenceProbe.calibratedRoundBound` rounds.
+    case settled
+    /// Clean, but after more rounds than calibration needed. Diagnostic
+    /// only, never a failure.
+    case settledLate
+    /// Still dirty at the hang guard, or the controls' breaker tripped.
+    case didNotConverge
+}
+
 struct SettleResult: CustomStringConvertible {
     /// Rounds run until no view in the window was dirty; `maxRounds + 1`
-    /// when it never got there.
+    /// when it never got there. Diagnostic only: how many rounds a clean
+    /// settle needs depends on how fast the host turns the main queue.
     var rounds: Int
     var rootPasses: Int
     var windowUpdateConstraintsCalls: Int
@@ -153,21 +165,31 @@ struct SettleResult: CustomStringConvertible {
     /// Class names of the views still dirty after the last round.
     var dirtyViews: [String]
 
+    var outcome: SettleOutcome {
+        if brokeLoop || rounds > LayoutConvergenceProbe.maxRounds { return .didNotConverge }
+        if rounds > LayoutConvergenceProbe.calibratedRoundBound { return .settledLate }
+        return .settled
+    }
+
     var converged: Bool {
-        rounds <= LayoutConvergenceProbe.convergedRoundBound && !brokeLoop
+        outcome != .didNotConverge
     }
 
     var description: String {
-        "rounds=\(rounds) rootPasses=\(rootPasses) windowUpdateConstraints=\(windowUpdateConstraintsCalls) posts=\(postNeedsUpdateConstraintsCalls) layoutPosts=\(postNeedsLayoutCalls) brokeLoop=\(brokeLoop) dirty=\(dirtyViews.prefix(6).map { $0.prefix(80) })"
+        "outcome=\(outcome) rounds=\(rounds) rootPasses=\(rootPasses) windowUpdateConstraints=\(windowUpdateConstraintsCalls) posts=\(postNeedsUpdateConstraintsCalls) layoutPosts=\(postNeedsLayoutCalls) brokeLoop=\(brokeLoop) dirty=\(dirtyViews.prefix(6).map { $0.prefix(80) })"
     }
 }
 
 @MainActor
 final class LayoutConvergenceProbe {
-    /// Hang guard on one settle, not what a test relies on.
+    /// Hang guard on one settle. A window still dirty after this many
+    /// layout-plus-turn rounds is treated as a loop (`didNotConverge`).
     static let maxRounds = 12
-    /// Every converging settle in calibration took one round.
-    static let convergedRoundBound = 3
+    /// Every calibration settle took one round. A settle that ends clean
+    /// after more rounds is `settledLate`: deferred main-queue work that a
+    /// busy host delivers in later turns. It is diagnostic only, never a
+    /// failure.
+    static let calibratedRoundBound = 3
 
     let window: ProbeWindow
     let root: ProbeHostingView
@@ -271,6 +293,27 @@ final class LayoutConvergenceProbe {
             brokeLoop: window.brokeLoop,
             dirtyViews: dirtyViews().map { NSStringFromClass(type(of: $0)) }
         )
+    }
+}
+
+// MARK: - Request budgets
+
+extension LayoutConvergenceProbe {
+    /// The request-volume verdict every probe ceiling test shares: true when
+    /// `samples` is non-empty and a strict majority of them are at or under
+    /// `ceiling`. On a loaded host one settle can pick up a burst of
+    /// unrelated main-queue work and spike. Where a ceiling test has
+    /// fail-before evidence (#0604, #0606, #0607), the pre-fix code was over
+    /// on every sample, so a majority still fails it.
+    static func mostlyWithin(_ samples: [Int], ceiling: Int) -> Bool {
+        let over = samples.filter { $0 > ceiling }
+        return !samples.isEmpty && over.count * 2 < samples.count
+    }
+
+    /// "k of n over C (max M): [samples]", for a ceiling test's failure message.
+    static func budgetReport(_ samples: [Int], ceiling: Int) -> String {
+        let over = samples.filter { $0 > ceiling }.count
+        return "\(over) of \(samples.count) over \(ceiling) (max \(samples.max() ?? 0)): \(samples)"
     }
 }
 

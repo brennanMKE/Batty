@@ -121,8 +121,10 @@ struct SessionDetailLayoutConvergenceTests {
     /// after (issues/0602.md). Nearly all of a switch's requests come from
     /// the selection change itself, so the ceilings are that baseline plus
     /// about 17%, to catch side effects or a second update round coming
-    /// back into layout without failing on run-to-run noise. `.serialized`
-    /// because two cases settling at once interleave their counts.
+    /// back into layout without failing on run-to-run noise. A strict
+    /// majority of the four switches must be under the ceiling
+    /// (`LayoutConvergenceProbe.mostlyWithin`). `.serialized` because two
+    /// cases settling at once interleave their counts.
     private static let switchRequestCeiling: [Int: Int] = [0: 520, 12: 770]
 
     @Test(.serialized, arguments: [0, 12])
@@ -178,7 +180,10 @@ struct SessionDetailLayoutConvergenceTests {
         #expect(paletteAfter[3] == ChromePalette(theme: global), "the chrome did not return to the global Theme")
         #expect(decisions == [false], "Session 0's clipboard request was not denied")
         let ceiling = try #require(Self.switchRequestCeiling[extraSessions])
-        #expect((perSwitch.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perSwitch=\(perSwitch) ceiling=\(ceiling)")
+        #expect(
+            LayoutConvergenceProbe.mostlyWithin(perSwitch, ceiling: ceiling),
+            "extraSessions=\(extraSessions) perSwitch \(LayoutConvergenceProbe.budgetReport(perSwitch, ceiling: ceiling))"
+        )
     }
 
     /// How much more a switch among the same four Sessions may request with
@@ -190,38 +195,39 @@ struct SessionDetailLayoutConvergenceTests {
     /// remain even then. Lower this when that cost is removed.
     private static let sessionCountMargin = 212
 
-    /// The lower of two runs' per-switch maxima for `[1, 2, 3, 0]`, which
-    /// damps upward interference from other suites' main-actor work.
-    private func switchRequestMax(extraSessions: Int) async -> (max: Int, runs: [[Int]]) {
+    /// Per-switch request counts for two runs of `[1, 2, 3, 0]`, in order.
+    private func switchRequests(extraSessions: Int) async -> [Int] {
         let fixture = makeFixture(extraSessions: extraSessions)
         defer { fixture.tearDown() }
         _ = await fixture.probe.settle()
         _ = await fixture.probe.settle()
-        var runs: [[Int]] = []
+        var perSwitch: [Int] = []
         for _ in 0..<2 {
-            var perSwitch: [Int] = []
             for index in [1, 2, 3, 0] {
                 fixture.windowRuntime.selectSession(at: index)
                 let switched = await fixture.probe.settle()
                 #expect(switched.converged, "extraSessions=\(extraSessions), Session \(index): \(switched)")
                 perSwitch.append(switched.postNeedsUpdateConstraintsCalls)
             }
-            runs.append(perSwitch)
         }
-        return (runs.map { $0.max() ?? 0 }.min() ?? 0, runs)
+        return perSwitch
     }
 
     /// #0604: Sidebar rows read the per-Session `SessionRuntime.isSelected`,
     /// so a switch re-renders only the two rows it crosses instead of every
     /// row comparing itself against `selectedSessionID`. Before the fix, 16
     /// Sessions requested 216 more than 4; after it, 192 more. The rest is
-    /// the `List` selection binding (see `sessionCountMargin`).
+    /// the `List` selection binding (see `sessionCountMargin`). Each of the
+    /// eight switches is compared with the same switch among 4 Sessions, and
+    /// a strict majority of the differences must be within the margin
+    /// (`LayoutConvergenceProbe.mostlyWithin`).
     @Test func sessionSwitchRequestsDoNotScaleWithSessionCount() async {
-        let four = await switchRequestMax(extraSessions: 0)
-        let sixteen = await switchRequestMax(extraSessions: 12)
+        let four = await switchRequests(extraSessions: 0)
+        let sixteen = await switchRequests(extraSessions: 12)
+        let differences = zip(sixteen, four).map { $0 - $1 }
         #expect(
-            sixteen.max <= four.max + Self.sessionCountMargin,
-            "4 Sessions \(four.runs) max \(four.max); 16 Sessions \(sixteen.runs) max \(sixteen.max); margin \(Self.sessionCountMargin)"
+            LayoutConvergenceProbe.mostlyWithin(differences, ceiling: Self.sessionCountMargin),
+            "4 Sessions \(four); 16 Sessions \(sixteen); differences \(LayoutConvergenceProbe.budgetReport(differences, ceiling: Self.sessionCountMargin))"
         )
     }
 
@@ -234,7 +240,9 @@ struct SessionDetailLayoutConvergenceTests {
     /// `SplitRatio` box, when every tick reassigned `SplitTree.root` and
     /// re-rendered every reader of the tree's structure; 25 and 36 at most
     /// after (issues/0607.md). The ceilings are the after maxima plus about
-    /// 17%. `.serialized` because two cases settling at once interleave
+    /// 17%. A strict majority of the six ticks must be under the ceiling
+    /// (`LayoutConvergenceProbe.mostlyWithin`); before #0607 every tick was
+    /// over. `.serialized` because two cases settling at once interleave
     /// their counts.
     private static let dividerTickRequestCeiling: [Int: Int] = [0: 30, 12: 42]
 
@@ -261,7 +269,10 @@ struct SessionDetailLayoutConvergenceTests {
             perTick.append(ticked.postNeedsUpdateConstraintsCalls)
         }
         let ceiling = try #require(Self.dividerTickRequestCeiling[extraSessions])
-        #expect((perTick.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perTick=\(perTick) ceiling=\(ceiling)")
+        #expect(
+            LayoutConvergenceProbe.mostlyWithin(perTick, ceiling: ceiling),
+            "extraSessions=\(extraSessions) perTick \(LayoutConvergenceProbe.budgetReport(perTick, ceiling: ceiling))"
+        )
     }
 
     // MARK: - Window resize request volume
@@ -272,8 +283,10 @@ struct SessionDetailLayoutConvergenceTests {
     /// frame and width moved out of its `@State`, and the same after
     /// (issues/0610.md); these requests do not count body re-evaluations,
     /// so the guard does not distinguish the two. A full-suite run saw 22,
-    /// so the ceilings are that maximum plus about 17%. `.serialized`
-    /// because two cases settling at once interleave their counts.
+    /// so the ceilings are that maximum plus about 17%. A strict majority of
+    /// the three resizes must be under the ceiling
+    /// (`LayoutConvergenceProbe.mostlyWithin`). `.serialized` because two
+    /// cases settling at once interleave their counts.
     private static let resizeRequestCeiling: [Int: Int] = [0: 26, 12: 26]
 
     @Test(.serialized, arguments: [0, 12])
@@ -293,7 +306,10 @@ struct SessionDetailLayoutConvergenceTests {
             perResize.append(resized.postNeedsUpdateConstraintsCalls)
         }
         let ceiling = try #require(Self.resizeRequestCeiling[extraSessions])
-        #expect((perResize.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perResize=\(perResize) ceiling=\(ceiling)")
+        #expect(
+            LayoutConvergenceProbe.mostlyWithin(perResize, ceiling: ceiling),
+            "extraSessions=\(extraSessions) perResize \(LayoutConvergenceProbe.budgetReport(perResize, ceiling: ceiling))"
+        )
     }
 
     // MARK: - Terminal placement

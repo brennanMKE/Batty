@@ -62,10 +62,15 @@ public final class SystemMetricsPaneContent: PaneContentLifecycle {
     @ObservationIgnored private var sampler: SystemMetricsSampling?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
+    /// Paces the sampling loop between ticks. Tests inject `TestClock` so
+    /// only the ticks they drive land (`docs/async-test-seams.md`).
+    private let clock: SchedulingClock
 
     public var lifecyclePhase: PaneLifecyclePhase { controller.phase }
 
-    public init() {}
+    public init(clock: SchedulingClock = SystemClock()) {
+        self.clock = clock
+    }
 
     public func setUp(visible: Bool) {
         let result = controller.apply(.setUp(visible: visible))
@@ -115,11 +120,12 @@ public final class SystemMetricsPaneContent: PaneContentLifecycle {
         generation += 1
         sampler = samplerFactory()
         task?.cancel()
+        let clock = clock
         task = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.performTick()
-                try? await Task.sleep(for: Self.sampleInterval)
+                await clock.sleep(for: Self.sampleInterval)
             }
         }
     }
