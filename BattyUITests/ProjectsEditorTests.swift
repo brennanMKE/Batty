@@ -342,9 +342,18 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
             waitFor({
                 let layout = ProjectFixture.read(self.storeFile)?.first?["layout"] as? [String: Any]
                 let root = layout?["root"] as? [String: Any]
-                let pane = root?["pane"] as? [String: Any]
-                let tabs = pane?["tabs"] as? [[String: Any]]
-                return tabs?.first?["background"] != nil
+                guard let children = root?["children"] as? [[String: Any]], children.count == 2,
+                      let pane0 = children[0]["pane"] as? [String: Any],
+                      let pane1 = children[1]["pane"] as? [String: Any],
+                      let tab0 = (pane0["tabs"] as? [[String: Any]])?.first,
+                      let otherTab = (pane1["tabs"] as? [[String: Any]])?.first,
+                      let background = tab0["background"] as? [String: Any]
+                else { return false }
+                return (background["terminalOpacity"] as? NSNumber)?.doubleValue == 1
+                    && background["fit"] as? String == "cover"
+                    && background["imagePath"] == nil
+                    && pane0["background"] == nil
+                    && otherTab["background"] == nil
             }, timeout: 10),
             "Save did not write the Tab's background"
         )
