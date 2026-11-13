@@ -10,18 +10,31 @@ public enum PaneFocusDirection: Sendable {
     case down
 }
 
+/// Unobserved on purpose: `focusPane(adjacent:)` reads it on demand, and an
+/// observable tracker would re-run every reading view on each resize.
 public final class PaneFrameTracker {
-    public var frames: [UUID: CGRect] = [:]
+    public internal(set) var frames: [UUID: CGRect] = [:]
+    private var owners: [UUID: UUID] = [:]
 
     public init() {}
+
+    /// `owner` identifies the recording view instance, so a rebuilt Pane's
+    /// stale instance disappearing after its successor recorded cannot
+    /// remove the successor's entry.
+    func record(_ frame: CGRect, for paneID: UUID, owner: UUID) {
+        if frames[paneID] != frame { frames[paneID] = frame }
+        if owners[paneID] != owner { owners[paneID] = owner }
+    }
+
+    func remove(paneID: UUID, owner: UUID) {
+        guard owners[paneID] == owner else { return }
+        frames[paneID] = nil
+        owners[paneID] = nil
+    }
 }
 
-struct PaneFramePreferenceKey: PreferenceKey {
-    static let defaultValue: [UUID: CGRect] = [:]
-
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue()) { _, new in new }
-    }
+extension EnvironmentValues {
+    @Entry var paneFrameTracker: PaneFrameTracker? = nil
 }
 
 extension SessionRuntime {

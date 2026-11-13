@@ -20,35 +20,15 @@ public struct PaneView: View {
     @State private var renamingTab: TabRuntime?
     @State private var backgroundTab: TabRuntime?
     @State private var renameDraft: String = ""
-    @State private var paneWidth: CGFloat = 0
-    @State private var paneHeight: CGFloat = 0
-    @State private var frameInSession: CGRect = .zero
+    @Environment(\.paneFrameTracker) private var paneFrameTracker
+    @State private var frameOwner = UUID()
     @State private var paneCloseFailureMessage: String?
 
-    /// Approximate per-character text width at the chip's font. Used to
-    /// derive a string-level char budget from the per-chip pixel budget.
-    private static let approxCharWidth: CGFloat = 7
-    /// Per-chip non-text overhead (icon + close button + padding).
-    private static let chipChromeWidth: CGFloat = 36
-    /// SlidingTabBar's own per-bar overhead: 2×12 h-padding + 22 "+" button
-    /// + the button's 12 trailing padding = 58.
-    private static let barChromeWidth: CGFloat = 58
-    /// paneEyeButton: 22 icon frame + 4 trailing padding.
-    private static let eyeButtonWidth: CGFloat = 26
-    /// Width consumed by paneDragHandle when sibling panes are present:
-    /// icon frame (22) + trailing padding (8) = 30.
-    private static let dragHandleWidth: CGFloat = 30
-    /// Absolute clamps so chips don't disappear in tiny panes or grow
-    /// absurdly wide in huge ones.
-    private static let chipMinWidth: CGFloat = 60
-    private static let chipMaxWidthCap: CGFloat = 220
-    private static let charBudgetMin: Int = 3
-    private static let charBudgetMax: Int = 40
     /// Header row height for both the terminal and non-terminal arms, pinned
     /// to match `SlidingTabBar`'s default `barHeight` (`SlidingTabs
     /// .SlidingTabBar.init(barHeight:)`) so both kinds' content starts at the
     /// same y (#0334 review).
-    private static let nonTerminalHeaderHeight: CGFloat = 36
+    static let nonTerminalHeaderHeight: CGFloat = 36
 
     public init(pane: PaneRuntime, tree: SplitTree) {
         self.pane = pane
@@ -61,24 +41,6 @@ public struct PaneView: View {
 
     private var hasSiblingPanes: Bool {
         tree.visiblePanes.count > 1
-    }
-
-    private var chipMaxWidth: CGFloat {
-        let count = max(1, CGFloat(pane.tabs.count))
-        // The strip is clipped inside the header's flexible placeholder, so it
-        // cannot push the trailing controls or bleed into the adjacent pane.
-        // The reservations (bar chrome, eye button, and the 30pt drag handle
-        // when sibling panes are present) size the chips to fit the space the
-        // strip is actually given, so they are not clipped.
-        let reservation = hasSiblingPanes ? Self.dragHandleWidth : 0
-        let available = max(0, paneWidth - Self.barChromeWidth - Self.eyeButtonWidth - reservation)
-        let perChip = (available / count) - 6  // SlidingTabBar's default spacing
-        return min(Self.chipMaxWidthCap, max(Self.chipMinWidth, perChip))
-    }
-
-    private var charBudget: Int {
-        let raw = Int((chipMaxWidth - Self.chipChromeWidth) / Self.approxCharWidth)
-        return min(Self.charBudgetMax, max(Self.charBudgetMin, raw))
     }
 
     private var accentColor: Color {
@@ -158,15 +120,18 @@ public struct PaneView: View {
         }
         .animation(.easeInOut(duration: 0.12), value: isPaneFocused)
         .background {
+            // Writes go to the unobserved tracker only, so a resize
+            // invalidates no body. The per-instance owner token keeps a
+            // split's rebuilt PaneView from losing its entry when the old
+            // instance's onDisappear runs after the new one recorded.
+            let tracker = paneFrameTracker
+            let paneID = pane.id
+            let owner = frameOwner
             Color.clear
-                .preference(key: PaneFramePreferenceKey.self, value: [pane.id: frameInSession])
                 .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("session")) }) {
-                    frameInSession = $0
+                    tracker?.record($0, for: paneID, owner: owner)
                 }
-                .onGeometryChange(for: CGSize.self, of: { $0.size }) {
-                    paneWidth = $0.width
-                    paneHeight = $0.height
-                }
+                .onDisappear { tracker?.remove(paneID: paneID, owner: owner) }
         }
         .sheet(item: $renamingTab) { tab in
             RenameTabSheet(
@@ -208,50 +173,32 @@ public struct PaneView: View {
     private var terminalBody: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                // The strip is laid out inside an overlay of a flexible
-                // placeholder so its (fixed-size) reported width cannot push
-                // the trailing controls out of the Pane.
-                Color.clear
-                    .frame(maxWidth: .infinity)
-                    .frame(height: Self.nonTerminalHeaderHeight)
-                    .overlay(alignment: .leading) {
-                        SlidingTabBar(
-                            items: $pane.tabs,
-                            activeID: activeIDBinding,
-                            onReorderCommit: nil,
-                            onAdd: { addTabFocusingPane(inheritingCWDFrom: pane.activeTab) }
-                        ) { tab, isActive in
-                            BattyTabChip(
-                                title: chipTitle(for: tab),
-                                isActive: isActive,
-                                isPaneFocused: isPaneFocused,
-                                hasUnseen: tab.unseenBellCount > 0,
-                                onClose: {
-                                    if let appStore {
-                                        appStore.requestCloseTab(id: tab.id)
-                                    } else {
-                                        pane.removeTab(id: tab.id)
-                                    }
-                                },
-                                startupWaiting: startupWaiting(for: tab),
-                                onRunStartupCommand: { tab.runWaitingStartupCommand() },
-                                onDismissStartupCommand: { tab.dismissWaitingStartupCommand() }
-                            )
-                            .frame(width: chipMaxWidth)
-                            .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
-                            .accessibilityValue(isActive ? "active" : "inactive")
-                            .contextMenu { tabContextMenu(for: tab) }
-                        }
-                        // .contain marks the tab bar as a container so children stay
-                        // as discrete accessibility elements with their own ids. Without
-                        // this, SwiftUI on macOS folds the bar into a leaf and the
-                        // identifier propagates down to every child Button — chip,
-                        // close, and "+" all end up with identifier "tab-bar.<uuid>",
-                        // and `tab-chip.<title>` becomes unfindable.
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("tab-bar.\(pane.id.uuidString)")
-                    }
-                    .clipped()
+                PaneTabStrip(
+                    pane: pane,
+                    activeID: activeIDBinding,
+                    onAdd: { addTabFocusingPane(inheritingCWDFrom: pane.activeTab) }
+                ) { tab, isActive, chipWidth in
+                    BattyTabChip(
+                        title: chipTitle(for: tab),
+                        isActive: isActive,
+                        isPaneFocused: isPaneFocused,
+                        hasUnseen: tab.unseenBellCount > 0,
+                        onClose: {
+                            if let appStore {
+                                appStore.requestCloseTab(id: tab.id)
+                            } else {
+                                pane.removeTab(id: tab.id)
+                            }
+                        },
+                        startupWaiting: startupWaiting(for: tab),
+                        onRunStartupCommand: { tab.runWaitingStartupCommand() },
+                        onDismissStartupCommand: { tab.dismissWaitingStartupCommand() }
+                    )
+                    .frame(width: chipWidth)
+                    .accessibilityIdentifier("tab-chip.\(chipTitle(for: tab))")
+                    .accessibilityValue(isActive ? "active" : "inactive")
+                    .contextMenu { tabContextMenu(for: tab) }
+                }
 
                 if hasSiblingPanes {
                     paneDragHandle
@@ -602,10 +549,7 @@ public struct PaneView: View {
         )
     }
 
-    @ViewBuilder
     private var paneDragPreview: some View {
-        let previewWidth = max(160, min(paneWidth * 0.5, 360))
-        let previewHeight = max(96, min(paneHeight * 0.5, 240))
         // A non-terminal pane's activeTab is a structural placeholder
         // PaneView never renders (PaneRuntime.kind's doc comment) — its
         // chip title (e.g. "Tab") is not a meaningful drag-preview label,
@@ -613,23 +557,14 @@ public struct PaneView: View {
         let title = pane.kind == .terminal
             ? (pane.activeTab.map { chipTitle(for: $0) } ?? "Pane")
             : pane.kind.displayName
-        let fill = themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor)
-        let textColor = themeChrome?.chromeForeground ?? Color.primary
-        RoundedRectangle(cornerRadius: 6)
-            .fill(fill.opacity(0.92))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(accentColor.opacity(0.6), lineWidth: 2)
-            )
-            .overlay(
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(textColor)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.horizontal, 12)
-            )
-            .frame(width: previewWidth, height: previewHeight)
+        return PaneDragPreview(
+            title: title,
+            fill: themeChrome?.chromeBackground ?? Color(nsColor: .windowBackgroundColor),
+            textColor: themeChrome?.chromeForeground ?? Color.primary,
+            accent: accentColor,
+            paneID: pane.id,
+            tracker: paneFrameTracker
+        )
     }
 
     @ViewBuilder
@@ -834,5 +769,35 @@ private struct PaneContentPlaceholderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("pane-placeholder.\(kind.rawValue)")
+    }
+}
+
+/// Reads the Pane's size from the unobserved tracker when the preview itself
+/// renders at drag start, so `PaneView` takes no dependency on its own size.
+private struct PaneDragPreview: View {
+    let title: String
+    let fill: Color
+    let textColor: Color
+    let accent: Color
+    let paneID: UUID
+    let tracker: PaneFrameTracker?
+
+    var body: some View {
+        let size = tracker?.frames[paneID]?.size ?? .zero
+        RoundedRectangle(cornerRadius: 6)
+            .fill(fill.opacity(0.92))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(accent.opacity(0.6), lineWidth: 2)
+            )
+            .overlay(
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(textColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 12)
+            )
+            .frame(width: max(160, min(size.width * 0.5, 360)), height: max(96, min(size.height * 0.5, 240)))
     }
 }

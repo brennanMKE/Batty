@@ -6,14 +6,14 @@ import Testing
 @testable import BattyKit
 
 /// Hosts the real `SplitContainerView` -> `PaneView` hierarchy in an
-/// `NSHostingView` and reads back the production `PaneFramePreferenceKey`
-/// geometry (the same key `SessionRuntime.focusPane(adjacent:)` reads via
-/// `session.paneFrames` in `PaneFocus.swift`) to prove a split actually
+/// `NSHostingView` and reads back the production `PaneFrameTracker`
+/// geometry (the same `session.paneFrames` that
+/// `SessionRuntime.focusPane(adjacent:)` reads in `PaneFocus.swift`) to prove a split actually
 /// re-renders the live view tree with a real, allotted, non-degenerate
 /// frame per Pane — a layer no other test in this suite reaches.
 ///
 /// This proves the split slot each Pane is allotted, not what draws inside
-/// it: `PaneFramePreferenceKey` is emitted by `PaneView`'s outer
+/// it: the tracker is written from `PaneView`'s outer
 /// `.frame(allottedSize)` wrapper regardless of the kind-switch's content,
 /// so geometry alone can't distinguish an allotted-but-empty slot from one
 /// with real content. Not confirmed in-process: `accessibilityChildren()`
@@ -26,12 +26,11 @@ struct PaneViewRenderTests {
     private struct HostedSession: View {
         let session: SessionRuntime
         let windowID: WindowID
-        @Binding var frames: [UUID: CGRect]
 
         var body: some View {
             SplitContainerView(tree: session.tree)
                 .coordinateSpace(name: "session")
-                .onPreferenceChange(PaneFramePreferenceKey.self) { frames = $0 }
+                .environment(\.paneFrameTracker, session.paneFrames)
                 .environment(\.windowID, windowID)
                 .frame(width: 1200, height: 800)
         }
@@ -58,8 +57,8 @@ struct PaneViewRenderTests {
     }
 
     /// Drives `NSHostingView`'s layout synchronously, then — since SwiftUI's
-    /// preference-reduction publish to `onPreferenceChange` can land a turn
-    /// after the layout pass that produced it — awaits one real main-queue
+    /// `onGeometryChange` action can land a turn after the layout pass that
+    /// produced it — awaits one real main-queue
     /// turn per retry, re-running `layoutSubtreeIfNeeded()` and re-checking
     /// `condition` after every turn, the same turn-bounded hop
     /// `awaitTerminalStatePublish` uses (`TerminalStatePublishing.swift`).
@@ -82,7 +81,7 @@ struct PaneViewRenderTests {
         }
         if !condition() {
             Issue.record(
-                "Timed out after \(maxTurns) main-queue turns waiting for PaneFramePreferenceKey to publish",
+                "Timed out after \(maxTurns) main-queue turns waiting for the Pane frames to be recorded",
                 sourceLocation: sourceLocation
             )
         }
@@ -95,10 +94,9 @@ struct PaneViewRenderTests {
         let windowWidth: CGFloat = 1200
 
         let windowID = WindowID()
-        var frames: [UUID: CGRect] = [:]
-        let binding = Binding<[UUID: CGRect]>(get: { frames }, set: { frames = $0 })
+        var frames: [UUID: CGRect] { session.paneFrames.frames }
         let (window, hostingView) = host(
-            HostedSession(session: session, windowID: windowID, frames: binding),
+            HostedSession(session: session, windowID: windowID),
             size: CGSize(width: windowWidth, height: 800)
         )
         // Runs on every exit path, including a `#require` failure partway
@@ -132,7 +130,10 @@ struct PaneViewRenderTests {
         let splitResult = store.splitPane(id: terminalPane.id, direction: .horizontal, kind: .gitStatus, contentFactory: { _ in nil })
         let newPaneID = try #require(splitResult)
 
-        await pump(hostingView, until: { frames[terminalPane.id] != nil && frames[newPaneID] != nil })
+        // The solo frame is still recorded, so wait for the split one.
+        await pump(hostingView, until: {
+            (frames[terminalPane.id]?.width ?? .infinity) < windowWidth * 0.75 && frames[newPaneID] != nil
+        })
         let terminalFrame = try #require(frames[terminalPane.id])
         let typedFrame = try #require(frames[newPaneID])
 

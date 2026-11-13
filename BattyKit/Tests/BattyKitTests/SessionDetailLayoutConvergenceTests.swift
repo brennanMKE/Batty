@@ -264,6 +264,38 @@ struct SessionDetailLayoutConvergenceTests {
         #expect((perTick.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perTick=\(perTick) ceiling=\(ceiling)")
     }
 
+    // MARK: - Window resize request volume
+
+    /// A loose regression guard on `_postWindowNeedsUpdateConstraints`
+    /// requests per window resize, keyed by `extraSessions`. Measured with
+    /// each case run alone: [11, 0, 0] for both cases before `PaneView`'s
+    /// frame and width moved out of its `@State`, and the same after
+    /// (issues/0610.md); these requests do not count body re-evaluations,
+    /// so the guard does not distinguish the two. A full-suite run saw 22,
+    /// so the ceilings are that maximum plus about 17%. `.serialized`
+    /// because two cases settling at once interleave their counts.
+    private static let resizeRequestCeiling: [Int: Int] = [0: 26, 12: 26]
+
+    @Test(.serialized, arguments: [0, 12])
+    func resizeUpdateConstraintRequestsStayUnderCeiling(extraSessions: Int) async throws {
+        let fixture = makeFixture(extraSessions: extraSessions)
+        defer { fixture.tearDown() }
+        _ = await fixture.probe.settle()
+        let first = await fixture.probe.settle()
+        #expect(first.converged, "first settle: \(first)")
+
+        var perResize: [Int] = []
+        let sizes = [CGSize(width: 800, height: 520), CGSize(width: 1400, height: 900), CGSize(width: 960, height: 640)]
+        for size in sizes {
+            fixture.probe.resize(to: size)
+            let resized = await fixture.probe.settle()
+            #expect(resized.converged, "resize to \(size): \(resized)")
+            perResize.append(resized.postNeedsUpdateConstraintsCalls)
+        }
+        let ceiling = try #require(Self.resizeRequestCeiling[extraSessions])
+        #expect((perResize.max() ?? 0) <= ceiling, "extraSessions=\(extraSessions) perResize=\(perResize) ceiling=\(ceiling)")
+    }
+
     // MARK: - Terminal placement
 
     private func viewsNeedingUpdateConstraints(_ fixture: Fixture) -> [String] {

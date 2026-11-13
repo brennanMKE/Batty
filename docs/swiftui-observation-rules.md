@@ -162,6 +162,13 @@ do. It counts the window's update-constraints and layout requests per
 settle, and AppKit's own pass cap fires in that harness, so a real loop
 fails the run.
 
+**Geometry has one home.** Geometry that only commands consume goes from
+`onGeometryChange` straight into unobserved storage (`PaneFrameTracker`,
+read on demand by `focusPane(adjacent:)`), not through `@State` plus a
+preference. Geometry a view renders from lives in the smallest view that
+reads it (`PaneTabStrip`'s width), so a resize re-runs only that view
+(#0610).
+
 **Give scrolling one owner inside a hosting tree.** A `List` or `Table`
 nested in a SwiftUI `ScrollView` brings its own `NSScrollView` and
 `NSTableView`, and posts window update-constraints requests for its visible

@@ -208,11 +208,11 @@ them while doing the split:
 
 - **The chrome that lives *outside* the kind branch stays outside it.**
   `PaneView`'s `.overlay` chain (focus border, bell flash, pane-swap drop
-  zone — `PaneView.swift:234-262`) and the `.background { PaneFramePreferenceKey
-  ... }` geometry reporting (`PaneView.swift:264-274`) are pane-level
+  zone — `PaneView.swift:234-262`) and the `.background { onGeometryChange
+  ... }` geometry reporting into `PaneFrameTracker` (#0610) (`PaneView.swift:264-274`) are pane-level
   chrome, not terminal-level. `panePositions()` and the pane-swap drag
-  source depend on every pane — terminal or not — reporting a frame via
-  `PaneFramePreferenceKey` and participating in `PaneSwapDropZone`. Those
+  source depend on every pane — terminal or not — reporting a frame into
+  `PaneFrameTracker` and participating in `PaneSwapDropZone`. Those
   modifiers stay attached to the outer `body`, wrapping the `switch`, so a
   Git Status pane swaps, resizes, and drags exactly like a terminal pane.
   The bell-flash and focus-border overlays are visually generic (an accent
@@ -361,7 +361,7 @@ dispatch rule. Concretely, extend `TerminalHostView` (or a sibling
 this point," and forward the drop to that pane's own handler the same way
 `performDragOperation` already forwards to `tab.terminal.send(joined)` for
 a terminal tab. The point → pane-id lookup this needs isn't built from
-nothing: `PaneFrameTracker`/`PaneFramePreferenceKey`
+nothing: `PaneFrameTracker`
 (`BattyKit/Sources/BattyKit/Commands/PaneFocus.swift:13-24`) already
 collects a `[UUID: CGRect]` of every pane's frame, populated by `PaneView`'s
 own geometry reporting and consumed today by `focusPane(adjacent:)`

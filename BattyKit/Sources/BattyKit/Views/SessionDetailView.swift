@@ -258,9 +258,7 @@ public struct SessionDetailView: View {
             ForEach(windowRuntime.sessions) { session in
                 SplitContainerView(tree: session.tree)
                     .coordinateSpace(name: "session")
-                    .onPreferenceChange(PaneFramePreferenceKey.self) { newFrames in
-                        session.paneFrames.frames = newFrames
-                    }
+                    .environment(\.paneFrameTracker, session.paneFrames)
                     .opacity(session.id == windowRuntime.selectedSessionID ? 1 : 0)
                     .allowsHitTesting(session.id == windowRuntime.selectedSessionID)
             }
