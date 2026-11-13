@@ -160,7 +160,8 @@ public final class PaneRuntime: Identifiable {
         // mutation aimed at a background target must not switch the active
         // session), so construction time is the one moment that sweep can't
         // reach. `isSessionSelected` is how the caller supplies that fact
-        // up front, so a Pane created hidden *or* created into a background
+        // up front (effective visibility at creation: the selected Session
+        // of a window that is not occluded), so a Pane created hidden *or* created into a background
         // Session goes straight to `.suspended` without ever passing through
         // `.active` — `docs/pane-view-lifecycle.md` §3's `notSetUp →
         // suspended` edge. Defaults to `true` here — unlike

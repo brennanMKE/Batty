@@ -70,12 +70,31 @@ public final class WindowRuntime {
         }
     }
     public var pendingCloseRequest: PendingCloseRequest?
+    /// Whether the window can be seen: false while it is fully occluded,
+    /// minimized, or the app is hidden. Written only by `setWindowVisible(_:)`.
+    /// No view reads it, so it is not observed.
+    @ObservationIgnored public private(set) var isWindowVisible = true
     /// Written only by `WindowDelegate`'s full-screen callbacks.
     public private(set) var isNativeFullScreen = false
 
     func setNativeFullScreen(_ isFullScreen: Bool) {
         guard isNativeFullScreen != isFullScreen else { return }
         isNativeFullScreen = isFullScreen
+    }
+
+    /// Window occlusion for non-terminal Pane content, the counterpart of
+    /// `TerminalHostStore.setWindowOcclusionVisible` for terminals. Called
+    /// from `WindowDelegate.windowDidChangeOcclusionState` and the initial
+    /// occlusion read in `WindowLifecycleController`. Suspends or resumes the
+    /// selected Session's visible Panes; hidden Panes and other Sessions are
+    /// already suspended and stay so.
+    public func setWindowVisible(_ visible: Bool) {
+        guard isWindowVisible != visible else { return }
+        isWindowVisible = visible
+        guard let selected = selectedSession else { return }
+        for pane in selected.tree.allPanes where !pane.isHidden {
+            pane.content?.setVisible(visible)
+        }
     }
 
     /// Whether this window's Open Project picker sheet is up. Set by three
@@ -718,12 +737,12 @@ public final class WindowRuntime {
         contentFactory: (@MainActor (PaneContentKind) -> (any PaneContentLifecycle)?)? = nil
     ) -> PaneRuntime? {
         guard let tree = selectedSession?.tree else { return nil }
-        // `isSessionSelected: true` unconditionally — this always splits
-        // `selectedSession`'s own tree (the guard above), so the Session is
-        // the selected one by construction, unlike `AppStateStore
-        // .splitPane(id:...)`'s XPC path, which can target any Session
-        // (#0349).
-        return tree.splitPane(id: tree.focusedPaneID, direction: direction, kind: kind, contentFactory: contentFactory, isSessionSelected: true)
+        // This always splits `selectedSession`'s own tree (the guard above),
+        // so the Session is the selected one by construction, unlike
+        // `AppStateStore.splitPane(id:...)`'s XPC path, which can target any
+        // Session (#0349). The new Pane is effectively visible only when the
+        // window is too.
+        return tree.splitPane(id: tree.focusedPaneID, direction: direction, kind: kind, contentFactory: contentFactory, isSessionSelected: isWindowVisible)
     }
 
     // MARK: - Pane close (#0283)
@@ -975,7 +994,9 @@ public final class WindowRuntime {
     /// Delivers the non-selected-Session visibility fact (#0349) to every
     /// non-terminal Pane content in the (at most) two Sessions a
     /// `selectedSessionID` write crosses. Called only from that property's
-    /// `didSet`, never from a view.
+    /// `didSet`, never from a view. The newly selected Session resumes only
+    /// while the window is visible (`isWindowVisible`); otherwise
+    /// `setWindowVisible(true)` resumes it later.
     ///
     /// Looks each id up in `sessions` rather than trusting a caller-held
     /// reference, so a Session already removed from `sessions` (e.g.
@@ -998,7 +1019,7 @@ public final class WindowRuntime {
                 pane.content?.setVisible(false)
             }
         }
-        if let newID, let selected = sessions.first(where: { $0.id == newID }) {
+        if isWindowVisible, let newID, let selected = sessions.first(where: { $0.id == newID }) {
             for pane in selected.tree.allPanes where !pane.isHidden {
                 pane.content?.setVisible(true)
             }
@@ -1079,8 +1100,9 @@ public final class WindowRuntime {
             // lives in a non-selected Session must not resume it — only
             // `applySelectionVisibility` (via `selectedSessionID`'s
             // `didSet`) resumes it, once its Session actually becomes
-            // selected.
-            if session.id == selectedSessionID {
+            // selected. Nor while the window is occluded: `setWindowVisible`
+            // resumes it when the window can be seen again.
+            if session.id == selectedSessionID && isWindowVisible {
                 pane.content?.setVisible(true)
             }
             return

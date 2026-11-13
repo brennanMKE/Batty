@@ -801,6 +801,9 @@ public final class AppStateStore {
     /// actually has both `window.selectedSessionID` and `session.id` in
     /// hand, and threaded down through `SplitTree.splitPane`'s own
     /// `isSessionSelected` parameter to `PaneRuntime.init`'s `setUp(visible:)`.
+    /// The same holds while the owning window is occluded, minimized or
+    /// hidden (`WindowRuntime.isWindowVisible`), so the flag passed down is
+    /// the Pane's effective visibility at creation.
     @discardableResult
     public func splitPane(
         id paneID: UUID,
@@ -813,7 +816,7 @@ public final class AppStateStore {
     ) -> UUID? {
         for window in windows {
             if let session = window.sessions.first(where: { $0.tree.root.contains(paneID: paneID) }) {
-                let isSessionSelected = window.selectedSessionID == session.id
+                let isSessionSelected = window.selectedSessionID == session.id && window.isWindowVisible
                 if let newPane = session.tree.splitPane(id: paneID, direction: direction, command: command, kind: kind, processStatusPid: processStatusPid, path: path, contentFactory: contentFactory, isSessionSelected: isSessionSelected) {
                     let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: newPane.id)
                     AppEventWatcher.shared.send(eventType: event.type, payload: event)

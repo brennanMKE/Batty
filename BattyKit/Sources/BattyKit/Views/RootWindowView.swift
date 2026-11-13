@@ -154,11 +154,11 @@ private struct WindowLifecycleController: NSViewRepresentable {
             // windowDidChangeOcclusionState only fires on a subsequent
             // transition, so a window created already occluded (or this
             // being the first time occlusion is wired up for it) needs an
-            // explicit read here. Idempotent at the store (#0288).
-            TerminalHostStore.shared.setWindowOcclusionVisible(
-                window.occlusionState.contains(.visible),
-                forWindowID: id
-            )
+            // explicit read here. Idempotent at the store (#0288) and at
+            // `WindowRuntime.setWindowVisible` (#0601).
+            let visible = window.occlusionState.contains(.visible)
+            TerminalHostStore.shared.setWindowOcclusionVisible(visible, forWindowID: id)
+            appStore.existingWindowRuntime(for: id)?.setWindowVisible(visible)
         }
     }
 
@@ -241,17 +241,17 @@ final class WindowDelegate: NSObject, NSWindowDelegate {
     /// it. `NSWindow.occlusionState` is the documented AppKit signal for
     /// exactly this (#0288). This runs as a genuine `NSWindowDelegate`
     /// callback outside SwiftUI's update pass — not a write from `body`,
-    /// `onChange`, or a representable update — and it writes no `@Observable`
-    /// state; it only forwards to `TerminalHostStore`, which re-derives each
+    /// `onChange`, or a representable update — so the writes it causes are
+    /// event-origin. It forwards to `TerminalHostStore`, which re-derives each
     /// tab's effective visibility from its own placement (see that method's
     /// doc comment for why re-showing everything unconditionally would be
-    /// wrong).
+    /// wrong), and to `WindowRuntime.setWindowVisible`, which suspends or
+    /// resumes the selected Session's non-terminal Pane content (#0601).
     func windowDidChangeOcclusionState(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
-        TerminalHostStore.shared.setWindowOcclusionVisible(
-            window.occlusionState.contains(.visible),
-            forWindowID: windowID
-        )
+        let visible = window.occlusionState.contains(.visible)
+        TerminalHostStore.shared.setWindowOcclusionVisible(visible, forWindowID: windowID)
+        store.existingWindowRuntime(for: windowID)?.setWindowVisible(visible)
     }
 
     func windowWillEnterFullScreen(_ notification: Notification) {

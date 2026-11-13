@@ -119,6 +119,16 @@ layout pass** (`_NSViewLayout`). Two hard rules follow:
    views. Mid-pass, AppKit answers with an NSException
    (`_postWindowNeedsUpdateConstraints` inside `_NSViewLayout`) that
    `+[NSApplication _crashOnException:]` turns into `EXC_BREAKPOINT`.
+   The exception is AppKit's convergence guard: "The window has been
+   marked as needing another Update Constraints in Window pass, but it has
+   already had more Update Constraints in Window passes than there are
+   views in the window" (a twin exists for Layout Window passes). Marking
+   a window dirty mid-pass is legal; AppKit runs another pass, and raises
+   only when some participant keeps re-dirtying it. So the frame that
+   throws is the first requester after the loop hit the cap, not
+   necessarily the loop's source. Look in the app's log for the preceding
+   "Future marking … might be ignored" line, then find the participant
+   that re-dirties every pass (#0601).
 2. **AppKit side effects flip `@Observable` properties synchronously.**
    `makeFirstResponder` → `becomeFirstResponder` → libghostty focus delegate
    → `TerminalViewState.isFocused = true`. A handler observing that flip runs
@@ -127,14 +137,26 @@ layout pass** (`_NSViewLayout`). Two hard rules follow:
 **Debugging:** the crash's faulting-thread stack shows only generic AppKit
 display-cycle frames. The real chain lives in the *thrown exception's*
 backtrace — `asiBacktraces` / `lastExceptionBacktrace` in the `.ips`. Read
-that first.
+that first. To check that a new hosting composition settles, host it in
+`LayoutConvergenceProbe` (`BattyKit/Tests/BattyKitTests/LayoutConvergenceProbe.swift`),
+as `SessionDetailLayoutConvergenceTests` and `StatusPaneLayoutConvergenceTests`
+do. It counts the window's update-constraints and layout requests per
+settle, and AppKit's own pass cap fires in that harness, so a real loop
+fails the run.
 
 **Sanctioned exceptions** (documented in `view-hierarchy.md`; do not add new
 ones): `TerminalPlaceholderView.body`'s lazy `terminalView(for:)` performs a
 one-time `addSubview` into the persistent host on first mount, and terminal
-placement flows as plain frame writes on the frame-based (not Auto Layout)
-`TerminalHostView` via `TerminalHostStore.setPlacement(_:forTabID:)`. Both are
-bounded by design — first-mount-only and frame-only respectively. The
+placement flows as plain frame and `isHidden` writes on the terminal views
+inside `TerminalHostView` via `TerminalHostStore.setPlacement(_:forTabID:)`.
+Both are bounded by design — first-mount-only and frame-only respectively.
+Frame-only holds because each `AppTerminalView` has
+`translatesAutoresizingMaskIntoConstraints = false` and no constraints, so it
+is outside the window's constraint engine. With autoresizing-mask
+constraints (the setting before #0601), every placement write marked the
+detail column's `NSHostingView` as needing update constraints from inside
+SwiftUI's layout pass. `SessionDetailLayoutConvergenceTests.terminalPlacementWriteMarksNoViewAsNeedingUpdateConstraints`
+guards it. The
 first-mount bound is enforced by the store: it refuses to create a view or
 record a placement for a released tab id, because SwiftUI can evaluate a
 closing Pane's placeholder after the close (#0535). Anything
@@ -222,6 +244,7 @@ each path, and delete inferred echoes before reaching for guards.
 | Warning: "onChange(of:) action tried to update multiple times per frame" | An `onChange` write feeds back into its own trigger (or another value in the same cycle) |
 | Log spam: a body-adjacent helper's line cycling across all instances (e.g. `chipTitle` over every tab UUID) | Feedback loop, or a write invalidating far too broad a dependency graph |
 | `EXC_BREAKPOINT` via `+[NSApplication _crashOnException:]`, all-AppKit stack with `_NSViewLayout` | Observable write or constraint-dirtying/responder AppKit call landed inside the layout pass — read `asiBacktraces` |
+| `_postWindowNeedsUpdateConstraints` raised under a hit test or `setCursorForMouseLocation:` in `displayCycleUpdateStructuralRegions` | A non-converging update loop earlier in the same display cycle hit AppKit's pass cap; the hit test is only the last requester. Look for "Future marking … might be ignored" in the log (#0601) |
 | Beachball / "app not idle" timeouts in UI tests | Same loop, pre-crash phase |
 | A fix silences the warning but clicks / focus / keyboard input break | The write moved to the wrong owner or lost a race it used to win — restructure direction, don't re-time |
 | Selection / focus reverts right after a split or new-surface creation | Library churn flipped an observed flag on an untouched object and a handler treated it as intent — look for intent reconstructed from observable effects (`#0230`) |

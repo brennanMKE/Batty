@@ -18,9 +18,17 @@ public struct GitStatusPaneView: View {
     // being `@Observable` is what makes this view re-render on change,
     // independent of whether the property wrapper is `@Bindable`.
     public let content: GitStatusPaneContent
+    @State private var expandedFileGroups: Set<String>
 
     public init(content: GitStatusPaneContent) {
+        self.init(content: content, initiallyExpandsFileGroups: false)
+    }
+
+    /// `initiallyExpandsFileGroups` opens every file group on first render,
+    /// so a test can render the file rows and the diff peek without a click.
+    init(content: GitStatusPaneContent, initiallyExpandsFileGroups: Bool) {
         self.content = content
+        _expandedFileGroups = State(initialValue: initiallyExpandsFileGroups ? Self.fileGroupTitles : [])
     }
 
     public var body: some View {
@@ -318,7 +326,7 @@ public struct GitStatusPaneView: View {
     @ViewBuilder
     private func fileGroup(title: String, entries: [GitStatusFileEntry], staged: Bool) -> some View {
         if !entries.isEmpty {
-            DisclosureGroup("\(title) (\(entries.count))") {
+            DisclosureGroup("\(title) (\(entries.count))", isExpanded: fileGroupExpansion(title)) {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(entries) { entry in
                         fileRow(entry, staged: staged)
@@ -328,6 +336,21 @@ public struct GitStatusPaneView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
         }
+    }
+
+    private static let fileGroupTitles: Set<String> = ["Conflicted", "Staged Changes", "Changes", "Untracked Files"]
+
+    private func fileGroupExpansion(_ title: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedFileGroups.contains(title) },
+            set: { expanded in
+                if expanded {
+                    expandedFileGroups.insert(title)
+                } else {
+                    expandedFileGroups.remove(title)
+                }
+            }
+        )
     }
 
     /// Carries no identifier of its own: SwiftUI hands a container's identifier to

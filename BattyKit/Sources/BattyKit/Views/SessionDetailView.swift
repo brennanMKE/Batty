@@ -20,7 +20,6 @@ public struct SessionDetailView: View {
     @State private var afterCommandPalette: (@MainActor () -> Void)?
     @State private var themeSelectorShown: Bool = false
     @State private var pendingPaste: PendingPaste?
-    @State private var splitDetailToolbarSafeInsetTop: CGFloat = -1
 
     public init(store: AppStateStore, windowRuntime: WindowRuntime) {
         self.store = store
@@ -188,10 +187,6 @@ public struct SessionDetailView: View {
         sessionStack
         .navigationTitle(navigationTitle)
         .toolbar { toolbarItems }
-        .onGeometryChange(for: CGFloat.self, of: { $0.safeAreaInsets.top }) {
-            splitDetailToolbarSafeInsetTop = $0
-        }
-        .environment(\.splitDetailToolbarSafeInsetTop, splitDetailToolbarSafeInsetTop)
         .onAppear {
             logger.debug("onAppear: selectedSession=\(windowRuntime.selectedSession?.title ?? "nil", privacy: .public)")
             focusSelectedSessionTerminal()

@@ -194,7 +194,12 @@ public final class TerminalHostStore {
         view.configuration = tab.terminal.configuration
         view.isHidden = true
         view.autoresizingMask = []
-        view.translatesAutoresizingMaskIntoConstraints = true
+        // Off, and the view holds no constraints, so it stays out of the
+        // window's constraint engine. `setPlacement` writes this view's frame
+        // and `isHidden` from SwiftUI's layout pass; with autoresizing-mask
+        // constraints each write would mark the window as needing another
+        // update-constraints pass (#0601).
+        view.translatesAutoresizingMaskIntoConstraints = false
         host.addSubview(view)
         terminalViews[tab.id] = view
         tabWindowMap[tab.id] = windowID

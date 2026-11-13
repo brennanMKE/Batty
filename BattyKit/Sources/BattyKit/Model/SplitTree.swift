@@ -581,7 +581,8 @@ public final class SplitTree {
     /// targets — same rule either way, no special-casing on which session
     /// is selected.
     /// `isSessionSelected` (#0349) is the caller's answer to "is the Session
-    /// this tree belongs to the one currently selected" — `SplitTree` has
+    /// this tree belongs to the one currently selected, in a window that can
+    /// be seen" (its effective visibility at creation) — `SplitTree` has
     /// no notion of Sessions or window selection itself, so it can't derive
     /// the fact; it only carries it down to `PaneRuntime.init`'s
     /// `setUp(visible:)` so a non-terminal Pane created into a background
@@ -590,9 +591,9 @@ public final class SplitTree {
     /// "never touches `selectedSessionID`" doc note) starts `.suspended`
     /// instead of incorrectly starting `.active`. **No default** —
     /// both production callers (`AppStateStore.splitPane`, computing
-    /// `window.selectedSessionID == session.id`; `WindowRuntime.createPane`,
-    /// passing a literal `true` because it only ever splits the selected
-    /// Session's own tree) already compute and pass a real value, so a
+    /// `window.selectedSessionID == session.id && window.isWindowVisible`;
+    /// `WindowRuntime.createPane`, passing `isWindowVisible` because it only
+    /// ever splits the selected Session's own tree) already compute and pass a real value, so a
     /// silently-inserted `true` at every other call site could paper over
     /// a caller that should have computed the real fact and didn't. (For a
     /// related but different reason, `#0359` removed the `{ _ in nil }`
