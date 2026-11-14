@@ -28,7 +28,7 @@ nonisolated enum BattyUITestHarness {
         app.launchArguments += Self.stateIsolationArguments
         app.launchArguments += extraArguments
         app.launch()
-        GuestBanners.settleAfterLaunch()
+        GuestBanners.settleAfterLaunch(app: app)
         return app
     }
 
@@ -50,7 +50,7 @@ nonisolated enum BattyUITestHarness {
         for (key, value) in extraEnvironment { app.launchEnvironment[key] = value }
         app.launchArguments += extraArguments
         app.launch()
-        GuestBanners.settleAfterLaunch()
+        GuestBanners.settleAfterLaunch(app: app)
         return app
     }
 
@@ -238,7 +238,7 @@ extension XCTestCase {
 
     @MainActor
     @discardableResult
-    func dismissBanners() -> Bool {
-        GuestBanners.dismissAll()
+    func dismissBanners(in app: XCUIApplication) -> Bool {
+        GuestBanners.dismissAll(returningFocusTo: app)
     }
 }

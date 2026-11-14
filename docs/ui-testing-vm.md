@@ -207,11 +207,25 @@ the file extension) and strips the `_<n>_<UUID>` Xcode appends.
   guest never reaches another test class.
 - **Banners.** The "App Background Activity" banner (#0419) and Batty's own "Notifications may
   include alerts" banner are persistent, not transient, and sit over the window's trailing
-  toolbar. Every launch goes through `GuestBanners.settleAfterLaunch()` (called from
-  `launchBatty`), which waits once per runner process for the notifications banner and closes
-  any banner that is up by hovering it in `com.apple.notificationcenterui` and clicking Close.
-  `BattyScreen.openBellFeed` sweeps again before its click, and tests call `dismissBanners()`
-  before their own clicks near the top right (the gallery does so before each capture).
+  toolbar. Background Task Management posts the first one for each new plist in
+  `~/Library/LaunchAgents`, so `tools/vm-guest-broker.sh` writes the broker and CLI relay
+  plists to `~/Library/Application Support/BattyUITests/agents` instead (#0625). Every launch
+  goes through `GuestBanners.settleAfterLaunch(app:)` (called from `launchBatty`), which waits
+  once per runner process for the notifications banner and closes any banner that is up: it
+  hovers the banner in `com.apple.notificationcenterui` and clicks the `xmark` button hovering
+  reveals. Banners from one source stack; the top one is a Group labelled "…, stacked" whose
+  `xmark` is "Clear All", and the ones under it are Buttons with no `xmark`, so the sweep
+  hovers the stacked Group and looks the button up anywhere in Notification Center. A hover
+  that lands while a new banner is still sliding in reveals nothing, so the sweep waits for the
+  banner's frame to stop moving and hovers a second time if needed. Hovering activates
+  Notification Center and keeps its panel open while the pointer rests on a banner, so the
+  sweep parks the pointer on the app's window, re-activates the app under test and fails the
+  test if it doesn't come back to the front (or if the panel stays open once every banner is
+  closed); without that, a following `typeKey` chord goes to Notification Center (#0625). A banner the sweep can't close is recorded as an activity with
+  Notification Center's tree attached, not failed, so tests whose targets it doesn't cover
+  still run. `BattyScreen.openBellFeed` sweeps again before its click, and tests call
+  `dismissBanners(in:)` before their own clicks near the top right (the gallery does so before
+  each capture).
 - **Git fixture.** A Pane runs a script that builds the repository with real `git` (the
   sandboxed runner cannot exec it): a bare origin, a second clone that pushes (behind), local
   commits (ahead), then staged, modified, deleted, renamed and untracked files, a staged-then-

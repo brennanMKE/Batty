@@ -223,11 +223,7 @@ nonisolated final class ViewGalleryTests: XCTestCase {
 
     @MainActor
     private func capture(_ name: String, _ gallery: Gallery, note: String? = nil) {
-        dismissBanners()
-        gallery.app.activate()
-        for _ in 0..<5 {
-            if !dismissBanners() { break }
-        }
+        dismissBanners(in: gallery.app)
         let shot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(uniformTypeIdentifier: "public.png", name: "gallery.\(name).\(gallery.appearance.rawValue)", payload: shot.pngRepresentation)
         attachment.lifetime = .keepAlways

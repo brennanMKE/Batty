@@ -141,7 +141,7 @@ nonisolated final class ProjectsSharingTests: ProjectsUITestCase {
         let save = element("project-editor.save", in: app)
         XCTAssertFalse(save.isEnabled, "Save is enabled before any edit")
 
-        dismissBanners()
+        dismissBanners(in: app)
         box.click()
         XCTAssertTrue(waitFor({ self.isChecked(box) }, timeout: 5), "the click did not check the box")
         XCTAssertTrue(waitFor({ save.isEnabled }, timeout: 5), "checking Shared did not enable Save")

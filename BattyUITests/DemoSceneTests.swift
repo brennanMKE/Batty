@@ -139,7 +139,7 @@ nonisolated final class DemoSceneTests: ProjectsUITestCase {
         var script: [[String: Any]] = []
         if let theme { script.append(["intent": "applyTheme", "name": theme]) }
         let (app, _) = try launchApp(projects: projects ?? [], script: script, extraEnvironment: environment.merging(["DEMO_PREEXEC_FILE": preexec]) { current, _ in current })
-        dismissBanners()
+        dismissBanners(in: app)
         zoomWindow(in: app)
         return app
     }

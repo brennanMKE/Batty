@@ -34,7 +34,12 @@ for p in "$app"/Contents/Library/LaunchAgents/*.broker.plist(N); do src_plist="$
 label="$(/usr/libexec/PlistBuddy -c 'Print :Label' "$src_plist")"
 broker="$app/Contents/Resources/bin/BattyBroker"
 cli="$app/Contents/Resources/bin/batty"
-agent_plist="$HOME/Library/LaunchAgents/$label.plist"
+# Outside ~/Library/LaunchAgents on purpose: Background Task Management watches
+# that folder and posts a persistent "App Background Activity" banner for each
+# new plist, which sits over the app's toolbar (#0625). launchctl bootstrap
+# takes any path.
+agent_dir="$HOME/Library/Application Support/BattyUITests/agents"
+agent_plist="$agent_dir/$label.plist"
 
 note "app=$app label=$label uid=$uid"
 run /usr/bin/codesign -dvvv "$app"
@@ -42,7 +47,7 @@ run /usr/bin/codesign -dvvv "$broker"
 run /usr/bin/codesign --verify --deep --strict "$app"
 run /bin/launchctl managername
 
-/bin/mkdir -p "$HOME/Library/LaunchAgents"
+/bin/mkdir -p "$agent_dir"
 /bin/cat > "$agent_plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -74,7 +79,7 @@ run "$cli" ping
 # runner cannot run the CLI itself.
 relay_label="co.sstools.Batty.beta.uitest-cli-relay"
 relay_port=47911
-relay_plist="$HOME/Library/LaunchAgents/$relay_label.plist"
+relay_plist="$agent_dir/$relay_label.plist"
 relay_script="${0:A:h}/vm-guest-cli-relay.sh"
 /bin/cat > "$relay_plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
