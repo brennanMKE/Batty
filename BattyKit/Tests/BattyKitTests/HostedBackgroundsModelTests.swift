@@ -1,8 +1,13 @@
 // HostedBackgroundsModelTests.swift
 
 import Foundation
+import Observation
 import Testing
 @testable import BattyKit
+
+private nonisolated final class ContentsNotified: @unchecked Sendable {
+    var fired = false
+}
 
 @MainActor
 struct HostedBackgroundsModelTests {
@@ -81,6 +86,36 @@ struct HostedBackgroundsModelTests {
         #expect(fetcher.requests.last?.etag == "\"c1\"")
         #expect(hosted.catalogs.first?.catalog?.allImages.count == 2)
         #expect(hosted.catalogs.first?.problem == nil)
+    }
+
+    /// Background Sets reads `contents`; a check that finds the same catalog
+    /// must not invalidate it, though it rewrites `catalogs` three times.
+    @Test func aCheckThatFindsTheSameCatalogLeavesContentsUntouched() async throws {
+        let body = try serveCatalog()
+        await hosted.browseAppeared()
+        let before = hosted.contents
+        #expect(before.first?.catalog?.allImages.count == 2)
+        let notified = ContentsNotified()
+        withObservationTracking { _ = hosted.contents } onChange: { notified.fired = true }
+
+        _ = await f.clock.advance(by: .seconds(HostedBackgroundsModel.refreshInterval + 60))
+        fetcher.set(.notModified, for: catalogURL)
+        await hosted.windowBecameKey()
+        fetcher.set(.ok(body, etag: "\"c2\""), for: catalogURL)
+        await hosted.refresh(catalogURL)
+
+        #expect(fetcher.count(catalogURL) == 3)
+        #expect(!notified.fired, "a check of an unchanged catalog notified contents")
+        #expect(hosted.contents == before)
+    }
+
+    @Test func aCheckThatFindsAProblemUpdatesContents() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        fetcher.set(.ok(Data("<html>".utf8)), for: catalogURL)
+        await hosted.refresh(catalogURL)
+        #expect(hosted.contents.first?.problem == .invalid("Not a background catalog: (root)"))
+        #expect(hosted.contents.first?.catalog?.allImages.count == 2)
     }
 
     @Test func badNewBodyKeepsTheOldCopyAndShowsTheError() async throws {

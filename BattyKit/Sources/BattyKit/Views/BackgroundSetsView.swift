@@ -6,28 +6,34 @@ import SwiftUI
 /// only when it's picked as a background. Nothing in `body` writes observed
 /// state, and each cell's picture and digest are its own `@State`. The model's writes start from `.task`,
 /// a click or Refresh; `query` is written only by the filter field and its clear button.
+///
+/// `body` reads only what changes the sections: the catalogs' contents and the
+/// query. A check's progress, the selection and each image's download state are
+/// read by the controls and the cells, so a check or a click doesn't
+/// re-evaluate the grids above a scrolled viewport.
 struct BackgroundSetsView: View {
-    let hosted: HostedBackgroundsModel
-    let uses: [String: [BackgroundImageUse]]
+    let model: BackgroundImagesModel
     /// Nil in manage mode, where a click only selects.
     let onPick: ((String) -> Void)?
 
-    @State private var selected: HostedImageKey?
+    @State private var selection = GridSelection<HostedImageKey>()
     @State private var query = ""
+
+    private var hosted: HostedBackgroundsModel { model.hosted }
 
     private static let minimumCellWidth: CGFloat = 170
     private static let spacing: CGFloat = 16
 
     var body: some View {
-        let sections = BackgroundCatalogFilter.sections(hosted.catalogs, query: query)
+        let sections = BackgroundCatalogFilter.sections(hosted.contents, query: query)
         let trimmed = BackgroundCatalogFilter.normalizedQuery(query)
         VStack(spacing: 0) {
-            controls
+            BackgroundSetsControls(hosted: hosted, query: $query)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     ForEach(sections) { section in
-                        catalogSection(section.state, sets: section.sets, filtering: trimmed != nil)
+                        catalogSection(section.content, sets: section.sets, filtering: trimmed != nil)
                     }
                     if let trimmed, sections.isEmpty {
                         Text("No backgrounds match “\(trimmed)”")
@@ -46,56 +52,22 @@ struct BackgroundSetsView: View {
         }
     }
 
-    private var controls: some View {
-        HStack(spacing: 8) {
-            TextField("Filter", text: $query, prompt: Text("Filter sets and images"))
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 260)
-                .accessibilityIdentifier("background-sets.filter")
-            if !query.isEmpty {
-                Button {
-                    query = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(Text("Clear Filter"))
-                .accessibilityIdentifier("background-sets.filter.clear")
-            }
-            Spacer()
-            if hosted.isCheckingAny {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityIdentifier("background-sets.refreshing")
-            }
-            Button("Refresh") {
-                Task { await hosted.refreshAll() }
-            }
-            .disabled(hosted.isCheckingAny)
-            .help("Check every catalog for new sets")
-            .accessibilityIdentifier("background-sets.refresh")
-        }
-        .padding(.horizontal, Self.spacing)
-        .padding(.vertical, 8)
-    }
-
     @ViewBuilder
-    private func catalogSection(_ state: HostedCatalogState, sets: [BackgroundSet], filtering: Bool) -> some View {
+    private func catalogSection(_ content: HostedCatalogContent, sets: [BackgroundSet], filtering: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            if hosted.catalogs.count > 1 {
-                Text(verbatim: Self.header(for: state.url, among: hosted.catalogs.map(\.url)))
+            if hosted.contents.count > 1 {
+                Text(verbatim: Self.header(for: content.url, among: hosted.contents.map(\.url)))
                     .font(.title3.weight(.semibold))
             }
-            if let problem = state.problem {
-                banner(problem, url: state.url)
+            if let problem = content.problem {
+                banner(problem, url: content.url)
             }
-            if !filtering, state.catalog == nil, state.problem == nil {
+            if !filtering, content.catalog == nil, content.problem == nil {
                 ProgressView()
                     .frame(maxWidth: .infinity)
             }
             ForEach(sets) { set in
-                setSection(set, catalogURL: state.url)
+                setSection(set, catalogURL: content.url)
             }
         }
     }
@@ -158,17 +130,11 @@ struct BackgroundSetsView: View {
                     HostedBackgroundCell(
                         image: image,
                         catalogURL: catalogURL,
-                        hosted: hosted,
-                        uses: uses,
-                        isHighlighted: selected == key
+                        model: model,
+                        selection: selection,
+                        offersCancel: onPick != nil,
+                        activate: { click(image, key: key) }
                     )
-                    .contentShape(Rectangle())
-                    .onTapGesture { click(image, key: key) }
-                    .accessibilityActions {
-                        if onPick != nil, hosted.fetches[key] == .fetching {
-                            Button("Cancel Download") { click(image, key: key) }
-                        }
-                    }
                 }
             }
         }
@@ -178,25 +144,71 @@ struct BackgroundSetsView: View {
 
     private func click(_ image: HostedBackgroundImage, key: HostedImageKey) {
         guard let onPick else {
-            if selected != key { selected = key }
+            selection.select(key)
             return
         }
         // After a cancelling click nothing is being picked, so nothing is highlighted.
-        let next: HostedImageKey? = hosted.pickOrCancel(image) { onPick($0) } == nil ? nil : key
-        if selected != next { selected = next }
+        selection.select(hosted.pickOrCancel(image) { onPick($0) } == nil ? nil : key)
+    }
+}
+
+/// Reads the check state, so a check's start and finish re-render only this bar.
+private struct BackgroundSetsControls: View {
+    let hosted: HostedBackgroundsModel
+    @Binding var query: String
+
+    private static let spacing: CGFloat = 16
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField("Filter", text: $query, prompt: Text("Filter sets and images"))
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 260)
+                .accessibilityIdentifier("background-sets.filter")
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(Text("Clear Filter"))
+                .accessibilityIdentifier("background-sets.filter.clear")
+            }
+            Spacer()
+            if hosted.isCheckingAny {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityIdentifier("background-sets.refreshing")
+            }
+            Button("Refresh") {
+                Task { await hosted.refreshAll() }
+            }
+            .disabled(hosted.isCheckingAny)
+            .help("Check every catalog for new sets")
+            .accessibilityIdentifier("background-sets.refresh")
+        }
+        .padding(.horizontal, Self.spacing)
+        .padding(.vertical, 8)
     }
 }
 
 private struct HostedBackgroundCell: View {
     let image: HostedBackgroundImage
     let catalogURL: URL
-    let hosted: HostedBackgroundsModel
-    let uses: [String: [BackgroundImageUse]]
-    let isHighlighted: Bool
+    /// Its uses come from here rather than the grid, so a change to them
+    /// re-renders the cells and not the grids.
+    let model: BackgroundImagesModel
+    let selection: GridSelection<HostedImageKey>
+    /// Pick mode, where a click on a downloading image cancels it.
+    let offersCancel: Bool
+    let activate: () -> Void
 
     @State private var thumbnail: BackgroundImageThumbnail?
     @State private var digest: String?
 
+    private var hosted: HostedBackgroundsModel { model.hosted }
     private var key: HostedImageKey { HostedImageKey(image) }
     private var accessibilityName: String { HostedBackgroundImage.fileStem(of: image.full) }
     private var isDownloading: Bool { hosted.fetches[key] == .fetching }
@@ -223,7 +235,7 @@ private struct HostedBackgroundCell: View {
                 }
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
-                .activeOutline(isHighlighted, cornerRadius: 6)
+                .activeOutline(selection.id == key, cornerRadius: 6)
             Text(verbatim: BackgroundCatalogParser.displayText(image.title))
                 .font(.callout)
                 .lineLimit(1)
@@ -239,6 +251,13 @@ private struct HostedBackgroundCell: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("background-sets.cell.\(accessibilityName)")
+        .contentShape(Rectangle())
+        .onTapGesture(perform: activate)
+        .accessibilityActions {
+            if offersCancel, isDownloading {
+                Button("Cancel Download", action: activate)
+            }
+        }
     }
 
     @ViewBuilder
@@ -253,7 +272,7 @@ private struct HostedBackgroundCell: View {
                 .lineLimit(2)
                 .accessibilityIdentifier("background-sets.cell.\(accessibilityName).failed")
         case nil:
-            if let digest, !(uses[digest] ?? []).isEmpty {
+            if let digest, !(model.uses[digest] ?? []).isEmpty {
                 Text("In use")
                     .font(.caption)
                     .foregroundStyle(.secondary)

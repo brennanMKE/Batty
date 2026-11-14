@@ -138,6 +138,7 @@ final class BackgroundImagesModel {
     /// From memory only, with no scan, so it is cheap enough to run on an event.
     func refreshUses() {
         let found = findUses()
+        BackgroundImagesDiagnostics.shared.record(found == uses ? "uses refresh, unchanged" : "uses refresh, changed")
         if found != uses { uses = found }
     }
 

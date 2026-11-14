@@ -204,6 +204,135 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         XCTAssertTrue(waitFor({ remove.isEnabled }, timeout: 5), "the arrow key selected nothing")
     }
 
+    // MARK: - Selecting keeps the grid still
+
+    private static let jumpNames = (0..<24).map { String(format: "Jump-%02d", $0) }
+
+    /// 24 images make six rows at the window's 4 columns, so the grid scrolls.
+    private func seedScrollingLibrary() throws {
+        for name in Self.jumpNames {
+            _ = try BackgroundImageFixture.write(named: name, in: libraryFolder)
+        }
+    }
+
+    /// The frame once two reads in a row agree, so a scroll or a jump has settled.
+    /// The timeout only bounds a regression.
+    @MainActor
+    private func settledFrame(of element: XCUIElement) -> CGRect {
+        var last = element.frame
+        _ = waitFor({
+            let now = element.frame
+            defer { last = now }
+            return now == last
+        }, timeout: 3)
+        return element.frame
+    }
+
+    /// Kept on a pass too, so a run that doesn't reproduce still shows what it measured.
+    @MainActor
+    private func record(_ label: String, _ before: CGRect, _ after: CGRect) {
+        let attachment = XCTAttachment(string: "\(label): before \(before) after \(after)")
+        attachment.name = "jump-measure \(label)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
+    private func scrollGridDown(in app: XCUIApplication) {
+        let root = element("background-images.root", in: app)
+        XCTAssertTrue(root.waitForExistence(timeout: 5))
+        root.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).hover()
+        for _ in 0..<2 { root.scroll(byDeltaX: 0, deltaY: -240) }
+        _ = settledFrame(of: cell(Self.jumpNames[12], in: app))
+    }
+
+    /// Cells wholly inside the window, below its tab and above its bottom bar.
+    @MainActor
+    private func visibleJumpCells(in app: XCUIApplication) -> [XCUIElement] {
+        let bounds = window(in: app).frame.insetBy(dx: 0, dy: 70)
+        return Self.jumpNames.map { cell($0, in: app) }.filter { cell in
+            cell.exists && cell.isHittable && bounds.contains(cell.frame)
+        }
+    }
+
+    @MainActor
+    func testClickingACellAfterScrollingKeepsTheGridStill() throws {
+        try seedScrollingLibrary()
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        app.activate()
+        XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
+        openFromFileMenu(in: app)
+        XCTAssertTrue(cell(Self.jumpNames[0], in: app).waitForExistence(timeout: 10), "the grid never showed")
+        scrollGridDown(in: app)
+        let visible = visibleJumpCells(in: app)
+        XCTAssertGreaterThanOrEqual(visible.count, 2, "fewer than two whole cells on screen after scrolling")
+        guard visible.count >= 2 else { return }
+        let a = visible[0], b = visible[visible.count - 1]
+
+        let bBefore = settledFrame(of: b)
+        a.click()
+        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the click selected nothing")
+        let bAfter = settledFrame(of: b)
+        record("first click", bBefore, bAfter)
+        XCTAssertEqual(bAfter.minY, bBefore.minY, accuracy: 1, "the grid moved on the first click")
+
+        let aBefore = settledFrame(of: a)
+        b.click()
+        let aAfter = settledFrame(of: a)
+        record("later click", aBefore, aAfter)
+        XCTAssertEqual(aAfter.minY, aBefore.minY, accuracy: 1, "the grid moved on a later click")
+    }
+
+    @MainActor
+    func testArrowKeySelectionAfterScrollingKeepsTheGridStill() throws {
+        try seedScrollingLibrary()
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        app.activate()
+        XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
+        openFromFileMenu(in: app)
+        XCTAssertTrue(cell(Self.jumpNames[0], in: app).waitForExistence(timeout: 10), "the grid never showed")
+        scrollGridDown(in: app)
+        let visible = visibleJumpCells(in: app)
+        XCTAssertGreaterThanOrEqual(visible.count, 3, "fewer than three whole cells on screen after scrolling")
+        guard visible.count >= 3 else { return }
+        visible[0].click()
+        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the click selected nothing")
+        let probe = visible[visible.count - 1]
+        let before = settledFrame(of: probe)
+        app.typeKey(.rightArrow, modifierFlags: [])
+        let after = settledFrame(of: probe)
+        record("arrow key", before, after)
+        XCTAssertEqual(after.minY, before.minY, accuracy: 1, "the grid moved on an arrow key")
+    }
+
+    /// A cell the bottom edge cuts off: selecting it is a highlight, not a scroll.
+    @MainActor
+    func testClickingACellCutOffAtTheBottomKeepsTheGridStill() throws {
+        try seedScrollingLibrary()
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        app.activate()
+        XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
+        openFromFileMenu(in: app)
+        XCTAssertTrue(cell(Self.jumpNames[0], in: app).waitForExistence(timeout: 10), "the grid never showed")
+        let windowFrame = window(in: app).frame
+        let cutOff = Self.jumpNames.map { cell($0, in: app) }.first { cell in
+            cell.exists && cell.isHittable && cell.frame.maxY > windowFrame.maxY - 60
+        }
+        let probe = visibleJumpCells(in: app).first
+        XCTAssertNotNil(cutOff, "no cell is cut off at the bottom")
+        XCTAssertNotNil(probe, "no whole cell on screen")
+        guard let cutOff, let probe else { return }
+        let before = settledFrame(of: probe)
+        cutOff.click()
+        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the click selected nothing")
+        let after = settledFrame(of: probe)
+        record("cut-off click", before, after)
+        XCTAssertEqual(after.minY, before.minY, accuracy: 1, "the grid moved on a click on a cut-off cell")
+    }
+
     // MARK: - The picker
 
     @MainActor

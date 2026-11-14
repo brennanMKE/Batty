@@ -22,10 +22,8 @@ struct BackgroundCatalogFilterTests {
         BackgroundSet(id: 1, name: "Future Cities", images: [image("Tokyo Night"), image("Harbor Dawn")])
     }
 
-    private func state(_ host: String, sets: [BackgroundSet]?) -> HostedCatalogState {
-        var state = HostedCatalogState(url: URL(string: "https://\(host)/catalog.json")!, isBuiltIn: false)
-        state.catalog = sets.map { BackgroundCatalog(sets: $0) }
-        return state
+    private func state(_ host: String, sets: [BackgroundSet]?) -> HostedCatalogContent {
+        HostedCatalogContent(url: URL(string: "https://\(host)/catalog.json")!, catalog: sets.map { BackgroundCatalog(sets: $0) })
     }
 
     @Test func setNameMatchesIgnoringCaseAndDiacritics() {

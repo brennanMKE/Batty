@@ -6,9 +6,9 @@ import Foundation
 /// image, otherwise only the images whose titles match.
 nonisolated enum BackgroundCatalogFilter {
     struct Section: Identifiable, Equatable {
-        let state: HostedCatalogState
+        let content: HostedCatalogContent
         let sets: [BackgroundSet]
-        var id: URL { state.url }
+        var id: URL { content.url }
     }
 
     static func normalizedQuery(_ raw: String) -> String? {
@@ -30,13 +30,13 @@ nonisolated enum BackgroundCatalogFilter {
     }
 
     /// With a query, catalogs not loaded yet or with nothing matching are left out.
-    static func sections(_ catalogs: [HostedCatalogState], query: String) -> [Section] {
+    static func sections(_ catalogs: [HostedCatalogContent], query: String) -> [Section] {
         guard normalizedQuery(query) != nil else {
-            return catalogs.map { Section(state: $0, sets: $0.catalog?.sets ?? []) }
+            return catalogs.map { Section(content: $0, sets: $0.catalog?.sets ?? []) }
         }
-        return catalogs.compactMap { state in
-            let sets = filter(state.catalog?.sets ?? [], query: query)
-            return sets.isEmpty ? nil : Section(state: state, sets: sets)
+        return catalogs.compactMap { content in
+            let sets = filter(content.catalog?.sets ?? [], query: query)
+            return sets.isEmpty ? nil : Section(content: content, sets: sets)
         }
     }
 }

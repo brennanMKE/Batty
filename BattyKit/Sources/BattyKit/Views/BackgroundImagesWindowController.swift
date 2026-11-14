@@ -18,6 +18,7 @@ final class BackgroundImagesWindowController: NSObject, NSWindowDelegate {
 
     private(set) var window: NSWindow?
     private var model: BackgroundImagesModel?
+    private var scrollMonitor: BackgroundImagesScrollMonitor?
     /// The latest key-event catalog check; tests await it.
     private(set) var appearCheck: Task<Void, Never>?
 
@@ -41,6 +42,8 @@ final class BackgroundImagesWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.center()
         self.window = window
+        BackgroundImagesDiagnostics.shared.tab = "My Images"
+        scrollMonitor = BackgroundImagesScrollMonitor(window: window)
         return window
     }
 
@@ -56,6 +59,7 @@ final class BackgroundImagesWindowController: NSObject, NSWindowDelegate {
     /// due a check are checked too; the model throttles and merges checks.
     func windowDidBecomeKey(_ notification: Notification) {
         guard let model else { return }
+        BackgroundImagesDiagnostics.shared.record("window became key")
         model.refreshUses()
         let hosted = model.hosted
         appearCheck = Task { await hosted.windowBecameKey() }
@@ -64,6 +68,8 @@ final class BackgroundImagesWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         window?.delegate = nil
         window = nil
+        scrollMonitor?.stop()
+        scrollMonitor = nil
         model = nil
         appearCheck = nil
     }

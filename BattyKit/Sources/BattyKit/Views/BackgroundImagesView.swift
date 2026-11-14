@@ -22,7 +22,9 @@ struct BackgroundImagesView: View {
     let mode: Mode
 
     @State private var tab: Tab = .myImages
-    @State private var selectedDigest: String?
+    /// Read only by the cells and the Remove button, so a click doesn't
+    /// re-evaluate the grid.
+    @State private var selection = GridSelection<String>()
     @State private var isAdding = false
     @State private var removal: BackgroundImagesModel.RemovalPlan?
     @FocusState private var gridFocused: Bool
@@ -66,11 +68,7 @@ struct BackgroundImagesView: View {
             case .myImages:
                 content
             case .backgroundSets:
-                BackgroundSetsView(
-                    hosted: model.hosted,
-                    uses: model.uses,
-                    onPick: pickHandler
-                )
+                BackgroundSetsView(model: model, onPick: pickHandler)
             }
             Divider()
             bottomBar
@@ -151,10 +149,9 @@ struct BackgroundImagesView: View {
                 ForEach(model.entries) { entry in
                     BackgroundImageCell(
                         entry: entry,
-                        uses: model.uses[entry.digest] ?? [],
-                        sharedStatus: model.sharedStatus(forDigest: entry.digest),
-                        thumbnailer: model.thumbnailer,
-                        isHighlighted: entry.digest == selectedDigest || entry.digest == currentDigest
+                        model: model,
+                        selection: selection,
+                        isCurrent: entry.digest == currentDigest
                     )
                     .contentShape(Rectangle())
                     .onTapGesture { click(entry) }
@@ -191,6 +188,9 @@ struct BackgroundImagesView: View {
             set: { newValue in
                 guard newValue != tab else { return }
                 tab = newValue
+                if !isPicking {
+                    BackgroundImagesDiagnostics.shared.tab = newValue == .myImages ? "My Images" : "Background Sets"
+                }
                 if newValue == .myImages { gridFocused = true }
             }
         )
@@ -239,9 +239,7 @@ struct BackgroundImagesView: View {
                 }
             }
         if !isPicking {
-            Button("Remove…") { requestRemovalOfSelection() }
-                .disabled(selectedEntry == nil)
-                .accessibilityIdentifier("background-images.remove")
+            RemoveSelectionButton(model: model, selection: selection) { requestRemovalOfSelection() }
         }
         if let message = model.message {
             Text(message)
@@ -260,20 +258,20 @@ struct BackgroundImagesView: View {
     }
 
     private var selectedEntry: BackgroundImageEntry? {
-        model.entries.first { $0.digest == selectedDigest }
+        model.entries.first { $0.digest == selection.id }
     }
 
     private func move(_ direction: ProjectPickerDirection, columns: Int) {
         let digests = model.entries.map(\.digest)
         guard !digests.isEmpty else { return }
         let cursor = ProjectPickerGridCursor(sections: [.init(columns: columns, count: digests.count)])
-        let start = selectedDigest.flatMap(digests.firstIndex(of:))
+        let start = selection.id.flatMap(digests.firstIndex(of:))
             ?? currentDigest.flatMap(digests.firstIndex(of:))
-        selectedDigest = digests[start.map { cursor.moved(from: $0, direction) } ?? 0]
+        selection.select(digests[start.map { cursor.moved(from: $0, direction) } ?? 0])
     }
 
     private func click(_ entry: BackgroundImageEntry) {
-        selectedDigest = entry.digest
+        selection.select(entry.digest)
         gridFocused = true
         if isPicking { pick(entry) }
     }
@@ -300,7 +298,7 @@ struct BackgroundImagesView: View {
         if isPicking { model.hosted.supersedePicks() }
         Task {
             guard let entry = await model.add(from: url) else { return }
-            selectedDigest = entry.digest
+            selection.select(entry.digest)
             if case .pick(_, let onPick, _) = mode { onPick(entry.path) }
         }
     }
@@ -333,14 +331,32 @@ struct BackgroundImagesView: View {
     }
 }
 
+/// Reads the selection, so a click re-renders only this button and the two cells.
+private struct RemoveSelectionButton: View {
+    let model: BackgroundImagesModel
+    let selection: GridSelection<String>
+    let action: () -> Void
+
+    var body: some View {
+        Button("Remove…", action: action)
+            .disabled(!model.entries.contains { $0.digest == selection.id })
+            .accessibilityIdentifier("background-images.remove")
+    }
+}
+
+/// Reads its uses, shared status and highlight itself, so a change to one of
+/// them re-renders the cells and not the grid.
 private struct BackgroundImageCell: View {
     let entry: BackgroundImageEntry
-    let uses: [BackgroundImageUse]
-    let sharedStatus: SharedImageStatus?
-    let thumbnailer: BackgroundImageThumbnailer
-    let isHighlighted: Bool
+    let model: BackgroundImagesModel
+    let selection: GridSelection<String>
+    let isCurrent: Bool
 
     @State private var thumbnail: BackgroundImageThumbnail?
+
+    private var uses: [BackgroundImageUse] { model.uses[entry.digest] ?? [] }
+    private var sharedStatus: SharedImageStatus? { model.sharedStatus(forDigest: entry.digest) }
+    private var isHighlighted: Bool { isCurrent || selection.id == entry.digest }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -374,7 +390,7 @@ private struct BackgroundImageCell: View {
             }
         }
         .task(id: entry.digest) {
-            thumbnail = await thumbnailer.thumbnail(for: entry)
+            thumbnail = await model.thumbnailer.thumbnail(for: entry)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("background-images.cell.\(entry.name)")

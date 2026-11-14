@@ -37,6 +37,7 @@ nonisolated struct HostedCatalogState: Equatable, Sendable, Identifiable {
 
     var id: URL { url }
     var host: String { url.host ?? url.absoluteString }
+    var content: HostedCatalogContent { HostedCatalogContent(url: url, catalog: catalog, problem: problem) }
 
     static let unreachableAfter: TimeInterval = 7 * 24 * 60 * 60
 
@@ -51,12 +52,24 @@ nonisolated struct HostedCatalogState: Equatable, Sendable, Identifiable {
     }
 }
 
+/// What Background Sets shows of a catalog: none of a check's own bookkeeping,
+/// so a check that finds the same catalog changes nothing here.
+nonisolated struct HostedCatalogContent: Equatable, Sendable, Identifiable {
+    let url: URL
+    var catalog: BackgroundCatalog?
+    var problem: HostedCatalogProblem?
+
+    var id: URL { url }
+}
+
 /// What a hosted-background model needs from outside, so tests pass their own.
 struct HostedBackgroundsDependencies {
     var fetcher: BackgroundCatalogFetching
     var cacheRoot: URL
     var temporaryRoot: URL
     var clock: SchedulingClock
+    /// How long after a check a key event or Browse may check again.
+    var checkInterval: TimeInterval = HostedBackgroundsModel.refreshInterval
 }
 
 /// The Background Sets tab. The built-in catalog is not fetched before
@@ -70,6 +83,10 @@ final class HostedBackgroundsModel {
     static let maxConcurrentFetches = 2
 
     private(set) var catalogs: [HostedCatalogState] = []
+    /// `catalogs` without the check state, written only when that changes.
+    /// Background Sets reads this, so a check's start, finish and timestamps
+    /// don't invalidate its grids.
+    private(set) var contents: [HostedCatalogContent] = []
     private(set) var fetches: [HostedImageKey: HostedFetchState] = [:]
     private(set) var available: Set<HostedImageKey> = []
     /// In the order added. Written only by `addCatalog` and `removeCatalog`.
@@ -84,6 +101,7 @@ final class HostedBackgroundsModel {
     @ObservationIgnored private let fetcher: BackgroundCatalogFetching
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored let clock: SchedulingClock
+    @ObservationIgnored private let checkInterval: TimeInterval
     @ObservationIgnored private var running: [HostedImageKey: (id: UUID, task: Task<String?, Never>)] = [:]
     @ObservationIgnored private var lastRefresh: [URL: Date] = [:]
     @ObservationIgnored private var refreshing: [URL: Task<Void, Never>] = [:]
@@ -106,6 +124,7 @@ final class HostedBackgroundsModel {
         self.thumbnails = HostedThumbnailLoader(fetcher: dependencies.fetcher, cache: cache)
         self.defaults = defaults
         self.clock = dependencies.clock
+        self.checkInterval = dependencies.checkInterval
         self.userCatalogURLs = SettingsPreference.resolvedBackgroundCatalogURLs(defaults: defaults)
     }
 
@@ -150,6 +169,7 @@ final class HostedBackgroundsModel {
     /// The Refresh button: every catalog, ignoring the throttle.
     func refreshAll() async {
         guard !isRefreshingAll else { return }
+        BackgroundImagesDiagnostics.shared.record("Refresh")
         isRefreshingAll = true
         defer { isRefreshingAll = false }
         for url in catalogURLs { await refresh(url) }
@@ -170,7 +190,7 @@ final class HostedBackgroundsModel {
 
     private func refreshDue(_ urls: [URL]) async {
         let now = clock.now
-        for url in urls where Self.isCheckDue(lastCheck: lastCheck(url), now: now) {
+        for url in urls where Self.isCheckDue(lastCheck: lastCheck(url), now: now, interval: checkInterval) {
             await refresh(url)
         }
     }
@@ -265,7 +285,7 @@ final class HostedBackgroundsModel {
         await store.removeRecords(for: removedImages)
         await cache.removeAll(for: url)
         lastRefresh[url] = nil
-        if catalogs.contains(where: { $0.url == url }) { catalogs.removeAll { $0.url == url } }
+        setCatalogs(catalogs.filter { $0.url != url })
         await reconcileAvailability()
     }
 
@@ -299,6 +319,7 @@ final class HostedBackgroundsModel {
             let cached = await cache.cachedCatalog(for: url)
             update(url) { $0.catalog = cached?.catalog }
         }
+        BackgroundImagesDiagnostics.shared.record("catalog check")
         update(url) { $0.isChecking = true }
         let validators = await cache.state(for: url)
         let hasCopy = state(url)?.catalog != nil
@@ -494,11 +515,16 @@ final class HostedBackgroundsModel {
                 found.insert(HostedImageKey(image))
             }
         }
-        if found != available { available = found }
+        if found != available {
+            BackgroundImagesDiagnostics.shared.record("download state")
+            available = found
+        }
     }
 
     func thumbnail(for image: HostedBackgroundImage, catalogURL: URL) async -> BackgroundImageThumbnail {
-        await thumbnails.thumbnail(for: image, catalogURL: catalogURL)
+        let thumbnail = await thumbnails.thumbnail(for: image, catalogURL: catalogURL)
+        BackgroundImagesDiagnostics.shared.record("thumbnail load")
+        return thumbnail
     }
 
     /// False when `cancelFetch` takes the key out of the queue before a slot frees.
@@ -539,14 +565,29 @@ final class HostedBackgroundsModel {
             list.append(fresh)
         }
         list.sort { (order.firstIndex(of: $0.url) ?? .max) < (order.firstIndex(of: $1.url) ?? .max) }
+        setCatalogs(list)
+    }
+
+    private func setCatalogs(_ list: [HostedCatalogState]) {
         if list != catalogs { catalogs = list }
+        let content = list.map(\.content)
+        if content != contents {
+            BackgroundImagesDiagnostics.shared.record("catalog contents write")
+            contents = content
+        }
     }
 
     private func setFetch(_ key: HostedImageKey, _ value: HostedFetchState?) {
-        if fetches[key] != value { fetches[key] = value }
+        if fetches[key] != value {
+            BackgroundImagesDiagnostics.shared.record("download state")
+            fetches[key] = value
+        }
     }
 
     private func insertAvailable(_ key: HostedImageKey) {
-        if !available.contains(key) { available.insert(key) }
+        if !available.contains(key) {
+            BackgroundImagesDiagnostics.shared.record("download state")
+            available.insert(key)
+        }
     }
 }

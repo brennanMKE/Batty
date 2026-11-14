@@ -54,7 +54,8 @@ extension AppStateStore {
                 fetcher: FixtureBackgroundCatalogFetcher(directory: fixture),
                 cacheRoot: fixture.deletingLastPathComponent().appendingPathComponent("BackgroundCatalogCache", isDirectory: true),
                 temporaryRoot: HostedImageStore.defaultTemporaryRoot(),
-                clock: SystemClock()
+                clock: SystemClock(),
+                checkInterval: UITestDriver.backgroundCatalogCheckInterval() ?? HostedBackgroundsModel.refreshInterval
             )
         }
         return HostedBackgroundsDependencies(

@@ -64,6 +64,19 @@ public enum UITestDriver {
         return URL(fileURLWithPath: path, isDirectory: true)
     }
 
+    /// Seconds between catalog checks, so a UI test can have a check due on a
+    /// window's next key event. Honored only with the fixture folder.
+    public static let backgroundCatalogCheckIntervalEnvVar = "BATTY_UI_TEST_BACKGROUND_CATALOG_CHECK_INTERVAL"
+
+    static func backgroundCatalogCheckInterval(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> TimeInterval? {
+        guard backgroundCatalogFixtureDirectory(environment: environment) != nil,
+              let raw = environment[backgroundCatalogCheckIntervalEnvVar],
+              let seconds = TimeInterval(raw), seconds >= 0 else { return nil }
+        return seconds
+    }
+
     /// A fixture launch starts with no user catalogs, the built-in catalog not
     /// yet browsed, automatic checks at their default and no app-wide
     /// background. These keys, and the app-wide background's image folder,

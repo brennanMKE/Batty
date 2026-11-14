@@ -1,6 +1,7 @@
 // BackgroundCatalogFixture.swift
 
 import CoreGraphics
+import CryptoKit
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -39,6 +40,45 @@ nonisolated enum BackgroundCatalogFixture {
         }
         let catalog: [String: Any] = ["sets": sets]
         try JSONSerialization.data(withJSONObject: catalog).write(to: folder.appending(path: "catalog.json"))
+    }
+
+    /// The shipped catalog, `website/backgrounds/catalog.json`, with every set, title
+    /// and path as published. Each thumbnail is a plain 480 x 300 PNG, the shipped
+    /// thumbnails' size, because the real ones live in Git LFS.
+    static func writeShipped(in folder: URL) throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "website/backgrounds/catalog.json")
+        let data = try Data(contentsOf: source)
+        let catalog = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sets = try XCTUnwrap(catalog["sets"] as? [[String: Any]])
+        for (setIndex, set) in sets.enumerated() {
+            let images = try XCTUnwrap(set["images"] as? [[String: Any]])
+            for (index, image) in images.enumerated() {
+                let thumbnail = folder.appending(path: try XCTUnwrap(image["thumbnail"] as? String))
+                try FileManager.default.createDirectory(at: thumbnail.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try png(width: 480, height: 300, seed: setIndex * 10 + index).write(to: thumbnail)
+            }
+        }
+        try data.write(to: folder.appending(path: "catalog.json"))
+    }
+
+    /// Marks the built-in catalog's images at `fullPaths` as already downloaded,
+    /// the way `HostedImageStore` leaves them: a PNG in `<hostedFolder>/<digest>/`
+    /// named for its own SHA-256, and a `hosted-images.json` record keyed by the
+    /// image's resolved full URL. The app then shows "Available offline" on them.
+    static func seedDownloaded(_ fullPaths: [String], into hostedFolder: URL) throws {
+        var records: [[String: Any]] = []
+        for (index, path) in fullPaths.enumerated() {
+            let data = try png(width: 96, height: 60, seed: 50 + index)
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            let folder = hostedFolder.appending(path: digest)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let stem = (path as NSString).lastPathComponent
+            try data.write(to: folder.appending(path: stem))
+            records.append(["url": "https://batty.sstools.co/backgrounds/" + path, "digest": digest, "fetchedAt": 0])
+        }
+        try JSONSerialization.data(withJSONObject: records).write(to: hostedFolder.appending(path: "hosted-images.json"))
     }
 
     /// A user catalog on another host, served from `hosts/<host>/`: one set
