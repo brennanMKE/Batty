@@ -20,7 +20,8 @@ struct ProcessStatusPaneView: View {
     @Bindable var content: ProcessStatusPaneContent
     @Bindable var tree: SplitTree
 
-    /// Populated only inside `pickRunningProcess()`'s `Button` action
+    /// The open "Pick a Running Process…" popover and the list it shows, set
+    /// only inside `pickRunningProcess()`'s `Button` action
     /// (review round 1, S4) — never computed inline inside a `Menu`'s
     /// content closure. `chooseProcessMenu` is a plain computed property
     /// evaluated as part of `body`, and `body` re-evaluates once a second
@@ -33,8 +34,12 @@ struct ProcessStatusPaneView: View {
     /// ~470 constructed `Button` views, once a second, against the
     /// design's ~0.03 ms/tick budget (§4). A `Button` action closure, by
     /// contrast, is unambiguously invoked only on an actual click.
-    @State private var runningProcessesCache: [ProcessInspector.RunningProcess] = []
-    @State private var isPickingProcess = false
+    ///
+    /// The list travels in the `.popover(item:)` value rather than in its own
+    /// `@State` beside an `isPresented` flag: the first presentation reads such
+    /// a separate list at its previous value, so the picker opened empty
+    /// (#0626, pinned by `RunningProcessPickerPresentationTests`).
+    @State private var pickerRequest: RunningProcessPickerRequest?
 
     var body: some View {
         ScrollView {
@@ -231,8 +236,8 @@ struct ProcessStatusPaneView: View {
         .menuStyle(.button)
         .fixedSize()
         .accessibilityIdentifier("process-status.choose-process")
-        .popover(isPresented: $isPickingProcess) {
-            runningProcessPicker
+        .popover(item: $pickerRequest) { request in
+            runningProcessPicker(request.processes)
         }
     }
 
@@ -253,32 +258,30 @@ struct ProcessStatusPaneView: View {
         }
     }
 
-    /// Runs only from a `Button` action (see `runningProcessesCache`). The
-    /// popover stays attached to `chooseProcessMenu` alone; every entry point
-    /// flips the same `isPickingProcess`.
+    /// Runs only from a `Button` action (see `pickerRequest`). The popover
+    /// stays attached to `chooseProcessMenu` alone; every entry point sets the
+    /// same `pickerRequest`.
     private func pickRunningProcess() {
-        runningProcessesCache = ProcessInspector.allSameUserProcesses()
-            .sorted(by: ProcessInspector.RunningProcess.listOrder)
-        isPickingProcess = true
+        pickerRequest = RunningProcessPickerRequest(
+            processes: ProcessInspector.allSameUserProcesses()
+                .sorted(by: ProcessInspector.RunningProcess.listOrder)
+        )
     }
 
-    /// The list `pickRunningProcess`'s `Button` action populates
-    /// `runningProcessesCache` for — a `.popover`, not a nested `Menu`, so
-    /// the (already-fetched, already-cheap-to-render-from-`@State`) list
-    /// is unambiguously built once per open rather than re-built on every
-    /// `body` re-evaluation.
-    private var runningProcessPicker: some View {
+    /// A `.popover`, not a nested `Menu`, so the list is fetched once per open
+    /// by the opening action rather than on every `body` re-evaluation.
+    private func runningProcessPicker(_ processes: [ProcessInspector.RunningProcess]) -> some View {
         RunningProcessPickerView(
-            processes: runningProcessesCache,
+            processes: processes,
             onPick: { process, followByName in
                 if followByName {
                     content.retarget(to: .followingName(process.name), seedPid: process.id)
                 } else {
                     content.retarget(to: .pinned(process.id))
                 }
-                isPickingProcess = false
+                pickerRequest = nil
             },
-            onDismiss: { isPickingProcess = false }
+            onDismiss: { pickerRequest = nil }
         )
     }
 

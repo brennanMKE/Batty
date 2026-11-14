@@ -17,8 +17,9 @@ import XCTest
 nonisolated final class ProcessStatusPickerTests: XCTestCase {
     private var fixtureName: String!
     private var fixturePath: String!
+    private var fixtureLogPath: String!
+    private var terminalPane: UUID?
     private var scratch: URL!
-    private var errorLogPath: String { NSTemporaryDirectory() + "bt-fixture-errors.log" }
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -26,9 +27,17 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
         scratch = try BattyCLI.makeScratchDirectory()
         fixtureName = "bt-follow-" + UUID().uuidString.prefix(5).lowercased()
         fixturePath = "/tmp/" + fixtureName
+        fixtureLogPath = NSTemporaryDirectory() + "batty-ui-test-fixture-\(UUID().uuidString.prefix(8)).log"
+        FileManager.default.createFile(atPath: fixtureLogPath, contents: nil)
     }
 
     override func tearDownWithError() throws {
+        if let log = try? String(contentsOfFile: fixtureLogPath, encoding: .utf8) {
+            let attachment = XCTAttachment(string: log)
+            attachment.name = "fixture log"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
         try? FileManager.default.removeItem(atPath: fixturePath)
         BattyUITestHarness.sweepSentinels()
     }
@@ -39,27 +48,47 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
     private func launchWithProcessStatusPane() throws -> (app: XCUIApplication, terminal: UUID) {
         let app = BattyUITestHarness.launchBatty()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
+        app.activate()
         let (_, initial) = try BattyCLI.connect(to: app, from: ProcessStatusPickerTests.self)
         let session = try XCTUnwrap(initial.selectedSession)
         let result = BattyCLI.runExpectingSuccess(["pane", "split", "--view", "process-status", "--pane", session.focusedPaneID.uuidString])
         XCTAssertNotNil(result.ids.last, "pane split --view process-status printed no id")
         XCTAssertTrue(BattyScreen.element("process-status-view", in: app).waitForExistence(timeout: 15))
+        terminalPane = session.focusedPaneID
         return (app, session.focusedPaneID)
     }
 
     /// Splits `terminal` with a Pane that copies `/bin/sleep` to the fixture
     /// path (once) and runs it, so the fixture is a child of the Pane's shell.
+    /// Returns once the script has logged its `exec` line.
     @MainActor
     @discardableResult
     private func startFixture(from terminal: UUID) throws -> UUID {
+        let token = UUID().uuidString.prefix(6).lowercased()
+        let log = fixtureLogPath!, path = fixturePath!
         let body = """
-        [ -x \(fixturePath!) ] || cp /bin/sleep \(fixturePath!) 2>>\(errorLogPath)
-        \(fixturePath!) 300 2>>\(errorLogPath)
-        echo rc=$? >>\(errorLogPath)
+        echo "\(token) $$ $(/bin/date +%s) started" >>\(log)
+        if [ -x \(path) ]; then
+          echo "\(token) $$ $(/bin/date +%s) reused" >>\(log)
+        else
+          cp /bin/sleep \(path) 2>>\(log)
+          echo "\(token) $$ $(/bin/date +%s) copied rc=$?" >>\(log)
+        fi
+        echo "\(token) $$ $(/bin/date +%s) exec" >>\(log)
+        \(path) 300 2>>\(log)
+        echo "\(token) $$ $(/bin/date +%s) rc=$?" >>\(log)
         """
         let command = try BattyCLI.makeScript(in: scratch, named: "fixture-\(UUID().uuidString.prefix(6)).sh", body: body)
         let result = BattyCLI.runExpectingSuccess(["pane", "split", "--pane", terminal.uuidString, "--command", command])
-        return try XCTUnwrap(result.ids.last, "pane split --command printed no id")
+        let pane = try XCTUnwrap(result.ids.last, "pane split --command printed no id")
+        guard waitFor({
+            guard let text = try? String(contentsOfFile: log, encoding: .utf8) else { return false }
+            return text.split(separator: "\n").contains { $0.hasPrefix("\(token) ") && $0.hasSuffix(" exec") }
+        }, timeout: 60) else {
+            XCTFail("the fixture script never reached exec; log=\(String(describing: try? String(contentsOfFile: log, encoding: .utf8)))")
+            throw XCTestError(.failureWhileWaiting)
+        }
+        return pane
     }
 
     @MainActor
@@ -71,6 +100,7 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
     private func openPicker(_ app: XCUIApplication) {
         let choose = BattyScreen.element("process-status.choose-process", in: app)
         XCTAssertTrue(choose.waitForExistence(timeout: 10), "no Choose Process… menu")
+        XCTAssertTrue(waitFor({ choose.isHittable }, timeout: 10), "the Choose Process… menu is not hittable")
         choose.click()
         let item = app.menuItems["Pick a Running Process…"]
         XCTAssertTrue(item.waitForExistence(timeout: 5), "no Pick a Running Process… item")
@@ -97,9 +127,11 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
         pid_t(identifier.dropFirst("process-status.picker.row.".count))
     }
 
-    /// Opens the picker filtered to the fixture's name and returns its pid,
-    /// reopening until the freshly started fixture is listed (the list is
-    /// fetched once per open). Leaves the picker open with the name typed.
+    /// Opens the picker once, filtered to the fixture's name, and returns its
+    /// pid. Callers start the fixture first and wait for its `exec` line, so
+    /// the list fetched by this open already holds it; there is deliberately
+    /// no reopen, which would hide a picker that opens on a stale or empty
+    /// list. Leaves the picker open with the name typed.
     @MainActor
     private func openPickerOnFixture(_ app: XCUIApplication, excluding stale: pid_t? = nil) throws -> pid_t {
         try openPickerOnFixtures(app, count: 1, excluding: stale)[0]
@@ -109,28 +141,60 @@ nonisolated final class ProcessStatusPickerTests: XCTestCase {
     /// fixtures; the pids come back in row order.
     @MainActor
     private func openPickerOnFixtures(_ app: XCUIApplication, count: Int, excluding stale: pid_t? = nil) throws -> [pid_t] {
-        var lastTree: [String] = []
-        for _ in 0..<6 {
-            openPicker(app)
-            app.typeText(fixtureName)
-            var found: [pid_t] = []
-            waitFor({
-                let rows = self.rows(app)
-                guard rows.count == count else { return false }
-                let pids = (0..<count).compactMap { self.pid(ofRow: rows.element(boundBy: $0).identifier) }
-                guard pids.count == count, !pids.contains(where: { $0 == stale }) else { return false }
-                found = pids
-                return true
-            }, timeout: 5)
-            if !found.isEmpty { return found }
-            lastTree = app.popovers.firstMatch.descendants(matching: .any).allElementsBoundByIndex.prefix(30)
-                .map { "\($0.elementType.rawValue)|\($0.identifier)|\($0.label)" }
-            app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
-            app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
-            XCTAssertTrue(waitFor({ !app.popovers.firstMatch.exists }, timeout: 10))
-        }
-        XCTFail("the fixture \(fixtureName!) never appeared in the picker; tree=\(lastTree) fixtureLog=\(String(describing: try? String(contentsOfFile: errorLogPath, encoding: .utf8)))")
+        openPicker(app)
+        app.typeText(fixtureName)
+        var found: [pid_t] = []
+        waitFor({
+            let rows = self.rows(app)
+            guard rows.count == count else { return false }
+            let pids = (0..<count).compactMap { self.pid(ofRow: rows.element(boundBy: $0).identifier) }
+            guard pids.count == count, !pids.contains(where: { $0 == stale }) else { return false }
+            found = pids
+            return true
+        }, timeout: 5)
+        if !found.isEmpty { return found }
+        let dump = failureDump(app)
+        XCTFail("the fixture \(fixtureName!) never appeared in the picker; \(dump)")
         throw XCTestError(.failureWhileWaiting)
+    }
+
+    /// Collects what distinguishes the candidate causes when the fixture row
+    /// is missing: the filter value, the unfiltered row count (0 means the
+    /// process walk failed), the fixture log, and a `ps`/unified-log snapshot
+    /// taken from a Batty Pane. Never asserts.
+    @MainActor
+    private func failureDump(_ app: XCUIApplication) -> String {
+        let filter = value("process-status.picker.filter-field", in: app) ?? "<nil>"
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        waitFor({ self.rows(app).count > 0 }, timeout: 5)
+        let unfiltered = rows(app).count
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        waitFor({ !app.popovers.firstMatch.exists }, timeout: 5)
+        let log = (try? String(contentsOfFile: fixtureLogPath, encoding: .utf8)) ?? "<no log>"
+        let exists = FileManager.default.fileExists(atPath: fixturePath)
+        var snapshot = "<no snapshot>"
+        if let terminal = terminalPane {
+            let diag = BattyUITestHarness.sentinelPath(named: "diag") + ".txt"
+            let done = diag + ".done"
+            let predicate = #"process IN {"amfid","syspolicyd","XprotectService","kernel"} AND (eventMessage CONTAINS "bt-" OR eventMessage CONTAINS "sleep")"#
+            let body = """
+            { /bin/ps -axo pid,ppid,stat,etime,comm; /usr/bin/log show --last 3m --style compact --predicate '\(predicate)'; } >\(diag) 2>&1
+            echo done >\(done)
+            """
+            if let command = try? BattyCLI.makeScript(in: scratch, named: "diag-\(UUID().uuidString.prefix(6)).sh", body: body) {
+                let pane = BattyCLI.run(["pane", "split", "--pane", terminal.uuidString, "--command", command]).ids.last
+                if BattyUITestHarness.waitForFile(at: done, timeout: 90), let text = try? String(contentsOfFile: diag, encoding: .utf8) {
+                    let attachment = XCTAttachment(string: text)
+                    attachment.name = "process snapshot"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                    let relevant = text.split(separator: "\n").filter { $0.contains("bt-") || $0.contains(" sh") || $0.contains("cp") }
+                    snapshot = relevant.prefix(40).joined(separator: "\n")
+                }
+                if let pane { _ = BattyCLI.run(["pane", "close", "--pane", pane.uuidString]) }
+            }
+        }
+        return "filter=\(filter) unfiltered=\(unfiltered) fixtureExists=\(exists) log=\(log) snapshot=\n\(snapshot)"
     }
 
     // MARK: - Tests

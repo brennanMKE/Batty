@@ -2,6 +2,17 @@
 
 import SwiftUI
 
+/// One presentation of the "Pick a Running Process…" popover, carrying the
+/// list fetched by the action that opened it. Presented through
+/// `.popover(item:)`, so the popover's content can only read this open's list:
+/// a list kept in separate `@State` beside an `isPresented` flag is read at its
+/// previous value on the first presentation (#0626). Each open is a new
+/// identity, so a reopen always presents fresh content.
+struct RunningProcessPickerRequest: Identifiable {
+    let id = UUID()
+    let processes: [ProcessInspector.RunningProcess]
+}
+
 /// Popover content for "Pick a Running Process…". Owns the filter query,
 /// highlight and follow toggle as view-local `@State` so they survive the
 /// parent's once-a-second re-evaluation; filtering the cached array is cheap
