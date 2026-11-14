@@ -1352,7 +1352,7 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
         draft?.background = cleared
         backgroundImageState = .none
         if !baselineNamed {
-            draft?.captureNotes[.background] = String(localized: "The image you chose was removed, so this Project has no image.", comment: "Project Editor: the draft's background image was removed in the Background Images window")
+            draft?.captureNotes[.background] = String(localized: "The image you chose was removed, so this Project has no image.", comment: "Project Editor: the draft's background image was removed in the Background Images picker")
         }
     }
 
@@ -1384,9 +1384,9 @@ extension ProjectEditorViewModel: BackgroundOverrideHolder {
         self.draft?.layout.root = root
         for field in notes {
             self.draft?.captureNotes[field] = if case .paneBackground = field {
-                String(localized: "The image you chose was removed, so this Pane has no image.", comment: "Project Editor: a Pane's background image was removed in the Background Images window")
+                String(localized: "The image you chose was removed, so this Pane has no image.", comment: "Project Editor: a Pane's background image was removed in the Background Images picker")
             } else {
-                String(localized: "The image you chose was removed, so this Tab has no image.", comment: "Project Editor: a Tab's background image was removed in the Background Images window")
+                String(localized: "The image you chose was removed, so this Tab has no image.", comment: "Project Editor: a Tab's background image was removed in the Background Images picker")
             }
         }
         refreshTabImageStates()

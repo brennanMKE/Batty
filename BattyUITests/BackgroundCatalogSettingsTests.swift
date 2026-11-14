@@ -94,7 +94,7 @@ nonisolated final class BackgroundCatalogSettingsTests: ProjectsUITestCase {
         openAppearanceSettings(in: app)
         add(userURL, in: app)
         XCTAssertTrue(row(userURL, in: app).waitForExistence(timeout: 10), "the catalog was not added")
-        app.buttons["appearance-background.manage-images"].click()
+        app.buttons["appearance-background.choose-image"].click()
         let tab = app.radioButtons["Background Sets"].firstMatch
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
         tab.click()

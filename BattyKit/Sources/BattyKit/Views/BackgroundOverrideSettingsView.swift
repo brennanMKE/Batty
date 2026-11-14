@@ -186,7 +186,7 @@ struct BackgroundOverrideEditor {
     }
 
     /// A copy-shaped path whose file is gone was removed in the Background
-    /// Images window while this sheet was open: new Tabs must not get it back.
+    /// Images picker while this sheet was open: new Tabs must not get it back.
     func cancel() {
         target.cancelRestore(originalOverride.map(restorable), replaced: replacedOverrides.mapValues(restorable), pending: pending)
     }

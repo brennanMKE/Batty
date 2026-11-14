@@ -311,10 +311,6 @@ private struct TerminalBackgroundSettingsSection: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack {
-                Button("Manage Images…") {
-                    BackgroundImagesWindowController.shared.show(store: store)
-                }
-                .accessibilityIdentifier("appearance-background.manage-images")
                 Button("Restore Defaults") {
                     cancelImport()
                     snapshot = editor.reset()

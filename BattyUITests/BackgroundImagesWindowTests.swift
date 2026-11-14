@@ -2,8 +2,9 @@
 
 import XCTest
 
-/// The Background Images window and picker (#0552). The library sits beside the
-/// isolated `projects.json`. Assertions go by named cell, never by total count,
+/// The Background Images picker (#0552), which opens from Pane > Background
+/// Images… and each background control's Choose… (#0629: there is no
+/// standalone window). The library sits beside the isolated `projects.json`. Assertions go by named cell, never by total count,
 /// because the app-wide folder scanned here is the guest's real one.
 nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
     private var libraryFolder: URL { storeFile.deletingLastPathComponent().appending(path: "BackgroundImages") }
@@ -24,15 +25,8 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
     }
 
     @MainActor
-    private func window(in app: XCUIApplication) -> XCUIElement {
-        BattyUITestHarness.window(withIdentifier: "background-images", in: app)
-    }
-
-    @MainActor
-    private func openFromFileMenu(in app: XCUIApplication) {
-        let menu = openMenu("File", in: app)
-        menuItem("Background Images", in: menu).click()
-        XCTAssertTrue(window(in: app).waitForExistence(timeout: 5), "File menu did not open the window")
+    private func pickerRoot(in app: XCUIApplication) -> XCUIElement {
+        element("background-images.picker.root", in: app)
     }
 
     @MainActor
@@ -109,62 +103,88 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
     // MARK: - Entry points
 
     @MainActor
-    func testFileMenuOpensTheWindowAndWindowMenuListsIt() throws {
+    func testPaneMenuOpensThePickerAndPickingSetsThePanesImage() throws {
+        _ = try BackgroundImageFixture.write(named: "Harbor-menu", in: libraryFolder)
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
-        openFromFileMenu(in: app)
-        let windowMenu = openMenu("Window", in: app)
-        XCTAssertTrue(menuTitles(windowMenu).contains("Background Images"), "not in the Window menu: \(menuTitles(windowMenu))")
+        openPaneBackgroundPicker(in: app)
+        waitForPicture("Harbor-menu", in: app)
+        cell("Harbor-menu", in: app).click()
+        XCTAssertTrue(waitFor({ !self.pickerRoot(in: app).exists }, timeout: 10), "the picker stayed open")
+        let disclosure = app.descendants(matching: .disclosureTriangle).firstMatch
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        disclosure.click()
+        let gear = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pane-background-settings.'")).firstMatch
+        XCTAssertTrue(gear.waitForExistence(timeout: 5))
+        gear.click()
+        let custom = app.buttons["pane-background-sheet.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        XCTAssertEqual(custom.value as? String, "selected", "the Pane still follows")
+        XCTAssertTrue(waitFor({ app.buttons["pane-background-sheet.no-image"].isEnabled }, timeout: 10), "the pick did not set the Pane's image")
+        app.buttons["pane-background-sheet.done"].click()
+    }
+
+    @MainActor
+    func testPaneMenuBackgroundImagesIsDisabledOnAViewPane() throws {
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        let paneMenu = openMenu("Pane", in: app)
+        let open = paneMenu.children(matching: .menuItem)["Process Status"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5), "Pane menu has no Process Status item: \(menuTitles(paneMenu))")
+        open.click()
+        let view = element("process-status-view", in: app)
+        XCTAssertTrue(view.waitForExistence(timeout: 20), "Process Status did not open")
+        view.click()
+        let menu = openMenu("Pane", in: app)
+        let item = menuItem("Background Images", in: menu)
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        XCTAssertFalse(item.isEnabled, "Background Images… is enabled on a view Pane")
         closeMenus(app)
     }
 
     @MainActor
-    func testCommandPaletteOpensTheWindow() throws {
+    func testNoStandaloneBackgroundImagesEntryPoints() throws {
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
-        _ = openCommandPalette(in: app)
-        app.typeText("Background Images")
-        app.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(window(in: app).waitForExistence(timeout: 5), "the palette did not open the window")
-    }
-
-    @MainActor
-    func testSettingsManageImagesOpensTheWindow() throws {
-        let (app, _) = try launchApp(projects: [], connectCLI: false)
-        defer { app.terminate() }
+        let file = openMenu("File", in: app)
+        XCTAssertTrue(file.menuItems["Open Project"].waitForExistence(timeout: 5))
+        XCTAssertFalse(menuItem("Background Images", in: file).exists, "File still has Background Images: \(menuTitles(file))")
+        closeMenus(app)
         openSettingsAppearance(in: app)
-        let manage = app.buttons["appearance-background.manage-images"]
-        XCTAssertTrue(manage.waitForExistence(timeout: 5))
-        manage.click()
-        XCTAssertTrue(window(in: app).waitForExistence(timeout: 5), "Manage Images did not open the window")
+        XCTAssertTrue(app.buttons["appearance-background.choose-image"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["appearance-background.manage-images"].exists, "Settings still has Manage Images…")
     }
 
-    // MARK: - The window
+    // MARK: - Showing and removing images
 
     @MainActor
     func testAnImageShowsItsThumbnailNameAndSize() throws {
         _ = try BackgroundImageFixture.write(named: "Harbor-show", in: libraryFolder)
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
-        openFromFileMenu(in: app)
+        openPaneBackgroundPicker(in: app)
         waitForPicture("Harbor-show", in: app)
         XCTAssertTrue(element("background-images.cell.Harbor-show.size", in: app).exists)
         XCTAssertEqual(element("background-images.cell.Harbor-show.uses", in: app).value as? String, "Not in use")
     }
 
+    /// A click picks, so the context menu is how a pointer removes an image.
     @MainActor
     func testRemovingAnUnusedImageRemovesItsCell() throws {
         let path = try BackgroundImageFixture.write(named: "Harbor-remove", in: libraryFolder)
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
-        openFromFileMenu(in: app)
+        openPaneBackgroundPicker(in: app)
         waitForPicture("Harbor-remove", in: app)
-        cell("Harbor-remove", in: app).click()
-        app.buttons["background-images.remove"].click()
+        cell("Harbor-remove", in: app).rightClick()
+        let remove = app.menuItems["Remove…"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 5), "the cell has no Remove… menu item")
+        remove.click()
         let confirm = app.buttons["background-images.confirm-remove"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.click()
         XCTAssertTrue(waitFor({ !self.cell("Harbor-remove", in: app).exists }, timeout: 10), "the cell stayed")
+        XCTAssertTrue(pickerRoot(in: app).exists, "the picker closed")
         XCTAssertFalse(FileManager.default.fileExists(atPath: path))
     }
 
@@ -173,11 +193,10 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let path = try BackgroundImageFixture.write(named: "Harbor-project", in: projectFolder)
         let (app, _) = try launchApp(projects: [try project(name: "Uses Image", imagePath: path)], connectCLI: false)
         defer { app.terminate() }
-        openFromFileMenu(in: app)
+        openPaneBackgroundPicker(in: app)
         waitForPicture("Harbor-project", in: app)
         XCTAssertEqual(element("background-images.cell.Harbor-project.uses", in: app).value as? String, "Project Uses Image")
-        cell("Harbor-project", in: app).click()
-        app.buttons["background-images.remove"].click()
+        requestRemoval(of: "Harbor-project", in: app) { app.buttons["background-images.remove"].click() }
         let confirm = app.buttons["background-images.confirm-remove"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.click()
@@ -189,6 +208,41 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         XCTAssertEqual(background?["terminalOpacity"] as? Double, 0.6)
     }
 
+    @MainActor
+    func testDeleteKeyRemovesTheSelectedImageInThePicker() throws {
+        let path = try BackgroundImageFixture.write(named: "Harbor-delete", in: libraryFolder)
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        openPaneBackgroundPicker(in: app)
+        waitForPicture("Harbor-delete", in: app)
+        requestRemoval(of: "Harbor-delete", in: app) { app.typeKey(.delete, modifierFlags: []) }
+        app.buttons["background-images.confirm-remove"].click()
+        XCTAssertTrue(waitFor({ !self.cell("Harbor-delete", in: app).exists }, timeout: 10), "the cell stayed")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+    }
+
+    /// Selects by arrow key, since a click picks, and asks to remove with
+    /// `trigger`. The app-wide folder scanned here is the guest's real one, so
+    /// the fixture may not be the first cell: until the dialog names `name`,
+    /// it is dismissed and the next cell selected. The step count only bounds
+    /// a regression. Returns with the dialog for `name` up.
+    @MainActor
+    private func requestRemoval(of name: String, in app: XCUIApplication, using trigger: () -> Void) {
+        let confirm = app.buttons["background-images.confirm-remove"]
+        let title = app.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", "Remove \(name)?", "Remove \(name)?")).firstMatch
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the arrow key selected nothing")
+        for _ in 0..<40 {
+            trigger()
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Remove asked nothing")
+            if title.waitForExistence(timeout: 1) { return }
+            app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+            XCTAssertTrue(waitFor({ !confirm.exists }, timeout: 5), "the dialog stayed")
+            app.typeKey(.rightArrow, modifierFlags: [])
+        }
+        XCTFail("the arrow keys never reached \(name)")
+    }
+
     /// A fresh launch, so this is the first open: the grid only exists once the
     /// scan has finished, and no click has given it focus.
     @MainActor
@@ -196,7 +250,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         _ = try BackgroundImageFixture.write(named: "Harbor-keys", in: libraryFolder)
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
-        openFromFileMenu(in: app)
+        openPaneBackgroundPicker(in: app)
         waitForPicture("Harbor-keys", in: app)
         let remove = app.buttons["background-images.remove"]
         XCTAssertFalse(remove.isEnabled)
@@ -208,7 +262,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
 
     private static let jumpNames = (0..<24).map { String(format: "Jump-%02d", $0) }
 
-    /// 24 images make six rows at the window's 4 columns, so the grid scrolls.
+    /// 24 images make eight rows at the picker's 3 columns, so the grid scrolls.
     private func seedScrollingLibrary() throws {
         for name in Self.jumpNames {
             _ = try BackgroundImageFixture.write(named: name, in: libraryFolder)
@@ -237,53 +291,34 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         add(attachment)
     }
 
+    /// The grid lists the newest image first and builds only the cells near
+    /// the visible rows, so no one fixture name is sure to exist on open.
+    @MainActor
+    private func anyJumpCell(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'background-images.cell.Jump-'")).firstMatch
+    }
+
     @MainActor
     private func scrollGridDown(in app: XCUIApplication) {
-        let root = element("background-images.root", in: app)
+        let root = pickerRoot(in: app)
         XCTAssertTrue(root.waitForExistence(timeout: 5))
         root.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).hover()
         for _ in 0..<2 { root.scroll(byDeltaX: 0, deltaY: -240) }
-        _ = settledFrame(of: cell(Self.jumpNames[12], in: app))
+        _ = settledFrame(of: anyJumpCell(in: app))
     }
 
-    /// Cells wholly inside the window, below its tab and above its bottom bar.
+    /// Cells wholly inside the grid: below the picker's title and tabs, above
+    /// its bottom bar.
     @MainActor
     private func visibleJumpCells(in app: XCUIApplication) -> [XCUIElement] {
-        let bounds = window(in: app).frame.insetBy(dx: 0, dy: 70)
+        let frame = pickerRoot(in: app).frame
+        let bounds = CGRect(x: frame.minX, y: frame.minY + 100, width: frame.width, height: frame.height - 160)
         return Self.jumpNames.map { cell($0, in: app) }.filter { cell in
             cell.exists && cell.isHittable && bounds.contains(cell.frame)
         }
     }
 
-    @MainActor
-    func testClickingACellAfterScrollingKeepsTheGridStill() throws {
-        try seedScrollingLibrary()
-        let (app, _) = try launchApp(projects: [], connectCLI: false)
-        defer { app.terminate() }
-        app.activate()
-        XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
-        openFromFileMenu(in: app)
-        XCTAssertTrue(cell(Self.jumpNames[0], in: app).waitForExistence(timeout: 10), "the grid never showed")
-        scrollGridDown(in: app)
-        let visible = visibleJumpCells(in: app)
-        XCTAssertGreaterThanOrEqual(visible.count, 2, "fewer than two whole cells on screen after scrolling")
-        guard visible.count >= 2 else { return }
-        let a = visible[0], b = visible[visible.count - 1]
-
-        let bBefore = settledFrame(of: b)
-        a.click()
-        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the click selected nothing")
-        let bAfter = settledFrame(of: b)
-        record("first click", bBefore, bAfter)
-        XCTAssertEqual(bAfter.minY, bBefore.minY, accuracy: 1, "the grid moved on the first click")
-
-        let aBefore = settledFrame(of: a)
-        b.click()
-        let aAfter = settledFrame(of: a)
-        record("later click", aBefore, aAfter)
-        XCTAssertEqual(aAfter.minY, aBefore.minY, accuracy: 1, "the grid moved on a later click")
-    }
-
+    /// A click picks and closes the picker, so selection here is by arrow key.
     @MainActor
     func testArrowKeySelectionAfterScrollingKeepsTheGridStill() throws {
         try seedScrollingLibrary()
@@ -291,46 +326,24 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         defer { app.terminate() }
         app.activate()
         XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
-        openFromFileMenu(in: app)
-        XCTAssertTrue(cell(Self.jumpNames[0], in: app).waitForExistence(timeout: 10), "the grid never showed")
+        openPaneBackgroundPicker(in: app)
+        XCTAssertTrue(anyJumpCell(in: app).waitForExistence(timeout: 10), "the grid never showed")
         scrollGridDown(in: app)
         let visible = visibleJumpCells(in: app)
         XCTAssertGreaterThanOrEqual(visible.count, 3, "fewer than three whole cells on screen after scrolling")
         guard visible.count >= 3 else { return }
-        visible[0].click()
-        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the click selected nothing")
         let probe = visible[visible.count - 1]
+        let firstBefore = settledFrame(of: probe)
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the arrow key selected nothing")
+        let firstAfter = settledFrame(of: probe)
+        record("first arrow key", firstBefore, firstAfter)
+        XCTAssertEqual(firstAfter.minY, firstBefore.minY, accuracy: 1, "the grid moved on the first arrow key")
         let before = settledFrame(of: probe)
         app.typeKey(.rightArrow, modifierFlags: [])
         let after = settledFrame(of: probe)
         record("arrow key", before, after)
         XCTAssertEqual(after.minY, before.minY, accuracy: 1, "the grid moved on an arrow key")
-    }
-
-    /// A cell the bottom edge cuts off: selecting it is a highlight, not a scroll.
-    @MainActor
-    func testClickingACellCutOffAtTheBottomKeepsTheGridStill() throws {
-        try seedScrollingLibrary()
-        let (app, _) = try launchApp(projects: [], connectCLI: false)
-        defer { app.terminate() }
-        app.activate()
-        XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
-        openFromFileMenu(in: app)
-        XCTAssertTrue(cell(Self.jumpNames[0], in: app).waitForExistence(timeout: 10), "the grid never showed")
-        let windowFrame = window(in: app).frame
-        let cutOff = Self.jumpNames.map { cell($0, in: app) }.first { cell in
-            cell.exists && cell.isHittable && cell.frame.maxY > windowFrame.maxY - 60
-        }
-        let probe = visibleJumpCells(in: app).first
-        XCTAssertNotNil(cutOff, "no cell is cut off at the bottom")
-        XCTAssertNotNil(probe, "no whole cell on screen")
-        guard let cutOff, let probe else { return }
-        let before = settledFrame(of: probe)
-        cutOff.click()
-        XCTAssertTrue(waitFor({ app.buttons["background-images.remove"].isEnabled }, timeout: 5), "the click selected nothing")
-        let after = settledFrame(of: probe)
-        record("cut-off click", before, after)
-        XCTAssertEqual(after.minY, before.minY, accuracy: 1, "the grid moved on a click on a cut-off cell")
     }
 
     // MARK: - The picker
@@ -388,8 +401,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         )
         let (app, _) = try launchApp(projects: [existing], connectCLI: false)
         defer { app.terminate() }
-        let fileMenu = openMenu("File", in: app)
-        menuItem("Edit Projects", in: fileMenu).click()
+        openEditorFromProjectsMenu(in: app)
         let edit = element("project-editor.background.edit", in: app)
         XCTAssertTrue(edit.waitForExistence(timeout: 5))
         edit.click()

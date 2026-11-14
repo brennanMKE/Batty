@@ -15,7 +15,7 @@ nonisolated struct BackgroundImageEntry: Sendable, Identifiable, Equatable {
     var id: String { digest }
 }
 
-/// The images the Background Images window shows. Each use keeps its own copy
+/// The images the Background Images picker shows. Each use keeps its own copy
 /// in its own folder, whose cleanup rule can delete it, so a scan copies what
 /// the sources hold into a folder only the user's Remove deletes from. Building
 /// this touches no files.

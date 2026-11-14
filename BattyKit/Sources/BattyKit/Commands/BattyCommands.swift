@@ -89,7 +89,7 @@ public struct BattyCommands: Commands {
             Button {
                 SaveSessionAsProject.begin(session: actionWindow?.selectedSession, destination: .update(target.id), store: store)
             } label: {
-                Label(String(localized: "Update \u{201C}\(target.name)\u{201D}\u{2026}", comment: "File menu: replace the stored Project's layout and Tabs with the selected Session"), systemImage: "arrow.triangle.2.circlepath")
+                Label(String(localized: "Update \u{201C}\(target.name)\u{201D}\u{2026}", comment: "Projects menu: replace the stored Project's layout and Tabs with the selected Session"), systemImage: "arrow.triangle.2.circlepath")
             }
             .disabled(!model.isEnabled)
             Button {
@@ -144,51 +144,54 @@ public struct BattyCommands: Commands {
     public init() {}
 
     public var body: some Commands {
-        CommandGroup(replacing: .newItem) {
-            NewWindowButton(shortcuts: shortcuts)
+        // `CommandsBuilder` takes at most 10 items; the Group keeps this body
+        // within it. Projects is the first `CommandMenu`, so it sits before
+        // Session: SwiftUI puts custom menus between View and Window.
+        Group {
+            CommandGroup(replacing: .newItem) {
+                NewWindowButton(shortcuts: shortcuts)
 
-            Divider()
+                Divider()
 
-            Button("New Session") {
-                logger.info("Cmd-N action fired (File → New Session)")
-                actionWindow?.addSession()
-            }
-            .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
-            .disabled(keyWindow == nil)
-
-            Divider()
-
-            Button {
-                postToContentWindow(.battyToggleOpenQuickly)
-            } label: {
-                Label("Open Quickly\u{2026}", systemImage: "bolt")
-            }
-            .keyboardShortcut(shortcuts.keyboardShortcut(for: .openQuickly))
-            .disabled(keyWindow?.selectedSession == nil)
-
-            Divider()
-
-            Menu {
-                ForEach(projectFileMenu.items) { item in
-                    projectMenuItem(item)
+                Button("New Session") {
+                    logger.info("Cmd-N action fired (File → New Session)")
+                    actionWindow?.addSession()
                 }
-            } label: {
-                Label("Open Project", systemImage: "folder")
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
+                .disabled(keyWindow == nil)
+
+                Divider()
+
+                Button {
+                    postToContentWindow(.battyToggleOpenQuickly)
+                } label: {
+                    Label("Open Quickly\u{2026}", systemImage: "bolt")
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .openQuickly))
+                .disabled(keyWindow?.selectedSession == nil)
+
+                Divider()
+
+                Menu {
+                    ForEach(projectFileMenu.items) { item in
+                        projectMenuItem(item)
+                    }
+                } label: {
+                    Label("Open Project", systemImage: "folder")
+                }
+                .disabled(keyWindow == nil)
             }
-            .disabled(keyWindow == nil)
 
-            saveSessionMenuItems(saveSessionMenu)
+            CommandMenu("Projects") {
+                saveSessionMenuItems(saveSessionMenu)
 
-            Button {
-                ProjectEditorWindowController.shared.show(store: store)
-            } label: {
-                Label("Edit Projects\u{2026}", systemImage: "folder.badge.gearshape")
-            }
+                Divider()
 
-            Button {
-                BackgroundImagesWindowController.shared.show(store: store)
-            } label: {
-                Label("Background Images\u{2026}", systemImage: "photo.on.rectangle")
+                Button {
+                    ProjectEditorWindowController.shared.show(store: store)
+                } label: {
+                    Label("Projects\u{2026}", systemImage: "folder.badge.gearshape")
+                }
             }
         }
 
@@ -579,6 +582,20 @@ public struct BattyCommands: Commands {
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .resizeSplitDown))
             .disabled(!canFocusAdjacentPane)
+
+            Divider()
+
+            // The ids are taken now, so the picker opens for the Pane that
+            // was focused when the item ran.
+            Button {
+                guard let window = actionWindow, let pane = window.selectedSession?.focusedTerminalPane else { return }
+                NotificationCenter.default.post(
+                    name: .battyChoosePaneBackgroundImage, object: nil,
+                    userInfo: [PaneBackgroundImagePicker.windowIDKey: window.id, PaneBackgroundImagePicker.paneIDKey: pane.id])
+            } label: {
+                Label("Background Images\u{2026}", systemImage: "photo.on.rectangle")
+            }
+            .disabled(focusedTerminalPane == nil || store.auxiliaryWindowIsKey || store.projectEditorIsKey)
         }
 
         CommandMenu("Tab") {

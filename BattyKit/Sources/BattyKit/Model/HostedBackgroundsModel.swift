@@ -68,13 +68,12 @@ struct HostedBackgroundsDependencies {
     var cacheRoot: URL
     var temporaryRoot: URL
     var clock: SchedulingClock
-    /// How long after a check a key event or Browse may check again.
+    /// How long after a check Browse may check again.
     var checkInterval: TimeInterval = HostedBackgroundsModel.refreshInterval
 }
 
 /// The Background Sets tab. The built-in catalog is not fetched before
-/// `browseAppeared`; `windowBecameKey` checks only `scheduledCatalogURLs`. A
-/// full-size image comes only from `select`. Every write follows a user action or an
+/// `browseAppeared`. A full-size image comes only from `select`. Every write follows a user action or an
 /// `await`, and writes only on change.
 @MainActor
 @Observable
@@ -148,17 +147,10 @@ final class HostedBackgroundsModel {
 
     /// Runs only from the Background Sets view's `.task`.
     func browseAppeared() async {
+        BackgroundImagesDiagnostics.shared.record("Background Sets appeared")
         SettingsPreference.markBackgroundCatalogsBrowsed(defaults: defaults)
         await loadCachedStates()
         await refreshDue(catalogURLs)
-        await reconcileAvailability()
-    }
-
-    /// Runs only from the Background Images window controller's
-    /// `windowDidBecomeKey`. Doesn't mark Browse as opened.
-    func windowBecameKey() async {
-        await loadCachedStates()
-        await refreshDue(scheduledCatalogURLs)
         await reconcileAvailability()
     }
 

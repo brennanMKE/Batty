@@ -355,12 +355,26 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     }
 
     @MainActor
-    func openEditorFromFileMenu(in app: XCUIApplication) {
-        let file = openMenu("File", in: app)
-        let item = menuItem("Edit Projects", in: file)
-        XCTAssertTrue(item.waitForExistence(timeout: 5), "File has no Edit Projects item: \(menuTitles(file))")
+    func openEditorFromProjectsMenu(in app: XCUIApplication) {
+        let projects = openMenu("Projects", in: app)
+        let item = menuItem("Projects", in: projects)
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "Projects menu has no Projects… item: \(menuTitles(projects))")
         item.click()
         XCTAssertTrue(editorWindow(in: app).waitForExistence(timeout: 10), "the Project Editor did not open")
+    }
+
+    /// Pane > Background Images… for the focused terminal Pane; returns the
+    /// picker's root.
+    @MainActor
+    @discardableResult
+    func openPaneBackgroundPicker(in app: XCUIApplication) -> XCUIElement {
+        let pane = openMenu("Pane", in: app)
+        let item = menuItem("Background Images", in: pane)
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "Pane menu has no Background Images item: \(menuTitles(pane))")
+        item.click()
+        let root = element("background-images.picker.root", in: app)
+        XCTAssertTrue(root.waitForExistence(timeout: 5), "Pane > Background Images… did not open the picker")
+        return root
     }
 
     @MainActor

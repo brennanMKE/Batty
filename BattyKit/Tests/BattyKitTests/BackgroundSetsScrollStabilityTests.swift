@@ -117,14 +117,15 @@ struct BackgroundSetsScrollStabilityTests {
         var description: String { "origin \(origin), document \(document), gap \(gap)" }
     }
 
-    /// What `windowDidBecomeKey` runs, with a check due and held in flight the
-    /// way a slow network holds it, measured mid-check and after it.
-    @Test func windowBecomingKeyAtTheBottomKeepsTheVisibleRowsStill() async throws {
+    /// A catalog check that Background Sets appearing starts, with the check
+    /// due and held in flight the way a slow network holds it, measured
+    /// mid-check and after it.
+    @Test func catalogCheckAtTheBottomKeepsTheVisibleRowsStill() async throws {
         try serveCatalog()
         await hosted.browseAppeared()
         try await downloadUnevenPattern()
 
-        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: nil))
+        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: { _ in }))
         controller.sizingOptions = []
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 760, height: 432),
@@ -149,7 +150,7 @@ struct BackgroundSetsScrollStabilityTests {
         f.catalogFetcher.set(.notModified, for: catalogURL)
         f.catalogFetcher.hold(catalogURL)
         let requests = f.catalogFetcher.requests.count
-        let check = Task { await hosted.windowBecameKey() }
+        let check = Task { await hosted.browseAppeared() }
         #expect(await f.catalogFetcher.waitForRequests(requests + 1), "no catalog check was due")
         #expect(hosted.isCheckingAny)
         await pump(view)
@@ -171,7 +172,7 @@ struct BackgroundSetsScrollStabilityTests {
         await hosted.browseAppeared()
         try await downloadUnevenPattern()
 
-        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: nil))
+        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: { _ in }))
         controller.sizingOptions = []
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 760, height: 432),

@@ -5,9 +5,9 @@ A **Project** is a saved recipe for a session: a name, a root folder, a session 
 ## Creating a Project
 
 - **File ▸ Open Project ▸ New Project…** opens the Project Editor on a blank Project.
-- **File ▸ Save Session as Project…** starts from the session you are looking at, capturing its layout, panes and tabs. Right-click a session in the sidebar and choose **Save as Project…** for the same thing.
-- If the session was opened from a Project, the File menu and the sidebar menu also offer **Update "Name"…** to replace that Project's layout and tabs. To keep it as a separate Project instead, use **File ▸ Save Session as New Project…** or, in the sidebar menu, **Save as New Project…**.
-- **File ▸ Edit Projects…** opens the Project Editor to change, reorder, or delete the Projects you have.
+- **Projects ▸ Save Session as Project…** starts from the session you are looking at, capturing its layout, panes and tabs. Right-click a session in the sidebar and choose **Save as Project…** for the same thing.
+- If the session was opened from a Project, the Projects menu and the sidebar menu also offer **Update "Name"…** to replace that Project's layout and tabs. To keep it as a separate Project instead, use **Projects ▸ Save Session as New Project…** or, in the sidebar menu, **Save as New Project…**.
+- **Projects ▸ Projects…** opens the Project Editor to change, reorder, or delete the Projects you have.
 
 In the editor, set the name, the **Root folder**, the **Session color** and **Symbol**, then click panes in the layout to choose what each one shows and to add **Tabs**. **Copy from current Session** fills the layout from the session you have selected. Click **Save**, or **Save & Open** to save and open it right away.
 

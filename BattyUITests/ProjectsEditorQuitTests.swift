@@ -19,7 +19,7 @@ nonisolated final class ProjectsEditorQuitTests: ProjectsUITestCase {
 
     @MainActor
     private func editExistingName(in app: XCUIApplication) {
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.list.row.Existing", in: app)
         replaceText(in: "project-editor.name", with: "Existing Changed", app: app)
     }

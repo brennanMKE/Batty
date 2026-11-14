@@ -7,7 +7,7 @@ extension Notification.Name {
     static let battyBackgroundImagesDidChange = Notification.Name("co.sstools.Batty.backgroundImagesDidChange")
 }
 
-/// What the Background Images window and picker show. Every write starts from
+/// What the Background Images picker shows. Every write starts from
 /// a button action or follows an `await` that real file work needs, never from
 /// `body`, and writes only on change.
 @MainActor

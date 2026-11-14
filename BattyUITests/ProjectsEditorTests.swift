@@ -21,7 +21,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         XCTAssertTrue(element("project-editor.list.row.Existing", in: app).waitForExistence(timeout: 5), "the editor does not list the stored Project")
 
         let windowMenu = openMenu("Window", in: app)
@@ -41,7 +41,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.new-project", in: app)
         replaceText(in: "project-editor.name", with: "Fresh Grid", app: app)
         replaceText(in: "project-editor.root", with: root.path, app: app)
@@ -88,7 +88,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.list.row.Existing", in: app)
         replaceText(in: "project-editor.name", with: "Existing Changed", app: app)
         click("project-editor.cancel", in: app)
@@ -208,7 +208,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [withCommand, withoutCommand])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         let hint = element("project-editor.commands-off-hint", in: app)
 
         click("project-editor.list.row.Commanded", in: app)
@@ -234,7 +234,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [custom])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.list.row.Custom", in: app)
         XCTAssertTrue(element("project-editor.layout.custom", in: app).waitForExistence(timeout: 5))
 
@@ -298,7 +298,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.background.edit", in: app)
         let follow = app.buttons["project-background-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Background row did not open its sheet")
@@ -311,7 +311,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.background.edit", in: app)
         let custom = app.buttons["project-background-sheet.custom"]
         XCTAssertTrue(custom.waitForExistence(timeout: 5))
@@ -330,7 +330,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.tab.1.background.edit", in: app)
         let follow = app.buttons["project-tab-background-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Tab's Background row did not open its sheet")
@@ -343,7 +343,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.pane.background.edit", in: app)
         let follow = app.buttons["project-pane-background-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Pane's Background row did not open its sheet")
@@ -357,7 +357,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.tab.1.background.edit", in: app)
         let custom = app.buttons["project-tab-background-sheet.custom"]
         XCTAssertTrue(custom.waitForExistence(timeout: 5))
@@ -393,7 +393,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.theme.edit", in: app)
         let follow = app.buttons["project-theme-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Theme row did not open its sheet")
@@ -406,7 +406,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.theme.edit", in: app)
         let slot = app.radioButtons["Dark"]
         XCTAssertTrue(slot.waitForExistence(timeout: 5), "the Theme sheet has no Dark slot")

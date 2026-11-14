@@ -227,6 +227,7 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`. See [view-hierarchy.md](view-hierarchy.md), "See-through windows".
 - A see-through window must pass the checklist in [terminal-pane-requirements.md](terminal-pane-requirements.md) §6.
 - A path handed to the Pane or app-wide folder comes from `importImage`, whose encode guarantees the pixel limit, or from `adoptImage`, whose `isWithinPixelLimit` check stands in for it. The gate checks shape and digest only and nothing checks a Pane's path, so the static `adopt` must never be the route into those folders.
+- Background Images opens only as a picker sheet: Pane ▸ Background Images… for the focused terminal Pane, or Choose… in a background control. There is no standalone window (#0629). Remove… is in the picker, by right-click or by arrow-key selection then Remove… or Delete. `BackgroundImagesScrollMonitor` watches the picker's window and logs an unexplained scroll jump with its recent events (#0624).
 - The Background Images library (`BackgroundImages/`, `.keepAll`) is outside every other folder's cleanup. Stored paths never name it: a pick copies out of it. Uses are matched by digest, and Remove clears them before deleting any file.
 
 **Accessibility identifiers:**
@@ -235,7 +236,7 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `pane-background-sheet.*`, `session-background-sheet.*`, `project-background-sheet.*`: the override sheets.
 - `appearance-background.*`: the Settings section.
 - `project-editor.background.*`: the Project Editor's Background row.
-- `background-images.root`, `background-images.picker.root`: the window and the picker sheet. Also `.add`, `.remove`, `.confirm-remove`, `.total`, `.message`, `.empty`, `.empty-add`, `.picker.cancel`.
+- `background-images.picker.root`: the picker sheet. Also `.add`, `.remove`, `.confirm-remove`, `.total`, `.message`, `.empty`, `.empty-add`, `.picker.cancel`.
 - `background-images.cell.<name>`: the cell, which XCUITest reads as a Group with no value, so a test proves a thumbnail by its pixels. `.cell.<name>.uses` and `.cell.<name>.size` are its lines, read through `value`.
 - `session-row.<title>`: its label and value carry the warning on a Session whose Project image can't be used. The warning has no identifier of its own.
 
@@ -907,7 +908,7 @@ read-only; see `docs/design/git-status-view.md`.
 
 The Project Editor (#0474) is where a user defines Projects. It is one
 process-global AppKit window titled "Projects", created on demand by
-`ProjectEditorWindowController` from File ▸ **Edit Projects…**. It is not a content window: it is
+`ProjectEditorWindowController` from Projects ▸ **Projects…**. It is not a content window: it is
 never registered with `AppStateStore.registerNSWindow`, so content-window
 shortcuts are off while it is key (`BattyShortcuts` declines the chord, and
 the menu items that act on a Session, Pane or Tab resolve no target, see
@@ -1008,7 +1009,7 @@ Pane inspector, with a footer.
 
 **Not covered by unit tests (for the Tart VM suite, #0478):**
 
-- File ▸ Edit Projects… is present.
+- Projects ▸ Projects… is present.
 - The editor window opens and comes forward when already open. With it key,
   ⌘T adds no Tab, ⇧⌘X sends no exit and ⌘V pastes nothing into the background
   window's Terminal (⌘V still pastes into a focused editor field), while ⌘W
@@ -1233,7 +1234,7 @@ the root is stored as the root and flagged with a warning on its field.
 
 - Sidebar row context menu: "Save as Project..." (after Mute Notifications,
   before Close). Captures that row's Session.
-- File > "Save Session as Project..." between Open Project and Edit Projects.
+- Projects > "Save Session as Project...", then a separator and "Projects...".
   Captures the key Window's selected Session; disabled with none.
 - Command Palette `extra:saveSessionAsProject` "Save Session as Project...".
 - Project Editor "Copy from current Session" beside the Layout title
@@ -1289,8 +1290,8 @@ unchanged; these are the ones they do not cover):
 - `command-palette.root`. Palette rows have no identifiers; the tests find them by their
   title text ("Open Project: <name>", "Open Project...", "Save Session as Project...").
 - `tab-chip.<title>`, `session-row.<title>`, `pane-terminal.<pane id>`, `git-status.snapshot`.
-- Menu items have no identifiers; the File items "Open Project" (submenu: Project names,
-  "Choose Project...", "New Project..."), "Save Session as Project...", "Edit Projects...", the
+- Menu items have no identifiers; the File item "Open Project" (submenu: Project names,
+  "Choose Project...", "New Project..."), the Projects items "Save Session as Project..." and "Projects...", the
   Sidebar item "Save as Project...", and the Window item "Projects" are found by title.
 
 **Coverage map** (the checklists above and in the #0474-#0477 sections):
@@ -1322,7 +1323,7 @@ unchanged; these are the ones they do not cover):
 | Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both assert that the picker presents, #0483) |
 | Trust sheet, Open Without Running, Run Commands, remembered approval, edited command | `ProjectsStartupTests.testTrustSheetGatesStartupCommandsAndRemembersApproval` |
 | Waiting indicator for a shell that never reports OSC 7 (`/bin/sh`), Run Now, Dismiss (#0479) | `ProjectsStartupTests.testShellThatNeverReportsShowsWaitingIndicatorWithRunNowAndDismiss` |
-| Edit Projects..., Window menu entry | `ProjectsEditorTests.testEditProjectsMenuOpensTheEditorOnTheStoredProjects` |
+| Projects ▸ Projects..., Window menu entry | `ProjectsEditorTests.testEditProjectsMenuOpensTheEditorOnTheStoredProjects` |
 | Create, Save & Open, Tab directory | `ProjectsEditorTests.testEditorCreatesAProjectAndSaveAndOpenOpensIt` |
 | Cancel leaves the store unchanged | `ProjectsEditorTests.testCancelLeavesTheStoredProjectUnchanged` |
 | Sidebar Save as Project, round trip, equal sizes | `ProjectsEditorTests.testSidebarSaveAsProjectRoundTripsTheSessionShape` |

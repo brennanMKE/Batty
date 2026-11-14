@@ -133,7 +133,7 @@ nonisolated final class ProjectsSharingTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: try seed())
         defer { app.terminate() }
 
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.list.row.Alpha", in: app)
         let box = element("project-editor.shared", in: app)
         XCTAssertTrue(box.waitForExistence(timeout: 5), "the editor header has no Shared checkbox")
@@ -150,7 +150,7 @@ nonisolated final class ProjectsSharingTests: ProjectsUITestCase {
 
         click("project-editor.cancel", in: app)
         XCTAssertTrue(waitFor({ !self.editorWindow(in: app).exists }, timeout: 10))
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.list.row.Alpha", in: app)
         XCTAssertTrue(waitFor({ self.isChecked(self.element("project-editor.shared", in: app)) }, timeout: 5), "the saved value was not shown on reopening")
 
@@ -159,7 +159,7 @@ nonisolated final class ProjectsSharingTests: ProjectsUITestCase {
         click("project-editor.cancel", in: app)
         XCTAssertEqual(stored("Alpha")?["isShared"] as? Bool, true, "Cancel wrote the unchecked value")
         XCTAssertTrue(waitFor({ !self.editorWindow(in: app).exists }, timeout: 10))
-        openEditorFromFileMenu(in: app)
+        openEditorFromProjectsMenu(in: app)
         click("project-editor.list.row.Alpha", in: app)
         XCTAssertTrue(waitFor({ self.isChecked(self.element("project-editor.shared", in: app)) }, timeout: 5), "Cancel did not leave the box checked")
 

@@ -43,16 +43,11 @@ struct CommandPaletteViewActionTests {
                 "Duplicate Session must not create a phantom window/session when none remain")
     }
 
-    @Test func backgroundImagesCommandOpensTheWindow() {
-        var opened = 0
-        let view = CommandPaletteView(
-            isPresented: .constant(true),
-            store: AppStateStore(),
-            openBackgroundImages: { opened += 1 }
-        )
-        let command = view.allCommands.first { $0.id == "extra:backgroundImages" }
-        command?.action()
-        #expect(opened == 1)
+    /// Background Images opens only as a picker, from Pane > Background
+    /// Images… or a background control's Choose….
+    @Test func paletteHasNoBackgroundImagesCommand() {
+        let view = CommandPaletteView(isPresented: .constant(true), store: AppStateStore())
+        #expect(!view.allCommands.contains { $0.id == "extra:backgroundImages" })
     }
 
     @Test func dispatchNoOpsWhenNoWindowsRemain() {

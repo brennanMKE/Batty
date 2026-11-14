@@ -2,10 +2,11 @@
 
 import AppKit
 import OSLog
+import SwiftUI
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "BackgroundImagesScrollMonitor")
 
-/// The last few things that happened to the Background Images window and its
+/// The last few things that happened to the Background Images picker and its
 /// models, newest last. A run of the same kind is kept as one entry with a
 /// count, so a burst of thumbnail loads doesn't push everything else out.
 nonisolated struct BackgroundImagesEventRing: Equatable {
@@ -49,7 +50,7 @@ final class BackgroundImagesDiagnostics {
     static let shared = BackgroundImagesDiagnostics()
 
     private(set) var ring = BackgroundImagesEventRing()
-    /// The manage window's tab; the picker sheet doesn't write it.
+    /// The picker's tab.
     var tab = "My Images"
 
     func record(_ kind: String) {
@@ -58,9 +59,10 @@ final class BackgroundImagesDiagnostics {
 }
 
 /// Logs a clip-view origin change of more than `threshold` points in the
-/// Background Images window that no scroll gesture explains, with the recent
-/// events, so a jump on a user's Mac names what preceded it. Watches every
-/// clip view in its window, since switching tabs replaces the scroll view.
+/// window showing the Background Images picker that no scroll gesture
+/// explains, with the recent events, so a jump on a user's Mac names what
+/// preceded it. Watches every clip view in its window, since switching tabs
+/// replaces the scroll view.
 @MainActor
 final class BackgroundImagesScrollMonitor {
     static let threshold: CGFloat = 4
@@ -80,6 +82,9 @@ final class BackgroundImagesScrollMonitor {
         observers.append(center.addObserver(forName: NSView.boundsDidChangeNotification, object: nil, queue: .main) { [weak self] note in
             let clip = note.object as? NSClipView
             MainActor.assumeIsolated { self?.boundsChanged(clip) }
+        })
+        observers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { _ in
+            MainActor.assumeIsolated { BackgroundImagesDiagnostics.shared.record("window became key") }
         })
         observers.append(center.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: nil, queue: .main) { [weak self] note in
             let scroll = note.object as? NSScrollView
@@ -126,5 +131,30 @@ final class BackgroundImagesScrollMonitor {
             document height \(Double(document), privacy: .public), current event \(event, privacy: .public); \
             recent: \(diagnostics.ring.formatted(relativeTo: Date()), privacy: .public)
             """)
+    }
+}
+
+/// Runs a `BackgroundImagesScrollMonitor` on the picker's window while the
+/// picker is in it. The monitor starts from AppKit's window-move callback and
+/// writes nothing observed.
+struct BackgroundImagesScrollMonitorAttachment: NSViewRepresentable {
+    func makeNSView(context: Context) -> MonitorView { MonitorView() }
+    func updateNSView(_ nsView: MonitorView, context: Context) {}
+
+    final class MonitorView: NSView {
+        private var monitor: BackgroundImagesScrollMonitor?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            monitor?.stop()
+            monitor = nil
+            guard let window else { return }
+            let diagnostics = BackgroundImagesDiagnostics.shared
+            diagnostics.tab = "My Images"
+            diagnostics.record("picker opened")
+            monitor = BackgroundImagesScrollMonitor(window: window)
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }

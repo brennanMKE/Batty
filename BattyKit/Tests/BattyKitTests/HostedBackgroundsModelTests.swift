@@ -100,7 +100,7 @@ struct HostedBackgroundsModelTests {
 
         _ = await f.clock.advance(by: .seconds(HostedBackgroundsModel.refreshInterval + 60))
         fetcher.set(.notModified, for: catalogURL)
-        await hosted.windowBecameKey()
+        await hosted.browseAppeared()
         fetcher.set(.ok(body, etag: "\"c2\""), for: catalogURL)
         await hosted.refresh(catalogURL)
 
@@ -147,45 +147,6 @@ struct HostedBackgroundsModelTests {
         #expect(!HostedBackgroundsModel.isCheckDue(lastCheck: now.addingTimeInterval(-4 * 60), now: now))
         #expect(HostedBackgroundsModel.isCheckDue(lastCheck: now.addingTimeInterval(-5 * 60), now: now))
         #expect(HostedBackgroundsModel.isCheckDue(lastCheck: now.addingTimeInterval(60 * 60), now: now))
-    }
-
-    @Test func windowBecomingKeyBeforeTheFirstBrowseFetchesNothing() async throws {
-        try serveCatalog()
-        await hosted.windowBecameKey()
-        #expect(fetcher.requests.isEmpty)
-        #expect(!hosted.hasBrowsed)
-    }
-
-    @Test func windowBecomingKeyWithinTheIntervalSendsNoRequest() async throws {
-        try serveCatalog()
-        await hosted.browseAppeared()
-        _ = await f.clock.advance(by: .seconds(4 * 60))
-        await hosted.windowBecameKey()
-        #expect(fetcher.count(catalogURL) == 1)
-    }
-
-    @Test func windowBecomingKeyAfterTheIntervalSendsAConditionalRequest() async throws {
-        try serveCatalog()
-        await hosted.browseAppeared()
-        _ = await f.clock.advance(by: .seconds(6 * 60))
-        fetcher.set(.notModified, for: catalogURL)
-        await hosted.windowBecameKey()
-        #expect(fetcher.count(catalogURL) == 2)
-        #expect(fetcher.requests.last?.etag == "\"c1\"")
-        #expect(hosted.catalogs.first?.catalog?.allImages.count == 2)
-        #expect(hosted.catalogs.first?.problem == nil)
-    }
-
-    @Test func windowBecomingKeyPicksUpANewSet() async throws {
-        try serveCatalog()
-        await hosted.browseAppeared()
-        let one: [String: Any] = ["title": "Picture one", "full": "one.png", "thumbnail": "one-thumb.png"]
-        let nebula: [String: Any] = ["title": "Nebula", "full": "nebula.png", "thumbnail": "nebula-thumb.png"]
-        let body = CatalogJSON.data(["sets": [["name": "Set", "images": [one]], ["name": "Deep Space", "images": [nebula]]]])
-        fetcher.set(.ok(body, etag: "\"c2\""), for: catalogURL)
-        _ = await f.clock.advance(by: .seconds(6 * 60))
-        await hosted.windowBecameKey()
-        #expect(hosted.catalogs.first?.catalog?.sets.count == 2)
     }
 
     @Test func aRelaunchWithinTheIntervalUsesThePersistedLastCheck() async throws {

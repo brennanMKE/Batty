@@ -13,8 +13,7 @@ import SwiftUI
 /// re-evaluate the grids above a scrolled viewport.
 struct BackgroundSetsView: View {
     let model: BackgroundImagesModel
-    /// Nil in manage mode, where a click only selects.
-    let onPick: ((String) -> Void)?
+    let onPick: (String) -> Void
 
     @State private var selection = GridSelection<HostedImageKey>()
     @State private var query = ""
@@ -132,7 +131,6 @@ struct BackgroundSetsView: View {
                         catalogURL: catalogURL,
                         model: model,
                         selection: selection,
-                        offersCancel: onPick != nil,
                         activate: { click(image, key: key) }
                     )
                 }
@@ -143,10 +141,6 @@ struct BackgroundSetsView: View {
     }
 
     private func click(_ image: HostedBackgroundImage, key: HostedImageKey) {
-        guard let onPick else {
-            selection.select(key)
-            return
-        }
         // After a cancelling click nothing is being picked, so nothing is highlighted.
         selection.select(hosted.pickOrCancel(image) { onPick($0) } == nil ? nil : key)
     }
@@ -201,8 +195,6 @@ private struct HostedBackgroundCell: View {
     /// re-renders the cells and not the grids.
     let model: BackgroundImagesModel
     let selection: GridSelection<HostedImageKey>
-    /// Pick mode, where a click on a downloading image cancels it.
-    let offersCancel: Bool
     let activate: () -> Void
 
     @State private var thumbnail: BackgroundImageThumbnail?
@@ -254,7 +246,7 @@ private struct HostedBackgroundCell: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: activate)
         .accessibilityActions {
-            if offersCancel, isDownloading {
+            if isDownloading {
                 Button("Cancel Download", action: activate)
             }
         }

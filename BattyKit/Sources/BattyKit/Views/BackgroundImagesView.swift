@@ -3,23 +3,21 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The Background Images window's content, and with `.pick` the sheet a
-/// background control opens over whatever asked. Nothing in `body` writes
-/// observed state: the model's writes start from `.task`, a button or the file
-/// importer's result, and each cell's picture is its own `@State`.
+/// The Background Images picker: the sheet a background control or
+/// Pane > Background Images… opens over whatever asked. It also adds and
+/// removes library images. Nothing in `body` writes observed state: the
+/// model's writes start from `.task`, a button or the file importer's result,
+/// and each cell's picture is its own `@State`.
 struct BackgroundImagesView: View {
-    enum Mode {
-        case manage
-        case pick(current: String?, onPick: (String) -> Void, onCancel: () -> Void)
-    }
-
     enum Tab: Hashable {
         case myImages
         case backgroundSets
     }
 
     let model: BackgroundImagesModel
-    let mode: Mode
+    let current: String?
+    let onPick: (String) -> Void
+    let onCancel: () -> Void
 
     @State private var tab: Tab = .myImages
     /// Read only by the cells and the Remove button, so a click doesn't
@@ -32,28 +30,20 @@ struct BackgroundImagesView: View {
     private static let minimumCellWidth: CGFloat = 170
     private static let spacing: CGFloat = 16
 
-    private var isPicking: Bool {
-        if case .pick = mode { return true }
-        return false
-    }
-
     private var currentDigest: String? {
-        guard case .pick(let current, _, _) = mode else { return nil }
-        return current.flatMap(TerminalBackgroundImageImporter.digest(ofPath:))
+        current.flatMap(TerminalBackgroundImageImporter.digest(ofPath:))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if case .pick = mode {
-                HStack {
-                    Text("Choose an Image")
-                        .font(.headline)
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                Divider()
+            HStack {
+                Text("Choose an Image")
+                    .font(.headline)
+                Spacer()
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            Divider()
             Picker("", selection: tabBinding) {
                 Text("My Images").tag(Tab.myImages)
                 Text("Background Sets").tag(Tab.backgroundSets)
@@ -68,21 +58,17 @@ struct BackgroundImagesView: View {
             case .myImages:
                 content
             case .backgroundSets:
-                BackgroundSetsView(model: model, onPick: pickHandler)
+                BackgroundSetsView(model: model, onPick: onPick)
             }
             Divider()
             bottomBar
         }
-        .frame(
-            minWidth: isPicking ? 620 : 520,
-            idealWidth: isPicking ? 620 : 760,
-            minHeight: isPicking ? 460 : 400,
-            idealHeight: isPicking ? 460 : 560
-        )
+        .frame(minWidth: 620, idealWidth: 620, minHeight: 460, idealHeight: 460)
+        .background(BackgroundImagesScrollMonitorAttachment())
         .task { await model.refresh() }
         // Touches no observed state: the generation is observation-ignored and
         // a cancelled fetch clears its cell from its own task.
-        .onDisappear { if isPicking { model.hosted.supersedePicks() } }
+        .onDisappear { model.hosted.supersedePicks() }
         // Writes here, outside the GeometryReader. On the first open of a launch
         // the grid doesn't exist until the scan's `await` writes `entries`, so
         // that flip is an event, not layout.
@@ -109,7 +95,7 @@ struct BackgroundImagesView: View {
             Text(Self.dialogMessage(plan))
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(isPicking ? "background-images.picker.root" : "background-images.root")
+        .accessibilityIdentifier("background-images.picker.root")
     }
 
     @ViewBuilder
@@ -156,9 +142,7 @@ struct BackgroundImagesView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { click(entry) }
                     .contextMenu {
-                        if !isPicking {
-                            Button("Remove…") { requestRemoval(of: entry) }
-                        }
+                        Button("Remove…") { requestRemoval(of: entry) }
                     }
                 }
             }
@@ -175,10 +159,12 @@ struct BackgroundImagesView: View {
         .onKeyPress(.downArrow) { move(.down, columns: columns); return .handled }
         .onKeyPress(.return) { activateSelection(); return .handled }
         .onKeyPress(keys: [.delete, .deleteForward]) { _ in
-            guard !isPicking else { return .ignored }
             requestRemovalOfSelection()
             return .handled
         }
+        // In the picker sheet the Delete key reached no `onKeyPress` in the
+        // VM; the delete command is what AppKit sends it as.
+        .onDeleteCommand(perform: requestRemovalOfSelection)
     }
 
     /// The segment's own action is the event that moves focus back to the grid.
@@ -188,17 +174,10 @@ struct BackgroundImagesView: View {
             set: { newValue in
                 guard newValue != tab else { return }
                 tab = newValue
-                if !isPicking {
-                    BackgroundImagesDiagnostics.shared.tab = newValue == .myImages ? "My Images" : "Background Sets"
-                }
+                BackgroundImagesDiagnostics.shared.tab = newValue == .myImages ? "My Images" : "Background Sets"
                 if newValue == .myImages { gridFocused = true }
             }
         )
-    }
-
-    private var pickHandler: ((String) -> Void)? {
-        guard case .pick(_, let onPick, _) = mode else { return nil }
-        return onPick
     }
 
     private var bottomBar: some View {
@@ -213,14 +192,12 @@ struct BackgroundImagesView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("background-images.total")
             }
-            if case .pick(_, _, let onCancel) = mode {
-                Button("Cancel") {
-                    model.hosted.supersedePicks()
-                    onCancel()
-                }
-                .keyboardShortcut(.cancelAction)
-                .accessibilityIdentifier("background-images.picker.cancel")
+            Button("Cancel") {
+                model.hosted.supersedePicks()
+                onCancel()
             }
+            .keyboardShortcut(.cancelAction)
+            .accessibilityIdentifier("background-images.picker.cancel")
         }
         .padding(12)
     }
@@ -238,9 +215,7 @@ struct BackgroundImagesView: View {
                 case .failure: model.reportFileError()
                 }
             }
-        if !isPicking {
-            RemoveSelectionButton(model: model, selection: selection) { requestRemovalOfSelection() }
-        }
+        RemoveSelectionButton(model: model, selection: selection) { requestRemovalOfSelection() }
         if let message = model.message {
             Text(message)
                 .font(.caption)
@@ -273,11 +248,11 @@ struct BackgroundImagesView: View {
     private func click(_ entry: BackgroundImageEntry) {
         selection.select(entry.digest)
         gridFocused = true
-        if isPicking { pick(entry) }
+        pick(entry)
     }
 
     private func activateSelection() {
-        guard isPicking, let entry = selectedEntry else { return }
+        guard let entry = selectedEntry else { return }
         pick(entry)
     }
 
@@ -285,7 +260,6 @@ struct BackgroundImagesView: View {
     /// loading: a cell that turns out usable is picked once the check finishes,
     /// and one the check rejects, as "Can't be used" shows, never is.
     private func pick(_ entry: BackgroundImageEntry) {
-        guard case .pick(_, let onPick, _) = mode else { return }
         model.hosted.supersedePicks()
         let thumbnailer = model.thumbnailer
         Task {
@@ -295,11 +269,11 @@ struct BackgroundImagesView: View {
     }
 
     private func add(_ url: URL) {
-        if isPicking { model.hosted.supersedePicks() }
+        model.hosted.supersedePicks()
         Task {
             guard let entry = await model.add(from: url) else { return }
             selection.select(entry.digest)
-            if case .pick(_, let onPick, _) = mode { onPick(entry.path) }
+            onPick(entry.path)
         }
     }
 

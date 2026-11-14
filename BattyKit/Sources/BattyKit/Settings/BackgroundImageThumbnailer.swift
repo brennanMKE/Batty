@@ -10,7 +10,7 @@ nonisolated struct BackgroundImageThumbnail: @unchecked Sendable {
     let state: BackgroundImageState
 }
 
-/// Makes the Background Images window's pictures off the main actor, and decodes
+/// Makes the Background Images picker's pictures off the main actor, and decodes
 /// only a file whose digest and header have passed, so nothing over the importer's
 /// limit is ever decoded. Downsamples from the file URL, keeping no full bitmap.
 actor BackgroundImageThumbnailer {

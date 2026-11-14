@@ -169,7 +169,7 @@ public final class AppStateStore {
     /// `var` so tests can point its sources at their own folders, because the
     /// type isn't public and so can't be a parameter of the public `init`.
     @ObservationIgnored var projectBackgrounds: ProjectBackgroundLibrary
-    /// The Background Images window's and picker's model. Building it touches
+    /// The Background Images picker's model. Building it touches
     /// no files. A `var` for the same reason as `projectBackgrounds`.
     @ObservationIgnored lazy var backgroundImages: BackgroundImagesModel = makeBackgroundImagesModel()
     @ObservationIgnored lazy var backgroundCatalogScheduler = BackgroundCatalogScheduler(

@@ -32,15 +32,15 @@ Each Pane draws its own copy of the image, so one picture doesn't span a split, 
 
 ## Background Images
 
-**File → Background Images…**, or **Manage Images…** in Settings' Background section, opens a window showing every image Batty holds, with a thumbnail, what uses it and its size. **Add from File…** brings in a new one. Images stay until you remove them.
+**Pane → Background Images…**, or **Choose…** in any background control, opens your images, with each one's thumbnail, what uses it and its size. Picking one from the Pane menu sets it on the focused Pane. **Add from File…** brings in a new one. Images stay until you remove them.
 
-**Remove…** lists what uses the image and asks first. Those uses then have no image, and keep their other settings: terminals lose the picture right away, Settings shows **None**, and a Project opens with no picture. A Shared Project changes on this Mac only. If Batty can't read all your saved Projects, it removes nothing and says why.
+To remove an image, right-click it and choose **Remove…**, or select it with the arrow keys and click **Remove…** or press Delete. A click picks the image instead. Batty lists what uses the image and asks first. Those uses then have no image, and keep their other settings: terminals lose the picture right away, Settings shows **None**, and a Project opens with no picture. A Shared Project changes on this Mac only. If Batty can't read all your saved Projects, it removes nothing and says why.
 
 If Batty's copy of the image in Settings goes missing or changes, terminals open with no picture and Settings asks you to choose it again.
 
 ## Background Sets
 
-**Background Sets**, at the top of the Background Images window and of every **Choose…** sheet, shows sets of pictures from the Batty website, using thumbnails only.
+**Background Sets**, at the top of every Background Images picker, shows sets of pictures from the Batty website, using thumbnails only.
 
 - Nothing is fetched from the Batty website until you first open **Background Sets**.
 - Choosing a picture as a background downloads it once. The sheet stays open while it downloads, and your old background stays until it finishes. Click the picture again to stop the download, or click another to download that one instead. After that the picture works offline.

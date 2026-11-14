@@ -71,13 +71,20 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         let app = try launch()
         defer { app.terminate() }
         XCTAssertTrue(BackgroundCatalogFixture.requests(in: catalogFolder).isEmpty, "a request was made before Background Sets was shown")
-        let menu = openMenu("File", in: app)
-        menuItem("Background Images", in: menu).click()
+        openPaneBackgroundPicker(in: app)
         showBackgroundSets(in: app)
+        let root = element("background-sets.root", in: app)
+        XCTAssertTrue(element("background-sets.set.\(BackgroundCatalogFixture.setName(BackgroundCatalogFixture.setIDs[0]))", in: app).waitForExistence(timeout: 10), "the catalog did not load")
+        // The picker shows about two sets; the lazy grid builds the rest as
+        // they scroll in, so each cell is scrolled to in catalog order.
+        root.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).hover()
         for set in BackgroundCatalogFixture.setIDs {
-            XCTAssertTrue(element("background-sets.set.\(BackgroundCatalogFixture.setName(set))", in: app).waitForExistence(timeout: 10), "no section for \(set)")
             for id in BackgroundCatalogFixture.imageIDs(in: set) {
-                XCTAssertTrue(cell(id, in: app).waitForExistence(timeout: 10), "no cell for \(id)")
+                let target = cell(id, in: app)
+                for _ in 0..<30 where !(target.exists && target.isHittable) {
+                    root.scroll(byDeltaX: 0, deltaY: -120)
+                }
+                XCTAssertTrue(target.exists, "no cell for \(id)")
             }
         }
         XCTAssertTrue(BackgroundCatalogFixture.requests(in: catalogFolder).contains("catalog.json"))
@@ -219,9 +226,8 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     }
 
     @MainActor
-    private func showBackgroundImagesWindow(in app: XCUIApplication) {
-        let menu = openMenu("File", in: app)
-        menuItem("Background Images", in: menu).click()
+    private func showBackgroundSetsPicker(in app: XCUIApplication) {
+        openPaneBackgroundPicker(in: app)
         showBackgroundSets(in: app)
         for set in BackgroundCatalogFixture.setIDs {
             XCTAssertTrue(setSection(set, in: app).waitForExistence(timeout: 10), "no section for \(set)")
@@ -237,7 +243,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     func testRefreshPicksUpASetAddedToTheCatalog() throws {
         let app = try launch()
         defer { app.terminate() }
-        showBackgroundImagesWindow(in: app)
+        showBackgroundSetsPicker(in: app)
         try BackgroundCatalogFixture.write(in: catalogFolder, sets: BackgroundCatalogFixture.setIDs + ["deep-space"])
         XCTAssertFalse(setSection("deep-space", in: app).exists, "the new set showed before Refresh")
         element("background-sets.refresh", in: app).click()
@@ -248,7 +254,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     func testFilterNarrowsToMatchingSetsAndImages() throws {
         let app = try launch()
         defer { app.terminate() }
-        showBackgroundImagesWindow(in: app)
+        showBackgroundSetsPicker(in: app)
         let field = element("background-sets.filter", in: app)
         field.click()
         field.typeText("COOL")
@@ -268,7 +274,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     func testFilterWithNoMatchesShowsTheEmptyStateAndClearingRestoresTheGrid() throws {
         let app = try launch()
         defer { app.terminate() }
-        showBackgroundImagesWindow(in: app)
+        showBackgroundSetsPicker(in: app)
         let field = element("background-sets.filter", in: app)
         field.click()
         field.typeText("zzz")
@@ -303,11 +309,21 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         add(attachment)
     }
 
+    /// A click picks; both downloads are held so the picker stays open while
+    /// the grid is measured.
     @MainActor
     func testSelectingASetImageAfterScrollingKeepsTheGridStill() throws {
         let app = try launch()
         defer { app.terminate() }
-        showBackgroundImagesWindow(in: app)
+        for id in ["beautiful-landscapes-01", "beautiful-landscapes-02"] {
+            try BackgroundCatalogFixture.hold(id, in: catalogFolder)
+        }
+        defer {
+            for id in ["beautiful-landscapes-01", "beautiful-landscapes-02"] {
+                BackgroundCatalogFixture.release(id, in: catalogFolder)
+            }
+        }
+        showBackgroundSetsPicker(in: app)
         let target = scrollToCell("beautiful-landscapes-01", in: app)
         XCTAssertTrue(target.exists && target.isHittable, "no cell for beautiful-landscapes-01")
         let neighbour = cell("beautiful-landscapes-02", in: app)
@@ -324,6 +340,8 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         let targetAfter = settledFrame(of: target)
         record("sets later click", targetBefore, targetAfter)
         XCTAssertEqual(targetAfter.minY, targetBefore.minY, accuracy: 1, "the grid moved on a later click")
+        XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed, so a pick finished")
+        app.buttons["background-images.picker.cancel"].click()
     }
 
     private struct ShippedBottom {
@@ -333,13 +351,21 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         let galaxy: XCUIElement
     }
 
-    /// A fresh open from the File menu with the shipped catalog, the window at its
-    /// minimum height, Background Sets scrolled to the bottom so Deep Space's
-    /// heading is above the view. `downloaded` are shipped full paths seeded as
-    /// already downloaded; `waitForAvailable` is a cell stem whose "Available
-    /// offline" line must show before the bottom is measured.
+    /// A fresh open of Pane > Background Images… with the shipped catalog,
+    /// Background Sets scrolled to the bottom so Deep Space's heading is above
+    /// the view. `downloaded` are shipped full paths seeded as already
+    /// downloaded; `waitForAvailable` is a cell stem whose "Available offline"
+    /// line must show before the bottom is measured. `checkInFlight` holds
+    /// `catalog.json`, then switches to My Images and back, so Background Sets
+    /// appearing starts a catalog check that stays in flight while the grid
+    /// scrolls; it needs a check interval of 0.
     @MainActor
-    private func openShippedAtTheBottom(downloaded: [String] = [], waitForAvailable: String? = nil, environment: [String: String] = [:]) throws -> ShippedBottom {
+    private func openShippedAtTheBottom(
+        downloaded: [String] = [],
+        waitForAvailable: String? = nil,
+        environment: [String: String] = [:],
+        checkInFlight: Bool = false
+    ) throws -> ShippedBottom {
         try BackgroundCatalogFixture.writeShipped(in: catalogFolder)
         if !downloaded.isEmpty {
             try BackgroundCatalogFixture.seedDownloaded(downloaded, into: libraryFolder.appending(path: "Hosted"))
@@ -351,19 +377,23 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         )
         app.activate()
         XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
-        let menu = openMenu("File", in: app)
-        menuItem("Background Images", in: menu).click()
-        let window = backgroundImagesWindow(in: app)
-        XCTAssertTrue(window.waitForExistence(timeout: 5), "File menu did not open the window")
-        // Down to the minimum height, so Deep Space's heading leaves the view at the bottom.
-        let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1)).withOffset(CGVector(dx: -2, dy: -2))
-        corner.press(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: 0, dy: -300)))
+        let picker = openPaneBackgroundPicker(in: app)
         showBackgroundSets(in: app)
         let root = element("background-sets.root", in: app)
         XCTAssertTrue(root.waitForExistence(timeout: 5), "no Background Sets view")
         let deepSpace = element("background-sets.set.Deep Space", in: app)
         let galaxy = cell("08-distant-galaxy", in: app)
         XCTAssertTrue(element("background-sets.set.Future Cities", in: app).waitForExistence(timeout: 10), "the catalog did not load")
+
+        if checkInFlight {
+            let refresh = element("background-sets.refresh", in: app)
+            XCTAssertTrue(waitFor({ refresh.isEnabled }, timeout: 10), "a catalog check never finished")
+            try Data().write(to: catalogFolder.appending(path: "catalog.json.hold"))
+            app.radioButtons["My Images"].firstMatch.click()
+            showBackgroundSets(in: app)
+            XCTAssertTrue(waitFor({ !refresh.isEnabled }, timeout: 5), "Background Sets appearing started no catalog check")
+            XCTAssertTrue(element("background-sets.set.Future Cities", in: app).waitForExistence(timeout: 5), "the sets did not show during the check")
+        }
 
         let available = waitForAvailable.map { element("background-sets.cell.\($0).available", in: app) }
         var sawAvailable = available?.exists ?? true
@@ -378,8 +408,22 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         }
         XCTAssertTrue(sawAvailable, "no Available offline line, so the seeded downloads were not picked up")
         XCTAssertTrue(galaxy.exists && galaxy.isHittable, "Distant Galaxy never came on screen")
-        record("window", window.frame, root.frame)
+        record("picker", picker.frame, root.frame)
         return ShippedBottom(app: app, root: root, deepSpace: deepSpace, galaxy: galaxy)
+    }
+
+    /// Keeps the download of a shipped Deep Space image in flight, so a click
+    /// on it starts a pick that leaves the picker open.
+    private func holdDeepSpace(_ stems: [String]) throws {
+        for stem in stems {
+            try Data().write(to: catalogFolder.appending(path: "deep-space/\(stem).png.hold"))
+        }
+    }
+
+    private func releaseDeepSpace(_ stems: [String]) {
+        for stem in stems {
+            try? FileManager.default.removeItem(at: catalogFolder.appending(path: "deep-space/\(stem).png.hold"))
+        }
     }
 
     /// Frames of Distant Galaxy, its visible row neighbours and the Deep Space
@@ -407,12 +451,14 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         }
     }
 
-    /// The user's report: a fresh open from the File menu, Background Sets with the
-    /// shipped catalog, scrolled to the bottom, then a click on the last image.
+    /// #0624's report: a fresh open, Background Sets with the shipped catalog,
+    /// scrolled to the bottom, then a click on the last image.
     @MainActor
     func testClickingTheLastShippedImageAtTheBottomKeepsTheGridStill() throws {
         let bottom = try openShippedAtTheBottom()
         defer { bottom.app.terminate() }
+        try holdDeepSpace(["08-distant-galaxy"])
+        defer { releaseDeepSpace(["08-distant-galaxy"]) }
         assertBottomStill(bottom, "click") { bottom.galaxy.click() }
     }
 
@@ -428,21 +474,34 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     func testClickingTheLastShippedImageWithDownloadedImagesAboveKeepsTheGridStill() throws {
         let bottom = try openShippedAtTheBottom(downloaded: Self.unevenAboveDeepSpace, waitForAvailable: "05-sea-cliffs-overcast")
         defer { bottom.app.terminate() }
+        try holdDeepSpace(["08-distant-galaxy", "05-engine-trail"])
+        defer { releaseDeepSpace(["08-distant-galaxy", "05-engine-trail"]) }
         assertBottomStill(bottom, "first click") { bottom.galaxy.click() }
         let trail = cell("05-engine-trail", in: bottom.app)
         XCTAssertTrue(trail.exists && trail.isHittable, "Engine Trail is not on screen")
         assertBottomStill(bottom, "later click") { trail.click() }
     }
 
+    /// A click on a downloaded image picks it and closes the picker, so the
+    /// clicks go to Distant Galaxy, held, with its row neighbours downloaded:
+    /// the first starts its download, the second cancels it.
     @MainActor
     func testClickingAtTheBottomWithDownloadedImagesInView() throws {
-        let inView = ["05-engine-trail", "06-ring-station", "07-fleet-dust-lane", "08-distant-galaxy"].map { "deep-space/\($0).png" }
-        let bottom = try openShippedAtTheBottom(downloaded: inView, waitForAvailable: "08-distant-galaxy")
+        let inView = ["05-engine-trail", "06-ring-station", "07-fleet-dust-lane"].map { "deep-space/\($0).png" }
+        let bottom = try openShippedAtTheBottom(downloaded: inView, waitForAvailable: "07-fleet-dust-lane")
         defer { bottom.app.terminate() }
-        assertBottomStill(bottom, "first click") { bottom.galaxy.click() }
-        let trail = cell("05-engine-trail", in: bottom.app)
-        XCTAssertTrue(trail.exists && trail.isHittable, "Engine Trail is not on screen")
-        assertBottomStill(bottom, "later click") { trail.click() }
+        try holdDeepSpace(["08-distant-galaxy"])
+        defer { releaseDeepSpace(["08-distant-galaxy"]) }
+        let progress = element("background-sets.cell.08-distant-galaxy.progress", in: bottom.app)
+        assertBottomStill(bottom, "first click") {
+            bottom.galaxy.click()
+            XCTAssertTrue(progress.waitForExistence(timeout: 5), "the click started no download")
+        }
+        assertBottomStill(bottom, "cancelling click") {
+            bottom.galaxy.click()
+            XCTAssertTrue(waitFor({ !progress.exists }, timeout: 5), "the second click did not cancel the download")
+        }
+        XCTAssertTrue(element("background-images.picker.root", in: bottom.app).exists, "the picker closed")
     }
 
     @MainActor
@@ -458,11 +517,6 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     }
 
     @MainActor
-    private func backgroundImagesWindow(in app: XCUIApplication) -> XCUIElement {
-        BattyUITestHarness.window(withIdentifier: "background-images", in: app)
-    }
-
-    @MainActor
     private func screenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
@@ -470,83 +524,37 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         add(attachment)
     }
 
-    /// Moves the Background Images window to the screen's bottom-right corner,
-    /// then makes the main window key and shrinks it into the top-left corner,
-    /// so the next click on Distant Galaxy both makes Background Images key
-    /// and lands on the cell. The screen is too small for the two windows not
-    /// to overlap at all; only the cell must stay clear.
+    /// #0624's key-event guard, moved to the picker: a picker sheet has no
+    /// key event that checks catalogs, so the due check here is the one
+    /// Background Sets appearing starts. It is held in flight the way a slow
+    /// network holds it while the grid scrolls to the bottom, then measured
+    /// through a click and the check finishing.
     @MainActor
-    private func makeAnotherWindowKey(_ bottom: ShippedBottom) {
-        let app = bottom.app
-        let images = backgroundImagesWindow(in: app)
-        let screen = XCUIScreen.main.screenshot().image.size
-        let title = images.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 12))
-        let frame = images.frame
-        title.press(forDuration: 0.2, thenDragTo: title.withOffset(CGVector(dx: screen.width - 2 - frame.maxX, dy: screen.height - 2 - frame.maxY)))
-        _ = waitFor({ images.frame.maxY >= screen.height - 20 }, timeout: 3)
-
-        let main = app.windows.matching(NSPredicate(format: "identifier != %@", "background-images")).firstMatch
-        XCTAssertTrue(main.exists, "setup: no main window")
-        let mainTitle = main.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 120, dy: 12))
-        XCTAssertFalse(images.frame.contains(mainTitle.screenPoint), "setup: the main window's title bar is under Background Images")
-        mainTitle.click()
-        // Up against the menu bar; the system keeps the title bar below it.
-        mainTitle.press(forDuration: 0.2, thenDragTo: mainTitle.withOffset(CGVector(dx: -main.frame.minX, dy: -main.frame.minY)))
-        _ = settledFrame(of: main)
-        let corner = main.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1)).withOffset(CGVector(dx: -2, dy: -2))
-        corner.press(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: -1000, dy: -1000)))
-        _ = settledFrame(of: main)
-        record("windows main, images", main.frame, images.frame)
-        record("windows Distant Galaxy", bottom.galaxy.frame, bottom.galaxy.frame)
-        XCTAssertTrue(bottom.galaxy.exists && bottom.galaxy.isHittable, "setup: Distant Galaxy left the screen")
-        XCTAssertFalse(main.frame.intersects(bottom.galaxy.frame), "setup: the main window covers Distant Galaxy")
-        screenshot("main window key")
-    }
-
-    /// A click on Distant Galaxy while another window is key makes Background
-    /// Images key, which runs `windowDidBecomeKey`'s uses refresh and catalog
-    /// check; the next click selects it.
-    @MainActor
-    func testClickThatMakesTheWindowKeyKeepsTheGridStill() throws {
-        let bottom = try openShippedAtTheBottom(downloaded: Self.unevenAboveDeepSpace, waitForAvailable: "05-sea-cliffs-overcast")
-        defer { bottom.app.terminate() }
-        makeAnotherWindowKey(bottom)
-        assertBottomStill(bottom, "activating click", accuracy: 0) { bottom.galaxy.click() }
-        screenshot("after activating click")
-        // The activating click doesn't reach the cell, so this one selects.
-        assertBottomStill(bottom, "selecting click", accuracy: 0) { bottom.galaxy.click() }
-        screenshot("after selecting click")
-    }
-
-    /// As above, with a catalog check due on the key event and held in flight
-    /// the way a slow network holds it, measured during and after the check.
-    @MainActor
-    func testClickThatMakesTheWindowKeyWithACheckDueKeepsTheGridStill() throws {
+    func testClickWithACheckDueKeepsTheGridStill() throws {
         let bottom = try openShippedAtTheBottom(
             downloaded: Self.unevenAboveDeepSpace,
             waitForAvailable: "05-sea-cliffs-overcast",
-            environment: ["BATTY_UI_TEST_BACKGROUND_CATALOG_CHECK_INTERVAL": "0"]
+            environment: ["BATTY_UI_TEST_BACKGROUND_CATALOG_CHECK_INTERVAL": "0"],
+            checkInFlight: true
         )
         defer { bottom.app.terminate() }
-        let refresh = element("background-sets.refresh", in: bottom.app)
-        XCTAssertTrue(waitFor({ refresh.isEnabled }, timeout: 10), "a catalog check never finished")
-        makeAnotherWindowKey(bottom)
-        XCTAssertTrue(waitFor({ refresh.isEnabled }, timeout: 10), "a catalog check never finished")
         let hold = catalogFolder.appending(path: "catalog.json.hold")
-        try Data().write(to: hold)
+        defer { try? FileManager.default.removeItem(at: hold) }
+        try holdDeepSpace(["08-distant-galaxy"])
+        defer { releaseDeepSpace(["08-distant-galaxy"]) }
+        let refresh = element("background-sets.refresh", in: bottom.app)
+        XCTAssertFalse(refresh.isEnabled, "the catalog check is no longer in flight")
         let checks = BackgroundCatalogFixture.requests(in: catalogFolder).filter { $0 == "catalog.json" }.count
-        assertBottomStill(bottom, "activating click, check in flight", accuracy: 0) {
-            bottom.galaxy.click()
-            XCTAssertTrue(waitFor({ !refresh.isEnabled }, timeout: 5), "the key event started no catalog check")
-        }
-        screenshot("check in flight")
-        assertBottomStill(bottom, "selecting click, check in flight", accuracy: 0) { bottom.galaxy.click() }
-        screenshot("selected, check in flight")
+        assertBottomStill(bottom, "click, check in flight", accuracy: 0) { bottom.galaxy.click() }
+        screenshot("clicked, check in flight")
         assertBottomStill(bottom, "check finished", accuracy: 0) {
             try? FileManager.default.removeItem(at: hold)
             XCTAssertTrue(waitFor({ refresh.isEnabled }, timeout: 10), "the catalog check never finished")
         }
+        screenshot("check finished")
         let after = BackgroundCatalogFixture.requests(in: catalogFolder).filter { $0 == "catalog.json" }.count
-        XCTAssertGreaterThan(after, checks, "the key event did not check the catalog")
+        XCTAssertGreaterThanOrEqual(after, checks, "the held check was never logged")
+        XCTAssertGreaterThanOrEqual(after, 2, "Background Sets appearing did not check the catalog again")
+        XCTAssertTrue(element("background-images.picker.root", in: bottom.app).exists, "the picker closed")
     }
 }

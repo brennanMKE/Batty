@@ -20,6 +20,7 @@ public struct SessionDetailView: View {
     @State private var afterCommandPalette: (@MainActor () -> Void)?
     @State private var themeSelectorShown: Bool = false
     @State private var pendingPaste: PendingPaste?
+    @State private var backgroundPickPaneID: UUID?
 
     public init(store: AppStateStore, windowRuntime: WindowRuntime) {
         self.store = store
@@ -61,6 +62,13 @@ public struct SessionDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleThemeSelector)) { _ in
             guard isKeyWindow else { return }
             themeSelectorShown.toggle()
+        }
+        // Names its window, so only that window acts, key or not.
+        .onReceive(NotificationCenter.default.publisher(for: .battyChoosePaneBackgroundImage)) { note in
+            guard note.userInfo?[PaneBackgroundImagePicker.windowIDKey] as? WindowID == windowRuntime.id,
+                  let paneID = note.userInfo?[PaneBackgroundImagePicker.paneIDKey] as? UUID
+            else { return }
+            backgroundPickPaneID = paneID
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyRequestPaste)) { note in
             guard isKeyWindow else { return }
@@ -122,6 +130,9 @@ public struct SessionDetailView: View {
                 session: session,
                 onClose: { windowRuntime.reminderSheetSessionID = nil }
             )
+        }
+        .sheet(item: backgroundPickBinding) { pane in
+            PaneBackgroundImagePickerSheet(pane: pane, store: store, isPresented: backgroundPickPresentedBinding)
         }
         .sheet(isPresented: $themeSelectorShown, onDismiss: { store.endGlobalThemePreview() }) {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)
@@ -280,6 +291,25 @@ public struct SessionDetailView: View {
         .coordinateSpace(name: TerminalHostInstaller.coordinateSpaceName)
         .environment(\.windowID, windowRuntime.id)
         .frame(minWidth: 600, minHeight: 400)
+    }
+
+    private var backgroundPickBinding: Binding<PaneRuntime?> {
+        Binding(
+            get: {
+                guard let backgroundPickPaneID else { return nil }
+                return windowRuntime.sessions.lazy
+                    .flatMap(\.tree.allPanes)
+                    .first { $0.id == backgroundPickPaneID }
+            },
+            set: { backgroundPickPaneID = $0?.id }
+        )
+    }
+
+    private var backgroundPickPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { backgroundPickPaneID != nil },
+            set: { if !$0 { backgroundPickPaneID = nil } }
+        )
     }
 
     private var isKeyWindow: Bool {
