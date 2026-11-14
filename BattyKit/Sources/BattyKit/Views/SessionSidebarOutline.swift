@@ -48,7 +48,8 @@ struct SessionSidebarOutline: NSViewRepresentable {
         outline.outlineTableColumn = column
         outline.headerView = nil
         outline.style = .sourceList
-        outline.rowSizeStyle = .default
+        outline.rowSizeStyle = .medium
+        outline.indentationPerLevel = 12
         outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outline.allowsEmptySelection = false
         outline.allowsMultipleSelection = false
@@ -198,7 +199,7 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
         if let reused = outlineView.makeView(withIdentifier: identifier, owner: nil) as? SidebarCellHostingView {
             cell = reused
         } else {
-            cell = SidebarCellHostingView(rootView: SidebarCellRoot(content: AnyView(EmptyView()), emphasized: false))
+            cell = SidebarCellHostingView(rootView: SidebarCellRoot(content: AnyView(EmptyView()), emphasized: false, selected: false))
             cell.sizingOptions = []
             cell.identifier = identifier
         }
@@ -328,18 +329,27 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
 }
 
 /// A cell's SwiftUI root. `emphasized` follows the row's selected-and-focused
-/// state, so the selected row's text reads against the accent highlight.
+/// state, so the selected row's text reads against the accent highlight;
+/// `selected` bolds the selected row's text whether or not the window is key.
+///
+/// The full-height frame makes `NSHostingView` report the content's baseline
+/// where it is drawn (centred in the row). AppKit places the disclosure
+/// chevron from that baseline, so without it the chevron sits at the top.
 struct SidebarCellRoot: View {
     let content: AnyView
     let emphasized: Bool
+    let selected: Bool
 
     var body: some View {
+        let base = content
+            .bold(selected)
+            .frame(maxHeight: .infinity)
         if emphasized {
-            content
+            base
                 .foregroundStyle(Color.white)
                 .environment(\.backgroundProminence, .increased)
         } else {
-            content
+            base
         }
     }
 }
@@ -356,8 +366,15 @@ final class SidebarCellHostingView: NSHostingView<SidebarCellRoot> {
         }
     }
 
+    /// Set by `SidebarOutlineRowView` when its selection changes.
+    var selected = false {
+        didSet {
+            if selected != oldValue { render() }
+        }
+    }
+
     private func render() {
-        rootView = SidebarCellRoot(content: content, emphasized: emphasized)
+        rootView = SidebarCellRoot(content: content, emphasized: emphasized, selected: selected)
     }
 }
 
@@ -396,6 +413,7 @@ final class SidebarOutlineRowView: NSTableRowView {
         let emphasized = isSelected && interiorBackgroundStyle == .emphasized
         for case let cell as SidebarCellHostingView in subviews {
             cell.emphasized = emphasized
+            cell.selected = isSelected
         }
     }
 

@@ -277,6 +277,7 @@ extension SessionSidebarView {
                 onBackground: { actions().onBackground(session.id) }
             )
             .environment(\.appStateStore, store)
+            .padding(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: -4))
         )
     }
 
@@ -304,6 +305,7 @@ extension SessionSidebarView {
             // the tab bar's `tab-chip.<title>` vs. its children.
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("pane-row.\(pane.id.uuidString)")
+            .padding(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 8))
         )
     }
 }
