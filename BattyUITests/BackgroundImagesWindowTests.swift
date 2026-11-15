@@ -402,6 +402,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [existing], connectCLI: false)
         defer { app.terminate() }
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         let edit = element("project-editor.background.edit", in: app)
         XCTAssertTrue(edit.waitForExistence(timeout: 5))
         edit.click()

@@ -32,6 +32,12 @@ enum ProjectEditorNavigation: Equatable {
     case terminate
 }
 
+enum ProjectEditorPlaceholder: Equatable {
+    case unreadable(String)
+    case noProjects
+    case browse
+}
+
 enum ProjectEditorUnsavedChoice: Sendable {
     case save, discard, cancel
 }
@@ -180,7 +186,7 @@ final class ProjectEditorViewModel {
         self.openProject = openProject
         self.captureSession = captureSession
         self.closeWindow = closeWindow
-        if let project = initialSelection.flatMap({ store.project(id: $0) }) ?? store.projects.first {
+        if let project = initialSelection.flatMap({ store.project(id: $0) }) {
             load(project)
         }
     }
@@ -594,6 +600,14 @@ final class ProjectEditorViewModel {
 
     func requestSelect(_ id: UUID) { requestNavigation(.select(id)) }
     func requestNewProject() { requestNavigation(.newProject) }
+
+    /// New Project from the New Session chord. Ignored while the
+    /// unsaved-changes or delete question is up, so the chord cannot replace
+    /// the question being asked.
+    func requestNewProjectFromShortcut() {
+        guard pendingNavigation == nil, pendingDeletion == nil else { return }
+        requestNewProject()
+    }
 
     func resolveUnsaved(_ choice: ProjectEditorUnsavedChoice) {
         guard let navigation = pendingNavigation else { return }
@@ -1014,10 +1028,8 @@ final class ProjectEditorViewModel {
     }
 
     private func discardNewDraft() {
-        if let last = store.projects.last { load(last) } else {
-            draft = nil
-            baseline = nil
-        }
+        draft = nil
+        baseline = nil
     }
 
     func moveProjects(from source: IndexSet, to destination: Int) {
@@ -1048,6 +1060,13 @@ final class ProjectEditorViewModel {
     }
 
     var unreadableFilePath: String? { store.unreadableFilePath }
+
+    /// What the main area shows when no draft is loaded.
+    var placeholder: ProjectEditorPlaceholder? {
+        guard draft == nil else { return nil }
+        if let path = unreadableFilePath { return .unreadable(path) }
+        return store.projects.isEmpty ? .noProjects : .browse
+    }
 
     static func message(for error: ProjectStoreError) -> String {
         switch error {

@@ -363,6 +363,28 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         XCTAssertTrue(editorWindow(in: app).waitForExistence(timeout: 10), "the Project Editor did not open")
     }
 
+    /// Clicks a saved Project's row in the editor's list and waits for its
+    /// fields to load.
+    @MainActor
+    func selectProjectInEditor(named name: String, in app: XCUIApplication) {
+        let row = element("project-editor.list.row.\(name)", in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "no Projects list row for \(name)")
+        row.click()
+        let field = element("project-editor.name", in: app)
+        XCTAssertTrue(
+            waitFor({ field.exists && (field.value as? String) == name }, timeout: 5),
+            "the editor did not load \(name)"
+        )
+    }
+
+    @MainActor
+    func assertBrowseState(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(
+            element("project-editor.browse", in: app).waitForExistence(timeout: 5),
+            "the Project Editor is not in its browse state", file: file, line: line
+        )
+    }
+
     /// Pane > Background Images… for the focused terminal Pane; returns the
     /// picker's root.
     @MainActor

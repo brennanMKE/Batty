@@ -32,7 +32,7 @@ struct BackgroundImageUsesTests {
         let wide = try await f.copy(in: f.appWideFolder)
         let store = f.appStore()
         try store.projectStore.upsert(f.project(background: nil))
-        let model = ProjectEditorViewModel(store: store.projectStore, directoryExists: { _ in true }, backgrounds: f.library)
+        let model = ProjectEditorViewModel(store: store.projectStore, initialSelection: store.projectStore.projects.first?.id, directoryExists: { _ in true }, backgrounds: f.library)
         store.projectEditorModelOverride = { model }
         model.setBackgroundOverride(projectBackgroundValue(path: wide))
         #expect(store.backgroundImageUses()[try digest(wide)] == [.projectDraft])

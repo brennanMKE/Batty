@@ -207,7 +207,7 @@ struct ProjectSymbolEditorTests {
     @Test func aNewDraftStartsAtTheFolderAndAnUnsavedNewRowShowsTheDraftSymbol() throws {
         let fixture = try SymbolFixture()
         let store = ProjectStore(fileURL: fixture.projectsFile)
-        let model = ProjectEditorViewModel(store: store, defaultRoot: { fixture.root.path })
+        let model = ProjectEditorViewModel(store: store, initialSelection: store.projects.first?.id, defaultRoot: { fixture.root.path })
         model.requestNewProject()
         #expect(model.draft?.symbol == .folder)
 

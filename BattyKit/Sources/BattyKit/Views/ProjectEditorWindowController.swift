@@ -29,8 +29,10 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
     /// Builds the window and model without ordering the window front, or
     /// reuses the existing ones. `selecting` selects that Project; `newDraft`
     /// starts an unsaved Project from the given draft (#0476's "Save as
-    /// Project" supplies one). When the open editor holds unsaved changes the
-    /// editor asks what to do before switching.
+    /// Project" supplies one). With neither, a first open shows the Projects
+    /// list with nothing selected, and an open window keeps what it shows.
+    /// When the open editor holds unsaved changes the editor asks what to do
+    /// before switching.
     @discardableResult
     func prepare(store: AppStateStore, selecting projectID: UUID? = nil, newDraft: ProjectDraft? = nil) -> Bool {
         let projectStore = store.projectStore
@@ -98,9 +100,19 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
 
         self.model = model
         self.window = window
+        store.projectEditorDidOpen()
         if let project = model.selectedID.flatMap({ projectStore.project(id: $0) }) {
             store.projectEditorShowed(project)
         }
+        return true
+    }
+
+    /// The New Session chord while the editor is key: starts a New Project.
+    /// False when the window has not been built.
+    @discardableResult
+    func newProjectFromMenu() -> Bool {
+        guard let model, window != nil else { return false }
+        model.requestNewProjectFromShortcut()
         return true
     }
 

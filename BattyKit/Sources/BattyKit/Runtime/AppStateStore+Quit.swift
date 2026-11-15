@@ -67,6 +67,7 @@ extension AppStateStore {
     /// The editor window has closed. Re-runs the automatic-quit check when it
     /// was holding the quit; the check itself re-reads the live window state.
     func projectEditorDidClose() {
+        if projectEditorIsOpen { projectEditorIsOpen = false }
         projectBackgroundReclaim = projectBackgrounds.reclaim(store: projectStore, inUse: projectBackgroundPathsInUse)
         sharedProjectImages?.sweepIfAllowed()
         guard quitWhenEditorCloses else { return }

@@ -65,12 +65,15 @@ private final class EditorFixture {
     func model(
         store: ProjectStore,
         selecting id: UUID? = nil,
+        browsing: Bool = false,
         defaultRoot: String? = nil,
         suggestion: String? = nil
     ) -> ProjectEditorViewModel {
+        // Most tests want a loaded Project, as Edit… gives; `browsing` opens
+        // the way Projects… does, with nothing selected.
         ProjectEditorViewModel(
             store: store,
-            initialSelection: id,
+            initialSelection: id ?? (browsing ? nil : store.projects.first?.id),
             defaultRoot: { defaultRoot },
             suggestName: { _ in suggestion }
         )
@@ -679,12 +682,12 @@ struct ProjectEditorNavigationTests {
         let fixture = try EditorFixture()
         let store = fixture.store()
         let model = ProjectEditorViewModel(
-            store: store, defaultRoot: { fixture.root.path }, suggestName: { _ in nil })
+            store: store, initialSelection: store.projects.first?.id, defaultRoot: { fixture.root.path }, suggestName: { _ in nil })
         model.requestNewProject()
         #expect(model.draft?.name == "Untitled Project")
 
         let chosen = fixture.root.appendingPathComponent("src")
-        let named = ProjectEditorViewModel(store: store, defaultRoot: { fixture.root.path }, suggestName: { _ in "Suggested" })
+        let named = ProjectEditorViewModel(store: store, initialSelection: store.projects.first?.id, defaultRoot: { fixture.root.path }, suggestName: { _ in "Suggested" })
         named.requestNewProject()
         named.setName("Untitled Project")
         named.applyChosenRoot(chosen)
@@ -778,15 +781,93 @@ struct ProjectEditorNavigationTests {
         let store = fixture.store()
         let a = fixture.simpleProject(name: "A")
         try store.upsert(a)
-        let model = fixture.model(store: store, defaultRoot: fixture.root.path, suggestion: "Fresh")
+        let model = fixture.model(store: store, browsing: true, defaultRoot: fixture.root.path, suggestion: "Fresh")
         model.requestNewProject()
         let newID = try #require(model.selectedID)
 
         model.requestDelete(newID)
 
         #expect(model.pendingDeletion == nil)
-        #expect(model.selectedID == a.id)
+        #expect(model.selectedID == nil)
+        #expect(model.placeholder == .browse)
         #expect(store.projects.count == 1)
+    }
+
+    @Test func openingWithoutASelectionShowsTheBrowseState() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        try store.upsert(fixture.simpleProject(name: "A"))
+        try store.upsert(fixture.simpleProject(name: "B"))
+        let model = fixture.model(store: store, browsing: true)
+        #expect(model.draft == nil)
+        #expect(model.selectedID == nil)
+        #expect(model.placeholder == .browse)
+        #expect(model.listEntries.count == 2)
+    }
+
+    @Test func openingWithNoProjectsShowsTheNoProjectsPlaceholder() throws {
+        let fixture = try EditorFixture()
+        let model = fixture.model(store: fixture.store(), browsing: true)
+        #expect(model.placeholder == .noProjects)
+    }
+
+    @Test func anUnreadableFileShowsTheUnreadablePlaceholder() throws {
+        let fixture = try EditorFixture()
+        try fixture.store().upsert(fixture.simpleProject(name: "Kept"))
+        let gate = ProjectFileReadGate()
+        gate.failure = ProjectFileReadGate.cocoaReadError(posix: .EIO)
+        let store = ProjectStore(fileURL: fixture.projectsFile, clock: { EditorFixture.stamp }, readFile: { try gate.read($0) })
+        let model = fixture.model(store: store, browsing: true)
+        #expect(model.placeholder == .unreadable(fixture.projectsFile.path))
+    }
+
+    @Test func selectingFromTheBrowseStateLoadsThatProject() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        let a = fixture.simpleProject(name: "A")
+        let b = fixture.simpleProject(name: "B")
+        try store.upsert(a)
+        try store.upsert(b)
+        let model = fixture.model(store: store, browsing: true)
+        model.requestSelect(b.id)
+        #expect(model.selectedID == b.id)
+        #expect(model.placeholder == nil)
+    }
+
+    @Test func openingWithASelectionStillLoadsIt() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        let a = fixture.simpleProject(name: "A")
+        let b = fixture.simpleProject(name: "B")
+        try store.upsert(a)
+        try store.upsert(b)
+        let model = fixture.model(store: store, selecting: b.id)
+        #expect(model.selectedID == b.id)
+        #expect(model.draft?.name == "B")
+    }
+
+    @Test func newProjectShortcutStartsADraftAndAsksFirstWhenDirty() throws {
+        let fixture = try EditorFixture()
+        let store = fixture.store()
+        let a = fixture.simpleProject(name: "A")
+        try store.upsert(a)
+
+        let browsing = fixture.model(store: store, browsing: true, defaultRoot: fixture.root.path, suggestion: "Fresh")
+        browsing.requestNewProjectFromShortcut()
+        #expect(browsing.isNewDraft)
+
+        let dirty = fixture.model(store: store, selecting: a.id)
+        dirty.setName("A Changed")
+        dirty.requestNewProjectFromShortcut()
+        #expect(dirty.pendingNavigation == .newProject)
+        #expect(dirty.draft?.name == "A Changed")
+
+        let deleting = fixture.model(store: store, selecting: a.id)
+        deleting.requestDelete(a.id)
+        #expect(deleting.pendingDeletion == a.id)
+        deleting.requestNewProjectFromShortcut()
+        #expect(deleting.pendingNavigation == nil)
+        #expect(deleting.selectedID == a.id)
     }
 
     @Test func moveUpAndDownReorderTheStoredList() throws {
@@ -1162,6 +1243,50 @@ struct ProjectEditorMenuTargetTests {
         #expect(tab != nil)
         #expect(tab?.id == content.selectedSession?.focusedTerminalPane?.activeTab?.id)
         #expect(store.focusedTerminalTab(projectEditorIsKey: true) == nil)
+    }
+
+    @Test func newItemRouteGoesToTheEditorOnlyWhileItIsKey() {
+        let store = AppStateStore()
+        let content = store.windows[0]
+        #expect(store.newItemRoute(projectEditorIsKey: true, projectPickerIsKey: false, auxiliaryWindowIsKey: false) == .newProject)
+        #expect(store.newItemRoute(projectEditorIsKey: true, projectPickerIsKey: false, auxiliaryWindowIsKey: true) == .newProject)
+        #expect(store.newItemRoute(projectEditorIsKey: false, projectPickerIsKey: false, auxiliaryWindowIsKey: false) == .newSession(content.id))
+        #expect(store.newItemRoute(projectEditorIsKey: false, projectPickerIsKey: true, auxiliaryWindowIsKey: false) == .none)
+        #expect(store.newItemRoute(projectEditorIsKey: false, projectPickerIsKey: false, auxiliaryWindowIsKey: true) == .none)
+    }
+
+    @Test func newSessionStaysEnabledForTheEditorWithNoContentWindow() {
+        let store = AppStateStore()
+        store.terminateHandler = {}
+        store.removeWindow(id: store.windows[0].id)
+        #expect(store.windows.isEmpty, "test setup: no content window may remain")
+        #expect(!store.newItemCommandEnabled)
+
+        store.projectEditorDidOpen()
+        #expect(store.newItemCommandEnabled)
+        #expect(store.newItemRoute(projectEditorIsKey: true, projectPickerIsKey: false, auxiliaryWindowIsKey: true) == .newProject)
+        #expect(store.newItemRoute(projectEditorIsKey: false, projectPickerIsKey: false, auxiliaryWindowIsKey: true) == .none)
+
+        store.projectEditorDidClose()
+        #expect(!store.newItemCommandEnabled)
+    }
+
+    @Test func newSessionEnablementRule() {
+        #expect(AppStateStore.newItemCommandEnabled(hasContentWindow: true, projectEditorIsOpen: false))
+        #expect(AppStateStore.newItemCommandEnabled(hasContentWindow: true, projectEditorIsOpen: true))
+        #expect(AppStateStore.newItemCommandEnabled(hasContentWindow: false, projectEditorIsOpen: true))
+        #expect(!AppStateStore.newItemCommandEnabled(hasContentWindow: false, projectEditorIsOpen: false))
+    }
+
+    @Test func buildingAndClosingTheEditorWindowTracksWhetherItIsOpen() throws {
+        let fixture = try EditorFixture()
+        let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), projectsFileURL: fixture.projectsFile)
+        let controller = ProjectEditorWindowController()
+        #expect(!store.projectEditorIsOpen)
+        #expect(controller.prepare(store: store))
+        #expect(store.projectEditorIsOpen)
+        controller.window?.close()
+        #expect(!store.projectEditorIsOpen)
     }
 
     @Test func enablementResolutionIgnoresTheEditorKeyState() {

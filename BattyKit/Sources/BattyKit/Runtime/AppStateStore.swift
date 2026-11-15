@@ -369,6 +369,12 @@ public final class AppStateStore {
     /// the check. See `AppStateStore+Quit.swift`.
     @ObservationIgnored var quitWhenEditorCloses = false
 
+    /// True while the Project Editor window exists. Observed so File > New
+    /// Session stays enabled for the editor's New Project chord when no
+    /// content window is left. Written only from the editor controller's
+    /// window build and close, never from a SwiftUI update.
+    public internal(set) var projectEditorIsOpen = false
+
     /// Tests substitute the editor's view model; nothing else assigns it.
     @ObservationIgnored var projectEditorModelOverride: (@MainActor () -> ProjectEditorViewModel?)?
     /// One in-flight AI naming request per session, keyed by session id and
@@ -1348,6 +1354,44 @@ public final class AppStateStore {
         let pickerKey = projectPickerIsKey ?? self.projectPickerIsKey
         let auxiliaryKey = auxiliaryWindowIsKey ?? self.auxiliaryWindowIsKey
         return editorKey || pickerKey || auxiliaryKey ? nil : defaultTargetWindow()
+    }
+
+    public enum NewItemRoute: Equatable {
+        case newProject
+        case newSession(WindowID)
+        case none
+    }
+
+    /// Whether File > New Session is enabled: a content window to add a
+    /// Session to, or the Project Editor, where the chord starts a New
+    /// Project even with no content window left.
+    public var newItemCommandEnabled: Bool {
+        Self.newItemCommandEnabled(hasContentWindow: keyContentWindow != nil, projectEditorIsOpen: projectEditorIsOpen)
+    }
+
+    static func newItemCommandEnabled(hasContentWindow: Bool, projectEditorIsOpen: Bool) -> Bool {
+        hasContentWindow || projectEditorIsOpen
+    }
+
+    func projectEditorDidOpen() {
+        if !projectEditorIsOpen { projectEditorIsOpen = true }
+    }
+
+    /// Where File > New Session's chord goes. The Project Editor is checked
+    /// first because it also counts as an auxiliary window, and there the
+    /// chord means New Project.
+    public func newItemRoute(
+        projectEditorIsKey: Bool? = nil,
+        projectPickerIsKey: Bool? = nil,
+        auxiliaryWindowIsKey: Bool? = nil
+    ) -> NewItemRoute {
+        if projectEditorIsKey ?? self.projectEditorIsKey { return .newProject }
+        guard let window = menuTargetWindow(
+            projectEditorIsKey: false,
+            projectPickerIsKey: projectPickerIsKey,
+            auxiliaryWindowIsKey: auxiliaryWindowIsKey
+        ) else { return .none }
+        return .newSession(window.id)
     }
 
     /// Whether `window` is the Open Project picker's sheet, which tags its

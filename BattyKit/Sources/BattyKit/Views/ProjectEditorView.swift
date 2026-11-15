@@ -214,7 +214,8 @@ private struct ProjectEditorEmptyState: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            if let path = model.unreadableFilePath {
+            switch model.placeholder {
+            case .unreadable(let path):
                 Text("Batty Can't Read Your Saved Projects")
                     .font(.headline)
                 Text("Your Projects haven't been changed. Check that Batty can read this file, then open this window again.")
@@ -226,7 +227,19 @@ private struct ProjectEditorEmptyState: View {
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("project-editor.empty.unreadable-path")
-            } else {
+            case .browse:
+                Text("Select a Project to edit it")
+                    .font(.headline)
+                Text("Choose a Project in the list, or start a new one.", comment: "Project Editor: shown when no Project is selected")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    model.requestNewProject()
+                } label: {
+                    Text("New Project\u{2026}", comment: "Project Editor: browse-state button that starts a new Project")
+                }
+                .accessibilityIdentifier("project-editor.browse.new-project")
+            case .noProjects, nil:
                 Text("No Projects yet")
                     .font(.headline)
                 Text("A Project opens a Session with its folder, color, layout and startup commands already set up.")
@@ -238,6 +251,8 @@ private struct ProjectEditorEmptyState: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(model.placeholder == .browse ? "project-editor.browse" : "project-editor.empty")
     }
 }
 

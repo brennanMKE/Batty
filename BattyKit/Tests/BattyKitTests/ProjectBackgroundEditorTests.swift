@@ -13,7 +13,7 @@ struct ProjectBackgroundEditorTests {
     }
 
     private func model(_ fixture: ProjectBackgroundFixture, _ store: ProjectStore, selecting id: UUID? = nil) -> ProjectEditorViewModel {
-        ProjectEditorViewModel(store: store, initialSelection: id, directoryExists: { _ in true }, backgrounds: fixture.library, sharedImagesAvailable: true)
+        ProjectEditorViewModel(store: store, initialSelection: id ?? store.projects.first?.id, directoryExists: { _ in true }, backgrounds: fixture.library, sharedImagesAvailable: true)
     }
 
     private func editor(_ model: ProjectEditorViewModel, appWide: TerminalBackgroundSettings = .off) -> BackgroundOverrideEditor {

@@ -154,11 +154,19 @@ public struct BattyCommands: Commands {
                 Divider()
 
                 Button("New Session") {
-                    logger.info("Cmd-N action fired (File → New Session)")
-                    actionWindow?.addSession()
+                    switch store.newItemRoute() {
+                    case .newProject:
+                        logger.info("Cmd-N action fired (File → New Session): New Project in the Project Editor")
+                        ProjectEditorWindowController.shared.newProjectFromMenu()
+                    case .newSession(let id):
+                        logger.info("Cmd-N action fired (File → New Session)")
+                        store.windows.first { $0.id == id }?.addSession()
+                    case .none:
+                        logger.info("Cmd-N action fired (File → New Session): no target window")
+                    }
                 }
                 .keyboardShortcut(shortcuts.keyboardShortcut(for: .newSession))
-                .disabled(keyWindow == nil)
+                .disabled(!store.newItemCommandEnabled)
 
                 Divider()
 

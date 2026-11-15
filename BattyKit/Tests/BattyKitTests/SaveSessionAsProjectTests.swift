@@ -271,7 +271,7 @@ struct SaveSessionAsProjectEntryTests {
         #expect(draft.rootPath == home)
         #expect(draft.name == ProjectEditorViewModel.untitledName)
         #expect(draft.captureNotes[.root] != nil)
-        let model = ProjectEditorViewModel(store: store.projectStore)
+        let model = ProjectEditorViewModel(store: store.projectStore, initialSelection: store.projectStore.projects.first?.id)
         _ = model.requestNavigation(.newDraft(draft))
         let validation = model.validate()
         #expect(validation.warnings[.root] != nil)
@@ -296,7 +296,7 @@ struct SaveSessionAsProjectEntryTests {
         let draft = try #require(opened.drafts.first)
         #expect(projectStore.project(id: stored.id) == stored, "nothing is stored before Save")
 
-        let model = ProjectEditorViewModel(store: projectStore)
+        let model = ProjectEditorViewModel(store: projectStore, initialSelection: projectStore.projects.first?.id)
         model.requestNavigation(.newDraft(draft))
         model.cancel()
         #expect(projectStore.project(id: stored.id) == stored, "Cancel leaves the Project as it was")
@@ -421,7 +421,7 @@ struct CopyFromCurrentSessionTests {
         _ projectStore: ProjectStore,
         capture: @escaping @MainActor (String?) -> SessionProjectCapture?
     ) -> ProjectEditorViewModel {
-        ProjectEditorViewModel(store: projectStore, directoryExists: { _ in true }, captureSession: capture)
+        ProjectEditorViewModel(store: projectStore, initialSelection: projectStore.projects.first?.id, directoryExists: { _ in true }, captureSession: capture)
     }
 
     private func capture(_ fixture: Fixture, root requested: String?) -> SessionProjectCapture {
@@ -548,7 +548,7 @@ struct CopyFromCurrentSessionTests {
         let fixture = try Fixture()
         let projectStore = ProjectStore(fileURL: fixture.projectsFile)
         let bare = SessionProjectCapture.capture(session: fixture.session(.leaf(fixture.pane([TabRuntime()]))), homeDirectory: fixture.root.path)
-        let model = ProjectEditorViewModel(store: projectStore, directoryExists: { _ in true })
+        let model = ProjectEditorViewModel(store: projectStore, initialSelection: projectStore.projects.first?.id, directoryExists: { _ in true })
         model.requestNavigation(.newDraft(bare.newDraft(name: "Placeholder", existingNames: [])))
 
         #expect(model.save() == nil)
@@ -696,7 +696,7 @@ struct SaveSessionAsProjectBackgroundTests {
         let session = fixture.session()
         session.tree.allPanes[0].tabs[0].setBackgroundOverride(secondBackgroundValue(path: nil))
         let model = ProjectEditorViewModel(
-            store: projectStore,
+            store: projectStore, initialSelection: projectStore.projects.first?.id,
             directoryExists: { _ in true },
             captureSession: { SessionProjectCapture.capture(session: session, root: $0, gitDirectory: { _ in nil }) }
         )
@@ -841,7 +841,7 @@ struct SaveSessionAsProjectBackgroundTests {
         let session = fixture.session()
         session.setBackgroundOverride(secondBackgroundValue(path: nil))
         let model = ProjectEditorViewModel(
-            store: projectStore,
+            store: projectStore, initialSelection: projectStore.projects.first?.id,
             directoryExists: { _ in true },
             captureSession: { SessionProjectCapture.capture(session: session, root: $0, gitDirectory: { _ in nil }) }
         )

@@ -33,6 +33,93 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         closeMenus(app)
     }
 
+    private func secondProject() throws -> [String: Any] {
+        ProjectFixture.project(
+            name: "Second", root: try makeDirectory("second-root"), layout: ProjectFixture.terminal(), preset: "singlePane"
+        )
+    }
+
+    @MainActor
+    func testProjectsMenuOpensInBrowseState() throws {
+        let (app, _) = try launchApp(projects: [try existingProject(), try secondProject()])
+        defer { app.terminate() }
+
+        openEditorFromProjectsMenu(in: app)
+        assertBrowseState(in: app)
+        XCTAssertFalse(paneCard(1, in: app).exists, "the browse state shows a Project's layout")
+        XCTAssertFalse(element("project-editor.name", in: app).exists, "the browse state shows a Project's fields")
+        selectProjectInEditor(named: "Second", in: app)
+        XCTAssertFalse(element("project-editor.browse", in: app).exists)
+    }
+
+    @MainActor
+    func testBrowseNewProjectButtonStartsADraft() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromProjectsMenu(in: app)
+        assertBrowseState(in: app)
+        element("project-editor.browse.new-project", in: app).click()
+        XCTAssertTrue(element("project-editor.list.row.new", in: app).waitForExistence(timeout: 5), "no Untitled row")
+        XCTAssertTrue(element("project-editor.name", in: app).waitForExistence(timeout: 5), "the new draft's fields are not shown")
+    }
+
+    @MainActor
+    func testCommandNInProjectsWindowStartsNewProjectNotASession() throws {
+        let (app, initial) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+        let sessionCount = try XCTUnwrap(initial).sessions.count
+
+        openEditorFromProjectsMenu(in: app)
+        assertBrowseState(in: app)
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(element("project-editor.list.row.new", in: app).waitForExistence(timeout: 5), "Cmd-N did not start a New Project")
+        XCTAssertEqual(BattyCLI.topology()?.sessions.count, sessionCount, "Cmd-N in the Projects window opened a Session")
+    }
+
+    /// Closing the last content window quits Batty unless the editor holds
+    /// unsaved edits, so the edit comes first; Cmd-N then asks about it.
+    @MainActor
+    func testCommandNInProjectsWindowWithNoContentWindowStartsNewProject() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        let contentIdentifier = app.windows.firstMatch.identifier
+        openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
+        replaceText(in: "project-editor.name", with: "Existing Changed", app: app)
+
+        let content = app.windows.matching(NSPredicate(format: "identifier == %@", contentIdentifier)).firstMatch
+        XCTAssertTrue(content.exists, "no content window")
+        let windowMenu = openMenu("Window", in: app)
+        let contentItem = menuItem("Session 1", in: windowMenu)
+        XCTAssertTrue(contentItem.waitForExistence(timeout: 5), "the Window menu does not list the content window: \(menuTitles(windowMenu))")
+        contentItem.click()
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(waitFor({ !content.exists }, timeout: 10), "the content window did not close")
+
+        openEditorFromProjectsMenu(in: app)
+        app.typeKey("n", modifierFlags: .command)
+        let sheet = editorWindow(in: app).sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Cmd-N did not reach the editor with no content window")
+        sheet.buttons["Discard Changes"].click()
+        XCTAssertTrue(element("project-editor.list.row.new", in: app).waitForExistence(timeout: 5), "Cmd-N did not start a New Project")
+        XCTAssertEqual(BattyCLI.topology()?.sessions.count, 0, "Cmd-N opened a Session")
+    }
+
+    @MainActor
+    func testReopeningProjectsKeepsTheCurrentDraft() throws {
+        let (app, _) = try launchApp(projects: [try existingProject(), try secondProject()])
+        defer { app.terminate() }
+
+        openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Second", in: app)
+        replaceText(in: "project-editor.name", with: "Second Edited", app: app)
+        openEditorFromProjectsMenu(in: app)
+        XCTAssertFalse(app.sheets.firstMatch.waitForExistence(timeout: 1), "reopening asked about unsaved changes")
+        XCTAssertEqual(element("project-editor.name", in: app).value as? String, "Second Edited")
+    }
+
     @MainActor
     func testEditorCreatesAProjectAndSaveAndOpenOpensIt() throws {
         let root = try makeDirectory("fresh-root")
@@ -299,6 +386,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.background.edit", in: app)
         let follow = app.buttons["project-background-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Background row did not open its sheet")
@@ -312,6 +400,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.background.edit", in: app)
         let custom = app.buttons["project-background-sheet.custom"]
         XCTAssertTrue(custom.waitForExistence(timeout: 5))
@@ -331,6 +420,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.tab.1.background.edit", in: app)
         let follow = app.buttons["project-tab-background-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Tab's Background row did not open its sheet")
@@ -344,6 +434,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.pane.background.edit", in: app)
         let follow = app.buttons["project-pane-background-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Pane's Background row did not open its sheet")
@@ -358,6 +449,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.tab.1.background.edit", in: app)
         let custom = app.buttons["project-tab-background-sheet.custom"]
         XCTAssertTrue(custom.waitForExistence(timeout: 5))
@@ -394,6 +486,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.theme.edit", in: app)
         let follow = app.buttons["project-theme-sheet.follow"]
         XCTAssertTrue(follow.waitForExistence(timeout: 5), "the Theme row did not open its sheet")
@@ -407,6 +500,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
+        selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.theme.edit", in: app)
         let slot = app.radioButtons["Dark"]
         XCTAssertTrue(slot.waitForExistence(timeout: 5), "the Theme sheet has no Dark slot")
