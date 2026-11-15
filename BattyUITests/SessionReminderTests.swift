@@ -2,7 +2,7 @@
 
 import XCTest
 
-/// Session Reminders (#0514). Time never passes on its own here: the app is
+/// Session Reminders (#0514) and the Quick Reminder bar (#0631). Time never passes on its own here: the app is
 /// launched with `BATTY_UI_TEST_REMINDER_CLOCK=manual`, which freezes the
 /// Reminder clock, and a test moves it with the test-only Command Palette
 /// entries ("UI Test: Advance Reminder Clock by ...").
@@ -47,7 +47,7 @@ nonisolated final class SessionReminderTests: XCTestCase {
     }
 
     /// The open row context menu. The menu bar's Session menu also has a
-    /// "Remind Me" item, which acts on the selected Session rather than the
+    /// "Remind Me…" item, which acts on the selected Session rather than the
     /// clicked row, so every lookup is scoped to the menu holding the
     /// context-menu-only "Reset Name" item.
     @MainActor
@@ -56,37 +56,60 @@ nonisolated final class SessionReminderTests: XCTestCase {
     }
 
     @MainActor
-    @discardableResult
-    private func openRemindMeMenu(onRowNamed title: String, in app: XCUIApplication) -> XCUIElement {
+    private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    @MainActor
+    private func bar(in app: XCUIApplication) -> XCUIElement { element("reminder-bar", in: app) }
+
+    @MainActor
+    private func barText(in app: XCUIApplication) -> XCUIElement { element("reminder-bar.text", in: app) }
+
+    @MainActor
+    private func barRow(_ suffix: String, in app: XCUIApplication) -> XCUIElement {
+        element("reminder-bar.row.\(suffix)", in: app)
+    }
+
+    /// Chooses `item` from the row's context menu: "Remind Me…",
+    /// "Edit Reminder…" or "Cancel Reminder".
+    @MainActor
+    private func chooseFromContextMenu(_ item: String, onRowNamed title: String, in app: XCUIApplication) {
         let row = BattyUITestHarness.sessionRow(named: title, in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5), "session-row.\(title) must exist")
         row.rightClick()
-        let remind = rowContextMenu(in: app).menuItems["Remind Me"].firstMatch
-        XCTAssertTrue(remind.waitForExistence(timeout: 5), "The row's context menu must offer Remind Me")
-        remind.click()
-        return remind
-    }
-
-    @MainActor
-    private func chooseFromRemindMe(_ item: String, onRowNamed title: String, in app: XCUIApplication) {
-        let remind = openRemindMeMenu(onRowNamed: title, in: app)
-        let entry = remind.menuItems[item].firstMatch
-        XCTAssertTrue(entry.waitForExistence(timeout: 5), "Remind Me must offer \(item)")
+        let entry = rowContextMenu(in: app).menuItems[item].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 5), "The row's context menu must offer \(item)")
         entry.click()
     }
 
-    /// Replaces the Hours and Minutes fields' text rather than appending to
-    /// their "0", and commits each number with Tab.
+    /// Opens the Quick Reminder bar from the row's context menu.
     @MainActor
-    private func setCustomDuration(hours: String, minutes: String, in app: XCUIApplication) {
-        let hoursField = app.descendants(matching: .any).matching(identifier: "reminder-sheet.custom.hours").firstMatch
-        let minutesField = app.descendants(matching: .any).matching(identifier: "reminder-sheet.custom.minutes").firstMatch
-        hoursField.click()
-        hoursField.typeKey("a", modifierFlags: .command)
-        hoursField.typeText("\(hours)\t")
-        minutesField.click()
-        minutesField.typeKey("a", modifierFlags: .command)
-        minutesField.typeText("\(minutes)\t")
+    private func openBarFromContextMenu(onRowNamed title: String, in app: XCUIApplication) {
+        chooseFromContextMenu("Remind Me\u{2026}", onRowNamed: title, in: app)
+        XCTAssertTrue(bar(in: app).waitForExistence(timeout: 5), "Remind Me… must open the Quick Reminder bar")
+    }
+
+    @MainActor
+    private func openBarWithShortcut(in app: XCUIApplication) {
+        app.typeKey("r", modifierFlags: [.command, .shift])
+        XCTAssertTrue(bar(in: app).waitForExistence(timeout: 5), "⇧⌘R must open the Quick Reminder bar")
+    }
+
+    /// Types `text` into the bar (focus is already in its field) and
+    /// commits it with Return.
+    @MainActor
+    private func setReminder(_ text: String, in app: XCUIApplication) {
+        app.typeText(text)
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5), "Return must close the bar")
+    }
+
+    @MainActor
+    private func selectRow(_ title: String, in app: XCUIApplication) {
+        BattyUITestHarness.sessionRow(named: title, in: app).click()
+        XCTAssertTrue(waitFor({ (BattyUITestHarness.sessionRow(named: title, in: app).value as? String)?.hasPrefix("selected") == true }, timeout: 5),
+                      "\(title) must be selected")
     }
 
     @MainActor
@@ -133,48 +156,245 @@ nonisolated final class SessionReminderTests: XCTestCase {
 
     // MARK: - Tests
 
-    /// Remind Me > In 15 Minutes from the row's context menu sets the
-    /// Reminder at once and puts the clock badge on the row.
+    /// Remind Me… from the row's context menu opens the bar; typed text and
+    /// Return set a Reminder that carries the text.
     @MainActor
     func testRemindMeFromContextMenuShowsPendingBadge() throws {
         let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
         defer { app.terminate() }
 
-        chooseFromRemindMe("In 15 Minutes", onRowNamed: "Alpha", in: app)
+        openBarFromContextMenu(onRowNamed: "Alpha", in: app)
+        setReminder("check the deploy", in: app)
 
         XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5),
                       "A pending Reminder must show in the row's value, got: \(String(describing: BattyUITestHarness.sessionRow(named: "Alpha", in: app).value))")
+        XCTAssertTrue(reminderState("Alpha", in: app)?.contains("check the deploy") == true,
+                      "The row must carry the text, got: \(String(describing: reminderState("Alpha", in: app)))")
         XCTAssertNil(reminderState("Session 1", in: app), "Only the Session that was targeted gets a Reminder")
     }
 
-    /// Custom... opens the sheet; 1 h 30 m with a note sets a Reminder whose
-    /// badge carries the note.
+    /// ⇧⌘R opens the bar with the cursor already in its field: typing with
+    /// no click, then Return, sets the Reminder with that text.
     @MainActor
-    func testCustomSheetWithANoteSetsTheReminder() throws {
+    func testShiftCommandROpensTheBarReadyToType() throws {
         let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
         defer { app.terminate() }
 
-        chooseFromRemindMe("Custom\u{2026}", onRowNamed: "Alpha", in: app)
+        openBarWithShortcut(in: app)
+        setReminder("ship the release", in: app)
 
-        let sheet = app.descendants(matching: .any).matching(identifier: "reminder-sheet").firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "Custom... must open the Reminder sheet")
-        let hours = app.descendants(matching: .any).matching(identifier: "reminder-sheet.custom.hours").firstMatch
-        let minutes = app.descendants(matching: .any).matching(identifier: "reminder-sheet.custom.minutes").firstMatch
-        // Replace the field's "0" rather than append to it, and commit each
-        // number with Tab before moving on.
-        _ = (hours, minutes)
-        setCustomDuration(hours: "1", minutes: "30", in: app)
-        let note = app.descendants(matching: .any).matching(identifier: "reminder-sheet.note").firstMatch
-        note.click()
-        note.typeText("review the deploy")
-        let set = app.descendants(matching: .any).matching(identifier: "reminder-sheet.set").firstMatch
-        XCTAssertTrue(set.isEnabled, "1 h 30 m is a valid duration, so Set must be enabled")
-        set.click()
-
-        XCTAssertTrue(waitFor({ !set.exists }, timeout: 5), "Set Reminder must close the sheet")
         XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
-        XCTAssertTrue(reminderState("Alpha", in: app)?.contains("review the deploy") == true,
-                      "The row must carry the note, got: \(String(describing: reminderState("Alpha", in: app)))")
+        XCTAssertTrue(reminderState("Alpha", in: app)?.contains("ship the release") == true,
+                      "Typing without a click must land in the bar's field, got: \(String(describing: reminderState("Alpha", in: app)))")
+    }
+
+    /// ⌘3 chooses In 30 Minutes with the typed text, and is not taken by the
+    /// Session menu's ⌘3 "Session 3" item: the selected Session stays.
+    @MainActor
+    func testCommandDigitChoosesItsRowWithTheTypedText() throws {
+        let app = launch(script: [
+            ["intent": "createSession", "name": "Alpha"],
+            ["intent": "createSession", "name": "Beta"],
+            ["intent": "createSession", "name": "Gamma"],
+        ])
+        defer { app.terminate() }
+        selectRow("Alpha", in: app)
+
+        openBarWithShortcut(in: app)
+        app.typeText("thirty")
+        app.typeKey("3", modifierFlags: .command)
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5), "⌘3 must commit and close the bar")
+
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+        XCTAssertTrue(reminderState("Alpha", in: app)?.contains("thirty") == true)
+        XCTAssertTrue((BattyUITestHarness.sessionRow(named: "Alpha", in: app).value as? String)?.hasPrefix("selected") == true,
+                      "⌘3 in the bar must not switch Sessions")
+        XCTAssertNil(reminderState("Beta", in: app), "⌘3 must not reach Session 3")
+    }
+
+    /// ⌘6 opens Pick Date & Time…; Return takes the default time.
+    @MainActor
+    func testPickDateAndTimeSetsTheReminder() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        openBarWithShortcut(in: app)
+        app.typeText("picked")
+        app.typeKey("6", modifierFlags: .command)
+        XCTAssertTrue(element("reminder-bar.picker", in: app).waitForExistence(timeout: 5), "⌘6 must show the picker")
+        XCTAssertTrue(element("reminder-bar.summary", in: app).exists)
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5), "Return must commit the picked time")
+
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+        XCTAssertTrue(reminderState("Alpha", in: app)?.contains("picked") == true)
+    }
+
+    /// Escape closes the bar and sets nothing.
+    @MainActor
+    func testEscapeClosesTheBarAndSetsNothing() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        openBarWithShortcut(in: app)
+        app.typeText("never mind")
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5), "Escape must close the bar")
+        XCTAssertNil(reminderState("Alpha", in: app))
+    }
+
+    /// On a pending Reminder the bar opens in edit mode with the text, and
+    /// Return on the highlighted Keep row changes only the text.
+    @MainActor
+    func testEditModeKeepsTheDueTimeAndUpdatesTheText() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        openBarWithShortcut(in: app)
+        app.typeText("a")
+        app.typeKey("2", modifierFlags: .command)
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+        let before = try XCTUnwrap(reminderState("Alpha", in: app))
+        let phrase = try XCTUnwrap(before.components(separatedBy: " \u{2014} ").first)
+
+        openBarWithShortcut(in: app)
+        XCTAssertEqual(barText(in: app).value as? String, "a", "Edit mode must prefill the text")
+        XCTAssertTrue(barRow("keep", in: app).exists, "Edit mode must offer Keep")
+        app.typeKey("a", modifierFlags: .command)
+        setReminder("b", in: app)
+
+        XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app)?.hasSuffix("\u{2014} b") == true }, timeout: 5),
+                      "The text must change, got: \(String(describing: reminderState("Alpha", in: app)))")
+        XCTAssertEqual(reminderState("Alpha", in: app)?.components(separatedBy: " \u{2014} ").first, phrase,
+                       "Keep must not move the due time")
+    }
+
+    /// The edit bar's Remove Reminder row cancels it.
+    @MainActor
+    func testRemoveReminderRowCancelsIt() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        openBarWithShortcut(in: app)
+        setReminder("to remove", in: app)
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+
+        openBarWithShortcut(in: app)
+        let remove = barRow("remove", in: app)
+        XCTAssertTrue(remove.waitForExistence(timeout: 5))
+        remove.click()
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5))
+        XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == nil }, timeout: 5))
+    }
+
+    /// The Session menu offers a single Remind Me…, and Edit Reminder… plus
+    /// Cancel Reminder while one is pending.
+    @MainActor
+    func testSessionMenuOffersEditAndCancelWhilePending() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+        let menuBar = app.menuBars.firstMatch
+
+        menuBar.menuBarItems["Session"].click()
+        XCTAssertTrue(menuBar.menuItems["Remind Me\u{2026}"].waitForExistence(timeout: 5))
+        XCTAssertFalse(menuBar.menuItems["In 15 Minutes"].exists, "No one-click preset may remain")
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+
+        openBarWithShortcut(in: app)
+        setReminder("menu check", in: app)
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+
+        menuBar.menuBarItems["Session"].click()
+        XCTAssertTrue(menuBar.menuItems["Edit Reminder\u{2026}"].waitForExistence(timeout: 5))
+        XCTAssertTrue(menuBar.menuItems["Cancel Reminder"].exists)
+        XCTAssertFalse(menuBar.menuItems["Remind Me\u{2026}"].exists)
+        menuBar.menuItems["Cancel Reminder"].click()
+        XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == nil }, timeout: 5))
+    }
+
+    /// The Command Palette's Remind Me… closes the palette and opens the bar,
+    /// ready to type.
+    @MainActor
+    func testPaletteRemindMeSwapsIntoTheBar() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        app.typeKey("p", modifierFlags: [.command, .shift])
+        let palette = element("command-palette.root", in: app)
+        XCTAssertTrue(palette.waitForExistence(timeout: 5))
+        palette.typeText("Remind Me")
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(bar(in: app).waitForExistence(timeout: 5), "Remind Me… in the palette must open the bar")
+        XCTAssertFalse(palette.exists, "The palette must be closed")
+
+        app.typeText("from the palette")
+        XCTAssertEqual(barText(in: app).value as? String, "from the palette",
+                       "Typing right after the bar opens must land in its field")
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5), "Return must commit and close the palette-hosted bar")
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+        XCTAssertTrue(reminderState("Alpha", in: app)?.contains("from the palette") == true)
+    }
+
+    /// With a command running, the field opens with "Check on <command>"
+    /// selected, so typing replaces it.
+    @MainActor
+    func testSuggestionIsSelectedSoTypingReplacesIt() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        app.typeText("sleep 600\n")
+        let suggested = waitFor({
+            self.openBarWithShortcut(in: app)
+            if self.barText(in: app).value as? String == "Check on sleep" { return true }
+            app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+            _ = self.waitFor({ !self.bar(in: app).exists }, timeout: 5)
+            return false
+        }, timeout: 15)
+        guard suggested else {
+            throw XCTSkip("runningCommandDisplayName did not populate for `sleep 600` in this environment")
+        }
+        setReminder("replaced", in: app)
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+        let state = reminderState("Alpha", in: app)
+        XCTAssertTrue(state?.hasSuffix("\u{2014} replaced") == true, "Typing must replace the suggestion, got: \(String(describing: state))")
+    }
+
+    /// Clicking the Reminder lines under a Session's title opens the bar in
+    /// edit mode.
+    @MainActor
+    func testClickingTheSidebarReminderLinesOpensEditMode() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        openBarWithShortcut(in: app)
+        setReminder("line click", in: app)
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+
+        let row = BattyUITestHarness.sessionRow(named: "Alpha", in: app)
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).click()
+        XCTAssertTrue(bar(in: app).waitForExistence(timeout: 5), "Clicking the Reminder lines must open the bar")
+        XCTAssertEqual(barText(in: app).value as? String, "line click")
+        XCTAssertTrue(barRow("keep", in: app).exists, "The bar must open in edit mode")
+    }
+
+    /// The row's context menu covers the whole row: a right-click on the
+    /// Reminder lines under the title opens it too.
+    @MainActor
+    func testRightClickOnTheReminderLinesOpensTheContextMenu() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        openBarWithShortcut(in: app)
+        setReminder("right click", in: app)
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+
+        BattyUITestHarness.sessionRow(named: "Alpha", in: app)
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).rightClick()
+        let cancel = rowContextMenu(in: app).menuItems["Cancel Reminder"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5), "A right-click on the Reminder lines must open the row's context menu")
+        cancel.click()
+        XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == nil }, timeout: 5))
     }
 
     /// Cancel Reminder removes the badge, and the clock passing afterwards
@@ -184,10 +404,11 @@ nonisolated final class SessionReminderTests: XCTestCase {
         let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
         defer { app.terminate() }
 
-        chooseFromRemindMe("In 15 Minutes", onRowNamed: "Alpha", in: app)
+        openBarFromContextMenu(onRowNamed: "Alpha", in: app)
+        setReminder("cancel me", in: app)
         XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
 
-        chooseFromRemindMe("Cancel Reminder", onRowNamed: "Alpha", in: app)
+        chooseFromContextMenu("Cancel Reminder", onRowNamed: "Alpha", in: app)
         XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == nil }, timeout: 5),
                       "Cancel Reminder must remove the Reminder state from the row")
 
@@ -198,7 +419,7 @@ nonisolated final class SessionReminderTests: XCTestCase {
     }
 
     /// A Reminder on a Session the user is not looking at fires into the
-    /// Bell Feed with its note; clicking the entry selects that Session and
+    /// Bell Feed with its text; clicking the entry selects that Session and
     /// leaves its previously focused Pane focused.
     @MainActor
     func testFiredReminderLandsInTheFeedAndJumpKeepsTheFocusedPane() throws {
@@ -215,19 +436,12 @@ nonisolated final class SessionReminderTests: XCTestCase {
                       "Setup: Alpha's second Pane must be focused")
         BattyUITestHarness.sessionRow(named: "Beta", in: app).click()
 
-        chooseFromRemindMe("Custom\u{2026}", onRowNamed: "Alpha", in: app)
-        let sheet = app.descendants(matching: .any).matching(identifier: "reminder-sheet").firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
-        setCustomDuration(hours: "0", minutes: "5", in: app)
-        let note = app.descendants(matching: .any).matching(identifier: "reminder-sheet.note").firstMatch
-        note.click()
-        note.typeText("back to Alpha")
-        let set = app.descendants(matching: .any).matching(identifier: "reminder-sheet.set").firstMatch
-        XCTAssertTrue(set.isEnabled, "0 h 5 m is a valid duration, so Set must be enabled")
-        set.click()
-        XCTAssertTrue(waitFor({ !set.exists }, timeout: 5), "Set Reminder must close the sheet")
+        openBarFromContextMenu(onRowNamed: "Alpha", in: app)
+        app.typeText("back to Alpha")
+        app.typeKey("1", modifierFlags: .command)
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5), "⌘1 must commit and close the bar")
         XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5),
-                      "Row value after Set: \(String(describing: BattyUITestHarness.sessionRow(named: "Alpha", in: app).value))")
+                      "Row value after ⌘1: \(String(describing: BattyUITestHarness.sessionRow(named: "Alpha", in: app).value))")
 
         advanceClock("five minutes", in: app)
 
@@ -235,7 +449,7 @@ nonisolated final class SessionReminderTests: XCTestCase {
                       "A fired Reminder must show as due on the row")
         openBellFeed(in: app)
         XCTAssertTrue(waitFor({ self.reminderEntryIDs(in: app).count == 1 }, timeout: 5), "Exactly one Reminder entry must be in the Bell Feed")
-        XCTAssertTrue(app.staticTexts["back to Alpha"].firstMatch.exists, "The entry must carry the note")
+        XCTAssertTrue(app.staticTexts["back to Alpha"].firstMatch.exists, "The entry must carry the text")
 
         let entryID = try XCTUnwrap(reminderEntryIDs(in: app).first)
         BattyScreen.element(entryID, in: app).click()
@@ -252,24 +466,6 @@ nonisolated final class SessionReminderTests: XCTestCase {
                       "Jumping to the Reminder visits its Session, which removes the row")
     }
 
-    /// A sheet preset selects its duration and Set creates the Reminder.
-    @MainActor
-    func testSheetPresetSetsAReminder() throws {
-        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
-        defer { app.terminate() }
-
-        chooseFromRemindMe("Custom\u{2026}", onRowNamed: "Alpha", in: app)
-        let sheet = app.descendants(matching: .any).matching(identifier: "reminder-sheet").firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
-        app.descendants(matching: .any).matching(identifier: "reminder-sheet.preset.30").firstMatch.click()
-        let set = app.descendants(matching: .any).matching(identifier: "reminder-sheet.set").firstMatch
-        XCTAssertTrue(set.isEnabled)
-        set.click()
-        XCTAssertTrue(waitFor({ !set.exists }, timeout: 5), "Set Reminder must close the sheet")
-        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5),
-                      "Row value after Set: \(String(describing: BattyUITestHarness.sessionRow(named: "Alpha", in: app).value))")
-    }
-
     /// Closing the Session cancels its Reminder: nothing is recorded when
     /// the clock passes the due time.
     @MainActor
@@ -277,16 +473,19 @@ nonisolated final class SessionReminderTests: XCTestCase {
         let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
         defer { app.terminate() }
 
-        chooseFromRemindMe("In 5 Minutes", onRowNamed: "Alpha", in: app)
-        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+        openBarFromContextMenu(onRowNamed: "Alpha", in: app)
+        app.typeText("closing")
+        app.typeKey("1", modifierFlags: .command)
+        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5), "⌘1 must set the Reminder")
 
         BattyUITestHarness.sessionRow(named: "Alpha", in: app).rightClick()
         // The menu bar's File > Close is also titled "Close" and closes the
         // window, quitting the app; take the item from the row's context menu.
         let close = rowContextMenu(in: app).menuItems["Close"].firstMatch
-        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(close.waitForExistence(timeout: 5), "A right-click on a row with a pending Reminder must open its context menu")
         close.click()
-        XCTAssertTrue(waitFor({ !BattyUITestHarness.sessionRow(named: "Alpha", in: app).exists }, timeout: 5))
+        XCTAssertTrue(waitFor({ !BattyUITestHarness.sessionRow(named: "Alpha", in: app).exists }, timeout: 5),
+                      "Close must remove the Session")
 
         advanceClock("five minutes", in: app)
         openBellFeed(in: app)

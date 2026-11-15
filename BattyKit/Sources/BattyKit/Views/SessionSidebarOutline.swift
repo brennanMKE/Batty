@@ -10,6 +10,19 @@ struct SidebarRowStyle: Equatable {
     var selectionTint: Color?
 }
 
+/// Sidebar row geometry. A Session row with a pending or due Reminder
+/// grows by two lines: the Reminder's text and its time.
+enum SidebarRowMetrics {
+    static let reminderLinesHeight: CGFloat = 32
+    /// The Session title's leading edge inside the row: the icon's width
+    /// plus the `Label` spacing.
+    static let reminderLinesIndent: CGFloat = 26
+
+    static func sessionRowHeight(base: CGFloat, hasReminderLines: Bool) -> CGFloat {
+        hasReminderLines ? base + reminderLinesHeight : base
+    }
+}
+
 /// The Sidebar's sheet triggers, owned by `SessionSidebarView`'s `@State`.
 struct SidebarRowActions {
     var onRename: (SessionRuntime) -> Void = { _ in }
@@ -49,6 +62,7 @@ struct SessionSidebarOutline: NSViewRepresentable {
         outline.headerView = nil
         outline.style = .sourceList
         outline.rowSizeStyle = .medium
+        context.coordinator.baseRowHeight = outline.rowHeight
         outline.indentationPerLevel = 12
         outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outline.allowsEmptySelection = false
@@ -96,6 +110,12 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
     /// Set while `apply` drives the outline, so the selection and expansion
     /// notifications AppKit posts for those calls are not read as the user's.
     private var applyingModelChange = false
+    /// The `.medium` row height, measured from the outline once its row size
+    /// style is set.
+    var baseRowHeight: CGFloat = 0
+    /// Whether each Session row draws its Reminder lines, as of the last
+    /// `apply`. The row height answers from this, not the live model.
+    private var reminderLines: [ObjectIdentifier: Bool] = [:]
 
     init(windowRuntime: WindowRuntime, store: AppStateStore, style: SidebarRowStyle, actions: SidebarRowActions) {
         self.windowRuntime = windowRuntime
@@ -121,6 +141,11 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
         defer { applyingModelChange = false }
 
         let liveSessions = windowRuntime.sessions
+        let dueSessionIDs = store.bellFeed.dueReminderSessionIDs
+        let previousLines = reminderLines
+        reminderLines = Dictionary(uniqueKeysWithValues: liveSessions.map {
+            (ObjectIdentifier($0), $0.reminder != nil || dueSessionIDs.contains($0.id))
+        })
         let livePanes = Dictionary(uniqueKeysWithValues: liveSessions.map {
             (ObjectIdentifier($0), $0.tree.panesSortedByColumnThenRow)
         })
@@ -159,6 +184,17 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
             }
         }
 
+        var grown = IndexSet()
+        for session in sessions {
+            let key = ObjectIdentifier(session)
+            guard let before = previousLines[key], before != reminderLines[key] else { continue }
+            let row = outline.row(forItem: session)
+            if row >= 0 { grown.insert(row) }
+        }
+        if !grown.isEmpty {
+            outline.noteHeightOfRows(withIndexesChanged: grown)
+        }
+
         if let selected = windowRuntime.selectedSession {
             let row = outline.row(forItem: selected)
             if row >= 0, outline.selectedRow != row {
@@ -186,6 +222,13 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
     }
 
     // MARK: - Rows and cells
+
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        let base = baseRowHeight > 0 ? baseRowHeight : outlineView.rowHeight
+        guard let session = item as? SessionRuntime else { return base }
+        return SidebarRowMetrics.sessionRowHeight(
+            base: base, hasReminderLines: reminderLines[ObjectIdentifier(session)] ?? false)
+    }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
         let rowView = SidebarOutlineRowView()

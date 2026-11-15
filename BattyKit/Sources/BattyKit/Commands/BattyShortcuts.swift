@@ -201,6 +201,8 @@ public enum BattyShortcuts {
             window.selectedSession?.tree.resizeFocusedSplit(.up)
         case .resizeSplitDown:
             window.selectedSession?.tree.resizeFocusedSplit(.down)
+        case .remindMe:
+            ReminderActions.openBar(in: window)
         case .newWindow:
             // Already handled above; unreachable.
             break

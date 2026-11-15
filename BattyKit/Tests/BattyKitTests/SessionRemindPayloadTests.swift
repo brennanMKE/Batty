@@ -28,6 +28,27 @@ struct SessionRemindPayloadTests {
         }
     }
 
+    @Test func todayActionRoundTrips() throws {
+        let action = SessionRemindAction.today(time: .init(hour: 17, minute: 30))
+        let data = try JSONEncoder().encode(action)
+        #expect(try JSONDecoder().decode(SessionRemindAction.self, from: data) == action)
+    }
+
+    @Test func existingActionsEncodeAsBefore() throws {
+        let literals: [(String, SessionRemindAction)] = [
+            (#"{"after":{"minutes":90}}"#, .after(minutes: 90)),
+            (#"{"tomorrow":{"time":{"hour":8,"minute":30}}}"#, .tomorrow(time: .init(hour: 8, minute: 30))),
+            (#"{"tomorrow":{}}"#, .tomorrow(time: nil)),
+            (#"{"cancel":{}}"#, .cancel),
+        ]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        for (json, action) in literals {
+            #expect(try JSONDecoder().decode(SessionRemindAction.self, from: Data(json.utf8)) == action)
+            #expect(String(decoding: try encoder.encode(action), as: UTF8.self) == json)
+        }
+    }
+
     @Test func sessionRemindBoundsMatchReminderSpec() {
         #expect(SessionRemindRequest.minMinutes == ReminderSpec.minMinutes)
         #expect(SessionRemindRequest.maxMinutes == ReminderSpec.maxMinutes)

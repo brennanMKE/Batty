@@ -36,6 +36,8 @@ public nonisolated enum SessionRemindAction: Codable, Sendable, Equatable {
     /// app-side so the CLI never reads app preferences.
     case tomorrow(time: SessionRemindTimeOfDay?)
     case cancel
+    /// Later today at `time`; out of range when it has already passed.
+    case today(time: SessionRemindTimeOfDay)
 }
 
 /// `sessionID == nil` means the CLI's `--session` → `BATTY_SESSION_ID`

@@ -16,17 +16,59 @@ extension AppStateStore {
         SettingsPreference.storeReminderTomorrowTime(time, defaults: preferences)
     }
 
-    /// The Reminder sheet's Set: `editReminder`, and a Tomorrow choice
-    /// becomes the remembered Tomorrow time. Presets, the one-click
-    /// Tomorrow item and the CLI's `remindSessionForXPC` go through
-    /// `setReminder` and never change it.
+    /// A commit of the Quick Reminder bar. A Pick Date & Time… instant on
+    /// the next calendar day also becomes the remembered Tomorrow time;
+    /// the CLI's `remindSessionForXPC` never changes it.
     @discardableResult
-    public func commitReminderSheet(_ spec: ReminderSpec, note: String?, forSessionID sessionID: UUID) -> SessionReminder? {
-        let result = editReminder(spec, note: note, forSessionID: sessionID)
-        if result != nil, case .tomorrow(let hour, let minute) = spec {
-            rememberTomorrowReminderTime(ReminderTime(hour: hour, minute: minute))
+    func commitReminderBar(_ commit: ReminderBarCommit, forSessionID sessionID: UUID) -> SessionReminder? {
+        switch commit {
+        case .set(let spec, let note):
+            let result = setReminder(spec, note: note, forSessionID: sessionID)
+            if result != nil, case .at(let date) = spec {
+                let calendar = reminderScheduler.calendar
+                if let tomorrow = calendar.date(byAdding: .day, value: 1, to: reminderScheduler.now),
+                   calendar.isDate(date, inSameDayAs: tomorrow) {
+                    let parts = calendar.dateComponents([.hour, .minute], from: date)
+                    rememberTomorrowReminderTime(ReminderTime(hour: parts.hour ?? 0, minute: parts.minute ?? 0))
+                }
+            }
+            return result
+        case .keep(let note):
+            return updateReminderNote(note, forSessionID: sessionID)
+        case .remove:
+            cancelReminder(forSessionID: sessionID)
+            return nil
         }
-        return result
+    }
+
+    /// Changes only the pending Reminder's text: its id, creation time and
+    /// due instant stay, and its system request is replaced under the same
+    /// identifier. Nil when the Session has no pending Reminder.
+    @discardableResult
+    public func updateReminderNote(_ note: String?, forSessionID sessionID: UUID) -> SessionReminder? {
+        guard let session = session(id: sessionID), var existing = session.reminder else {
+            logger.notice("updateReminderNote: no pending reminder for session \(sessionID, privacy: .public)")
+            return nil
+        }
+        existing.note = SessionReminder.normalizedNote(note)
+        session.reminder = existing
+        reminderScheduler.set(existing, forSessionID: sessionID)
+        scheduleSystemReminder(existing, session: session)
+        return existing
+    }
+
+    /// A notification's Remind Again action: a new Reminder on the same
+    /// Session with the same text, `minutes` from now. The fired entry is
+    /// marked seen and kept.
+    func remindAgain(minutes: Int, payload: NotificationTapPayload) {
+        guard let sessionID = payload.sessionID, session(id: sessionID) != nil else {
+            logger.notice("remindAgain: session \(payload.sessionID?.uuidString ?? "nil", privacy: .public) is gone; ignoring")
+            return
+        }
+        setReminder(.after(minutes: minutes), note: payload.note, forSessionID: sessionID)
+        if let entryID = payload.entryID {
+            markBellSeen(id: entryID)
+        }
     }
 
     /// Sets the Session's Reminder, replacing any it already has: one per
@@ -54,25 +96,6 @@ extension AppStateStore {
         }
         scheduleSystemReminder(reminder, session: session)
         return reminder
-    }
-
-    /// The sheet's Update path. A Tomorrow Reminder edited without changing
-    /// its time keeps the date it already resolved to, so editing only the
-    /// note after midnight does not push it a day later; any other change
-    /// is a fresh `setReminder`.
-    @discardableResult
-    public func editReminder(_ spec: ReminderSpec, note: String?, forSessionID sessionID: UUID) -> SessionReminder? {
-        guard let session = session(id: sessionID),
-              var existing = session.reminder,
-              case .wallClock(let components) = existing.target,
-              case .tomorrow(let hour, let minute) = spec,
-              components.hour == hour, components.minute == minute
-        else { return setReminder(spec, note: note, forSessionID: sessionID) }
-        existing.note = SessionReminder.normalizedNote(note)
-        session.reminder = existing
-        reminderScheduler.set(existing, forSessionID: sessionID)
-        scheduleSystemReminder(existing, session: session)
-        return existing
     }
 
     /// Removes the Session's pending Reminder at once, with no confirmation.
@@ -174,6 +197,10 @@ extension AppStateStore {
     /// A tap on any Batty notification. Batty itself is activated by the
     /// notifier delegate.
     public func handleNotificationTap(_ payload: NotificationTapPayload) {
+        if case .remindAgain(let minutes) = payload.action {
+            remindAgain(minutes: minutes, payload: payload)
+            return
+        }
         switch notificationTapRoute(for: payload) {
         case .jumpToEntry(let id):
             guard let entry = bellFeed.entries.first(where: { $0.id == id }) else { return }
@@ -213,8 +240,7 @@ extension AppStateStore {
     }
 
     /// The `sessionRemind` XPC verb. Always a fresh `setReminder` (never
-    /// the sheet's keep-the-date edit rule, never the remembered-time
-    /// write); cancel is idempotent.
+    /// the remembered-time write); cancel is idempotent.
     public func remindSessionForXPC(_ request: SessionRemindRequest) -> SessionRemindOutcome {
         guard let sessionID = request.sessionID ?? focusedSessionIDFallback() else {
             return .noSessionToTarget
@@ -231,6 +257,12 @@ extension AppStateStore {
             spec = tomorrowReminderSpec
         case .tomorrow(let time?):
             spec = .tomorrow(hour: time.hour, minute: time.minute)
+        case .today(let time):
+            guard let date = ReminderSpec.todayAt(
+                hour: time.hour, minute: time.minute,
+                now: reminderScheduler.now, calendar: reminderScheduler.calendar)
+            else { return .invalidSpec }
+            spec = .at(date)
         }
         guard spec.isValid, let reminder = setReminder(spec, note: request.note, forSessionID: sessionID) else {
             return .invalidSpec

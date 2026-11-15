@@ -30,7 +30,7 @@ public enum SettingsPreference {
     public static let backgroundImageOpacityKey = "co.sstools.Batty.backgroundImageOpacity"
     public static let backgroundOpacityKey = "co.sstools.Batty.backgroundOpacity"
     public static let backgroundOpacityCellsKey = "co.sstools.Batty.backgroundOpacityCells"
-    /// Int, minutes since midnight: the last Tomorrow time chosen in the Reminder sheet.
+    /// Int, minutes since midnight: the last Tomorrow time chosen in the Reminder bar's Pick Date & Time….
     public static let reminderTomorrowTimeKey = "co.sstools.Batty.reminderTomorrowTime"
 
     public static let defaultFontSize: Double = 13

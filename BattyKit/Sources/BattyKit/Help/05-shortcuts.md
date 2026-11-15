@@ -64,6 +64,7 @@ views.
 | Open Quickly | `Cmd-Shift-O` |
 | Open Layout Picker | `Cmd-Shift-L` |
 | Open Theme Selector | `Cmd-Shift-T` |
+| Remind Me… | `Cmd-Shift-R` |
 | New Window | `Cmd-Shift-N` |
 | Settings | `Cmd-,` |
 | Help | `Cmd-?` |

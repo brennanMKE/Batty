@@ -11,8 +11,9 @@ struct SessionRemindCommandTests {
         ["--in", "5m", "--tomorrow"],
         ["--in", "5m", "--cancel"],
         ["--tomorrow", "--cancel"],
-        ["--at", "09:00"],
         ["--in", "5m", "--at", "09:00"],
+        ["--at", "09:00", "--cancel"],
+        ["standup"],
         ["--cancel", "--note", "x"],
         ["--in", "0m"],
         ["--in", "10081m"],
@@ -34,6 +35,34 @@ struct SessionRemindCommandTests {
             == SessionRemindRequest(sessionID: nil, action: .tomorrow(time: .init(hour: 8, minute: 30)), note: nil))
         #expect(try SessionRemindCommand.parse(["--cancel"]).makeRequest(sessionID: id)
             == SessionRemindRequest(sessionID: id, action: .cancel, note: nil))
+    }
+
+    @Test func positionalTextBecomesTheNote() throws {
+        #expect(try SessionRemindCommand.parse(["check CI", "--in", "5m"]).makeRequest(sessionID: nil)
+            == SessionRemindRequest(sessionID: nil, action: .after(minutes: 5), note: "check CI"))
+    }
+
+    @Test func noteStillWorks() throws {
+        #expect(try SessionRemindCommand.parse(["--in", "5m", "--note", "check CI"]).makeRequest(sessionID: nil)
+            == SessionRemindRequest(sessionID: nil, action: .after(minutes: 5), note: "check CI"))
+    }
+
+    @Test func textAndNoteTogetherAreRejected() {
+        #expect(throws: (any Error).self) { try SessionRemindCommand.parse(["a", "--note", "b", "--in", "5m"]) }
+    }
+
+    @Test func textWithCancelIsRejected() {
+        #expect(throws: (any Error).self) { try SessionRemindCommand.parse(["a", "--cancel"]) }
+    }
+
+    @Test func atWithoutTomorrowMeansToday() throws {
+        #expect(try SessionRemindCommand.parse(["--at", "17:30", "standup"]).makeRequest(sessionID: nil)
+            == SessionRemindRequest(sessionID: nil, action: .today(time: .init(hour: 17, minute: 30)), note: "standup"))
+    }
+
+    @Test func atWithTomorrowStillMeansTomorrow() throws {
+        #expect(try SessionRemindCommand.parse(["--tomorrow", "--at", "8:30"]).makeRequest(sessionID: nil)
+            == SessionRemindRequest(sessionID: nil, action: .tomorrow(time: .init(hour: 8, minute: 30)), note: nil))
     }
 
     @Test func remindConfirmationTextIsAbsolute() {

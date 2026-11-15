@@ -135,11 +135,11 @@ public final class WindowRuntime {
     /// Palette's direct present, the Sidebar footer button); cleared by the
     /// picker's onAction/onCancel, the sheet binding's setter and the toggle.
     public var projectPickerShown: Bool = false
-    /// The Session whose Reminder sheet is up in this window. Written by the
-    /// event-origin entry points (Session menu, Sidebar context menu,
-    /// Command Palette, the pending badge) and cleared when the sheet
-    /// closes.
-    public var reminderSheetSessionID: UUID?
+    /// The Session whose Quick Reminder bar is up in this window. Written by
+    /// the event-origin entry points (`ReminderActions.openBar`: ⇧⌘R, the
+    /// Session menu, the Sidebar context menu and Reminder lines, the
+    /// Command Palette), the sheet binding's setter, and the bar's close.
+    public var reminderBarSessionID: UUID?
     /// Projects waiting on the user's answer to the startup-command trust
     /// sheet, oldest first; the sheet shows the first. Written only by
     /// `AppStateStore`: appended by an open request, removed when a sheet
@@ -424,7 +424,7 @@ public final class WindowRuntime {
             reminderCancelHandler?(id)
         }
         bellFeed.removeReminderEntries(forSessionID: id)
-        if reminderSheetSessionID == id { reminderSheetSessionID = nil }
+        if reminderBarSessionID == id { reminderBarSessionID = nil }
         for tabID in tabIDsToClear {
             TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
         }

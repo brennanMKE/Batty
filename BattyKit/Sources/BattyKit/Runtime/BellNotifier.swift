@@ -72,6 +72,7 @@ public final class BellNotifier: BellNotifying {
         self.center = center
         self.delegate = BellNotifierDelegate(onTap: onTap, presentation: presentation)
         center.delegate = delegate
+        center.setNotificationCategories(ReminderNotification.categories())
     }
 
     public func ensureAuthorization() {
@@ -172,21 +173,11 @@ public final class BellNotifier: BellNotifying {
     /// which logs the terminal-bell gates (`BellTriggerKind`) a Reminder
     /// never passes through.
     public func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String) {
-        let content = UNMutableNotificationContent()
-        let text = Self.reminderText(note: entry.message, sessionTitle: sessionTitle)
-        content.title = text.title
-        content.body = text.body
+        let content = Self.reminderContent(
+            entry: entry, reminderID: reminderID, projectID: projectID, sessionTitle: sessionTitle)
         if SettingsPreference.resolvedBellSound() {
             content.sound = .default
         }
-        var info: [String: String] = [
-            Self.entryIdUserInfoKey: entry.id.uuidString,
-            ScheduledReminderNotification.reminderIDUserInfoKey: reminderID.uuidString,
-        ]
-        if let projectID {
-            info[ScheduledReminderNotification.projectIDUserInfoKey] = projectID.uuidString
-        }
-        content.userInfo = info
         let request = UNNotificationRequest(
             identifier: ScheduledReminderNotification.identifier(for: reminderID),
             content: content,
@@ -198,7 +189,9 @@ public final class BellNotifier: BellNotifying {
     public func scheduleReminder(_ notification: ScheduledReminderNotification) {
         let content = UNMutableNotificationContent()
         content.title = notification.title
+        content.subtitle = notification.subtitle
         content.body = notification.body
+        content.categoryIdentifier = notification.categoryIdentifier
         if notification.playSound {
             content.sound = .default
         }
@@ -230,11 +223,46 @@ public final class BellNotifier: BellNotifying {
         }
     }
 
-    nonisolated static func reminderText(note: String?, sessionTitle: String) -> (title: String, body: String) {
-        (
-            String(localized: "Batty — Reminder: \(sessionTitle)"),
-            note?.isEmpty == false ? note! : String(localized: "Time to come back to \(sessionTitle)")
-        )
+    /// The in-app Reminder post's content, without sound: title, subtitle,
+    /// body, the in-app category (Open Session and both Remind Again
+    /// actions) and userInfo.
+    static func reminderContent(
+        entry: BellFeedEntry,
+        reminderID: UUID,
+        projectID: UUID?,
+        sessionTitle: String
+    ) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        let text = ReminderNotification.content(
+            note: entry.message,
+            sessionTitle: sessionTitle,
+            setAt: entry.reminderSetAt ?? entry.timestamp,
+            dueAt: entry.reminderDueAt ?? entry.timestamp,
+            deliveredAt: entry.timestamp)
+        content.title = text.title
+        content.subtitle = text.subtitle
+        content.body = text.body
+        content.categoryIdentifier = ReminderNotification.inAppCategory
+        content.userInfo = reminderUserInfo(entry: entry, reminderID: reminderID, projectID: projectID)
+        return content
+    }
+
+    /// The in-app Reminder post's userInfo. It carries the Session id and
+    /// the text so Remind Again still works after the Bell Feed entry is
+    /// gone.
+    static func reminderUserInfo(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?) -> [String: String] {
+        var info: [String: String] = [
+            entryIdUserInfoKey: entry.id.uuidString,
+            ScheduledReminderNotification.reminderIDUserInfoKey: reminderID.uuidString,
+            ScheduledReminderNotification.sessionIDUserInfoKey: entry.sessionID.uuidString,
+        ]
+        if let projectID {
+            info[ScheduledReminderNotification.projectIDUserInfoKey] = projectID.uuidString
+        }
+        if let note = entry.message {
+            info[ScheduledReminderNotification.noteUserInfoKey] = note
+        }
+        return info
     }
 }
 
@@ -269,15 +297,21 @@ private final class BellNotifierDelegate: NSObject, UNUserNotificationCenterDele
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let payload = NotificationTapPayload(userInfo: response.notification.request.content.userInfo)
-        if payload == NotificationTapPayload() {
+        let payload = NotificationTapPayload(
+            userInfo: response.notification.request.content.userInfo,
+            actionIdentifier: response.actionIdentifier)
+        if payload.entryID == nil, payload.reminderID == nil, payload.projectID == nil {
             logger.notice("didReceive: notification carries no recognizable userInfo; activating only")
         }
+        let activates: Bool
+        if case .remindAgain = payload.action { activates = false } else { activates = true }
         let handler = onTap
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 handler(payload)
-                NSApp.activate(ignoringOtherApps: true)
+                if activates {
+                    NSApp.activate(ignoringOtherApps: true)
+                }
             }
         }
         completionHandler()

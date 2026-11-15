@@ -70,6 +70,21 @@ struct CommandPaletteView: View {
 
         for action in ShortcutAction.allCases where action != .commandPalette {
             let hint = shortcuts.binding(for: action).displayString
+            if action == .remindMe {
+                guard let window = store.keyWindowOrFirstRegistered(), let session = window.selectedSession else { continue }
+                cmds.append(PaletteCommand(
+                    id: "action:\(action.rawValue)",
+                    title: action.displayName,
+                    keyHint: hint.isEmpty ? nil : hint,
+                    action: {
+                        // The bar opens as its own sheet once the palette has
+                        // closed. Swapped into the palette in place, its
+                        // field never took keyboard focus.
+                        runAfterDismiss { ReminderActions.openBar(for: session, in: window) }
+                    }
+                ))
+                continue
+            }
             cmds.append(PaletteCommand(
                 id: "action:\(action.rawValue)",
                 title: action.displayName,
@@ -186,49 +201,20 @@ struct CommandPaletteView: View {
         return cmds
     }
 
-    /// Remind Me entries for the key Window's selected Session, plus the
-    /// UI-test entries that advance the frozen Reminder clock. Those exist
-    /// only when a UI-test launch installed that clock
-    /// (`UITestDriver.reminderClock`), never in a normal run.
+    /// Cancel Reminder while the key Window's selected Session has one
+    /// pending (Remind Me… is the `.remindMe` catalog row), plus the UI-test
+    /// entries that advance the frozen Reminder clock. Those exist only when
+    /// a UI-test launch installed that clock (`UITestDriver.reminderClock`),
+    /// never in a normal run.
     private func reminderCommands() -> [PaletteCommand] {
         var cmds: [PaletteCommand] = []
-        if let window = store.keyWindowOrFirstRegistered(), let session = window.selectedSession {
+        if let session = store.keyWindowOrFirstRegistered()?.selectedSession, session.reminder != nil {
             cmds.append(PaletteCommand(
-                id: "extra:remind:sheet",
-                title: String(localized: "Remind Me About This Session…"),
+                id: "extra:remind:cancel",
+                title: String(localized: "Cancel Reminder"),
                 keyHint: nil,
-                action: { runAfterDismiss { ReminderActions.presentSheet(for: session, in: window) } }
+                action: { ReminderActions.cancel(session, store: store) }
             ))
-            for minutes in ReminderSpec.presetMinutes {
-                cmds.append(PaletteCommand(
-                    id: "extra:remind:\(minutes)",
-                    title: minutes == 60
-                        ? String(localized: "Remind Me in 1 Hour")
-                        : String(localized: "Remind Me in \(minutes) Minutes"),
-                    keyHint: nil,
-                    action: { ReminderActions.set(.after(minutes: minutes), on: session, store: store) }
-                ))
-            }
-            cmds.append(PaletteCommand(
-                id: "extra:remind:tomorrow",
-                title: String(localized: "Remind Me Tomorrow at \(ReminderActions.tomorrowTimeText(store.tomorrowReminderTime, calendar: store.reminderScheduler.calendar))"),
-                keyHint: nil,
-                action: { ReminderActions.set(store.tomorrowReminderSpec, on: session, store: store) }
-            ))
-            if session.reminder != nil {
-                cmds.append(PaletteCommand(
-                    id: "extra:remind:edit",
-                    title: String(localized: "Edit Reminder…"),
-                    keyHint: nil,
-                    action: { runAfterDismiss { ReminderActions.presentSheet(for: session, in: window) } }
-                ))
-                cmds.append(PaletteCommand(
-                    id: "extra:remind:cancel",
-                    title: String(localized: "Cancel Reminder"),
-                    keyHint: nil,
-                    action: { ReminderActions.cancel(session, store: store) }
-                ))
-            }
         }
         if let clock = store.reminderScheduler.manualClock {
             for (title, seconds) in Self.uiTestClockSteps {
@@ -274,11 +260,15 @@ struct CommandPaletteView: View {
     }
 
     var body: some View {
+        commandList
+    }
+
+    private var commandList: some View {
         // Snapshot once per render so ForEach, key handlers, and Return
         // activation all see the same list — avoids SwiftUI identity
         // confusion when the filter is re-evaluated mid-body.
         let commands = filteredCommands
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -447,6 +437,8 @@ struct CommandPaletteView: View {
             window.selectedSession?.tree.resizeFocusedSplit(.up)
         case .resizeSplitDown:
             window.selectedSession?.tree.resizeFocusedSplit(.down)
+        case .remindMe:
+            ReminderActions.openBar(in: window)
         }
     }
 }

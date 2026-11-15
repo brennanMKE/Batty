@@ -23,6 +23,16 @@ struct ShortcutsStoreTests {
         }
     }
 
+    @Test func remindMeDefaultsToCommandShiftRAndCollidesWithNoOtherDefault() {
+        let binding = ShortcutAction.remindMe.defaultBinding
+        #expect(binding == ShortcutBinding(key: "r", modifiers: EventModifiers([.command, .shift]).rawValue))
+        #expect(ShortcutAction.remindMe.displayName == "Remind Me…")
+        for action in ShortcutAction.allCases where action != .remindMe {
+            #expect(action.defaultBinding != binding, "\(action.rawValue)")
+        }
+        #expect(!ShortcutsStore.reservedShortcuts.contains(binding))
+    }
+
     @Test func bindingRoundTripsThroughUserDefaults() {
         let defaults = makeDefaults()
         let store1 = ShortcutsStore(userDefaults: defaults)

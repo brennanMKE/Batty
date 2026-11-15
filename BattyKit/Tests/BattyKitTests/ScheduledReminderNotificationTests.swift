@@ -42,6 +42,30 @@ struct ScheduledReminderNotificationTests {
         #expect(scheduled.playSound == false)
     }
 
+    @Test func scheduledContentTitleIsTheTextSubtitleIsTheSessionBodyIsSetAt() {
+        let reminder = SessionReminder(
+            createdAt: ReminderFixture.anchor,
+            target: .instant(ReminderFixture.anchor.addingTimeInterval(900)),
+            note: "review PR 42")
+        let scheduled = ScheduledReminderNotification.make(reminder: reminder, sessionTitle: "api", projectID: nil, playSound: true)
+        #expect(scheduled.title == "review PR 42")
+        #expect(scheduled.subtitle == "api")
+        #expect(scheduled.body == "Set at " + ReminderFormat.time(ReminderFixture.anchor))
+    }
+
+    @Test func aTextlessReminderIsTitledComeBackToTheSession() {
+        let reminder = SessionReminder(createdAt: ReminderFixture.anchor, target: .instant(ReminderFixture.anchor))
+        let scheduled = ScheduledReminderNotification.make(reminder: reminder, sessionTitle: "api", projectID: nil, playSound: true)
+        #expect(scheduled.title == "Come back to api")
+        #expect(scheduled.subtitle == "api")
+    }
+
+    @Test func aScheduledRequestCarriesTheOpenOnlyCategory() {
+        let reminder = SessionReminder(createdAt: ReminderFixture.anchor, target: .instant(ReminderFixture.anchor))
+        let scheduled = ScheduledReminderNotification.make(reminder: reminder, sessionTitle: "api", projectID: nil, playSound: true)
+        #expect(scheduled.categoryIdentifier == ReminderNotification.scheduledCategory)
+    }
+
     @Test func identifierIsDerivedFromTheReminderID() {
         let id = UUID()
         let reminder = SessionReminder(id: id, createdAt: ReminderFixture.anchor, target: .instant(ReminderFixture.anchor))

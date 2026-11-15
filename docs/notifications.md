@@ -147,8 +147,8 @@ relaunch or crash. The Session itself does not come back.
   move it. A Tomorrow Reminder passes its stored wall-clock components with
   no time zone, so it floats with the local zone like the in-app scheduler.
 - **Set / edit / cancel:** `setReminder` removes the previous Reminder's
-  request and schedules the new one; `editReminder`'s keep-id path
-  reschedules under the same identifier; `cancelReminder` and a Session
+  request and schedules the new one; `updateReminderNote` (the bar's Keep
+  row) reschedules under the same identifier; `cancelReminder` and a Session
   close remove it. `batty session remind` (`remindSessionForXPC`) goes
   through `setReminder` and `cancelReminder`, so a CLI set or cancel
   schedules, replaces and removes requests the same way.

@@ -261,6 +261,45 @@ struct SessionDetailLayoutConvergenceTests {
         await step("remove Session") { windowRuntime.removeSession(id: addedID) }
     }
 
+    /// A Session row grows by its Reminder lines while a Reminder is
+    /// pending or due (`SessionSidebarCoordinator.apply` →
+    /// `noteHeightOfRows`) and shrinks back when it is cancelled or
+    /// acknowledged. Each change must settle.
+    @Test func sidebarReminderLinesGrowAndShrinkConverge() async throws {
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let store = AppStateStore(
+            preferences: testDefaults.defaults,
+            reminderClock: TestClock(now: ReminderFixture.anchor),
+            reminderCalendar: { ReminderFixture.calendar() })
+        let fixture = makeFixture(store: store)
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        _ = await fixture.probe.settle()
+        let first = await fixture.probe.settle()
+        #expect(first.converged, "first settle: \(first)")
+
+        func step(_ label: String, _ change: () -> Void) async {
+            change()
+            let result = await fixture.probe.settle()
+            #expect(result.converged, "\(label): \(result)")
+        }
+        let target = windowRuntime.sessions[1]
+        let other = windowRuntime.sessions[0]
+        await step("set") { store.setReminder(.after(minutes: 15), note: "check the deploy", forSessionID: target.id) }
+        await step("set on another") { store.setReminder(.after(minutes: 30), forSessionID: other.id) }
+        await step("cancel") { store.cancelReminder(forSessionID: other.id) }
+        await step("fire") {
+            guard let reminder = target.reminder else { return }
+            store.fireReminder(ReminderFiring(
+                sessionID: target.id, reminder: reminder, dueDate: reminder.fireDate(calendar: ReminderFixture.calendar())!))
+        }
+        #expect(store.bellFeed.dueReminderSessionIDs == [target.id])
+        let entryID = try #require(store.bellFeed.entries.first?.id)
+        await step("acknowledge") { store.markBellSeen(id: entryID) }
+        #expect(store.bellFeed.dueReminderSessionIDs.isEmpty)
+    }
+
     // MARK: - Divider drag request volume
 
     /// A loose regression guard on `_postWindowNeedsUpdateConstraints`

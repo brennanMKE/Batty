@@ -382,22 +382,41 @@ A Reminder is a one-shot timer on one Session (`Concepts.md`: Reminder). The
 design follows the injected-clock rules in `async-test-seams.md`; the fire path
 and its gating are in `notifications.md` §2.
 
-**Entry points** (all act on one Session): Session menu → Remind Me; the same
-submenu in the Sidebar row's context menu; Command Palette entries "Remind Me
-About This Session…", "Remind Me in 5 / 15 / 30 Minutes", "Remind Me in 1
-Hour", "Remind Me Tomorrow at <remembered time>", and, while one is pending, "Edit
-Reminder…" and "Cancel Reminder". Presets set the Reminder at once with no
-note. Custom… and Edit Reminder… present `ReminderSheet` as a `.sheet` on the
-Window (`WindowRuntime.reminderSheetSessionID`), not a popover, so the Session
-menu and palette work with the Sidebar collapsed. There is no keyboard
-shortcut. The Tomorrow time is the last one set from the sheet's Tomorrow
-choice, stored as `co.sstools.Batty.reminderTomorrowTime` (minutes since
-midnight) and 9:00 AM until then; presets, the one-click item and
-`batty session remind` never change it, and there is no Settings row.
+**Entry points** (all act on one Session, and all open the Quick Reminder
+bar, #0631): ⇧⌘R (`ShortcutAction.remindMe`); Session menu → Remind Me…
+(Edit Reminder… and Cancel Reminder while one is pending); the same items in
+the Sidebar row's context menu; a click on the row's Reminder lines; and the
+Command Palette's Remind Me… row, which closes the palette and then opens the
+bar's sheet (swapped into the palette in place, the bar's field never took
+keyboard focus), plus Cancel Reminder while one is pending. No path sets a Reminder without the text
+field. The bar is a `.sheet` on the Window (`WindowRuntime.reminderBarSessionID`,
+written only by `ReminderActions.openBar`, the sheet binding and the bar's
+close), so the menus work with the Sidebar collapsed.
 
-**Badge.** A pending Reminder shows a `clock` button on the Sidebar row that
-opens the sheet in edit mode; a fired one shows `alarm.fill` until its entry
-is seen. The Sidebar cell merges all accessibility children into one element
+**The bar** (`ReminderBarView`, state in the pure `ReminderBarModel`): a text
+field ("Remind me to…", seeded with "Check on <running command>" when the
+focused Tab runs one) and a time list: In 5 / 15 / 30 Minutes, In 1 Hour,
+Tomorrow, Pick Date & Time…, each a `Button` with a ⌘1–⌘6
+`.keyboardShortcut` so the sheet window takes the chord before the Session
+menu's ⌘-digit items. ↑/↓ move the highlight (In 15 Minutes by default),
+Return commits it, Escape closes. In edit mode the list starts with Keep
+<time> (highlighted; a text-only change through `updateReminderNote`, same id
+and due instant) and ends with Remove Reminder. Pick Date & Time… swaps the
+list for a date-and-time picker; out-of-range instants show a red summary and
+do not commit. The Tomorrow time is stored as
+`co.sstools.Batty.reminderTomorrowTime` (minutes since midnight), 9:00 AM
+until set; only a Pick Date & Time… instant on the next calendar day changes
+it, never `batty session remind`, and there is no Settings row.
+
+**Badge and lines.** A pending Reminder shows a `clock` button on the Sidebar
+row that opens the bar in edit mode; a fired one shows `alarm.fill` until its
+entry is seen. While either is showing, the row grows by two lines (the
+Reminder's text, and "in N min" / "due N min ago" drawn by
+`TimelineView(.everyMinute)`). The lines open edit mode with a tap gesture,
+not a `Button`: a right-click inside a `Button` there opened the row's context
+menu with no parent in the accessibility tree; the outline's `heightOfRowByItem` answers from
+the coordinator's snapshot, and `apply` calls `noteHeightOfRows` for rows whose
+state flipped. The Sidebar cell merges all accessibility children into one element
 (concatenating identifiers and values), so the badge is hidden from
 accessibility and its state is appended to the row's own
 `session-row.<title>` value instead: `, reminder pending: <time and note>` or
@@ -426,17 +445,16 @@ Neither exists otherwise.
 
 | Element | Identifier |
 |---|---|
-| Sheet | `reminder-sheet` (title `reminder-sheet.title`, summary line `reminder-sheet.summary`) |
-| Presets | `reminder-sheet.preset.5`, `.preset.15`, `.preset.30`, `.preset.60` |
-| Custom | `reminder-sheet.custom` (toggle), `reminder-sheet.custom.hours`, `reminder-sheet.custom.minutes` |
-| Tomorrow | `reminder-sheet.tomorrow` (toggle), `reminder-sheet.tomorrow-time` |
-| Note | `reminder-sheet.note` |
-| Buttons | `reminder-sheet.set`, `reminder-sheet.cancel`, `reminder-sheet.remove` |
+| Bar | `reminder-bar`, text field `reminder-bar.text`, count `reminder-bar.count` |
+| Rows | `reminder-bar.row.keep`, `.row.5`, `.row.15`, `.row.30`, `.row.60`, `.row.tomorrow`, `.row.pick`, `.row.remove` |
+| Picker | `reminder-bar.picker`, `reminder-bar.summary`, `reminder-bar.pick.set`, `reminder-bar.pick.back` |
 | Sidebar state | the `session-row.<title>` value ends `reminder pending: <time and note>` or `reminder due` |
-| Context menu | `menu.sidebar.remind.<title>` (UI tests find the item as "Remind Me" inside the menu holding "Reset Name", because the Session menu has its own "Remind Me" that acts on the selected Session) |
+| Context menu | `menu.sidebar.remind.<title>` on the first item (UI tests find "Remind Me…" inside the menu holding "Reset Name", because the Session menu has its own item that acts on the selected Session) |
 
-`BattyUITests/SessionReminderTests.swift` covers setting from the menu and the
-sheet, cancel, fire-and-jump with a non-default focused Pane, and close.
+`BattyUITests/SessionReminderTests.swift` covers the bar from the context
+menu, ⇧⌘R, the Session menu and the palette, a right-click on the Reminder lines, ⌘-digits, Pick Date & Time…,
+edit mode, Remove, the Sidebar lines, cancel, fire-and-jump with a
+non-default focused Pane, and close.
 
 ---
 

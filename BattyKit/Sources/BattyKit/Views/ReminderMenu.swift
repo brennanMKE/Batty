@@ -25,14 +25,23 @@ enum ReminderActions {
         return ReminderFormat.time(date, calendar: calendar, locale: locale)
     }
 
-    /// A preset sets the Reminder at once, with no note. It replaces any
-    /// Reminder the Session already had, note included.
-    static func set(_ spec: ReminderSpec, on session: SessionRuntime, store: AppStateStore) {
-        store.setReminder(spec, note: nil, forSessionID: session.id)
+    /// Opens the Quick Reminder bar for `session`, in edit mode when it
+    /// has a pending Reminder. Event-origin only: a menu item, a shortcut,
+    /// the palette or a Sidebar click.
+    static func openBar(for session: SessionRuntime, in window: WindowRuntime) {
+        guard window.reminderBarSessionID != session.id else { return }
+        window.reminderBarSessionID = session.id
     }
 
-    static func presentSheet(for session: SessionRuntime, in window: WindowRuntime) {
-        window.reminderSheetSessionID = session.id
+    /// Opens the bar for the Window's selected Session, if it has one.
+    static func openBar(in window: WindowRuntime) {
+        guard let session = window.selectedSession else { return }
+        openBar(for: session, in: window)
+    }
+
+    /// Runs a commit of the bar against the store.
+    static func commit(_ commit: ReminderBarCommit, session: SessionRuntime, store: AppStateStore) {
+        store.commitReminderBar(commit, forSessionID: session.id)
     }
 
     static func cancel(_ session: SessionRuntime, store: AppStateStore) {
@@ -51,53 +60,40 @@ enum ReminderActions {
     }
 }
 
-/// The "Remind Me" submenu for one Session: five one-click choices and
-/// Custom…, plus the pending Reminder's status, Edit and Cancel when it
-/// has one.
+/// The Remind Me items for one Session: "Remind Me…", or "Edit Reminder…"
+/// and "Cancel Reminder" while one is pending. Each opens the Quick
+/// Reminder bar; none sets a Reminder without letting the user type.
 ///
-/// `session` is what the menu displays and is enabled by. `target` is
+/// `session` is what the items display and are enabled by. `target` is
 /// resolved only when an item is chosen, because the Session menu's action
 /// window depends on non-observed AppKit state (`BattyCommands.actionWindow`)
 /// and is nil while an auxiliary window is key.
-struct ReminderMenu: View {
+struct ReminderMenuItems: View {
     let store: AppStateStore
     let session: SessionRuntime?
+    var firstItemIdentifier: String?
     let target: () -> (window: WindowRuntime, session: SessionRuntime)?
 
     var body: some View {
-        Menu {
-            ForEach(ReminderSpec.presetMinutes, id: \.self) { minutes in
-                Button(ReminderActions.presetTitle(minutes: minutes)) {
-                    guard let target = target() else { return }
-                    ReminderActions.set(.after(minutes: minutes), on: target.session, store: store)
-                }
-            }
-            Button(ReminderActions.tomorrowTitle(store.tomorrowReminderTime, calendar: store.reminderScheduler.calendar)) {
+        let shortcut = ShortcutsStore.shared.keyboardShortcut(for: .remindMe)
+        if session?.reminder != nil {
+            Button("Edit Reminder…") { open() }
+                .keyboardShortcut(shortcut)
+                .accessibilityIdentifier(firstItemIdentifier ?? "menu.remind.edit")
+            Button("Cancel Reminder") {
                 guard let target = target() else { return }
-                ReminderActions.set(store.tomorrowReminderSpec, on: target.session, store: store)
+                ReminderActions.cancel(target.session, store: store)
             }
-            Button("Custom…") {
-                guard let target = target() else { return }
-                ReminderActions.presentSheet(for: target.session, in: target.window)
-            }
-            if let reminder = session?.reminder {
-                Divider()
-                if let detail = ReminderActions.detail(for: reminder, store: store) {
-                    Button(detail) {}
-                        .disabled(true)
-                }
-                Button("Edit Reminder…") {
-                    guard let target = target() else { return }
-                    ReminderActions.presentSheet(for: target.session, in: target.window)
-                }
-                Button("Cancel Reminder") {
-                    guard let target = target() else { return }
-                    ReminderActions.cancel(target.session, store: store)
-                }
-            }
-        } label: {
-            Label("Remind Me", systemImage: "clock")
+        } else {
+            Button("Remind Me…") { open() }
+                .keyboardShortcut(shortcut)
+                .disabled(session == nil)
+                .accessibilityIdentifier(firstItemIdentifier ?? "menu.remind.open")
         }
-        .disabled(session == nil)
+    }
+
+    private func open() {
+        guard let target = target() else { return }
+        ReminderActions.openBar(for: target.session, in: target.window)
     }
 }

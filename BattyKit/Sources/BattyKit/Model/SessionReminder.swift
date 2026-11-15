@@ -4,7 +4,7 @@ import Foundation
 
 /// A one-shot timer attached to one Session (`Concepts.md`: Reminder). A pure
 /// value: no view, AppKit or libghostty types.
-public struct SessionReminder: Sendable, Equatable, Identifiable {
+nonisolated public struct SessionReminder: Sendable, Equatable, Identifiable {
     public enum Target: Sendable, Equatable {
         /// Presets and custom durations: resolved once, when set, so a
         /// time-zone or DST change never moves the fire time.
@@ -37,6 +37,17 @@ public struct SessionReminder: Sendable, Equatable, Identifiable {
         return String(trimmed.prefix(maxNoteLength))
     }
 
+    /// What the Reminder says when it fires: its note, or "Come back to
+    /// <Session>" when it has none.
+    public func displayText(sessionTitle: String) -> String {
+        Self.displayText(note: note, sessionTitle: sessionTitle)
+    }
+
+    public static func displayText(note: String?, sessionTitle: String) -> String {
+        if let note = normalizedNote(note) { return note }
+        return String(localized: "Come back to \(sessionTitle)")
+    }
+
     /// The absolute instant this Reminder is due, or nil when a wall-clock
     /// target names a date the calendar cannot resolve.
     public func fireDate(calendar: Calendar) -> Date? {
@@ -50,7 +61,7 @@ public struct SessionReminder: Sendable, Equatable, Identifiable {
 }
 
 /// A time of day for a Tomorrow Reminder, stored as minutes since midnight.
-public struct ReminderTime: Sendable, Equatable {
+nonisolated public struct ReminderTime: Sendable, Hashable {
     public var hour: Int
     public var minute: Int
 
@@ -74,9 +85,12 @@ public struct ReminderTime: Sendable, Equatable {
 }
 
 /// What the user asked for, before it is resolved against a clock.
-public enum ReminderSpec: Sendable, Equatable {
+nonisolated public enum ReminderSpec: Sendable, Equatable {
     case after(minutes: Int)
     case tomorrow(hour: Int, minute: Int)
+    /// A chosen instant, between `minMinutes` and `maxMinutes` after the
+    /// moment it is resolved.
+    case at(Date)
 
     public static let minMinutes = 1
     public static let maxMinutes = 7 * 24 * 60
@@ -90,7 +104,25 @@ public enum ReminderSpec: Sendable, Equatable {
             return (Self.minMinutes...Self.maxMinutes).contains(minutes)
         case .tomorrow(let hour, let minute):
             return (0...23).contains(hour) && (0...59).contains(minute)
+        case .at:
+            return true
         }
+    }
+
+    /// Whether an `.at(date)` request is in bounds against `now`.
+    public static func isInstantInRange(_ date: Date, now: Date) -> Bool {
+        let seconds = date.timeIntervalSince(now)
+        return seconds >= TimeInterval(minMinutes * 60) && seconds <= TimeInterval(maxMinutes * 60)
+    }
+
+    /// Today at `hour:minute` in `calendar`, or nil when the time is not a
+    /// valid clock time or the calendar cannot resolve it.
+    public static func todayAt(hour: Int, minute: Int, now: Date, calendar: Calendar) -> Date? {
+        guard (0...23).contains(hour), (0...59).contains(minute) else { return nil }
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = hour
+        components.minute = minute
+        return calendar.date(from: components)
     }
 
     /// Resolves the request to a Reminder, or nil when it is out of bounds.
@@ -114,6 +146,9 @@ public enum ReminderSpec: Sendable, Equatable {
                 createdAt: now,
                 target: .wallClock(Self.tomorrowComponents(now: now, calendar: calendar, hour: hour, minute: minute)),
                 note: note)
+        case .at(let date):
+            guard Self.isInstantInRange(date, now: now) else { return nil }
+            return SessionReminder(id: id, createdAt: now, target: .instant(date), note: note)
         }
     }
 
@@ -132,7 +167,10 @@ public enum ReminderSpec: Sendable, Equatable {
 /// User-facing wording for a Reminder's due time. Everything takes the
 /// calendar, locale and `now` as parameters so the result never depends on
 /// the machine running the code.
-public enum ReminderFormat {
+nonisolated public enum ReminderFormat {
+    /// A Reminder delivered more than this long after it was due is late.
+    public static let lateAfter: TimeInterval = 60
+
     public static func time(_ date: Date, calendar: Calendar = .current, locale: Locale = .autoupdatingCurrent) -> String {
         date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, calendar: calendar, timeZone: calendar.timeZone))
     }
@@ -160,5 +198,54 @@ public enum ReminderFormat {
             return String(localized: "tomorrow at \(clock)")
         }
         return String(localized: "on \(absolute(date, calendar: calendar, locale: locale))")
+    }
+
+    /// The Sidebar's caption for a pending Reminder: "in N min" up to an
+    /// hour (rounded up, at least 1), then the `phrase(for:now:)` wording.
+    public static func relativeLine(
+        due: Date,
+        now: Date,
+        calendar: Calendar = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let seconds = due.timeIntervalSince(now)
+        if seconds <= 60 * 60 {
+            let minutes = max(1, Int((seconds / 60).rounded(.up)))
+            return String(localized: "in \(minutes) min")
+        }
+        return phrase(for: due, now: now, calendar: calendar, locale: locale)
+    }
+
+    /// The Sidebar's caption for a due Reminder: "due just now", "due N min
+    /// ago", then "due at <time>" after an hour.
+    public static func dueLine(
+        dueAt: Date,
+        now: Date,
+        calendar: Calendar = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let seconds = now.timeIntervalSince(dueAt)
+        if seconds < 60 {
+            return String(localized: "due just now")
+        }
+        if seconds < 60 * 60 {
+            return String(localized: "due \(Int(seconds / 60)) min ago")
+        }
+        return String(localized: "due at \(time(dueAt, calendar: calendar, locale: locale))")
+    }
+
+    /// A Reminder notification's body: "Set at <time>", or "Due at <time>"
+    /// when it is delivered more than `lateAfter` after it was due.
+    public static func notificationBody(
+        setAt: Date,
+        dueAt: Date,
+        deliveredAt: Date,
+        calendar: Calendar = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        if deliveredAt.timeIntervalSince(dueAt) > lateAfter {
+            return String(localized: "Due at \(time(dueAt, calendar: calendar, locale: locale))")
+        }
+        return String(localized: "Set at \(time(setAt, calendar: calendar, locale: locale))")
     }
 }

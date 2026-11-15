@@ -364,9 +364,12 @@ batty session remind --cancel                 # idempotent
 The target resolves like `session close`: `--session`, then
 `BATTY_SESSION_ID`, then the focused Session. A Session holds one Reminder,
 so setting one replaces any existing one. `--tomorrow` without `--at` uses
-the app's one-click Tomorrow time: the last Tomorrow time chosen in the
-Reminder sheet, 9:00 AM until one is chosen (the CLI never changes it). Bad combinations (`--in` with `--cancel`,
-`--at` without `--tomorrow`, `--note` with `--cancel`) and out-of-range
+the app's Tomorrow time: the last Tomorrow time chosen in the Reminder
+bar's Pick Date & Time…, 9:00 AM until one is chosen (the CLI never changes
+it). `--at HH:MM` without `--tomorrow` fires later today, and the text can be
+given as an argument instead of `--note`. Bad combinations (`--in` with
+`--cancel`, `--in` with `--at`, text with `--cancel`, the argument and
+`--note` together) and out-of-range
 values are usage errors and nothing is sent; an unknown Session exits `4`.
 
 ## Opening a saved Project

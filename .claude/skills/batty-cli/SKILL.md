@@ -202,7 +202,8 @@ new_pane=$("$BATTY" pane split --horizontal --command "npm run dev")
 To come back to a Session later, set a Reminder on it instead of polling:
 `"$BATTY" session remind --in 45m --note "check CI"` or
 `--tomorrow [--at 09:00]` (without `--at`: the last Tomorrow time chosen in
-the app's Reminder sheet, 9:00 AM until one is chosen). Exactly one of `--in`/`--tomorrow`/`--cancel`.
+the app's Reminder bar's Pick Date & Time…, 9:00 AM until one is chosen). Exactly one of `--in`/`--tomorrow`/`--at`/`--cancel`;
+`--at HH:MM` alone means later today. The text can be a positional argument: `session remind "check CI" --in 45m`.
 One Reminder per Session (setting replaces); `--cancel` is idempotent. The
 pending Reminder appears as `reminder` in `session info --json` and
 `list --json`. Its notification still arrives if Batty quits first (the

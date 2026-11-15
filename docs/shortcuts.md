@@ -130,6 +130,7 @@ stays checkable against source at a glance.
 | `resizeSplitRight` | Move Split Divider Right | `Cmd-Ctrl-→` | `tree.resizeFocusedSplit(.right)` |
 | `resizeSplitUp` | Move Split Divider Up | `Cmd-Ctrl-↑` | `tree.resizeFocusedSplit(.up)` |
 | `resizeSplitDown` | Move Split Divider Down | `Cmd-Ctrl-↓` | `tree.resizeFocusedSplit(.down)` |
+| `remindMe` | Remind Me… | `Cmd-Shift-R` | `ReminderActions.openBar(in:)` — opens the Quick Reminder bar for the selected Session (#0631) |
 
 The recorder accepts:
 

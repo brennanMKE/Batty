@@ -124,11 +124,11 @@ public struct SessionDetailView: View {
                 onCancel: { windowRuntime.projectPickerShown = false }
             )
         }
-        .sheet(item: reminderSheetBinding) { session in
-            ReminderSheet(
+        .sheet(item: reminderBarBinding) { session in
+            ReminderBarSheetHost(
                 store: store,
                 session: session,
-                onClose: { windowRuntime.reminderSheetSessionID = nil }
+                onClose: { windowRuntime.reminderBarSessionID = nil }
             )
         }
         .sheet(item: backgroundPickBinding) { pane in
@@ -323,12 +323,12 @@ public struct SessionDetailView: View {
         )
     }
 
-    private var reminderSheetBinding: Binding<SessionRuntime?> {
+    private var reminderBarBinding: Binding<SessionRuntime?> {
         Binding(
-            get: { windowRuntime.sessions.first { $0.id == windowRuntime.reminderSheetSessionID } },
+            get: { windowRuntime.sessions.first { $0.id == windowRuntime.reminderBarSessionID } },
             set: { newValue in
-                guard windowRuntime.reminderSheetSessionID != newValue?.id else { return }
-                windowRuntime.reminderSheetSessionID = newValue?.id
+                guard windowRuntime.reminderBarSessionID != newValue?.id else { return }
+                windowRuntime.reminderBarSessionID = newValue?.id
             }
         )
     }

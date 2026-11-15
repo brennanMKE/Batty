@@ -45,8 +45,9 @@ public final class AppStateStore {
     /// delivery for one of them arriving after the in-app fire is a duplicate
     /// of the banner the in-app post already showed.
     @ObservationIgnored var remindersFiredThisLaunch: Set<UUID> = []
-    /// The last Tomorrow time chosen in the Reminder sheet, 9:00 AM until
-    /// one is. Observed so the menu and palette labels follow it.
+    /// The last Tomorrow time chosen through the Reminder bar's Pick Date &
+    /// Time…, 9:00 AM until one is. Observed so the bar's Tomorrow row
+    /// follows it.
     public internal(set) var tomorrowReminderTime: ReminderTime = .defaultTomorrow
     /// Whether Batty is the active app, read once per bell by
     /// `routeRealTabBell`. The default is the live read; tests set it.

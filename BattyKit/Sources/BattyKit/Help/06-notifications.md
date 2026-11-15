@@ -41,6 +41,18 @@ Right-click a session row in the sidebar and choose **Mute Notifications**. Whil
 
 The bell *sound* isn't gated by per-session mute in this release; the app-wide **Play sound** toggle in Settings is the only sound control.
 
+## Reminders
+
+A Reminder brings you back to a session later, with a note saying why. Press `Cmd-Shift-R`, choose **Session > Remind Me…**, right-click a session in the sidebar, or pick **Remind Me…** in the Command Palette. Each opens the Quick Reminder bar:
+
+- Type what you want to be reminded of. If a command is running, the field starts with "Check on <command>", selected, so typing replaces it. With nothing typed, the Reminder says "Come back to <session>".
+- `Up` and `Down` choose a time, and `Return` sets the Reminder. `Cmd-1` to `Cmd-5` set In 5 Minutes, In 15 Minutes, In 30 Minutes, In 1 Hour or Tomorrow at once; `Cmd-6` opens **Pick Date & Time…** for any time between a minute and seven days ahead. `Esc` closes the bar without setting anything.
+- While a session has a Reminder, the sidebar shows its note and how long is left under the session's name. Click those lines, press `Cmd-Shift-R` again, or choose **Edit Reminder…** to change it. **Keep <time>** changes only the note, and **Remove Reminder** cancels it. Each session has one Reminder.
+
+When it's due, the macOS notification shows the note as its title and the session underneath. **Open Session** jumps to it; **Remind Again in 15 Minutes** and **Remind Again in 1 Hour** set a new Reminder with the same note, without bringing Batty forward. A Reminder still notifies after you quit Batty, but that notification only offers Open Session.
+
+From a terminal: `batty session remind "check CI" --in 5m`, or `batty session remind --at 17:30 "standup"` for later today.
+
 ## Settings
 
 Open Settings with `Cmd-,` and pick **Notifications**:

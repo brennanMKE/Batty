@@ -220,7 +220,7 @@ private struct BellFeedRow: View {
                         .foregroundStyle(.secondary)
                         .help(entry.timestamp.formatted(date: .abbreviated, time: .standard))
                 }
-                Text(entry.message ?? String(localized: "Time to come back to \(path)"))
+                Text(SessionReminder.displayText(note: entry.message, sessionTitle: path))
                     .font(.caption)
                     .lineLimit(3)
                     .accessibilityIdentifier("bell-feed-message.\(entry.id.uuidString)")
@@ -235,10 +235,8 @@ private struct BellFeedRow: View {
         .padding(.vertical, 2)
     }
 
-    private static let lateAfter: TimeInterval = 60
-
     private var secondaryLine: String? {
-        if let due = entry.reminderDueAt, entry.timestamp.timeIntervalSince(due) > Self.lateAfter {
+        if let due = entry.reminderDueAt, entry.timestamp.timeIntervalSince(due) > ReminderFormat.lateAfter {
             return String(localized: "Due \(ReminderFormat.time(due))")
         }
         guard let setAt = entry.reminderSetAt else { return nil }

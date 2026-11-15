@@ -76,6 +76,23 @@ final class AppStateStoreRemindSessionForXPCTests {
         #expect(reminder.fireDate(calendar: ReminderFixture.calendar()) == ReminderFixture.date(2026, 10, 15, 10, 45))
     }
 
+    @Test func todayAtSetsAnInstantLaterToday() throws {
+        let session = store.sessions[0]
+        guard case .set(let reminder, _) = remind(session.id, .today(time: .init(hour: 17, minute: 30)), note: "standup") else {
+            Issue.record("expected .set"); return
+        }
+        #expect(reminder.target == .instant(ReminderFixture.date(2026, 10, 14, 17, 30)))
+        #expect(reminder.note == "standup")
+        #expect(store.tomorrowReminderTime == Self.remembered)
+    }
+
+    @Test func todayAtAPastTimeIsInvalid() {
+        let session = store.sessions[0]
+        #expect(remind(session.id, .today(time: .init(hour: 9, minute: 0))) == .invalidSpec)
+        #expect(remind(session.id, .today(time: .init(hour: 15, minute: 0))) == .invalidSpec, "now is not a minute ahead")
+        #expect(session.reminder == nil)
+    }
+
     @Test func xpcSessionRemindNeverChangesTheRememberedTime() throws {
         let session = store.sessions[0]
         for action: SessionRemindAction in [.tomorrow(time: .init(hour: 10, minute: 45)), .tomorrow(time: nil), .after(minutes: 5), .cancel] {
@@ -179,7 +196,7 @@ final class AppStateStoreRemindSessionForXPCTests {
         }
         #expect(cli.id != gui.id)
         #expect(Set(spy.scheduled.keys) == [ScheduledReminderNotification.identifier(for: cli.id), otherID])
-        #expect(spy.scheduled[ScheduledReminderNotification.identifier(for: cli.id)]?.body == "from the cli")
+        #expect(spy.scheduled[ScheduledReminderNotification.identifier(for: cli.id)]?.title == "from the cli")
 
         guard case .cancelled = store.remindSessionForXPC(
             SessionRemindRequest(sessionID: target.id, action: .cancel, note: nil)
