@@ -33,6 +33,14 @@ enum ReminderActions {
         window.reminderBarSessionID = session.id
     }
 
+    /// Opens the bar from a menu item or chord, unless a sheet is attached
+    /// to the Window. The item's key equivalent reaches the main menu while
+    /// another sheet is key, and the bar would stack on that sheet.
+    static func openBar(for session: SessionRuntime, in window: WindowRuntime, windowHasAttachedSheet: Bool) {
+        guard !windowHasAttachedSheet else { return }
+        openBar(for: session, in: window)
+    }
+
     /// Opens the bar for the Window's selected Session, if it has one.
     static func openBar(in window: WindowRuntime) {
         guard let session = window.selectedSession else { return }
@@ -69,6 +77,11 @@ enum ReminderActions {
 /// resolved only when an item is chosen, because the Session menu's action
 /// window depends on non-observed AppKit state (`BattyCommands.actionWindow`)
 /// and is nil while an auxiliary window is key.
+///
+/// While a sheet is attached to the target Window the open items decline:
+/// they stay enabled and consume their key equivalent but do nothing,
+/// because `NSWindow.attachedSheet` is not observed and a `.disabled` driven
+/// by it would not re-evaluate when the sheet closes.
 struct ReminderMenuItems: View {
     let store: AppStateStore
     let session: SessionRuntime?
@@ -95,6 +108,8 @@ struct ReminderMenuItems: View {
 
     private func open() {
         guard let target = target() else { return }
-        ReminderActions.openBar(for: target.session, in: target.window)
+        ReminderActions.openBar(
+            for: target.session, in: target.window,
+            windowHasAttachedSheet: store.windowHasAttachedSheet(target.window.id))
     }
 }

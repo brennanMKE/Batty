@@ -491,4 +491,54 @@ nonisolated final class SessionReminderTests: XCTestCase {
         openBellFeed(in: app)
         XCTAssertEqual(reminderEntryIDs(in: app).count, 0, "A closed Session's Reminder must never fire")
     }
+
+    /// Opens the Rename Session sheet on `title`'s row and waits for its
+    /// field to hold keyboard focus.
+    @MainActor
+    private func openRenameSheet(onRowNamed title: String, in app: XCUIApplication) -> XCUIElement {
+        chooseFromContextMenu("Rename", onRowNamed: title, in: app)
+        let field = element("rename-session.field", in: app)
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "the Rename Session sheet must open")
+        XCTAssertTrue(waitFor({ self.hasKeyboardFocus(field) }, timeout: 5), "the rename field must hold keyboard focus")
+        return field
+    }
+
+    @MainActor
+    private func hasKeyboardFocus(_ element: XCUIElement) -> Bool {
+        element.exists && (element.value(forKey: "hasKeyboardFocus") as? Bool) == true
+    }
+
+    /// ⇧⌘R over another sheet does nothing, now or after that sheet closes.
+    @MainActor
+    func testShiftCommandRWhileAnotherSheetIsUpDoesNotOpenTheBar() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+        let field = openRenameSheet(onRowNamed: "Alpha", in: app)
+
+        app.typeKey("r", modifierFlags: [.command, .shift])
+        XCTAssertFalse(bar(in: app).waitForExistence(timeout: 2), "⇧⌘R must not open the bar over another sheet")
+        XCTAssertTrue(hasKeyboardFocus(field), "the rename field must keep keyboard focus")
+
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !field.exists }, timeout: 5), "Escape must close the rename sheet")
+        XCTAssertFalse(bar(in: app).waitForExistence(timeout: 2), "the bar must not appear once the sheet closes")
+
+        openBarWithShortcut(in: app)
+    }
+
+    /// Session ▸ Remind Me… chosen over another sheet does nothing.
+    @MainActor
+    func testSessionMenuRemindMeWhileAnotherSheetIsUpDoesNothing() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+        let field = openRenameSheet(onRowNamed: "Alpha", in: app)
+        let menuBar = app.menuBars.firstMatch
+
+        menuBar.menuBarItems["Session"].click()
+        let item = menuBar.menuItems["Remind Me\u{2026}"]
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "the Session menu must offer Remind Me…")
+        item.click()
+        XCTAssertFalse(bar(in: app).waitForExistence(timeout: 2), "Remind Me… must not open the bar over another sheet")
+        XCTAssertTrue(waitFor({ self.hasKeyboardFocus(field) }, timeout: 5), "the rename field must keep keyboard focus")
+    }
 }

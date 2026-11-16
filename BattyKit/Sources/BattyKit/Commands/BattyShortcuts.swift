@@ -202,7 +202,11 @@ public enum BattyShortcuts {
         case .resizeSplitDown:
             window.selectedSession?.tree.resizeFocusedSplit(.down)
         case .remindMe:
-            ReminderActions.openBar(in: window)
+            if let session = window.selectedSession {
+                ReminderActions.openBar(
+                    for: session, in: window,
+                    windowHasAttachedSheet: appStore.windowHasAttachedSheet(window.id))
+            }
         case .newWindow:
             // Already handled above; unreachable.
             break

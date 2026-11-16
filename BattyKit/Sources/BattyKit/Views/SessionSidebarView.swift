@@ -786,6 +786,7 @@ private struct RenameSessionSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
                 .onSubmit(onCommit)
+                .accessibilityIdentifier("rename-session.field")
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)

@@ -2474,6 +2474,11 @@ public final class AppStateStore {
         return nil
     }
 
+    /// Whether a sheet or sheet-style dialog is attached to `windowID`'s window.
+    public func windowHasAttachedSheet(_ windowID: WindowID) -> Bool {
+        nsWindow(for: windowID)?.attachedSheet != nil
+    }
+
     // MARK: - Bell intake wiring (#0561)
 
     /// Routes this Tab's delegate-driven BEL and OSC 9/777 events into the

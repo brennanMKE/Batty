@@ -90,4 +90,33 @@ struct ReminderEntryPointTests {
         try #require(view.allCommands.first { $0.id == "uitest:reminderClock:300" }).action()
         #expect(clock.now.timeIntervalSince(before) == 300)
     }
+
+    // MARK: - Menu gate
+
+    @Test func remindMeIsDeclinedWhileTheWindowHasAnAttachedSheet() throws {
+        let store = makeStore()
+        let window = store.windows[0]
+        let session = try #require(window.selectedSession)
+        ReminderActions.openBar(for: session, in: window, windowHasAttachedSheet: true)
+        #expect(window.reminderBarSessionID == nil)
+        ReminderActions.openBar(for: session, in: window, windowHasAttachedSheet: false)
+        #expect(window.reminderBarSessionID == session.id)
+    }
+
+    @Test func editReminderIsDeclinedWhileTheWindowHasAnAttachedSheet() throws {
+        let store = makeStore()
+        let window = store.windows[0]
+        let session = try #require(window.selectedSession)
+        store.setReminder(.after(minutes: 5), note: "x", forSessionID: session.id)
+        #expect(session.reminder != nil)
+        ReminderActions.openBar(for: session, in: window, windowHasAttachedSheet: true)
+        #expect(window.reminderBarSessionID == nil)
+        ReminderActions.openBar(for: session, in: window, windowHasAttachedSheet: false)
+        #expect(window.reminderBarSessionID == session.id)
+    }
+
+    @Test func windowHasAttachedSheetIsFalseForAWindowWithNoRegisteredNSWindow() {
+        let store = makeStore()
+        #expect(store.windowHasAttachedSheet(store.windows[0].id) == false)
+    }
 }
