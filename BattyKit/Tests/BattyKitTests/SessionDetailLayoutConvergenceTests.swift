@@ -119,14 +119,17 @@ struct SessionDetailLayoutConvergenceTests {
     /// moved out of `SessionDetailView`'s `onChange` into
     /// `WindowRuntime.selectedSessionID`'s `didSet`, and the same maxima
     /// after (issues/0602.md). With the Sidebar an `NSOutlineView` whose
-    /// rows are separate hosting cells (#0619), 287 and 350 at most. Nearly
-    /// all of a switch's requests come from the selection change itself, so
+    /// rows are separate hosting cells (#0619), 287 and 350 at most. The
+    /// Reminders toolbar button (#0640) adds a fourth toolbar item that the
+    /// window re-lays out on every switch: 303 at most without it and 345
+    /// and 405 with it, the same with a button that reads no store state.
+    /// Nearly all of a switch's requests come from the selection change itself, so
     /// the ceilings are that baseline plus about 17%, to catch side effects or a second update round coming
     /// back into layout without failing on run-to-run noise. A strict
     /// majority of the four switches must be under the ceiling
     /// (`LayoutConvergenceProbe.mostlyWithin`). `.serialized` because two
     /// cases settling at once interleave their counts.
-    private static let switchRequestCeiling: [Int: Int] = [0: 340, 12: 410]
+    private static let switchRequestCeiling: [Int: Int] = [0: 405, 12: 475]
 
     @Test(.serialized, arguments: [0, 12])
     func sessionSwitchUpdateConstraintRequestsStayUnderCeiling(extraSessions: Int) async throws {

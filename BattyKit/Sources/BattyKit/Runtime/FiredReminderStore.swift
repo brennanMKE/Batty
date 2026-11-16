@@ -3,6 +3,10 @@
 import Foundation
 import Observation
 
+extension Notification.Name {
+    public static let battyToggleReminders = Notification.Name("co.sstools.Batty.toggleReminders")
+}
+
 /// A Session Reminder that came due. In memory only, like the Bell Feed.
 nonisolated public struct FiredReminder: Sendable, Hashable, Identifiable {
     /// The Reminder's own id.

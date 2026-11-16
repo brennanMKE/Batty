@@ -142,7 +142,8 @@ above:
   `markActiveTabSeen`, via `markSelectedSessionFiredReminderSeen`), on Mark
   All Read (`markAllRemindersRead()`), and on a Remind Again that is ignored
   because the Session has a newer pending Reminder (#0633).
-  `clearReadReminders()` removes read ones. None of these touch the Bell
+  `clearReadReminders()` removes read ones. The Reminders popover (section
+  9a) is where the user sees and acts on them. None of these touch the Bell
   Feed, and the Bell Feed's Mark All Read and Clear Read never touch fired
   Reminders.
 
@@ -556,6 +557,54 @@ side: if the app is currently active **and** the feed entry has already
 been marked seen, the banner is suppressed. The rationale is that a
 user with Batty in the foreground who has already clicked through to
 the tab doesn't need a delayed banner for the same bell.
+
+## 9a. Reminders popover
+
+`RemindersToolbarButton` (`RemindersToolbarButton.swift`) sits in the same
+`ToolbarItemGroup` as the bell, immediately left of it, and is the only
+toolbar reader of fired and pending Reminder state. `RemindersListModel`
+(`RemindersListModel.swift`, pure values) holds every rule: ordering, the
+glyph, the accessibility value, the initial selection, arrow movement and the
+selection after a removal.
+
+- **Glyph:** `alarm` with nothing, `alarm.fill` with a pending Reminder or only
+  read fired ones, `alarm.waves.left.and.right.fill` in the accent while any
+  fired Reminder is unread. No count. A fired Reminder never changes the bell.
+- **Toggle:** `.battyToggleReminders` (`toggleReminders`, default
+  `Cmd-Option-R`; Window → Show Reminders; the Command Palette). A Window acts
+  when it is key **or** its own popover is showing
+  (`RemindersPopoverToggle.shouldHandle`), because while the popover's window
+  is key `keyWindowRuntime()` returns nil. The bell's toggle keeps only the
+  `isKeyWindow` guard.
+- **`RemindersView`** (`360 × 420`): Due (fired, newest first, with the Bell
+  Feed's unread dot and `ReadStateHeaderActions` in the section header) and
+  Upcoming (every `SessionRuntime.reminder` across `store.windows`, soonest
+  first). A section with no rows is hidden; with neither, a
+  `ContentUnavailableView` offers New Reminder for the selected Session.
+  Relative times render inside `TimelineView(.everyMinute)` from
+  `reminderScheduler.now`, so the UI tests' frozen clock holds.
+- **Writes are event-origin only.** `onAppear` sets only the view's own
+  selection; opening the popover marks nothing read. Open Session
+  (`openReminderSession`), Edit (`ReminderActions.openBarFromList`) and New
+  Reminder… set `isShown = false` first, then act, in the same handler.
+  Remind Again (`remindFiredReminderAgain`), Done (`markFiredReminderDone`)
+  and Cancel (`cancelReminder(forSessionID:)`) keep the popover open and move
+  the selection to the row that took the removed row's place.
+- **Keys:** Up/Down across Due then Upcoming, Return opens, Escape closes,
+  Delete is Done or Cancel, `E` edits an Upcoming row, `R` reminds again in
+  15 minutes on a Due row. The popover can open with focus on New Reminder…
+  rather than the List, so each key is also a hidden key-equivalent button.
+  Both paths resolve through `RemindersListModel.action(for:selection:)`
+  against the rows read at key time, never rows captured when the view was
+  built: a key-equivalent button can run a closure from an earlier render.
+- **Identifiers:** `toolbar.reminders` (value `none`, `2 upcoming`,
+  `1 due, 2 upcoming`, `1 unread due, …`), `reminders.list`, `reminders.new`,
+  `reminders.empty`, `reminders.empty.new`, `reminders.mark-all-read`,
+  `reminders.clear-read`, `reminders-due.<Session title>` (value
+  `reminder due, unread` / `reminder due, read`),
+  `reminders-upcoming.<Session title>` (value `reminder pending: <detail>`),
+  and the row buttons `reminders-due.again15.` / `.again60.` / `.done.` and
+  `reminders-upcoming.edit.` / `.cancel.` followed by the title.
 
 ---
 

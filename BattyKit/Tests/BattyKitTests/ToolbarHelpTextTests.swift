@@ -57,4 +57,49 @@ struct ToolbarHelpTextTests {
         #expect(ToolbarHelpText.labelled("Reminders", chord("r", [.command, .option]))
             == "Reminders (\u{2325}\u{2318}R)")
     }
+
+    private func remindersList(dueCount: Int, upcomingMinutes: [Double]) -> RemindersListModel {
+        let anchor = ReminderFixture.anchor
+        var sessions: [RemindersSessionInput] = []
+        var fired: [FiredReminder] = []
+        for index in 0..<dueCount {
+            let id = UUID()
+            sessions.append(RemindersSessionInput(id: id, title: "Due \(index)", reminder: nil))
+            fired.append(FiredReminder(
+                id: UUID(), sessionID: id, windowID: UUID(), note: nil,
+                createdAt: anchor, dueAt: anchor, firedAt: anchor, seen: true))
+        }
+        for (index, minutes) in upcomingMinutes.enumerated() {
+            sessions.append(RemindersSessionInput(
+                id: UUID(), title: "Up \(index)",
+                reminder: SessionReminder(createdAt: anchor, target: .instant(anchor.addingTimeInterval(minutes * 60)))))
+        }
+        return RemindersListModel(fired: fired, sessions: sessions, calendar: ReminderFixture.calendar())
+    }
+
+    private func remindersHelp(_ store: ShortcutsStore, _ list: RemindersListModel) -> String {
+        ToolbarHelpText.reminders(
+            store, list: list, now: ReminderFixture.anchor, calendar: ReminderFixture.calendar(),
+            locale: Locale(identifier: "en_US"))
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+    }
+
+    @Test func remindersHelpShowsTheBoundShortcutAndState() {
+        let store = makeStore()
+        #expect(remindersHelp(store, remindersList(dueCount: 0, upcomingMinutes: []))
+            == "Reminders (\u{2325}\u{2318}R)")
+        #expect(remindersHelp(store, remindersList(dueCount: 0, upcomingMinutes: [45, 90]))
+            == "Reminders (\u{2325}\u{2318}R) \u{00B7} 2 upcoming, next at 3:45 PM")
+        #expect(remindersHelp(store, remindersList(dueCount: 1, upcomingMinutes: [45, 90]))
+            == "Reminders (\u{2325}\u{2318}R) \u{00B7} 1 due, 2 upcoming")
+        #expect(remindersHelp(store, remindersList(dueCount: 1, upcomingMinutes: []))
+            == "Reminders (\u{2325}\u{2318}R) \u{00B7} 1 due")
+    }
+
+    @Test func remindersHelpFollowsARebinding() {
+        let store = makeStore()
+        store.setBinding(chord("x", [.control, .option]), for: .toggleReminders)
+        #expect(remindersHelp(store, remindersList(dueCount: 0, upcomingMinutes: []))
+            == "Reminders (\u{2303}\u{2325}X)")
+    }
 }

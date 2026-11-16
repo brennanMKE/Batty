@@ -332,6 +332,13 @@ public struct BattyCommands: Commands {
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleBellFeed))
 
             Button {
+                postToContentWindow(.battyToggleReminders)
+            } label: {
+                Label("Show Reminders", systemImage: "alarm")
+            }
+            .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleReminders))
+
+            Button {
                 store.markAllBellsSeen()
             } label: {
                 Label("Mark All Bells Read", systemImage: "bell.slash")

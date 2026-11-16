@@ -376,6 +376,19 @@ the Session Reminders section below.
 
 ---
 
+## Reminders popover
+
+The Reminders toolbar button sits immediately left of the bell and opens a
+`360 × 420` popover with **Due** (fired Reminders, newest first, unread or
+read) and **Upcoming** (pending Reminders across every Window, soonest first),
+plus New Reminder… in the header. `Cmd-Option-R` (`toggleReminders`) toggles
+it. Opening it marks nothing read. See `notifications.md` section 9a for the
+glyph states, the actions and every accessibility identifier
+(`toolbar.reminders`, `reminders.list`, `reminders.empty`, `reminders.new`,
+`reminders.mark-all-read`, `reminders.clear-read`,
+`reminders-due.<title>`, `reminders-upcoming.<title>`). UI tests:
+`BattyUITests/RemindersPopoverTests.swift`.
+
 ## Session Reminders
 
 A Reminder is a one-shot timer on one Session (`Concepts.md`: Reminder). The

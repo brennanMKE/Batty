@@ -65,6 +65,7 @@ views.
 | Open Layout Picker | `Cmd-Shift-L` |
 | Open Theme Selector | `Cmd-Shift-T` |
 | Remind Me… | `Cmd-Shift-R` |
+| Show Reminders | `Cmd-Option-R` |
 | New Window | `Cmd-Shift-N` |
 | Settings | `Cmd-,` |
 | Help | `Cmd-?` |

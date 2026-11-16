@@ -12,6 +12,7 @@ public struct SessionDetailView: View {
     @Environment(\.themeChrome) private var themeChrome
     @Environment(\.windowIsSeeThrough) private var windowIsSeeThrough
     @State private var bellFeedShown: Bool = false
+    @State private var remindersShown: Bool = false
     @State private var commandPaletteShown: Bool = false
     @State private var openQuicklyShown: Bool = false
     @State private var layoutPickerShown: Bool = false
@@ -41,6 +42,10 @@ public struct SessionDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleBellFeed)) { _ in
             guard isKeyWindow else { return }
             bellFeedShown.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .battyToggleReminders)) { _ in
+            guard RemindersPopoverToggle.shouldHandle(isKeyWindow: isKeyWindow, isShown: remindersShown) else { return }
+            remindersShown.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .battyToggleCommandPalette)) { _ in
             guard isKeyWindow else { return }
@@ -203,6 +208,7 @@ public struct SessionDetailView: View {
         ToolbarItemGroup {
             SplitToolbarButton(windowRuntime: windowRuntime, direction: .horizontal)
             SplitToolbarButton(windowRuntime: windowRuntime, direction: .vertical)
+            RemindersToolbarButton(store: store, windowRuntime: windowRuntime, isShown: $remindersShown)
             BellFeedToolbarButton(store: store, isShown: $bellFeedShown)
         }
     }

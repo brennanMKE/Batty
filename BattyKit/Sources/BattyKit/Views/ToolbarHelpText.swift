@@ -13,6 +13,29 @@ enum ToolbarHelpText {
         labelled(String(localized: "Bell Feed"), shortcuts.binding(for: .toggleBellFeed))
     }
 
+    static func reminders(
+        _ shortcuts: ShortcutsStore,
+        list: RemindersListModel,
+        now: Date,
+        calendar: Calendar,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let title = labelled(String(localized: "Reminders"), shortcuts.binding(for: .toggleReminders))
+        guard !list.isEmpty else { return title }
+        let summary: String
+        if !list.due.isEmpty {
+            summary = list.upcoming.isEmpty
+                ? String(localized: "\(list.due.count) due")
+                : String(localized: "\(list.due.count) due, \(list.upcoming.count) upcoming")
+        } else if let next = list.upcoming.first?.dueAt {
+            let phrase = ReminderFormat.phrase(for: next, now: now, calendar: calendar, locale: locale)
+            summary = String(localized: "\(list.upcoming.count) upcoming, next \(phrase)")
+        } else {
+            summary = String(localized: "\(list.upcoming.count) upcoming")
+        }
+        return "\(title) \u{00B7} \(summary)"
+    }
+
     static func splitHorizontal(_ shortcuts: ShortcutsStore) -> String {
         let split = labelled(String(localized: "Split Horizontally"), shortcuts.binding(for: .splitHorizontal))
         let column = labelled(

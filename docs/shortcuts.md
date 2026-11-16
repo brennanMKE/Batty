@@ -81,6 +81,7 @@ generated directly from `ShortcutAction.defaultBinding`:
 | Show Next Tab | `Cmd-Shift-]` | |
 | Toggle Sidebar | `Cmd-B` | Posts `.battyToggleSidebar`; toggles the key window's sidebar (per-window `@SceneStorage` in `RootWindowView`) |
 | Toggle Bell Feed | `Cmd-Shift-B` | Posts `.battyToggleBellFeed` notification |
+| Show Reminders | `Cmd-Option-R` | Posts `.battyToggleReminders` notification |
 
 ---
 
@@ -131,6 +132,7 @@ stays checkable against source at a glance.
 | `resizeSplitUp` | Move Split Divider Up | `Cmd-Ctrl-↑` | `tree.resizeFocusedSplit(.up)` |
 | `resizeSplitDown` | Move Split Divider Down | `Cmd-Ctrl-↓` | `tree.resizeFocusedSplit(.down)` |
 | `remindMe` | Remind Me… | `Cmd-Shift-R` | `ReminderActions.openBar(in:)` — opens the Quick Reminder bar for the selected Session (#0631) |
+| `toggleReminders` | Show Reminders | `Cmd-Option-R` | posts `.battyToggleReminders`; the key Window, or the Window whose popover is open, toggles its Reminders popover (#0640) |
 
 The recorder accepts:
 

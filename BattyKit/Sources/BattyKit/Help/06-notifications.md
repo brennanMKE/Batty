@@ -51,7 +51,15 @@ A Reminder brings you back to a session later, with a note saying why. Press `Cm
 - `Up` and `Down` choose a time, and `Return` sets the Reminder. `Cmd-1` to `Cmd-5` set In 5 Minutes, In 15 Minutes, In 30 Minutes, In 1 Hour or Tomorrow at once; `Cmd-6` opens **Pick Date & Time…** for any time between a minute and seven days ahead. `Esc` closes the bar without setting anything.
 - While a session has a Reminder, a clock appears next to its name in the sidebar; hover over it to see the note and the time. Press `Cmd-Shift-R` again or choose **Edit Reminder…** to change it. **Keep <time>** changes only the note, and **Remove Reminder** cancels it. Each session has one Reminder.
 
-When it's due, the macOS notification shows the note as its title and the session underneath. **Open Session** jumps to it; **Remind Again in 15 Minutes** and **Remind Again in 1 Hour** set a new Reminder with the same note, without bringing Batty forward, and leave nothing behind. A Reminder that comes due doesn't appear in the bell feed or light the bell; the session's sidebar row shows an alarm until you visit the session. A Reminder still notifies after you quit Batty, but that notification only offers Open Session.
+When it's due, the macOS notification shows the note as its title and the session underneath. **Open Session** jumps to it; **Remind Again in 15 Minutes** and **Remind Again in 1 Hour** set a new Reminder with the same note, without bringing Batty forward, and leave nothing behind. A Reminder that comes due doesn't appear in the bell feed or light the bell; instead the **Reminders** button, just left of the bell, rings in the accent colour, and the session's sidebar row shows an alarm until you visit the session. A Reminder still notifies after you quit Batty, but that notification only offers Open Session.
+
+Click the **Reminders** button or press `Cmd-Option-R` to see every Reminder. **Due** lists the ones that came due, newest first, with a dot on each you haven't read; **Upcoming** lists the ones still waiting, soonest first. Opening the list marks nothing read.
+
+- Click a row, or press `Return`, to open its session. A due Reminder leaves the list when you do.
+- On a due Reminder, **Remind Again in 15 Minutes** (or `R`) and **In 1 Hour** move it back to Upcoming, and **Done** (or `Delete`) removes it.
+- On an upcoming Reminder, the pencil (or `E`) edits it in the Quick Reminder bar, and the x (or `Delete`) cancels it.
+- **Mark All Read** clears the dots and **Clear Read** removes the due Reminders you've read. Neither touches Upcoming or the bell feed.
+- **New Reminder…** opens the Quick Reminder bar for the selected session.
 
 From a terminal: `batty session remind "check CI" --in 5m`, or `batty session remind --at 17:30 "standup"` for later today.
 

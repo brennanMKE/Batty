@@ -47,6 +47,20 @@ enum ReminderActions {
         openBar(for: session, in: window)
     }
 
+    /// Edit from the Reminders popover: brings the Session's Window to the
+    /// front and opens the bar there, leaving the selected Session alone.
+    /// Event-origin only (a popover click or key): `makeKeyAndOrderFront`
+    /// changes the responder chain.
+    static func openBarFromList(sessionID: UUID, store: AppStateStore) {
+        guard let window = store.windowOwning(sessionID: sessionID),
+              let session = window.sessions.first(where: { $0.id == sessionID })
+        else { return }
+        if let nsWindow = store.nsWindow(for: window.id), !nsWindow.isKeyWindow {
+            nsWindow.makeKeyAndOrderFront(nil)
+        }
+        openBar(for: session, in: window, windowHasAttachedSheet: store.windowHasAttachedSheet(window.id))
+    }
+
     /// Runs a commit of the bar against the store.
     @discardableResult
     static func commit(_ commit: ReminderBarCommit, session: SessionRuntime, store: AppStateStore) -> ReminderBarOutcome {

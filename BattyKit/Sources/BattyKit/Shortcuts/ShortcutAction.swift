@@ -54,6 +54,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
     case resizeSplitUp
     case resizeSplitDown
     case remindMe
+    case toggleReminders
 
     public var id: String { rawValue }
 
@@ -93,6 +94,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .resizeSplitUp:    return String(localized: "Move Split Divider Up")
         case .resizeSplitDown:  return String(localized: "Move Split Divider Down")
         case .remindMe:         return String(localized: "Remind Me…")
+        case .toggleReminders:  return String(localized: "Show Reminders")
         }
     }
 
@@ -182,6 +184,8 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
                                    modifiers: EventModifiers([.command, .control]).rawValue)
         case .remindMe:
             return ShortcutBinding(key: "r", modifiers: EventModifiers([.command, .shift]).rawValue)
+        case .toggleReminders:
+            return ShortcutBinding(key: "r", modifiers: EventModifiers([.command, .option]).rawValue)
         }
     }
 }

@@ -45,7 +45,7 @@ struct ReminderEntryPointTests {
         store.setReminder(.after(minutes: 5), note: "x", forSessionID: session.id)
         let commands = CommandPaletteView(isPresented: .constant(true), store: store).allCommands
         let reminderIDs = commands.map(\.id).filter { $0.lowercased().contains("remind") }
-        #expect(Set(reminderIDs) == ["action:remindMe", "extra:remind:cancel"])
+        #expect(Set(reminderIDs) == ["action:remindMe", "action:toggleReminders", "extra:remind:cancel"])
         try #require(commands.first { $0.id == "extra:remind:cancel" }).action()
         #expect(session.reminder == nil)
     }
@@ -113,6 +113,17 @@ struct ReminderEntryPointTests {
         #expect(window.reminderBarSessionID == nil)
         ReminderActions.openBar(for: session, in: window, windowHasAttachedSheet: false)
         #expect(window.reminderBarSessionID == session.id)
+    }
+
+    @Test func listEditOpensTheBarOnTheOwningWindowAndKeepsTheSelection() throws {
+        let store = makeStore()
+        let a = store.sessions[0]
+        let b = try #require(store.addSession(title: "B"))
+        store.selectedSessionID = b.id
+        try #require(store.setReminder(.after(minutes: 5), note: "check CI", forSessionID: a.id) != nil)
+        ReminderActions.openBarFromList(sessionID: a.id, store: store)
+        #expect(store.windows[0].reminderBarSessionID == a.id)
+        #expect(store.selectedSessionID == b.id)
     }
 
     @Test func windowHasAttachedSheetIsFalseForAWindowWithNoRegisteredNSWindow() {

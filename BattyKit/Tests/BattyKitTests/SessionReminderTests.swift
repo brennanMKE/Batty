@@ -179,6 +179,23 @@ struct SessionReminderTests {
         #expect(line(2 * 3600) == "due at 3:00 PM")
     }
 
+    @Test func firedAgoReadsJustNowThenMinutesThenTheTime() {
+        let firedAt = ReminderFixture.anchor
+        func ago(_ seconds: TimeInterval) -> String {
+            plain(ReminderFormat.firedAgo(firedAt, now: firedAt.addingTimeInterval(seconds), calendar: calendar, locale: locale))
+        }
+        #expect(ago(30) == "just now")
+        #expect(ago(125) == "2 min ago")
+        #expect(ago(59 * 60 + 30) == "59 min ago")
+        #expect(ago(2 * 3600) == "3:00 PM")
+        #expect(ago(26 * 3600) == plain(ReminderFormat.absolute(firedAt, calendar: calendar, locale: locale)))
+        #expect(ago(26 * 3600) != "3:00 PM")
+    }
+
+    @Test func dueAtLineReadsDueAndTheTime() {
+        #expect(plain(ReminderFormat.dueAtLine(ReminderFixture.anchor, calendar: calendar, locale: locale)) == "due 3:00 PM")
+    }
+
     // MARK: - Quit confirmation
 
     @Test func quitConfirmationTextDescribesScheduledReminders() {

@@ -446,6 +446,8 @@ struct CommandPaletteView: View {
             window.selectedSession?.tree.resizeFocusedSplit(.down)
         case .remindMe:
             ReminderActions.openBar(in: window)
+        case .toggleReminders:
+            NotificationCenter.default.post(name: .battyToggleReminders, object: nil)
         }
     }
 }

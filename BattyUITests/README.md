@@ -49,6 +49,7 @@ deterministically:
 | `tab-chip.<title>` | A single chip inside a tab bar. |
 | `pane-terminal.<paneID>` | The terminal placeholder area inside a pane. |
 | `toolbar.split-horizontal` / `toolbar.split-vertical` | Toolbar split buttons. |
+| `toolbar.reminders` | The Reminders toolbar button; its value is `none`, `N upcoming`, `N due, M upcoming` or contains `unread` (#0640). |
 
 Add new identifiers as you write new tests; keep them stable so the
 test suite doesn't break on innocuous UI shuffles.

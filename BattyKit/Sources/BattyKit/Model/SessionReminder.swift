@@ -234,6 +234,32 @@ nonisolated public enum ReminderFormat {
         return String(localized: "due at \(time(dueAt, calendar: calendar, locale: locale))")
     }
 
+    /// When a Reminder fired: "just now", "N min ago" (floored, at least
+    /// 1) within the hour, then its time the same day, then the absolute form.
+    public static func firedAgo(
+        _ firedAt: Date,
+        now: Date,
+        calendar: Calendar = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let seconds = now.timeIntervalSince(firedAt)
+        if seconds < 60 {
+            return String(localized: "just now")
+        }
+        if seconds < 60 * 60 {
+            return String(localized: "\(max(1, Int(seconds / 60))) min ago")
+        }
+        if calendar.isDate(firedAt, inSameDayAs: now) {
+            return time(firedAt, calendar: calendar, locale: locale)
+        }
+        return absolute(firedAt, calendar: calendar, locale: locale)
+    }
+
+    /// "due 3:31 PM".
+    public static func dueAtLine(_ dueAt: Date, calendar: Calendar = .current, locale: Locale = .autoupdatingCurrent) -> String {
+        String(localized: "due \(time(dueAt, calendar: calendar, locale: locale))")
+    }
+
     /// A Reminder notification's body: "Set at <time>", or "Due at <time>"
     /// when it is delivered more than `lateAfter` after it was due.
     public static func notificationBody(

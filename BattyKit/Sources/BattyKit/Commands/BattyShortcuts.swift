@@ -207,6 +207,8 @@ public enum BattyShortcuts {
                     for: session, in: window,
                     windowHasAttachedSheet: appStore.windowHasAttachedSheet(window.id))
             }
+        case .toggleReminders:
+            NotificationCenter.default.post(name: .battyToggleReminders, object: nil)
         case .newWindow:
             // Already handled above; unreachable.
             break

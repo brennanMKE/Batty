@@ -33,6 +33,21 @@ struct ShortcutsStoreTests {
         #expect(!ShortcutsStore.reservedShortcuts.contains(binding))
     }
 
+    @Test func toggleRemindersDefaultsToOptionCommandR() {
+        #expect(ShortcutAction.toggleReminders.defaultBinding
+            == ShortcutBinding(key: "r", modifiers: EventModifiers([.command, .option]).rawValue))
+        #expect(ShortcutAction.toggleReminders.displayName == "Show Reminders")
+        #expect(ShortcutAction.allCases.last == .toggleReminders, "the catalog is append-only")
+    }
+
+    @Test func toggleRemindersDefaultCollidesWithNoOtherDefault() {
+        let binding = ShortcutAction.toggleReminders.defaultBinding
+        for action in ShortcutAction.allCases where action != .toggleReminders {
+            #expect(action.defaultBinding != binding, "\(action.rawValue)")
+        }
+        #expect(!ShortcutsStore.reservedShortcuts.contains(binding))
+    }
+
     @Test func bindingRoundTripsThroughUserDefaults() {
         let defaults = makeDefaults()
         let store1 = ShortcutsStore(userDefaults: defaults)
