@@ -2430,6 +2430,11 @@ public final class AppStateStore {
         }
     }
 
+    /// A read row has already left every unseen counter, so none changes.
+    public func clearReadBells() {
+        bellFeed.removeReadEntries()
+    }
+
     /// Jumps to the bell feed entry's owning window, makes it key and front
     /// (event-origin call — legal only from a user gesture such as a feed
     /// click or notification tap, never from view-update code), then navigates

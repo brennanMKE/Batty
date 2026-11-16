@@ -341,6 +341,41 @@ struct BellFeedVisitTests {
         #expect(f.store.bellFeed.entries.allSatisfy { $0.seen })
     }
 
+    @Test func clearReadBellsLeavesUnreadCountersAlone() throws {
+        let f = try makeFixture()
+        func counters() -> [Int] {
+            let tabs = f.paneA.tabs + f.paneB.tabs
+            return [f.target.unseenBellCount, f.paneA.unseenBellCount, f.paneB.unseenBellCount,
+                    f.store.bellFeed.unseenCount] + tabs.map(\.unseenBellCount)
+        }
+        let before = counters()
+
+        f.store.clearReadBells()
+
+        #expect(f.messages == ["a1", "a2", "b1"])
+        #expect(f.footprintRowPresent, "the footprint row is unread")
+        #expect(counters() == before)
+
+        let footprint = try #require(f.store.bellFeed.entries.first { $0.tabID == BellFeedEntry.systemID })
+        f.store.markBellSeen(id: footprint.id)
+        let afterMark = counters()
+        f.store.clearReadBells()
+        #expect(!f.footprintRowPresent)
+        #expect(f.messages == ["a1", "a2", "b1"])
+        #expect(counters() == afterMark)
+        #expect(f.store.bellFeed.readCount == 0)
+    }
+
+    @Test func clearReadBellsLeavesTheDecisionHistoryUntouched() throws {
+        let f = try makeFixture()
+        let before = f.store.bellDecisionHistory.records
+        #expect(!before.isEmpty, "precondition")
+        f.store.markAllBellsSeen()
+        f.store.clearReadBells()
+        #expect(f.messages.isEmpty)
+        #expect(f.store.bellDecisionHistory.records == before)
+    }
+
     @Test func aFootprintRowSurvivesVisitsAndItsOwnClick() throws {
         let f = try makeFixture()
         f.window.selectSessionFromSidebar(id: f.target.id)

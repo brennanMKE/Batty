@@ -109,9 +109,16 @@ struct CommandPaletteView: View {
 
         cmds.append(PaletteCommand(
             id: "extra:markAllBellsSeen",
-            title: String(localized: "Mark All Bells Seen"),
+            title: String(localized: "Mark All Bells Read"),
             keyHint: nil,
             action: { store.markAllBellsSeen() }
+        ))
+
+        cmds.append(PaletteCommand(
+            id: "extra:clearReadBells",
+            title: String(localized: "Clear Read Bells"),
+            keyHint: nil,
+            action: { store.clearReadBells() }
         ))
 
         if UpdaterController.shared.isConfigured {

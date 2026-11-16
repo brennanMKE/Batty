@@ -331,9 +331,16 @@ public struct BattyCommands: Commands {
             Button {
                 store.markAllBellsSeen()
             } label: {
-                Label("Mark All Bells Seen", systemImage: "bell.slash")
+                Label("Mark All Bells Read", systemImage: "bell.slash")
             }
             .disabled(store.bellFeed.unseenCount == 0)
+
+            Button {
+                store.clearReadBells()
+            } label: {
+                Label("Clear Read Bells", systemImage: "trash")
+            }
+            .disabled(store.bellFeed.readCount == 0)
         }
 
         CommandGroup(replacing: .help) {

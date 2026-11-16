@@ -24,9 +24,11 @@ A bell in the tab you're looking at while Batty is in front shows nothing: no do
 
 ## Clearing notifications
 
-Bells clear automatically when you visit the tab they rang in. Clicking the terminal or the chip, hitting a tab or session hotkey, jumping panes with `Cmd-Option-←/→/↑/↓`, clicking a session in the sidebar, clicking a feed row, or running `batty session|pane|tab focus` removes that tab's rows from the bell feed and decrements the sidebar badge to match. When focus lands on a tab only because something else closed, its bells are marked seen and their rows stay.
+Bells clear automatically when you visit the tab they rang in. Clicking the terminal or the chip, hitting a tab or session hotkey, jumping panes with `Cmd-Option-←/→/↑/↓`, clicking a session in the sidebar, clicking a feed row, or running `batty session|pane|tab focus` removes that tab's rows from the bell feed and decrements the sidebar badge to match. When focus lands on a tab only because something else closed, its bells are marked read and their rows stay.
 
-For a fresh slate, choose **Window > Mark All Bells Seen**. Every unseen count zeroes and every feed row flips to seen in one shot; the rows stay in the feed.
+For a fresh slate, choose **Window > Mark All Bells Read** (or **Mark All Read** in the bell feed's header). Every unread count zeroes and every feed row is marked read in one shot; the rows stay in the feed.
+
+To tidy the feed, choose **Window > Clear Read Bells** (or **Clear Read** in the header). It removes every read row and leaves the unread ones.
 
 ## The bell feed
 

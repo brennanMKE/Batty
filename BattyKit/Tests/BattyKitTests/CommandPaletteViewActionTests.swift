@@ -169,4 +169,30 @@ struct CommandPaletteViewActionTests {
 
         #expect(nonTerminalPane.activeTabID == activeTabIDBefore)
     }
+
+    @Test func markAllBellsPaletteCommandKeepsItsIDUnderTheReadTitle() {
+        let view = CommandPaletteView(isPresented: .constant(true), store: AppStateStore())
+        let command = view.allCommands.first { $0.id == "extra:markAllBellsSeen" }
+        #expect(command?.title == "Mark All Bells Read")
+    }
+
+    @Test func clearReadBellsPaletteCommandRemovesOnlyReadRows() throws {
+        let store = AppStateStore()
+        store.isBattyActiveProvider = { false }
+        let window = store.windows[0]
+        let home = store.sessions[0]
+        let other = try #require(store.addSession(title: "Other"))
+        let tabID = other.tree.allPanes[0].activeTabID
+        window.selectedSessionID = home.id
+        store.recordCLINotification(tabID: tabID, title: "read", body: nil, playSound: false)
+        store.recordCLINotification(tabID: tabID, title: "unread", body: nil, playSound: false)
+        let read = try #require(store.bellFeed.entries.first { $0.message == "read" })
+        store.markBellSeen(id: read.id)
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+
+        let command = try #require(view.allCommands.first { $0.id == "extra:clearReadBells" })
+        command.action()
+
+        #expect(store.bellFeed.entries.map(\.message) == ["unread"])
+    }
 }

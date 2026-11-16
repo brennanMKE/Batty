@@ -216,6 +216,7 @@ extension BellFeedStoreTests {
     private func expectConsistent(_ store: BellFeedStore) {
         #expect(store.unseenCount == store.entries.filter { !$0.seen }.count)
         #expect(store.dueReminderSessionIDs == Set(store.entries.filter { $0.kind == .reminder && !$0.seen }.map(\.sessionID)))
+        #expect(store.readCount == store.entries.filter(\.seen).count)
     }
 
     @Test func collapsingARepeatedBellDoesNotNotifyUnseenCountReaders() {
@@ -317,9 +318,100 @@ extension BellFeedStoreTests {
         expectConsistent(store)
         store.markAllSeen()
         expectConsistent(store)
+        store.record(makeEntry())
+        store.removeReadEntries()
+        expectConsistent(store)
         for _ in 0...BellFeedStore.cap {
             store.record(makeEntry(sessionID: session, kind: .reminder))
         }
         expectConsistent(store)
+    }
+
+    @Test func removeReadEntriesKeepsUnreadEntries() {
+        let readBell = makeEntry(seen: true)
+        let readReminder = makeEntry(seen: true, kind: .reminder)
+        let unreadBell = makeEntry()
+        let unreadReminder = makeEntry(kind: .reminder)
+        let store = BellFeedStore()
+        for entry in [readBell, unreadBell, readReminder, unreadReminder] { store.record(entry) }
+
+        let removed = store.removeReadEntries()
+
+        #expect(Set(removed.map(\.id)) == [readBell.id, readReminder.id])
+        #expect(Set(store.entries.map(\.id)) == [unreadBell.id, unreadReminder.id])
+    }
+
+    @Test func removeReadEntriesReportsTheRemovedIDs() {
+        final class Box { var calls: [Set<UUID>] = [] }
+        let box = Box()
+        let store = BellFeedStore()
+        let read = makeEntry(seen: true)
+        store.record(read)
+        store.record(makeEntry())
+        store.onEntriesRemoved = { box.calls.append($0) }
+
+        store.removeReadEntries()
+
+        #expect(box.calls == [[read.id]])
+    }
+
+    @Test func removeReadEntriesWithNothingReadDoesNotNotify() {
+        final class Box { var calls: [Set<UUID>] = [] }
+        let box = Box()
+        let store = BellFeedStore()
+        store.record(makeEntry())
+        store.record(makeEntry(kind: .reminder))
+        store.onEntriesRemoved = { box.calls.append($0) }
+        let flag = track { _ = store.entries }
+
+        let removed = store.removeReadEntries()
+
+        #expect(removed.isEmpty)
+        #expect(!flag.fired)
+        #expect(store.entries.count == 2)
+        #expect(box.calls.isEmpty)
+    }
+
+    @Test func readAggregateTracksSeenState() {
+        let seeded = BellFeedStore(entries: [makeEntry(seen: true), makeEntry(seen: true), makeEntry()])
+        #expect(seeded.readCount == 2)
+
+        let store = BellFeedStore()
+        let unread = makeEntry()
+        store.record(unread)
+        store.record(makeEntry(seen: true))
+        let other = makeEntry()
+        store.record(other)
+        #expect(store.readCount == 1)
+
+        _ = store.markSeen(id: unread.id)
+        #expect(store.readCount == 2)
+
+        let summaryFlag = track { _ = store.readCount }
+        store.updateSummary("s", forEntryID: unread.id)
+        #expect(!summaryFlag.fired)
+
+        store.markAllSeen()
+        #expect(store.readCount == 3)
+
+        store.removeReadEntries()
+        #expect(store.readCount == 0)
+        #expect(store.entries.isEmpty)
+    }
+
+    @Test func selectionAfterRemovalKeepsASurvivingRow() {
+        let a = UUID(), b = UUID()
+        #expect(ReadStateHeaderActions.selection(b, afterRemovalIn: [a, b]) == b)
+    }
+
+    @Test func selectionAfterRemovalMovesToTheFirstRemainingRow() {
+        let a = UUID(), b = UUID()
+        #expect(ReadStateHeaderActions.selection(UUID(), afterRemovalIn: [a, b]) == a)
+        #expect(ReadStateHeaderActions.selection(nil, afterRemovalIn: [a, b]) == a)
+    }
+
+    @Test func selectionAfterRemovalOfEveryRowIsNil() {
+        #expect(ReadStateHeaderActions.selection(UUID(), afterRemovalIn: []) == nil)
+        #expect(ReadStateHeaderActions.selection(nil, afterRemovalIn: []) == nil)
     }
 }

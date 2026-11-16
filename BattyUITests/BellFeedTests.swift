@@ -150,6 +150,49 @@ nonisolated final class BellFeedTests: XCTestCase {
                       "the Sidebar visit did not remove Session C's row")
     }
 
+    // MARK: - Mark All Read and Clear Read (#0638)
+
+    /// Mark All Read keeps rows and clears their dots; Clear Read then
+    /// removes only the read rows and leaves a later unread one.
+    @MainActor
+    func testClearReadRemovesOnlyReadRows() throws {
+        let (app, _, initial) = try BattyCLI.launchConnected(from: Self.self)
+        defer { app.terminate() }
+        let first = try XCTUnwrap(initial.selectedSession)
+        let directory = try BattyCLI.makeScratchDirectory().appending(path: "clear-read")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let (second, secondPane) = try BattyCLI.newSession(at: directory)
+        let tab = try XCTUnwrap(second.pane(secondPane)?.activeTabID)
+        BattyCLI.runExpectingSuccess(["session", "focus", first.id.uuidString])
+        _ = try XCTUnwrap(BattyCLI.waitForTopology { $0.selectedSessionID == first.id }, "session focus did not select the first Session")
+
+        BattyCLI.runExpectingSuccess(["notify", "--title", "one", "--tab", tab.uuidString])
+        BattyCLI.runExpectingSuccess(["notify", "--title", "two", "--tab", tab.uuidString])
+
+        BattyScreen.openBellFeed(in: app)
+        XCTAssertTrue(waitFor({ BattyScreen.bellEntryIDs(in: app).count == 2 }, timeout: 10), "the two notifications did not both reach the Feed")
+        let markAllRead = BattyScreen.element("bell-feed.mark-all-read", in: app)
+        XCTAssertTrue(markAllRead.waitForExistence(timeout: 5), "no Mark All Read button while rows are unread")
+        markAllRead.click()
+        XCTAssertTrue(waitFor({
+            BattyScreen.bellEntryIDs(in: app).allSatisfy { BattyScreen.element("bell-feed-seen.\($0)", in: app).exists }
+                && BattyScreen.bellEntryIDs(in: app).count == 2
+        }, timeout: 10), "Mark All Read did not keep both rows as read")
+        XCTAssertTrue(waitFor({ !markAllRead.exists }, timeout: 10), "Mark All Read is still shown with nothing unread")
+
+        BattyCLI.runExpectingSuccess(["notify", "--title", "three", "--tab", tab.uuidString])
+        XCTAssertTrue(waitFor({ BattyScreen.bellEntryIDs(in: app).count == 3 }, timeout: 10), "the third notification did not reach the Feed")
+        let clearRead = BattyScreen.element("bell-feed.clear-read", in: app)
+        XCTAssertTrue(clearRead.waitForExistence(timeout: 5), "no Clear Read button while rows are read")
+        clearRead.click()
+
+        XCTAssertTrue(waitFor({ BattyScreen.bellEntryIDs(in: app).count == 1 }, timeout: 10), "Clear Read did not leave exactly one row")
+        let keptID = try XCTUnwrap(BattyScreen.bellEntryIDs(in: app).first)
+        XCTAssertTrue(BattyScreen.element("bell-feed-unseen.\(keptID)", in: app).exists, "the remaining row is not unread")
+        XCTAssertEqual(Self.text(of: BattyScreen.element("bell-feed-message.\(keptID)", in: app)), "three")
+        XCTAssertTrue(waitFor({ !clearRead.exists }, timeout: 10), "Clear Read is still shown with nothing read")
+    }
+
     // MARK: - Muted Session (#0558)
 
     /// A muted Session's `batty notify` adds no Bell Feed row, and unmuting

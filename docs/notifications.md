@@ -56,9 +56,16 @@ add no feed row, no chip dot, no sidebar badge and no desktop
 notification (#0558). Rows already in the feed when you mute stay;
 unmuting brings back nothing that rang while muted.
 
-The bell feed header has a **"Clear All"** action that runs
-`AppStateStore.markAllBellsSeen()` — every entry is flipped to seen and
-every session/pane/tab aggregate is zeroed in one shot. The rows stay.
+The bell feed header has two actions (#0638), drawn by
+`ReadStateHeaderActions`. **Mark All Read**, shown while `unseenCount > 0`,
+runs `AppStateStore.markAllBellsSeen()`: every entry is flipped to seen
+(read) and every session/pane/tab aggregate is zeroed in one shot. The rows
+stay. **Clear Read**, shown while `readCount > 0`, runs
+`AppStateStore.clearReadBells()` → `BellFeedStore.removeReadEntries()`: every
+read row of any kind leaves the feed, unread rows stay, and no counter
+changes because a read row has already left them. Window → Mark All Bells
+Read and Clear Read Bells, and the Command Palette rows of the same names,
+run the same two calls.
 
 ---
 
@@ -127,7 +134,7 @@ three sources above in its gating:
   Session removes its Reminder rows, whatever Tab they recorded
   (`removeReminderEntries(forSessionID:)`, #0556). A fallback selection
   (anything that only runs `markActiveTabSeen`) marks them seen and keeps
-  them, and Clear All marks them seen.
+  them, and Mark All Read marks them seen.
 - Closing a Tab or Pane does **not** purge a `.reminder` entry, because
   the Tab it recorded is only whatever was active when it fired
   (`removeEntries(matchingTabIDs:)` skips them). Closing the Session or its
@@ -461,7 +468,7 @@ Behavior contract:
   notifier); the #0523 capture log writes an `event` with
   `feedRecorded: false`.
 - **Existing rows stay.** Rows in the feed when you mute keep their
-  unseen counts and clear the usual ways (visit, Clear All, close).
+  unseen counts and clear the usual ways (visit, Mark All Read, close).
 - **Unmuting restores nothing.** Dropped bells were never stored. Bells
   after the unmute behave normally.
 - **Reminders are exempt.** `fireReminder` doesn't go through
@@ -514,9 +521,11 @@ Settings → Shortcuts; the menu item is in `BattyCommands`).
 Layout:
 
 - Fixed-size popover (`360 × 420`).
-- Header: "Bell Feed" title plus a "Clear All" button that runs
-  `AppStateStore.markAllBellsSeen()`. The button hides when the feed
-  is empty.
+- Header: "Bell Feed" title plus `ReadStateHeaderActions`: a "Mark All
+  Read" button (shown while `unseenCount > 0`, runs `markAllBellsSeen()`)
+  and a "Clear Read" button (shown while `readCount > 0`, runs
+  `clearReadBells()`). With neither, only the title shows. After Clear
+  Read the selection moves to the first remaining row, or nil.
 - Body: `ContentUnavailableView("No bell events", systemImage:
   "bell.slash", …)` when empty; otherwise a plain `List` of
   `BellFeedRow`s in reverse-chronological order (newest first).
@@ -552,7 +561,7 @@ the tab doesn't need a delayed banner for the same bell.
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift`](../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, scheduling and removing Reminder requests (#0566), and the delegate's `onTap` / `presentation` closures, which `AppStateStore.installNotifier()` wires to `handleNotificationTap` and `presentNotification`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift`](../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift) | Pure value types for #0566: the scheduled request (identifier, trigger components, `userInfo`), `NotificationTapPayload`, `NotificationTapRoute`, and the `shouldPresent` rule. |
-| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (thin routers; cleanup runs in `WindowRuntime.tearDownClosingTabs(_:)`), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
+| [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `clearReadBells` (#0638), `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (thin routers; cleanup runs in `WindowRuntime.tearDownClosingTabs(_:)`), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
 | [`../BattyKit/Sources/batty/NotifyCommand.swift`](../BattyKit/Sources/batty/NotifyCommand.swift) | `batty notify` — CLI argument surface, `--tab` resolution via `BattyTargetResolver`, and the XPC round trip. |
 | [`../BattyKit/Sources/BattyKit/BellFeedView.swift`](../BattyKit/Sources/BattyKit/BellFeedView.swift) | The popover and `BellFeedRow`. Path-label formatting lives here. |
@@ -598,7 +607,8 @@ the tab doesn't need a delayed banner for the same bell.
 
 - *Why did a row disappear from the feed?* — You visited its tab
   (section 5), its tab closed (section 6), or the 200-entry cap evicted
-  it. Mark All Bells Seen and "Clear All" never remove rows.
+  it, or you chose Clear Read and it was read. Mark All Bells Read never
+  removes rows.
 
 - *Why didn't my muted session's badge update?* — By design (#0558).
   A muted Session's bells add no feed row and no unseen count. Unmute

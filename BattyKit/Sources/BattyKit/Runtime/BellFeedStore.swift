@@ -204,6 +204,8 @@ public final class BellFeedStore {
     /// mark on an already-seen entry) doesn't invalidate them. Each is written
     /// only as a whole value and only when it differs.
     public private(set) var unseenCount: Int = 0
+    /// Every read row, of any kind: what Clear Read would remove.
+    public private(set) var readCount: Int = 0
     /// Sessions with at least one unseen `.reminder` entry.
     public private(set) var dueReminderSessionIDs: Set<UUID> = []
 
@@ -215,6 +217,8 @@ public final class BellFeedStore {
             if entry.kind == .reminder { due.insert(entry.sessionID) }
         }
         if unseen != unseenCount { unseenCount = unseen }
+        let read = entries.count - unseen
+        if read != readCount { readCount = read }
         if due != dueReminderSessionIDs { dueReminderSessionIDs = due }
     }
 
@@ -226,7 +230,7 @@ public final class BellFeedStore {
     public internal(set) var ratingVerdicts: [UUID: BellRatingVerdict] = [:]
 
     /// Called with the ids of rows that left the Feed: Tab or Reminder
-    /// removal, or cap eviction. Not called for a collapse (same row id) or
+    /// removal, Clear Read, or cap eviction. Not called for a collapse (same row id) or
     /// `updateSummary`. Set by `AppStateStore` to cancel those rows'
     /// summarizations.
     @ObservationIgnored var onEntriesRemoved: ((Set<UUID>) -> Void)?
@@ -406,6 +410,19 @@ public final class BellFeedStore {
         // notifies; this runs on every terminal click (#0556).
         guard !removed.isEmpty else { return [] }
         entries.removeAll { $0.kind == .bell && tabIDs.contains($0.tabID) }
+        pruneRatingState()
+        onEntriesRemoved?(Set(removed.map(\.id)))
+        return removed
+    }
+
+    /// Clear Read: drops every read row, whatever its kind.
+    @discardableResult
+    public func removeReadEntries() -> [BellFeedEntry] {
+        let removed = entries.filter(\.seen)
+        // `removeAll` writes even on no match, and an @Observable write
+        // notifies (#0556).
+        guard !removed.isEmpty else { return [] }
+        entries.removeAll(where: \.seen)
         pruneRatingState()
         onEntriesRemoved?(Set(removed.map(\.id)))
         return removed

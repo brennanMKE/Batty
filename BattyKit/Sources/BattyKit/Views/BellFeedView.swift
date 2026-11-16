@@ -86,9 +86,8 @@ public struct BellFeedView: View {
         }
         .frame(width: 360, height: 420)
         .onAppear {
-            if selectedEntryID == nil {
-                selectedEntryID = store.bellFeed.entries.first?.id
-            }
+            selectedEntryID = ReadStateHeaderActions.selection(
+                selectedEntryID, afterRemovalIn: store.bellFeed.entries.map(\.id))
         }
     }
 
@@ -139,16 +138,22 @@ public struct BellFeedView: View {
             Text("Bell Feed")
                 .font(.headline)
             Spacer()
-            if !store.bellFeed.entries.isEmpty {
-                Button("Clear All") {
-                    store.markAllBellsSeen()
-                }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-            }
+            ReadStateHeaderActions(
+                unreadCount: store.bellFeed.unseenCount,
+                readCount: store.bellFeed.readCount,
+                identifierPrefix: "bell-feed",
+                markAllRead: { store.markAllBellsSeen() },
+                clearRead: { clearRead() }
+            )
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func clearRead() {
+        store.clearReadBells()
+        selectedEntryID = ReadStateHeaderActions.selection(
+            selectedEntryID, afterRemovalIn: store.bellFeed.entries.map(\.id))
     }
 
     private func handleJump(to entry: BellFeedEntry) {
@@ -251,7 +256,7 @@ private struct BellFeedRow: View {
                 .frame(width: 8, height: 8)
                 .padding(.top, 5)
                 .accessibilityElement()
-                .accessibilityLabel(entry.seen ? "Seen" : "Unseen")
+                .accessibilityLabel(entry.seen ? "Read" : "Unread")
                 .accessibilityIdentifier("bell-feed-\(entry.seen ? "seen" : "unseen").\(entry.id.uuidString)")
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
