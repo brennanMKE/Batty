@@ -201,34 +201,8 @@ public struct SessionDetailView: View {
 
     @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
         ToolbarItemGroup {
-            Button {
-                guard let tree = windowRuntime.selectedSession?.tree else { return }
-                if NSEvent.modifierFlags.contains(.option) {
-                    tree.splitFullDimension(direction: .horizontal, inheritingFrom: tree.focusedPane)
-                } else {
-                    tree.splitFocusedPane(direction: .horizontal, inheritingFrom: tree.focusedPane)
-                }
-            } label: {
-                Label("Split Horizontally", systemImage: "rectangle.split.2x1")
-            }
-            .help("Split Horizontally (\u{2318}D) \u{2014} Option for a full-height column (\u{2325}\u{2318}D)")
-            .accessibilityIdentifier("toolbar.split-horizontal")
-            .disabled(windowRuntime.selectedSession == nil)
-
-            Button {
-                guard let tree = windowRuntime.selectedSession?.tree else { return }
-                if NSEvent.modifierFlags.contains(.option) {
-                    tree.splitFullDimension(direction: .vertical, inheritingFrom: tree.focusedPane)
-                } else {
-                    tree.splitFocusedPane(direction: .vertical, inheritingFrom: tree.focusedPane)
-                }
-            } label: {
-                Label("Split Vertically", systemImage: "rectangle.split.1x2")
-            }
-            .help("Split Vertically (\u{2318}\u{21E7}D) \u{2014} Option for a full-width row (\u{2325}\u{2318}\u{21E7}D)")
-            .accessibilityIdentifier("toolbar.split-vertical")
-            .disabled(windowRuntime.selectedSession == nil)
-
+            SplitToolbarButton(windowRuntime: windowRuntime, direction: .horizontal)
+            SplitToolbarButton(windowRuntime: windowRuntime, direction: .vertical)
             BellFeedToolbarButton(store: store, isShown: $bellFeedShown)
         }
     }
@@ -401,8 +375,39 @@ public struct SessionDetailView: View {
     }
 }
 
-/// The only toolbar reader of Bell Feed state, so a Feed change re-renders
-/// this button rather than `SessionDetailView.body`.
+/// Reads the split bindings for its tooltip in its own `body`, so a rebinding
+/// re-renders this button rather than `SessionDetailView.body`.
+private struct SplitToolbarButton: View {
+    let windowRuntime: WindowRuntime
+    let direction: SplitDirection
+
+    var body: some View {
+        Button {
+            guard let tree = windowRuntime.selectedSession?.tree else { return }
+            if NSEvent.modifierFlags.contains(.option) {
+                tree.splitFullDimension(direction: direction, inheritingFrom: tree.focusedPane)
+            } else {
+                tree.splitFocusedPane(direction: direction, inheritingFrom: tree.focusedPane)
+            }
+        } label: {
+            switch direction {
+            case .horizontal:
+                Label("Split Horizontally", systemImage: "rectangle.split.2x1")
+            case .vertical:
+                Label("Split Vertically", systemImage: "rectangle.split.1x2")
+            }
+        }
+        .help(direction == .horizontal
+            ? ToolbarHelpText.splitHorizontal(ShortcutsStore.shared)
+            : ToolbarHelpText.splitVertical(ShortcutsStore.shared))
+        .accessibilityIdentifier(direction == .horizontal ? "toolbar.split-horizontal" : "toolbar.split-vertical")
+        .disabled(windowRuntime.selectedSession == nil)
+    }
+}
+
+/// The only toolbar reader of Bell Feed state and of the Toggle Bell Feed
+/// binding, so a Feed change or rebinding re-renders this button rather than
+/// `SessionDetailView.body`.
 private struct BellFeedToolbarButton: View {
     let store: AppStateStore
     @Binding var isShown: Bool
@@ -417,7 +422,8 @@ private struct BellFeedToolbarButton: View {
             )
             .symbolRenderingMode(.hierarchical)
         }
-        .help("Bell Feed (\u{2318}\u{21E7}N)")
+        .help(ToolbarHelpText.bellFeed(ShortcutsStore.shared))
+        .accessibilityIdentifier("toolbar.bell-feed")
         .popover(isPresented: $isShown, arrowEdge: .top) {
             BellFeedView(
                 store: store,
