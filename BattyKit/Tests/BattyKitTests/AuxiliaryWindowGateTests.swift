@@ -188,18 +188,13 @@ struct AuxiliaryWindowGateTests {
 
     @Test func exitShellSendsNothingWhileAnAuxiliaryWindowIsKey() {
         let store = AppStateStore()
-        let saved = ExitDispatcher.sendText
-        defer { ExitDispatcher.sendText = saved }
-        var sent: [String] = []
-        ExitDispatcher.sendText = { _, text in sent.append(text) }
 
-        ExitDispatcher.sendExit(store: store)
-        #expect(sent == ["exit\n"], "baseline: with no auxiliary window key the shell is sent exit")
+        let baseline = recordingExitShell { ExitDispatcher.sendExit(store: store) }
+        #expect(!baseline.events.isEmpty, "baseline: with no auxiliary window key the shell is sent exit")
 
-        sent.removeAll()
         store.keyWindowProvider = { self.titledWindow() }
-        ExitDispatcher.sendExit(store: store)
-        #expect(sent.isEmpty)
+        let gated = recordingExitShell { ExitDispatcher.sendExit(store: store) }
+        #expect(gated.events.isEmpty)
     }
 
     @Test func pasteGoesToTheStandardActionAndNeverToTheTerminalWhileAnAuxiliaryWindowIsKey() {
@@ -295,18 +290,13 @@ struct AuxiliaryWindowGateTests {
     @Test func exitShellSendsNothingWhileTheTargetWindowHasAnAttachedSheet() {
         let store = AppStateStore()
         let window = sheetedContentWindow(in: store)
-        let saved = ExitDispatcher.sendText
-        defer { ExitDispatcher.sendText = saved }
-        var sent: [String] = []
-        ExitDispatcher.sendText = { _, text in sent.append(text) }
 
-        ExitDispatcher.sendExit(store: store)
-        #expect(sent == ["exit\n"], "baseline: with no sheet attached the shell is sent exit")
+        let baseline = recordingExitShell { ExitDispatcher.sendExit(store: store) }
+        #expect(!baseline.events.isEmpty, "baseline: with no sheet attached the shell is sent exit")
 
-        sent.removeAll()
         window.stub = sheetPanel()
-        ExitDispatcher.sendExit(store: store)
-        #expect(sent.isEmpty)
+        let gated = recordingExitShell { ExitDispatcher.sendExit(store: store) }
+        #expect(gated.events.isEmpty)
     }
 
     @Test func pasteGoesToTheStandardActionWhileTheTargetWindowHasAnAttachedSheet() {
@@ -365,13 +355,10 @@ struct AuxiliaryWindowGateTests {
         let window = sheetedContentWindow(in: store)
         window.stub = sheetPanel()
 
-        let saved = ExitDispatcher.sendText
-        defer { ExitDispatcher.sendText = saved }
-        var sent: [String] = []
-        ExitDispatcher.sendText = { _, text in sent.append(text) }
-
-        CommandPaletteView(isPresented: .constant(true), store: store).dispatch(.exitShell)
-        #expect(sent == ["exit\n"])
+        let rec = recordingExitShell {
+            CommandPaletteView(isPresented: .constant(true), store: store).dispatch(.exitShell)
+        }
+        #expect(rec.events == [.paste("exit"), .pressReturn])
     }
 }
 

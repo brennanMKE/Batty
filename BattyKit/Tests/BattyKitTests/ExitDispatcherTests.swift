@@ -11,10 +11,11 @@ import Testing
 /// `windows` is empty, the state the app deliberately lives in for one
 /// run-loop turn after the last content window closes.
 ///
-/// `terminal.send(_:)` returns `false` and logs when no live libghostty
-/// surface is attached (the case here, with no running app), so these tests
-/// verify target *resolution* — which tab would receive the text — rather
-/// than PTY bytes, which need a live surface to observe.
+/// The production input sink returns `false` and logs when no live
+/// libghostty surface is attached (the case here, with no running app), so
+/// these tests verify target *resolution* and, through a recording sink, what
+/// is pasted and which keys are pressed, rather than PTY bytes, which need a
+/// live surface to observe.
 @MainActor
 struct ExitDispatcherTests {
 
@@ -102,5 +103,31 @@ struct ExitDispatcherTests {
         ExitDispatcher.sendExit(store: store)
 
         #expect(store.windows.count == 1, "sendExit must not mutate window count")
+    }
+
+    @Test func sendExitPastesWithoutNewlineThenPressesReturn() throws {
+        let store = AppStateStore()
+        let expected = try #require(store.windows[0].selectedSession?.focusedTerminalPane?.activeTab?.id, "test setup: a fresh store must have a focused terminal tab")
+
+        let rec = recordingExitShell { ExitDispatcher.sendExit(store: store) }
+
+        #expect(rec.events == [.paste("exit"), .pressReturn])
+        #expect(!pastedText(rec).contains { $0.contains("\n") || $0.contains("\r") }, "a pasted newline stays in zsh's line editor under bracketed paste")
+        #expect(rec.tabIDs == [expected])
+    }
+
+    @Test func paletteExitShellPastesWithoutNewlineThenPressesReturn() throws {
+        let store = AppStateStore()
+        let expected = try #require(store.windows[0].selectedSession?.focusedTerminalPane?.activeTab?.id, "test setup: a fresh store must have a focused terminal tab")
+
+        let rec = recordingExitShell { ExitDispatcher.sendExit(in: store.windows[0]) }
+
+        #expect(rec.events == [.paste("exit"), .pressReturn])
+        #expect(!pastedText(rec).contains { $0.contains("\n") || $0.contains("\r") }, "a pasted newline stays in zsh's line editor under bracketed paste")
+        #expect(rec.tabIDs == [expected])
+    }
+
+    private func pastedText(_ rec: RecordingTerminalInputSink) -> [String] {
+        rec.events.compactMap { if case .paste(let text) = $0 { text } else { nil } }
     }
 }

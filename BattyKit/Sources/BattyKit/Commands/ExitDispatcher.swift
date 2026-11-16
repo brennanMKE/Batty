@@ -1,17 +1,22 @@
 // ExitDispatcher.swift
 
 import Foundation
+import os
 
-/// Sends the literal text `exit` followed by a newline into the focused
-/// Terminal Session — the keyboard-shortcut equivalent of typing `exit` and
-/// pressing Return. Per existing terminal-lifecycle rules this ends the
-/// foreground shell and closes the tab/pane once the process exits; no new
-/// teardown work is needed here.
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ExitDispatcher")
+
+/// Types `exit` and presses Return in the focused Terminal Session, the same
+/// as the user typing it. The text is pasted with no newline and followed by
+/// a real Return key press, because under bracketed paste (on by default in
+/// zsh) a pasted newline lands in the shell's edit line instead of running.
+/// Per existing terminal-lifecycle rules this ends the foreground shell and
+/// closes the tab/pane once the process exits; no new teardown work is
+/// needed here.
 ///
 /// Sent unconditionally, with no check of what the foreground process
 /// actually is: if a full-screen program (vim, ssh, a REPL) is running
-/// instead of a shell, `"exit\n"` is typed into that program exactly as it
-/// would be if the user typed it themselves. libghostty offers no cheap way
+/// instead of a shell, `exit` and Return are typed into that program exactly
+/// as they would be if the user typed them. libghostty offers no cheap way
 /// to inspect the foreground process from this send path, and "type what the
 /// user asked for" matches the feature's stated intent (#0309).
 @MainActor
@@ -26,21 +31,28 @@ public enum ExitDispatcher {
     /// target Window (`AppStateStore.menuTargetWindow`).
     public static func sendExit(store: AppStateStore?) {
         guard let store, let tab = focusedTerminalTab(in: store) else { return }
-        sendText(tab, "exit\n")
+        typeExit(into: tab)
     }
 
     /// For callers that already hold their target Window and may run while
     /// their own sheet is still attached (the Command Palette).
     public static func sendExit(in window: WindowRuntime?) {
         guard let tab = AppStateStore.focusedTerminalTab(in: window) else { return }
-        sendText(tab, "exit\n")
+        typeExit(into: tab)
     }
 
     /// Injectable seam, not `private`: a test cannot observe PTY bytes, so it
-    /// swaps in a recorder to prove Exit Shell sends nothing when no target
-    /// resolves.
-    static var sendText: (TabRuntime, String) -> Void = { tab, text in
-        tab.terminal.send(text)
+    /// swaps in a recorder to see what Exit Shell pastes and which keys it
+    /// presses.
+    static var inputSink: (TabRuntime) -> any TerminalInputSink = {
+        TerminalViewStateInputSink(tab: $0)
+    }
+
+    private static func typeExit(into tab: TabRuntime) {
+        guard inputSink(tab).runLine("exit") else {
+            logger.error("Exit Shell not delivered: terminal surface refused input")
+            return
+        }
     }
 
     // Not `private` — ExitDispatcherTests exercises resolution directly

@@ -237,13 +237,13 @@ public final class TabRuntime: Identifiable {
     /// directory, as input followed by Return. At most once per call, however
     /// many further reports or re-mounts follow.
     public func armStartupCommand(_ command: String) {
-        armStartupCommand(command, sink: TerminalStartupInputSink(tab: self))
+        armStartupCommand(command, sink: TerminalViewStateInputSink(tab: self))
     }
 
     @discardableResult
     func armStartupCommand(
         _ command: String,
-        sink: any StartupInputSink,
+        sink: any TerminalInputSink,
         clock: any SchedulingClock = SystemClock()
     ) -> StartupCommandDelivery {
         let delivery = StartupCommandDelivery(command: command, sink: sink)

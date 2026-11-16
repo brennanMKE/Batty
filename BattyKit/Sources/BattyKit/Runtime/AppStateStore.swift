@@ -287,7 +287,7 @@ public final class AppStateStore {
     @ObservationIgnored var windowActivationObserver: ((WindowRuntime) -> Void)?
     /// Test seam: stands in for the Tab's terminal as the target of startup
     /// commands. Nil in production.
-    @ObservationIgnored var startupInputSinkFactory: ((TabRuntime) -> any StartupInputSink)?
+    @ObservationIgnored var startupInputSinkFactory: ((TabRuntime) -> any TerminalInputSink)?
     /// Time source for the startup-command readiness deadline. Tests inject a
     /// `TestClock`.
     @ObservationIgnored var startupReadinessClock: any SchedulingClock = SystemClock()

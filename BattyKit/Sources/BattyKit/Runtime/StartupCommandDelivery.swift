@@ -1,39 +1,9 @@
 // StartupCommandDelivery.swift
 
 import Foundation
-import GhosttyTerminal
 import os
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "StartupCommandDelivery")
-
-/// Where a startup command's keystrokes go. `TerminalViewState` in
-/// production; a recording stand-in in tests.
-@MainActor
-protocol StartupInputSink: AnyObject {
-    func paste(text: String) -> Bool
-    func pressReturn() -> Bool
-}
-
-/// Deliberately goes through the Tab's `TerminalViewState`, not its
-/// `AppTerminalView`: the view's `sendKey` commits an open IME composition
-/// before the key, which would put the user's half-typed text on the line
-/// that Return then runs. The view state's path leaves a composition alone.
-@MainActor
-final class TerminalStartupInputSink: StartupInputSink {
-    private let terminal: TerminalViewState
-
-    init(tab: TabRuntime) {
-        self.terminal = tab.terminal
-    }
-
-    func paste(text: String) -> Bool {
-        terminal.paste(text: text)
-    }
-
-    func pressReturn() -> Bool {
-        terminal.sendKey(TerminalKeyPress(.enter))
-    }
-}
 
 /// A Tab whose approved startup command is armed but undelivered after its
 /// shell failed to report readiness within ``StartupCommandReadiness/deadline``.
@@ -56,13 +26,13 @@ enum StartupCommandReadiness {
 @MainActor
 final class StartupCommandDelivery {
     private let lines: [String]
-    private let sink: any StartupInputSink
+    private let sink: any TerminalInputSink
     let commandText: String
     private(set) var isDelivered = false
     private(set) var isFinished = false
     private var finishedWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(command: String, sink: any StartupInputSink) {
+    init(command: String, sink: any TerminalInputSink) {
         self.lines = Self.lines(from: command)
         self.commandText = lines.joined(separator: "\n")
         self.sink = sink
@@ -126,7 +96,7 @@ final class StartupCommandDelivery {
         guard !isDelivered else { return false }
         isDelivered = true
         for line in lines {
-            guard sink.paste(text: line), sink.pressReturn() else {
+            guard sink.runLine(line) else {
                 logger.error("startup command not delivered: terminal surface refused input")
                 return false
             }

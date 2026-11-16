@@ -169,7 +169,7 @@ extension AppStateStore {
                 continue
             }
             let tab = panes[entry.paneIndex].tabs[entry.tabIndex]
-            let sink = startupInputSinkFactory?(tab) ?? TerminalStartupInputSink(tab: tab)
+            let sink = startupInputSinkFactory?(tab) ?? TerminalViewStateInputSink(tab: tab)
             tab.armStartupCommand(entry.command, sink: sink, clock: startupReadinessClock)
         }
     }

@@ -6,7 +6,7 @@ import Testing
 @testable import BattyKit
 
 @MainActor
-private final class RecordingSink: StartupInputSink {
+private final class RecordingSink: TerminalInputSink {
     var events: [String] = [] { didSet { resumeWaiters() } }
     var accepts = true
     private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
