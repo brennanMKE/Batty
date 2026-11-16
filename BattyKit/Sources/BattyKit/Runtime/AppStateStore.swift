@@ -15,6 +15,8 @@ public final class AppStateStore {
     // MARK: - Global services (cross-window)
 
     public let bellFeed: BellFeedStore
+    /// Fired Session Reminders, apart from the Bell Feed.
+    public let firedReminders: FiredReminderStore
     /// #0297: in-memory ring buffer of the most recent bell/notification
     /// decisions, for the Settings > Advanced > Diagnostics export UI
     /// (`BellDecisionExportRow`). See `BellDecisionHistory`'s type doc
@@ -488,6 +490,7 @@ public final class AppStateStore {
             id: windowID,
             sessions: [],
             bellFeed: bellFeed,
+            firedReminders: firedReminders,
             nameCache: nameCache
         )
         // Wire onAllSessionsClosed: closing the last session in a window
@@ -527,7 +530,7 @@ public final class AppStateStore {
         if let closing = windows.first(where: { $0.id == windowID }) {
             for session in closing.sessions {
                 cancelReminderState(sessionID: session.id, keepSystemRequest: isLastWindow)
-                bellFeed.removeReminderEntries(forSessionID: session.id)
+                firedReminders.remove(sessionID: session.id)
             }
         }
         let wasPresent = windows.contains { $0.id == windowID }
@@ -1445,6 +1448,7 @@ public final class AppStateStore {
     public init(
         sessions: [SessionRuntime] = [],
         bellFeed: BellFeedStore = BellFeedStore(),
+        firedReminders: FiredReminderStore = FiredReminderStore(),
         nameCache: SessionNameCache = SessionNameCache(),
         notifier: BellNotifying? = nil,
         preferences: UserDefaults = .standard,
@@ -1468,6 +1472,7 @@ public final class AppStateStore {
             downloadedDirectory: DownloadedImageCache.directory(inLibrary: BackgroundImageLibrary.directory(forProjectsFile: self.projectsFileURL))
         )
         self.bellFeed = bellFeed
+        self.firedReminders = firedReminders
         self.nameCache = nameCache
         self.notifier = notifier
         self.preferences = preferences
@@ -1484,6 +1489,7 @@ public final class AppStateStore {
         let window = WindowRuntime(
             sessions: sessions,
             bellFeed: bellFeed,
+            firedReminders: firedReminders,
             nameCache: nameCache
         )
         // Wire the initial window the same way openWindowRuntime(for:) wires
@@ -2463,9 +2469,6 @@ public final class AppStateStore {
             nsWindow.makeKeyAndOrderFront(nil)
         }
         owningWindow.jumpToBellEntry(entry)
-        if entry.kind == .reminder {
-            markBellSeen(id: entry.id)
-        }
     }
 
     /// Returns the `NSWindow` registered for `windowID`, if any.

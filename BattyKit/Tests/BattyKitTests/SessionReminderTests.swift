@@ -99,52 +99,17 @@ struct SessionReminderTests {
 
     // MARK: - Feed entry coding
 
-    @Test func feedEntryWithoutAKindDecodesAsABell() throws {
+    @Test func aLegacyEntryWithReminderKeysStillDecodes() throws {
+        let id = UUID()
         let json = """
-        {"id":"\(UUID().uuidString)","timestamp":1000,"windowID":"\(UUID().uuidString)","sessionID":"\(UUID().uuidString)",
-         "paneID":"\(UUID().uuidString)","tabID":"\(UUID().uuidString)","surfaceID":"\(UUID().uuidString)","seen":false}
+        {"id":"\(id.uuidString)","timestamp":1000,"windowID":"\(UUID().uuidString)","sessionID":"\(UUID().uuidString)",
+         "paneID":"\(UUID().uuidString)","tabID":"\(UUID().uuidString)","surfaceID":"\(UUID().uuidString)","seen":false,
+         "message":"ship it","kind":"reminder","reminderSetAt":100,"reminderDueAt":900}
         """
         let entry = try JSONDecoder().decode(BellFeedEntry.self, from: Data(json.utf8))
-        #expect(entry.kind == .bell)
-        #expect(entry.reminderDueAt == nil)
-    }
-
-    @Test func reminderEntryRoundTripsItsKindAndTimes() throws {
-        let entry = BellFeedEntry(
-            timestamp: ReminderFixture.anchor,
-            windowID: UUID(), sessionID: UUID(), paneID: UUID(), tabID: UUID(), surfaceID: UUID(),
-            message: "ship it", kind: .reminder,
-            reminderSetAt: ReminderFixture.anchor.addingTimeInterval(-900),
-            reminderDueAt: ReminderFixture.anchor.addingTimeInterval(-60))
-        let decoded = try JSONDecoder().decode(BellFeedEntry.self, from: JSONEncoder().encode(entry))
-        #expect(decoded == entry)
-        #expect(decoded.kind == .reminder)
-    }
-
-    // MARK: - Feed collapse
-
-    @Test func twoReminderEntriesForTheSameTabAndNoteStaySeparate() {
-        let store = BellFeedStore()
-        let (window, session, pane, tab) = (UUID(), UUID(), UUID(), UUID())
-        func entry(_ at: TimeInterval) -> BellFeedEntry {
-            BellFeedEntry(timestamp: Date(timeIntervalSince1970: 2_000 + at), windowID: window, sessionID: session,
-                          paneID: pane, tabID: tab, surfaceID: UUID(), message: "stand up", kind: .reminder)
-        }
-        store.recordOrCollapse(entry(0))
-        store.recordOrCollapse(entry(5))
-        #expect(store.entries.count == 2)
-        #expect(store.entries.allSatisfy { $0.repeatCount == 1 })
-    }
-
-    @Test func aReminderIsNeverFoldedIntoAnUnseenBellOfTheSameTabAndText() {
-        let store = BellFeedStore()
-        let (window, session, pane, tab) = (UUID(), UUID(), UUID(), UUID())
-        store.recordOrCollapse(BellFeedEntry(timestamp: Date(timeIntervalSince1970: 2_000), windowID: window, sessionID: session,
-                                             paneID: pane, tabID: tab, surfaceID: UUID(), message: "stand up"))
-        store.recordOrCollapse(BellFeedEntry(timestamp: Date(timeIntervalSince1970: 2_010), windowID: window, sessionID: session,
-                                             paneID: pane, tabID: tab, surfaceID: UUID(), message: "stand up", kind: .reminder))
-        #expect(store.entries.count == 2)
-        #expect(Set(store.entries.map(\.kind)) == [.bell, .reminder])
+        #expect(entry.id == id)
+        #expect(entry.message == "ship it")
+        #expect(entry.repeatCount == 1)
     }
 
     // MARK: - Display text

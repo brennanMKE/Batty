@@ -12,8 +12,7 @@ struct BellFeedStoreTests {
         paneID: UUID = UUID(),
         tabID: UUID = UUID(),
         seen: Bool = false,
-        timestamp: Date = Date(),
-        kind: BellFeedEntry.Kind = .bell
+        timestamp: Date = Date()
     ) -> BellFeedEntry {
         BellFeedEntry(
             timestamp: timestamp,
@@ -23,8 +22,7 @@ struct BellFeedStoreTests {
             tabID: tabID,
             surfaceID: UUID(),
             message: nil,
-            seen: seen,
-            kind: kind
+            seen: seen
         )
     }
 
@@ -215,7 +213,6 @@ extension BellFeedStoreTests {
 
     private func expectConsistent(_ store: BellFeedStore) {
         #expect(store.unseenCount == store.entries.filter { !$0.seen }.count)
-        #expect(store.dueReminderSessionIDs == Set(store.entries.filter { $0.kind == .reminder && !$0.seen }.map(\.sessionID)))
         #expect(store.readCount == store.entries.filter(\.seen).count)
     }
 
@@ -244,16 +241,6 @@ extension BellFeedStoreTests {
         #expect(store.unseenCount == 2)
     }
 
-    @Test func recordingABellDoesNotNotifyDueReminderReaders() {
-        let session = UUID()
-        let store = BellFeedStore(entries: [makeEntry(sessionID: session, kind: .reminder)])
-        #expect(store.dueReminderSessionIDs == [session])
-        let flag = track { _ = store.dueReminderSessionIDs }
-        store.record(makeEntry())
-        #expect(!flag.fired)
-        #expect(store.dueReminderSessionIDs == [session])
-    }
-
     @Test func markingSeenUpdatesUnseenCount() {
         let store = BellFeedStore()
         let a = makeEntry(), b = makeEntry(), c = makeEntry()
@@ -272,23 +259,6 @@ extension BellFeedStoreTests {
         #expect(store.unseenCount == 0)
     }
 
-    @Test func dueReminderSessionIDsTracksReminderEntries() {
-        let a = UUID(), b = UUID(), c = UUID()
-        let store = BellFeedStore()
-        let reminderA = makeEntry(sessionID: a, kind: .reminder)
-        store.record(reminderA)
-        store.record(makeEntry(sessionID: b, kind: .reminder))
-        store.record(makeEntry(sessionID: c))
-        #expect(store.dueReminderSessionIDs == [a, b])
-        _ = store.markSeen(id: reminderA.id)
-        #expect(store.dueReminderSessionIDs == [b])
-        store.removeReminderEntries(forSessionID: b)
-        #expect(store.dueReminderSessionIDs == [])
-
-        let seeded = BellFeedStore(entries: [makeEntry(sessionID: a, kind: .reminder)])
-        #expect(seeded.dueReminderSessionIDs == [a])
-    }
-
     @Test func aggregatesMatchAScanAfterEveryMutator() {
         let store = BellFeedStore()
         let tab = UUID()
@@ -300,8 +270,7 @@ extension BellFeedStoreTests {
         expectConsistent(store)
         store.recordOrCollapse(makeEntry())
         expectConsistent(store)
-        let reminder = makeEntry(sessionID: session, kind: .reminder)
-        store.record(reminder)
+        store.record(makeEntry(sessionID: session))
         expectConsistent(store)
         store.updateSummary("s", forEntryID: first.id)
         expectConsistent(store)
@@ -309,9 +278,7 @@ extension BellFeedStoreTests {
         expectConsistent(store)
         store.removeEntries(matchingTabIDs: [tab])
         expectConsistent(store)
-        store.removeReminderEntries(forSessionID: session)
-        expectConsistent(store)
-        store.record(makeEntry(sessionID: session, kind: .reminder))
+        store.record(makeEntry(sessionID: session))
         var replaced = store.entries[0]
         replaced.seen = true
         store.entries[0] = replaced
@@ -322,23 +289,23 @@ extension BellFeedStoreTests {
         store.removeReadEntries()
         expectConsistent(store)
         for _ in 0...BellFeedStore.cap {
-            store.record(makeEntry(sessionID: session, kind: .reminder))
+            store.record(makeEntry(sessionID: session))
         }
         expectConsistent(store)
     }
 
     @Test func removeReadEntriesKeepsUnreadEntries() {
-        let readBell = makeEntry(seen: true)
-        let readReminder = makeEntry(seen: true, kind: .reminder)
-        let unreadBell = makeEntry()
-        let unreadReminder = makeEntry(kind: .reminder)
+        let readA = makeEntry(seen: true)
+        let readB = makeEntry(seen: true)
+        let unreadA = makeEntry()
+        let unreadB = makeEntry()
         let store = BellFeedStore()
-        for entry in [readBell, unreadBell, readReminder, unreadReminder] { store.record(entry) }
+        for entry in [readA, unreadA, readB, unreadB] { store.record(entry) }
 
         let removed = store.removeReadEntries()
 
-        #expect(Set(removed.map(\.id)) == [readBell.id, readReminder.id])
-        #expect(Set(store.entries.map(\.id)) == [unreadBell.id, unreadReminder.id])
+        #expect(Set(removed.map(\.id)) == [readA.id, readB.id])
+        #expect(Set(store.entries.map(\.id)) == [unreadA.id, unreadB.id])
     }
 
     @Test func removeReadEntriesReportsTheRemovedIDs() {
@@ -360,7 +327,7 @@ extension BellFeedStoreTests {
         let box = Box()
         let store = BellFeedStore()
         store.record(makeEntry())
-        store.record(makeEntry(kind: .reminder))
+        store.record(makeEntry())
         store.onEntriesRemoved = { box.calls.append($0) }
         let flag = track { _ = store.entries }
 

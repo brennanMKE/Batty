@@ -248,10 +248,9 @@ struct SessionSidebarOutlineTests {
             store.fireReminder(ReminderFiring(
                 sessionID: target.id, reminder: reminder, dueDate: reminder.fireDate(calendar: ReminderFixture.calendar())!))
         }
-        #expect(store.bellFeed.dueReminderSessionIDs == [target.id])
-        let entryID = try #require(store.bellFeed.entries.first?.id)
-        await step("acknowledged") { store.markBellSeen(id: entryID) }
-        #expect(store.bellFeed.dueReminderSessionIDs.isEmpty)
+        #expect(store.firedReminders.unseenSessionIDs == [target.id])
+        await step("acknowledged") { store.markAllRemindersRead() }
+        #expect(store.firedReminders.unseenSessionIDs.isEmpty)
     }
 
     /// Any `heightOfRowByItem`, even one returning a constant, switches the

@@ -64,29 +64,52 @@ extension AppStateStore {
         return existing
     }
 
-    /// A notification's Remind Again action: a new Reminder on the same
-    /// Session with the same text, `minutes` from now. Applies only when the
-    /// Session has no pending Reminder other than the banner's own; a newer
-    /// pending Reminder is left alone. The fired entry is marked seen and kept.
+    /// A notification's Remind Again action.
     func remindAgain(minutes: Int, payload: NotificationTapPayload) {
-        guard let sessionID = payload.sessionID, let session = session(id: sessionID) else {
-            logger.notice("remindAgain: session \(payload.sessionID?.uuidString ?? "nil", privacy: .public) is gone; ignoring")
+        guard let sessionID = payload.sessionID else {
+            logger.notice("remindAgain: payload names no session; ignoring")
             return
         }
-        defer {
-            if let entryID = payload.entryID {
-                markBellSeen(id: entryID)
+        remindAgain(sessionID: sessionID, reminderID: payload.reminderID, note: payload.note, minutes: minutes)
+    }
+
+    /// The Reminders list's Remind Again on one fired Reminder.
+    public func remindFiredReminderAgain(id: UUID, minutes: Int) {
+        guard let fired = firedReminders.items.first(where: { $0.id == id }) else {
+            logger.notice("remindFiredReminderAgain: fired reminder \(id, privacy: .public) is gone; ignoring")
+            return
+        }
+        remindAgain(sessionID: fired.sessionID, reminderID: fired.id, note: fired.note, minutes: minutes)
+    }
+
+    /// A new Reminder on the same Session with the same text, `minutes` from
+    /// now, which replaces the fired one. Applies only when the Session has no
+    /// pending Reminder other than `reminderID`; a newer pending Reminder is
+    /// left alone (#0633), and the fired one is only marked read.
+    private func remindAgain(sessionID: UUID, reminderID: UUID?, note: String?, minutes: Int) {
+        guard let session = session(id: sessionID) else {
+            logger.notice("remindAgain: session \(sessionID, privacy: .public) is gone; ignoring")
+            return
+        }
+        if let pending = session.reminder, pending.id != reminderID {
+            logger.notice("remindAgain: session \(sessionID, privacy: .public) has a newer pending reminder \(pending.id, privacy: .public); ignoring banner for \(reminderID?.uuidString ?? "nil", privacy: .public)")
+            if let reminderID {
+                firedReminders.markSeen(id: reminderID)
+            } else {
+                firedReminders.markSeen(sessionID: sessionID)
             }
-        }
-        if let pending = session.reminder, pending.id != payload.reminderID {
-            logger.notice("remindAgain: session \(sessionID, privacy: .public) has a newer pending reminder \(pending.id, privacy: .public); ignoring banner for \(payload.reminderID?.uuidString ?? "nil", privacy: .public)")
             return
         }
-        setReminder(.after(minutes: minutes), note: payload.note, forSessionID: sessionID)
+        guard setReminder(.after(minutes: minutes), note: note, forSessionID: sessionID) != nil else { return }
+        if let reminderID {
+            firedReminders.remove(id: reminderID)
+        } else {
+            firedReminders.remove(sessionID: sessionID)
+        }
     }
 
     /// Sets the Session's Reminder, replacing any it already has: one per
-    /// Session, and the edit path. Records no feed entry and posts nothing.
+    /// Session, and the edit path. Records nothing fired and posts nothing.
     /// Returns nil when the Session is gone or `spec` is out of bounds.
     @discardableResult
     public func setReminder(_ spec: ReminderSpec, note: String? = nil, forSessionID sessionID: UUID) -> SessionReminder? {
@@ -214,6 +237,9 @@ extension AppStateStore {
         if let entryID = payload.entryID, bellFeed.entries.contains(where: { $0.id == entryID }) {
             return .jumpToEntry(entryID)
         }
+        if payload.reminderID != nil, let sessionID = payload.sessionID, session(id: sessionID) != nil {
+            return .openReminderSession(sessionID)
+        }
         if let projectID = payload.projectID, projectStore.project(id: projectID) != nil {
             return .openProject(projectID)
         }
@@ -232,6 +258,8 @@ extension AppStateStore {
             guard let entry = bellFeed.entries.first(where: { $0.id == id }) else { return }
             markBellSeen(id: id)
             jumpToBellEntry(entry)
+        case .openReminderSession(let sessionID):
+            openReminderSession(sessionID: sessionID)
         case .openProject(let id):
             requestOpenProject(id: id, mode: .focusExistingOrOpen)
         case .activateOnly:
@@ -304,12 +332,12 @@ extension AppStateStore {
     }
 
     /// The scheduler's `onFire`. Resolves the owning Window and Session now,
-    /// not when the Reminder was set. The entry is recorded unseen even when
-    /// the Session is selected and Batty is frontmost, with `record(_:)`
-    /// rather than `recordOrCollapse` so two Reminders never merge, and it
-    /// bumps no unseen-bell counter. The notification is posted whatever the
-    /// Session's mute setting, but not when the app-wide "Show system
-    /// notifications" setting is off.
+    /// not when the Reminder was set. Records an unread fired Reminder even
+    /// when the Session is selected and Batty is frontmost: one per Session,
+    /// so a newer firing replaces the older one. Nothing goes to the Bell
+    /// Feed and no unseen-bell counter moves. The notification is posted
+    /// whatever the Session's mute setting, but not when the app-wide "Show
+    /// system notifications" setting is off.
     func fireReminder(_ firing: ReminderFiring) {
         guard let window = windowOwning(sessionID: firing.sessionID),
               let session = window.sessions.first(where: { $0.id == firing.sessionID })
@@ -320,30 +348,56 @@ extension AppStateStore {
         if session.reminder?.id == firing.reminder.id {
             session.reminder = nil
         }
-        let pane = session.focusedPaneAnyKind
-        let entry = BellFeedEntry(
-            timestamp: reminderScheduler.now,
-            windowID: window.id.value,
+        let fired = FiredReminder(
+            id: firing.reminder.id,
             sessionID: session.id,
-            paneID: pane.id,
-            tabID: pane.activeTabID,
-            surfaceID: UUID(),
-            message: firing.reminder.note,
-            seen: false,
-            kind: .reminder,
-            reminderSetAt: firing.reminder.createdAt,
-            reminderDueAt: firing.dueDate
+            windowID: window.id.value,
+            note: firing.reminder.note,
+            createdAt: firing.reminder.createdAt,
+            dueAt: firing.dueDate,
+            firedAt: reminderScheduler.now,
+            seen: false
         )
-        bellFeed.record(entry)
+        firedReminders.record(fired)
         remindersFiredThisLaunch.insert(firing.reminder.id)
         notifier?.removeScheduledReminders(ids: [firing.reminder.id])
         if SettingsPreference.resolvedSystemNotifications(defaults: preferences) {
             notifier?.postReminder(
-                entry: entry,
-                reminderID: firing.reminder.id,
+                fired,
                 projectID: session.projectID,
                 sessionTitle: session.title
             )
         }
+    }
+
+    // MARK: - Fired Reminders list
+
+    /// Mark All Read. Never touches the Bell Feed.
+    public func markAllRemindersRead() {
+        firedReminders.markAllSeen()
+    }
+
+    /// Clear Read: removes read fired Reminders only, never a pending one.
+    public func clearReadReminders() {
+        firedReminders.removeReadEntries()
+    }
+
+    /// Done on one fired Reminder.
+    public func markFiredReminderDone(id: UUID) {
+        firedReminders.remove(id: id)
+    }
+
+    /// Makes the Session's Window key and front, then visits the Session as
+    /// the user left it. Event-origin only (a notification tap or a list
+    /// click): `makeKeyAndOrderFront` changes the responder chain.
+    public func openReminderSession(sessionID: UUID) {
+        guard let window = windowOwning(sessionID: sessionID) else {
+            logger.notice("openReminderSession: session \(sessionID, privacy: .public) is gone")
+            return
+        }
+        if let nsWindow = nsWindow(for: window.id) {
+            nsWindow.makeKeyAndOrderFront(nil)
+        }
+        window.jumpToReminderSession(sessionID)
     }
 }

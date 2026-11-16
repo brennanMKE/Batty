@@ -7,7 +7,7 @@ import Testing
 @MainActor
 final class SpyReminderNotifier: BellNotifying {
     struct Posted: Equatable {
-        let entry: BellFeedEntry
+        let fired: FiredReminder
         let sessionTitle: String
     }
 
@@ -22,11 +22,11 @@ final class SpyReminderNotifier: BellNotifying {
         bells.append(entry)
     }
 
-    func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String) {
-        let id = ScheduledReminderNotification.identifier(for: reminderID)
+    func postReminder(_ fired: FiredReminder, projectID: UUID?, sessionTitle: String) {
+        let id = ScheduledReminderNotification.identifier(for: fired.id)
         scheduled[id] = nil
         postedIdentifiers.append(id)
-        reminders.append(Posted(entry: entry, sessionTitle: sessionTitle))
+        reminders.append(Posted(fired: fired, sessionTitle: sessionTitle))
     }
 
     func scheduleReminder(_ notification: ScheduledReminderNotification) {
@@ -135,52 +135,18 @@ final class AppStateStoreReminderTests {
 
     // MARK: - Fire effects
 
-    @Test func firingRecordsOneUnseenReminderEntryAndPostsTheNote() async throws {
-        let target = store.addSession(title: "api-server")!
-        store.selectedSessionID = store.sessions[0].id
-        target.unseenBellCount = 2
-
-        let firing = try await fire(15, note: "check the deploy", on: target.id)
-
-        #expect(target.reminder == nil)
-        #expect(store.bellFeed.entries.count == 1)
-        let entry = try #require(store.bellFeed.entries.first)
-        #expect(entry.kind == .reminder)
-        #expect(entry.seen == false)
-        #expect(entry.sessionID == target.id)
-        #expect(entry.windowID == store.windows[0].id.value)
-        #expect(entry.message == "check the deploy")
-        #expect(entry.reminderSetAt == ReminderFixture.anchor)
-        #expect(entry.reminderDueAt == firing.dueDate)
-        #expect(store.bellFeed.unseenCount == 1)
-        #expect(target.unseenBellCount == 2, "a Reminder is not a bell and leaves the bell counter alone")
-        #expect(notifier.reminders == [.init(entry: entry, sessionTitle: "api-server")])
-        #expect(notifier.bells.isEmpty)
-    }
-
-    @Test func theEntryNamesTheFocusedPaneAndActiveTabAtFireTime() async throws {
-        let fixture = sessionWithNonDefaultFocus(title: "build")
-        store.selectedSessionID = store.sessions[0].id
-        try await fire(5, on: fixture.session.id)
-
-        let entry = try #require(store.bellFeed.entries.first)
-        #expect(entry.paneID == fixture.secondPane.id)
-        #expect(entry.tabID == fixture.secondTab.id)
-        #expect(entry.paneID != fixture.firstPane.id)
-    }
-
     @Test func aMutedSessionStillPostsItsReminder() async throws {
         let target = store.addSession(title: "quiet")!
         target.notificationsMuted = true
+        store.selectedSessionID = store.sessions[0].id
         try await fire(5, on: target.id)
         #expect(notifier.reminders.count == 1)
-        #expect(store.bellFeed.entries.count == 1)
-        #expect(store.bellFeed.entries.first?.kind == .reminder)
-        #expect(store.bellFeed.entries.first?.seen == false)
+        #expect(store.firedReminders.items.count == 1)
+        #expect(store.firedReminders.items.first?.seen == false)
 
         store.recordCLINotification(tabID: target.focusedPaneAnyKind.activeTabID, title: "Done", body: nil, playSound: false)
-        #expect(store.bellFeed.entries.count == 1)
-        #expect(store.bellFeed.entries.first?.kind == .reminder)
+        #expect(store.bellFeed.entries.isEmpty, "the mute still drops bells")
+        #expect(store.firedReminders.items.count == 1)
     }
 
     @Test func aReminderOnTheFrontmostSessionIsStillUnseenAndPosted() async throws {
@@ -188,36 +154,28 @@ final class AppStateStoreReminderTests {
         #expect(store.selectedSessionID == frontmost.id)
         try await fire(5, note: "now", on: frontmost.id)
 
-        #expect(store.bellFeed.entries.first?.seen == false)
+        #expect(store.firedReminders.items.first?.seen == false)
         #expect(notifier.reminders.count == 1)
     }
 
-    @Test func reminderFiredOnTheSelectedSessionWhileActiveStillAddsAnEntry() async throws {
+    @Test func reminderFiredOnTheSelectedSessionWhileActiveStillAddsAnUnreadItem() async throws {
         store.isBattyActiveProvider = { true }
         let selected = store.sessions[0]
         #expect(store.selectedSessionID == selected.id)
         try await fire(5, note: "now", on: selected.id)
 
-        #expect(store.bellFeed.entries.count == 1)
-        #expect(store.bellFeed.entries.first?.kind == .reminder)
-        #expect(store.bellFeed.entries.first?.seen == false)
+        #expect(store.firedReminders.items.count == 1)
+        #expect(store.firedReminders.items.first?.seen == false)
+        #expect(store.bellFeed.entries.isEmpty)
     }
 
-    @Test func turningSystemNotificationsOffSuppressesThePostButNotTheEntry() async throws {
+    @Test func turningSystemNotificationsOffSuppressesThePostButNotTheItem() async throws {
         testDefaults.defaults.set(false, forKey: SettingsPreference.systemNotificationsKey)
         let target = store.addSession(title: "silent")!
         try await fire(5, on: target.id)
 
-        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.firedReminders.items.count == 1)
         #expect(notifier.reminders.isEmpty)
-    }
-
-    @Test func twoReminderFiringsOnOneSessionStaySeparateEntries() async throws {
-        let target = store.addSession(title: "twice")!
-        try await fire(5, note: "same words", on: target.id)
-        try await fire(5, note: "same words", on: target.id)
-        #expect(store.bellFeed.entries.count == 2)
-        #expect(store.bellFeed.entries.allSatisfy { $0.kind == .reminder && $0.repeatCount == 1 })
     }
 
     @Test func aFiringForASessionThatIsGoneRecordsNothing() {
@@ -225,90 +183,44 @@ final class AppStateStoreReminderTests {
             sessionID: UUID(),
             reminder: SessionReminder(createdAt: ReminderFixture.anchor, target: .instant(ReminderFixture.anchor)),
             dueDate: ReminderFixture.anchor))
+        #expect(store.firedReminders.items.isEmpty)
         #expect(store.bellFeed.entries.isEmpty)
         #expect(notifier.reminders.isEmpty)
     }
 
     // MARK: - Jump
 
-    @Test func jumpingSelectsTheSessionAndLeavesFocusExactlyWhereItWas() async throws {
+    @Test func openingTheReminderSessionLeavesFocusExactlyWhereItWas() async throws {
         let fixture = sessionWithNonDefaultFocus(title: "build")
         store.selectedSessionID = store.sessions[0].id
         try await fire(5, note: "back to it", on: fixture.session.id)
-        let entry = try #require(store.bellFeed.entries.first)
 
         // The user moves focus after the Reminder fired.
         fixture.session.tree.focusedPaneID = fixture.firstPane.id
         let firstTabID = fixture.firstPane.activeTabID
-        #expect(fixture.firstPane.activeTabID != entry.tabID)
 
-        store.jumpToBellEntry(entry)
+        store.openReminderSession(sessionID: fixture.session.id)
 
         #expect(store.selectedSessionID == fixture.session.id)
-        #expect(fixture.session.tree.focusedPaneID == fixture.firstPane.id, "the jump must not move to the Pane recorded at fire time")
+        #expect(fixture.session.tree.focusedPaneID == fixture.firstPane.id, "opening must not move to the Pane focused at fire time")
         #expect(fixture.firstPane.activeTabID == firstTabID)
         #expect(fixture.secondPane.activeTabID == fixture.secondTab.id)
-        #expect(store.bellFeed.entries.isEmpty, "the jump is a visit, which removes the Reminder row")
+        #expect(store.firedReminders.items.isEmpty, "opening is a visit, which removes the fired Reminder")
     }
 
-    @Test func jumpingToAReminderOnTheAlreadySelectedSessionRemovesIt() async throws {
+    @Test func openingTheAlreadySelectedReminderSessionRemovesItsItem() async throws {
         let target = store.addSession(title: "selected")!
         try await fire(5, on: target.id)
         #expect(store.selectedSessionID == target.id, "precondition: no selection change will happen")
-        let entry = try #require(store.bellFeed.entries.first)
-        #expect(entry.seen == false)
+        #expect(store.firedReminders.items.first?.seen == false)
 
-        store.jumpToBellEntry(entry)
+        store.openReminderSession(sessionID: target.id)
 
-        #expect(store.bellFeed.entries.isEmpty)
-        #expect(store.bellFeed.unseenReminderEntries(forSessionID: target.id).isEmpty)
-    }
-
-    @Test func jumpingToAReminderWhoseWindowIsGoneJustMarksItSeen() async throws {
-        let target = store.addSession(title: "orphan")!
-        try await fire(5, on: target.id)
-        var entry = try #require(store.bellFeed.entries.first)
-        entry.windowID = UUID()
-        store.bellFeed.entries[0] = entry
-        store.jumpToBellEntry(entry)
-        #expect(store.bellFeed.entries.first?.seen == true)
+        #expect(store.firedReminders.items.isEmpty)
+        #expect(store.firedReminders.unseenSessionIDs.isEmpty)
     }
 
     // MARK: - Seen
-
-    @Test func selectingTheSessionMarksItsReminderEntriesSeenWhateverTabTheyNamed() async throws {
-        let fixture = sessionWithNonDefaultFocus(title: "later")
-        let other = store.addSession(title: "other")!
-        store.selectedSessionID = store.sessions[0].id
-        try await fire(5, on: fixture.session.id)
-        try await fire(5, on: other.id)
-        #expect(store.bellFeed.unseenCount == 2)
-
-        // The entry names the second Pane's Tab; focus goes back to the first
-        // Pane before the Session is selected, so the tab-keyed mark-seen
-        // path cannot be what clears it.
-        let entryTabID = try #require(store.bellFeed.entries.first { $0.sessionID == fixture.session.id }).tabID
-        fixture.session.tree.focusedPaneID = fixture.firstPane.id
-        #expect(fixture.firstPane.activeTabID != entryTabID)
-
-        store.windows[0].selectedSessionID = fixture.session.id
-        store.windows[0].markActiveTabSeen()
-
-        let byID = Dictionary(uniqueKeysWithValues: store.bellFeed.entries.map { ($0.sessionID, $0.seen) })
-        #expect(byID[fixture.session.id] == true)
-        #expect(byID[other.id] == false, "only the selected Session's Reminder is acknowledged")
-    }
-
-    @Test func clearAllMarksReminderEntriesSeenWithoutTouchingBellCounters() async throws {
-        let target = store.addSession(title: "counted")!
-        target.unseenBellCount = 3
-        try await fire(5, on: target.id)
-
-        store.markAllBellsSeen()
-
-        #expect(store.bellFeed.unseenCount == 0)
-        #expect(target.unseenBellCount == 3)
-    }
 
     // MARK: - Closing the Session
 
@@ -323,6 +235,7 @@ final class AppStateStoreReminderTests {
 
         #expect(store.reminderScheduler.pendingCount == 1)
         #expect(store.pendingReminderCount == 1)
+        #expect(store.firedReminders.items.isEmpty)
         #expect(store.bellFeed.entries.isEmpty)
         #expect(notifier.reminders.isEmpty)
 
@@ -332,56 +245,16 @@ final class AppStateStoreReminderTests {
         #expect(firing.sessionID == survivor.id)
     }
 
-    @Test func closingTheSessionPurgesItsReminderEntriesBySessionNotOnlyByTab() async throws {
-        let doomed = store.addSession(title: "closing")!
-        let keeper = store.addSession(title: "keeper")!
-        try await fire(5, note: "theirs", on: keeper.id)
-        // An entry whose recorded Tab no longer resolves to one of the
-        // Session's Tabs: the tab-keyed purge alone would leave it behind.
-        store.bellFeed.record(BellFeedEntry(
-            timestamp: ReminderFixture.anchor,
-            windowID: store.windows[0].id.value,
-            sessionID: doomed.id,
-            paneID: UUID(),
-            tabID: UUID(),
-            surfaceID: UUID(),
-            message: "mine",
-            seen: false,
-            kind: .reminder))
-
-        store.removeSession(id: doomed.id)
-
-        #expect(store.bellFeed.entries.map(\.message) == ["theirs"])
-    }
-
-    @Test func closingAWindowCancelsPendingRemindersAndPurgesFiredEntriesOfItsSessions() async throws {
-        let extra = store.openWindowRuntime(for: WindowID())
-        let fired = extra.addSession(title: "fired")
-        let pending = extra.addSession(title: "pending")
-        try await fire(5, note: "gone with the window", on: fired.id)
-        _ = try #require(store.setReminder(.after(minutes: 10), forSessionID: pending.id))
-        #expect(await clock.waitForSleepers(1))
-        #expect(store.bellFeed.entries.count == 1)
-
-        store.removeWindow(id: extra.id)
-
-        #expect(store.reminderScheduler.pendingCount == 0)
-        #expect(clock.pendingCount == 0)
-        #expect(store.bellFeed.entries.isEmpty, "a closed Window's fired Reminder entries must not linger")
-    }
-
-    @Test func closingTheRecordedTabLeavesAFiredReminderEntryUnseen() async throws {
+    @Test func closingATabOfTheSessionKeepsItsFiredReminderUnread() async throws {
         let fixture = sessionWithNonDefaultFocus(title: "two tabs")
         store.selectedSessionID = store.sessions[0].id
-        try await fire(5, note: "still due", on: fixture.session.id)
-        let entry = try #require(store.bellFeed.entries.first)
-        #expect(entry.tabID == fixture.secondTab.id)
+        let firing = try await fire(5, note: "still due", on: fixture.session.id)
 
         store.windows[0].closeTab(id: fixture.secondTab.id)
 
-        #expect(store.bellFeed.entries.map(\.id) == [entry.id])
-        #expect(store.bellFeed.entries.first?.seen == false)
-        #expect(!store.bellFeed.unseenReminderEntries(forSessionID: fixture.session.id).isEmpty)
+        #expect(store.firedReminders.items.map(\.id) == [firing.reminder.id])
+        #expect(store.firedReminders.items.first?.seen == false)
+        #expect(store.firedReminders.unseenSessionIDs == [fixture.session.id])
     }
 
     @Test func editingOnlyTheNoteOfATomorrowReminderKeepsItsResolvedDate() async throws {
@@ -523,7 +396,7 @@ final class AppStateStoreReminderTests {
         #expect(session.reminder == nil)
         #expect(store.reminderScheduler.pendingCount == 0)
         #expect(notifier.scheduled.isEmpty)
-        #expect(store.bellFeed.entries.first?.message == "a")
+        #expect(store.firedReminders.items.first?.note == "a")
     }
 
     @Test func removeAfterTheBarsReminderFiredCancelsNothing() async throws {
@@ -535,7 +408,7 @@ final class AppStateStoreReminderTests {
         _ = try #require(await recorder.next())
         #expect(try commitBar(&model, row: .remove, on: session) == .reminderGone(fired: true))
         #expect(session.reminder == nil)
-        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.firedReminders.items.count == 1)
     }
 
     @Test func keepWithTheBarsReminderStillPendingChangesOnlyItsText() throws {
@@ -571,33 +444,12 @@ final class AppStateStoreReminderTests {
 
     // MARK: - Notification actions
 
-    private func remindAgain(_ minutes: Int) async throws {
-        let target = store.addSession(title: "again")!
-        store.selectedSessionID = store.sessions[0].id
-        let firing = try await fire(5, note: "check the deploy", on: target.id)
-        let entry = try #require(store.bellFeed.entries.first)
-        let selectedBefore = store.selectedSessionID
-        store.handleNotificationTap(NotificationTapPayload(
-            entryID: entry.id,
-            reminderID: firing.reminder.id,
-            sessionID: target.id,
-            note: "check the deploy",
-            action: .remindAgain(minutes: minutes)))
-        let again = try #require(target.reminder)
-        #expect(again.id != firing.reminder.id)
-        #expect(again.note == "check the deploy")
-        #expect(again.target == .instant(clock.now.addingTimeInterval(TimeInterval(minutes) * 60)))
-        #expect(store.bellFeed.entries.map(\.id) == [entry.id], "the fired entry stays as the record")
-        #expect(store.bellFeed.entries.first?.seen == true)
-        #expect(store.selectedSessionID == selectedBefore, "Remind Again does not jump")
-    }
-
     @Test func remindAgainSetsAFifteenMinuteReminderWithTheSameText() async throws {
-        try await remindAgain(15)
+        try await remindAgainFromTheBanner(15)
     }
 
     @Test func remindAgainSetsAOneHourReminderWithTheSameText() async throws {
-        try await remindAgain(60)
+        try await remindAgainFromTheBanner(60)
     }
 
     @Test func remindAgainForAGoneSessionDoesNothing() {
@@ -607,32 +459,12 @@ final class AppStateStoreReminderTests {
         #expect(notifier.scheduled.isEmpty)
     }
 
-    @Test func remindAgainFromAnEarlierBannerLeavesANewerPendingReminderAlone() async throws {
-        let session = store.addSession(title: "api")!
-        let firing = try await fire(5, note: "check the deploy", on: session.id)
-        let entry = try #require(store.bellFeed.entries.first)
-        let newer = try #require(store.setReminder(.after(minutes: 60), note: "review PR 412", forSessionID: session.id))
-        store.handleNotificationTap(NotificationTapPayload(
-            entryID: entry.id,
-            reminderID: firing.reminder.id,
-            sessionID: session.id,
-            note: "check the deploy",
-            action: .remindAgain(minutes: 15)))
-        #expect(session.reminder == newer)
-        #expect(session.reminder?.note == "review PR 412")
-        #expect(store.reminderScheduler.pendingCount == 1)
-        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: newer.id)])
-        #expect(store.bellFeed.entries.count == 1)
-        #expect(store.bellFeed.entries.first?.seen == true)
-    }
-
     @Test func remindAgainWithNoReminderIDLeavesAPendingReminderAlone() async throws {
         let session = store.addSession(title: "api")!
+        store.selectedSessionID = store.sessions[0].id
         _ = try await fire(5, note: "check the deploy", on: session.id)
-        let entry = try #require(store.bellFeed.entries.first)
         let newer = try #require(store.setReminder(.after(minutes: 60), note: "review PR 412", forSessionID: session.id))
         store.handleNotificationTap(NotificationTapPayload(
-            entryID: entry.id,
             reminderID: nil,
             sessionID: session.id,
             note: "check the deploy",
@@ -640,15 +472,14 @@ final class AppStateStoreReminderTests {
         #expect(session.reminder == newer)
         #expect(store.reminderScheduler.pendingCount == 1)
         #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: newer.id)])
-        #expect(store.bellFeed.entries.first?.seen == true)
+        #expect(store.firedReminders.items.count == 1)
+        #expect(store.firedReminders.items.first?.seen == true)
     }
 
     @Test func pressingRemindAgainTwiceOnTheSameBannerKeepsTheFirstNewReminder() async throws {
         let target = store.addSession(title: "again")!
         let firing = try await fire(5, note: "check the deploy", on: target.id)
-        let entry = try #require(store.bellFeed.entries.first)
         let payload = NotificationTapPayload(
-            entryID: entry.id,
             reminderID: firing.reminder.id,
             sessionID: target.id,
             note: "check the deploy",
@@ -661,15 +492,17 @@ final class AppStateStoreReminderTests {
         #expect(store.reminderScheduler.pendingCount == 1)
     }
 
-    @Test func openActionTakesTheExistingJumpRoute() async throws {
+    @Test func openActionRoutesToTheReminderSession() async throws {
         let target = store.addSession(title: "open")!
         store.selectedSessionID = store.sessions[0].id
         let firing = try await fire(5, note: "n", on: target.id)
-        let entry = try #require(store.bellFeed.entries.first)
-        store.handleNotificationTap(NotificationTapPayload(
-            entryID: entry.id, reminderID: firing.reminder.id, sessionID: target.id, note: "n", action: .open))
+        let payload = NotificationTapPayload(
+            reminderID: firing.reminder.id, sessionID: target.id, note: "n", action: .open)
+        #expect(store.notificationTapRoute(for: payload) == .openReminderSession(target.id))
+        store.handleNotificationTap(payload)
         #expect(store.selectedSessionID == target.id)
         #expect(target.reminder == nil, "Open Session sets no new Reminder")
+        #expect(store.firedReminders.items.isEmpty)
     }
 
     @Test func inAppPostCarriesTheInAppCategoryAndSessionAndNote() async throws {
@@ -677,16 +510,18 @@ final class AppStateStoreReminderTests {
         store.selectedSessionID = store.sessions[0].id
         let firing = try await fire(5, note: "deploy", on: target.id)
         let posted = try #require(notifier.reminders.first)
+        #expect(posted.fired.id == firing.reminder.id)
         let content = BellNotifier.reminderContent(
-            entry: posted.entry, reminderID: firing.reminder.id, projectID: nil, sessionTitle: posted.sessionTitle)
+            fired: posted.fired, projectID: nil, sessionTitle: posted.sessionTitle)
         #expect(content.categoryIdentifier == ReminderNotification.inAppCategory)
         #expect(content.title == "deploy")
         #expect(content.subtitle == "api")
         #expect(content.body.hasPrefix("Set at "))
         let payload = NotificationTapPayload(userInfo: content.userInfo)
         #expect(payload.sessionID == target.id)
+        #expect(payload.reminderID == firing.reminder.id)
         #expect(payload.note == "deploy")
-        #expect(payload.entryID == posted.entry.id)
+        #expect(payload.entryID == nil)
     }
 
     @Test func cancellingTheReminderRemovesTheScheduledRequest() throws {
@@ -776,18 +611,6 @@ final class AppStateStoreReminderTests {
         _ = try #require(manual.setReminder(.after(minutes: 15), forSessionID: session.id))
         #expect(spy.scheduled.isEmpty)
         #expect(manual.remindersStillNotifyAfterQuit == false)
-    }
-
-    @Test func tapOnKnownEntryJumpsToIt() async throws {
-        let target = store.addSession(title: "target")!
-        store.selectedSessionID = store.sessions[0].id
-        try await fire(5, on: target.id)
-        let entry = try #require(store.bellFeed.entries.first)
-        let payload = NotificationTapPayload(entryID: entry.id, reminderID: UUID())
-        #expect(store.notificationTapRoute(for: payload) == .jumpToEntry(entry.id))
-        store.handleNotificationTap(payload)
-        #expect(store.selectedSessionID == target.id)
-        #expect(!store.bellFeed.entries.contains { $0.id == entry.id }, "the jump visits a non-selected Session, which drops the row")
     }
 
     @Test func tapOnUnknownReminderWithProjectIDOpensTheProject() throws {
@@ -926,5 +749,296 @@ final class AppStateStoreReminderTests {
         ReminderActions.commit(commit, session: session, store: seeded)
         let reminder = try #require(session.reminder)
         #expect(reminder.target == .wallClock(DateComponents(year: 2026, month: 10, day: 15, hour: 7, minute: 15)))
+    }
+
+    // MARK: - Fired Reminders list
+
+    @Test func firedReminderRecordsNoBellFeedEntry() async throws {
+        let target = store.addSession(title: "api-server")!
+        store.selectedSessionID = store.sessions[0].id
+        try await fire(15, note: "check the deploy", on: target.id)
+        #expect(store.bellFeed.entries.isEmpty)
+    }
+
+    @Test func firedReminderDoesNotLightTheBell() async throws {
+        let target = store.addSession(title: "api-server")!
+        store.selectedSessionID = store.sessions[0].id
+        target.unseenBellCount = 2
+        try await fire(15, note: "check the deploy", on: target.id)
+        #expect(store.bellFeed.unseenCount == 0)
+        #expect(target.unseenBellCount == 2, "a Reminder is not a bell and leaves the bell counter alone")
+    }
+
+    @Test func firedReminderIsUnreadInTheFiredList() async throws {
+        let target = store.addSession(title: "api-server")!
+        store.selectedSessionID = store.sessions[0].id
+        let firing = try await fire(15, note: "check the deploy", on: target.id)
+
+        #expect(target.reminder == nil)
+        let fired = try #require(store.firedReminders.items.first)
+        #expect(store.firedReminders.items.count == 1)
+        #expect(fired.id == firing.reminder.id)
+        #expect(fired.sessionID == target.id)
+        #expect(fired.windowID == store.windows[0].id.value)
+        #expect(fired.note == "check the deploy")
+        #expect(fired.createdAt == ReminderFixture.anchor)
+        #expect(fired.dueAt == firing.dueDate)
+        #expect(fired.firedAt == clock.now)
+        #expect(fired.seen == false)
+        #expect(store.firedReminders.unseenCount == 1)
+        #expect(store.firedReminders.unseenSessionIDs == [target.id])
+        #expect(notifier.reminders == [.init(fired: fired, sessionTitle: "api-server")])
+        #expect(notifier.bells.isEmpty)
+    }
+
+    @Test func aSecondFiringOnTheSameSessionReplacesTheFiredItem() async throws {
+        let target = store.addSession(title: "twice")!
+        let first = try await fire(5, note: "first", on: target.id)
+        let second = try await fire(5, note: "second", on: target.id)
+        #expect(store.firedReminders.items.map(\.id) == [second.reminder.id])
+        #expect(!store.firedReminders.items.contains { $0.id == first.reminder.id })
+        #expect(store.firedReminders.items.first?.note == "second")
+    }
+
+    @Test func visitingTheSessionRemovesItsFiredReminder() async throws {
+        let target = store.addSession(title: "visit")!
+        let other = store.addSession(title: "other")!
+        store.selectedSessionID = store.sessions[0].id
+        try await fire(5, on: target.id)
+        try await fire(5, on: other.id)
+
+        store.windows[0].selectedSessionID = target.id
+        store.windows[0].visitFocusedTab()
+
+        #expect(store.firedReminders.items.map(\.sessionID) == [other.id])
+        #expect(store.firedReminders.items.first?.seen == false)
+    }
+
+    @Test func fallbackSelectionMarksTheFiredReminderRead() async throws {
+        let fixture = sessionWithNonDefaultFocus(title: "later")
+        let other = store.addSession(title: "other")!
+        store.selectedSessionID = store.sessions[0].id
+        try await fire(5, on: fixture.session.id)
+        try await fire(5, on: other.id)
+        #expect(store.firedReminders.unseenCount == 2)
+
+        // A passive selection, as when closing the selected Session falls
+        // back onto this one: selection effects run, but no visit.
+        store.windows[0].selectedSessionID = fixture.session.id
+
+        let byID = Dictionary(uniqueKeysWithValues: store.firedReminders.items.map { ($0.sessionID, $0.seen) })
+        #expect(byID[fixture.session.id] == true, "read, and still in the list")
+        #expect(byID[other.id] == false, "only the selected Session's Reminder is acknowledged")
+        #expect(store.firedReminders.unseenSessionIDs == [other.id])
+    }
+
+    @Test func remindAgainRemovesTheFiredReminderAndSetsAPendingOne() async throws {
+        try await remindAgainFromTheBanner(15)
+    }
+
+    @Test func remindAgainFromTheListRemovesTheFiredReminderAndSetsAPendingOne() async throws {
+        let target = store.addSession(title: "again")!
+        let other = store.addSession(title: "other")!
+        store.selectedSessionID = store.sessions[0].id
+        let firing = try await fire(5, note: "check the deploy", on: target.id)
+        try await fire(5, on: other.id)
+        let selectedBefore = store.selectedSessionID
+
+        store.remindFiredReminderAgain(id: firing.reminder.id, minutes: 15)
+
+        let again = try #require(target.reminder)
+        #expect(again.id != firing.reminder.id)
+        #expect(again.note == "check the deploy")
+        #expect(again.target == .instant(clock.now.addingTimeInterval(15 * 60)))
+        #expect(store.firedReminders.items.map(\.sessionID) == [other.id])
+        #expect(store.selectedSessionID == selectedBefore, "Remind Again does not jump")
+    }
+
+    @Test func remindAgainIgnoredForANewerPendingReminderMarksItRead() async throws {
+        let session = store.addSession(title: "api")!
+        store.selectedSessionID = store.sessions[0].id
+        let firing = try await fire(5, note: "check the deploy", on: session.id)
+        let newer = try #require(store.setReminder(.after(minutes: 60), note: "review PR 412", forSessionID: session.id))
+        store.handleNotificationTap(NotificationTapPayload(
+            reminderID: firing.reminder.id,
+            sessionID: session.id,
+            note: "check the deploy",
+            action: .remindAgain(minutes: 15)))
+        #expect(session.reminder == newer)
+        #expect(session.reminder?.note == "review PR 412")
+        #expect(store.reminderScheduler.pendingCount == 1)
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: newer.id)])
+        #expect(store.firedReminders.items.map(\.id) == [firing.reminder.id])
+        #expect(store.firedReminders.items.first?.seen == true)
+    }
+
+    @Test func doneRemovesOnlyThatFiredReminder() async throws {
+        let a = store.addSession(title: "a")!
+        let b = store.addSession(title: "b")!
+        store.selectedSessionID = store.sessions[0].id
+        let firingA = try await fire(5, on: a.id)
+        try await fire(5, on: b.id)
+        let pending = try #require(store.setReminder(.after(minutes: 30), forSessionID: a.id))
+
+        store.markFiredReminderDone(id: firingA.reminder.id)
+
+        #expect(store.firedReminders.items.map(\.sessionID) == [b.id])
+        #expect(a.reminder == pending, "Done leaves the pending Reminder alone")
+    }
+
+    @Test func markAllRemindersReadKeepsEveryItem() async throws {
+        let a = store.addSession(title: "a")!
+        let b = store.addSession(title: "b")!
+        store.selectedSessionID = store.sessions[0].id
+        try await fire(5, on: a.id)
+        try await fire(5, on: b.id)
+
+        store.markAllRemindersRead()
+
+        #expect(store.firedReminders.items.count == 2)
+        #expect(store.firedReminders.items.allSatisfy { $0.seen })
+        #expect(store.firedReminders.unseenCount == 0)
+        #expect(store.firedReminders.unseenSessionIDs.isEmpty)
+    }
+
+    @Test func markAllBellsReadLeavesFiredRemindersUnread() async throws {
+        let target = store.addSession(title: "counted")!
+        store.selectedSessionID = store.sessions[0].id
+        target.unseenBellCount = 3
+        try await fire(5, on: target.id)
+
+        store.markAllBellsSeen()
+
+        #expect(store.firedReminders.unseenCount == 1)
+        #expect(store.firedReminders.items.first?.seen == false)
+        #expect(target.unseenBellCount == 3)
+    }
+
+    @Test func clearReadRemindersRemovesOnlyReadItemsAndNoPending() async throws {
+        let a = store.addSession(title: "a")!
+        let b = store.addSession(title: "b")!
+        store.selectedSessionID = store.sessions[0].id
+        try await fire(5, on: a.id)
+        try await fire(5, on: b.id)
+        _ = store.firedReminders.markSeen(sessionID: a.id)
+        let pending = try #require(store.setReminder(.after(minutes: 30), forSessionID: a.id))
+
+        store.clearReadReminders()
+
+        #expect(store.firedReminders.items.map(\.sessionID) == [b.id])
+        #expect(a.reminder == pending)
+        #expect(store.reminderScheduler.pendingCount == 1)
+    }
+
+    @Test func clearReadRemindersLeavesTheBellFeedAlone() async throws {
+        let target = store.addSession(title: "bells")!
+        store.selectedSessionID = store.sessions[0].id
+        store.recordCLINotification(tabID: target.focusedPaneAnyKind.activeTabID, title: "Done", body: nil, playSound: false)
+        store.markAllBellsSeen()
+        #expect(store.bellFeed.readCount == 1)
+        try await fire(5, on: target.id)
+        store.markAllRemindersRead()
+
+        store.clearReadReminders()
+
+        #expect(store.firedReminders.items.isEmpty)
+        #expect(store.bellFeed.entries.count == 1, "the read bell row stays")
+        #expect(store.bellFeed.readCount == 1)
+    }
+
+    @Test func closingTheSessionRemovesItsFiredReminder() async throws {
+        let doomed = store.addSession(title: "closing")!
+        let keeper = store.addSession(title: "keeper")!
+        try await fire(5, note: "mine", on: doomed.id)
+        try await fire(5, note: "theirs", on: keeper.id)
+
+        store.removeSession(id: doomed.id)
+
+        #expect(store.firedReminders.items.map(\.note) == ["theirs"])
+    }
+
+    @Test func closingTheWindowRemovesItsFiredReminders() async throws {
+        let extra = store.openWindowRuntime(for: WindowID())
+        let fired = extra.addSession(title: "fired")
+        let pending = extra.addSession(title: "pending")
+        let keeper = store.sessions[0]
+        try await fire(5, note: "gone with the window", on: fired.id)
+        try await fire(5, note: "stays", on: keeper.id)
+        _ = try #require(store.setReminder(.after(minutes: 10), forSessionID: pending.id))
+        #expect(await clock.waitForSleepers(1))
+        #expect(store.firedReminders.items.count == 2)
+
+        store.removeWindow(id: extra.id)
+
+        #expect(store.reminderScheduler.pendingCount == 0)
+        #expect(clock.pendingCount == 0)
+        #expect(store.firedReminders.items.map(\.note) == ["stays"], "a closed Window's fired Reminders must not linger")
+    }
+
+    @Test func reminderTapRoutesToTheSessionAndKeepsItsFocusedPane() async throws {
+        let fixture = sessionWithNonDefaultFocus(title: "build")
+        store.selectedSessionID = store.sessions[0].id
+        let firing = try await fire(5, note: "back to it", on: fixture.session.id)
+
+        // The user moves focus after the Reminder fired.
+        fixture.session.tree.focusedPaneID = fixture.firstPane.id
+        let firstTabID = fixture.firstPane.activeTabID
+
+        let payload = NotificationTapPayload(reminderID: firing.reminder.id, sessionID: fixture.session.id, note: "back to it")
+        #expect(store.notificationTapRoute(for: payload) == .openReminderSession(fixture.session.id))
+        store.handleNotificationTap(payload)
+
+        #expect(store.selectedSessionID == fixture.session.id)
+        #expect(fixture.session.tree.focusedPaneID == fixture.firstPane.id, "the tap must not move to the Pane focused at fire time")
+        #expect(fixture.firstPane.activeTabID == firstTabID)
+        #expect(fixture.secondPane.activeTabID == fixture.secondTab.id)
+        #expect(store.firedReminders.items.isEmpty, "the tap is a visit, which removes the fired Reminder")
+    }
+
+    @Test func reminderTapForAGoneSessionOpensTheProjectOrActivates() async throws {
+        let doomed = store.addSession(title: "doomed")!
+        let firing = try await fire(5, on: doomed.id)
+        store.removeSession(id: doomed.id)
+        let before = store.windows.flatMap(\.sessions).map(\.id)
+
+        let payload = NotificationTapPayload(reminderID: firing.reminder.id, sessionID: doomed.id)
+        #expect(store.notificationTapRoute(for: payload) == .activateOnly)
+        store.handleNotificationTap(payload)
+        #expect(store.windows.flatMap(\.sessions).map(\.id) == before)
+
+        let withGoneProject = NotificationTapPayload(reminderID: firing.reminder.id, projectID: UUID(), sessionID: doomed.id)
+        #expect(store.notificationTapRoute(for: withGoneProject) == .activateOnly)
+
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("batty-0639-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let projectStore = AppStateStore(
+            notifier: SpyReminderNotifier(),
+            preferences: testDefaults.defaults,
+            projectsFileURL: base.appendingPathComponent("projects.json")
+        )
+        let project = Project(name: "P", rootPath: base.path, layout: ProjectLayout(root: .pane(.terminal(tabs: [ProjectTab()]))))
+        try projectStore.projectStore.upsert(project)
+        let withProject = NotificationTapPayload(reminderID: firing.reminder.id, projectID: project.id, sessionID: doomed.id)
+        #expect(projectStore.notificationTapRoute(for: withProject) == .openProject(project.id))
+    }
+
+    private func remindAgainFromTheBanner(_ minutes: Int) async throws {
+        let target = store.addSession(title: "again")!
+        store.selectedSessionID = store.sessions[0].id
+        let firing = try await fire(5, note: "check the deploy", on: target.id)
+        let selectedBefore = store.selectedSessionID
+        store.handleNotificationTap(NotificationTapPayload(
+            reminderID: firing.reminder.id,
+            sessionID: target.id,
+            note: "check the deploy",
+            action: .remindAgain(minutes: minutes)))
+        let again = try #require(target.reminder)
+        #expect(again.id != firing.reminder.id)
+        #expect(again.note == "check the deploy")
+        #expect(again.target == .instant(clock.now.addingTimeInterval(TimeInterval(minutes) * 60)))
+        #expect(store.firedReminders.items.isEmpty, "the new pending Reminder replaces the fired one")
+        #expect(store.bellFeed.entries.isEmpty)
+        #expect(store.selectedSessionID == selectedBefore, "Remind Again does not jump")
     }
 }

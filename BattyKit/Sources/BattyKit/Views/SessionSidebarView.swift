@@ -333,7 +333,7 @@ private struct SessionSidebarRow: View {
             let detail = ReminderActions.detail(for: reminder, store: store)
             return detail.map { "reminder pending: \($0)" } ?? "reminder pending"
         }
-        if store.bellFeed.dueReminderSessionIDs.contains(session.id) {
+        if store.firedReminders.unseenSessionIDs.contains(session.id) {
             return "reminder due"
         }
         return nil
@@ -449,7 +449,7 @@ private struct ReminderBadge: View {
                 .frame(width: Self.side, height: Self.side)
                 .help(ReminderActions.detail(for: reminder, store: store) ?? "")
                 .accessibilityHidden(true)
-        } else if store.bellFeed.dueReminderSessionIDs.contains(session.id) {
+        } else if store.firedReminders.unseenSessionIDs.contains(session.id) {
             Image(systemName: "alarm.fill")
                 .imageScale(.small)
                 .foregroundStyle(accent ?? Color.accentColor)
@@ -460,12 +460,11 @@ private struct ReminderBadge: View {
     }
 
     private var dueHelp: String {
-        guard let entry = store.bellFeed.unseenReminderEntries(forSessionID: session.id).first else {
+        guard let fired = store.firedReminders.item(forSessionID: session.id) else {
             return String(localized: "Reminder is due")
         }
-        let due = entry.reminderDueAt ?? entry.timestamp
-        let text = SessionReminder.displayText(note: entry.message, sessionTitle: session.title)
-        return String(localized: "Reminder at \(ReminderFormat.time(due, calendar: store.reminderScheduler.calendar)) \u{2014} \(text)")
+        let text = fired.displayText(sessionTitle: session.title)
+        return String(localized: "Reminder at \(ReminderFormat.time(fired.dueAt, calendar: store.reminderScheduler.calendar)) \u{2014} \(text)")
     }
 }
 

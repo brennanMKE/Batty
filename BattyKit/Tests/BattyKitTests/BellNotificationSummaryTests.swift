@@ -438,10 +438,9 @@ struct NotificationSummarizerPromptTests {
 
 @MainActor
 struct BellFeedStoreRemovalHookTests {
-    private func entry(tabID: UUID = UUID(), sessionID: UUID = UUID(), message: String = "m",
-                       kind: BellFeedEntry.Kind = .bell) -> BellFeedEntry {
+    private func entry(tabID: UUID = UUID(), sessionID: UUID = UUID(), message: String = "m") -> BellFeedEntry {
         BellFeedEntry(timestamp: Date(), windowID: UUID(), sessionID: sessionID, paneID: UUID(),
-                      tabID: tabID, surfaceID: UUID(), message: message, kind: kind)
+                      tabID: tabID, surfaceID: UUID(), message: message)
     }
 
     private func hooked(_ store: BellFeedStore) -> () -> [Set<UUID>] {
@@ -473,18 +472,6 @@ struct BellFeedStoreRemovalHookTests {
 
         #expect(calls().isEmpty)
         #expect(store.entries.count == 1)
-    }
-
-    @Test func removeReminderEntriesReportsTheRemovedRowIDs() {
-        let store = BellFeedStore()
-        let sessionID = UUID()
-        let reminder = store.record(entry(sessionID: sessionID, message: "r", kind: .reminder))
-        store.record(entry(sessionID: sessionID, message: "bell"))
-        let calls = hooked(store)
-
-        store.removeReminderEntries(forSessionID: sessionID)
-
-        #expect(calls() == [[reminder.id]])
     }
 
     @Test func capEvictionReportsTheEvictedRowID() {

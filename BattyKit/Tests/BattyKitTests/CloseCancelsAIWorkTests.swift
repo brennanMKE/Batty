@@ -136,7 +136,7 @@ final class CloseCancelsAIWorkTests {
         #expect(!suggester.requestedPaths.contains { $0 == sessionCWD })
     }
 
-    /// A background Session with two idle Tabs and a Reminder row, so the
+    /// A background Session with two idle Tabs and a fired Reminder, so the
     /// Session's own state is non-default when one Tab closes.
     private func backgroundSession(_ store: AppStateStore) throws -> (SessionRuntime, PaneRuntime, UUID) {
         let session = try #require(store.addSession())
@@ -144,10 +144,10 @@ final class CloseCancelsAIWorkTests {
         pane.addTab()
         store.selectedSessionID = store.sessions[0].id
         let window = store.windows[0]
-        let reminder = BellFeedEntry(timestamp: Date(), windowID: window.id.value, sessionID: session.id,
-                                     paneID: pane.id, tabID: pane.tabs[0].id, surfaceID: UUID(),
-                                     message: "Reminder", kind: .reminder)
-        store.bellFeed.entries.insert(reminder, at: 0)
+        let now = Date()
+        let reminder = FiredReminder(id: UUID(), sessionID: session.id, windowID: window.id.value,
+                                     note: "Reminder", createdAt: now, dueAt: now, firedAt: now)
+        store.firedReminders.record(reminder)
         return (session, pane, reminder.id)
     }
 
@@ -164,7 +164,7 @@ final class CloseCancelsAIWorkTests {
         store.requestCloseTab(id: tab.id)
 
         #expect(!pane.tabs.contains { $0.id == tab.id })
-        #expect(store.bellFeed.entries.contains { $0.id == reminderID })
+        #expect(store.firedReminders.items.contains { $0.id == reminderID })
         await expectTabCancelled(store, suggester, tab, task)
     }
 

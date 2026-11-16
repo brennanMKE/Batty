@@ -209,6 +209,7 @@ nonisolated public struct NotificationTapPayload: Sendable, Equatable {
 
 nonisolated public enum NotificationTapRoute: Equatable, Sendable {
     case jumpToEntry(UUID)
+    case openReminderSession(UUID)
     case openProject(UUID)
     case activateOnly
 }

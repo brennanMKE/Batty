@@ -131,17 +131,12 @@ nonisolated final class SessionReminderTests: XCTestCase {
             "The Bell Feed must open")
     }
 
-    /// Distinct identifiers of the feed rows that are Reminders. The row is a
-    /// `.contain` element, and the VM run showed its `reminder` value is not
-    /// exposed there, so a Reminder row is also recognised by holding the
-    /// "Reminder" title text.
+    /// Rows in the open Bell Feed.
     @MainActor
-    private func reminderEntryIDs(in app: XCUIApplication) -> Set<String> {
-        let rows = app.descendants(matching: .any)
+    private func bellFeedEntryCount(in app: XCUIApplication) -> Int {
+        app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'bell-feed-entry.'"))
-        let byValue = rows.matching(NSPredicate(format: "value == 'reminder'")).allElementsBoundByIndex
-        let byTitle = rows.containing(NSPredicate(format: "label == 'Reminder' OR value == 'Reminder'")).allElementsBoundByIndex
-        return Set((byValue + byTitle).map(\.identifier))
+            .count
     }
 
     @MainActor
@@ -407,16 +402,17 @@ nonisolated final class SessionReminderTests: XCTestCase {
                       "Cancel Reminder must remove the Reminder state from the row")
 
         advanceClock("two hours", in: app)
+        XCTAssertNil(reminderState("Alpha", in: app), "A cancelled Reminder must never come due on the row")
         openBellFeed(in: app)
-        XCTAssertEqual(reminderEntryIDs(in: app).count, 0, "A cancelled Reminder must not reach the Bell Feed")
+        XCTAssertEqual(bellFeedEntryCount(in: app), 0, "A cancelled Reminder must not reach the Bell Feed")
         XCTAssertNil(reminderState("Alpha", in: app))
     }
 
-    /// A Reminder on a Session the user is not looking at fires into the
-    /// Bell Feed with its text; clicking the entry selects that Session and
-    /// leaves its previously focused Pane focused.
+    /// A Reminder on a Session the user is not looking at fires without
+    /// reaching the Bell Feed and marks the Session's row due; selecting the
+    /// row clears it and leaves the previously focused Pane focused.
     @MainActor
-    func testFiredReminderLandsInTheFeedAndJumpKeepsTheFocusedPane() throws {
+    func testFiredReminderStaysOutOfTheFeedAndMarksTheSidebarRow() throws {
         let app = launch(script: [
             ["intent": "createSession", "name": "Alpha"],
             ["intent": "splitHorizontal"],
@@ -442,22 +438,18 @@ nonisolated final class SessionReminderTests: XCTestCase {
         XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == "reminder due" }, timeout: 5),
                       "A fired Reminder must show as due on the row")
         openBellFeed(in: app)
-        XCTAssertTrue(waitFor({ self.reminderEntryIDs(in: app).count == 1 }, timeout: 5), "Exactly one Reminder entry must be in the Bell Feed")
-        XCTAssertTrue(app.staticTexts["back to Alpha"].firstMatch.exists, "The entry must carry the text")
-
-        let entryID = try XCTUnwrap(reminderEntryIDs(in: app).first)
-        BattyScreen.element(entryID, in: app).click()
+        XCTAssertTrue(app.staticTexts["No bell events"].firstMatch.waitForExistence(timeout: 5),
+                      "A fired Reminder must leave the Bell Feed empty")
+        XCTAssertEqual(bellFeedEntryCount(in: app), 0, "A fired Reminder must not add a Bell Feed row")
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
 
         let alphaRow = BattyUITestHarness.sessionRow(named: "Alpha", in: app)
+        alphaRow.click()
         XCTAssertTrue(waitFor({ (alphaRow.value as? String)?.hasPrefix("selected") == true }, timeout: 5),
-                      "Clicking the entry must select Alpha")
-        XCTAssertEqual(focusedPaneIndex(in: app), 1, "The jump must leave Alpha's focused Pane where it was")
+                      "Clicking the row must select Alpha")
+        XCTAssertEqual(focusedPaneIndex(in: app), 1, "Selecting Alpha must leave its focused Pane where it was")
         XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == nil }, timeout: 5),
-                      "Acknowledging the Reminder must clear the due state")
-
-        openBellFeed(in: app)
-        XCTAssertTrue(waitFor({ self.reminderEntryIDs(in: app).isEmpty }, timeout: 5),
-                      "Jumping to the Reminder visits its Session, which removes the row")
+                      "Visiting the Session must clear the due state")
     }
 
     /// Closing the Session cancels its Reminder: nothing is recorded when
@@ -483,7 +475,7 @@ nonisolated final class SessionReminderTests: XCTestCase {
 
         advanceClock("five minutes", in: app)
         openBellFeed(in: app)
-        XCTAssertEqual(reminderEntryIDs(in: app).count, 0, "A closed Session's Reminder must never fire")
+        XCTAssertEqual(bellFeedEntryCount(in: app), 0, "A closed Session's Reminder must never fire")
     }
 
     /// Opens the Rename Session sheet on `title`'s row and waits for its

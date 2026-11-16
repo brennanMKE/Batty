@@ -51,6 +51,33 @@ struct ReminderNotificationTests {
         #expect(content.title == "Come back to api")
         #expect(content.body.replacingOccurrences(of: "\u{202F}", with: " ") == "Due at 3:15 PM")
     }
+
+    private func fired(note: String?) -> FiredReminder {
+        let setAt = ReminderFixture.anchor
+        let due = setAt.addingTimeInterval(15 * 60)
+        return FiredReminder(
+            id: UUID(), sessionID: UUID(), windowID: UUID(), note: note,
+            createdAt: setAt, dueAt: due, firedAt: due.addingTimeInterval(5))
+    }
+
+    @Test func reminderUserInfoCarriesNoBellEntryID() {
+        let fired = fired(note: "ship it")
+        let projectID = UUID()
+        let info = BellNotifier.reminderUserInfo(fired: fired, projectID: projectID)
+        #expect(info[BellNotifier.entryIdUserInfoKey] == nil)
+        let payload = NotificationTapPayload(userInfo: info, actionIdentifier: nil)
+        #expect(payload.entryID == nil)
+        #expect(payload == NotificationTapPayload(
+            entryID: nil, reminderID: fired.id, projectID: projectID, sessionID: fired.sessionID, note: "ship it", action: .default))
+    }
+
+    @Test func reminderContentKeepsTitleSubtitleAndBody() {
+        let content = BellNotifier.reminderContent(fired: fired(note: "deploy"), projectID: nil, sessionTitle: "api")
+        #expect(content.title == "deploy")
+        #expect(content.subtitle == "api")
+        #expect(content.body.hasPrefix("Set at "))
+        #expect(content.categoryIdentifier == ReminderNotification.inAppCategory)
+    }
 }
 
 @MainActor
@@ -68,26 +95,5 @@ struct NotificationTapPayloadTests {
         #expect(NotificationTapPayload(userInfo: [:], actionIdentifier: UNNotificationDefaultActionIdentifier).action == .default)
         #expect(NotificationTapPayload(userInfo: [:], actionIdentifier: ReminderNotification.openAction).action == .open)
         #expect(NotificationTapPayload(userInfo: [:]).action == .default)
-    }
-
-    @Test func userInfoCarriesSessionAndNote() {
-        let entryID = UUID()
-        let sessionID = UUID()
-        let entry = BellFeedEntry(
-            id: entryID,
-            timestamp: ReminderFixture.anchor,
-            windowID: UUID(),
-            sessionID: sessionID,
-            paneID: UUID(),
-            tabID: UUID(),
-            surfaceID: UUID(),
-            message: "ship it",
-            seen: false,
-            kind: .reminder)
-        let reminderID = UUID()
-        let info = BellNotifier.reminderUserInfo(entry: entry, reminderID: reminderID, projectID: nil)
-        let payload = NotificationTapPayload(userInfo: info, actionIdentifier: nil)
-        #expect(payload == NotificationTapPayload(
-            entryID: entryID, reminderID: reminderID, projectID: nil, sessionID: sessionID, note: "ship it", action: .default))
     }
 }

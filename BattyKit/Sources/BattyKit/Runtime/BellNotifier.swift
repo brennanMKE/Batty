@@ -33,8 +33,8 @@ public protocol BellNotifying: AnyObject {
     /// Posts the system notification for a Session Reminder that came due,
     /// under `ScheduledReminderNotification.identifier(for: reminderID)` so
     /// it replaces the Reminder's scheduled request. `userInfo` carries the
-    /// paired `.reminder` Bell Feed entry's id, so a tap jumps to it.
-    func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String)
+    /// Reminder and Session ids, so a tap opens the Session.
+    func postReminder(_ fired: FiredReminder, projectID: UUID?, sessionTitle: String)
 
     /// Schedules (or replaces) a pending Reminder's request with the system,
     /// so it still notifies after Batty quits.
@@ -49,7 +49,7 @@ extension BellNotifying {
     /// Default no-op so test doubles that only exercise `post(for:...)`
     /// don't need updating for a path most of them don't touch.
     public func postFootprintWarning(title: String, body: String, identifier: String) {}
-    public func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String) {}
+    public func postReminder(_ fired: FiredReminder, projectID: UUID?, sessionTitle: String) {}
     public func scheduleReminder(_ notification: ScheduledReminderNotification) {}
     public func removeScheduledReminders(ids: [UUID]) {}
     public func removeAllScheduledReminders() {}
@@ -168,18 +168,17 @@ public final class BellNotifier: BellNotifying {
     /// (`AppStateStore.fireReminder`, against the store's own
     /// `preferences`); "Play sound" is applied here. Per-Session mute and the
     /// frontmost-and-seen suppression `post(for:...)` applies do not apply:
-    /// a Reminder is something the user set on purpose, and its entry is
-    /// always unseen when posted. Not recorded in `BellDecisionHistory`,
+    /// a Reminder is something the user set on purpose, and it is always
+    /// unread when posted. Not recorded in `BellDecisionHistory`,
     /// which logs the terminal-bell gates (`BellTriggerKind`) a Reminder
     /// never passes through.
-    public func postReminder(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?, sessionTitle: String) {
-        let content = Self.reminderContent(
-            entry: entry, reminderID: reminderID, projectID: projectID, sessionTitle: sessionTitle)
+    public func postReminder(_ fired: FiredReminder, projectID: UUID?, sessionTitle: String) {
+        let content = Self.reminderContent(fired: fired, projectID: projectID, sessionTitle: sessionTitle)
         if SettingsPreference.resolvedBellSound() {
             content.sound = .default
         }
         let request = UNNotificationRequest(
-            identifier: ScheduledReminderNotification.identifier(for: reminderID),
+            identifier: ScheduledReminderNotification.identifier(for: fired.id),
             content: content,
             trigger: nil
         )
@@ -227,39 +226,37 @@ public final class BellNotifier: BellNotifying {
     /// body, the in-app category (Open Session and both Remind Again
     /// actions) and userInfo.
     static func reminderContent(
-        entry: BellFeedEntry,
-        reminderID: UUID,
+        fired: FiredReminder,
         projectID: UUID?,
         sessionTitle: String
     ) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         let text = ReminderNotification.content(
-            note: entry.message,
+            note: fired.note,
             sessionTitle: sessionTitle,
-            setAt: entry.reminderSetAt ?? entry.timestamp,
-            dueAt: entry.reminderDueAt ?? entry.timestamp,
-            deliveredAt: entry.timestamp)
+            setAt: fired.createdAt,
+            dueAt: fired.dueAt,
+            deliveredAt: fired.firedAt)
         content.title = text.title
         content.subtitle = text.subtitle
         content.body = text.body
         content.categoryIdentifier = ReminderNotification.inAppCategory
-        content.userInfo = reminderUserInfo(entry: entry, reminderID: reminderID, projectID: projectID)
+        content.userInfo = reminderUserInfo(fired: fired, projectID: projectID)
         return content
     }
 
     /// The in-app Reminder post's userInfo. It carries the Session id and
-    /// the text so Remind Again still works after the Bell Feed entry is
-    /// gone.
-    static func reminderUserInfo(entry: BellFeedEntry, reminderID: UUID, projectID: UUID?) -> [String: String] {
+    /// the text so Remind Again still works after the fired Reminder is
+    /// gone. No Bell Feed entry id: a fired Reminder has no Feed row.
+    static func reminderUserInfo(fired: FiredReminder, projectID: UUID?) -> [String: String] {
         var info: [String: String] = [
-            entryIdUserInfoKey: entry.id.uuidString,
-            ScheduledReminderNotification.reminderIDUserInfoKey: reminderID.uuidString,
-            ScheduledReminderNotification.sessionIDUserInfoKey: entry.sessionID.uuidString,
+            ScheduledReminderNotification.reminderIDUserInfoKey: fired.id.uuidString,
+            ScheduledReminderNotification.sessionIDUserInfoKey: fired.sessionID.uuidString,
         ]
         if let projectID {
             info[ScheduledReminderNotification.projectIDUserInfoKey] = projectID.uuidString
         }
-        if let note = entry.message {
+        if let note = fired.note {
             info[ScheduledReminderNotification.noteUserInfoKey] = note
         }
         return info

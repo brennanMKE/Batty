@@ -135,17 +135,7 @@ struct WindowRuntimeSelectionEffectsTests {
         case .bellJump:
             f.window.jumpToBellEntry(try #require(f.entries(for: t.tab).first))
         case .reminderJump:
-            let entry = f.store.bellFeed.record(BellFeedEntry(
-                timestamp: ReminderFixture.anchor,
-                windowID: f.window.id.value,
-                sessionID: t.session.id,
-                paneID: t.pane.id,
-                tabID: t.tab.id,
-                surfaceID: UUID(),
-                message: "reminder",
-                seen: false,
-                kind: .reminder))
-            f.window.jumpToBellEntry(entry)
+            f.window.jumpToReminderSession(t.session.id)
         case .cliFocusSession:
             _ = f.store.focusSessionForXPC(id: t.session.id)
         case .cliFocusPane:

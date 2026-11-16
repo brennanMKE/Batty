@@ -293,10 +293,9 @@ struct SessionDetailLayoutConvergenceTests {
             store.fireReminder(ReminderFiring(
                 sessionID: target.id, reminder: reminder, dueDate: reminder.fireDate(calendar: ReminderFixture.calendar())!))
         }
-        #expect(store.bellFeed.dueReminderSessionIDs == [target.id])
-        let entryID = try #require(store.bellFeed.entries.first?.id)
-        await step("acknowledge") { store.markBellSeen(id: entryID) }
-        #expect(store.bellFeed.dueReminderSessionIDs.isEmpty)
+        #expect(store.firedReminders.unseenSessionIDs == [target.id])
+        await step("acknowledge") { store.markAllRemindersRead() }
+        #expect(store.firedReminders.unseenSessionIDs.isEmpty)
     }
 
     // MARK: - Divider drag request volume

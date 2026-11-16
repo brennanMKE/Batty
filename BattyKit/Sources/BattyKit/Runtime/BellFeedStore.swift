@@ -51,23 +51,6 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
     /// missing in older-shaped data, defaults to `timestamp`.
     public var firstOccurrenceAt: Date
 
-    /// What produced the entry. A `.reminder` entry is a Session Reminder
-    /// that came due (`ReminderScheduler`), not a terminal bell: it never
-    /// bumps an unseen-bell counter, is never collapsed, and its jump is
-    /// Session-level. Decoded with `decodeIfPresent ?? .bell` like
-    /// `repeatCount`, so data from before this field existed still decodes.
-    public enum Kind: String, Codable, Sendable, Hashable {
-        case bell
-        case reminder
-    }
-
-    public var kind: Kind
-    /// `.reminder` entries only: when the Reminder was set, and when it was
-    /// due. Due is earlier than `timestamp` by more than a moment when the
-    /// Mac slept through it.
-    public var reminderSetAt: Date?
-    public var reminderDueAt: Date?
-
     /// Sentinel `windowID`/`sessionID`/`paneID`/`tabID`/`surfaceID` for
     /// entries that don't originate from a real Terminal Session — currently
     /// only the memory-footprint warning. Fixed and never produced by
@@ -91,10 +74,7 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
         summary: String? = nil,
         seen: Bool = false,
         repeatCount: Int = 1,
-        firstOccurrenceAt: Date? = nil,
-        kind: Kind = .bell,
-        reminderSetAt: Date? = nil,
-        reminderDueAt: Date? = nil
+        firstOccurrenceAt: Date? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -108,19 +88,17 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
         self.seen = seen
         self.repeatCount = repeatCount
         self.firstOccurrenceAt = firstOccurrenceAt ?? timestamp
-        self.kind = kind
-        self.reminderSetAt = reminderSetAt
-        self.reminderDueAt = reminderDueAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, timestamp, windowID, sessionID, paneID, tabID, surfaceID, message, summary, seen, repeatCount, firstOccurrenceAt, kind, reminderSetAt, reminderDueAt
+        case id, timestamp, windowID, sessionID, paneID, tabID, surfaceID, message, summary, seen, repeatCount, firstOccurrenceAt
     }
 
     /// Manual `Decodable` so a `repeatCount`/`firstOccurrenceAt` key missing
     /// from older-shaped data (from before #0298) defaults to 1 / `timestamp`
     /// instead of throwing `keyNotFound` — the same forward-compatibility
-    /// treatment `summary` already gets via its `Optional` type.
+    /// treatment `summary` already gets via its `Optional` type. Keys not
+    /// listed in `CodingKeys` (such as an older entry's `kind`) are ignored.
     /// `encode(to:)` stays compiler-synthesized: writing a custom
     /// `init(from:)` doesn't disable synthesis of the other `Codable`
     /// requirement.
@@ -138,9 +116,6 @@ public struct BellFeedEntry: Codable, Sendable, Hashable, Identifiable {
         seen = try container.decode(Bool.self, forKey: .seen)
         repeatCount = try container.decodeIfPresent(Int.self, forKey: .repeatCount) ?? 1
         firstOccurrenceAt = try container.decodeIfPresent(Date.self, forKey: .firstOccurrenceAt) ?? timestamp
-        kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .bell
-        reminderSetAt = try container.decodeIfPresent(Date.self, forKey: .reminderSetAt)
-        reminderDueAt = try container.decodeIfPresent(Date.self, forKey: .reminderDueAt)
     }
 }
 
@@ -204,22 +179,14 @@ public final class BellFeedStore {
     /// mark on an already-seen entry) doesn't invalidate them. Each is written
     /// only as a whole value and only when it differs.
     public private(set) var unseenCount: Int = 0
-    /// Every read row, of any kind: what Clear Read would remove.
+    /// Every read row: what Clear Read would remove.
     public private(set) var readCount: Int = 0
-    /// Sessions with at least one unseen `.reminder` entry.
-    public private(set) var dueReminderSessionIDs: Set<UUID> = []
 
     private func refreshAggregates() {
-        var unseen = 0
-        var due: Set<UUID> = []
-        for entry in entries where !entry.seen {
-            unseen += 1
-            if entry.kind == .reminder { due.insert(entry.sessionID) }
-        }
+        let unseen = entries.lazy.filter { !$0.seen }.count
         if unseen != unseenCount { unseenCount = unseen }
         let read = entries.count - unseen
         if read != readCount { readCount = read }
-        if due != dueReminderSessionIDs { dueReminderSessionIDs = due }
     }
 
     /// Entry ids that have an `event` record in the capture log (#0523), and
@@ -229,8 +196,8 @@ public final class BellFeedStore {
     public internal(set) var capturedEntryIDs: Set<UUID> = []
     public internal(set) var ratingVerdicts: [UUID: BellRatingVerdict] = [:]
 
-    /// Called with the ids of rows that left the Feed: Tab or Reminder
-    /// removal, Clear Read, or cap eviction. Not called for a collapse (same row id) or
+    /// Called with the ids of rows that left the Feed: Tab removal, Clear
+    /// Read, or cap eviction. Not called for a collapse (same row id) or
     /// `updateSummary`. Set by `AppStateStore` to cancel those rows'
     /// summarizations.
     @ObservationIgnored var onEntriesRemoved: ((Set<UUID>) -> Void)?
@@ -321,12 +288,11 @@ public final class BellFeedStore {
     /// removed by `WindowRuntime.visitFocusedTab` on a real visit.
     @discardableResult
     public func recordOrCollapse(_ entry: BellFeedEntry, collapseWindow: TimeInterval = collapseWindow) -> RecordOutcome {
-        guard entry.tabID != BellFeedEntry.systemID, entry.kind == .bell else {
+        guard entry.tabID != BellFeedEntry.systemID else {
             return .recorded(record(entry))
         }
         guard let matchIndex = entries.firstIndex(where: { candidate in
             !candidate.seen
-                && candidate.kind == .bell
                 && candidate.tabID == entry.tabID
                 && candidate.message == entry.message
                 && abs(entry.timestamp.timeIntervalSince(candidate.firstOccurrenceAt)) <= collapseWindow
@@ -381,41 +347,20 @@ public final class BellFeedStore {
         entries.lazy.filter { !$0.seen && $0.sessionID == sessionID }.count
     }
 
-    /// Unseen `.reminder` entries for one Session.
-    public func unseenReminderEntries(forSessionID sessionID: UUID) -> [BellFeedEntry] {
-        entries.filter { $0.kind == .reminder && $0.sessionID == sessionID && !$0.seen }
-    }
-
-    /// Drops every `.reminder` entry for a Session by Session id, so none
-    /// outlives the Session even if the Tab id it recorded no longer
-    /// resolves to one of the Session's Tabs.
-    @discardableResult
-    public func removeReminderEntries(forSessionID sessionID: UUID) -> [BellFeedEntry] {
-        let removed = entries.filter { $0.kind == .reminder && $0.sessionID == sessionID }
-        // Runs on every visit; skip the no-match write, which would notify.
-        guard !removed.isEmpty else { return [] }
-        entries.removeAll { $0.kind == .reminder && $0.sessionID == sessionID }
-        pruneRatingState()
-        onEntriesRemoved?(Set(removed.map(\.id)))
-        return removed
-    }
-
     @discardableResult
     public func removeEntries(matchingTabIDs tabIDs: Set<UUID>) -> [BellFeedEntry] {
         guard !tabIDs.isEmpty else { return [] }
-        // A Reminder belongs to its Session, not to the Tab that happened to
-        // be active when it fired; it is purged by Session id instead.
-        let removed = entries.filter { $0.kind == .bell && tabIDs.contains($0.tabID) }
+        let removed = entries.filter { tabIDs.contains($0.tabID) }
         // `removeAll` writes even on no match, and an @Observable write
         // notifies; this runs on every terminal click (#0556).
         guard !removed.isEmpty else { return [] }
-        entries.removeAll { $0.kind == .bell && tabIDs.contains($0.tabID) }
+        entries.removeAll { tabIDs.contains($0.tabID) }
         pruneRatingState()
         onEntriesRemoved?(Set(removed.map(\.id)))
         return removed
     }
 
-    /// Clear Read: drops every read row, whatever its kind.
+    /// Clear Read: drops every read row.
     @discardableResult
     public func removeReadEntries() -> [BellFeedEntry] {
         let removed = entries.filter(\.seen)

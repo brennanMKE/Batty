@@ -401,43 +401,55 @@ struct BellFeedVisitTests {
         #expect(f.store.bellDecisionHistory.records == before)
     }
 
-    // MARK: - Reminder rows (#0514)
+    // MARK: - Fired Reminders (#0514, #0639)
 
-    /// A Reminder row that names `paneB`'s Tab, as one fired while `paneB` was
-    /// focused, plus one on `home`; focus then moves to `paneA`.
-    private func addReminders(_ f: Fixture) -> (target: UUID, home: UUID) {
-        func reminder(_ session: SessionRuntime, _ pane: PaneRuntime) -> BellFeedEntry {
-            BellFeedEntry(timestamp: Date(), windowID: f.window.id.value, sessionID: session.id,
-                          paneID: pane.id, tabID: pane.activeTabID, surfaceID: UUID(),
-                          message: "Reminder", kind: .reminder)
+    /// A fired Reminder on `target`, as one fired while `paneB` was focused,
+    /// plus one on `home`; focus then moves to `paneA`.
+    private func addFiredReminders(_ f: Fixture) -> (target: UUID, home: UUID) {
+        func fired(_ session: SessionRuntime) -> FiredReminder {
+            let now = Date()
+            return FiredReminder(id: UUID(), sessionID: session.id, windowID: f.window.id.value,
+                                 note: "Reminder", createdAt: now, dueAt: now, firedAt: now)
         }
-        let onTarget = reminder(f.target, f.paneB)
-        let onHome = reminder(f.home, f.home.tree.allPanes[0])
-        f.store.bellFeed.entries.insert(contentsOf: [onTarget, onHome], at: 0)
+        let onTarget = fired(f.target)
+        let onHome = fired(f.home)
+        f.store.firedReminders.record(onTarget)
+        f.store.firedReminders.record(onHome)
         f.target.tree.focusedPaneID = f.paneA.id
         return (onTarget.id, onHome.id)
     }
 
-    @Test func visitingASessionRemovesItsReminderRowWhateverTabItNamed() throws {
+    @Test func visitingASessionRemovesItsFiredReminder() throws {
         let f = try makeFixture()
-        let ids = addReminders(f)
+        let ids = addFiredReminders(f)
         f.window.selectSessionFromSidebar(id: f.target.id)
-        let remaining = Set(f.store.bellFeed.entries.map(\.id))
+        let remaining = Set(f.store.firedReminders.items.map(\.id))
         #expect(!remaining.contains(ids.target))
         #expect(remaining.contains(ids.home), "another Session's Reminder stays")
-        let bells = Set(f.store.bellFeed.entries.filter { $0.kind == .bell && $0.tabID != BellFeedEntry.systemID }.compactMap(\.message))
+        let bells = Set(f.store.bellFeed.entries.filter { $0.tabID != BellFeedEntry.systemID }.compactMap(\.message))
         #expect(bells == ["a2", "b1", "b1 read"], "the inactive Tab's and the other Pane's bell rows stay")
         #expect(f.footprintRowPresent)
     }
 
-    @Test func aFallbackSelectionLeavesTheReminderRowSeen() throws {
+    @Test func aFallbackSelectionMarksTheFiredReminderRead() throws {
         let f = try makeFixture()
-        let ids = addReminders(f)
+        let ids = addFiredReminders(f)
         f.window.selectedSessionID = f.target.id
         f.window.markActiveTabSeen()
-        let row = try #require(f.store.bellFeed.entries.first { $0.id == ids.target })
-        #expect(row.seen)
-        let home = try #require(f.store.bellFeed.entries.first { $0.id == ids.home })
+        let item = try #require(f.store.firedReminders.items.first { $0.id == ids.target })
+        #expect(item.seen)
+        let home = try #require(f.store.firedReminders.items.first { $0.id == ids.home })
         #expect(!home.seen)
+    }
+
+    @Test func clearReadBellsLeavesFiredRemindersAlone() throws {
+        let f = try makeFixture()
+        let ids = addFiredReminders(f)
+        _ = f.store.firedReminders.markSeen(id: ids.home)
+
+        f.store.clearReadBells()
+
+        #expect(Set(f.store.firedReminders.items.map(\.id)) == [ids.target, ids.home], "a read fired Reminder is not a read bell")
+        #expect(!f.store.bellFeed.entries.contains { $0.message == "b1 read" })
     }
 }

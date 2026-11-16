@@ -189,6 +189,7 @@ public final class WindowRuntime {
 
     // Injected from AppStateStore — global services shared across windows.
     @ObservationIgnored let bellFeed: BellFeedStore
+    @ObservationIgnored let firedReminders: FiredReminderStore
     @ObservationIgnored let nameCache: SessionNameCache
 
     /// Palette index most recently handed out by `nextColorIndex()`, so
@@ -202,10 +203,12 @@ public final class WindowRuntime {
         id: WindowID = WindowID(),
         sessions: [SessionRuntime] = [],
         bellFeed: BellFeedStore,
+        firedReminders: FiredReminderStore = FiredReminderStore(),
         nameCache: SessionNameCache
     ) {
         self.id = id
         self.bellFeed = bellFeed
+        self.firedReminders = firedReminders
         self.nameCache = nameCache
         if sessions.isEmpty {
             // First-ever Session in an empty window: least-used-with-no-
@@ -418,12 +421,12 @@ public final class WindowRuntime {
         sessionClosingHandler?(id)
         // Silent: closing the Session was the user's own action, so a
         // pending Reminder is cancelled without a notification, and a fired
-        // one's feed entries are purged with the rest of the Session's.
+        // one leaves the fired list.
         if session.reminder != nil {
             session.reminder = nil
             reminderCancelHandler?(id)
         }
-        bellFeed.removeReminderEntries(forSessionID: id)
+        firedReminders.remove(sessionID: id)
         if reminderBarSessionID == id { reminderBarSessionID = nil }
         for tabID in tabIDsToClear {
             TerminalHostStore.shared.releaseTerminalView(forTabID: tabID)
@@ -1304,10 +1307,6 @@ public final class WindowRuntime {
     }
 
     public func jumpToBellEntry(_ entry: BellFeedEntry) {
-        if entry.kind == .reminder {
-            jumpToReminderEntry(entry)
-            return
-        }
         guard let session = sessions.first(where: { $0.id == entry.sessionID }),
               let pane = session.tree.allPanes.first(where: { $0.id == entry.paneID }),
               pane.tabs.contains(where: { $0.id == entry.tabID })
@@ -1326,11 +1325,11 @@ public final class WindowRuntime {
 
     /// A Reminder returns the user to the Session as they left it, so unlike
     /// a bell it selects the Session and leaves the focused Pane and active
-    /// Tab alone: the Pane and Tab the entry recorded are only whatever was
+    /// Tab alone: a Reminder belongs to the Session, not to whatever was
     /// focused when it fired.
-    private func jumpToReminderEntry(_ entry: BellFeedEntry) {
-        guard sessions.contains(where: { $0.id == entry.sessionID }) else { return }
-        selectedSessionID = entry.sessionID
+    public func jumpToReminderSession(_ sessionID: UUID) {
+        guard sessions.contains(where: { $0.id == sessionID }) else { return }
+        selectedSessionID = sessionID
         visitFocusedTab()
     }
 
@@ -1338,14 +1337,14 @@ public final class WindowRuntime {
 
     /// A user visit to the focused Tab of the selected Session: marks its
     /// rows seen, then removes every row for that Tab from the Bell Feed,
-    /// along with every Reminder row of the Session (#0556). Call only from event-origin navigation (Sidebar clicks,
+    /// and the Session's fired Reminder from its list (#0556). Call only from event-origin navigation (Sidebar clicks,
     /// Cmd-1..9, terminal and chip clicks, Pane/Tab navigation commands,
     /// Open Quickly, Feed jumps, CLI focus verbs, Open Project on an open
     /// Project), never from view-update code: focus that lands somewhere
     /// because something closed goes through `markActiveTabSeen()` only.
     public func visitFocusedTab() {
         guard let session = selectedSession else { return }
-        bellFeed.removeReminderEntries(forSessionID: session.id)
+        firedReminders.remove(sessionID: session.id)
         guard let pane = session.focusedTerminalPane else { return }
         markActiveTabSeen()
         bellFeed.removeEntries(matchingTabIDs: [pane.activeTabID])
@@ -1357,7 +1356,7 @@ public final class WindowRuntime {
     /// moves, when no `passiveFocusHandler` is installed) and from
     /// `visitFocusedTab()`. Real visits go through `visitFocusedTab()` (#0556).
     public func markActiveTabSeen() {
-        markSelectedSessionReminderEntriesSeen()
+        markSelectedSessionFiredReminderSeen()
         // `focusedTerminalPane`, not `focusedPaneAnyKind` (#0332 B3): this
         // reads `.activeTabID` (and, below, `.tabs`) to clear bell entries
         // for the now-focused tab. A non-terminal pane's placeholder Tab
@@ -1385,11 +1384,9 @@ public final class WindowRuntime {
     /// Selecting a Session is how the user acknowledges its due Reminder.
     /// Runs before `markActiveTabSeen`'s Pane guard, because a Reminder
     /// belongs to the Session, not to whichever Pane is focused.
-    private func markSelectedSessionReminderEntriesSeen() {
+    private func markSelectedSessionFiredReminderSeen() {
         guard let sessionID = selectedSessionID else { return }
-        for entry in bellFeed.unseenReminderEntries(forSessionID: sessionID) {
-            _ = bellFeed.markSeen(id: entry.id)
-        }
+        firedReminders.markSeen(sessionID: sessionID)
     }
 
     // MARK: - Internal helpers (accessible within BattyKit module)
@@ -1447,8 +1444,6 @@ public final class WindowRuntime {
     /// Non-collapsed entries have `repeatCount == 1`, so this is a
     /// straight extension of the pre-#0298 behavior, not a change to it.
     func decrementUnseen(for entry: BellFeedEntry) {
-        // A Reminder never incremented a counter.
-        guard entry.kind == .bell else { return }
         let amount = max(1, entry.repeatCount)
         for session in sessions where session.id == entry.sessionID {
             session.unseenBellCount = max(0, session.unseenBellCount - amount)

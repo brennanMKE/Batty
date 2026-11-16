@@ -22,7 +22,7 @@ struct CloseOtherTabsBellCleanupTests {
 
         var bellMessages: Set<String> {
             Set(store.bellFeed.entries
-                .filter { $0.kind == .bell && $0.tabID != BellFeedEntry.systemID }
+                .filter { $0.tabID != BellFeedEntry.systemID }
                 .compactMap(\.message))
         }
 
@@ -30,8 +30,8 @@ struct CloseOtherTabsBellCleanupTests {
             store.bellFeed.entries.contains { $0.tabID == BellFeedEntry.systemID }
         }
 
-        var reminderRowPresent: Bool {
-            store.bellFeed.entries.contains { $0.id == reminderID }
+        var firedReminderPresent: Bool {
+            store.firedReminders.items.contains { $0.id == reminderID }
         }
 
         var keptTab: TabRuntime? { paneA.tabs.first { $0.id == kept } }
@@ -42,7 +42,7 @@ struct CloseOtherTabsBellCleanupTests {
             #expect(paneA.unseenBellCount == 3)
             #expect(target.unseenBellCount == 4)
             #expect(keptTab?.unseenBellCount == 1)
-            #expect(reminderRowPresent)
+            #expect(firedReminderPresent)
             #expect(footprintRowPresent)
         }
 
@@ -79,10 +79,10 @@ struct CloseOtherTabsBellCleanupTests {
         store.recordCLINotification(tabID: v2, title: "v2", body: nil, playSound: false)
         store.recordCLINotification(tabID: kept, title: "kept", body: nil, playSound: false)
         store.recordCLINotification(tabID: b1, title: "b1", body: nil, playSound: false)
-        let reminder = BellFeedEntry(timestamp: Date(), windowID: window.id.value, sessionID: target.id,
-                                     paneID: paneA.id, tabID: v1, surfaceID: UUID(),
-                                     message: "Reminder", kind: .reminder)
-        store.bellFeed.entries.insert(reminder, at: 0)
+        let now = Date()
+        let reminder = FiredReminder(id: UUID(), sessionID: target.id, windowID: window.id.value,
+                                     note: "Reminder", createdAt: now, dueAt: now, firedAt: now)
+        store.firedReminders.record(reminder)
         store.recordFootprintWarning(footprintBytes: 5_000_000_000, step: 1)
 
         let f = Fixture(store: store, window: window, target: target, paneA: paneA,
@@ -99,10 +99,10 @@ struct CloseOtherTabsBellCleanupTests {
         f.expectClosed()
     }
 
-    @Test func closeOtherTabsKeepsReminderAndFootprintRows() throws {
+    @Test func closeOtherTabsKeepsTheFiredReminderAndFootprintRow() throws {
         let f = try makeFixture()
         f.store.requestCloseOtherTabs(paneID: f.paneA.id, keepingTabID: f.kept)
-        #expect(f.reminderRowPresent)
+        #expect(f.firedReminderPresent)
         #expect(f.footprintRowPresent)
     }
 

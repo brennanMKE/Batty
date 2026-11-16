@@ -62,7 +62,7 @@ runs `AppStateStore.markAllBellsSeen()`: every entry is flipped to seen
 (read) and every session/pane/tab aggregate is zeroed in one shot. The rows
 stay. **Clear Read**, shown while `readCount > 0`, runs
 `AppStateStore.clearReadBells()` → `BellFeedStore.removeReadEntries()`: every
-read row of any kind leaves the feed, unread rows stay, and no counter
+read row leaves the feed, unread rows stay, and no counter
 changes because a read row has already left them. Window → Mark All Bells
 Read and Clear Read Bells, and the Command Palette rows of the same names,
 run the same two calls.
@@ -102,24 +102,24 @@ its own emitting anything. It goes over XPC (not the fire-and-forget
 see `AppStateStore.recordCLINotification(tabID:title:body:playSound:)`
 in section 10. It always resolves to a real tab (an explicit `--tab`,
 `BATTY_TAB_ID` env, or the app's focused tab) and records a plain
-`kind == .bell` `BellFeedEntry`, the same as a BEL/OSC-9 entry
-(`recordCLINotification` passes no `kind:`, so the default applies).
+`BellFeedEntry`, the same as a BEL/OSC-9 entry.
 Nothing marks a CLI-originated row except its message text (`title`, or
 `title\nbody` when `--body` is given).
 
 A fourth source is not a terminal event at all: a **Session Reminder**
 (#0514), a timer the user set on a Session. `ReminderScheduler` fires it
-into `AppStateStore.fireReminder(_:)`, which records a `BellFeedEntry`
-with `kind == .reminder` (`message` is the note, `reminderSetAt` and
-`reminderDueAt` feed the row's "Set ... ago" / "Due ..." line) and calls
-`BellNotifying.postReminder(entry:reminderID:projectID:sessionTitle:)`. It differs from the
-three sources above in its gating:
+into `AppStateStore.fireReminder(_:)`, which records a `FiredReminder`
+(Reminder id, Session id, Window id, note, set / due / fired times, `seen`)
+in `AppStateStore.firedReminders` (`FiredReminderStore`) and calls
+`BellNotifying.postReminder(_:projectID:sessionTitle:)`. A fired Reminder
+**never reaches the Bell Feed** (#0639) and differs from the three sources
+above:
 
-- The entry is always recorded **unseen**, even when the Session is
-  selected and Batty is frontmost, and is recorded with `record(_:)`, never
-  `recordOrCollapse`, so two Reminders never merge.
-- It bumps **no** `unseenBellCount`, and `decrementUnseen(for:)` ignores
-  `.reminder` entries, so clearing one never lowers a bell counter.
+- It is always recorded **unread**, even when the Session is selected and
+  Batty is frontmost. A Session has at most one fired Reminder:
+  `FiredReminderStore.record(_:)` replaces the Session's older item.
+- It bumps **no** `unseenBellCount` and never lights the toolbar bell
+  (`bellFeed.unseenCount` counts bells only).
 - **Per-Session mute does not silence it**, and neither does the
   frontmost-and-seen suppression in `BellNotifier.evaluateShouldPost`. Only
   the app-wide "Show system notifications" setting (checked by
@@ -127,19 +127,24 @@ three sources above in its gating:
   apply.
 - It is not recorded in `BellDecisionHistory`, which logs the terminal-bell
   gates only.
-- Clicking the entry or its notification runs the Session-level jump:
-  `WindowRuntime.jumpToBellEntry` selects the Session and leaves
-  `focusedPaneID` and the active Tab untouched, then visits it
-  (`visitFocusedTab`), which removes the entry. Any real visit to the
-  Session removes its Reminder rows, whatever Tab they recorded
-  (`removeReminderEntries(forSessionID:)`, #0556). A fallback selection
-  (anything that only runs `markActiveTabSeen`) marks them seen and keeps
-  them, and Mark All Read marks them seen.
-- Closing a Tab or Pane does **not** purge a `.reminder` entry, because
-  the Tab it recorded is only whatever was active when it fired
-  (`removeEntries(matchingTabIDs:)` skips them). Closing the Session or its
-  Window purges them by Session id
-  (`BellFeedStore.removeReminderEntries(forSessionID:)`).
+- The notification's `userInfo` carries the Reminder id, Session id,
+  project id and note, and no Bell Feed entry id. A tap routes to
+  `NotificationTapRoute.openReminderSession(sessionID)` while the Session
+  is live: `AppStateStore.openReminderSession(sessionID:)` makes its Window
+  key and calls `WindowRuntime.jumpToReminderSession(_:)`, which selects the
+  Session, leaves `focusedPaneID` and the active Tab untouched, and visits it.
+- **Leaves the list** on any real visit to the Session (`visitFocusedTab`
+  calls `firedReminders.remove(sessionID:)`, #0556), on Remind Again that
+  sets a new pending Reminder, on Done (`markFiredReminderDone(id:)`), and
+  when its Session (`WindowRuntime.removeSession`) or Window
+  (`AppStateStore.removeWindow`) closes. Closing a Tab or Pane keeps it.
+- **Becomes read** on a fallback selection (anything that only runs
+  `markActiveTabSeen`, via `markSelectedSessionFiredReminderSeen`), on Mark
+  All Read (`markAllRemindersRead()`), and on a Remind Again that is ignored
+  because the Session has a newer pending Reminder (#0633).
+  `clearReadReminders()` removes read ones. None of these touch the Bell
+  Feed, and the Bell Feed's Mark All Read and Clear Read never touch fired
+  Reminders.
 
 **Scheduled with macOS (#0566).** A pending Reminder is also scheduled as a
 `UNNotificationRequest`, so its notification still arrives after a quit,
@@ -183,7 +188,8 @@ relaunch or crash. The Session itself does not come back.
   post uses the fire-time title; only a post-quit delivery shows the older
   one.
 - **Taps.** `AppStateStore.handleNotificationTap` routes a known Bell Feed
-  entry to the jump; otherwise a `projectID` that still exists opens or
+  entry to the jump; otherwise a Reminder whose Session is still live opens
+  that Session (`.openReminderSession`); otherwise a `projectID` that still exists opens or
   focuses that Project (`requestOpenProject`, trust prompt included);
   otherwise Batty is only activated and a `notice` is logged. The notifier
   and its delegate are installed in `applicationWillFinishLaunching`
@@ -266,12 +272,14 @@ A few important properties of this flow:
   evicted when the cap is exceeded; see section 5 on auto-clear for
   how this interacts with `markActiveTabSeen()`.
 - **Views read the Feed's stored aggregates, not `entries`.**
-  `unseenCount` and `dueReminderSessionIDs` are stored, refreshed from
-  `entries`' `didSet`, and written only when their value changes, so the
-  toolbar bell, the Bell Feed menu and the sidebar rows don't re-render
-  on a collapse, a summary or other Feed writes that change neither.
-  Only `BellFeedView` (and the due-Reminder alarm leaf for its tooltip)
-  reads `entries`.
+  `unseenCount` and `readCount` are stored, refreshed from `entries`'
+  `didSet`, and written only when their value changes, so the toolbar
+  bell, the Bell Feed menu and the sidebar rows don't re-render on a
+  collapse, a summary or other Feed writes that change neither. Only
+  `BellFeedView` reads `entries`. `FiredReminderStore` keeps its own
+  stored `unseenCount`, `readCount` and `unseenSessionIDs` the same way;
+  the Sidebar's Reminder glyph reads `unseenSessionIDs`, and only the
+  alarm leaf's tooltip reads `items`.
 
 Cross-references: see `BellFeedStore.record(_:)`,
 `AppStateStore.recordBell(forTabID:count:at:surfaceID:)`,
@@ -416,10 +424,7 @@ Wired in:
 | `WindowRuntime.removeSession(id:)` | Union of every `tab.id` across every pane in the session |
 | `WindowRuntime.tearDownForWindowClose()` (called by `RootWindowView.windowWillClose`) | Every Tab in the Window |
 
-Reminder rows are not matched by Tab id; they are purged by Session id
-instead (`removeReminderEntries(forSessionID:)`, #0514).
-
-Any row leaving the Feed (a close, a visit's prune, a Reminder purge, or cap
+Any row leaving the Feed (a close, a visit's prune, Clear Read, or cap
 eviction) cancels its in-flight AI summarization: `BellFeedStore` reports the
 removed row ids through `onEntriesRemoved`, and `AppStateStore` cancels those
 rows' summarization `Task`s (#0564).
@@ -472,8 +477,8 @@ Behavior contract:
 - **Unmuting restores nothing.** Dropped bells were never stored. Bells
   after the unmute behave normally.
 - **Reminders are exempt.** `fireReminder` doesn't go through
-  `routeRealTabBell`, so a muted Session's Reminder still adds its row
-  and posts its banner.
+  `routeRealTabBell`, so a muted Session's Reminder still adds its fired
+  Reminder and posts its banner.
 - **Sound is not gated by mute.** libghostty plays its bell sound
   internally and there is no app-level gate at the per-session
   level in v1. The app-wide "Play sound" toggle in
@@ -560,6 +565,7 @@ the tab doesn't need a delayed banner for the same bell.
 |---|---|
 | [`../BattyKit/Sources/BattyKit/BellFeedStore.swift`](../BattyKit/Sources/BattyKit/BellFeedStore.swift) | The entry log. `@Observable`, capped at 200, owns `record`, `markSeen`, `markAllSeen`, `unseenCount(forTabID:/forPaneID:/forSessionID:)`, `removeEntries(matchingTabIDs:)`. Also declares `Notification.Name.battyToggleBellFeed`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift`](../BattyKit/Sources/BattyKit/Runtime/BellNotifier.swift) | `BellNotifying` protocol and the `UNUserNotificationCenter` implementation. Handles auth, the "Show system notifications" gate, the foreground-and-seen suppression, scheduling and removing Reminder requests (#0566), and the delegate's `onTap` / `presentation` closures, which `AppStateStore.installNotifier()` wires to `handleNotificationTap` and `presentNotification`. |
+| [`../BattyKit/Sources/BattyKit/Runtime/FiredReminderStore.swift`](../BattyKit/Sources/BattyKit/Runtime/FiredReminderStore.swift) | Fired Session Reminders (#0639): `FiredReminder` and the observable `FiredReminderStore`, one item per Session, with stored unread aggregates. Separate from the Bell Feed. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift`](../BattyKit/Sources/BattyKit/Runtime/ScheduledReminderNotification.swift) | Pure value types for #0566: the scheduled request (identifier, trigger components, `userInfo`), `NotificationTapPayload`, `NotificationTapRoute`, and the `shouldPresent` rule. |
 | [`../BattyKit/Sources/BattyKit/AppStateStore.swift`](../BattyKit/Sources/BattyKit/AppStateStore.swift) | The router. `wireBellReporting(for:)` (#0561), `recordBell`, `recordDesktopNotification`, `recordCLINotification` (#0284, the `batty notify` XPC verb's entry point), `focusedTabIDFallback` (#0284), `markBellSeen`, `markAllBellsSeen`, `clearReadBells` (#0638), `jumpToBellEntry`, `WindowRuntime.visitFocusedTab` (#0556, the visit path), `closeTab` / `removeSession` (thin routers; cleanup runs in `WindowRuntime.tearDownClosingTabs(_:)`), and the private `locate(tabID:)` / `propagateUnseen` / `postNotification` / `decrementUnseen` / `cleanUpBellState`. |
 | [`../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift`](../BattyKit/Sources/BattyKit/Runtime/ReminderScheduler.swift), [`AppStateStore+Reminders.swift`](../BattyKit/Sources/BattyKit/Runtime/AppStateStore+Reminders.swift) | Session Reminders (#0514): the single-loop scheduler on an injected `SchedulingClock`, and `setReminder` / `cancelReminder` / `fireReminder`. |
