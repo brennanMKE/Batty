@@ -385,7 +385,7 @@ and its gating are in `notifications.md` §2.
 **Entry points** (all act on one Session, and all open the Quick Reminder
 bar, #0631): ⇧⌘R (`ShortcutAction.remindMe`); Session menu → Remind Me…
 (Edit Reminder… and Cancel Reminder while one is pending); the same items in
-the Sidebar row's context menu; a click on the row's Reminder lines; and the
+the Sidebar row's context menu; and the
 Command Palette's Remind Me… row, which closes the palette and then opens the
 bar's sheet (swapped into the palette in place, the bar's field never took
 keyboard focus), plus Cancel Reminder while one is pending. No path sets a Reminder without the text
@@ -408,15 +408,13 @@ do not commit. The Tomorrow time is stored as
 until set; only a Pick Date & Time… instant on the next calendar day changes
 it, never `batty session remind`, and there is no Settings row.
 
-**Badge and lines.** A pending Reminder shows a `clock` button on the Sidebar
-row that opens the bar in edit mode; a fired one shows `alarm.fill` until its
-entry is seen. While either is showing, the row grows by two lines (the
-Reminder's text, and "in N min" / "due N min ago" drawn by
-`TimelineView(.everyMinute)`). The lines open edit mode with a tap gesture,
-not a `Button`: a right-click inside a `Button` there opened the row's context
-menu with no parent in the accessibility tree; the outline's `heightOfRowByItem` answers from
-the coordinator's snapshot, and `apply` calls `noteHeightOfRows` for rows whose
-state flipped. The Sidebar cell merges all accessibility children into one element
+**Sidebar glyph.** A pending Reminder shows `clock` (`.secondary`) on the
+Sidebar row; a fired one shows `alarm.fill` in the row accent until its entry
+is seen (#0637). It is a plain image in a fixed 16 x 16 frame with a tooltip,
+not a button, in the row's trailing badge area; nothing is drawn under or
+beside the title. The outline has a uniform row height (`rowSizeStyle =
+.medium`) and its delegate implements no per-row height, so a Reminder never
+changes a row's height. The Sidebar cell merges all accessibility children into one element
 (concatenating identifiers and values), so the badge is hidden from
 accessibility and its state is appended to the row's own
 `session-row.<title>` value instead: `, reminder pending: <time and note>` or
@@ -452,8 +450,8 @@ Neither exists otherwise.
 | Context menu | `menu.sidebar.remind.<title>` on the first item (UI tests find "Remind Me…" inside the menu holding "Reset Name", because the Session menu has its own item that acts on the selected Session) |
 
 `BattyUITests/SessionReminderTests.swift` covers the bar from the context
-menu, ⇧⌘R, the Session menu and the palette, a right-click on the Reminder lines, ⌘-digits, Pick Date & Time…,
-edit mode, Remove, the Sidebar lines, cancel, fire-and-jump with a
+menu, ⇧⌘R, the Session menu and the palette, ⌘-digits, Pick Date & Time…,
+edit mode, Remove, the fixed Sidebar row height, cancel, fire-and-jump with a
 non-default focused Pane, and close.
 
 ---

@@ -360,41 +360,35 @@ nonisolated final class SessionReminderTests: XCTestCase {
         XCTAssertTrue(state?.hasSuffix("\u{2014} replaced") == true, "Typing must replace the suggestion, got: \(String(describing: state))")
     }
 
-    /// Clicking the Reminder lines under a Session's title opens the bar in
-    /// edit mode.
+    /// A Reminder adds only a fixed-size glyph to its Sidebar row: the row
+    /// keeps its height while the Reminder is pending, after it fires and
+    /// once it is acknowledged.
     @MainActor
-    func testClickingTheSidebarReminderLinesOpensEditMode() throws {
-        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+    func testSidebarRowHeightDoesNotChangeWithAReminder() throws {
+        let app = launch(script: [
+            ["intent": "createSession", "name": "Alpha"],
+            ["intent": "createSession", "name": "Beta"],
+        ])
         defer { app.terminate() }
 
-        openBarWithShortcut(in: app)
-        setReminder("line click", in: app)
+        let baseline = BattyUITestHarness.sessionRow(named: "Alpha", in: app).frame.height
+        XCTAssertGreaterThan(baseline, 0)
+        func rowHeight() -> CGFloat { BattyUITestHarness.sessionRow(named: "Alpha", in: app).frame.height }
+
+        openBarFromContextMenu(onRowNamed: "Alpha", in: app)
+        app.typeText("height")
+        app.typeKey("1", modifierFlags: .command)
+        XCTAssertTrue(waitFor({ !self.bar(in: app).exists }, timeout: 5), "⌘1 must commit and close the bar")
         XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
+        XCTAssertEqual(rowHeight(), baseline, accuracy: 0.5, "A pending Reminder must not change the row height")
 
-        let row = BattyUITestHarness.sessionRow(named: "Alpha", in: app)
-        row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).click()
-        XCTAssertTrue(bar(in: app).waitForExistence(timeout: 5), "Clicking the Reminder lines must open the bar")
-        XCTAssertEqual(barText(in: app).value as? String, "line click")
-        XCTAssertTrue(barRow("keep", in: app).exists, "The bar must open in edit mode")
-    }
+        advanceClock("five minutes", in: app)
+        XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == "reminder due" }, timeout: 5))
+        XCTAssertEqual(rowHeight(), baseline, accuracy: 0.5, "A fired Reminder must not change the row height")
 
-    /// The row's context menu covers the whole row: a right-click on the
-    /// Reminder lines under the title opens it too.
-    @MainActor
-    func testRightClickOnTheReminderLinesOpensTheContextMenu() throws {
-        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
-        defer { app.terminate() }
-
-        openBarWithShortcut(in: app)
-        setReminder("right click", in: app)
-        XCTAssertTrue(waitFor({ self.hasPendingReminder("Alpha", in: app) }, timeout: 5))
-
-        BattyUITestHarness.sessionRow(named: "Alpha", in: app)
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)).rightClick()
-        let cancel = rowContextMenu(in: app).menuItems["Cancel Reminder"].firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 5), "A right-click on the Reminder lines must open the row's context menu")
-        cancel.click()
+        selectRow("Alpha", in: app)
         XCTAssertTrue(waitFor({ self.reminderState("Alpha", in: app) == nil }, timeout: 5))
+        XCTAssertEqual(rowHeight(), baseline, accuracy: 0.5, "An acknowledged Reminder must not change the row height")
     }
 
     /// Cancel Reminder removes the badge, and the clock passing afterwards

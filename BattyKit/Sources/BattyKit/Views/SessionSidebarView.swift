@@ -345,33 +345,18 @@ private struct SessionSidebarRow: View {
         // "-". So the row, Reminder badge included, hides its children and
         // states its own label and value; the badge's state rides on that
         // value.
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 4) {
-                SessionRow(
-                    session: session,
-                    store: store,
-                    windowRuntime: windowRuntime,
-                    accent: accent,
-                    onRename: onRename,
-                    onTheme: onTheme,
-                    onSetColor: onSetColor,
-                    onBackground: onBackground
-                )
-                ReminderBadge(
-                    session: session,
-                    store: store,
-                    accent: accent,
-                    onEdit: { ReminderActions.openBar(for: session, in: windowRuntime) }
-                )
-            }
-            if session.reminder != nil || store.bellFeed.dueReminderSessionIDs.contains(session.id) {
-                ReminderLines(
-                    session: session,
-                    store: store,
-                    accent: accent,
-                    onEdit: { ReminderActions.openBar(for: session, in: windowRuntime) }
-                )
-            }
+        HStack(spacing: 4) {
+            SessionRow(
+                session: session,
+                store: store,
+                windowRuntime: windowRuntime,
+                accent: accent,
+                onRename: onRename,
+                onTheme: onTheme,
+                onSetColor: onSetColor,
+                onBackground: onBackground
+            )
+            ReminderBadge(session: session, store: store, accent: accent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -441,107 +426,45 @@ private struct SessionRowIconView: View {
     }
 }
 
-/// The Sidebar row's Reminder marker. A pending Reminder shows a clock that
-/// opens the Quick Reminder bar in edit mode; a Reminder that has fired and whose feed
-/// entry is still unseen shows an accent alarm until the user acknowledges it.
-/// Nothing is drawn otherwise. Any relative time is computed when the
-/// tooltip is rendered; no timer writes observed state.
+/// The Sidebar row's Reminder marker: a plain image with a tooltip, never a
+/// button, in a fixed 16 x 16 frame so it never changes the row's height. A
+/// pending Reminder shows a clock; a Reminder that has fired and whose feed
+/// entry is still unseen shows an accent alarm until the user acknowledges
+/// it. Nothing is drawn, and no space reserved, otherwise. Only rows with a
+/// fired Reminder track `entries`, for the alarm's tooltip. Any relative
+/// time is computed when the tooltip is rendered; no timer writes observed
+/// state.
 private struct ReminderBadge: View {
+    private static let side: CGFloat = 16
+
     let session: SessionRuntime
     let store: AppStateStore
     let accent: Color?
-    let onEdit: () -> Void
 
     var body: some View {
         if let reminder = session.reminder {
-            Button(action: onEdit) {
-                Image(systemName: "clock")
-                    .imageScale(.small)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help(ReminderActions.detail(for: reminder, store: store) ?? "")
-            .accessibilityHidden(true)
+            Image(systemName: "clock")
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
+                .frame(width: Self.side, height: Self.side)
+                .help(ReminderActions.detail(for: reminder, store: store) ?? "")
+                .accessibilityHidden(true)
         } else if store.bellFeed.dueReminderSessionIDs.contains(session.id) {
-            DueReminderAlarm(store: store, sessionID: session.id, sessionTitle: session.title, accent: accent)
+            Image(systemName: "alarm.fill")
+                .imageScale(.small)
+                .foregroundStyle(accent ?? Color.accentColor)
+                .frame(width: Self.side, height: Self.side)
+                .help(dueHelp)
+                .accessibilityHidden(true)
         }
-    }
-}
-
-/// The Reminder's text and when it is due, under the Session's title. Only
-/// rows with a pending or due Reminder mount this, so only they track
-/// `entries`. The caption is drawn by `TimelineView` from its own date, so
-/// nothing writes observed state per minute. A click opens the Quick
-/// Reminder bar in edit mode.
-private struct ReminderLines: View {
-    let session: SessionRuntime
-    let store: AppStateStore
-    let accent: Color?
-    let onEdit: () -> Void
-
-    var body: some View {
-        let calendar = store.reminderScheduler.calendar
-        if let reminder = session.reminder, let due = reminder.fireDate(calendar: calendar) {
-            lines(text: reminder.displayText(sessionTitle: session.title), due: due, isDue: false)
-        } else if let entry = store.bellFeed.unseenReminderEntries(forSessionID: session.id).first {
-            lines(
-                text: SessionReminder.displayText(note: entry.message, sessionTitle: session.title),
-                due: entry.reminderDueAt ?? entry.timestamp,
-                isDue: true)
-        }
-    }
-
-    private func lines(text: String, due: Date, isDue: Bool) -> some View {
-        let calendar = store.reminderScheduler.calendar
-        let phrase = ReminderFormat.phrase(for: due, now: store.reminderScheduler.now, calendar: calendar)
-        // A tap gesture, not a Button: a right-click inside a Button here
-        // opened the row's context menu with no parent in the accessibility
-        // tree, so XCUITest could not reach its items.
-        return VStack(alignment: .leading, spacing: 1) {
-            Text(text)
-                .font(.callout)
-                .foregroundStyle(isDue ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            TimelineView(.everyMinute) { context in
-                Text(isDue
-                    ? ReminderFormat.dueLine(dueAt: due, now: context.date, calendar: calendar)
-                    : ReminderFormat.relativeLine(due: due, now: context.date, calendar: calendar))
-                    .font(.caption)
-                    .foregroundStyle(isDue ? AnyShapeStyle(accent ?? Color.accentColor) : AnyShapeStyle(.secondary))
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onEdit)
-        .padding(.leading, SidebarRowMetrics.reminderLinesIndent)
-        .help(String(localized: "Reminder \(phrase) \u{2014} \(text)"))
-    }
-}
-
-/// Only rows with a due Reminder mount this, so only they track `entries`
-/// for the tooltip text.
-private struct DueReminderAlarm: View {
-    let store: AppStateStore
-    let sessionID: UUID
-    let sessionTitle: String
-    let accent: Color?
-
-    var body: some View {
-        Image(systemName: "alarm.fill")
-            .imageScale(.small)
-            .foregroundStyle(accent ?? Color.accentColor)
-            .help(dueHelp)
-            .accessibilityHidden(true)
     }
 
     private var dueHelp: String {
-        guard let entry = store.bellFeed.unseenReminderEntries(forSessionID: sessionID).first else {
+        guard let entry = store.bellFeed.unseenReminderEntries(forSessionID: session.id).first else {
             return String(localized: "Reminder is due")
         }
         let due = entry.reminderDueAt ?? entry.timestamp
-        let text = SessionReminder.displayText(note: entry.message, sessionTitle: sessionTitle)
+        let text = SessionReminder.displayText(note: entry.message, sessionTitle: session.title)
         return String(localized: "Reminder at \(ReminderFormat.time(due, calendar: store.reminderScheduler.calendar)) \u{2014} \(text)")
     }
 }
@@ -588,8 +511,8 @@ private struct SessionRow: View {
     }
 }
 
-/// The Session row's context menu. Attached to the whole row, Reminder
-/// lines included, so a right-click anywhere on the row opens it.
+/// The Session row's context menu, attached to the whole row, so a
+/// right-click anywhere on the row opens it.
 private struct SessionRowMenu: View {
     let session: SessionRuntime
     let store: AppStateStore

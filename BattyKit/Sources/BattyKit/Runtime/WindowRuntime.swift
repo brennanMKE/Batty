@@ -137,7 +137,7 @@ public final class WindowRuntime {
     public var projectPickerShown: Bool = false
     /// The Session whose Quick Reminder bar is up in this window. Written by
     /// the event-origin entry points (`ReminderActions.openBar`: ⇧⌘R, the
-    /// Session menu, the Sidebar context menu and Reminder lines, the
+    /// Session menu, the Sidebar context menu, the
     /// Command Palette), the sheet binding's setter, and the bar's close.
     public var reminderBarSessionID: UUID?
     /// Projects waiting on the user's answer to the startup-command trust

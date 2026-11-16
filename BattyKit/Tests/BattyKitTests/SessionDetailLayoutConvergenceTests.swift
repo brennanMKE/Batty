@@ -261,11 +261,10 @@ struct SessionDetailLayoutConvergenceTests {
         await step("remove Session") { windowRuntime.removeSession(id: addedID) }
     }
 
-    /// A Session row grows by its Reminder lines while a Reminder is
-    /// pending or due (`SessionSidebarCoordinator.apply` →
-    /// `noteHeightOfRows`) and shrinks back when it is cancelled or
-    /// acknowledged. Each change must settle.
-    @Test func sidebarReminderLinesGrowAndShrinkConverge() async throws {
+    /// A Reminder's Sidebar glyph is a fixed-frame image, so setting,
+    /// cancelling, firing or acknowledging one re-renders one cell and
+    /// changes no row height. Each change must settle.
+    @Test func sidebarReminderGlyphTogglesConverge() async throws {
         let testDefaults = TestDefaults()
         defer { testDefaults.tearDown() }
         let store = AppStateStore(

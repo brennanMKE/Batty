@@ -200,7 +200,7 @@ nonisolated public enum ReminderFormat {
         return String(localized: "on \(absolute(date, calendar: calendar, locale: locale))")
     }
 
-    /// The Sidebar's caption for a pending Reminder: "in N min" up to an
+    /// A pending Reminder's relative time: "in N min" up to an
     /// hour (rounded up, at least 1), then the `phrase(for:now:)` wording.
     public static func relativeLine(
         due: Date,
@@ -216,7 +216,7 @@ nonisolated public enum ReminderFormat {
         return phrase(for: due, now: now, calendar: calendar, locale: locale)
     }
 
-    /// The Sidebar's caption for a due Reminder: "due just now", "due N min
+    /// A due Reminder's relative time: "due just now", "due N min
     /// ago", then "due at <time>" after an hour.
     public static func dueLine(
         dueAt: Date,

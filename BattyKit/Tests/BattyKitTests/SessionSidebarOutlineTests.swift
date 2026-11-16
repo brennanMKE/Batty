@@ -209,6 +209,61 @@ struct SessionSidebarOutlineTests {
         #expect(fixture.windowRuntime.sessions.map(\.title) != titles)
     }
 
+    /// #0637: a Reminder adds only a fixed-size glyph to its row, so every
+    /// Session row keeps one height through pending, fired and acknowledged.
+    @Test func sessionRowHeightIsTheSameWithAndWithoutAReminder() async throws {
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        let store = AppStateStore(
+            preferences: testDefaults.defaults,
+            reminderClock: TestClock(now: ReminderFixture.anchor),
+            reminderCalendar: { ReminderFixture.calendar() })
+        let fixture = SessionDetailFixture.standard(store: store)
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        let outline = try #require(await settled(fixture))
+        let target = windowRuntime.sessions[1]
+        let baseline = outline.rect(ofRow: outline.row(forItem: target)).height
+        #expect(baseline > 0)
+
+        func expectUniformHeights(_ label: String) {
+            for session in windowRuntime.sessions {
+                let height = outline.rect(ofRow: outline.row(forItem: session)).height
+                #expect(height == baseline, "\(label): \(session.title) is \(height), expected \(baseline)")
+            }
+        }
+        func step(_ label: String, _ change: () -> Void) async {
+            change()
+            _ = await fixture.probe.settle()
+            _ = await fixture.probe.settle()
+            expectUniformHeights(label)
+        }
+
+        expectUniformHeights("baseline")
+        await step("pending") {
+            store.setReminder(.after(minutes: 15), note: "check the deploy", forSessionID: target.id)
+        }
+        await step("fired") {
+            guard let reminder = target.reminder else { return }
+            store.fireReminder(ReminderFiring(
+                sessionID: target.id, reminder: reminder, dueDate: reminder.fireDate(calendar: ReminderFixture.calendar())!))
+        }
+        #expect(store.bellFeed.dueReminderSessionIDs == [target.id])
+        let entryID = try #require(store.bellFeed.entries.first?.id)
+        await step("acknowledged") { store.markBellSeen(id: entryID) }
+        #expect(store.bellFeed.dueReminderSessionIDs.isEmpty)
+    }
+
+    /// Any `heightOfRowByItem`, even one returning a constant, switches the
+    /// outline to per-row height queries.
+    @Test func outlineDelegateHasNoPerRowHeight() async throws {
+        let fixture = SessionDetailFixture.standard()
+        defer { fixture.tearDown() }
+        let outline = try #require(await settled(fixture))
+        let coordinator = try coordinator(of: outline)
+        #expect(!coordinator.responds(to: #selector(NSOutlineViewDelegate.outlineView(_:heightOfRowByItem:))))
+    }
+
     @Test func outlineCarriesTheSidebarIdentifier() async throws {
         let fixture = SessionDetailFixture.standard()
         defer { fixture.tearDown() }
