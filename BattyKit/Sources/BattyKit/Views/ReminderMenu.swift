@@ -40,7 +40,8 @@ enum ReminderActions {
     }
 
     /// Runs a commit of the bar against the store.
-    static func commit(_ commit: ReminderBarCommit, session: SessionRuntime, store: AppStateStore) {
+    @discardableResult
+    static func commit(_ commit: ReminderBarCommit, session: SessionRuntime, store: AppStateStore) -> ReminderBarOutcome {
         store.commitReminderBar(commit, forSessionID: session.id)
     }
 

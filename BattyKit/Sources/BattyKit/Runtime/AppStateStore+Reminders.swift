@@ -18,9 +18,10 @@ extension AppStateStore {
 
     /// A commit of the Quick Reminder bar. A Pick Date & Time… instant on
     /// the next calendar day also becomes the remembered Tomorrow time;
-    /// the CLI's `remindSessionForXPC` never changes it.
+    /// the CLI's `remindSessionForXPC` never changes it. Keep and Remove act
+    /// only on the Reminder they name, never on one that replaced it.
     @discardableResult
-    func commitReminderBar(_ commit: ReminderBarCommit, forSessionID sessionID: UUID) -> SessionReminder? {
+    func commitReminderBar(_ commit: ReminderBarCommit, forSessionID sessionID: UUID) -> ReminderBarOutcome {
         switch commit {
         case .set(let spec, let note):
             let result = setReminder(spec, note: note, forSessionID: sessionID)
@@ -32,22 +33,28 @@ extension AppStateStore {
                     rememberTomorrowReminderTime(ReminderTime(hour: parts.hour ?? 0, minute: parts.minute ?? 0))
                 }
             }
-            return result
-        case .keep(let note):
-            return updateReminderNote(note, forSessionID: sessionID)
-        case .remove:
-            cancelReminder(forSessionID: sessionID)
-            return nil
+            return result.map(ReminderBarOutcome.saved) ?? .rejected
+        case .keep(let reminderID, let note):
+            if let kept = updateReminderNote(note, reminderID: reminderID, forSessionID: sessionID) {
+                return .saved(kept)
+            }
+            return .reminderGone(fired: remindersFiredThisLaunch.contains(reminderID))
+        case .remove(let reminderID):
+            if cancelReminder(id: reminderID, forSessionID: sessionID) {
+                return .removed
+            }
+            return .reminderGone(fired: remindersFiredThisLaunch.contains(reminderID))
         }
     }
 
     /// Changes only the pending Reminder's text: its id, creation time and
     /// due instant stay, and its system request is replaced under the same
-    /// identifier. Nil when the Session has no pending Reminder.
+    /// identifier. Nil, writing nothing, when that Reminder is no longer
+    /// pending on the Session.
     @discardableResult
-    public func updateReminderNote(_ note: String?, forSessionID sessionID: UUID) -> SessionReminder? {
-        guard let session = session(id: sessionID), var existing = session.reminder else {
-            logger.notice("updateReminderNote: no pending reminder for session \(sessionID, privacy: .public)")
+    public func updateReminderNote(_ note: String?, reminderID: UUID, forSessionID sessionID: UUID) -> SessionReminder? {
+        guard let session = session(id: sessionID), var existing = session.reminder, existing.id == reminderID else {
+            logger.notice("updateReminderNote: reminder \(reminderID, privacy: .public) not pending for session \(sessionID, privacy: .public) (pending: \(self.session(id: sessionID)?.reminder?.id.uuidString ?? "none", privacy: .public))")
             return nil
         }
         existing.note = SessionReminder.normalizedNote(note)
@@ -109,6 +116,18 @@ extension AppStateStore {
     public func cancelReminder(forSessionID sessionID: UUID) {
         session(id: sessionID)?.reminder = nil
         cancelReminderState(sessionID: sessionID, keepSystemRequest: false)
+    }
+
+    /// Cancels the Session's pending Reminder only when it is `reminderID`.
+    /// False, cancelling nothing, otherwise.
+    @discardableResult
+    func cancelReminder(id reminderID: UUID, forSessionID sessionID: UUID) -> Bool {
+        guard session(id: sessionID)?.reminder?.id == reminderID else {
+            logger.notice("cancelReminder: reminder \(reminderID, privacy: .public) not pending for session \(sessionID, privacy: .public)")
+            return false
+        }
+        cancelReminder(forSessionID: sessionID)
+        return true
     }
 
     /// Cancels the in-app Reminder and, unless `keepSystemRequest`, its

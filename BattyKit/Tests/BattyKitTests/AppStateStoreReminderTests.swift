@@ -390,7 +390,7 @@ final class AppStateStoreReminderTests {
         #expect(await clock.waitForSleepers(1))
         // 01:00 the next day: "tomorrow" would now mean a day later.
         await clock.advance(by: .seconds(10 * 3600))
-        let edited = try #require(store.updateReminderNote("b", forSessionID: session.id))
+        let edited = try #require(store.updateReminderNote("b", reminderID: original.id, forSessionID: session.id))
         #expect(edited.target == original.target)
         #expect(edited.id == original.id)
         #expect(edited.note == "b")
@@ -431,7 +431,7 @@ final class AppStateStoreReminderTests {
     @Test func editingOnlyTheNoteOfATomorrowReminderReschedulesUnderTheSameIdentifier() throws {
         let session = store.addSession(title: "tomorrow")!
         let first = try #require(store.setReminder(.tomorrow(hour: 9, minute: 0), note: "old", forSessionID: session.id))
-        let edited = try #require(store.updateReminderNote("new", forSessionID: session.id))
+        let edited = try #require(store.updateReminderNote("new", reminderID: first.id, forSessionID: session.id))
         #expect(edited.id == first.id)
         #expect(notifier.scheduled.count == 1)
         #expect(notifier.scheduled[ScheduledReminderNotification.identifier(for: first.id)]?.title == "new")
@@ -439,10 +439,10 @@ final class AppStateStoreReminderTests {
 
     @Test func aBarCommitSchedulesAndReplacesTheSystemRequestAndRemembersAPickedTomorrowTime() throws {
         let session = store.addSession(title: "bar")!
-        let first = try #require(store.commitReminderBar(.set(.after(minutes: 20), note: "a"), forSessionID: session.id))
+        let first = try #require(store.commitReminderBar(.set(.after(minutes: 20), note: "a"), forSessionID: session.id).reminder)
         #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: first.id)])
         let picked = ReminderFixture.date(2026, 10, 15, 8, 30)
-        let second = try #require(store.commitReminderBar(.set(.at(picked), note: "b"), forSessionID: session.id))
+        let second = try #require(store.commitReminderBar(.set(.at(picked), note: "b"), forSessionID: session.id).reminder)
         #expect(second.id != first.id)
         #expect(second.target == .instant(picked))
         #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: second.id)])
@@ -455,7 +455,7 @@ final class AppStateStoreReminderTests {
         let original = try #require(store.setReminder(.after(minutes: 15), note: "a", forSessionID: session.id))
         #expect(await clock.waitForSleepers(1))
         await clock.advance(by: .seconds(20))
-        let edited = try #require(store.commitReminderBar(.keep(note: "b"), forSessionID: session.id))
+        let edited = try #require(store.commitReminderBar(.keep(reminderID: original.id, note: "b"), forSessionID: session.id).reminder)
         #expect(edited.id == original.id)
         #expect(edited.target == original.target)
         #expect(edited.createdAt == original.createdAt)
@@ -466,9 +466,96 @@ final class AppStateStoreReminderTests {
         #expect(notifier.scheduled.values.first?.title == "b")
     }
 
+    private func editBar(for session: SessionRuntime, text: String) -> ReminderBarModel {
+        var model = ReminderBarModel(
+            editing: session.reminder,
+            suggestion: nil,
+            tomorrow: store.tomorrowReminderTime,
+            now: store.reminderScheduler.now,
+            calendar: store.reminderScheduler.calendar)
+        model.text = text
+        return model
+    }
+
+    @discardableResult
+    private func commitBar(_ model: inout ReminderBarModel, row: ReminderBarRow, on session: SessionRuntime) throws -> ReminderBarOutcome {
+        let commit = model.commit(row: row, now: store.reminderScheduler.now, calendar: store.reminderScheduler.calendar)
+        return store.commitReminderBar(try #require(commit), forSessionID: session.id)
+    }
+
+    private func keepRow(_ model: ReminderBarModel) throws -> ReminderBarRow {
+        try #require(model.rows.first { if case .keep = $0 { true } else { false } })
+    }
+
+    @Test func keepFromABarOpenedOnAnEarlierReminderNeverRewritesTheReplacement() throws {
+        let session = store.addSession(title: "api")!
+        _ = try #require(store.setReminder(.after(minutes: 15), note: "a", forSessionID: session.id))
+        var model = editBar(for: session, text: "edited")
+        let b = try #require(store.setReminder(.after(minutes: 30), note: "b", forSessionID: session.id))
+        let keep = try keepRow(model)
+        #expect(try commitBar(&model, row: keep, on: session) == .reminderGone(fired: false))
+        #expect(session.reminder?.id == b.id)
+        #expect(session.reminder?.note == "b")
+        #expect(notifier.scheduled[ScheduledReminderNotification.identifier(for: b.id)]?.title == "b")
+        #expect(notifier.scheduled.count == 1)
+    }
+
+    @Test func removeFromABarOpenedOnAnEarlierReminderLeavesTheReplacementPending() throws {
+        let session = store.addSession(title: "api")!
+        _ = try #require(store.setReminder(.after(minutes: 15), note: "a", forSessionID: session.id))
+        var model = editBar(for: session, text: "edited")
+        let b = try #require(store.setReminder(.after(minutes: 30), note: "b", forSessionID: session.id))
+        #expect(try commitBar(&model, row: .remove, on: session) == .reminderGone(fired: false))
+        #expect(session.reminder == b)
+        #expect(store.reminderScheduler.pendingCount == 1)
+        #expect(notifier.scheduled.count == 1)
+    }
+
+    @Test func keepAfterTheBarsReminderFiredReportsItGoneAndChangesNothing() async throws {
+        let session = store.addSession(title: "api")!
+        _ = try #require(store.setReminder(.after(minutes: 5), note: "a", forSessionID: session.id))
+        var model = editBar(for: session, text: "edited")
+        #expect(await clock.waitForSleepers(1))
+        await clock.advance(by: .seconds(300))
+        _ = try #require(await recorder.next())
+        let keep = try keepRow(model)
+        #expect(try commitBar(&model, row: keep, on: session) == .reminderGone(fired: true))
+        #expect(session.reminder == nil)
+        #expect(store.reminderScheduler.pendingCount == 0)
+        #expect(notifier.scheduled.isEmpty)
+        #expect(store.bellFeed.entries.first?.message == "a")
+    }
+
+    @Test func removeAfterTheBarsReminderFiredCancelsNothing() async throws {
+        let session = store.addSession(title: "api")!
+        _ = try #require(store.setReminder(.after(minutes: 5), note: "a", forSessionID: session.id))
+        var model = editBar(for: session, text: "edited")
+        #expect(await clock.waitForSleepers(1))
+        await clock.advance(by: .seconds(300))
+        _ = try #require(await recorder.next())
+        #expect(try commitBar(&model, row: .remove, on: session) == .reminderGone(fired: true))
+        #expect(session.reminder == nil)
+        #expect(store.bellFeed.entries.count == 1)
+    }
+
+    @Test func keepWithTheBarsReminderStillPendingChangesOnlyItsText() throws {
+        let session = store.addSession(title: "api")!
+        let a = try #require(store.setReminder(.after(minutes: 15), note: "a", forSessionID: session.id))
+        var model = editBar(for: session, text: "edited")
+        let keep = try keepRow(model)
+        guard case .saved(let r) = try commitBar(&model, row: keep, on: session) else {
+            Issue.record("expected .saved"); return
+        }
+        #expect(r.id == a.id)
+        #expect(r.target == a.target)
+        #expect(r.createdAt == a.createdAt)
+        #expect(r.note == "edited")
+        #expect(session.reminder == r)
+    }
+
     @Test func keepingWithNoReminderPendingDoesNothing() {
         let session = store.addSession(title: "none")!
-        #expect(store.commitReminderBar(.keep(note: "x"), forSessionID: session.id) == nil)
+        #expect(store.commitReminderBar(.keep(reminderID: UUID(), note: "x"), forSessionID: session.id) == .reminderGone(fired: false))
         #expect(session.reminder == nil)
         #expect(store.reminderScheduler.pendingCount == 0)
         #expect(notifier.scheduled.isEmpty)
@@ -476,8 +563,8 @@ final class AppStateStoreReminderTests {
 
     @Test func removingFromTheBarCancelsTheReminder() throws {
         let session = store.addSession(title: "remove")!
-        _ = try #require(store.setReminder(.after(minutes: 15), note: "a", forSessionID: session.id))
-        #expect(store.commitReminderBar(.remove, forSessionID: session.id) == nil)
+        let a = try #require(store.setReminder(.after(minutes: 15), note: "a", forSessionID: session.id))
+        #expect(store.commitReminderBar(.remove(reminderID: a.id), forSessionID: session.id) == .removed)
         #expect(session.reminder == nil)
         #expect(notifier.scheduled.isEmpty)
     }
@@ -789,7 +876,7 @@ final class AppStateStoreReminderTests {
     @Test func aPickedTimeTomorrowRemembersItsTime() throws {
         let session = store.sessions[0]
         _ = try #require(store.commitReminderBar(
-            .set(.at(ReminderFixture.date(2026, 10, 15, 8, 30)), note: nil), forSessionID: session.id))
+            .set(.at(ReminderFixture.date(2026, 10, 15, 8, 30)), note: nil), forSessionID: session.id).reminder)
         #expect(store.tomorrowReminderTime == ReminderTime(hour: 8, minute: 30))
         #expect(storedMinutes(store) == 510)
     }
@@ -797,9 +884,9 @@ final class AppStateStoreReminderTests {
     @Test func aPickedTimeTodayRemembersNothing() throws {
         let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
         _ = try #require(seeded.commitReminderBar(
-            .set(.at(ReminderFixture.date(2026, 10, 14, 17, 30)), note: nil), forSessionID: seeded.sessions[0].id))
+            .set(.at(ReminderFixture.date(2026, 10, 14, 17, 30)), note: nil), forSessionID: seeded.sessions[0].id).reminder)
         _ = try #require(seeded.commitReminderBar(
-            .set(.at(ReminderFixture.date(2026, 10, 17, 10, 0)), note: nil), forSessionID: seeded.sessions[0].id))
+            .set(.at(ReminderFixture.date(2026, 10, 17, 10, 0)), note: nil), forSessionID: seeded.sessions[0].id).reminder)
         #expect(seeded.tomorrowReminderTime == ReminderTime(hour: 7, minute: 15))
         #expect(storedMinutes(seeded) == 435)
     }
@@ -808,8 +895,8 @@ final class AppStateStoreReminderTests {
         let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
         let session = seeded.sessions[0]
         try #require(seeded.setReminder(.after(minutes: 15), forSessionID: session.id))
-        _ = try #require(seeded.commitReminderBar(.set(.after(minutes: 95), note: nil), forSessionID: session.id))
-        _ = try #require(seeded.commitReminderBar(.set(.tomorrow(hour: 10, minute: 0), note: nil), forSessionID: session.id))
+        _ = try #require(seeded.commitReminderBar(.set(.after(minutes: 95), note: nil), forSessionID: session.id).reminder)
+        _ = try #require(seeded.commitReminderBar(.set(.tomorrow(hour: 10, minute: 0), note: nil), forSessionID: session.id).reminder)
         try #require(seeded.setReminder(.tomorrow(hour: 10, minute: 0), forSessionID: session.id))
         #expect(seeded.tomorrowReminderTime == ReminderTime(hour: 7, minute: 15))
         #expect(storedMinutes(seeded) == 435)
@@ -817,9 +904,9 @@ final class AppStateStoreReminderTests {
 
     @Test func anOutOfBoundsBarCommitRemembersNothing() {
         let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
-        #expect(seeded.commitReminderBar(.set(.tomorrow(hour: 24, minute: 0), note: nil), forSessionID: seeded.sessions[0].id) == nil)
+        #expect(seeded.commitReminderBar(.set(.tomorrow(hour: 24, minute: 0), note: nil), forSessionID: seeded.sessions[0].id).reminder == nil)
         #expect(seeded.commitReminderBar(
-            .set(.at(ReminderFixture.anchor.addingTimeInterval(30)), note: nil), forSessionID: seeded.sessions[0].id) == nil)
+            .set(.at(ReminderFixture.anchor.addingTimeInterval(30)), note: nil), forSessionID: seeded.sessions[0].id).reminder == nil)
         #expect(seeded.tomorrowReminderTime == ReminderTime(hour: 7, minute: 15))
         #expect(storedMinutes(seeded) == 435)
     }

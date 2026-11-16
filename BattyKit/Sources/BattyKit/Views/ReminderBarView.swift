@@ -57,6 +57,16 @@ struct ReminderBarView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
+            if let notice = model.notice {
+                Text(noticeText(notice))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
+                    .accessibilityIdentifier("reminder-bar.notice")
+            }
+
             Divider()
 
             switch model.mode {
@@ -172,8 +182,21 @@ struct ReminderBarView: View {
             }
             return
         }
-        ReminderActions.commit(commit, session: session, store: store)
+        let outcome = ReminderActions.commit(commit, session: session, store: store)
+        if case .keep = commit, case .reminderGone(let fired) = outcome {
+            model.markReminderGone(fired: fired)
+            return
+        }
         onClose()
+    }
+
+    private func noticeText(_ notice: ReminderBarNotice) -> String {
+        switch notice {
+        case .fired:
+            String(localized: "This Reminder already fired. Choose a time to set it again.")
+        case .changed:
+            String(localized: "This Reminder was changed. Choose a time to set a new one.")
+        }
     }
 
     private func escape() {

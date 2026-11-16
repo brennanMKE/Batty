@@ -31,9 +31,32 @@ enum ReminderBarMode: Equatable {
 /// What a commit of the bar asks the store to do.
 enum ReminderBarCommit: Equatable {
     case set(ReminderSpec, note: String?)
-    /// Change only the text of the pending Reminder.
-    case keep(note: String?)
-    case remove
+    /// Change only the text of the Reminder the bar was opened on.
+    case keep(reminderID: UUID, note: String?)
+    /// Cancel the Reminder the bar was opened on.
+    case remove(reminderID: UUID)
+}
+
+/// What the store did with a commit of the bar.
+enum ReminderBarOutcome: Equatable {
+    /// A set or a keep.
+    case saved(SessionReminder)
+    case removed
+    /// The Reminder a keep or remove named is no longer pending: it fired,
+    /// was cancelled, or was replaced.
+    case reminderGone(fired: Bool)
+    /// A set whose Session is gone or whose spec is out of bounds.
+    case rejected
+
+    var reminder: SessionReminder? {
+        if case .saved(let reminder) = self { reminder } else { nil }
+    }
+}
+
+/// Why an edit-mode bar became a new-Reminder bar.
+enum ReminderBarNotice: Equatable {
+    case fired
+    case changed
 }
 
 /// Which control of the bar holds keyboard focus.
@@ -55,7 +78,11 @@ struct ReminderBarModel: Equatable {
     /// False after a commit of an out-of-range picked date; drives the red
     /// summary. Reset when the picked date changes.
     private(set) var pickedDateIsValid = true
-    let isEditing: Bool
+    private(set) var isEditing: Bool
+    /// The Reminder an edit-mode bar was opened on; Keep and Remove act on
+    /// it and nothing else.
+    private(set) var editingReminderID: UUID?
+    private(set) var notice: ReminderBarNotice?
 
     private var storage: String
 
@@ -78,11 +105,13 @@ struct ReminderBarModel: Equatable {
         let timeRows: [ReminderBarRow] = ReminderSpec.presetMinutes.map { .after($0) } + [.tomorrow(tomorrow), .pick]
         if let reminder, let due = reminder.fireDate(calendar: calendar) {
             isEditing = true
+            editingReminderID = reminder.id
             rows = [.keep(due)] + timeRows + [.remove]
             highlighted = 0
             storage = reminder.note ?? ""
         } else {
             isEditing = false
+            editingReminderID = nil
             rows = timeRows
             highlighted = timeRows.firstIndex(of: .after(15)) ?? 0
             storage = suggestion ?? ""
@@ -119,6 +148,22 @@ struct ReminderBarModel: Equatable {
         return timeRows[digit - 1]
     }
 
+    /// The Reminder a Keep named is no longer pending: the bar becomes a
+    /// new-Reminder bar with the typed text kept.
+    mutating func markReminderGone(fired: Bool) {
+        rows = rows.filter {
+            switch $0 {
+            case .keep, .remove: false
+            default: true
+            }
+        }
+        highlighted = rows.firstIndex(of: .after(15)) ?? 0
+        isEditing = false
+        editingReminderID = nil
+        mode = .list
+        notice = fired ? .fired : .changed
+    }
+
     mutating func setPickedDate(_ date: Date) {
         pickedDate = date
         pickedDateIsValid = true
@@ -131,13 +176,15 @@ struct ReminderBarModel: Equatable {
         let note = SessionReminder.normalizedNote(text)
         switch row {
         case .keep:
-            return .keep(note: note)
+            guard let editingReminderID else { return nil }
+            return .keep(reminderID: editingReminderID, note: note)
         case .after(let minutes):
             return .set(.after(minutes: minutes), note: note)
         case .tomorrow(let time):
             return .set(time.tomorrowSpec, note: note)
         case .remove:
-            return .remove
+            guard let editingReminderID else { return nil }
+            return .remove(reminderID: editingReminderID)
         case .pick:
             guard mode == .picking else {
                 mode = .picking

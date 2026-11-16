@@ -76,16 +76,41 @@ struct ReminderBarModelTests {
     }
 
     @Test func keepCommitsATextOnlyChange() {
-        var (bar, _) = editBar()
+        var (bar, reminder) = editBar()
         bar.text = "deploy v2"
-        #expect(bar.commit(row: bar.highlightedRow, now: now, calendar: calendar) == .keep(note: "deploy v2"))
+        #expect(bar.commit(row: bar.highlightedRow, now: now, calendar: calendar) == .keep(reminderID: reminder.id, note: "deploy v2"))
     }
 
     @Test func anEditBarEndsWithRemove() {
-        var (bar, _) = editBar()
+        var (bar, reminder) = editBar()
         #expect(bar.rows.last == .remove)
         #expect(Array(bar.rows.dropFirst().dropLast()) == timeRows)
-        #expect(bar.commit(row: .remove, now: now, calendar: calendar) == .remove)
+        #expect(bar.commit(row: .remove, now: now, calendar: calendar) == .remove(reminderID: reminder.id))
+    }
+
+    @Test func anEditBarRemembersItsReminderID() {
+        let (bar, reminder) = editBar()
+        #expect(bar.editingReminderID == reminder.id)
+        #expect(newBar().editingReminderID == nil)
+    }
+
+    @Test func aKeepWhoseReminderIsGoneTurnsTheBarIntoANewReminderAndKeepsTheText() {
+        var (bar, _) = editBar()
+        bar.text = "edited"
+        bar.markReminderGone(fired: true)
+        #expect(bar.rows == timeRows)
+        #expect(bar.highlightedRow == .after(15))
+        #expect(bar.text == "edited")
+        #expect(!bar.isEditing)
+        #expect(bar.editingReminderID == nil)
+        #expect(bar.notice == .fired)
+        #expect(bar.commit(row: bar.highlightedRow, now: now, calendar: calendar) == .set(.after(minutes: 15), note: "edited"))
+    }
+
+    @Test func aBarWhoseReminderWasReplacedSaysItChanged() {
+        var (bar, _) = editBar()
+        bar.markReminderGone(fired: false)
+        #expect(bar.notice == .changed)
     }
 
     @Test func commandDigitsOneToSixMapToTheTimeRowsInBothModes() {
