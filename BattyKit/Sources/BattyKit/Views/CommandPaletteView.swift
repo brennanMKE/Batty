@@ -435,7 +435,7 @@ struct CommandPaletteView: View {
         case .newWindow:
             AppStateStore.shared.openWindowAction?()
         case .exitShell:
-            ExitDispatcher.sendExit(store: store)
+            ExitDispatcher.sendExit(in: window)
         case .resizeSplitLeft:
             window.selectedSession?.tree.resizeFocusedSplit(.left)
         case .resizeSplitRight:

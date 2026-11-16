@@ -2,6 +2,7 @@
 
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import BattyKit
 
@@ -231,6 +232,146 @@ struct AuxiliaryWindowGateTests {
         PasteDispatcher.handlePasteRequest(store: store)
         #expect(posted == 0, "the paste must not be requested for the terminal behind Settings")
         #expect(forwarded == 1, "the standard paste action must run so a focused Settings text field still pastes")
+    }
+
+    // MARK: - Attached sheet
+
+    private func sheetedContentWindow(in store: AppStateStore) -> SheetedWindow {
+        let window = SheetedWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                                   styleMask: [.titled, .closable], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        store.registerNSWindow(window, for: store.windows[0].id)
+        return window
+    }
+
+    private func sheetPanel() -> NSPanel {
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 50),
+                            styleMask: [.titled], backing: .buffered, defer: true)
+        panel.isReleasedWhenClosed = false
+        return panel
+    }
+
+    @Test func menuTargetWindowIsNilWhileItsWindowHasAnAttachedSheet() {
+        let store = AppStateStore()
+        let content = store.windows[0]
+        #expect(store.menuTargetWindow(projectEditorIsKey: false, projectPickerIsKey: false, auxiliaryWindowIsKey: false, targetHasAttachedSheet: true) == nil)
+        #expect(store.menuTargetWindow(projectEditorIsKey: false, projectPickerIsKey: false, auxiliaryWindowIsKey: false, targetHasAttachedSheet: false)?.id == content.id)
+    }
+
+    @Test func menuTargetWindowReadsTheTargetWindowsAttachedSheetByDefault() {
+        let store = AppStateStore()
+        let content = store.windows[0]
+        let window = sheetedContentWindow(in: store)
+        store.keyWindowProvider = { nil }
+
+        #expect(store.menuTargetWindow()?.id == content.id)
+        window.stub = sheetPanel()
+        #expect(store.menuTargetWindow() == nil)
+        #expect(store.defaultTargetWindow()?.id == content.id)
+        #expect(store.keyWindowOrFirstRegistered()?.id == content.id)
+        window.stub = nil
+        #expect(store.menuTargetWindow()?.id == content.id)
+        #expect(store.defaultTargetWindow()?.id == content.id)
+        #expect(store.keyWindowOrFirstRegistered()?.id == content.id)
+    }
+
+    @Test func newItemRouteIsNoneWhileTheTargetWindowHasAnAttachedSheet() {
+        let store = AppStateStore()
+        let content = store.windows[0]
+        #expect(store.newItemRoute(projectEditorIsKey: false, projectPickerIsKey: false, auxiliaryWindowIsKey: false, targetHasAttachedSheet: true) == .none)
+        #expect(store.newItemRoute(projectEditorIsKey: false, projectPickerIsKey: false, auxiliaryWindowIsKey: false, targetHasAttachedSheet: false) == .newSession(content.id))
+        #expect(store.newItemRoute(projectEditorIsKey: true, projectPickerIsKey: false, auxiliaryWindowIsKey: false, targetHasAttachedSheet: true) == .newProject)
+    }
+
+    @Test func focusedTerminalTabIsNilWhileTheTargetWindowHasAnAttachedSheet() {
+        let store = AppStateStore()
+        let expected = store.windows[0].selectedSession?.focusedTerminalPane?.activeTab
+        #expect(expected != nil)
+
+        #expect(store.focusedTerminalTab(projectEditorIsKey: false, auxiliaryWindowIsKey: false, targetHasAttachedSheet: true) == nil)
+        #expect(store.focusedTerminalTab(projectEditorIsKey: false, auxiliaryWindowIsKey: false, targetHasAttachedSheet: false)?.id == expected?.id)
+    }
+
+    @Test func exitShellSendsNothingWhileTheTargetWindowHasAnAttachedSheet() {
+        let store = AppStateStore()
+        let window = sheetedContentWindow(in: store)
+        let saved = ExitDispatcher.sendText
+        defer { ExitDispatcher.sendText = saved }
+        var sent: [String] = []
+        ExitDispatcher.sendText = { _, text in sent.append(text) }
+
+        ExitDispatcher.sendExit(store: store)
+        #expect(sent == ["exit\n"], "baseline: with no sheet attached the shell is sent exit")
+
+        sent.removeAll()
+        window.stub = sheetPanel()
+        ExitDispatcher.sendExit(store: store)
+        #expect(sent.isEmpty)
+    }
+
+    @Test func pasteGoesToTheStandardActionWhileTheTargetWindowHasAnAttachedSheet() {
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(PasteStrictness.alwaysOnMultiline.rawValue, forKey: SettingsPreference.pasteStrictnessKey)
+        let store = AppStateStore(preferences: testDefaults.defaults)
+        let window = sheetedContentWindow(in: store)
+
+        let savedPasteboard = NSPasteboard.general.string(forType: .string)
+        let savedForwardStandardPaste = PasteDispatcher.forwardStandardPaste
+        defer {
+            NSPasteboard.general.clearContents()
+            if let savedPasteboard { NSPasteboard.general.setString(savedPasteboard, forType: .string) }
+            PasteDispatcher.forwardStandardPaste = savedForwardStandardPaste
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("line one\nline two\n", forType: .string)
+
+        var posted = 0
+        let observer = NotificationCenter.default.addObserver(forName: .battyRequestPaste, object: nil, queue: nil) { _ in posted += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        var forwarded = 0
+        PasteDispatcher.forwardStandardPaste = { forwarded += 1 }
+
+        PasteDispatcher.handlePasteRequest(store: store)
+        #expect(posted == 1 && forwarded == 0, "baseline: with no sheet attached the paste confirmation is requested")
+
+        posted = 0
+        window.stub = sheetPanel()
+        PasteDispatcher.handlePasteRequest(store: store)
+        #expect(posted == 0, "the paste must not be requested for the terminal behind the sheet")
+        #expect(forwarded == 1, "the standard paste action must run so a text field in the sheet still pastes")
+    }
+
+    @Test func pasteConfirmStillSendsWhileTheConfirmationSheetIsAttached() {
+        let store = AppStateStore()
+        let window = sheetedContentWindow(in: store)
+        window.stub = sheetPanel()
+        let expected = store.windows[0].selectedSession?.focusedTerminalPane?.activeTab
+        #expect(expected != nil)
+
+        let saved = PasteDispatcher.sendText
+        defer { PasteDispatcher.sendText = saved }
+        var sent: [(UUID, String)] = []
+        PasteDispatcher.sendText = { tab, text in sent.append((tab.id, text)) }
+
+        PasteDispatcher.confirm(PendingPaste(text: "a\nb\n"), in: store.windows[0])
+        #expect(sent.count == 1)
+        #expect(sent.first?.0 == expected?.id)
+        #expect(sent.first?.1 == "a\nb\n")
+    }
+
+    @Test func paletteExitShellStillSendsWhileThePaletteSheetIsAttached() {
+        let store = AppStateStore()
+        let window = sheetedContentWindow(in: store)
+        window.stub = sheetPanel()
+
+        let saved = ExitDispatcher.sendText
+        defer { ExitDispatcher.sendText = saved }
+        var sent: [String] = []
+        ExitDispatcher.sendText = { _, text in sent.append(text) }
+
+        CommandPaletteView(isPresented: .constant(true), store: store).dispatch(.exitShell)
+        #expect(sent == ["exit\n"])
     }
 }
 

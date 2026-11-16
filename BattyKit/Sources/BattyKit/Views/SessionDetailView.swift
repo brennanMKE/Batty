@@ -79,7 +79,7 @@ public struct SessionDetailView: View {
             PasteConfirmationSheet(
                 paste: pending,
                 onConfirm: { _ in
-                    PasteDispatcher.confirm(pending, in: store)
+                    PasteDispatcher.confirm(pending, in: windowRuntime)
                     pendingPaste = nil
                 },
                 onCancel: { pendingPaste = nil }

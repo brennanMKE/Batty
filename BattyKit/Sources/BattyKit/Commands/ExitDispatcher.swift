@@ -22,9 +22,17 @@ public enum ExitDispatcher {
     /// target resolution exactly, because both now delegate to the same
     /// `AppStateStore.focusedTerminalTab` (#0332 — previously two
     /// independently hand-copied expressions, and they had already drifted
-    /// out of sync once).
+    /// out of sync once). Also no-ops while a sheet is attached to the
+    /// target Window (`AppStateStore.menuTargetWindow`).
     public static func sendExit(store: AppStateStore?) {
         guard let store, let tab = focusedTerminalTab(in: store) else { return }
+        sendText(tab, "exit\n")
+    }
+
+    /// For callers that already hold their target Window and may run while
+    /// their own sheet is still attached (the Command Palette).
+    public static func sendExit(in window: WindowRuntime?) {
+        guard let tab = AppStateStore.focusedTerminalTab(in: window) else { return }
         sendText(tab, "exit\n")
     }
 

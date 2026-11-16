@@ -10,10 +10,10 @@ import Testing
 /// issue's fix — an unguarded array subscript that traps when `windows` is
 /// empty, the state the app deliberately lives in for one run-loop turn
 /// after the last content window closes (see `AppStateStore
-/// .terminateIfLastContentWindowGone()`'s doc comment). #0332 replaced that
-/// local resolution with a call straight through to
-/// `AppStateStore.focusedTerminalTab` — this exercises it through the
-/// public `PasteDispatcher.confirm(_:in:)` entry point, the closest
+/// .terminateIfLastContentWindowGone()`'s doc comment). `confirm(_:in:)`
+/// now resolves through `AppStateStore.focusedTerminalTab(in:)` on the
+/// Window that presented the confirmation sheet — this exercises it through
+/// the public `PasteDispatcher.confirm(_:in:)` entry point, the closest
 /// testable seam to the real code path — a re-typed copy of the expression
 /// would not catch a regression in the shipped line the way calling
 /// through does.
@@ -33,15 +33,21 @@ struct PasteConfirmationTests {
         // NSApp.terminate(nil); stub it out so this test never invokes
         // AppKit's real termination path.
         store.terminateHandler = {}
-        let onlyWindowID = store.windows[0].id
-        store.removeWindow(id: onlyWindowID)
+        let saved = PasteDispatcher.sendText
+        defer { PasteDispatcher.sendText = saved }
+        var sent: [String] = []
+        PasteDispatcher.sendText = { _, text in sent.append(text) }
+
+        let onlyWindow = store.windows[0]
+        store.removeWindow(id: onlyWindow.id)
         #expect(store.windows.isEmpty, "test setup: windows must be empty")
 
         let pending = PendingPaste(text: "echo hi")
         // Must return cleanly rather than trapping on an empty windows array.
-        PasteDispatcher.confirm(pending, in: store)
+        PasteDispatcher.confirm(pending, in: nil)
 
         #expect(store.windows.isEmpty, "confirm must not create a phantom window")
+        #expect(sent.isEmpty, "nothing is sent when there is no target Window")
     }
 }
 

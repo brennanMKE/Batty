@@ -1349,15 +1349,25 @@ public final class AppStateStore {
     /// behind the sheet. Use it inside action closures only; enablement is
     /// computed from `defaultTargetWindow()`. XPC and CLI paths keep using
     /// `defaultTargetWindow()`.
+    ///
+    /// Also nil while a sheet or sheet-style dialog (`confirmationDialog`)
+    /// is attached to the target Window, so a menu chord the sheet did not
+    /// consume never acts behind it. Only the target is checked: a sheet on
+    /// one Window does not block a menu action aimed at another. `attachedSheet`
+    /// is not observed, so this is for action closures only; enablement stays
+    /// on `keyContentWindow`.
     public func menuTargetWindow(
         projectEditorIsKey: Bool? = nil,
         projectPickerIsKey: Bool? = nil,
-        auxiliaryWindowIsKey: Bool? = nil
+        auxiliaryWindowIsKey: Bool? = nil,
+        targetHasAttachedSheet: Bool? = nil
     ) -> WindowRuntime? {
         let editorKey = projectEditorIsKey ?? self.projectEditorIsKey
         let pickerKey = projectPickerIsKey ?? self.projectPickerIsKey
         let auxiliaryKey = auxiliaryWindowIsKey ?? self.auxiliaryWindowIsKey
-        return editorKey || pickerKey || auxiliaryKey ? nil : defaultTargetWindow()
+        if editorKey || pickerKey || auxiliaryKey { return nil }
+        guard let candidate = defaultTargetWindow() else { return nil }
+        return targetHasAttachedSheet ?? windowHasAttachedSheet(candidate.id) ? nil : candidate
     }
 
     public enum NewItemRoute: Equatable {
@@ -1387,13 +1397,15 @@ public final class AppStateStore {
     public func newItemRoute(
         projectEditorIsKey: Bool? = nil,
         projectPickerIsKey: Bool? = nil,
-        auxiliaryWindowIsKey: Bool? = nil
+        auxiliaryWindowIsKey: Bool? = nil,
+        targetHasAttachedSheet: Bool? = nil
     ) -> NewItemRoute {
         if projectEditorIsKey ?? self.projectEditorIsKey { return .newProject }
         guard let window = menuTargetWindow(
             projectEditorIsKey: false,
             projectPickerIsKey: projectPickerIsKey,
-            auxiliaryWindowIsKey: auxiliaryWindowIsKey
+            auxiliaryWindowIsKey: auxiliaryWindowIsKey,
+            targetHasAttachedSheet: targetHasAttachedSheet
         ) else { return .none }
         return .newSession(window.id)
     }
@@ -1416,31 +1428,44 @@ public final class AppStateStore {
     var projectStoreIsConstructed: Bool { projectStoreStorage != nil }
 
     /// The Terminal Session tab safe to target for tab-scoped Terminal
-    /// actions dispatched app-wide (paste, "exit\n" injection): the key
-    /// content window's focused pane's active tab, resolved through
+    /// actions dispatched app-wide (paste, "exit\n" injection): the menu
+    /// target Window's focused pane's active tab, resolved through
     /// `SessionRuntime.focusedTerminalPane` so a non-terminal focused
     /// pane's structural placeholder tab (`PaneRuntime.kind`'s doc comment)
     /// never becomes a target. `nil` for that case as well as for the
-    /// ordinary "no window" / "no selected session" ones.
+    /// ordinary "no window" / "no selected session" ones, and whenever
+    /// `menuTargetWindow()` is nil.
     ///
-    /// `ExitDispatcher.sendExit` and `PasteDispatcher.handlePasteRequest`/
-    /// `.confirm` both resolve their target through this single property.
-    /// Before #0332 each dispatcher hand-copied this expression; one copy
-    /// (`PasteDispatcher`'s) drifted to resolve through plain `focusedPane`
-    /// instead of `focusedTerminalPane`, silently reintroducing the
-    /// structural-placeholder hazard for Cmd-V while `ExitDispatcher`'s own
-    /// doc comment kept asserting the two "mirror exactly." One
-    /// implementation, called from both sites, is what makes that claim
-    /// true rather than merely stated.
+    /// `PasteDispatcher.handlePasteRequest` and `ExitDispatcher.sendExit(store:)`
+    /// (the menu and chord paths) resolve their target through this property.
+    /// The paste confirmation sheet and the Command Palette run while their
+    /// own sheet is attached, so they name their Window and resolve through
+    /// `focusedTerminalTab(in:)` instead. Before #0332 each dispatcher
+    /// hand-copied this expression and one copy drifted to plain
+    /// `focusedPane`; `focusedTerminalTab(in:)` is the one place it lives.
     public var focusedTerminalTab: TabRuntime? {
         focusedTerminalTab(projectEditorIsKey: nil)
     }
 
     /// Nil while the Project Editor, the Open Project picker or an auxiliary
-    /// window is key (see `menuTargetWindow`), so Paste and Exit Shell leave
-    /// the Terminal alone then.
-    func focusedTerminalTab(projectEditorIsKey: Bool?, auxiliaryWindowIsKey: Bool? = nil) -> TabRuntime? {
-        menuTargetWindow(projectEditorIsKey: projectEditorIsKey, auxiliaryWindowIsKey: auxiliaryWindowIsKey)?.selectedSession?.focusedTerminalPane?.activeTab
+    /// window is key, or a sheet is attached to the target Window (see
+    /// `menuTargetWindow`), so Paste and Exit Shell leave the Terminal alone then.
+    func focusedTerminalTab(
+        projectEditorIsKey: Bool?,
+        auxiliaryWindowIsKey: Bool? = nil,
+        targetHasAttachedSheet: Bool? = nil
+    ) -> TabRuntime? {
+        Self.focusedTerminalTab(in: menuTargetWindow(
+            projectEditorIsKey: projectEditorIsKey,
+            auxiliaryWindowIsKey: auxiliaryWindowIsKey,
+            targetHasAttachedSheet: targetHasAttachedSheet
+        ))
+    }
+
+    /// `window`'s focused Terminal Pane's active Tab, with no key-window or
+    /// sheet gate: for callers that already hold their target Window.
+    public static func focusedTerminalTab(in window: WindowRuntime?) -> TabRuntime? {
+        window?.selectedSession?.focusedTerminalPane?.activeTab
     }
 
     // MARK: - Init

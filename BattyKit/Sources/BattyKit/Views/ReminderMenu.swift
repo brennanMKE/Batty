@@ -81,7 +81,9 @@ enum ReminderActions {
 /// While a sheet is attached to the target Window the open items decline:
 /// they stay enabled and consume their key equivalent but do nothing,
 /// because `NSWindow.attachedSheet` is not observed and a `.disabled` driven
-/// by it would not re-evaluate when the sheet closes.
+/// by it would not re-evaluate when the sheet closes. The Session menu's
+/// `target` is already nil over a sheet (`AppStateStore.menuTargetWindow`);
+/// the explicit check covers the Sidebar's explicit target.
 struct ReminderMenuItems: View {
     let store: AppStateStore
     let session: SessionRuntime?

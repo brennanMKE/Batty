@@ -62,12 +62,15 @@ public struct BattyCommands: Commands {
     /// Editor, the Open Project picker or another auxiliary window (Settings,
     /// Help) is key, so a menu-routed chord does not reach the content window
     /// behind it (the picker's Cmd-N and Cmd-E are New Session and Pane >
-    /// Open View > System Metrics). Read only inside action closures.
+    /// Open View > System Metrics). Also nil while a sheet or sheet-style
+    /// dialog is attached to the target Window, so a chord the sheet did not
+    /// consume does not act behind it. Read only inside action closures.
     /// Enablement and labels read `keyWindow`, not this: the `Commands` body
     /// can re-run while one of those windows is key, and nothing observed
     /// changes when focus returns to the same content window
     /// (`keyContentWindowID` does not move while an auxiliary window is key),
-    /// so enablement derived from this could stay disabled.
+    /// so enablement derived from this could stay disabled. The same holds
+    /// for an attached sheet: `NSWindow.attachedSheet` is not observed.
     private var actionWindow: WindowRuntime? { store.menuTargetWindow() }
 
     private var projectFileMenu: ProjectFileMenuModel {

@@ -266,6 +266,21 @@ stay stale. CLI, XPC, the Command Palette and `batty://` URLs keep using
 Check for Updates and the Theme menu work from anywhere because they do not
 touch a hidden Session.
 
+**When a sheet is attached (#0641).** While a sheet or sheet-style dialog
+(Rename Session, Rename Tab, the Theme Selector, a close confirmation) is
+key, the monitor also declines every chord, so the main menu sees it. The
+same items decline: `AppStateStore.menuTargetWindow()` returns `nil` while
+the target Window has an attached sheet (`windowHasAttachedSheet`), so New
+Session, New Tab, `Cmd-W`, Session and Tab selection, the splits, focus and
+resize moves, Exit Shell and Pane > Background Images... do nothing behind
+it, and `Cmd-V` falls through to the standard paste action, so a text field
+in the sheet still pastes. Only the target Window is checked: a sheet on one
+Window does not block a menu action aimed at another key Window. Enablement
+is unchanged, for the same reason as above. The paste confirmation sheet and
+the Command Palette run while their own sheet is attached, so they name
+their Window explicitly (`PasteDispatcher.confirm(_:in:)`,
+`ExitDispatcher.sendExit(in:)`) and are unaffected.
+
 File > Open Project > a Project name has no chord, so it is not blocked: it
 brings the content window forward and opens there (#0485), including the
 startup-command trust sheet. Choose Project... from Settings, Help or the

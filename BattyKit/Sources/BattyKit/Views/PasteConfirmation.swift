@@ -97,13 +97,22 @@ public enum PasteDispatcher {
                 userInfo: ["paste": pending]
             )
         } else {
-            tab.terminal.send(text)
+            sendText(tab, text)
         }
     }
 
-    public static func confirm(_ paste: PendingPaste, in store: AppStateStore?) {
-        guard let tab = store?.focusedTerminalTab else { return }
-        tab.terminal.send(paste.text)
+    /// Sends a confirmed paste to `window`, the Window that presented the
+    /// confirmation sheet. Not resolved through `store.focusedTerminalTab`,
+    /// which is nil while that sheet is still attached.
+    public static func confirm(_ paste: PendingPaste, in window: WindowRuntime?) {
+        guard let tab = AppStateStore.focusedTerminalTab(in: window) else { return }
+        sendText(tab, paste.text)
+    }
+
+    /// Injectable seam, not `private`: a test cannot observe PTY bytes, so it
+    /// swaps in a recorder to prove where a paste was sent.
+    static var sendText: (TabRuntime, String) -> Void = { tab, text in
+        tab.terminal.send(text)
     }
 
     private static var isEditingTextField: Bool {
