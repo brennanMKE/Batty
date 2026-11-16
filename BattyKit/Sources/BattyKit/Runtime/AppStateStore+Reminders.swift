@@ -58,17 +58,24 @@ extension AppStateStore {
     }
 
     /// A notification's Remind Again action: a new Reminder on the same
-    /// Session with the same text, `minutes` from now. The fired entry is
-    /// marked seen and kept.
+    /// Session with the same text, `minutes` from now. Applies only when the
+    /// Session has no pending Reminder other than the banner's own; a newer
+    /// pending Reminder is left alone. The fired entry is marked seen and kept.
     func remindAgain(minutes: Int, payload: NotificationTapPayload) {
-        guard let sessionID = payload.sessionID, session(id: sessionID) != nil else {
+        guard let sessionID = payload.sessionID, let session = session(id: sessionID) else {
             logger.notice("remindAgain: session \(payload.sessionID?.uuidString ?? "nil", privacy: .public) is gone; ignoring")
             return
         }
-        setReminder(.after(minutes: minutes), note: payload.note, forSessionID: sessionID)
-        if let entryID = payload.entryID {
-            markBellSeen(id: entryID)
+        defer {
+            if let entryID = payload.entryID {
+                markBellSeen(id: entryID)
+            }
         }
+        if let pending = session.reminder, pending.id != payload.reminderID {
+            logger.notice("remindAgain: session \(sessionID, privacy: .public) has a newer pending reminder \(pending.id, privacy: .public); ignoring banner for \(payload.reminderID?.uuidString ?? "nil", privacy: .public)")
+            return
+        }
+        setReminder(.after(minutes: minutes), note: payload.note, forSessionID: sessionID)
     }
 
     /// Sets the Session's Reminder, replacing any it already has: one per

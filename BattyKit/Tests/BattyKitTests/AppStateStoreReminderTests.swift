@@ -520,6 +520,60 @@ final class AppStateStoreReminderTests {
         #expect(notifier.scheduled.isEmpty)
     }
 
+    @Test func remindAgainFromAnEarlierBannerLeavesANewerPendingReminderAlone() async throws {
+        let session = store.addSession(title: "api")!
+        let firing = try await fire(5, note: "check the deploy", on: session.id)
+        let entry = try #require(store.bellFeed.entries.first)
+        let newer = try #require(store.setReminder(.after(minutes: 60), note: "review PR 412", forSessionID: session.id))
+        store.handleNotificationTap(NotificationTapPayload(
+            entryID: entry.id,
+            reminderID: firing.reminder.id,
+            sessionID: session.id,
+            note: "check the deploy",
+            action: .remindAgain(minutes: 15)))
+        #expect(session.reminder == newer)
+        #expect(session.reminder?.note == "review PR 412")
+        #expect(store.reminderScheduler.pendingCount == 1)
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: newer.id)])
+        #expect(store.bellFeed.entries.count == 1)
+        #expect(store.bellFeed.entries.first?.seen == true)
+    }
+
+    @Test func remindAgainWithNoReminderIDLeavesAPendingReminderAlone() async throws {
+        let session = store.addSession(title: "api")!
+        _ = try await fire(5, note: "check the deploy", on: session.id)
+        let entry = try #require(store.bellFeed.entries.first)
+        let newer = try #require(store.setReminder(.after(minutes: 60), note: "review PR 412", forSessionID: session.id))
+        store.handleNotificationTap(NotificationTapPayload(
+            entryID: entry.id,
+            reminderID: nil,
+            sessionID: session.id,
+            note: "check the deploy",
+            action: .remindAgain(minutes: 15)))
+        #expect(session.reminder == newer)
+        #expect(store.reminderScheduler.pendingCount == 1)
+        #expect(Array(notifier.scheduled.keys) == [ScheduledReminderNotification.identifier(for: newer.id)])
+        #expect(store.bellFeed.entries.first?.seen == true)
+    }
+
+    @Test func pressingRemindAgainTwiceOnTheSameBannerKeepsTheFirstNewReminder() async throws {
+        let target = store.addSession(title: "again")!
+        let firing = try await fire(5, note: "check the deploy", on: target.id)
+        let entry = try #require(store.bellFeed.entries.first)
+        let payload = NotificationTapPayload(
+            entryID: entry.id,
+            reminderID: firing.reminder.id,
+            sessionID: target.id,
+            note: "check the deploy",
+            action: .remindAgain(minutes: 15))
+        store.handleNotificationTap(payload)
+        let first = try #require(target.reminder)
+        store.handleNotificationTap(payload)
+        #expect(target.reminder?.id == first.id)
+        #expect(target.reminder?.target == first.target)
+        #expect(store.reminderScheduler.pendingCount == 1)
+    }
+
     @Test func openActionTakesTheExistingJumpRoute() async throws {
         let target = store.addSession(title: "open")!
         store.selectedSessionID = store.sessions[0].id
