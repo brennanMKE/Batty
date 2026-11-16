@@ -247,15 +247,16 @@ A "feed" of bell events across every surface, plus per-tab, per-pane, and per-se
   - Timestamp (relative: "2m ago").
   - Path: `<Session> › <Pane> › <Tab>`.
   - Message (OSC 9 body) or a short preview if available.
-  - An "unseen" indicator until clicked.
+  - An unread or read indicator (VoiceOver reads "Unread" or "Read"). See `Concepts.md`: Unread and read.
 - Clicking an entry **brings the source forward**:
   1. Focuses the window containing the surface (`NSWindow.makeKeyAndOrderFront`).
   2. Selects the right session in the sidebar.
   3. Focuses the right pane in the session's split tree.
   4. Activates the right tab inside that pane.
-  5. Marks the entry seen and decrements unseen counters at every level.
-- A "Clear all" button marks every entry seen.
-- The feed also holds **Reminder** entries: a user-set, per-Session timer (Session menu → Remind Me) that fires an unseen, differently styled entry and a system notification, and whose click brings the Session forward without moving its focused Pane or Tab (see `Concepts.md`: Reminder).
+  5. Removes that Tab's rows from the feed, read or unread, and decrements unseen counters for the unread ones (#0556). A row whose Window is gone is only marked read.
+- **Mark All Read** (feed header, or Window → Mark All Bells Read) marks every row read and keeps it. Opening the feed marks nothing read.
+- **Clear Read** (feed header, or Window → Clear Read Bells) removes every read row and leaves the unread ones.
+- Fired **Reminders** are not in the feed and never light the bell. A Reminder is a user-set, per-Session timer (⇧⌘R, the Quick Reminder bar). Pending and fired Reminders live under their own Reminders toolbar button and popover (⌥⌘R), beside the bell. Fired ones follow the same unread / read / Clear Read rules. See `Concepts.md`: Reminder.
 
 #### System notifications (UserNotifications)
 
