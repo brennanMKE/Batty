@@ -15,6 +15,63 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-4-0">
+            <h2>1.4.0 — 2026-11-17</h2>
+            <p class="meta">Session Reminders with their own toolbar list, hosted background image sets, richer Projects, a Projects menu, and a faster, steadier window.</p>
+            <h3>New</h3>
+            <ul>
+                <li><strong>Session Reminders.</strong> Right-click a Session and choose <em>Remind Me&hellip;</em>
+                (Shift-Command-R) to open the Quick Reminder bar: type what you want to come back to and pick 5, 15 or 30
+                minutes, an hour, tomorrow or a time of your own. macOS brings it back with a notification led by your
+                text, even if Batty quit or restarted in between, and the notification offers Remind Again. The Sidebar
+                marks a Session with a pending or fired Reminder with a small clock. <code>batty session remind</code> sets,
+                shows and cancels a Reminder from the command line. (#0514, #0566, #0567, #0568, #0631, #0637)</li>
+                <li><strong>Reminders button.</strong> A new alarm-clock button left of the bell (Option-Command-R)
+                lists Reminders that are Due and Upcoming. Open a Reminder's Session, edit or cancel it, remind again, or
+                mark it read, with the mouse or the keyboard. Fired Reminders live here, not in the Bell Feed.
+                (#0639, #0640)</li>
+                <li><strong>Background Sets.</strong> The Background Images picker browses hosted sets of images
+                (Beautiful Landscapes, Cool Vehicles, Future Cities and Deep Space) and downloads the full-size image only when you pick
+                it. Filter and Refresh are built in. Add your own catalog URLs in Settings &rarr; Appearance &rarr;
+                Background Catalogs; Batty checks them at launch and once a day, or with <em>Check Now</em>. See
+                <a href="backgrounds.html">Backgrounds</a>. (#0552, #0576, #0577, #0582, #0596)</li>
+                <li><strong>Projects menu.</strong> Save Session as Project, Update Project and <em>Projects…</em> now live
+                in their own Projects menu. <em>Projects…</em> opens on your list of Projects, and Command-N there starts a
+                new one. <em>Pane &rarr; Background Images…</em> picks a background for the focused Pane. (#0629, #0630)</li>
+                <li><strong>Projects capture the whole Session.</strong> A Project stores an optional Dark and Light Theme
+                and a background for each Tab, and Save Session as Project captures the Session as you see it. (#0584,
+                #0585, #0589)</li>
+            </ul>
+            <h3>Improvements</h3>
+            <ul>
+                <li><strong>Faster with many Sessions.</strong> The Sidebar, tab strip and status Panes re-draw only what
+                changed, so switching Sessions, ringing a bell or resizing costs the same whether you have five Sessions
+                or fifty. Status Panes pause while their window is hidden. (#0601&ndash;#0619)</li>
+                <li><strong>A quieter Bell Feed.</strong> Bells you were already looking at, and bells from muted Sessions,
+                stay out of the feed, and visiting a Tab clears its rows. Bells from idle or hidden Panes now show up.
+                <em>Mark All Read</em> and <em>Clear Read</em> tidy the feed, from its header, the Window menu or the
+                Command Palette. (#0555, #0556, #0558, #0559, #0561, #0638)</li>
+                <li><strong>Current Tab titles.</strong> A Tab in an idle or hidden Pane shows the command that is
+                running in it. (#0563)</li>
+                <li><strong>New Tabs keep the Session's Theme.</strong> (#0586)</li>
+                <li><strong>Toolbar tooltips</strong> show the shortcuts you have actually bound. (#0636)</li>
+            </ul>
+            <h3>Fixes</h3>
+            <ul>
+                <li><strong>A crash on some Macs</strong> caused by window layout work being started from inside a
+                layout pass. (#0601)</li>
+                <li><strong>Pick a Running Process</strong> no longer opens empty the first time. (#0626)</li>
+                <li><strong>Project Editor on short screens.</strong> Its Save and Cancel buttons stay inside the window.
+                (#0597)</li>
+                <li><strong>Background sheets.</strong> Cancel no longer loses an image that arrived while the sheet was
+                open. (#0590, #0591)</li>
+                <li><strong>Exit Shell</strong> now ends the shell instead of leaving <code>exit</code> typed at the
+                prompt. (#0644)</li>
+                <li><strong>Shortcuts behind a sheet.</strong> While a sheet is open, Command-W, Command-T, paste and
+                other Window commands no longer act on the Window behind it. (#0641)</li>
+                <li><strong>Sidebar disclosure arrows</strong> are back in their usual place. (#0627)</li>
+            </ul>
+        </article>
         <article id="v1-3-5">
             <h2>1.3.5 — 2026-11-09</h2>
             <p class="meta">Terminal background images and opacity, including see-through terminals.</p>
