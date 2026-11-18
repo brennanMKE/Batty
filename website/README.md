@@ -87,7 +87,7 @@ rsync -avz  website/ photon:/var/www/vhosts/batty.sstools.co/
 
 Never add `--delete`: it would remove the older DMGs on the server. Because there's no `--delete`, removing an image from the catalog doesn't remove it from the server; delete it there by hand if needed.
 
-After deploying, check with `curl -sI` that `https://batty.sstools.co/backgrounds/catalog.json` returns 200 with `Content-Type: application/json` and an `ETag` or `Last-Modified` header, and that one full-size and one thumbnail URL return 200 with the expected `Content-Length`.
+After deploying, check with `curl -sI` that `https://batty.sstools.co/backgrounds/catalog.json` returns 200 with `Content-Type: application/json` and an `ETag` or `Last-Modified` header, and that one full-size and one thumbnail URL return 200 with the expected `Content-Length`. Also check that `https://batty.sstools.co/backgrounds.html` returns 200; a 403 there usually means the page was deployed without world read (`stat -f %Lp website/backgrounds.html` should print `644`).
 
 ## Assets
 

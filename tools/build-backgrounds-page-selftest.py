@@ -12,6 +12,8 @@ import copy
 import importlib.util
 import io
 import json
+import os
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -341,6 +343,32 @@ def _(d):
     fx = Fx(d, example=ex)
     code, out = fx.run()
     assert code == 0, out
+
+
+@case("written page is mode 0644 even when the old page was 0600")
+def _(d):
+    fx = Fx(d)
+    os.chmod(fx.page, 0o600)
+    code, out = fx.run()
+    assert code == 0 and "OK: wrote" in out, out
+    assert stat.S_IMODE(os.stat(fx.page).st_mode) == 0o644, oct(os.stat(fx.page).st_mode)
+
+
+@case("a write leaves no temp file behind")
+def _(d):
+    fx = _gen(d)
+    assert list(fx.page.parent.glob(".backgrounds-*.tmp")) == []
+
+
+@case("--check and an up-to-date run do not change the page's mode")
+def _(d):
+    fx = _gen(d)
+    os.chmod(fx.page, 0o600)
+    code, out = fx.run("--check")
+    assert code == 0 and stat.S_IMODE(os.stat(fx.page).st_mode) == 0o600, out
+    code, out = fx.run()
+    assert code == 0 and "already up to date" in out, out
+    assert stat.S_IMODE(os.stat(fx.page).st_mode) == 0o600
 
 
 def main():
