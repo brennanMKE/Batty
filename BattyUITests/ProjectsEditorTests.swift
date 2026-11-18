@@ -121,7 +121,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
     }
 
     @MainActor
-    func testEditorCreatesAProjectAndSaveAndOpenOpensIt() throws {
+    func testEditorCreatesAProjectAndOpenOpensIt() throws {
         let root = try makeDirectory("fresh-root")
         _ = try BattyCLI.makeGitRepository(in: root, named: "repo")
         _ = try makeDirectory("sub", in: root)
@@ -145,11 +145,14 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         replaceText(in: "project-editor.tab.2.title", with: "Second", app: app)
         replaceText(in: "project-editor.tab.2.directory", with: "sub", app: app)
 
-        let saveAndOpen = element("project-editor.save-open", in: app)
-        XCTAssertTrue(waitFor({ saveAndOpen.isEnabled }, timeout: 10), "Save & Open stayed disabled for a valid Project: \(element("project-editor.save-error", in: app).debugDescription)")
-        saveAndOpen.click()
+        let open = element("project-editor.open", in: app)
+        XCTAssertFalse(open.isEnabled, "Open is enabled for a Project that is not saved yet")
+        let save = element("project-editor.save", in: app)
+        XCTAssertTrue(waitFor({ save.isEnabled }, timeout: 10), "Save stayed disabled for a valid Project: \(element("project-editor.save-error", in: app).debugDescription)")
+        save.click()
+        XCTAssertTrue(waitFor({ open.isEnabled }, timeout: 10), "Open stayed disabled after Save: \(element("project-editor.save-error", in: app).debugDescription)")
+        open.click()
 
-        XCTAssertTrue(waitFor({ !self.editorWindow(in: app).exists }, timeout: 10), "Save & Open did not close the editor")
         let session = try XCTUnwrap(waitForSessions(named: "Fresh Grid").first)
         let topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.session(session.id)?.visiblePanes.count == 4 })
         let opened = try XCTUnwrap(topology.session(session.id))
@@ -170,18 +173,51 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         )
     }
 
+    /// Escape is not bound in the editor window, so it can't lose edits;
+    /// Command-S saves and leaves the window open.
     @MainActor
-    func testCancelLeavesTheStoredProjectUnchanged() throws {
+    func testCommandSSavesAndEscapeLeavesTheEditorOpen() throws {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
         openEditorFromProjectsMenu(in: app)
         click("project-editor.list.row.Existing", in: app)
-        replaceText(in: "project-editor.name", with: "Existing Changed", app: app)
-        click("project-editor.cancel", in: app)
-        XCTAssertTrue(waitFor({ !self.editorWindow(in: app).exists }, timeout: 10), "Cancel did not close the editor")
+        replaceText(in: "project-editor.name", with: "Existing Renamed", app: app)
 
-        XCTAssertEqual(ProjectFixture.names(in: storeFile), ["Existing"], "Cancel wrote the edit to the store")
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        XCTAssertTrue(editorWindow(in: app).exists, "Escape closed the editor")
+        XCTAssertEqual(element("project-editor.name", in: app).value as? String, "Existing Renamed", "Escape dropped the edit")
+        XCTAssertEqual(ProjectFixture.names(in: storeFile), ["Existing"], "Escape wrote the edit to the store")
+
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertTrue(
+            waitFor({ ProjectFixture.names(in: self.storeFile) == ["Existing Renamed"] }, timeout: 10),
+            "Command-S did not save: \(element("project-editor.save-error", in: app).debugDescription)"
+        )
+        XCTAssertTrue(editorWindow(in: app).exists, "Command-S closed the editor")
+    }
+
+    @MainActor
+    func testRevertLeavesTheStoredProjectUnchanged() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openEditorFromProjectsMenu(in: app)
+        click("project-editor.list.row.Existing", in: app)
+        let revert = element("project-editor.revert", in: app)
+        XCTAssertTrue(revert.waitForExistence(timeout: 5), "no Revert button in the editor footer")
+        XCTAssertFalse(revert.isEnabled, "Revert is enabled before any edit")
+        replaceText(in: "project-editor.name", with: "Existing Changed", app: app)
+        XCTAssertTrue(waitFor({ revert.isEnabled }, timeout: 5), "an edit did not enable Revert")
+        revert.click()
+
+        XCTAssertTrue(
+            waitFor({ (self.element("project-editor.name", in: app).value as? String) == "Existing" }, timeout: 5),
+            "Revert did not restore the stored name"
+        )
+        XCTAssertTrue(editorWindow(in: app).exists, "Revert closed the editor")
+        XCTAssertEqual(ProjectFixture.names(in: storeFile), ["Existing"], "Revert wrote the edit to the store")
+        closeEditor(in: app)
 
         openThroughPicker("Existing", in: app)
         let session = try XCTUnwrap(waitForSessions(named: "Existing").first)
@@ -247,8 +283,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         XCTAssertTrue(waitFor({ save.isEnabled }, timeout: 10), "Save stayed disabled: \(element("project-editor.save-error", in: app).debugDescription)")
         save.click()
         XCTAssertTrue(waitFor({ ProjectFixture.names(in: self.storeFile) == [name] }, timeout: 10), "Save did not store \(name)")
-        click("project-editor.cancel", in: app)
-        XCTAssertTrue(waitFor({ !self.editorWindow(in: app).exists }, timeout: 10))
+        closeEditor(in: app)
 
         closeSession(built.id)
         openThroughPicker(name, in: app)
@@ -331,7 +366,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         }
         XCTAssertTrue(window.waitForExistence(timeout: 5), "no Project Editor window")
         let windowFrame = window.frame
-        for id in ["project-editor.run-commands", "project-editor.cancel", "project-editor.save", "project-editor.save-open"] {
+        for id in ["project-editor.run-commands", "project-editor.open", "project-editor.revert", "project-editor.save"] {
             let frame = element(id, in: app).frame
             XCTAssertTrue(windowFrame.contains(frame), "\(id) at \(frame) is outside the window \(windowFrame)")
         }

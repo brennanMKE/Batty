@@ -128,7 +128,11 @@ struct ReminderBarView: View {
     private var picker: some View {
         let now = store.reminderScheduler.now
         let valid = model.pickedDateIsValid && ReminderSpec.isInstantInRange(model.pickedDate, now: now)
-        return HStack(spacing: 12) {
+        return DialogButtonRow(
+            confirm: DialogButton("Set", identifier: "reminder-bar.pick.set") { activate(.pick) },
+            cancel: DialogButton("Back", identifier: "reminder-bar.pick.back") { escape() },
+            style: .bar
+        ) {
             DatePicker(
                 "Date and Time",
                 selection: Binding(get: { model.pickedDate }, set: { model.setPickedDate($0) }),
@@ -145,16 +149,7 @@ struct ReminderBarView: View {
                 .font(.callout)
                 .foregroundStyle(valid ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
                 .accessibilityIdentifier("reminder-bar.summary")
-            Spacer()
-            Button("Set") { activate(.pick) }
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier("reminder-bar.pick.set")
-            Button("Back") { escape() }
-                .keyboardShortcut(.cancelAction)
-                .accessibilityIdentifier("reminder-bar.pick.back")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
         .background(digitShortcuts)
     }
 

@@ -301,7 +301,6 @@ private struct ProjectListColumn: View {
                 Label("New Project\u{2026}", systemImage: "plus")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .controlSize(.large)
             .padding(10)
             .accessibilityIdentifier("project-editor.new-project")
         }
@@ -364,6 +363,8 @@ private struct ProjectEditorMain: View {
                     .id(model.selectedID)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            ProjectStartupCommandsRow(model: model)
+                .fixedSize(horizontal: false, vertical: true)
             Divider()
             HStack(spacing: 0) {
                 // On a short window the Layout column scrolls instead of pushing
@@ -410,6 +411,34 @@ private struct ProjectThemeRow: View {
         .sheet(isPresented: $isEditing) {
             ProjectThemeSheet(isPresented: $isEditing, model: model)
         }
+    }
+}
+
+private struct ProjectStartupCommandsRow: View {
+    let model: ProjectEditorViewModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Startup commands").font(.caption).foregroundStyle(.secondary)
+            Toggle(
+                "Run when the Project opens",
+                isOn: Binding(
+                    get: { model.draft?.runStartupCommandsOnOpen ?? false },
+                    set: { model.setRunStartupCommandsOnOpen($0) }
+                )
+            )
+            .accessibilityIdentifier("project-editor.run-commands")
+            if model.draft?.showsCommandsOffHint == true {
+                Text("Startup commands won't run when this Project opens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .accessibilityIdentifier("project-editor.commands-off-hint")
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 }
 
@@ -1119,23 +1148,23 @@ private struct ProjectEditorFooter: View {
     let validation: ProjectEditorValidation
 
     var body: some View {
-        HStack(spacing: 12) {
-            Toggle(
-                "Run startup commands when the Project opens",
-                isOn: Binding(
-                    get: { model.draft?.runStartupCommandsOnOpen ?? false },
-                    set: { model.setRunStartupCommandsOnOpen($0) }
-                )
-            )
-            .accessibilityIdentifier("project-editor.run-commands")
-            if model.draft?.showsCommandsOffHint == true {
-                Text("Startup commands won't run when this Project opens.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .accessibilityIdentifier("project-editor.commands-off-hint")
-            }
-            Spacer()
+        DialogButtonRow(
+            confirm: DialogButton(
+                "Save",
+                identifier: "project-editor.save",
+                isEnabled: model.canSave(validation)
+            ) { model.save() },
+            cancel: nil,
+            alternative: DialogButton(
+                "Revert",
+                identifier: "project-editor.revert",
+                isEnabled: model.canRevert
+            ) { model.revert() },
+            style: .bar
+        ) {
+            Button("Open") { model.openSelected() }
+                .disabled(!model.canOpen)
+                .accessibilityIdentifier("project-editor.open")
             if let error = model.saveError {
                 Text(error)
                     .font(.caption)
@@ -1143,18 +1172,19 @@ private struct ProjectEditorFooter: View {
                     .lineLimit(2)
                     .accessibilityIdentifier("project-editor.save-error")
             }
-            Button("Cancel") { model.cancel() }
-                .accessibilityIdentifier("project-editor.cancel")
-            Button("Save") { model.save() }
-                .disabled(!model.canSave(validation))
-                .accessibilityIdentifier("project-editor.save")
-            Button("Save & Open") { model.saveAndOpen() }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!model.canSaveAndOpen(validation))
-                .accessibilityIdentifier("project-editor.save-open")
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .background(saveShortcut)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// Command-S has to be a key equivalent of a button in this window;
+    /// `onKeyPress` would be too late for a Command chord.
+    private var saveShortcut: some View {
+        Button("Save") { model.save() }
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(!model.canSave(validation))
+            .frame(width: 0, height: 0)
+            .opacity(0)
+            .accessibilityHidden(true)
     }
 }

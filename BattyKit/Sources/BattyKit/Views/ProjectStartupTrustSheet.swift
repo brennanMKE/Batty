@@ -5,6 +5,7 @@ import SwiftUI
 struct ProjectStartupTrustSheet: View {
     let request: ProjectStartupTrustRequest
     let onChoose: (ProjectStartupChoice) -> Void
+    let onCancel: () -> Void
 
     @State private var rememberApproval = true
 
@@ -34,17 +35,22 @@ struct ProjectStartupTrustSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             Toggle("Don\u{2019}t ask again until the commands change", isOn: $rememberApproval)
                 .accessibilityIdentifier("project-startup-trust.remember")
-            HStack {
-                Spacer()
-                Button("Open Without Running") { onChoose(.openWithoutRunning) }
-                    .accessibilityIdentifier("project-startup-trust.open-without-running")
-                Button("Run Commands") { onChoose(.run(rememberApproval: rememberApproval)) }
-                    .keyboardShortcut(.defaultAction)
-                    .accessibilityIdentifier("project-startup-trust.run")
-            }
             Text("Startup commands run like typed input. Batty asks the first time, and again if a command is edited.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            // Return is left unbound: the sheet can appear while the user is
+            // typing in a terminal, and a stray Return must not run commands.
+            DialogButtonRow(
+                confirm: DialogButton("Run Commands", identifier: "project-startup-trust.run") {
+                    onChoose(.run(rememberApproval: rememberApproval))
+                },
+                cancel: .cancel(identifier: "project-startup-trust.cancel", action: onCancel),
+                alternative: DialogButton(
+                    "Open Without Running",
+                    identifier: "project-startup-trust.open-without-running"
+                ) { onChoose(.openWithoutRunning) },
+                confirmIsDefault: false
+            )
         }
         .padding(20)
         .frame(width: 460)

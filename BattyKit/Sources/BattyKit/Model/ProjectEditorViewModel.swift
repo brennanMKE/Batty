@@ -83,8 +83,7 @@ struct ProjectEditorTabSummary: Equatable {
 
 /// The Project Editor's behavior, apart from any view: the draft, its
 /// validation, and the only paths that write `ProjectStore`. Edits touch
-/// only the draft; `save()` and `saveAndOpen()` (button actions) write the
-/// store. Nothing here runs from `body`.
+/// only the draft; `save()` (a button action) writes the store. Nothing here runs from `body`.
 @MainActor
 @Observable
 final class ProjectEditorViewModel {
@@ -95,7 +94,7 @@ final class ProjectEditorViewModel {
     @ObservationIgnored private let directoryExists: @MainActor (String) -> Bool
     @ObservationIgnored private let defaultRoot: @MainActor () -> String?
     @ObservationIgnored private let suggestName: @MainActor (String) -> String?
-    /// Save & Open: starts the open once the editor is out of the way.
+    /// Open: starts the open of a stored Project; the editor stays open.
     @ObservationIgnored var openProject: @MainActor (UUID) -> Void
     /// Reads the content window's selected Session as a capture, made
     /// relative to the given root (nil derives one). Nil when there is no
@@ -243,20 +242,18 @@ final class ProjectEditorViewModel {
     }
 
     /// Each accessor below validates afresh; a view takes one `validate()`
-    /// result per render and uses `canSave(_:)` / `canSaveAndOpen(_:)`.
+    /// result per render and uses `canSave(_:)`.
     var validationIssues: [ProjectEditorField: String] { validate().errors }
     var validationWarnings: [ProjectEditorField: String] { validate().warnings }
     var isValid: Bool { draft != nil && validate().isValid }
     var canSave: Bool { canSave(validate()) }
-    var canSaveAndOpen: Bool { canSaveAndOpen(validate()) }
 
     func canSave(_ validation: ProjectEditorValidation) -> Bool {
         draft != nil && validation.isValid && (isDirty || isNewDraft)
     }
 
-    func canSaveAndOpen(_ validation: ProjectEditorValidation) -> Bool {
-        draft != nil && validation.isValid
-    }
+    var canRevert: Bool { draft != nil && isDirty && !isNewDraft }
+    var canOpen: Bool { draft != nil && !isDirty && !isNewDraft }
 
     var slotCount: Int { draft?.layout.paneCount ?? 0 }
     var panes: [ProjectPane] { draft?.layout.panes ?? [] }
@@ -931,7 +928,7 @@ final class ProjectEditorViewModel {
         return true
     }
 
-    // MARK: - Save, open, cancel, delete
+    // MARK: - Save, open, revert, delete
 
     /// Writes exactly the edited Project to the store. Nil, with
     /// `saveError` or the field messages showing why, when it did not.
@@ -973,26 +970,19 @@ final class ProjectEditorViewModel {
         return stored
     }
 
-    /// Saves, closes the editor, then opens through `openProject`. The
-    /// editor closes first so the trust sheet presents over a content
-    /// window, not behind this one.
-    @discardableResult
-    func saveAndOpen() -> Bool {
-        guard let project = save() else { return false }
-        closeWindow()
-        openProject(project.id)
-        return true
+    /// Opens the stored Project through `openProject`. Unavailable while
+    /// the draft has unsaved changes, so what opens is what the editor shows.
+    func openSelected() {
+        guard canOpen, let id = draft?.id else { return }
+        openProject(id)
     }
 
-    /// Cancel: nothing is written, and the editor closes.
-    func cancel() {
-        if let id = draft?.id, let project = store.project(id: id) {
-            load(project)
-        } else {
-            draft = nil
-            baseline = nil
-        }
-        closeWindow()
+    /// Throws away the draft's edits by reloading the stored Project.
+    /// Nothing is written. A Project that was never saved has nothing to
+    /// go back to and is left alone.
+    func revert() {
+        guard canRevert, let id = draft?.id, let project = store.project(id: id) else { return }
+        load(project)
     }
 
     func requestDelete(_ id: UUID) {

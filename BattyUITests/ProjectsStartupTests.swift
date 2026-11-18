@@ -96,8 +96,7 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
             waitFor({ ProjectFixture.read(self.storeFile)?.first.map(ProjectFixture.commands(of:))?.first?.contains(edited.lastPathComponent) == true }, timeout: 10),
             "the edited command was not saved"
         )
-        click("project-editor.cancel", in: app)
-        XCTAssertTrue(waitFor({ !self.editorWindow(in: app).exists }, timeout: 10))
+        closeEditor(in: app)
 
         closeSession(runner.id)
         openThroughPicker("Runner", in: app)
@@ -106,6 +105,39 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
         clickSheetButton("project-startup-trust.open-without-running", "Open Without Running", in: app)
         _ = waitForSessions(named: "Runner")
         XCTAssertFalse(FileManager.default.fileExists(atPath: edited.path), "the unapproved edited command ran")
+    }
+
+    /// Return is not bound to Run Commands, and Escape cancels the open.
+    @MainActor
+    func testTrustSheetEscapeCancelsTheOpenAndReturnRunsNothing() throws {
+        let root = try makeDirectory("cancel-root")
+        let marker = scratch.appending(path: "ran-cancelled")
+        let project = ProjectFixture.project(
+            name: "Cancelled",
+            root: root,
+            layout: ProjectFixture.terminal([ProjectFixture.tab("Server", command: "touch \(BattyCLI.shellQuoted(marker.path))")]),
+            preset: "singlePane",
+            runStartupCommands: true
+        )
+        let (app, _) = try launchApp(projects: [project])
+        defer { app.terminate() }
+
+        openThroughPicker("Cancelled", in: app)
+        waitForSheet(in: app)
+        XCTAssertTrue(sheetButton("project-startup-trust.cancel", in: app).waitForExistence(timeout: 5), "no Cancel button in the trust sheet")
+
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+        XCTAssertFalse(
+            waitFor({ !self.sheet(in: app).exists }, timeout: 2),
+            "Return answered the trust sheet"
+        )
+        XCTAssertNil(BattyCLI.topology().flatMap { sessions(named: "Cancelled", in: $0).first }, "Return opened the Project")
+
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.sheet(in: app).exists }, timeout: 5), "Escape did not dismiss the trust sheet")
+        XCTAssertNil(BattyCLI.topology().flatMap { sessions(named: "Cancelled", in: $0).first }, "Escape opened the Project")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "a cancelled open ran the startup command")
+        XCTAssertNil(ProjectFixture.read(storeFile)?.first?["approvedCommandsHash"] as? String, "a cancelled open stored an approval")
     }
 
     /// `/bin/sh` is not zsh or bash, so Batty loads no shell integration into it and it never

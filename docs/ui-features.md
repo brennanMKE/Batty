@@ -236,6 +236,7 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `pane-background-sheet.*`, `session-background-sheet.*`, `project-background-sheet.*`: the override sheets.
 - `appearance-background.*`: the Settings section.
 - `project-editor.background.*`: the Project Editor's Background row.
+- The picker picks on click, like the Theme selector, so it has no Choose button: its bar is Add from File…, Remove… and the message on the leading edge, then the total and Cancel (Escape). Return goes to the grid's selection (#0654).
 - `background-images.picker.root`: the picker sheet. Also `.add`, `.remove`, `.confirm-remove`, `.total`, `.message`, `.empty`, `.empty-add`, `.picker.cancel`.
 - `background-images.cell.<name>`: the cell, which XCUITest reads as a Group with no value, so a test proves a thumbnail by its pixels. `.cell.<name>.uses` and `.cell.<name>.size` are its lines, read through `value`.
 - `session-row.<title>`: its label and value carry the warning on a Session whose Project image can't be used. The warning has no identifier of its own.
@@ -458,7 +459,7 @@ Neither exists otherwise.
 |---|---|
 | Bar | `reminder-bar`, text field `reminder-bar.text`, count `reminder-bar.count` |
 | Rows | `reminder-bar.row.keep`, `.row.5`, `.row.15`, `.row.30`, `.row.60`, `.row.tomorrow`, `.row.pick`, `.row.remove` |
-| Picker | `reminder-bar.picker`, `reminder-bar.summary`, `reminder-bar.pick.set`, `reminder-bar.pick.back` |
+| Picker | `reminder-bar.picker`, `reminder-bar.summary`, `reminder-bar.pick.back`, `reminder-bar.pick.set` (Back then Set, Set rightmost and the default button; `testPickerSetButtonIsRightOfBack`) |
 | Sidebar state | the `session-row.<title>` value ends `reminder pending: <time and note>` or `reminder due` |
 | Context menu | `menu.sidebar.remind.<title>` on the first item (UI tests find "Remind Me…" inside the menu holding "Reset Name", because the Session menu has its own item that acts on the selected Session) |
 
@@ -715,6 +716,32 @@ Quickly was caught as `[0150]`.
 
 ---
 
+## Dialog button rows
+
+Every sheet with buttons, and the Project Editor footer, builds its row with
+`DialogButtonRow` (`Views/DialogButtonRow.swift`, #0654). Its order and
+shortcuts come from `DialogButtonRowLayout.placements`, pinned by
+`DialogButtonRowLayoutTests`:
+
+- Leading to trailing: caller's leading content, a spacer, then at most one
+  alternative, Cancel, and the confirm button, which is always rightmost.
+- Cancel carries `.cancelAction` (Escape). The confirm button carries
+  `.defaultAction` (Return) unless the caller passes `confirmIsDefault: false`,
+  which is for an action that runs something (the startup-command trust
+  sheet). The alternative never has a shortcut.
+- Buttons are regular control size, 12 pt apart. `.inline` adds no padding, for
+  a sheet that pads its content; `.bar` pads 20 by 12, for a row under a
+  `Divider`.
+
+Users: Paste confirmation, Rename Tab, Rename Session, the Background sheet,
+the Project Theme sheet, the Symbol picker, the Background Images picker
+(Cancel only), the Quick Reminder bar's date step (Back, Set), the trust sheet
+and the Project Editor footer. Keyboard pickers with no buttons keep their hint
+captions. Settings ▸ Clear Capture confirms in a `.confirmationDialog`
+("Delete all captured records?", Delete, Cancel), like the other confirms.
+
+---
+
 ## Modal confirmation flows
 
 Three modals protect users from irreversible or dangerous actions:
@@ -941,21 +968,33 @@ process-global AppKit window titled "Projects", created on demand by
 never registered with `AppStateStore.registerNSWindow`, so content-window
 shortcuts are off while it is key (`BattyShortcuts` declines the chord, and
 the menu items that act on a Session, Pane or Tab resolve no target, see
-below), and the Save & Open target is `defaultTargetWindow()`. Layout, left to right: the Projects list, the settings
+below), and the Open button's target is `defaultTargetWindow()`. Layout, left to right: the Projects list, the settings
 column (Name, Root folder, Session color, Layout strip, Pane preview), and the
 Pane inspector, with a footer.
 
 **Invariants:**
 
-- Edits are a draft. Nothing is written to `ProjectStore` until Save or
-  Save & Open. Cancel writes nothing and closes the window.
+- Edits are a draft, and the editor is explicit-save (#0654). Nothing is
+  written to `ProjectStore` until Save: the Save button, Return, or ⌘S.
+- The footer is one `DialogButtonRow`: **Open** on the leading edge, then
+  **Revert** and **Save** trailing, Save rightmost and the default button.
+  There is no Cancel, and Escape does nothing in the window itself (it still
+  cancels a sheet over it). The window closes by its close button or ⌘W.
+- Revert reloads the stored Project, writes nothing and leaves the window
+  open. It is enabled for a changed draft of a stored Project. A Project that
+  was never saved is discarded by Delete on its row, or by closing and choosing
+  Discard Changes.
 - Switching Projects, choosing New Project, or closing the window with unsaved
   changes asks Save, Discard Changes or Cancel.
-- Save is enabled only for a valid, changed draft. Save & Open is enabled for a
-  valid draft. Invalid fields show an inline message under the field.
-- Save & Open saves, closes the editor, then opens through
-  `requestOpenProject`, so the startup-command trust sheet appears when the
-  command set is new or changed.
+- Save is enabled only for a valid, changed draft. Invalid fields show an
+  inline message under the field.
+- Open is enabled only for a stored Project with no unsaved changes. It opens
+  through `requestOpenProject` (focusing the Session when the Project is
+  already open), so the startup-command trust sheet appears when the command
+  set is new or changed. The editor stays open and the content window comes
+  forward (#0485).
+- "Startup commands: Run when the Project opens" is a row in the form, under
+  the Background row. It is not in the footer.
 - The Layout strip shows all ten presets, plus a "Custom" thumbnail when the
   Project's topology has no preset.
 - Changing the Layout keeps slot N's configuration where slot N still exists. A
@@ -1028,13 +1067,13 @@ Pane inspector, with a footer.
   covers it. The Projects list row shows a small `icloud` glyph after a shared
   Project's name (`accessibilityHidden`). New Projects, Save Session as Project
   drafts and Copy from current Session start local.
-- Footer: `project-editor.run-commands` (on by default for New Project... and
-  for Save Session as Project drafts; Update from Session keeps the stored
-  Project's value), `project-editor.commands-off-hint` (caption "Startup
-  commands won't run when this Project opens." shown only while the draft has
-  a non-empty startup command and the toggle is off, #0502),
-  `project-editor.cancel`,
-  `project-editor.save`, `project-editor.save-open`, `project-editor.save-error`.
+- Startup commands row: `project-editor.run-commands` (on by default for New
+  Project... and for Save Session as Project drafts; Update from Session keeps
+  the stored Project's value), `project-editor.commands-off-hint` (caption
+  "Startup commands won't run when this Project opens." shown only while the
+  draft has a non-empty startup command and the toggle is off, #0502).
+- Footer: `project-editor.open`, `project-editor.save-error`,
+  `project-editor.revert`, `project-editor.save`.
 
 **Not covered by unit tests (for the Tart VM suite, #0478):**
 
@@ -1047,7 +1086,7 @@ Pane inspector, with a footer.
   swatch selection, the layout confirmation dialog, and the unsaved-changes
   dialog.
 - Choose… (`NSOpenPanel`) and the Tab folder chooser.
-- Save & Open end to end: the Session appears in a content window, and the
+- Save then Open end to end: the Session appears in a content window, and the
   trust sheet appears for an unapproved command set.
 
 ---
@@ -1166,7 +1205,7 @@ Command Palette entries are built in `CommandPaletteView.allCommands`.
   is key (#0485) brings the target content window forward: `openProject`
   (create) and `requestOpenProject` (trust sheet) call `activateWindow` when
   `auxiliaryWindowIsKey`, in the same menu action, so the new Session or the
-  trust sheet is visible. This also covers Save & Open when the editor was key.
+  trust sheet is visible. This also covers the editor's Open button, which leaves the editor open behind it.
 - Choose Project... from Settings, Help or the Project Editor brings the target
   content window forward and presents the picker there: the menu action posts
   `.battyToggleProjectPicker` with the target's `WindowID` in `userInfo`
@@ -1309,7 +1348,10 @@ through the embedded CLI.
 unchanged; these are the ones they do not cover):
 
 - `project-startup-trust` -- the startup-command trust sheet; `project-startup-trust.remember`
-  (checked by default), `project-startup-trust.open-without-running`, `project-startup-trust.run`.
+  (checked by default), `project-startup-trust.open-without-running`,
+  `project-startup-trust.cancel`, `project-startup-trust.run`. The row reads Open Without Running,
+  Cancel, Run Commands. Cancel (Escape) cancels the open through `cancelStartupTrust`, silently.
+  No button is the default, so Return does not run commands (#0654).
   Each listed command is one element `project-startup-trust.command.<n>` (#0484).
 - `tab-startup-waiting` -- the Tab chip's menu button shown when a startup command's shell never
   reported readiness (#0479); label and help "Startup command not run -- the shell didn't report it was
@@ -1353,8 +1395,10 @@ unchanged; these are the ones they do not cover):
 | Trust sheet, Open Without Running, Run Commands, remembered approval, edited command | `ProjectsStartupTests.testTrustSheetGatesStartupCommandsAndRemembersApproval` |
 | Waiting indicator for a shell that never reports OSC 7 (`/bin/sh`), Run Now, Dismiss (#0479) | `ProjectsStartupTests.testShellThatNeverReportsShowsWaitingIndicatorWithRunNowAndDismiss` |
 | Projects ▸ Projects..., Window menu entry | `ProjectsEditorTests.testEditProjectsMenuOpensTheEditorOnTheStoredProjects` |
-| Create, Save & Open, Tab directory | `ProjectsEditorTests.testEditorCreatesAProjectAndSaveAndOpenOpensIt` |
-| Cancel leaves the store unchanged | `ProjectsEditorTests.testCancelLeavesTheStoredProjectUnchanged` |
+| Create, Save, Open, Tab directory | `ProjectsEditorTests.testEditorCreatesAProjectAndOpenOpensIt` |
+| Revert leaves the store unchanged and the window open | `ProjectsEditorTests.testRevertLeavesTheStoredProjectUnchanged` |
+| ⌘S saves, Escape does nothing in the editor (#0654) | `ProjectsEditorTests.testCommandSSavesAndEscapeLeavesTheEditorOpen` |
+| Trust sheet: Escape cancels the open, Return runs nothing (#0654) | `ProjectsStartupTests.testTrustSheetEscapeCancelsTheOpenAndReturnRunsNothing` |
 | Sidebar Save as Project, round trip, equal sizes | `ProjectsEditorTests.testSidebarSaveAsProjectRoundTripsTheSessionShape` |
 | Commands-off hint follows the toggle | `ProjectsEditorTests.testCommandsOffHintTracksTheToggleWhenCommandsExist` |
 | Save Session as Project draft has the run toggle on | `ProjectsEditorTests.testSavedSessionProjectHasTheRunToggleOn` |

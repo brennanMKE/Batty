@@ -598,18 +598,20 @@ private struct BellCaptureRow: View {
             }
             .disabled(!fileExists)
             Spacer()
-            if confirmingClear {
-                Text("Delete all captured records?")
-                    .font(.caption)
-                Button("Delete", role: .destructive) {
-                    store?.clearBellCapture()
-                    confirmingClear = false
-                    Task { await refresh() }
-                }
-                Button("Cancel") { confirmingClear = false }
-            } else {
-                Button("Clear Capture", role: .destructive) { confirmingClear = true }
+            Button("Clear Capture", role: .destructive) { confirmingClear = true }
+                .accessibilityIdentifier("settings.bellCapture.clear")
+        }
+        .confirmationDialog(
+            "Delete all captured records?",
+            isPresented: $confirmingClear,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                store?.clearBellCapture()
+                Task { await refresh() }
             }
+            .accessibilityIdentifier("settings.bellCapture.confirm-clear")
+            Button("Cancel", role: .cancel) {}
         }
         .task { await refresh() }
         .onChange(of: capture) { _, _ in Task { await refresh() } }
