@@ -386,26 +386,61 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     private struct ShippedBottom {
         let app: XCUIApplication
         let root: XCUIElement
-        let deepSpace: XCUIElement
-        let galaxy: XCUIElement
+        let lastSetName: String
+        let lastSet: XCUIElement
+        let last: XCUIElement
+        let lastStem: String
+        let lastFullPath: String
+        let neighbourStems: [String]
+        let neighbourFullPaths: [String]
+    }
+
+    /// What `openShippedAtTheBottom` seeds as already downloaded.
+    private enum ShippedSeed {
+        case none
+        /// Images 1, 2 and 5 of up to three sets above the last one, so the rows
+        /// above the view differ in height from each other and from the visible ones.
+        case unevenAbove
+        /// The last image's preceding neighbours in the last set.
+        case neighboursInView
     }
 
     /// A fresh open of Pane > Background Images… with the shipped catalog,
-    /// Background Sets scrolled to the bottom so Deep Space's heading is above
-    /// the view. `downloaded` are shipped full paths seeded as already
-    /// downloaded; `waitForAvailable` is a cell stem whose "Available offline"
-    /// line must show before the bottom is measured. `checkInFlight` holds
-    /// `catalog.json`, then switches to My Images and back, so Background Sets
-    /// appearing starts a catalog check that stays in flight while the grid
-    /// scrolls; it needs a check interval of 0.
+    /// Background Sets scrolled to the end of the grid so the last set's heading
+    /// is above the view. `seed` picks images to mark as already downloaded; the
+    /// last seeded image's "Available offline" line must show before the bottom
+    /// is measured. `checkInFlight` holds `catalog.json`, then switches to My
+    /// Images and back, so Background Sets appearing starts a catalog check that
+    /// stays in flight while the grid scrolls; it needs a check interval of 0.
     @MainActor
     private func openShippedAtTheBottom(
-        downloaded: [String] = [],
-        waitForAvailable: String? = nil,
+        seed: ShippedSeed = .none,
         environment: [String: String] = [:],
         checkInFlight: Bool = false
     ) throws -> ShippedBottom {
-        try BackgroundCatalogFixture.writeShipped(in: catalogFolder)
+        let sets = try BackgroundCatalogFixture.writeShipped(in: catalogFolder)
+        XCTAssertGreaterThanOrEqual(sets.count, 2, "the shipped catalog has too few sets to have rows above the last one")
+        let lastSetInfo = try XCTUnwrap(sets.last)
+        let firstSetName = try XCTUnwrap(sets.first?.name)
+        XCTAssertGreaterThanOrEqual(lastSetInfo.fullPaths.count, 4, "the last shipped set has too few images for a bottom row")
+        let lastFullPath = try XCTUnwrap(lastSetInfo.fullPaths.last)
+        let lastStem = BackgroundCatalogFixture.stem(ofFullPath: lastFullPath)
+        let neighbourFullPaths = Array(lastSetInfo.fullPaths.dropLast().suffix(3))
+        let neighbourStems = neighbourFullPaths.map(BackgroundCatalogFixture.stem(ofFullPath:))
+
+        let downloaded: [String]
+        switch seed {
+        case .none:
+            downloaded = []
+        case .unevenAbove:
+            downloaded = sets.dropLast().prefix(3).flatMap { set in
+                [0, 1, 4].filter { $0 < set.fullPaths.count }.map { set.fullPaths[$0] }
+            }
+            XCTAssertTrue(Set(downloaded).isDisjoint(with: lastSetInfo.fullPaths), "an image seeded above is in the last set")
+        case .neighboursInView:
+            downloaded = neighbourFullPaths
+        }
+        let waitForAvailable = downloaded.last.map(BackgroundCatalogFixture.stem(ofFullPath:))
         if !downloaded.isEmpty {
             try BackgroundCatalogFixture.seedDownloaded(downloaded, into: libraryFolder.appending(path: "Hosted"))
         }
@@ -420,9 +455,9 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         showBackgroundSets(in: app)
         let root = element("background-sets.root", in: app)
         XCTAssertTrue(root.waitForExistence(timeout: 5), "no Background Sets view")
-        let deepSpace = element("background-sets.set.Deep Space", in: app)
-        let galaxy = cell("08-distant-galaxy", in: app)
-        XCTAssertTrue(element("background-sets.set.Future Cities", in: app).waitForExistence(timeout: 10), "the catalog did not load")
+        let lastSet = element("background-sets.set.\(lastSetInfo.name)", in: app)
+        let last = cell(lastStem, in: app)
+        XCTAssertTrue(element("background-sets.set.\(firstSetName)", in: app).waitForExistence(timeout: 10), "the catalog did not load")
 
         if checkInFlight {
             let refresh = element("background-sets.refresh", in: app)
@@ -431,58 +466,72 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
             app.radioButtons["My Images"].firstMatch.click()
             showBackgroundSets(in: app)
             XCTAssertTrue(waitFor({ !refresh.isEnabled }, timeout: 5), "Background Sets appearing started no catalog check")
-            XCTAssertTrue(element("background-sets.set.Future Cities", in: app).waitForExistence(timeout: 5), "the sets did not show during the check")
+            XCTAssertTrue(element("background-sets.set.\(firstSetName)", in: app).waitForExistence(timeout: 5), "the sets did not show during the check")
         }
 
         let available = waitForAvailable.map { element("background-sets.cell.\($0).available", in: app) }
         var sawAvailable = available?.exists ?? true
         root.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).hover()
-        for _ in 0..<40 where !(galaxy.exists && galaxy.isHittable) {
+        for _ in 0..<120 where !(last.exists && last.isHittable) {
             root.scroll(byDeltaX: 0, deltaY: -240)
             sawAvailable = sawAvailable || (available?.exists ?? true)
         }
-        for _ in 0..<5 { root.scroll(byDeltaX: 0, deltaY: -240) }
+        var settled = false
+        var previous = settledFrame(of: last).minY
+        for _ in 0..<10 where !settled {
+            root.scroll(byDeltaX: 0, deltaY: -240)
+            sawAvailable = sawAvailable || (available?.exists ?? true)
+            let now = settledFrame(of: last).minY
+            settled = abs(now - previous) <= 1
+            previous = now
+        }
+        XCTAssertTrue(settled, "the grid never reached its end")
         if let available, !sawAvailable {
             sawAvailable = available.waitForExistence(timeout: 5)
         }
         XCTAssertTrue(sawAvailable, "no Available offline line, so the seeded downloads were not picked up")
-        XCTAssertTrue(galaxy.exists && galaxy.isHittable, "Distant Galaxy never came on screen")
+        XCTAssertTrue(last.exists && last.isHittable, "the last shipped image (\(lastStem)) never came on screen")
+        XCTAssertLessThan(lastSet.exists ? lastSet.frame.minY : -.infinity, root.frame.minY, "\(lastSetInfo.name)'s heading is still in view, so the grid is not at its end")
         record("picker", picker.frame, root.frame)
-        return ShippedBottom(app: app, root: root, deepSpace: deepSpace, galaxy: galaxy)
+        return ShippedBottom(
+            app: app, root: root, lastSetName: lastSetInfo.name, lastSet: lastSet, last: last,
+            lastStem: lastStem, lastFullPath: lastFullPath,
+            neighbourStems: neighbourStems, neighbourFullPaths: neighbourFullPaths
+        )
     }
 
-    /// Keeps the download of a shipped Deep Space image in flight, so a click
-    /// on it starts a pick that leaves the picker open.
-    private func holdDeepSpace(_ stems: [String]) throws {
-        for stem in stems {
-            try Data().write(to: catalogFolder.appending(path: "deep-space/\(stem).png.hold"))
+    /// Keeps the downloads of shipped images at `fullPaths` in flight, so a
+    /// click on one starts a pick that leaves the picker open.
+    private func holdShipped(_ fullPaths: [String]) throws {
+        for path in fullPaths {
+            try Data().write(to: catalogFolder.appending(path: path + ".hold"))
         }
     }
 
-    private func releaseDeepSpace(_ stems: [String]) {
-        for stem in stems {
-            try? FileManager.default.removeItem(at: catalogFolder.appending(path: "deep-space/\(stem).png.hold"))
+    private func releaseShipped(_ fullPaths: [String]) {
+        for path in fullPaths {
+            try? FileManager.default.removeItem(at: catalogFolder.appending(path: path + ".hold"))
         }
     }
 
-    /// Frames of Distant Galaxy, its visible row neighbours and the Deep Space
+    /// Frames of the last image, its visible row neighbours and the last set's
     /// section, read before and after `action`, each recorded as a
     /// `jump-measure` attachment.
     @MainActor
     /// `accuracy` 0 asks for the same whole-point frame, which is how XCUITest
     /// reports it.
     private func assertBottomStill(_ bottom: ShippedBottom, _ label: String, accuracy: CGFloat = 1, during action: () -> Void) {
-        let neighbours = ["05-engine-trail", "06-ring-station", "07-fleet-dust-lane"].map { cell($0, in: bottom.app) }
-            .filter { $0.exists && $0.isHittable }
-        let galaxyBefore = settledFrame(of: bottom.galaxy)
+        let lastBefore = settledFrame(of: bottom.last)
+        let neighbours = bottom.neighbourStems.map { cell($0, in: bottom.app) }
+            .filter { $0.exists && $0.isHittable && abs($0.frame.minY - lastBefore.minY) <= 1 }
         let neighboursBefore = neighbours.map(\.frame)
-        let headerBefore = bottom.deepSpace.exists ? bottom.deepSpace.frame : .null
-        XCTAssertLessThan(headerBefore.minY, bottom.root.frame.minY, "Deep Space's heading is still in view, so this isn't the reported layout")
+        let headerBefore = bottom.lastSet.exists ? bottom.lastSet.frame : .null
+        XCTAssertLessThan(headerBefore.minY, bottom.root.frame.minY, "the last set's heading is still in view, so this isn't the reported layout")
         action()
-        let galaxyAfter = settledFrame(of: bottom.galaxy)
-        record("\(label) Distant Galaxy", galaxyBefore, galaxyAfter)
-        record("\(label) Deep Space section", headerBefore, bottom.deepSpace.exists ? bottom.deepSpace.frame : .null)
-        XCTAssertEqual(galaxyAfter.minY, galaxyBefore.minY, accuracy: accuracy, "\(label): Distant Galaxy moved")
+        let lastAfter = settledFrame(of: bottom.last)
+        record("\(label) \(bottom.lastStem)", lastBefore, lastAfter)
+        record("\(label) \(bottom.lastSetName) section", headerBefore, bottom.lastSet.exists ? bottom.lastSet.frame : .null)
+        XCTAssertEqual(lastAfter.minY, lastBefore.minY, accuracy: accuracy, "\(label): the last image moved")
         for (neighbour, before) in zip(neighbours, neighboursBefore) {
             let after = neighbour.frame
             record("\(label) \(neighbour.identifier)", before, after)
@@ -496,48 +545,44 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     func testClickingTheLastShippedImageAtTheBottomKeepsTheGridStill() throws {
         let bottom = try openShippedAtTheBottom()
         defer { bottom.app.terminate() }
-        try holdDeepSpace(["08-distant-galaxy"])
-        defer { releaseDeepSpace(["08-distant-galaxy"]) }
-        assertBottomStill(bottom, "click") { bottom.galaxy.click() }
+        try holdShipped([bottom.lastFullPath])
+        defer { releaseShipped([bottom.lastFullPath]) }
+        assertBottomStill(bottom, "click") { bottom.last.click() }
     }
-
-    /// Some images in the sets above Deep Space downloaded, so the rows above the
-    /// view differ in height from each other and from the visible ones.
-    private static let unevenAboveDeepSpace = [
-        "future-cities/01-skyline-fog.png", "future-cities/02-canal-after-rain.png", "future-cities/05-desert-dome.png",
-        "cool-vehicles/01-cafe-racer-garage.png", "cool-vehicles/02-expedition-truck-salt-flat.png", "cool-vehicles/05-electric-bike-rooftop.png",
-        "beautiful-landscapes/01-mountain-lake-blue-hour.png", "beautiful-landscapes/02-dunes-dusk.png", "beautiful-landscapes/05-sea-cliffs-overcast.png",
-    ]
 
     @MainActor
     func testClickingTheLastShippedImageWithDownloadedImagesAboveKeepsTheGridStill() throws {
-        let bottom = try openShippedAtTheBottom(downloaded: Self.unevenAboveDeepSpace, waitForAvailable: "05-sea-cliffs-overcast")
+        let bottom = try openShippedAtTheBottom(seed: .unevenAbove)
         defer { bottom.app.terminate() }
-        try holdDeepSpace(["08-distant-galaxy", "05-engine-trail"])
-        defer { releaseDeepSpace(["08-distant-galaxy", "05-engine-trail"]) }
-        assertBottomStill(bottom, "first click") { bottom.galaxy.click() }
-        let trail = cell("05-engine-trail", in: bottom.app)
-        XCTAssertTrue(trail.exists && trail.isHittable, "Engine Trail is not on screen")
-        assertBottomStill(bottom, "later click") { trail.click() }
+        let index = try XCTUnwrap(
+            bottom.neighbourStems.firstIndex { let c = cell($0, in: bottom.app); return c.exists && c.isHittable },
+            "no row neighbour of the last image is on screen"
+        )
+        let neighbour = cell(bottom.neighbourStems[index], in: bottom.app)
+        let held = [bottom.lastFullPath, bottom.neighbourFullPaths[index]]
+        try holdShipped(held)
+        defer { releaseShipped(held) }
+        assertBottomStill(bottom, "first click") { bottom.last.click() }
+        XCTAssertTrue(neighbour.exists && neighbour.isHittable, "the row neighbour is not on screen")
+        assertBottomStill(bottom, "later click") { neighbour.click() }
     }
 
     /// A click on a downloaded image picks it and closes the picker, so the
-    /// clicks go to Distant Galaxy, held, with its row neighbours downloaded:
+    /// clicks go to the last image, held, with its row neighbours downloaded:
     /// the first starts its download, the second cancels it.
     @MainActor
     func testClickingAtTheBottomWithDownloadedImagesInView() throws {
-        let inView = ["05-engine-trail", "06-ring-station", "07-fleet-dust-lane"].map { "deep-space/\($0).png" }
-        let bottom = try openShippedAtTheBottom(downloaded: inView, waitForAvailable: "07-fleet-dust-lane")
+        let bottom = try openShippedAtTheBottom(seed: .neighboursInView)
         defer { bottom.app.terminate() }
-        try holdDeepSpace(["08-distant-galaxy"])
-        defer { releaseDeepSpace(["08-distant-galaxy"]) }
-        let progress = element("background-sets.cell.08-distant-galaxy.progress", in: bottom.app)
+        try holdShipped([bottom.lastFullPath])
+        defer { releaseShipped([bottom.lastFullPath]) }
+        let progress = element("background-sets.cell.\(bottom.lastStem).progress", in: bottom.app)
         assertBottomStill(bottom, "first click") {
-            bottom.galaxy.click()
+            bottom.last.click()
             XCTAssertTrue(progress.waitForExistence(timeout: 5), "the click started no download")
         }
         assertBottomStill(bottom, "cancelling click") {
-            bottom.galaxy.click()
+            bottom.last.click()
             XCTAssertTrue(waitFor({ !progress.exists }, timeout: 5), "the second click did not cancel the download")
         }
         XCTAssertTrue(element("background-images.picker.root", in: bottom.app).exists, "the picker closed")
@@ -545,7 +590,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
 
     @MainActor
     func testCatalogCheckAtTheBottomKeepsTheGridStill() throws {
-        let bottom = try openShippedAtTheBottom(downloaded: Self.unevenAboveDeepSpace, waitForAvailable: "05-sea-cliffs-overcast")
+        let bottom = try openShippedAtTheBottom(seed: .unevenAbove)
         defer { bottom.app.terminate() }
         let refresh = element("background-sets.refresh", in: bottom.app)
         XCTAssertTrue(waitFor({ refresh.isEnabled }, timeout: 10), "a catalog check never finished")
@@ -571,20 +616,19 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     @MainActor
     func testClickWithACheckDueKeepsTheGridStill() throws {
         let bottom = try openShippedAtTheBottom(
-            downloaded: Self.unevenAboveDeepSpace,
-            waitForAvailable: "05-sea-cliffs-overcast",
+            seed: .unevenAbove,
             environment: ["BATTY_UI_TEST_BACKGROUND_CATALOG_CHECK_INTERVAL": "0"],
             checkInFlight: true
         )
         defer { bottom.app.terminate() }
         let hold = catalogFolder.appending(path: "catalog.json.hold")
         defer { try? FileManager.default.removeItem(at: hold) }
-        try holdDeepSpace(["08-distant-galaxy"])
-        defer { releaseDeepSpace(["08-distant-galaxy"]) }
+        try holdShipped([bottom.lastFullPath])
+        defer { releaseShipped([bottom.lastFullPath]) }
         let refresh = element("background-sets.refresh", in: bottom.app)
         XCTAssertFalse(refresh.isEnabled, "the catalog check is no longer in flight")
         let checks = BackgroundCatalogFixture.requests(in: catalogFolder).filter { $0 == "catalog.json" }.count
-        assertBottomStill(bottom, "click, check in flight", accuracy: 0) { bottom.galaxy.click() }
+        assertBottomStill(bottom, "click, check in flight", accuracy: 0) { bottom.last.click() }
         screenshot("clicked, check in flight")
         assertBottomStill(bottom, "check finished", accuracy: 0) {
             try? FileManager.default.removeItem(at: hold)

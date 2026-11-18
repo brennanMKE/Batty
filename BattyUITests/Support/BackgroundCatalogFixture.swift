@@ -42,25 +42,43 @@ nonisolated enum BackgroundCatalogFixture {
         try JSONSerialization.data(withJSONObject: catalog).write(to: folder.appending(path: "catalog.json"))
     }
 
+    /// A shipped set: its name and each image's full path as published.
+    struct ShippedSet: Sendable {
+        let name: String
+        let fullPaths: [String]
+    }
+
+    /// The cell stem the app derives from a full path.
+    static func stem(ofFullPath path: String) -> String {
+        ((path as NSString).deletingPathExtension as NSString).lastPathComponent
+    }
+
     /// The shipped catalog, `website/backgrounds/catalog.json`, with every set, title
     /// and path as published. Each thumbnail is a plain 480 x 300 PNG, the shipped
     /// thumbnails' size, because the real ones live in Git LFS.
-    static func writeShipped(in folder: URL) throws {
+    /// Returns the sets in catalog order.
+    @discardableResult
+    static func writeShipped(in folder: URL) throws -> [ShippedSet] {
         let source = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appending(path: "website/backgrounds/catalog.json")
         let data = try Data(contentsOf: source)
         let catalog = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let sets = try XCTUnwrap(catalog["sets"] as? [[String: Any]])
+        var shipped: [ShippedSet] = []
         for (setIndex, set) in sets.enumerated() {
             let images = try XCTUnwrap(set["images"] as? [[String: Any]])
+            var fullPaths: [String] = []
             for (index, image) in images.enumerated() {
+                fullPaths.append(try XCTUnwrap(image["full"] as? String))
                 let thumbnail = folder.appending(path: try XCTUnwrap(image["thumbnail"] as? String))
                 try FileManager.default.createDirectory(at: thumbnail.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try png(width: 480, height: 300, seed: setIndex * 10 + index).write(to: thumbnail)
             }
+            shipped.append(ShippedSet(name: try XCTUnwrap(set["name"] as? String), fullPaths: fullPaths))
         }
         try data.write(to: folder.appending(path: "catalog.json"))
+        return shipped
     }
 
     /// Marks the built-in catalog's images at `fullPaths` as already downloaded,
