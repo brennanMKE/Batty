@@ -31,7 +31,7 @@ shell `PATH` — `/usr/local/bin/batty` for the Prod build,
 path" below), so installing one variant's CLI can never silently repoint
 the other's.
 
-The CLI now has four execution paths:
+The CLI now has five execution paths:
 
 - `batty new [<path>]`, bare `batty`, and `batty <path>` dispatch the
   original one-way `batty://session?path=<path>` URL to create the
@@ -47,6 +47,9 @@ The CLI now has four execution paths:
 - `capabilities` reads neither the environment nor the app: its verb roster
   and exit-code vocabulary are static data compiled into the binary
   (`#0384`), so it works even when Batty is not running at all.
+- `mcp` (behind `agentIntegration`, #0647) serves the `capabilities` verbs as
+  MCP tools over stdin/stdout and runs each call by re-executing this same
+  binary, so every tool takes one of the paths above.
 
 ## Current command surface
 
@@ -70,6 +73,8 @@ The CLI now has four execution paths:
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
 | `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |
+| `batty mcp` | Serve the verbs as MCP tools over stdin/stdout (Beta, `agentIntegration`) | Re-executes `batty` per call |
+| `batty agent install [--dry-run] [--project <dir>] [--yes]` | Install the bundled skill and MCP server for Claude Code, Cursor, OpenCode and Codex; optionally add a Batty section to a project's agent file (Beta, `agentIntegration`) | Local files, `claude` CLI |
 
 Run `batty <subcommand> --help` for exact options. The full noun/verb grammar
 in `docs/batty-cli-design.md` is a forward-looking catalog; only the commands
@@ -594,7 +599,12 @@ The `Batty` target's build phases, in order (from `project.pbxproj`):
 Script) → **`Embed CLI`** (Run Script) → `Embed Broker` (Run Script, last;
 added by `#0270`, embeds the `BattyBroker` launch agent into the same
 shared `bin/` directory — see that issue and `docs/xpc/` for the broker
-side of this).
+side of this) → `Embed Agent Guidance` (Run Script, #0647: copies
+`.claude/skills/batty-cli/SKILL.md` to
+`Contents/Resources/AgentGuidance/skills/batty-cli/SKILL.md`, unconditionally
+for both variants; `batty agent install` reads it from there by walking up from
+`Contents/Resources/bin/batty`, and generates the plugin manifests at install
+time).
 
 The `Embed CLI` phase (`project.pbxproj`, phase id
 `26B100020000000000000002`), verbatim as of `#0276`:

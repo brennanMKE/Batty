@@ -72,10 +72,10 @@ struct CapabilitiesCommand: ParsableCommand {
     /// matching MCP's own default.
     static let jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema"
 
-    static func buildPayload() -> CapabilitiesPayload {
+    static func buildPayload(flags: FeatureFlags = .current) -> CapabilitiesPayload {
         CapabilitiesPayload(
             cliVersion: resolveAppVersion(),
-            verbs: Self.verbs(),
+            verbs: Self.verbs(flags: flags),
             exitCodes: CapabilitiesPayload.standardExitCodes(
                 success: ExitCode.success.rawValue,
                 failure: ExitCode.failure.rawValue,
@@ -97,8 +97,8 @@ struct CapabilitiesCommand: ParsableCommand {
     /// as `"pane split"`. `XPCVerb.watch` is
     /// correctly absent from this list: it has no entry anywhere in
     /// `BattyCLI`'s tree because #0145 never gave it a CLI command.
-    static func verbs() -> [CapabilitiesVerbPayload] {
-        BattyCLI.configuration.subcommands.flatMap { collectVerbs(from: $0, prefix: []) }
+    static func verbs(flags: FeatureFlags = .current) -> [CapabilitiesVerbPayload] {
+        BattyCLI.subcommands(for: flags).flatMap { collectVerbs(from: $0, prefix: []) }
     }
 
     private static func collectVerbs(from type: ParsableCommand.Type, prefix: [String]) -> [CapabilitiesVerbPayload] {
@@ -184,6 +184,9 @@ struct CapabilitiesCommand: ParsableCommand {
         "remind": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
         "notify": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
         "capabilities": .init(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        // Serves until stdin closes; the tools it runs carry their own hints.
+        "mcp": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        "install": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
     ]
 
     /// The explicit per-verb-path opt-in into `annotationsByArchetype` — see
@@ -209,6 +212,8 @@ struct CapabilitiesCommand: ParsableCommand {
         "id": "id",
         "notify": "notify",
         "capabilities": "capabilities",
+        "mcp": "mcp",
+        "agent install": "install",
     ]
 
     static func annotations(forVerbPath verbPath: String) -> CapabilitiesAnnotationsPayload {
@@ -228,7 +233,7 @@ struct CapabilitiesCommand: ParsableCommand {
     /// skill pointer text structurally cannot leak into `--json`'s stdout
     /// (also asserted by `CapabilitiesCommandTests
     /// .payloadJSONTopLevelKeysAreStable`'s exact key-set check).
-    static func plainTextSummary(_ payload: CapabilitiesPayload) -> String {
+    static func plainTextSummary(_ payload: CapabilitiesPayload, flags: FeatureFlags = .current) -> String {
         var lines: [String] = []
         lines.append("batty \(payload.cliVersion) capabilities")
         lines.append("verbs:")
@@ -241,7 +246,7 @@ struct CapabilitiesCommand: ParsableCommand {
             lines.append("  \(exitCode.code) — \(exitCode.meaning)")
         }
         lines.append("")
-        lines.append(contentsOf: Self.skillInstallLines(cliVersion: payload.cliVersion))
+        lines.append(contentsOf: Self.skillInstallLines(cliVersion: payload.cliVersion, flags: flags))
         return lines.joined(separator: "\n")
     }
 
@@ -279,7 +284,15 @@ struct CapabilitiesCommand: ParsableCommand {
     /// in the clone, not just the skill directory) — both leave the
     /// existing install(s) untouched, exactly as `install.sh` itself does
     /// for the destinations it manages.
-    static func skillInstallLines(cliVersion: String) -> [String] {
+    static func skillInstallLines(cliVersion: String, flags: FeatureFlags = .current) -> [String] {
+        if flags.agentIntegration {
+            return [
+                "agent skill:",
+                "  This build carries the skill and an MCP server. Install both for every detected",
+                "  agent host (Claude Code, Cursor, OpenCode, Codex):",
+                "    \(ServiceNames.current.cliCommandName) agent install [--dry-run] [--project DIR]",
+            ]
+        }
         var lines = [
             "agent skill:",
             "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",

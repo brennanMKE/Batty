@@ -18,16 +18,35 @@ struct CapabilitiesCommandTests {
 
     // MARK: - Verb roster
 
-    @Test func verbRosterListsEveryShippedVerb() {
-        let names = Set(CapabilitiesCommand.verbs().map(\.name))
-        #expect(names == [
-            "new", "ping", "status", "list",
-            "session info", "session focus", "session close", "session remind",
-            "pane split", "pane close", "pane focus", "pane hide", "pane show",
-            "tab focus",
-            "project list", "project open",
-            "id", "notify", "capabilities",
-        ])
+    static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false)
+    static let flagOn = FeatureFlags(sharedProjectImages: true, agentIntegration: true)
+
+    static let flagOffRoster: Set<String> = [
+        "new", "ping", "status", "list",
+        "session info", "session focus", "session close", "session remind",
+        "pane split", "pane close", "pane focus", "pane hide", "pane show",
+        "tab focus",
+        "project list", "project open",
+        "id", "notify", "capabilities",
+    ]
+
+    @Test(arguments: [false, true])
+    func verbRosterListsEveryShippedVerb(agentIntegration: Bool) {
+        let flags = agentIntegration ? Self.flagOn : Self.flagOff
+        let names = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name))
+        let expected = agentIntegration ? Self.flagOffRoster.union(["mcp", "agent install"]) : Self.flagOffRoster
+        #expect(names == expected)
+    }
+
+    @Test func flagOffRosterHasNoMcpOrAgentVerbs() {
+        let names = CapabilitiesCommand.verbs(flags: Self.flagOff).map(\.name)
+        #expect(!names.contains { $0 == "mcp" || $0.hasPrefix("agent") })
+    }
+
+    @Test func skillInstallLinesWithAgentIntegrationPointAtTheBundledInstaller() {
+        let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.5.0", flags: Self.flagOn).joined(separator: "\n")
+        #expect(text.contains("agent install [--dry-run] [--project DIR]"))
+        #expect(!text.contains("git clone"))
     }
 
     @Test func capabilitiesListsSessionRemind() {
@@ -127,7 +146,7 @@ struct CapabilitiesCommandTests {
     // MARK: - Agent skill install pointer (#0403)
 
     @Test func skillInstallLinesForAKnownVersionCloneTheMatchingTag() {
-        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0")
+        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0", flags: Self.flagOff)
         #expect(lines == [
             "agent skill:",
             "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",
@@ -156,7 +175,7 @@ struct CapabilitiesCommandTests {
     // are reported with distinct messages, and neither fabricates a
     // `--branch vunknown` clone from an unverifiable version.
     @Test func skillInstallLinesReportEachFailureCauseWithADistinctMessage() {
-        let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0").joined(separator: "\n")
+        let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0", flags: Self.flagOff).joined(separator: "\n")
         #expect(text.contains("clone of v1.1.0 failed (network error, or the tag doesn't exist)"))
         #expect(text.contains("has no agent-skill installer (added in #0404)"))
     }
@@ -166,7 +185,7 @@ struct CapabilitiesCommandTests {
         // resolveAppVersion()) is not a real git tag — `--branch vunknown`
         // would just fail. This must fall back to pointing at the tag list,
         // never interpolate the literal string "unknown" into a `--branch`.
-        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "unknown")
+        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "unknown", flags: Self.flagOff)
         #expect(lines == [
             "agent skill:",
             "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",

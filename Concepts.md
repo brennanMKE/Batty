@@ -337,6 +337,19 @@ Process-wide map `[UUID: ghostty_surface_t]`. The single source of truth for liv
 
 ---
 
+## Agent guidance
+
+What Batty gives AI coding agents so they can drive it from any project (#0646, #0647; Batty Beta behind the `agentIntegration` flag).
+
+- **Bundled skill:** the `batty-cli` skill, shipped in the app at `Contents/Resources/AgentGuidance/skills/batty-cli/SKILL.md`, so it always matches the build.
+- **MCP server:** `batty mcp`, a stdio MCP server whose tools are the verbs `batty capabilities` lists (tool name = verb path with `_`).
+- **Plugin:** the Claude Code plugin `batty` (`batty-beta` in Beta) that `batty agent install` stages and installs, carrying the skill and the MCP server entry.
+- **Project snippet:** the short Batty section, between `<!-- batty:begin -->` and `<!-- batty:end -->`, added to a project's `AGENTS.md` or `CLAUDE.md` only after the user confirms.
+
+Settings → Advanced → AI Agents runs the same installer with a preview first.
+
+---
+
 ## Settings
 
 User-controlled preferences that are *not* layout. Stored in `UserDefaults`.

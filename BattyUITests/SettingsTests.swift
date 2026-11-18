@@ -95,5 +95,24 @@ nonisolated final class SettingsTests: XCTestCase {
                              "Settings window must have a positive width")
     }
 
+    /// Advanced shows the AI Agents section (#0647); UI tests run the Beta
+    /// build, where the `agentIntegration` flag is on.
+    @MainActor
+    func testAdvancedSettingsShowsAIAgentsSection() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        app.typeKey(",", modifierFlags: [.command])
+        let advanced = app.toolbars.buttons["Advanced"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 10))
+        advanced.click()
+
+        XCTAssertTrue(app.buttons["settings.agents.install"].waitForExistence(timeout: 5),
+                      "Advanced must show the AI Agents Install… button")
+        XCTAssertTrue(app.buttons["settings.agents.addToProject"].exists,
+                      "Advanced must show the AI Agents Add to Project… button")
+    }
+
     // MARK: - Helpers
 }

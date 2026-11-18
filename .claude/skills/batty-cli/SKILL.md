@@ -1,17 +1,15 @@
 ---
 name: batty-cli
-description: Drive the Batty macOS terminal multiplexer from its `batty`/`batty-beta` command-line tool — creating Sessions, splitting terminal or status-view Panes (git-status, process-status, system-metrics, lm-studio-dashboard), notifying or focusing the human, and cleaning up afterward. Use whenever a task calls `batty`, mentions Batty Sessions/Panes/Tabs from the CLI, or needs to script Batty from an agent running inside one of its Panes or from an unrelated project.
+description: Drive the Batty macOS terminal multiplexer from its `batty`/`batty-beta` command-line tool or its `batty mcp` MCP server — creating Sessions, splitting terminal or status-view Panes (git-status, process-status, system-metrics, lm-studio-dashboard), opening saved Projects (`project list`/`open`), setting Session Reminders (`session remind`), notifying or focusing the human, closing Sessions and Panes afterward, and installing this guidance with `agent install`. Use whenever a task calls `batty`, mentions Batty Sessions/Panes/Tabs from the CLI, or needs to script Batty from an agent running inside one of its Panes or from an unrelated project.
 ---
 
 # Batty CLI
 
-**Authored against Batty CLI `1.1.0`.** Minimum compatible app version: `1.1.0`
-(see "Version check" below for what that pin does and doesn't mean). The two
-values are identical today because this is the skill's first version —
-that clause can't yet distinguish anything from the plain version-equality
-check. It exists for a *future* skill update that adds a recipe depending on
-a flag not yet universal at the time it's authored, so the minimum can trail
-the authored-against version independently once that happens.
+**Authored against Batty CLI `1.5.0`.** Minimum compatible app version:
+`1.1.0` for §1–§7, `1.3.0` for §8 (Projects), and `1.5.0` for §9 (`mcp` and
+`agent install`, Batty Beta first). The minimum trails the authored-against
+version because each section only needs the release that introduced it; see
+the bootstrap table below for what a version difference means.
 
 This skill teaches the **sequencing** knowledge a machine-readable schema
 can't carry: what order to call things in, which id to keep, and what a
@@ -46,7 +44,7 @@ command-not-found on a Beta-only machine.
 
 Compare **both** `cliVersion` (top-level on `capabilities --json`) and
 `.status.appVersion` (nested under `status --json`'s `status` object — not
-top-level, unlike `cliVersion`) against `1.1.0` above. From here on
+top-level, unlike `cliVersion`) against `1.5.0` above. From here on
 "`appVersion`" means that nested field. `appVersion` is the one that matters
 for "will the app actually do this," `cliVersion` is the one that matters
 for "does this binary know how to ask":
@@ -55,10 +53,10 @@ for "does this binary know how to ask":
 |---|---|---|
 | `cliVersion == "unknown"` | Bare SwiftPM-built binary, not an app-bundle install — **not a mismatch**, just unverifiable. | Tell the human once. For the rest of the session, treat live `inputSchema` as the only authority for what the CLI can *send*; it says nothing about whether the app *honors* it. |
 | `status --json` fails (any non-`0` exit — `2`/`3`/`4`/`5`/`6`/`7`) | The JSON still parses, but its `status` key is omitted entirely on failure — no app answered, so there's no `appVersion` to check. | Tell the human once that only `cliVersion` could be verified. Retry `status` before trusting the dangerous-direction check below. |
-| Both equal `1.1.0` | Authored-against version matches on both axes. | Proceed. The schema is still the call-time authority regardless — a version match answers "is this skill stale," not "what can this build do." |
+| Both equal `1.5.0` | Authored-against version matches on both axes. | Proceed. The schema is still the call-time authority regardless — a version match answers "is this skill stale," not "what can this build do." |
 | `cliVersion` and `appVersion` disagree with each other | The binary you're running and the app answering it are different builds (stale instance, or Prod+Beta both installed and you're mid-verb-typo). | Tell the human once; treat the **older** of the two as governing for the dangerous-direction check below — the older side is where a flag can silently be ignored. |
-| Either is newer than `1.1.0` (skill older) | Benign. This skill may be missing newer verbs/flags. | Tell the human once, then proceed — anything new shows up in `inputSchema` even though this skill doesn't mention it. |
-| Either is older than `1.1.0` (skill newer) | **The dangerous direction** — this skill may teach a flag the *answering app* silently ignores (`--unique` against a pre-flag app is the concrete precedent: it creates a duplicate Pane instead of erroring). Checking `inputSchema.properties` on the CLI binary is **not sufficient** here if it's `appVersion` that's behind — the binary can advertise a flag the app it's talking to doesn't implement. | Tell the human once. If `cliVersion` is the one behind, confirm the parameter appears in live `inputSchema.properties` before using it. If `appVersion` is the one behind (or unconfirmed because `status` failed), there is no live schema for the *app's* surface — treat every recipe below as unverified and prefer the human's confirmation over any automated check. |
+| Either is newer than `1.5.0` (skill older) | Benign. This skill may be missing newer verbs/flags. | Tell the human once, then proceed — anything new shows up in `inputSchema` even though this skill doesn't mention it. |
+| Either is older than `1.5.0` (skill newer) | **The dangerous direction** — this skill may teach a flag the *answering app* silently ignores (`--unique` against a pre-flag app is the concrete precedent: it creates a duplicate Pane instead of erroring). Checking `inputSchema.properties` on the CLI binary is **not sufficient** here if it's `appVersion` that's behind — the binary can advertise a flag the app it's talking to doesn't implement. | Tell the human once. If `cliVersion` is the one behind, confirm the parameter appears in live `inputSchema.properties` before using it. If `appVersion` is the one behind (or unconfirmed because `status` failed), there is no live schema for the *app's* surface — treat every recipe below as unverified and prefer the human's confirmation over any automated check. |
 
 **Never hard-fail on a mismatch in either direction.** A version skew is a
 reason to double-check, not a reason to refuse to work — the schema-authority
@@ -75,7 +73,17 @@ Session at a path literally named `capabilities` and fails), treat the
 installed CLI as predating this entire skill. Fall back to `--help` on each
 subcommand and verify everything by hand.
 
-**Refreshing this skill**, from the exact tagged release the installed app
+**Refreshing this skill.** From `1.5.0` the app bundles this skill and an MCP
+server. When `capabilities --json` lists `agent install`, use it: it installs
+the copy that shipped with the answering build for every detected agent host,
+and needs no network:
+
+```sh
+"$BATTY" agent install --dry-run   # what would change
+"$BATTY" agent install             # Claude Code plugin (skill + MCP), plus Cursor, OpenCode, Codex
+```
+
+Otherwise, from the exact tagged release the installed app
 shipped from (only if the human asks, or you hit the dangerous direction
 above and want the matching copy). Every tagged copy of this skill folder
 carries its own installer, `install.sh`, next to this file — running it
@@ -268,6 +276,19 @@ if the Project's commands are new or changed, Batty asks the human and the
 command waits for their answer (up to 120 seconds). Exit `8` means nobody
 answered and nothing was opened; ask the human to be at Batty, then run it
 again. Do not try to work around the prompt.
+
+## 9. Using Batty through MCP
+
+`batty mcp` (from `1.5.0`) is a stdio MCP server whose tools are exactly the
+verbs `capabilities --json` lists, minus `mcp` and `agent install`. A tool's
+name is its verb path with spaces as underscores (`pane_split`,
+`session_remind`), and its parameters are that verb's `inputSchema`
+properties without `json`: every call that can return JSON does. A failed call
+comes back as a tool error starting `exit <code>:`, so §7 still applies.
+Omitted Session/Pane/Tab targets resolve to your own Pane through the
+`BATTY_*` variables, exactly as on the command line. `agent install`
+registers the server for Claude Code (plugin `batty`, or `batty-beta`),
+Cursor and OpenCode, and prints the entry to add for Codex.
 
 ## What this skill deliberately does not cover
 

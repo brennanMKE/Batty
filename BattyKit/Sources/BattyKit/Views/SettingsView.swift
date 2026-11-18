@@ -459,11 +459,17 @@ private struct AdvancedSettingsView: View {
 
     @State private var cliModel = CLIInstallModel()
     @State private var brokerModel = BrokerAgentController()
+    @State private var agentModel = AgentIntegrationModel()
 
     var body: some View {
         Form {
             Section("Command-Line Tool") {
                 CLIInstallRow(model: cliModel)
+            }
+            if store?.featureFlags.agentIntegration == true {
+                Section("AI Agents") {
+                    AgentIntegrationRows(model: agentModel)
+                }
             }
             Section("Broker Agent") {
                 if brokerModel.isEmbedded {
@@ -488,6 +494,119 @@ private struct AdvancedSettingsView: View {
             cliModel.checkInstalled()
             brokerModel.refresh()
         }
+    }
+}
+
+private struct AgentIntegrationRows: View {
+    let model: AgentIntegrationModel
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Agent guidance")
+                Text("Installs the Batty skill and MCP server for Claude Code, Codex, Cursor and OpenCode.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Install…") {
+                Task { await model.beginInstall() }
+            }
+            .disabled(model.isBusy)
+            .accessibilityIdentifier("settings.agents.install")
+        }
+        .sheet(isPresented: Binding(get: { model.isConfirming }, set: { if !$0 { model.cancel() } })) {
+            AgentIntegrationConfirmationSheet(model: model)
+        }
+        if case let .finished(report) = model.state {
+            resultText(report.render())
+        }
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Project instructions")
+                Text("Adds a Batty section to a project's AGENTS.md or CLAUDE.md.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Add to Project…") {
+                chooseProject()
+            }
+            .disabled(model.isBusy)
+            .accessibilityIdentifier("settings.agents.addToProject")
+        }
+        switch model.state {
+        case let .snippetWritten(file):
+            resultText(String(localized: "Wrote \(file.path(percentEncoded: false))."))
+        case let .failed(message):
+            resultText(message)
+        default:
+            EmptyView()
+        }
+    }
+
+    private func resultText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.caption, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .accessibilityIdentifier("settings.agents.result")
+    }
+
+    private func chooseProject() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Choose the project folder to add a Batty section to.")
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        Task { await model.beginSnippet(directory: directory) }
+    }
+}
+
+private struct AgentIntegrationConfirmationSheet: View {
+    let model: AgentIntegrationModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            switch model.state {
+            case let .previewing(plan):
+                Text("Install Agent Guidance").font(.headline)
+                Text("Batty will make these changes:")
+                details(plan.render())
+                DialogButtonRow(
+                    confirm: DialogButton("Install", identifier: "settings.agents.confirm-install") {
+                        Task { await model.confirmInstall() }
+                    },
+                    cancel: .cancel(identifier: "settings.agents.cancel") { model.cancel() }
+                )
+            case let .snippetPreview(file, _):
+                Text("Add Batty Section").font(.headline)
+                Text("Batty will add or replace this section in \(file.path(percentEncoded: false)):")
+                details(ProjectAgentSnippet.block)
+                DialogButtonRow(
+                    confirm: DialogButton("Add", identifier: "settings.agents.confirm-snippet") {
+                        Task { await model.confirmSnippet() }
+                    },
+                    cancel: .cancel(identifier: "settings.agents.cancel") { model.cancel() }
+                )
+            default:
+                EmptyView()
+            }
+        }
+        .padding(20)
+        .frame(width: 560)
+    }
+
+    private func details(_ text: String) -> some View {
+        ScrollView {
+            Text(text)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 260)
     }
 }
 

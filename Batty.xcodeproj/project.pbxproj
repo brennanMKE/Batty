@@ -130,6 +130,7 @@
 				26B100010000000000000001 /* Bundle Ghostty Resources */,
 				26B100020000000000000002 /* Embed CLI */,
 				26B100040000000000000004 /* Embed Broker */,
+				26B100060000000000000006 /* Embed Agent Guidance */,
 			);
 			buildRules = (
 			);
@@ -350,6 +351,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
 			shellScript = "set -euo pipefail\n\nbin_dest_dir=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin\"\nagents_dest_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\n\n# #0277: both variants embed their own broker now -- Prod and Beta each\n# get a LaunchAgent named \"<their PRODUCT_BUNDLE_IDENTIFIER>.broker.plist\"\n# with matching Label/MachServices (BattyXPCCore/ServiceNames derives both\n# from the same identifier). Supersedes #0270's Prod-only skip. The plist\n# itself is picked per variant rather than templated -- it gets no $(VAR)\n# substitution from a plain cp, and two short hand-typed files are less\n# risk than templating XML in this script (BrokerAgentPlistTests checks\n# both files against ServiceNames byte-for-byte).\ncase \"${PRODUCT_BUNDLE_IDENTIFIER}\" in\n    co.sstools.Batty)\n        plist_src=\"${SRCROOT}/Configuration/co.sstools.Batty.broker.plist\"\n        swiftflags=()\n        ;;\n    co.sstools.Batty.beta)\n        plist_src=\"${SRCROOT}/Configuration/co.sstools.Batty.beta.broker.plist\"\n        # BattyBroker is a bare Mach-O with no adjacent Info.plist, so it\n        # can't resolve its own variant from Bundle.main at runtime --\n        # bake it in via a compilation condition, read by\n        # BattyXPCCore/ServiceNames.current. Same mechanism as \"Embed CLI\".\n        swiftflags=(-Xswiftc -DBATTY_VARIANT_BETA)\n        ;;\n    *)\n        echo \"error: Embed Broker has no plist for PRODUCT_BUNDLE_IDENTIFIER=${PRODUCT_BUNDLE_IDENTIFIER}\" >&2\n        exit 1\n        ;;\nesac\nplist_name=\"$(basename \"${plist_src}\")\"\n\nconfig=\"$(echo \"${CONFIGURATION}\" | tr '[:upper:]' '[:lower:]')\"\narchflags=()\n# #0273: see the identical comment in \"Embed CLI\" -- ${=ARCHS} forces zsh\n# word-splitting so a multi-arch ARCHS (Release's default) isn't collapsed\n# into one invalid --arch flag.\nfor a in ${=ARCHS}; do archflags+=(--arch \"$a\"); done\ncd \"${SRCROOT}/BattyKit\"\nxcrun swift build --product BattyBroker -c \"${config}\" \"${archflags[@]}\" \"${swiftflags[@]}\"\nbuilt=\"$(xcrun swift build --product BattyBroker -c \"${config}\" \"${archflags[@]}\" \"${swiftflags[@]}\" --show-bin-path)/BattyBroker\"\n\nmkdir -p \"${bin_dest_dir}\"\n/bin/cp -f \"${built}\" \"${bin_dest_dir}/BattyBroker\"\n\n# Xcode does not sign a Mach-O a script phase drops into the bundle, and\n# launchd refuses to start an improperly signed agent -- sign it explicitly.\n# CODE_SIGNING_ALLOWED=NO keeps unsigned iteration builds working (see\n# CLAUDE.md on repeated signed local builds and certificate revocation).\n#\n# #0273: Apple's notary service rejects a Developer ID-signed nested binary\n# with no secure timestamp, so an Archive build (the one scripts/release.sh\n# runs and notarizes) must fetch one. --timestamp requires network access,\n# so every other build keeps --timestamp=none -- a Debug iteration build\n# must never block on reaching Apple's timestamp authority. ACTION, not\n# CONFIGURATION, is the right discriminator here -- see the identical\n# comment in \"Embed CLI\": Xcode's Archive action builds with ACTION=install\n# regardless of configuration, confirmed by instrumenting this phase and\n# running a real `xcodebuild archive`.\nif [ \"${CODE_SIGNING_ALLOWED}\" = \"YES\" ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n    if [ \"${ACTION}\" = \"install\" ]; then\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime --timestamp \"${bin_dest_dir}/BattyBroker\"\n    else\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime --timestamp=none \"${bin_dest_dir}/BattyBroker\"\n    fi\nelse\n    echo \"note: code signing disabled or no identity; embedded broker left unsigned\"\nfi\n\nmkdir -p \"${agents_dest_dir}\"\n# #0277: drop any other-variant plist left behind by a previous build of a\n# different scheme into the same product directory -- each bundle carries\n# exactly one variant's LaunchAgent, never both.\nfind \"${agents_dest_dir}\" -maxdepth 1 -name '*.broker.plist' ! -name \"${plist_name}\" -delete\n/bin/cp -f \"${plist_src}\" \"${agents_dest_dir}/${plist_name}\"\n";
+		};
+		26B100060000000000000006 /* Embed Agent Guidance */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.claude/skills/batty-cli/SKILL.md",
+			);
+			name = "Embed Agent Guidance";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AgentGuidance/skills/batty-cli/SKILL.md",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/zsh;
+			shellScript = "set -euo pipefail\ndest=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/AgentGuidance/skills/batty-cli\"\nmkdir -p \"${dest}\"\n/bin/cp -f \"${SRCROOT}/.claude/skills/batty-cli/SKILL.md\" \"${dest}/SKILL.md\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

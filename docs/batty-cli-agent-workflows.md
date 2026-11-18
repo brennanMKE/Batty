@@ -404,6 +404,56 @@ batty project open "My Project" --json
 - A Session opened this way emits the same `session_created` /
   `session_focused` watch events as the GUI, with `fromCli: true`.
 
+## Using Batty through MCP
+
+`batty mcp` (Batty Beta from 1.5.0, behind the `agentIntegration` flag) is a
+stdio MCP server: newline-delimited JSON-RPC 2.0 on stdin/stdout, serving until
+stdin closes. Its tools are generated from `batty capabilities --json`, so they
+can't drift from the CLI:
+
+- One tool per verb, except `mcp` and `agent install`. The tool name is the
+  verb path with spaces as underscores (`pane_split`, `session_remind`).
+- Parameters are the verb's `inputSchema` properties without `json`; the
+  Batty-only keys (`cliKind`, `names`, `enumValueNames`, `cliRequired`,
+  `conflicts`) are dropped, and each conflict's description is appended to the
+  tool description under "Constraints:".
+- A call re-runs the same `batty` binary with the verb's argv, adding `--json`
+  when the verb has it (not with `new --no-wait`). The child inherits the
+  server's environment, so omitted targets resolve through `BATTY_*` as usual.
+- Exit `0` returns stdout as text. Any other exit is a tool error whose text
+  starts `exit <code>: <meaning>`, then stderr, then stdout; the
+  "Failure handling" table below applies unchanged.
+- Bad arguments (unknown name, wrong JSON type, value outside `enum`, missing
+  required) are tool errors, so the model can correct itself.
+  `notifications/cancelled` terminates the running child.
+
+## Installing the guidance
+
+The app bundle carries this skill at
+`Contents/Resources/AgentGuidance/skills/batty-cli/SKILL.md`.
+`batty agent install` (same flag) installs it, with `--dry-run` to preview:
+
+- **Claude Code:** stages a local plugin marketplace in
+  `~/Library/Application Support/<Batty|Batty Beta>/AgentPlugin/` (plugin
+  `batty` or `batty-beta`, with the skill and an MCP server running the
+  bundled CLI by absolute path), then runs `claude plugin marketplace add` and
+  `claude plugin install`. Both are safe to re-run. When `claude` isn't found
+  it prints the two commands instead.
+- **Cursor and OpenCode:** the skill, plus an MCP entry merged into
+  `~/.cursor/mcp.json` or `opencode.json`. Only Batty's key changes, the old
+  file is backed up first, and a file that isn't strict JSON is left alone with
+  the entry printed.
+- **Codex:** the skill, and the `[mcp_servers.<key>]` block printed for you to add.
+- **`~/.agents/skills`:** always.
+- Beta uses `batty-beta` names throughout, so Prod and Beta installs never
+  collide. Moving the app means running the install again.
+
+`--project DIR` also adds a short Batty section, between
+`<!-- batty:begin -->` and `<!-- batty:end -->`, to the project's `AGENTS.md`
+(or `CLAUDE.md` when that file doesn't import `AGENTS.md`). It asks first, or
+needs `--yes` when not interactive. Settings → Advanced → AI Agents does both
+with a preview before writing.
+
 ## Failure handling
 
 | Exit | Meaning | Agent response |

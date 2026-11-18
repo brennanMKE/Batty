@@ -41,7 +41,13 @@ on 2026-10-12 (#0469, built in #0477). `project` has two verbs, `list` and
 `open`, and ships in both `batty` and `batty-beta` from 1.3.0. There are no
 `project add`, `remove` or `edit` verbs; Projects are edited in the Project
 Editor.
-No `workspace`, no `worktree`; `surface` is not a sixth noun, but it is an
+**`agent`** is a deliberate sixth noun, scoped to agent integration (#0647,
+pending the user's sign-off at review). It has one verb, `install`, which
+installs the bundled skill, the MCP server entry and optionally a project
+snippet, so it is not named `mcp install`. **`mcp`** is an app-level verb like
+`capabilities`: `batty mcp` serves the CLI's verbs as MCP tools over stdio.
+Both are behind the `agentIntegration` flag until #0646 ships.
+No `workspace`, no `worktree`; `surface` is not a noun, but it is an
 accepted **alias** for `tab` (see §1.2).
 
 ### 1.2 Context: how a command knows where it's running
@@ -221,7 +227,8 @@ worth a look:
   subscription remain proposed; extend or validate XPC before adding another
   transport.
 
-Guardrails throughout: keep the noun set to session/pane/tab/window; every verb
+Guardrails throughout: keep the noun set to session/pane/tab/window, plus
+`project` and the agent-integration noun `agent` (§1.1); every verb
 must feel like a native Mac action with a keyboard/menu equivalent where it makes
 sense; no CLI feature should be required for the app itself to run.
 

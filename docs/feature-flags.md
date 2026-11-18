@@ -2,7 +2,7 @@
 
 Unfinished features land on `main` behind a flag until the release that ships them (`AGENTS.md`, "Release branches"). With the flag off a feature is invisible and inert: no menu, Command Palette, Sidebar or CLI entry points, and no reads or writes of the feature's files.
 
-One flag exists today, listed under "Current flags". This page is also the recipe for the next one.
+Two flags exist today, listed under "Current flags". This page is also the recipe for the next one.
 
 ## Policy
 
@@ -23,10 +23,15 @@ Record each gate site (file, symbol, what the flag changes) as you add it, so re
 
 `FeatureFlags` is in `BattyKit/Sources/BattyXPCCore/FeatureFlags.swift`.
 
-- `sharedProjectImages` (#0551): a Shared Project's background image is copied through an iCloud Drive folder. It has no CLI `current` because the CLI doesn't read it, and no UI-test override because a UI-test build has no entitlement and so has no transport. Remove it in the release that ships the feature, after the user has run U1 to U8 in `issues/0551.md`. Gate sites:
+- `sharedProjectImages` (#0551): a Shared Project's background image is copied through an iCloud Drive folder. The CLI never reads it (`FeatureFlags.current` sets it only because the initializer needs every flag), and no UI-test override because a UI-test build has no entitlement and so has no transport. Remove it in the release that ships the feature, after the user has run U1 to U8 in `issues/0551.md`. Gate sites:
   - `AppStateStore.defaultSharedImageTransport`: no transport, so no shared folder is read or written, unless the flag is on.
   - `ProjectStore.sharedImagesEnabled`: true only with a transport. False keeps records, merges and `projects.json` as they were.
   - `BattyKit/Sources/BattyKit/Help/10-projects.md` keeps "choose the image on each Mac" until the flag goes, because Help ships in Prod. Update that sentence when removing the flag.
+
+- `agentIntegration` (#0647, for #0646): `batty mcp`, `batty agent install` and the Settings section that runs the installer. The bundled `AgentGuidance/` skill ships in both variants, because a file nothing reads is inert. `FeatureFlags.current` gives the CLI its value. #0648 and #0649 may reuse it. Remove it in the release that ships #0646. Gate sites:
+  - `BattyCLI.subcommands(for:)` (`BattyKit/Sources/batty/BattyCLI.swift`): `MCPCommand` and `AgentNounCommand` are in the tree only with the flag on, so `--help`, `batty capabilities` and the MCP tool list never mention them otherwise.
+  - `CapabilitiesCommand.skillInstallLines(cliVersion:flags:)`: with the flag on, plain-text `capabilities` points at `agent install` instead of the `git clone` recipe.
+  - `AdvancedSettingsView` (`BattyKit/Sources/BattyKit/Views/SettingsView.swift`): the "AI Agents" section shows only when `store.featureFlags.agentIntegration`.
 
 ## Retired flags
 
