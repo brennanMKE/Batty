@@ -709,14 +709,14 @@ private struct RenameSessionSheet: View {
                 .focused($isFocused)
                 .onSubmit(onCommit)
                 .accessibilityIdentifier("rename-session.field")
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel, action: onCancel)
-                    .keyboardShortcut(.escape)
-                Button("Rename", action: onCommit)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+            DialogButtonRow(
+                confirm: DialogButton(
+                    "Rename",
+                    isEnabled: !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                    action: onCommit
+                ),
+                cancel: .cancel(action: onCancel)
+            )
         }
         .padding(20)
         .frame(width: 320)

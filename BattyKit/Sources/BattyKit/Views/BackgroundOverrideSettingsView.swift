@@ -313,26 +313,24 @@ struct BackgroundOverrideSettingsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            HStack {
-                Spacer()
-                Button("Cancel") {
+            DialogButtonRow(
+                // Done would end the import, which is cancelled on disappear,
+                // and drop the image the user just chose.
+                confirm: DialogButton(
+                    "Done",
+                    identifier: "\(scope.identifierPrefix).done",
+                    isEnabled: importTask == nil
+                ) {
+                    commitTypedOpacity()
+                    isPresented = false
+                },
+                cancel: .cancel(identifier: "\(scope.identifierPrefix).cancel") {
                     commitTypedOpacity()
                     cancelImport()
                     editor.cancel()
                     isPresented = false
                 }
-                .keyboardShortcut(.cancelAction)
-                .accessibilityIdentifier("\(scope.identifierPrefix).cancel")
-                Button("Done") {
-                    commitTypedOpacity()
-                    isPresented = false
-                }
-                .keyboardShortcut(.defaultAction)
-                // Done would end the import, which is cancelled on disappear,
-                // and drop the image the user just chose.
-                .disabled(importTask != nil)
-                .accessibilityIdentifier("\(scope.identifierPrefix).done")
-            }
+            )
         }
         .padding(16)
         .frame(width: 380)

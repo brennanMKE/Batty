@@ -238,7 +238,7 @@ struct ProjectEditorSaveTests {
         #expect(reloaded.lastOpenedAt == Date(timeIntervalSince1970: 1_800_000_000))
     }
 
-    @Test func cancelWritesNothingAndClosesTheWindow() throws {
+    @Test func revertWritesNothingAndKeepsTheWindowOpen() throws {
         let fixture = try EditorFixture()
         let store = fixture.store()
         let project = fixture.richProject()
@@ -251,25 +251,32 @@ struct ProjectEditorSaveTests {
         model.setName("Scratch")
         model.setTabCommand(0, "rm -rf nothing")
         #expect(model.isDirty)
+        #expect(model.canRevert)
 
-        model.cancel()
+        model.revert()
 
-        #expect(closed == 1)
+        #expect(closed == 0)
         #expect(try Data(contentsOf: fixture.projectsFile) == before)
         #expect(fixture.reloaded().project(id: project.id) == project)
         #expect(model.draft?.name == "Rich")
+        #expect(!model.isDirty)
+        #expect(!model.canRevert)
     }
 
-    @Test func cancelOnANewProjectLeavesNoFile() throws {
+    @Test func revertIsUnavailableForANewProjectAndLeavesNoFile() throws {
         let fixture = try EditorFixture()
         let model = fixture.model(store: fixture.store(), defaultRoot: fixture.root.path, suggestion: "Fresh")
         model.requestNewProject()
         #expect(model.isNewDraft)
-        model.cancel()
+        model.setName("Typed")
+        #expect(!model.canRevert)
+        model.revert()
+        #expect(model.draft?.name == "Typed")
+        #expect(model.isNewDraft)
         #expect(!FileManager.default.fileExists(atPath: fixture.projectsFile.path))
     }
 
-    @Test func saveAndOpenSavesThenClosesThenOpensThroughTheSeam() throws {
+    @Test func openAfterSaveOpensTheStoredProjectAndKeepsTheWindow() throws {
         let fixture = try EditorFixture()
         let store = fixture.store()
         let project = fixture.richProject()
@@ -285,28 +292,38 @@ struct ProjectEditorSaveTests {
         }
         model.setName("Opened")
 
-        #expect(model.saveAndOpen())
-        #expect(events == ["close", "open:true"])
+        #expect(model.save() != nil)
+        #expect(model.canOpen)
+        model.openSelected()
+
+        #expect(events == ["open:true"])
         #expect(storedNameWhenOpened == "Opened")
         #expect(fixture.reloaded().project(id: project.id)?.name == "Opened")
     }
 
-    @Test func saveAndOpenDoesNothingWhenTheDraftIsInvalid() throws {
+    @Test func openIsUnavailableWhileTheDraftHasUnsavedChanges() throws {
         let fixture = try EditorFixture()
         let store = fixture.store()
         let project = fixture.richProject()
         try store.upsert(project)
-        let model = fixture.model(store: store, selecting: project.id)
+        let model = fixture.model(store: store, selecting: project.id, defaultRoot: fixture.root.path, suggestion: "Fresh")
         var events: [String] = []
         model.closeWindow = { events.append("close") }
         model.openProject = { _ in events.append("open") }
-        model.setName("   ")
+        #expect(model.canOpen)
+        model.setName("Unsaved")
 
-        #expect(!model.canSaveAndOpen)
-        #expect(!model.saveAndOpen())
+        #expect(!model.canOpen)
+        model.openSelected()
         #expect(events.isEmpty)
         #expect(fixture.reloaded().project(id: project.id) == project)
-        #expect(model.saveError != nil)
+
+        model.revert()
+        model.requestNewProject()
+        #expect(model.isNewDraft)
+        #expect(!model.canOpen)
+        model.openSelected()
+        #expect(events.isEmpty)
     }
 
     @Test func savingAnEditedCommandKeepsTheApprovalHashSoRevertingDoesNotReprompt() throws {
@@ -444,7 +461,7 @@ struct ProjectEditorValidationTests {
         #expect(model.validationIssues[.tabDirectory(slot: 0, tab: 0)] != nil)
         model.setTabDirectory(0, "src/../../x")
         #expect(model.validationIssues[.tabDirectory(slot: 0, tab: 0)] != nil)
-        #expect(!model.canSaveAndOpen)
+        #expect(!model.canSave)
 
         model.setTabDirectory(0, "not/created/yet")
         #expect(model.validationIssues[.tabDirectory(slot: 0, tab: 0)] == nil)
@@ -1377,7 +1394,7 @@ struct ProjectEditorWindowTests {
         #expect(store.projectStore.projects.count == 1)
     }
 
-    @Test func saveAndOpenGoesThroughTheTrustCheckNotStraightToOpen() throws {
+    @Test func openGoesThroughTheTrustCheckNotStraightToOpen() throws {
         let fixture = try EditorFixture()
         let store = AppStateStore(nameCache: SessionNameCache(fileURL: fixture.cacheFile), projectsFileURL: fixture.projectsFile)
         var project = fixture.richProject()
@@ -1392,9 +1409,10 @@ struct ProjectEditorWindowTests {
         let sessionsBefore = window.sessions.count
         model.setColor(.cyan)
 
-        #expect(model.saveAndOpen())
+        #expect(model.save() != nil)
+        model.openSelected()
 
-        #expect(controller.window == nil)
+        #expect(controller.window != nil)
         #expect(window.pendingStartupTrusts.count == 1)
         #expect(window.pendingStartupTrusts.first?.projectID == project.id)
         #expect(window.sessions.count == sessionsBefore)
@@ -1520,7 +1538,7 @@ struct ProjectEditorSharingTests {
         #expect(model.isDirty, "the draft keeps the unsaved checkbox")
     }
 
-    @Test func cancelRevertsTheFlagAndWritesNothing() throws {
+    @Test func revertRestoresTheFlagAndWritesNothing() throws {
         let fixture = try EditorFixture()
         let store = fixture.store()
         var project = fixture.richProject()
@@ -1532,7 +1550,7 @@ struct ProjectEditorSharingTests {
 
         model.setShared(false)
         #expect(model.draft?.isShared == false)
-        model.cancel()
+        model.revert()
 
         #expect(model.draft?.isShared == true)
         #expect(try Data(contentsOf: fixture.projectsFile) == before)

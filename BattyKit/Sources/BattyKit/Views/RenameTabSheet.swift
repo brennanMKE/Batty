@@ -19,13 +19,10 @@ struct RenameTabSheet: View {
             Text("Leave blank to reset to the auto title.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel, action: onCancel)
-                    .keyboardShortcut(.escape)
-                Button("Rename", action: onCommit)
-                    .keyboardShortcut(.defaultAction)
-            }
+            DialogButtonRow(
+                confirm: DialogButton("Rename", action: onCommit),
+                cancel: .cancel(action: onCancel)
+            )
         }
         .padding(20)
         .frame(width: 320)

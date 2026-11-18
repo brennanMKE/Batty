@@ -95,19 +95,14 @@ struct ProjectThemeSheet: View {
                 }
             }
             Divider()
-            HStack {
-                Spacer()
-                Button("Cancel") { isPresented = false }
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("project-theme-sheet.cancel")
-                Button("Done") {
+            DialogButtonRow(
+                confirm: DialogButton("Done", identifier: "project-theme-sheet.done") {
                     model.setTheme(pair)
                     isPresented = false
-                }
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier("project-theme-sheet.done")
-            }
-            .padding(12)
+                },
+                cancel: .cancel(identifier: "project-theme-sheet.cancel") { isPresented = false },
+                style: .bar
+            )
         }
         .frame(width: 620, height: 540)
         .accessibilityElement(children: .contain)

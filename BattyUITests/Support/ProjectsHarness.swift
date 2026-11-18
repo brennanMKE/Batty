@@ -363,6 +363,22 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         XCTAssertTrue(editorWindow(in: app).waitForExistence(timeout: 10), "the Project Editor did not open")
     }
 
+    /// Closes the editor with its window close button. For a clean editor:
+    /// a dirty one answers with the unsaved-changes prompt instead.
+    @MainActor
+    func closeEditor(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let window = editorWindow(in: app)
+        let close = window.buttons[XCUIIdentifierCloseWindow]
+        XCTAssertTrue(close.waitForExistence(timeout: 5), "the Project Editor has no close button", file: file, line: line)
+        close.click()
+        XCTAssertTrue(
+            waitFor({ !self.editorWindow(in: app).exists }, timeout: 10),
+            "the Project Editor did not close",
+            file: file,
+            line: line
+        )
+    }
+
     /// Clicks a saved Project's row in the editor's list and waits for its
     /// fields to load.
     @MainActor

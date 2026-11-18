@@ -226,25 +226,26 @@ struct BackgroundImagesView: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 12) {
-            if tab == .myImages {
-                myImagesButtons
-            }
-            Spacer()
-            if tab == .myImages {
-                Text(total)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("background-images.total")
-            }
-            Button("Cancel") {
+        DialogButtonRow(
+            confirm: nil,
+            cancel: .cancel(identifier: "background-images.picker.cancel") {
                 model.hosted.supersedePicks()
                 onCancel()
+            },
+            style: .bar
+        ) {
+            if tab == .myImages {
+                HStack(spacing: 12) {
+                    myImagesButtons
+                    Spacer(minLength: 0)
+                    Text(total)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("background-images.total")
+                }
+                .layoutPriority(1)
             }
-            .keyboardShortcut(.cancelAction)
-            .accessibilityIdentifier("background-images.picker.cancel")
         }
-        .padding(12)
     }
 
     @ViewBuilder

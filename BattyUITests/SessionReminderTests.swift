@@ -225,6 +225,21 @@ nonisolated final class SessionReminderTests: XCTestCase {
         XCTAssertTrue(reminderState("Alpha", in: app)?.contains("picked") == true)
     }
 
+    /// The picker's default button is rightmost, with Back to its left.
+    @MainActor
+    func testPickerSetButtonIsRightOfBack() throws {
+        let app = launch(script: [["intent": "createSession", "name": "Alpha"]])
+        defer { app.terminate() }
+
+        openBarWithShortcut(in: app)
+        app.typeKey("6", modifierFlags: .command)
+        let set = element("reminder-bar.pick.set", in: app)
+        let back = element("reminder-bar.pick.back", in: app)
+        XCTAssertTrue(set.waitForExistence(timeout: 5), "⌘6 must show the picker's Set button")
+        XCTAssertTrue(back.exists, "the picker has no Back button")
+        XCTAssertGreaterThanOrEqual(set.frame.minX, back.frame.maxX, "Set at \(set.frame) is not right of Back at \(back.frame)")
+    }
+
     /// Escape closes the bar and sets nothing.
     @MainActor
     func testEscapeClosesTheBarAndSetsNothing() throws {

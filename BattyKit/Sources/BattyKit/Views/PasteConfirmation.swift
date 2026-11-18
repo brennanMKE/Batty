@@ -47,13 +47,10 @@ public struct PasteConfirmationSheet: View {
             .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 240)
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 6))
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel, action: onCancel)
-                    .keyboardShortcut(.escape)
-                Button("Paste") { onConfirm(paste.text) }
-                    .keyboardShortcut(.defaultAction)
-            }
+            DialogButtonRow(
+                confirm: DialogButton("Paste") { onConfirm(paste.text) },
+                cancel: .cancel(action: onCancel)
+            )
         }
         .padding(20)
         .frame(width: 480)

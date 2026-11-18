@@ -298,8 +298,8 @@ struct SaveSessionAsProjectEntryTests {
 
         let model = ProjectEditorViewModel(store: projectStore, initialSelection: projectStore.projects.first?.id)
         model.requestNavigation(.newDraft(draft))
-        model.cancel()
-        #expect(projectStore.project(id: stored.id) == stored, "Cancel leaves the Project as it was")
+        model.revert()
+        #expect(projectStore.project(id: stored.id) == stored, "Revert leaves the Project as it was")
 
         model.requestNavigation(.newDraft(draft))
         let saved = try #require(model.save())

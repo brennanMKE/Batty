@@ -258,7 +258,7 @@ struct ProjectEditorQuitTests {
         f.store.terminateHandler = {}
         f.store.removeWindow(id: f.store.windows[0].id)
         #expect(f.store.quitWhenEditorCloses)
-        f.model.cancel()
+        f.model.revert()
         #expect(f.model.isDirty == false)
 
         let terminated = await terminationSignal(of: f.store) {
@@ -278,7 +278,7 @@ struct ProjectEditorQuitTests {
         #expect(f.store.quitWhenEditorCloses)
         _ = RootWindowView(windowID: closed, store: f.store)
         #expect(f.store.windows.isEmpty, "rebuilding the closed window's root view revived its runtime")
-        f.model.cancel()
+        f.model.revert()
 
         let terminated = await terminationSignal(of: f.store) {
             f.store.projectEditorDidClose()

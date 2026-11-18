@@ -143,9 +143,11 @@ public struct SessionDetailView: View {
             ThemeSelectorView(isPresented: $themeSelectorShown, store: store)
         }
         .sheet(item: startupTrustBinding) { request in
-            ProjectStartupTrustSheet(request: request) { choice in
-                store.resolveStartupTrust(requestID: request.id, choice: choice)
-            }
+            ProjectStartupTrustSheet(
+                request: request,
+                onChoose: { choice in store.resolveStartupTrust(requestID: request.id, choice: choice) },
+                onCancel: { store.cancelStartupTrust(requestID: request.id) }
+            )
         }
         .confirmationDialog(
             windowRuntime.pendingCloseRequest?.title ?? "",

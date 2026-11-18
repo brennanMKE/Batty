@@ -137,19 +137,19 @@ private struct ProjectSymbolSheet: View {
                 }
             }
 
-            HStack {
+            DialogButtonRow(
+                confirm: DialogButton(
+                    "Choose",
+                    identifier: "project-editor.symbol.choose",
+                    isEnabled: names.indices.contains(cursor.index),
+                    action: chooseCursor
+                ),
+                cancel: .cancel(identifier: "project-editor.symbol.cancel", action: cancel)
+            ) {
                 Text(names.indices.contains(cursor.index) ? names[cursor.index] : " ")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Spacer()
-                Button("Cancel", action: cancel)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("project-editor.symbol.cancel")
-                Button("Choose", action: chooseCursor)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!names.indices.contains(cursor.index))
-                    .accessibilityIdentifier("project-editor.symbol.choose")
             }
         }
         .padding(14)
