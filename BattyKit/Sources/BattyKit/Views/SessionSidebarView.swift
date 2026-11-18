@@ -43,11 +43,13 @@ public struct SessionSidebarView: View {
         projectSymbol: ProjectSymbol? = nil,
         iconName: String? = nil,
         projectSymbolName: String? = nil,
-        reminder: String? = nil
+        reminder: String? = nil,
+        tint: String? = nil
     ) -> String {
         var value = isSelected ? "selected" : "unselected"
         if session.unseenBellCount > 0 { value += ", \(session.unseenBellCount) unseen" }
         if let projectSymbol { value += ", Project, \(ProjectAppearance.displayName(symbol: projectSymbol, customName: projectSymbolName)) symbol" }
+        if let tint { value += ", tint \(tint)" }
         if let iconName { value += ", icon \(iconName)" }
         if session.projectBackgroundImageProblem != nil { value += ", background image problem" }
         if let reminder { value += ", \(reminder)" }
@@ -72,6 +74,11 @@ public struct SessionSidebarView: View {
         guard exposesRowIcon else { return nil }
         let symbol = session.projectID != nil ? (session.projectSymbol ?? .default) : nil
         return SessionRowIcon.systemName(projectSymbol: symbol, customName: session.projectSymbolName)
+    }
+
+    fileprivate static func rowTint(for session: SessionRuntime) -> String? {
+        guard exposesRowIcon, let color = SessionColor(rawValue: session.colorIndex) else { return nil }
+        return String(describing: color)
     }
 
     public var body: some View {
@@ -375,7 +382,7 @@ private struct SessionSidebarRow: View {
         .accessibilityLabel(SessionSidebarView.rowAccessibilityLabel(for: session))
         .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("session-row.\(session.title)")
-        .accessibilityValue(SessionSidebarView.rowAccessibilityValue(for: session, isSelected: session.isSelected, projectSymbol: SessionSidebarView.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: SessionSidebarView.rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState))
+        .accessibilityValue(SessionSidebarView.rowAccessibilityValue(for: session, isSelected: session.isSelected, projectSymbol: SessionSidebarView.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: SessionSidebarView.rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState, tint: SessionSidebarView.rowTint(for: session)))
     }
 }
 
@@ -564,6 +571,10 @@ private struct SessionRowMenu: View {
         let saveMenu = SaveSessionAsProject.menuModel(store: store, session: session)
         Divider()
         if let target = saveMenu.updateTarget {
+            Button("Edit Project\u{2026}") {
+                SaveSessionAsProject.editProject(session: session, store: store)
+            }
+            .accessibilityIdentifier("menu.sidebar.editProject")
             Button(String(localized: "Update \u{201C}\(target.name)\u{201D}\u{2026}", comment: "Sidebar context menu: replace the stored Project's layout and Tabs with this Session")) {
                 SaveSessionAsProject.begin(session: session, destination: .update(target.id), store: store)
             }

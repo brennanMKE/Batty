@@ -19,7 +19,8 @@ public enum UITestDriver {
     public static let projectsFileEnvVar = "BATTY_UI_TEST_PROJECTS_FILE"
 
     /// With "1" alongside the script variable, Sidebar rows append their
-    /// icon's SF Symbol name to their accessibility value.
+    /// tint (`SessionColor` case name) and icon's SF Symbol name to their
+    /// accessibility value.
     public static let sidebarIconsEnvVar = "BATTY_UI_TEST_SIDEBAR_ICONS"
 
     static func exposesSidebarIcons(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {

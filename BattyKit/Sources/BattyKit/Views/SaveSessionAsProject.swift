@@ -175,4 +175,19 @@ enum SaveSessionAsProject {
         open(store, draft)
         return true
     }
+
+    /// Opens the Project Editor on the Project backing `session`. False, doing
+    /// nothing, for a plain Session or one whose Project was deleted.
+    @discardableResult
+    static func editProject(
+        session: SessionRuntime?,
+        store: AppStateStore,
+        open: @MainActor (AppStateStore, UUID) -> Void = { store, id in
+            ProjectEditorWindowController.shared.show(store: store, selecting: id)
+        }
+    ) -> Bool {
+        guard let id = session?.projectID, store.projectStore.project(id: id) != nil else { return false }
+        open(store, id)
+        return true
+    }
 }

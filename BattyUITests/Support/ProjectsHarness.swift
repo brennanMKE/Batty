@@ -498,6 +498,26 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         )
     }
 
+    /// The `SessionColor` case a Sidebar row is tinted with, from the
+    /// ", tint <name>" part of the row's value that `launchApp` turns on.
+    @MainActor
+    func rowTint(_ title: String, in app: XCUIApplication) -> String? {
+        guard let value = BattyUITestHarness.sessionRow(named: title, in: app).value as? String,
+              let range = value.range(of: ", tint ") else { return nil }
+        let rest = value[range.upperBound...]
+        return String(rest.prefix { $0 != "," })
+    }
+
+    @MainActor
+    func waitForRowTint(_ title: String, _ tint: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(BattyUITestHarness.sessionRow(named: title, in: app).waitForExistence(timeout: 10), "no Sidebar row \(title)", file: file, line: line)
+        XCTAssertTrue(
+            waitFor({ self.rowTint(title, in: app) == tint }, timeout: 10),
+            "row \(title) is tinted \(rowTint(title, in: app) ?? "nothing"), expected \(tint)",
+            file: file, line: line
+        )
+    }
+
     /// The fraction of the leftmost `points` of `element` whose pixels differ from the
     /// element's background, sampled from its top-left or top-right corner.
     @MainActor

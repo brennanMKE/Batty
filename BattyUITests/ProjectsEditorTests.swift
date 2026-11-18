@@ -228,6 +228,39 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
     // MARK: - 6. Save Session as Project
 
     @MainActor
+    func testSidebarEditProjectOpensTheEditorAndASavedColorRetintsTheRow() throws {
+        let board = ProjectFixture.project(name: "Board", root: try makeDirectory("board-root"), layout: ProjectFixture.terminal(), preset: "singlePane", color: 0)
+        let (app, initial) = try launchApp(projects: [board])
+        defer { app.terminate() }
+        let plain = try XCTUnwrap(initial?.selectedSession)
+
+        let plainRow = BattyUITestHarness.sessionRow(named: plain.name, in: app)
+        XCTAssertTrue(plainRow.waitForExistence(timeout: 10))
+        plainRow.rightClick()
+        XCTAssertTrue(app.menuItems["Close"].waitForExistence(timeout: 5), "the plain row's menu did not open")
+        XCTAssertFalse(app.menuItems["menu.sidebar.editProject"].exists, "a plain Session's row offers Edit Project...")
+        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+
+        openThroughPicker("Board", in: app)
+        waitForRowTint("Board", "blue", in: app)
+        let row = BattyUITestHarness.sessionRow(named: "Board", in: app)
+        row.rightClick()
+        let editItem = app.menuItems["menu.sidebar.editProject"]
+        XCTAssertTrue(editItem.waitForExistence(timeout: 5), "the Sidebar menu has no Edit Project...: \(app.menuItems.allElementsBoundByIndex.map(\.title))")
+        editItem.click()
+
+        XCTAssertTrue(editorWindow(in: app).waitForExistence(timeout: 10), "Edit Project did not open the editor")
+        let name = element("project-editor.name", in: app)
+        XCTAssertTrue(waitFor({ (name.value as? String) == "Board" }, timeout: 5), "the editor selected \(String(describing: name.value))")
+        dismissBanners(in: app)
+        click("project-editor.color.teal", in: app)
+        click("project-editor.save", in: app)
+
+        waitForRowTint("Board", "teal", in: app)
+        XCTAssertTrue(waitFor({ (ProjectFixture.read(self.storeFile)?.first?["color"] as? Int) == 4 }, timeout: 5), "the stored color is not teal")
+    }
+
+    @MainActor
     func testSidebarSaveAsProjectRoundTripsTheSessionShape() throws {
         let (app, _) = try launchApp(script: [
             ["intent": "createSession", "name": "Built"],
