@@ -9,17 +9,18 @@ import UniformTypeIdentifiers
 /// model's writes start from `.task`, a button or the file importer's result,
 /// and each cell's picture is its own `@State`.
 struct BackgroundImagesView: View {
-    enum Tab: Hashable {
-        case myImages
-        case backgroundSets
-    }
+    typealias Tab = BackgroundPickerOpening.Tab
 
     let model: BackgroundImagesModel
     let current: String?
     let onPick: (String) -> Void
     let onCancel: () -> Void
 
-    @State private var tab: Tab = .myImages
+    /// Both nil until the sheet appears, so neither tab is built before the
+    /// opening tab is decided.
+    @State private var opening: BackgroundPickerOpening?
+    @State private var tab: Tab?
+    @State private var scrollOnce = PickerScrollOnce()
     /// Read only by the cells and the Remove button, so a click doesn't
     /// re-evaluate the grid.
     @State private var selection = GridSelection<String>()
@@ -56,9 +57,18 @@ struct BackgroundImagesView: View {
             Divider()
             switch tab {
             case .myImages:
-                content
+                ScrollViewReader { proxy in
+                    content(proxy)
+                        // `entries` is written only after the scan's `await`,
+                        // so this flip is an event, never layout. On the first
+                        // open of a launch it builds the grid in the same pass,
+                        // so the grid's own first size does the scroll instead.
+                        .onChange(of: currentEntryShown) { scrollToCurrent(proxy) }
+                }
             case .backgroundSets:
-                BackgroundSetsView(model: model, onPick: onPick)
+                BackgroundSetsView(model: model, current: opening?.hostedKey, onPick: onPick)
+            case nil:
+                Color.clear
             }
             Divider()
             bottomBar
@@ -73,7 +83,17 @@ struct BackgroundImagesView: View {
         // the grid doesn't exist until the scan's `await` writes `entries`, so
         // that flip is an event, not layout.
         .defaultFocus($gridFocused, true, priority: .userInitiated)
-        .onAppear { if tab == .myImages { gridFocused = true } }
+        // The sheet is presented by a button or menu action, so these writes
+        // are event-origin.
+        .onAppear {
+            if opening == nil {
+                let decided = model.opening(forCurrent: current)
+                opening = decided
+                tab = decided.tab
+                BackgroundImagesDiagnostics.shared.tab = Self.diagnosticsName(decided.tab)
+            }
+            if tab == .myImages { gridFocused = true }
+        }
         .onChange(of: model.entries.isEmpty) { _, isEmpty in
             if !isEmpty, tab == .myImages { gridFocused = true }
         }
@@ -99,7 +119,7 @@ struct BackgroundImagesView: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(_ proxy: ScrollViewProxy) -> some View {
         if model.entries.isEmpty {
             VStack(spacing: 8) {
                 Spacer()
@@ -121,12 +141,12 @@ struct BackgroundImagesView: View {
             // for this pass, so a resize writes nothing observed.
             GeometryReader { geometry in
                 let columns = max(1, Int((geometry.size.width - Self.spacing) / (Self.minimumCellWidth + Self.spacing)))
-                grid(columns: columns)
+                grid(columns: columns, proxy: proxy)
             }
         }
     }
 
-    private func grid(columns: Int) -> some View {
+    private func grid(columns: Int, proxy: ScrollViewProxy) -> some View {
         ScrollView {
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: Self.spacing, alignment: .top), count: columns),
@@ -147,6 +167,14 @@ struct BackgroundImagesView: View {
                 }
             }
             .padding(Self.spacing)
+        }
+        // A scroll issued before the grid has a size lands nowhere, so its
+        // first real size is the earliest chance, whether that is at open or
+        // after the first scan. Writes only the unobserved guard; `scrollTo`
+        // moves the clip origin, touching no constraints or responders.
+        .onGeometryChange(for: Bool.self, of: { $0.size.height > 0 }) { _, sized in
+            scrollOnce.viewportSized = sized
+            if sized { scrollToCurrent(proxy) }
         }
         // The grid holds focus itself: a zero-size holder set from inside this
         // GeometryReader never took it, and the arrow keys selected nothing.
@@ -170,14 +198,31 @@ struct BackgroundImagesView: View {
     /// The segment's own action is the event that moves focus back to the grid.
     private var tabBinding: Binding<Tab> {
         Binding(
-            get: { tab },
+            get: { tab ?? .backgroundSets },
             set: { newValue in
                 guard newValue != tab else { return }
                 tab = newValue
-                BackgroundImagesDiagnostics.shared.tab = newValue == .myImages ? "My Images" : "Background Sets"
+                BackgroundImagesDiagnostics.shared.tab = Self.diagnosticsName(newValue)
                 if newValue == .myImages { gridFocused = true }
             }
         )
+    }
+
+    private static func diagnosticsName(_ tab: Tab) -> String {
+        tab == .myImages ? "My Images" : "Background Sets"
+    }
+
+    private func scrollToCurrent(_ proxy: ScrollViewProxy) {
+        guard currentEntryShown, scrollOnce.pending, scrollOnce.viewportSized,
+              let digest = opening?.libraryDigest else { return }
+        scrollOnce.pending = false
+        BackgroundImagesDiagnostics.shared.record("scroll to current")
+        proxy.scrollTo(digest, anchor: .center)
+    }
+
+    private var currentEntryShown: Bool {
+        guard let digest = opening?.libraryDigest else { return false }
+        return model.entries.contains { $0.digest == digest }
     }
 
     private var bottomBar: some View {
@@ -367,6 +412,7 @@ private struct BackgroundImageCell: View {
             thumbnail = await model.thumbnailer.thumbnail(for: entry)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(isHighlighted ? .isSelected : [])
         .accessibilityIdentifier("background-images.cell.\(entry.name)")
     }
 

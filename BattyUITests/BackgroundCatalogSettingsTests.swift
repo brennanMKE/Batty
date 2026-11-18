@@ -97,7 +97,7 @@ nonisolated final class BackgroundCatalogSettingsTests: ProjectsUITestCase {
         app.buttons["appearance-background.choose-image"].click()
         let tab = app.radioButtons["Background Sets"].firstMatch
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
-        tab.click()
+        XCTAssertTrue(tab.isSelected, "the picker did not open on Background Sets")
         XCTAssertTrue(element("background-sets.set.\(setName)", in: app).waitForExistence(timeout: 15), "the added catalog's set is not shown")
     }
 
@@ -121,7 +121,7 @@ nonisolated final class BackgroundCatalogSettingsTests: ProjectsUITestCase {
         XCTAssertTrue(element("background-images.picker.root", in: app).waitForExistence(timeout: 5))
         let tab = app.radioButtons["Background Sets"].firstMatch
         XCTAssertTrue(tab.waitForExistence(timeout: 5))
-        tab.click()
+        XCTAssertTrue(tab.isSelected, "the picker did not open on Background Sets")
         let imageID = BackgroundCatalogFixture.hostedImageIDs(setName: setName)[0]
         let root = element("background-sets.root", in: app)
         XCTAssertTrue(root.waitForExistence(timeout: 5))

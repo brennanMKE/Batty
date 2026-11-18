@@ -13,10 +13,20 @@ import SwiftUI
 /// re-evaluate the grids above a scrolled viewport.
 struct BackgroundSetsView: View {
     let model: BackgroundImagesModel
+    /// The image in use, shown selected and scrolled to once its catalog loads.
+    let current: HostedImageKey?
     let onPick: (String) -> Void
 
-    @State private var selection = GridSelection<HostedImageKey>()
+    @State private var selection: GridSelection<HostedImageKey>
     @State private var query = ""
+    @State private var scrollOnce = PickerScrollOnce()
+
+    init(model: BackgroundImagesModel, current: HostedImageKey? = nil, onPick: @escaping (String) -> Void) {
+        self.model = model
+        self.current = current
+        self.onPick = onPick
+        _selection = State(initialValue: GridSelection(id: current))
+    }
 
     private var hosted: HostedBackgroundsModel { model.hosted }
 
@@ -29,26 +39,51 @@ struct BackgroundSetsView: View {
         VStack(spacing: 0) {
             BackgroundSetsControls(hosted: hosted, query: $query)
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(sections) { section in
-                        catalogSection(section.content, sets: section.sets, filtering: trimmed != nil)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        ForEach(sections) { section in
+                            catalogSection(section.content, sets: section.sets, filtering: trimmed != nil)
+                        }
+                        if let trimmed, sections.isEmpty {
+                            Text("No backgrounds match “\(trimmed)”")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 40)
+                                .accessibilityIdentifier("background-sets.no-matches")
+                        }
                     }
-                    if let trimmed, sections.isEmpty {
-                        Text("No backgrounds match “\(trimmed)”")
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
-                            .accessibilityIdentifier("background-sets.no-matches")
-                    }
+                    .padding(Self.spacing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(Self.spacing)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .task { await hosted.browseAppeared() }
+                // A scroll issued from `onAppear` lands nowhere: the scroll
+                // view has no size yet. Its first real size is the earliest it
+                // can land. This writes only the unobserved once-guard and
+                // `scrollTo` moves the clip origin, touching no constraints
+                // or responders.
+                .onGeometryChange(for: Bool.self, of: { $0.size.height > 0 }) { _, sized in
+                    if sized { scrollToCurrent(proxy) }
+                }
+                // `contents` is written only after an `await` in the model, so this
+                // flip is an event, never layout.
+                .onChange(of: currentIsListed) { scrollToCurrent(proxy) }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("background-sets.root")
             }
-            .task { await hosted.browseAppeared() }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("background-sets.root")
         }
+    }
+
+    /// Writes only the unobserved once-guard.
+    private func scrollToCurrent(_ proxy: ScrollViewProxy) {
+        guard currentIsListed, let current, query.isEmpty, scrollOnce.pending else { return }
+        scrollOnce.pending = false
+        BackgroundImagesDiagnostics.shared.record("scroll to current")
+        proxy.scrollTo(current, anchor: .center)
+    }
+
+    private var currentIsListed: Bool {
+        current.map { BackgroundPickerOpening.contents(hosted.contents, contain: $0) } ?? false
     }
 
     @ViewBuilder
@@ -133,6 +168,7 @@ struct BackgroundSetsView: View {
                         selection: selection,
                         activate: { click(image, key: key) }
                     )
+                    .id(key)
                 }
             }
         }
@@ -242,6 +278,7 @@ private struct HostedBackgroundCell: View {
             digest = path.flatMap(TerminalBackgroundImageImporter.digest(ofPath:))
         }
         .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(selection.id == key ? .isSelected : [])
         .accessibilityIdentifier("background-sets.cell.\(accessibilityName)")
         .contentShape(Rectangle())
         .onTapGesture(perform: activate)

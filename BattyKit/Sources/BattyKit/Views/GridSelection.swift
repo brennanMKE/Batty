@@ -10,6 +10,10 @@ import Observation
 final class GridSelection<ID: Hashable> {
     private(set) var id: ID?
 
+    init(id: ID? = nil) {
+        self.id = id
+    }
+
     func select(_ id: ID?) {
         guard self.id != id else { return }
         BackgroundImagesDiagnostics.shared.record("selection change")
