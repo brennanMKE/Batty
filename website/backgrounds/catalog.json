@@ -51,6 +51,45 @@
         { "title": "Fleet Across the Dust Lane", "thumbnail": "deep-space/07-fleet-dust-lane-thumb.png", "full": "deep-space/07-fleet-dust-lane.png" },
         { "title": "Distant Galaxy", "thumbnail": "deep-space/08-distant-galaxy-thumb.png", "full": "deep-space/08-distant-galaxy.png" }
       ]
+    },
+    {
+      "name": "San Francisco",
+      "images": [
+        { "title": "Lands End at Blue Hour", "thumbnail": "san-francisco/01-lands-end-labyrinth-thumb.png", "full": "san-francisco/01-lands-end-labyrinth.png" },
+        { "title": "Golden Gate from Baker Beach", "thumbnail": "san-francisco/02-golden-gate-baker-beach-thumb.png", "full": "san-francisco/02-golden-gate-baker-beach.png" },
+        { "title": "Bay Bridge from Treasure Island", "thumbnail": "san-francisco/03-bay-bridge-treasure-island-thumb.png", "full": "san-francisco/03-bay-bridge-treasure-island.png" },
+        { "title": "Golden Gate from Battery Spencer", "thumbnail": "san-francisco/04-golden-gate-battery-spencer-thumb.png", "full": "san-francisco/04-golden-gate-battery-spencer.png" },
+        { "title": "Alcatraz at Blue Hour", "thumbnail": "san-francisco/05-alcatraz-blue-hour-thumb.png", "full": "san-francisco/05-alcatraz-blue-hour.png" },
+        { "title": "Fog over Twin Peaks", "thumbnail": "san-francisco/06-twin-peaks-fog-thumb.png", "full": "san-francisco/06-twin-peaks-fog.png" },
+        { "title": "Painted Ladies at Night", "thumbnail": "san-francisco/07-painted-ladies-alamo-square-thumb.png", "full": "san-francisco/07-painted-ladies-alamo-square.png" },
+        { "title": "Transamerica Pyramid in Fog", "thumbnail": "san-francisco/08-transamerica-fog-thumb.png", "full": "san-francisco/08-transamerica-fog.png" }
+      ]
+    },
+    {
+      "name": "Circuit Boards",
+      "images": [
+        { "title": "Crystal and Capacitors", "thumbnail": "circuit-boards/01-crystal-and-caps-thumb.png", "full": "circuit-boards/01-crystal-and-caps.png" },
+        { "title": "ESP32 Shield Can", "thumbnail": "circuit-boards/02-esp32-shield-macro-thumb.png", "full": "circuit-boards/02-esp32-shield-macro.png" },
+        { "title": "Solder Joints", "thumbnail": "circuit-boards/03-solder-joints-glow-thumb.png", "full": "circuit-boards/03-solder-joints-glow.png" },
+        { "title": "Unmarked Processor Corner", "thumbnail": "circuit-boards/04-sbc-chip-corner-thumb.png", "full": "circuit-boards/04-sbc-chip-corner.png" },
+        { "title": "GPIO Header Pins", "thumbnail": "circuit-boards/05-gpio-header-pins-thumb.png", "full": "circuit-boards/05-gpio-header-pins.png" },
+        { "title": "PCB Antenna Trace", "thumbnail": "circuit-boards/06-pcb-antenna-trace-thumb.png", "full": "circuit-boards/06-pcb-antenna-trace.png" },
+        { "title": "USB Connector", "thumbnail": "circuit-boards/07-usb-connector-edge-thumb.png", "full": "circuit-boards/07-usb-connector-edge.png" },
+        { "title": "Ribbon Cable", "thumbnail": "circuit-boards/08-ribbon-cable-curve-thumb.png", "full": "circuit-boards/08-ribbon-cable-curve.png" }
+      ]
+    },
+    {
+      "name": "World Cities",
+      "images": [
+        { "title": "Shanghai Pudong in Haze", "thumbnail": "world-cities/01-shanghai-pudong-haze-thumb.png", "full": "world-cities/01-shanghai-pudong-haze.png" },
+        { "title": "Seoul and Namsan Tower", "thumbnail": "world-cities/02-seoul-namsan-tower-thumb.png", "full": "world-cities/02-seoul-namsan-tower.png" },
+        { "title": "Singapore Marina Bay", "thumbnail": "world-cities/03-singapore-marina-bay-thumb.png", "full": "world-cities/03-singapore-marina-bay.png" },
+        { "title": "New York from the River", "thumbnail": "world-cities/04-new-york-midtown-river-thumb.png", "full": "world-cities/04-new-york-midtown-river.png" },
+        { "title": "London and the Thames", "thumbnail": "world-cities/05-london-thames-blue-hour-thumb.png", "full": "world-cities/05-london-thames-blue-hour.png" },
+        { "title": "Chicago from the Lake", "thumbnail": "world-cities/06-chicago-lakefront-fog-thumb.png", "full": "world-cities/06-chicago-lakefront-fog.png" },
+        { "title": "Tokyo at Blue Hour", "thumbnail": "world-cities/07-tokyo-blue-hour-thumb.png", "full": "world-cities/07-tokyo-blue-hour.png" },
+        { "title": "Sydney Harbour at Night", "thumbnail": "world-cities/08-sydney-harbour-night-thumb.png", "full": "world-cities/08-sydney-harbour-night.png" }
+      ]
     }
   ]
 }

@@ -8,10 +8,9 @@ subject kept away from where text sits.
 
 ## What to generate now
 
-Sets 1–3 are complete: all eight images in each are in the catalog. Generate only **Set 4: Deep
-Space**, images **01 through 08**: eight new images in `website/backgrounds/deep-space/`. Set 4
-isn't in the catalog yet, so it goes in as a new set named `Deep Space` after Beautiful
-Landscapes (see "Catalog" under "Output"). Then rebuild the web page.
+Nothing. Sets 1–7 are complete: all eight images in each are in the catalog. A new set goes in as a new
+`## Set N` section below, with its eight prompts, then into the catalog as described under "Catalog" in
+"Output".
 
 ## Output
 
@@ -43,8 +42,10 @@ Landscapes (see "Catalog" under "Output"). Then rebuild the web page.
 
 ## Rules for every image
 
-Add this block to every prompt below. Set 4 adds a second block, "Space rules", under its
+Add this block to every prompt in Sets 1–4. Set 4 adds a second block, "Space rules", under its
 heading. That block relaxes the star-field rule for Set 4 only. Sets 1–3 keep it as written.
+Sets 5–7 show real places and hardware, so each replaces this block with its own, given under
+its heading.
 
 > Background wallpaper for a terminal app, shown behind lines of monospaced text. 16:10
 > landscape. No text, letters, numbers, signs, logos, brand marks, license plates, watermarks,
@@ -252,3 +253,259 @@ Space rules. Add this block to every Set 4 prompt, after the block for every ima
    soft, dim oval smudge of muted blue-violet light in the lower right, with no sharp arms and
    no bright core. A single tiny scout ship crosses in front of it as a dark silhouette. The
    rest of the frame is a smooth gradient from black to deep navy.
+
+## Set 5: San Francisco
+
+Real San Francisco landmarks, photographed at night or late blue hour from vantage points
+photographers actually use. This set replaces the house rules block with its own: real
+landmarks are wanted and must be geometrically correct, and the look is an unretouched tripod
+photograph, not painterly. A first round written in the painterly style read as illustration,
+because it got its calm areas by blurring the subject; this round keeps the subject sharp and
+small and gets its calm from dark sky, fog and water. Palette: deep navy and slate with
+restrained International-Orange or sodium-amber accents.
+
+San Francisco rules. Add this block to every Set 5 prompt, in place of the block for every image:
+
+> This is an unretouched landscape photograph, used as background wallpaper for a terminal app
+> behind lines of monospaced text. 16:10 landscape. Shot on a full-frame camera on a tripod,
+> long exposure, true-to-life colour, natural tonal range, lens-sharp detail on the subject,
+> minimal natural sensor noise, no HDR halo, no painterly, illustrated or CGI look. Real
+> landmarks appear with accurate architecture, proportions and geometry, exactly as they exist.
+> No text, letters, numbers, readable signs, logos, brand marks, license plates, watermarks,
+> frames or UI of any kind. Dark overall: night or late blue hour, most of the frame in deep
+> shadow close to black, only small highlights, nothing near pure white. Muted, slightly
+> desaturated palette of deep navy and slate with restrained International-Orange or sodium-
+> amber accents. Keep the upper-left two-thirds of the frame calm and simple through smooth dark
+> sky, low fog or still dark water rather than through blur; keep the main subject crisp but
+> small, toward the right side and the bottom third. No stars, no busy high-frequency detail in
+> the calm area. No people facing the camera. It should read as a believable real photograph and
+> still look pleasant at 20-40% opacity over black.
+
+1. **`san-francisco/01-lands-end-labyrinth.png`** — A real photograph taken from the Lands End
+   trail near the Eagle's Point labyrinth in San Francisco at late blue hour, 24-70mm lens at
+   about 50mm, tripod long exposure. Dark wind-shaped Monterey cypress trees and the rocky
+   headland frame the right edge and the bottom right, sharp but nearly black. In the distance
+   on the right, across the mouth of the Golden Gate, the Golden Gate Bridge is small but
+   clearly the real bridge, both towers and the span visible with tiny deck lights and a faint
+   International-Orange glow, the Marin Headlands dark behind it. The ocean below is smooth and
+   dark with a whisper of mist. The upper-left two-thirds is an even, deep blue twilight sky
+   fading to navy at the top.
+
+2. **`san-francisco/02-golden-gate-baker-beach.png`** — A real night photograph of the Golden
+   Gate Bridge from Baker Beach, San Francisco, well after twilight, taken from the sand
+   looking north-north-east with a 24-70mm lens at about 50mm, two-minute tripod exposure. The
+   bridge stretches low across the right half and bottom third: the south tower nearer, the
+   span and the north tower beyond, correct proportions, dim deck lights and muted rust-orange
+   paint. The Marin Headlands behind it are a near-black silhouette. Long-exposure surf in the
+   foreground is smoothed into thin silky mist over dark wet sand with a few sharp black rocks
+   at the bottom edge. The sky is a smooth, very dark navy gradient, near-black at the top,
+   deep slate at the horizon. Most of the frame close to black.
+
+3. **`san-francisco/03-bay-bridge-treasure-island.png`** — A real night photograph of the San
+   Francisco skyline and the western span of the Bay Bridge taken from the shoreline of
+   Treasure Island at late blue hour, 70-200mm lens at about 85mm, tripod long exposure. The
+   skyline and the bridge's suspension towers sit low along the bottom third and the right
+   side, sharp and accurately proportioned: real towers including the rounded-top Salesforce
+   Tower and the pointed Transamerica Pyramid, small and distant, with warm and cool office
+   windows. The bridge's cables carry a modest string of white lights, not a light show. The
+   bay in front is smooth, nearly black long-exposure water with soft reflections. The upper
+   two-thirds is a smooth, deep navy sky with no clouds.
+
+4. **`san-francisco/04-golden-gate-battery-spencer.png`** — A real night photograph of the
+   Golden Gate Bridge taken from Battery Spencer in the Marin Headlands, looking south-east
+   toward San Francisco at late blue hour. Photographed with a 24-70mm lens at about 35mm,
+   30-second tripod exposure. The full bridge is visible and geometrically correct: the near
+   north tower large and sharp in the lower right, the deck running straight to the clearly
+   visible far south tower, both towers with their real Art Deco stepped portals, main cables
+   draped in their true catenary between the towers. Dim sodium deck lights, the International-
+   Orange paint muted by darkness. A thin layer of real low advection fog drifts under the deck
+   and blurs the city lights beyond into a faint amber line on the horizon. The dark grassy
+   headland slope fills the very bottom right corner. The upper two-thirds is a smooth,
+   cloudless deep navy sky darkening toward the top.
+
+5. **`san-francisco/05-alcatraz-blue-hour.png`** — A real photograph of Alcatraz Island at late
+   blue hour taken from the Hyde Street Pier / Aquatic Park shoreline in San Francisco,
+   70-200mm lens at about 200mm, tripod long exposure. The island is small and sharp in the
+   lower right: the real rock with its long cellhouse block, the water tower and the
+   lighthouse, accurate shapes, a few faint warm sodium lights on its slopes, the lighthouse
+   beam off. The bay water is smooth long-exposure near-black glass with a faint thin surface
+   mist. Behind it, the dark East Bay hills form a low line with a few distant amber lights.
+   The upper two-thirds is a smooth deep slate-to-navy twilight sky with no clouds.
+
+6. **`san-francisco/06-twin-peaks-fog.png`** — A real night photograph from the Twin Peaks
+   summit overlook in San Francisco, looking north-east down Market Street toward downtown,
+   24-70mm lens at about 70mm, tripod long exposure. A thick bank of real advection fog fills
+   the lower part of the frame and the right side, lit from beneath by the city's sodium-amber
+   streets; downtown's real towers, including the Salesforce Tower with its rounded crown and
+   the Transamerica Pyramid, poke out of the fog small and sharp in the lower right. A dark
+   grassy foreground slope at the very bottom edge. The upper two-thirds is a smooth, clean
+   deep navy night sky with no stars and no clouds.
+
+7. **`san-francisco/07-painted-ladies-alamo-square.png`** — A real night photograph of the
+   Painted Ladies on Steiner Street taken from the top of the slope in Alamo Square park,
+   24-70mm lens at about 50mm, tripod exposure, everything sharp. The row of seven real
+   Victorian Queen Anne houses with their steep front gables, bay windows and pastel facades
+   sits low along the bottom-right third, lit only by dim warm street light, with a few softly
+   glowing warm windows; their architectural detail is crisp and accurate, not repeated or
+   smeared. Behind and above them the downtown skyline is a sharp but dim line of small lights.
+   Dark lawn and the silhouette of one tree in the bottom-left corner. The upper two-thirds is
+   a smooth, very dark navy sky, near-black at the top, no clouds.
+
+8. **`san-francisco/08-transamerica-fog.png`** — A real night photograph of the Financial
+   District of San Francisco in fog, taken from Telegraph Hill / the Coit Tower parking area
+   looking south with a 70-200mm lens at about 135mm, tripod exposure. The Transamerica Pyramid
+   stands crisp in the right third, its real tapering four-sided form with the two vertical
+   wings near the top and the dim lit spire tip, with neighbouring office towers as sharp but
+   dim dark shapes beside it. A layer of real low fog wraps around the lower floors and glows a
+   restrained sodium amber from the streets below. Above, the sky is smooth deep navy, slightly
+   darker at the top. The building tops reach no higher than the middle of the frame.
+
+## Set 6: Circuit Boards
+
+Extreme macro photographs of real single-board computer and ESP32-style hardware. This set
+replaces the house rules block with its own. It keeps the no-text rule strictly (unmarked
+chips, no silkscreen, no logos), and meets the no-busy-detail rule with very shallow depth of
+field: a small sharp area in the lower right, the rest dark bokeh. Palette: matte black or
+deep green solder mask, warm copper and gold, with at most one small teal or amber LED glow.
+
+Circuit Boards rules. Add this block to every Set 6 prompt, in place of the block for every image:
+
+> Background wallpaper for a terminal app, shown behind lines of monospaced text. 16:10
+> landscape. Extreme macro photograph of real electronics hardware. No text, letters, numbers,
+> signs, logos, brand marks, watermarks, frames or UI of any kind: unmarked chips, bare
+> silkscreen-free board, no component labels, no chip markings, no printed lettering anywhere.
+> Dark, low-key studio lighting: a single soft rim or edge light, most of the frame near black,
+> with only small, soft highlights and nothing near pure white. Low contrast, muted and slightly
+> desaturated, limited to one or two main hues: matte black or deep green solder mask and warm
+> copper/gold pads, with at most one tiny soft LED glow as an accent. Very shallow depth of
+> field: only a small sharp area sits in the lower right of the frame; the upper-left two-thirds
+> dissolves into smooth, soft, dark out-of-focus bokeh with no readable detail, because that is
+> where text appears. Avoid fine busy detail, grain and noise in the calm area. Photorealistic,
+> physically plausible hardware, not plastic or toy-like, not a 3D render. The image should
+> still read as a pleasant picture when shown at 20-40% opacity over a black background.
+
+1. **`circuit-boards/01-crystal-and-caps.png`** — An extreme macro of a small oval metal
+   crystal oscillator beside a few tiny tan SMD capacitors on a deep green board, clustered in
+   the lower right corner. A soft warm side light picks out the bright solder fillets at each
+   capacitor's ends. Above and to the left, the board dissolves into soft, dark green-black
+   blur.
+
+2. **`circuit-boards/02-esp32-shield-macro.png`** — An extreme macro of the silver RF shield
+   can on a small dev module, seen at a low grazing angle from the lower right. A thin, warm
+   rim light traces the folded edge of the brushed metal can and the row of tiny gold
+   castellated pads beneath it. Everything beyond the corner of the can melts into soft, dark
+   green bokeh fading to black.
+
+3. **`circuit-boards/03-solder-joints-glow.png`** — A macro of a few glossy, cone-shaped solder
+   joints on the underside of a black circuit board, in the bottom right, each catching a tiny
+   warm highlight from a low rim light. A single tiny teal LED glows softly far out of focus, a
+   dim round bokeh shape in the middle distance. The rest is velvety black.
+
+4. **`circuit-boards/04-sbc-chip-corner.png`** — An extreme macro of the corner of a plain,
+   unmarked matte-black processor package soldered to a deep green board, in the lower right,
+   with a soft warm rim light along its bevelled edge and the tiny gold pads around it. A
+   single amber LED glows softly as a dim bokeh orb in the distance. The upper left is smooth,
+   dark blur.
+
+5. **`circuit-boards/05-gpio-header-pins.png`** — A low-angle macro looking along a double row
+   of gold-plated header pins on a single-board computer, the nearest few pins sharp in the
+   lower right with a soft rim light on their square tips. The row recedes into deep, creamy
+   bokeh, the farther pins becoming soft golden dots that fade into darkness toward the upper
+   left.
+
+6. **`circuit-boards/06-pcb-antenna-trace.png`** — A close macro of a meandering gold PCB
+   antenna trace on the end of a deep green module, its zigzag running along the bottom right
+   edge of the frame and catching a soft amber edge light. The trace falls rapidly out of focus
+   as it recedes. The rest of the frame is a smooth, near-black blur of dark green solder mask.
+
+7. **`circuit-boards/07-usb-connector-edge.png`** — A macro of the brushed metal shell of a
+   small USB connector at the edge of a matte black board, in the lower right, lit by a single
+   cool edge light along its rounded lip. Behind it, the board falls away into smooth black,
+   with a few large, very dim warm bokeh circles in the distance.
+
+8. **`circuit-boards/08-ribbon-cable-curve.png`** — A macro of a dark charcoal flat ribbon
+   cable plugged into a black connector on a deep green board in the lower right corner, a
+   single thin cool rim light tracing only the top edge of the cable where it bends. The cable
+   rises and exits the frame through the right edge, never crossing the left half. A single
+   tiny teal LED glows very softly, out of focus. The upper-left two-thirds is smooth, near-
+   black, without any grey haze.
+
+## Set 7: World Cities
+
+Real skylines of advanced cities around the world at night or blue hour, one city per image;
+the photographic counterpart of Future Cities. This set replaces the house rules block with
+its own: real skylines and landmarks are wanted and must be accurate, and city lights read as
+soft distant glow rather than sharp window grids. Palette: deep navy or indigo with sodium-
+amber or soft cyan city light.
+
+World Cities rules. Add this block to every Set 7 prompt, in place of the block for every image:
+
+> Background wallpaper for a terminal app, shown behind lines of monospaced text. 16:10
+> landscape. No text, letters, numbers, signs, billboards or screens with readable text, logos
+> or brand marks on buildings, license plates, watermarks, frames or UI of any kind. Dark
+> overall: most of the frame in deep shadow, with only small, soft highlights and nothing near
+> pure white. Low contrast, muted and slightly desaturated, limited to one or two main hues.
+> Keep the upper-left two-thirds of the frame calm and simple (smooth night sky, haze, soft
+> gradients or soft out-of-focus light) because that is where text appears; place the skyline
+> toward the right side and the bottom third. Avoid fine, busy, high-frequency detail such as
+> wires, dense sharp window grids, grain, noise, small repeating patterns or star fields,
+> especially in the calm area; city lights read as soft, distant glow. Soft focus, atmospheric
+> haze and long distance are welcome. Real, recognizable city skylines and landmarks are wanted
+> and must be accurate to the named city. Natural, believable photography, not CGI or plastic-
+> looking. No people facing the camera, no real vehicle makes or models. The image should still
+> read as a pleasant picture when shown at 20-40% opacity over a black background.
+
+1. **`world-cities/01-shanghai-pudong-haze.png`** — Late night in Shanghai, the Lujiazui
+   skyline of Pudong seen from the Bund far across the Huangpu River: the Oriental Pearl Tower,
+   Jin Mao Tower, the Shanghai World Financial Center with its open top, and the twisting
+   Shanghai Tower, all small and low on the right side of the frame, occupying only the bottom
+   third, their tops softly veiled by thin mist. Their lights are dim and warm, reflected as
+   long blurred streaks in the near-black river. The sky above is very dark, a smooth gradient
+   from near-black at the top to deep navy above the skyline; most of the frame is close to
+   black, not grey fog.
+
+2. **`world-cities/02-seoul-namsan-tower.png`** — Night over Seoul with N Seoul Tower on the
+   dark wooded ridge of Namsan in the lower right, its top glowing softly. The city spreads
+   around and below as a hazy, out-of-focus wash of dim warm light across the bottom third,
+   with dark mountain ridges on the far horizon. The upper two-thirds is a clean, deep navy
+   sky.
+
+3. **`world-cities/03-singapore-marina-bay.png`** — Night over Marina Bay, Singapore, seen from
+   across the still water. Marina Bay Sands and the downtown towers sit low along the right
+   half of the bottom third, their lights softened by humid haze and stretched into long,
+   smeared reflections in the near-black bay. The upper two-thirds is a smooth, deep navy sky
+   with a faint warm glow along the horizon.
+
+4. **`world-cities/04-new-york-midtown-river.png`** — Night over Midtown Manhattan seen from
+   far across the East River in Long Island City: the Empire State Building and, to its right,
+   the Chrysler Building's lit crown stand among a low, hazy skyline confined to the bottom
+   third and right half, their window lights softened into a dim amber glow, reflected as long
+   smeared streaks on the near-black river. The sky above is dark: a smooth gradient from near-
+   black at the top to deep indigo with only a faint dim blue glow at the horizon. Most of the
+   frame is close to black.
+
+5. **`world-cities/05-london-thames-blue-hour.png`** — Late blue hour over London seen from the
+   Thames riverbank in Wapping, looking west upriver. Tower Bridge sits small and softly lit at
+   the centre-right on the river. Behind it on the left (south) bank the Shard rises as a slim
+   glowing glass spire; on the right (north) bank the towers of the City of London, including
+   the Gherkin, cluster low in haze. All of it stays in the bottom third, its lights reflected
+   as gentle amber smears in the dark Thames. The sky is a smooth gradient from near-black at
+   the top to deep navy just above the skyline.
+
+6. **`world-cities/06-chicago-lakefront-fog.png`** — The Chicago skyline at night seen from far
+   out on Lake Michigan: Willis Tower and the downtown towers along the bottom third on the
+   right, their upper floors dissolving into low fog and their lights reduced to a soft amber
+   glow. The lake is dark and calm with faint, blurred reflections. Above, a smooth, deep
+   indigo night sky.
+
+7. **`world-cities/07-tokyo-blue-hour.png`** — Late blue hour over Tokyo seen from far away,
+   with Tokyo Tower glowing soft warm amber in the lower right and the low city spreading
+   behind it as a hazy carpet of dim light across the bottom fifth. Mount Fuji is a faint dark
+   silhouette on the distant horizon. Above, a vast smooth sky fades from deep indigo at the
+   top to a dim teal band just above the haze.
+
+8. **`world-cities/08-sydney-harbour-night.png`** — Sydney Harbour at late twilight seen from
+   far across the water: the Sydney Opera House shells and the arch of the Harbour Bridge sit
+   low on the right, softly lit warm, with the CBD towers behind them blurred into dim haze.
+   The dark harbour water holds long soft reflections. The upper two-thirds is a clean, smooth
+   navy sky fading to a thin teal band at the horizon.
