@@ -93,8 +93,14 @@ actor MCPServer {
     /// awaiting any calls still running.
     func serve(input: FileHandle, output: FileHandle) async {
         do {
-            for try await line in input.bytes.lines {
-                handle(line: line, output: output)
+            var framer = MCPLineFramer()
+            for try await byte in input.bytes {
+                if let line = framer.append(byte) {
+                    handle(line: line, output: output)
+                }
+            }
+            if let last = framer.finish() {
+                handle(line: last, output: output)
             }
         } catch {
             logger.error("mcp input failed: \(String(describing: error), privacy: .public)")
@@ -104,10 +110,9 @@ actor MCPServer {
         for task in remaining { await task.value }
     }
 
-    private func handle(line: String, output: FileHandle) {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard let message = try? JSONDecoder().decode(MCPJSONValue.self, from: Data(trimmed.utf8)) else {
+    private func handle(line: Data, output: FileHandle) {
+        guard line.contains(where: { $0 != 0x20 && $0 != 0x09 && $0 != 0x0D }) else { return }
+        guard let message = try? JSONDecoder().decode(MCPJSONValue.self, from: line) else {
             send(error: MCPErrorCode.parseError, message: "Parse error", id: .null, output: output)
             return
         }
@@ -224,5 +229,30 @@ actor MCPServer {
         } catch {
             logger.error("mcp output failed: \(String(describing: error), privacy: .public)")
         }
+    }
+}
+
+/// Frames stdio input on 0x0A alone, as MCP's stdio transport specifies.
+/// Foundation's `lines` also breaks at CR, NEL, LS and PS, which JSON
+/// allows raw inside strings.
+nonisolated struct MCPLineFramer {
+    private var buffer = Data()
+
+    mutating func append(_ byte: UInt8) -> Data? {
+        guard byte == 0x0A else {
+            buffer.append(byte)
+            return nil
+        }
+        defer { buffer = Data() }
+        return Self.droppingOneCarriageReturn(buffer)
+    }
+
+    mutating func finish() -> Data? {
+        defer { buffer = Data() }
+        return buffer.isEmpty ? nil : Self.droppingOneCarriageReturn(buffer)
+    }
+
+    private static func droppingOneCarriageReturn(_ line: Data) -> Data {
+        line.last == 0x0D ? Data(line.dropLast()) : line
     }
 }

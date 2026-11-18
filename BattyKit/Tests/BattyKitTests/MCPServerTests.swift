@@ -103,6 +103,10 @@ nonisolated struct MCPHarness {
         input.fileHandleForWriting.write(Data((line + "\n").utf8))
     }
 
+    func sendRaw(_ bytes: Data) {
+        input.fileHandleForWriting.write(bytes)
+    }
+
     func reply() async throws -> MCPJSONValue {
         let line = try #require(await reader.next())
         return try JSONDecoder().decode(MCPJSONValue.self, from: Data(line.utf8))
@@ -261,9 +265,79 @@ struct MCPServerTests {
         await harness.close()
     }
 
+    @Test(arguments: ["\u{2028}", "\u{2029}", "\u{0085}"])
+    func rawLineSeparatorInsideAStringIsOneMessage(separator: String) async throws {
+        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
+        harness.send(#"{"jsonrpc":"2.0","id":7,"method":"ping","params":{"x":"a"# + separator + #"b"}}"#)
+        harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
+        let first = try await harness.reply()
+        #expect(first["id"] == .int(7))
+        #expect(first["result"] == .object([:]))
+        #expect(first["error"] == nil)
+        let second = try await harness.reply()
+        #expect(second["id"] == .int(8))
+        await harness.close()
+    }
+
+    @Test func loneCarriageReturnMidLineIsNotAMessageBoundary() async throws {
+        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
+        harness.send("{\"jsonrpc\":\"2.0\",\r\"id\":7,\"method\":\"ping\"}")
+        harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
+        let first = try await harness.reply()
+        #expect(first["id"] == .int(7))
+        #expect(first["error"] == nil)
+        let second = try await harness.reply()
+        #expect(second["id"] == .int(8))
+        await harness.close()
+    }
+
+    @Test func crlfTerminatedLineIsParsed() async throws {
+        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
+        harness.sendRaw(Data(#"{"jsonrpc":"2.0","id":12,"method":"ping"}"#.utf8 + [0x0D, 0x0A]))
+        harness.send(#"{"jsonrpc":"2.0","id":14,"method":"ping"}"#)
+        let first = try await harness.reply()
+        #expect(first["id"] == .int(12))
+        #expect(first["result"] == .object([:]))
+        let second = try await harness.reply()
+        #expect(second["id"] == .int(14))
+        await harness.close()
+    }
+
+    @Test func finalLineWithoutNewlineIsProcessedAtEndOfFile() async throws {
+        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
+        harness.sendRaw(Data(#"{"jsonrpc":"2.0","id":13,"method":"ping"}"#.utf8))
+        await harness.close()
+        let reply = try await harness.reply()
+        #expect(reply["id"] == .int(13))
+    }
+
     @Test func serveReturnsWhenInputCloses() async {
         let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
         await harness.close()
         #expect(harness.serving.isCancelled == false)
+    }
+}
+
+struct MCPLineFramerTests {
+    private func frame(_ bytes: [UInt8]) -> (lines: [Data], rest: Data?) {
+        var framer = MCPLineFramer()
+        let lines = bytes.compactMap { framer.append($0) }
+        return (lines, framer.finish())
+    }
+
+    @Test func splitsOnlyOnLineFeed() {
+        let result = frame(Array("a\u{2028}b\nc\u{2029}d\u{0085}e\n".utf8))
+        #expect(result.lines == [Data("a\u{2028}b".utf8), Data("c\u{2029}d\u{0085}e".utf8)])
+        #expect(result.rest == nil)
+    }
+
+    @Test func dropsOneTrailingCarriageReturn() {
+        #expect(frame(Array("x\r\r\n".utf8)).lines == [Data("x\r".utf8)])
+        #expect(frame(Array("a\rb\n".utf8)).lines == [Data("a\rb".utf8)])
+    }
+
+    @Test func finishReturnsUnterminatedRemainderOrNil() {
+        #expect(frame(Array("ab".utf8)).rest == Data("ab".utf8))
+        #expect(frame(Array("ab\n".utf8)).rest == nil)
     }
 }
