@@ -972,7 +972,19 @@ below), and the Open button's target is `defaultTargetWindow()`. Layout, left to
 column (Name, Root folder, Session color, Layout strip, Pane preview), and the
 Pane inspector, with a footer.
 
+Entry points include Projects ▸ **Projects…** and the Sidebar's
+**Edit Project…** on a Project-backed Session row
+(`menu.sidebar.editProject`, #0653), which selects that Project and runs the
+unsaved-changes prompt when another draft is dirty.
+
 **Invariants:**
+
+- A Save applies to every Session open from that Project, in every Window,
+  only the fields it changed: name, color (nearest palette entry for a custom
+  color), symbol, Theme and background. A Sidebar override of a field the save
+  left alone survives. Layout, Pane and Tab backgrounds, Tab directories,
+  startup commands and mute wait for the next open. Revert and Discard
+  Changes apply nothing (#0653).
 
 - Edits are a draft, and the editor is explicit-save (#0654). Nothing is
   written to `ProjectStore` until Save: the Save button, Return, or ⌘S.
@@ -1311,7 +1323,7 @@ the root is stored as the root and flagged with a warning on its field.
   color and run toggle, and asks first when Tabs, commands or views would be
   replaced.
 - A Session opened from a stored Project (`projectID` set, Project still
-  exists) shows two items instead: `Update "<name>"...` (layout and Tabs
+  exists) shows "Edit Project..." first, then two items instead: `Update "<name>"...` (layout and Tabs
   replaced, commands kept where the slot and Tab line up) and "Save as New
   Project..." (File menu: "Save Session as New Project..."). The palette adds
   `extra:updateSessionProject` "Update Project: <name>".

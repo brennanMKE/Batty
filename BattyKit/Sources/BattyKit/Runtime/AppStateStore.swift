@@ -1658,13 +1658,52 @@ public final class AppStateStore {
         return Set(windows.flatMap(\.sessions).compactMap(\.projectID))
     }
 
-    /// Points every open Session backed by `project` at its current symbol,
-    /// across all Windows. Title and color stay as pinned at open.
-    func applyProjectSymbol(of project: Project) {
-        for session in windows.flatMap(\.sessions) where session.projectID == project.id {
-            session.projectSymbol = project.symbol
-            session.projectSymbolName = project.customSymbolName
+    /// Applies a Project Editor save to every open Session of that Project,
+    /// in every Window. Only fields the save changed (all of them when
+    /// `previous` is nil) are applied, so a Sidebar override of a field the
+    /// save left alone survives: name, color (nearest palette entry for a
+    /// custom hex), Theme and background. The symbol is always written.
+    /// Layout, Pane and Tab backgrounds, Tab directories and commands, and
+    /// mute wait for the next open.
+    func applyProjectSave(previous: Project?, saved: Project) {
+        applyProjectSave(previous: previous, saved: saved, isDark: NSApp?.effectiveAppearance.isDark ?? true)
+    }
+
+    func applyProjectSave(previous: Project?, saved: Project, isDark: Bool) {
+        let nameChanged = previous?.name != saved.name
+        let colorChanged = previous?.color != saved.color || previous?.customColorHex != saved.customColorHex
+        let backgroundChanged = previous?.background != saved.background
+        let themeChanged = previous?.theme != saved.theme
+        for window in windows {
+            for session in window.sessions where session.projectID == saved.id {
+                if session.projectSymbol != saved.symbol { session.projectSymbol = saved.symbol }
+                if session.projectSymbolName != saved.customSymbolName { session.projectSymbolName = saved.customSymbolName }
+                if nameChanged {
+                    if session.title != saved.name { session.title = saved.name }
+                    if !session.titleOverride { session.titleOverride = true }
+                }
+                if colorChanged { window.setSessionColor(id: session.id, to: saved.color.rawValue) }
+                if backgroundChanged { _ = seedProjectBackground(saved, on: session) }
+                if themeChanged {
+                    if session.themeOverride != saved.theme { session.themeOverride = saved.theme }
+                    applyActiveSessionTheme(for: session, isDark: isDark)
+                }
+            }
         }
+    }
+
+    /// Gives an open `session` the Project's background with the same
+    /// checks `openProject` makes, marking a missing image or one still
+    /// waiting on sync.
+    @discardableResult
+    private func seedProjectBackground(_ project: Project, on session: SessionRuntime) -> BackgroundImageState? {
+        let checked = project.background.map(projectBackgrounds.checked)
+        session.setBackgroundOverride(checked?.settings)
+        if let problem = checked?.problem { session.projectBackgroundImageProblem = problem }
+        if project.background != nil, checked?.problem != nil || project.pendingSharedImage != nil {
+            session.pendingProjectImage = true
+        }
+        return checked?.problem
     }
 
     /// Opens a saved Project as a Session. Startup commands are not run here.

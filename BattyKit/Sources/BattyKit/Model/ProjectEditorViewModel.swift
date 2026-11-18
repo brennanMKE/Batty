@@ -102,9 +102,10 @@ final class ProjectEditorViewModel {
     @ObservationIgnored var captureSession: @MainActor (String?) -> SessionProjectCapture?
     /// Closes the editor window without asking.
     @ObservationIgnored var closeWindow: @MainActor () -> Void
-    /// Called with the stored Project after every successful `save()`, so
-    /// open Sessions can follow the symbol. Runs from the save action.
-    @ObservationIgnored var projectSaved: @MainActor (Project) -> Void = { _ in }
+    /// Called with the Project as stored before the save (nil for a new one)
+    /// and as stored after it, after every `save()` that wrote, so open
+    /// Sessions can follow the changed fields. Runs from the save action.
+    @ObservationIgnored var projectSaved: @MainActor (_ previous: Project?, _ saved: Project) -> Void = { _, _ in }
     /// Brings the editor window front so a quit question is visible. False
     /// when the window cannot show one, for example because a sheet is
     /// already up on it.
@@ -944,7 +945,8 @@ final class ProjectEditorViewModel {
             return unchanged
         }
         var project = draft.makeProject()
-        if let current = store.project(id: draft.id) {
+        let previous = store.project(id: draft.id)
+        if let current = previous {
             project.approvedCommandsHash = current.approvedCommandsHash
             project.lastOpenedAt = current.lastOpenedAt
             if draft.isShared == baseline?.isShared { project.isShared = current.isShared }
@@ -966,7 +968,7 @@ final class ProjectEditorViewModel {
         let slot = selectedSlot
         load(stored)
         selectedSlot = min(slot, max(stored.layout.paneCount - 1, 0))
-        projectSaved(stored)
+        projectSaved(previous, stored)
         return stored
     }
 

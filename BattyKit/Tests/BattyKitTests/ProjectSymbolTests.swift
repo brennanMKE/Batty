@@ -224,12 +224,14 @@ struct ProjectSymbolEditorTests {
         try store.upsert(project)
         let model = ProjectEditorViewModel(store: store, initialSelection: project.id)
         var seen: [ProjectSymbol] = []
-        model.projectSaved = { seen.append($0.symbol) }
+        var previous: [ProjectSymbol?] = []
+        model.projectSaved = { previous.append($0?.symbol); seen.append($1.symbol) }
 
         model.setSymbol(.map)
         _ = model.save()
 
         #expect(seen == [.map])
+        #expect(previous == [.chip])
     }
 }
 
@@ -269,7 +271,7 @@ struct ProjectSymbolSessionTests {
         #expect(untouched.projectSymbol == .server)
 
         let model = ProjectEditorViewModel(store: projectStore, initialSelection: edited.id)
-        model.projectSaved = { store.applyProjectSymbol(of: $0) }
+        model.projectSaved = { store.applyProjectSave(previous: $0, saved: $1) }
         model.setSymbol(.cloud)
         #expect(first.projectSymbol == .chip)
         _ = model.save()
@@ -281,22 +283,22 @@ struct ProjectSymbolSessionTests {
         #expect(first.colorIndex == SessionColor.violet.rawValue)
     }
 
-    @Test func aSymbolSaveLeavesTheSessionsTitleAndColorPinned() throws {
+    @Test func aSymbolOnlySaveLeavesTheSessionsTitleAndColorAlone() throws {
         let fixture = try SymbolFixture()
         let store = fixture.appStore()
         let project = fixture.project("Pinned", symbol: .chip, color: .teal)
         try store.projectStore.upsert(project)
         let session = try store.openProject(id: project.id, contentFactory: noContent).session
 
-        var renamed = project
-        renamed.name = "Renamed"
-        renamed.color = .red
-        renamed.symbol = .home
-        store.applyProjectSymbol(of: renamed)
+        session.title = "Sidebar Name"
+        store.windows[0].setSessionColor(id: session.id, to: SessionColor.red.rawValue)
+        var edited = project
+        edited.symbol = .home
+        store.applyProjectSave(previous: project, saved: edited)
 
         #expect(session.projectSymbol == .home)
-        #expect(session.title == "Pinned")
-        #expect(session.colorIndex == SessionColor.teal.rawValue)
+        #expect(session.title == "Sidebar Name")
+        #expect(session.colorIndex == SessionColor.red.rawValue)
     }
 }
 
