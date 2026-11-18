@@ -16,6 +16,24 @@ struct BackgroundImagesModelTests {
         return try #require(model.entries.first { $0.digest == digest })
     }
 
+    @Test func openingReadsTheHostedStoreRecords() async throws {
+        let model = f.appStore().backgroundImages
+        let path = try await f.copy(in: model.hosted.imageDirectory)
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        let url = try #require(URL(string: "https://batty.sstools.co/backgrounds/sky.png"))
+        try JSONEncoder().encode([HostedImageRecord(url: url, digest: digest, fetchedAt: Date())])
+            .write(to: model.hosted.imageDirectory.appendingPathComponent("hosted-images.json"))
+        let opening = model.opening(forCurrent: path)
+        #expect(opening == BackgroundPickerOpening(tab: .backgroundSets, hostedKey: HostedImageKey(url: url), libraryDigest: nil))
+    }
+
+    @Test func openingForALibraryImageIsMyImages() async throws {
+        let model = f.appStore().backgroundImages
+        let path = try await f.copy(in: f.appWideFolder)
+        let digest = try #require(TerminalBackgroundImageImporter.digest(ofPath: path))
+        #expect(model.opening(forCurrent: path) == BackgroundPickerOpening(tab: .myImages, hostedKey: nil, libraryDigest: digest))
+    }
+
     @Test func refreshPublishesEntriesAndUses() async throws {
         let path = try await f.copy(in: f.appWideFolder)
         SettingsPreference.writeBackground(appWideBackgroundValue(path: path), defaults: f.testDefaults.defaults)

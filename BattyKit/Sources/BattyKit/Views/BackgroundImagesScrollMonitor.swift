@@ -150,7 +150,6 @@ struct BackgroundImagesScrollMonitorAttachment: NSViewRepresentable {
             monitor = nil
             guard let window else { return }
             let diagnostics = BackgroundImagesDiagnostics.shared
-            diagnostics.tab = "My Images"
             diagnostics.record("picker opened")
             monitor = BackgroundImagesScrollMonitor(window: window)
         }

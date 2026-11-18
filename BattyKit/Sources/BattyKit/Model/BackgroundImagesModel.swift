@@ -59,6 +59,14 @@ final class BackgroundImagesModel {
     /// Where a picked path may come from: My Images and the hosted store.
     var pickSources: [URL] { [library.directory, hosted.imageDirectory] }
 
+    /// Reads the hosted and Downloaded record files; writes nothing.
+    func opening(forCurrent path: String?) -> BackgroundPickerOpening {
+        BackgroundPickerOpening.resolve(
+            currentPath: path,
+            hostedRecords: HostedImageStore.records(in: hosted.imageDirectory),
+            cacheEntries: DownloadedImageIndex.entries(in: DownloadedImageCache.directory(inLibrary: library.directory)))
+    }
+
     var totalBytes: Int64 { entries.reduce(0) { $0 + $1.sizeInBytes } }
 
     func refresh() async {

@@ -67,6 +67,45 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     }
 
     @MainActor
+    func testPickerOpensOnBackgroundSetsWithNoImage() throws {
+        let app = try launch()
+        defer { app.terminate() }
+        openPaneBackgroundPicker(in: app)
+        let tab = app.radioButtons["Background Sets"].firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 5), "no Background Sets tab")
+        XCTAssertTrue(tab.isSelected, "the picker did not open on Background Sets")
+        XCTAssertTrue(element("background-sets.root", in: app).waitForExistence(timeout: 5), "no Background Sets view")
+    }
+
+    @MainActor
+    func testReopeningAfterPickingASetImageShowsItSelectedAndInView() throws {
+        let app = try launch()
+        defer { app.terminate() }
+        let disclosure = app.descendants(matching: .disclosureTriangle).firstMatch
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        disclosure.click()
+        let gear = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pane-background-settings.'")).firstMatch
+        XCTAssertTrue(gear.waitForExistence(timeout: 5))
+        gear.click()
+        let custom = app.buttons["pane-background-sheet.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        custom.click()
+        let choose = app.buttons["pane-background-sheet.choose-image"]
+        let lastSet = try XCTUnwrap(BackgroundCatalogFixture.setIDs.last)
+        let id = try XCTUnwrap(BackgroundCatalogFixture.imageIDs(in: lastSet).last)
+        choose.click()
+        pick(id, in: app)
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 15), "the picker stayed open")
+        XCTAssertTrue(waitFor({ app.buttons["pane-background-sheet.no-image"].isEnabled }, timeout: 10), "the pick did not set an image")
+
+        choose.click()
+        XCTAssertTrue(element("background-images.picker.root", in: app).waitForExistence(timeout: 5), "Choose did not open the picker")
+        XCTAssertTrue(app.radioButtons["Background Sets"].firstMatch.isSelected, "the picker did not open on Background Sets")
+        let target = cell(id, in: app)
+        XCTAssertTrue(waitFor({ target.exists && target.isHittable && target.isSelected }, timeout: 10), "\(id) is not selected and in view")
+    }
+
+    @MainActor
     func testBackgroundSetsShowsTheSetsWithoutFetchingAFullSizeImage() throws {
         let app = try launch()
         defer { app.terminate() }

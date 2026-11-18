@@ -100,6 +100,15 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         XCTAssertTrue(element("background-images.picker.root", in: app).waitForExistence(timeout: 5), "Choose did not open the picker")
     }
 
+    /// The picker opens on Background Sets unless the current image is in
+    /// My Images. The segment's action also focuses the grid.
+    @MainActor
+    private func showMyImages(in app: XCUIApplication) {
+        let tab = app.radioButtons["My Images"].firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 5), "no My Images tab")
+        tab.click()
+    }
+
     // MARK: - Entry points
 
     @MainActor
@@ -108,6 +117,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
         openPaneBackgroundPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-menu", in: app)
         cell("Harbor-menu", in: app).click()
         XCTAssertTrue(waitFor({ !self.pickerRoot(in: app).exists }, timeout: 10), "the picker stayed open")
@@ -163,6 +173,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
         openPaneBackgroundPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-show", in: app)
         XCTAssertTrue(element("background-images.cell.Harbor-show.size", in: app).exists)
         XCTAssertEqual(element("background-images.cell.Harbor-show.uses", in: app).value as? String, "Not in use")
@@ -175,6 +186,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
         openPaneBackgroundPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-remove", in: app)
         cell("Harbor-remove", in: app).rightClick()
         let remove = app.menuItems["Remove…"]
@@ -194,6 +206,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try project(name: "Uses Image", imagePath: path)], connectCLI: false)
         defer { app.terminate() }
         openPaneBackgroundPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-project", in: app)
         XCTAssertEqual(element("background-images.cell.Harbor-project.uses", in: app).value as? String, "Project Uses Image")
         requestRemoval(of: "Harbor-project", in: app) { app.buttons["background-images.remove"].click() }
@@ -214,6 +227,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
         openPaneBackgroundPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-delete", in: app)
         requestRemoval(of: "Harbor-delete", in: app) { app.typeKey(.delete, modifierFlags: []) }
         app.buttons["background-images.confirm-remove"].click()
@@ -251,6 +265,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
         openPaneBackgroundPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-keys", in: app)
         let remove = app.buttons["background-images.remove"]
         XCTAssertFalse(remove.isEnabled)
@@ -327,6 +342,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         app.activate()
         XCTAssertEqual(app.state, .runningForeground, "Batty is not frontmost")
         openPaneBackgroundPicker(in: app)
+        showMyImages(in: app)
         XCTAssertTrue(anyJumpCell(in: app).waitForExistence(timeout: 10), "the grid never showed")
         scrollGridDown(in: app)
         let visible = visibleJumpCells(in: app)
@@ -358,6 +374,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         XCTAssertFalse(none.isEnabled)
         app.buttons["pane-background-sheet.choose-image"].click()
         expectPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-pane", in: app)
         cell("Harbor-pane", in: app).click()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5), "the picker stayed open")
@@ -411,6 +428,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         custom.click()
         app.buttons["project-background-sheet.choose-image"].click()
         expectPicker(in: app)
+        showMyImages(in: app)
         waitForPicture("Harbor-copy", in: app)
         cell("Harbor-copy", in: app).click()
         let none = app.buttons["project-background-sheet.no-image"]
@@ -430,9 +448,40 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         openPaneSheet(in: app)
         app.buttons["pane-background-sheet.choose-image"].click()
         expectPicker(in: app)
+        showMyImages(in: app)
         XCTAssertTrue(app.buttons["background-images.add"].exists)
         app.buttons["background-images.picker.cancel"].click()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
         XCTAssertFalse(app.buttons["pane-background-sheet.no-image"].isEnabled)
+    }
+
+    @MainActor
+    func testReopeningShowsTheCurrentMyImagesImageSelectedAndInView() throws {
+        try seedScrollingLibrary()
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        openPaneSheet(in: app)
+        let choose = app.buttons["pane-background-sheet.choose-image"]
+        choose.click()
+        expectPicker(in: app)
+        showMyImages(in: app)
+        XCTAssertTrue(anyJumpCell(in: app).waitForExistence(timeout: 10), "the grid never showed")
+        // The newest image is listed first, so the oldest is the last cell.
+        let name = Self.jumpNames[0]
+        let target = cell(name, in: app)
+        let root = pickerRoot(in: app)
+        root.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).hover()
+        for _ in 0..<30 where !(target.exists && target.isHittable) {
+            root.scroll(byDeltaX: 0, deltaY: -120)
+        }
+        XCTAssertTrue(target.exists && target.isHittable, "no cell for \(name)")
+        target.click()
+        XCTAssertTrue(waitFor({ !root.exists }, timeout: 10), "the picker stayed open")
+        XCTAssertTrue(waitFor({ app.buttons["pane-background-sheet.no-image"].isEnabled }, timeout: 10), "the pick did not set an image")
+
+        choose.click()
+        expectPicker(in: app)
+        XCTAssertTrue(app.radioButtons["My Images"].firstMatch.isSelected, "the picker did not open on My Images")
+        XCTAssertTrue(waitFor({ target.exists && target.isHittable && target.isSelected }, timeout: 10), "\(name) is not selected and in view")
     }
 }

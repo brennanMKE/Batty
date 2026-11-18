@@ -117,6 +117,51 @@ struct BackgroundSetsScrollStabilityTests {
         var description: String { "origin \(origin), document \(document), gap \(gap)" }
     }
 
+    private func host(current: HostedImageKey?) -> (NSWindow, NSView) {
+        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, current: current, onPick: { _ in }))
+        controller.sizingOptions = []
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 760, height: 432),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentViewController = controller
+        window.setContentSize(CGSize(width: 760, height: 432))
+        return (window, controller.view)
+    }
+
+    @Test func currentImageInTheLastSetIsScrolledIntoViewOnAppear() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        let (window, view) = host(current: HostedImageKey(url: url("deep-space-08.png")))
+        await pump(view)
+        let scroll = try #require(scrollView(in: view), "no scroll view in Background Sets")
+        #expect(scroll.contentView.bounds.origin.y > 0, "the current image was not scrolled into view")
+        _ = window
+    }
+
+    @Test func currentImageIsScrolledIntoViewWhenTheCatalogArrivesAfterAppear() async throws {
+        try serveCatalog()
+        let (window, view) = host(current: HostedImageKey(url: url("deep-space-08.png")))
+        await pump(view)
+        await hosted.browseAppeared()
+        await pump(view)
+        let scroll = try #require(scrollView(in: view), "no scroll view in Background Sets")
+        #expect(scroll.contentView.bounds.origin.y > 0, "the current image was not scrolled into view")
+        _ = window
+    }
+
+    @Test func noCurrentImageStaysAtTheTop() async throws {
+        try serveCatalog()
+        await hosted.browseAppeared()
+        let (window, view) = host(current: nil)
+        await pump(view)
+        let scroll = try #require(scrollView(in: view), "no scroll view in Background Sets")
+        #expect(scroll.contentView.bounds.origin.y == 0)
+        _ = window
+    }
+
     /// A catalog check that Background Sets appearing starts, with the check
     /// due and held in flight the way a slow network holds it, measured
     /// mid-check and after it.
