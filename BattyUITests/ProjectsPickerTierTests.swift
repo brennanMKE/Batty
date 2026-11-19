@@ -33,6 +33,13 @@ nonisolated final class ProjectsPickerTierTests: ProjectsUITestCase {
         XCTAssertTrue(waitFor({ text().contains(name) }, timeout: 5), "the hint reads \(text()), expected \(name). \(message)")
     }
 
+    /// A macOS SwiftUI `Text` exposes its string as the static text's `value`, not `label`.
+    @MainActor
+    private func escapeHint(in app: XCUIApplication) -> String {
+        let hint = element("picker-hint.escape", in: app)
+        return hint.label.isEmpty ? (hint.value as? String) ?? "" : hint.label
+    }
+
     @MainActor
     private func pressKey(_ key: XCUIKeyboardKey, in app: XCUIApplication) {
         app.typeKey(key.rawValue, modifierFlags: [])
@@ -105,10 +112,12 @@ nonisolated final class ProjectsPickerTierTests: ProjectsUITestCase {
         XCTAssertTrue(card("Delta Web", under: "project-picker.rest", in: app).exists)
         XCTAssertFalse(element("project-picker.featured", in: app).exists, "the Recent tier shows while filtering")
         XCTAssertFalse(element("project-picker.new-project-card", in: app).exists)
+        XCTAssertTrue(waitFor({ self.escapeHint(in: app) == "Esc to clear" }, timeout: 5), "the Escape hint reads \(escapeHint(in: app)), expected Esc to clear while filtering")
 
         pressKey(.escape, in: app)
         XCTAssertTrue(element("project-picker.featured", in: app).waitForExistence(timeout: 5), "Escape did not bring the tiers back")
         XCTAssertTrue(element("project-picker.root", in: app).exists, "the first Escape dismissed the picker")
+        XCTAssertTrue(waitFor({ self.escapeHint(in: app) == "Esc to dismiss" }, timeout: 5), "the Escape hint reads \(escapeHint(in: app)), expected Esc to dismiss")
         XCTAssertTrue(card("Bravo", under: "project-picker.featured", in: app).exists)
 
         pressKey(.escape, in: app)

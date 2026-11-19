@@ -128,6 +128,24 @@ struct SessionColorPickerView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            content
+            PickerHintBar(keys: { Text("\u{21A9} Set") })
+        }
+        .frame(width: 260)
+        .focusable()
+        .focusEffectDisabled()
+        .focused($isFocused)
+        .onAppear { isFocused = true }
+        .onKeyPress(.leftArrow) { cursor = cursor.moved(dx: -1); return .handled }
+        .onKeyPress(.rightArrow) { cursor = cursor.moved(dx: 1); return .handled }
+        .onKeyPress(.upArrow) { cursor = cursor.moved(dy: -1); return .handled }
+        .onKeyPress(.downArrow) { cursor = cursor.moved(dy: 1); return .handled }
+        .onKeyPress(.return) { commit(cursor.position); return .handled }
+        .onKeyPress(.escape) { cancel(); return .handled }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Set Session Color")
                 .font(.headline)
@@ -173,26 +191,9 @@ struct SessionColorPickerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Automatic"))
             .accessibilityAddTraits(isAutomatic ? .isSelected : [])
-
-            HStack {
-                Spacer()
-                Text("Esc to cancel \u{00B7} Return to set")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .padding(20)
-        .frame(width: 260)
-        .focusable()
-        .focusEffectDisabled()
-        .focused($isFocused)
-        .onAppear { isFocused = true }
-        .onKeyPress(.leftArrow) { cursor = cursor.moved(dx: -1); return .handled }
-        .onKeyPress(.rightArrow) { cursor = cursor.moved(dx: 1); return .handled }
-        .onKeyPress(.upArrow) { cursor = cursor.moved(dy: -1); return .handled }
-        .onKeyPress(.downArrow) { cursor = cursor.moved(dy: 1); return .handled }
-        .onKeyPress(.return) { commit(cursor.position); return .handled }
-        .onKeyPress(.escape) { cancel(); return .handled }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func commit(_ target: SessionColorGridCursor.Position) {

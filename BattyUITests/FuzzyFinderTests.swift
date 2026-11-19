@@ -37,6 +37,24 @@ nonisolated final class FuzzyFinderTests: XCTestCase {
         )
     }
 
+    /// The Command Palette's footer shows the shared Escape hint.
+    @MainActor
+    func testCommandPaletteFooterShowsTheEscapeHint() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        app.typeKey("p", modifierFlags: [.command, .shift])
+
+        let palette = app.descendants(matching: .any)
+            .matching(identifier: "command-palette.root").firstMatch
+        XCTAssertTrue(palette.waitForExistence(timeout: 5))
+        let hint = palette.descendants(matching: .any)
+            .matching(identifier: "picker-hint.escape").firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "Command Palette footer has no Escape hint")
+        XCTAssertEqual((hint.label.isEmpty ? (hint.value as? String) ?? "" : hint.label), "Esc to dismiss")
+    }
+
     /// Escape dismisses the Command Palette without firing any action.
     @MainActor
     func testEscapeDismissesCommandPalette() throws {
@@ -106,6 +124,27 @@ nonisolated final class FuzzyFinderTests: XCTestCase {
             picker.waitForExistence(timeout: 5),
             "open-quickly.root must appear after Cmd-Shift-O ([[0128]] regression)"
         )
+    }
+
+    /// Open Quickly always shows its footer; with a plain Session selected it
+    /// carries only the Escape hint.
+    @MainActor
+    func testOpenQuicklyFooterShowsTheEscapeHint() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        app.typeKey("o", modifierFlags: [.command, .shift])
+
+        let picker = app.descendants(matching: .any)
+            .matching(identifier: "open-quickly.root").firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        let hint = picker.descendants(matching: .any)
+            .matching(identifier: "picker-hint.escape").firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "Open Quickly footer has no Escape hint")
+        XCTAssertEqual((hint.label.isEmpty ? (hint.value as? String) ?? "" : hint.label), "Esc to dismiss")
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "open-quickly.hint").firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "open-quickly.tab-hint").firstMatch.exists)
     }
 
     /// Escape dismisses Open Quickly without jumping.

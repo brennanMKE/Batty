@@ -127,10 +127,6 @@ struct ThemeSelectorView: View {
                     .onKeyPress(.downArrow) { moveSelection(1); return .handled }
                     .onKeyPress(.return) { confirmSelection(); return .handled }
                     .onKeyPress(.escape) { cancelSelection(); return .handled }
-                Spacer()
-                Text("Esc to dismiss")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -147,6 +143,8 @@ struct ThemeSelectorView: View {
             } else {
                 scrollContent
             }
+
+            PickerHintBar()
         }
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
@@ -360,10 +358,6 @@ struct SessionThemeSelectorView: View {
                     .onKeyPress(.downArrow) { moveSelection(1); return .handled }
                     .onKeyPress(.return) { confirmSelection(); return .handled }
                     .onKeyPress(.escape) { cancelSelection(); return .handled }
-                Spacer()
-                Text("Esc to dismiss")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -380,6 +374,8 @@ struct SessionThemeSelectorView: View {
             } else {
                 scrollContent
             }
+
+            PickerHintBar()
         }
         .frame(width: 620, height: 500)
         .background(.regularMaterial)
