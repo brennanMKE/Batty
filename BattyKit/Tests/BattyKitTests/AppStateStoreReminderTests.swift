@@ -717,10 +717,10 @@ final class AppStateStoreReminderTests {
     @Test func presetAndCustomDurationRemindersDoNotChangeTheRememberedTime() throws {
         let seeded = seededStore(ReminderTime(hour: 7, minute: 15), defaults: TestDefaults())
         let session = seeded.sessions[0]
-        try #require(seeded.setReminder(.after(minutes: 15), forSessionID: session.id))
+        _ = try #require(seeded.setReminder(.after(minutes: 15), forSessionID: session.id))
         _ = try #require(seeded.commitReminderBar(.set(.after(minutes: 95), note: nil), forSessionID: session.id).reminder)
         _ = try #require(seeded.commitReminderBar(.set(.tomorrow(hour: 10, minute: 0), note: nil), forSessionID: session.id).reminder)
-        try #require(seeded.setReminder(.tomorrow(hour: 10, minute: 0), forSessionID: session.id))
+        _ = try #require(seeded.setReminder(.tomorrow(hour: 10, minute: 0), forSessionID: session.id))
         #expect(seeded.tomorrowReminderTime == ReminderTime(hour: 7, minute: 15))
         #expect(storedMinutes(seeded) == 435)
     }

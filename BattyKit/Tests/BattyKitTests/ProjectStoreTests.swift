@@ -325,7 +325,7 @@ struct ProjectStoreTests {
     }
 }
 
-private final class RecordingFileManager: FileManager, @unchecked Sendable {
+private final class RecordingFileManager: FileManager {
     nonisolated(unsafe) var calls: [String] = []
     nonisolated(unsafe) var sources: [URL] = []
     nonisolated(unsafe) var failReplace = false

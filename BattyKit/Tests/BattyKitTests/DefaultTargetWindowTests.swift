@@ -157,6 +157,7 @@ struct DefaultTargetWindowTests {
         let nsB = NSWindow()
         let nsC = NSWindow()
         store.registerNSWindow(nsA, for: a.id)
+        defer { store.unregisterNSWindow(nsA) }
         store.registerNSWindow(nsB, for: b.id)
         store.registerNSWindow(nsC, for: c.id)
 
@@ -172,8 +173,6 @@ struct DefaultTargetWindowTests {
         store.removeWindow(id: b.id)
         #expect(store.recentlyKeyWindowIDsCountForTesting == 1,
                 "removeWindow must prune too, independent of unregisterNSWindow")
-
-        defer { store.unregisterNSWindow(nsA) }
     }
 
     // MARK: - noteContentWindowBecameKey ordering

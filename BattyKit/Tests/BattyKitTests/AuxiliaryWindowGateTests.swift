@@ -3,8 +3,16 @@
 import AppKit
 import Foundation
 import SwiftUI
+import Synchronization
 import Testing
 @testable import BattyKit
+
+nonisolated private final class PostCounter: Sendable {
+    private let value = Mutex(0)
+    var count: Int { value.withLock { $0 } }
+    func increment() { value.withLock { $0 += 1 } }
+    func reset() { value.withLock { $0 = 0 } }
+}
 
 /// Menu chords pressed while Settings or Help is key must not reach the
 /// content window behind them. These use real, never-shown windows: the
@@ -213,19 +221,19 @@ struct AuxiliaryWindowGateTests {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("line one\nline two\n", forType: .string)
 
-        var posted = 0
-        let observer = NotificationCenter.default.addObserver(forName: .battyRequestPaste, object: nil, queue: nil) { _ in posted += 1 }
+        let posted = PostCounter()
+        let observer = NotificationCenter.default.addObserver(forName: .battyRequestPaste, object: nil, queue: nil) { _ in posted.increment() }
         defer { NotificationCenter.default.removeObserver(observer) }
         var forwarded = 0
         PasteDispatcher.forwardStandardPaste = { forwarded += 1 }
 
         PasteDispatcher.handlePasteRequest(store: store)
-        #expect(posted == 1 && forwarded == 0, "baseline: a content window key requests the paste confirmation")
+        #expect(posted.count == 1 && forwarded == 0, "baseline: a content window key requests the paste confirmation")
 
-        posted = 0
+        posted.reset()
         store.keyWindowProvider = { self.titledWindow() }
         PasteDispatcher.handlePasteRequest(store: store)
-        #expect(posted == 0, "the paste must not be requested for the terminal behind Settings")
+        #expect(posted.count == 0, "the paste must not be requested for the terminal behind Settings")
         #expect(forwarded == 1, "the standard paste action must run so a focused Settings text field still pastes")
     }
 
@@ -316,19 +324,19 @@ struct AuxiliaryWindowGateTests {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("line one\nline two\n", forType: .string)
 
-        var posted = 0
-        let observer = NotificationCenter.default.addObserver(forName: .battyRequestPaste, object: nil, queue: nil) { _ in posted += 1 }
+        let posted = PostCounter()
+        let observer = NotificationCenter.default.addObserver(forName: .battyRequestPaste, object: nil, queue: nil) { _ in posted.increment() }
         defer { NotificationCenter.default.removeObserver(observer) }
         var forwarded = 0
         PasteDispatcher.forwardStandardPaste = { forwarded += 1 }
 
         PasteDispatcher.handlePasteRequest(store: store)
-        #expect(posted == 1 && forwarded == 0, "baseline: with no sheet attached the paste confirmation is requested")
+        #expect(posted.count == 1 && forwarded == 0, "baseline: with no sheet attached the paste confirmation is requested")
 
-        posted = 0
+        posted.reset()
         window.stub = sheetPanel()
         PasteDispatcher.handlePasteRequest(store: store)
-        #expect(posted == 0, "the paste must not be requested for the terminal behind the sheet")
+        #expect(posted.count == 0, "the paste must not be requested for the terminal behind the sheet")
         #expect(forwarded == 1, "the standard paste action must run so a text field in the sheet still pastes")
     }
 

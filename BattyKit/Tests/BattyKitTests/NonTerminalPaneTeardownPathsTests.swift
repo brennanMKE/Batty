@@ -212,7 +212,7 @@ struct NonTerminalPaneTeardownPathsTests {
         // pane — tearDown() is idempotent, so even if it did, the ledger
         // below would still read 1, not more.
         let content = InertPaneContent()
-        let (window, session, pane) = makeWindow(paneContent: content)
+        let (window, _, pane) = makeWindow(paneContent: content)
         let onlyTabID = pane.tabs[0].id
 
         window.closeTab(id: onlyTabID)

@@ -27,6 +27,7 @@ struct ProcessFollowByNameTests {
         var resolverCalls = 0
         var identities: [pid_t: ProcessInspector.ListedIdentity] = [:]
         var resolvedNames: [String] = []
+        var denied = false
 
         func metrics(_ pid: pid_t) -> Result<ProcessInspector.CoreMetrics, ProcessInspector.SampleFailure> {
             guard let ticks = alive[pid] else { return .failure(.processNotFound) }
@@ -335,11 +336,11 @@ struct ProcessFollowByNameTests {
 
     @Test func permissionDeniedKeepsTheFollowedPid() {
         let world = World()
-        var denied = true
+        world.denied = true
         let content = ProcessStatusPaneContent(
             target: .followingName("app"),
             tabLookup: { _ in nil },
-            coreMetricsProvider: { pid in denied ? .failure(.permissionDenied) : world.metrics(pid) },
+            coreMetricsProvider: { pid in world.denied ? .failure(.permissionDenied) : world.metrics(pid) },
             nameResolver: { _ in world.resolverCalls += 1; return .found(501) }
         )
         world.alive = [501: 10]
@@ -347,7 +348,7 @@ struct ProcessFollowByNameTests {
         #expect(content.runState == .permissionDenied)
         #expect(content.followedPid == 501)
 
-        denied = false
+        world.denied = false
         content.sampleNowForTesting()
         #expect(content.runState == .running)
         #expect(world.resolverCalls == 1)

@@ -294,12 +294,12 @@ struct ProcessStatusPaneContentTests {
     /// `ESRCH`/`EPERM`), so this drives it through the injected
     /// `coreMetricsProvider` seam rather than hunting for one.
     @Test func unexpectedSampleFailureFlipsToUnavailableAndKeepsTheLastKnownSnapshot() {
-        var shouldFail = false
+        let shouldFail = FailureSwitch()
         let content = ProcessStatusPaneContent(
             target: .pinned(getpid()),
             tabLookup: { _ in nil },
             coreMetricsProvider: { pid in
-                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+                shouldFail.on ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
             }
         )
         content.setUp(visible: true)
@@ -307,7 +307,7 @@ struct ProcessStatusPaneContentTests {
         let lastGoodSnapshot = content.snapshot
         #expect(lastGoodSnapshot != nil)
 
-        shouldFail = true
+        shouldFail.on = true
         content.sampleNowForTesting()
 
         #expect(content.runState == .unavailable)
@@ -326,22 +326,22 @@ struct ProcessStatusPaneContentTests {
     /// first sample after recovering has no prior baseline, exactly like
     /// the very first sample of a fresh `ProcessStatusPaneContent`.
     @Test func unavailableResetsTheCPUBaselineSoRecoveryHasNoStaleDelta() {
-        var shouldFail = false
+        let shouldFail = FailureSwitch()
         let content = ProcessStatusPaneContent(
             target: .pinned(getpid()),
             tabLookup: { _ in nil },
             coreMetricsProvider: { pid in
-                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+                shouldFail.on ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
             }
         )
         content.setUp(visible: true)
         #expect(content.snapshot?.cpuPercent == nil, "no prior baseline yet on the very first sample")
 
-        shouldFail = true
+        shouldFail.on = true
         content.sampleNowForTesting()
         #expect(content.runState == .unavailable)
 
-        shouldFail = false
+        shouldFail.on = false
         content.sampleNowForTesting()
 
         #expect(content.runState == .running)
@@ -354,19 +354,20 @@ struct ProcessStatusPaneContentTests {
     /// `.running` with a fresh snapshot — no distinct "recovery" action
     /// needed.
     @Test func unavailableRecoversToRunningOnTheNextSuccessfulSample() {
-        var shouldFail = true
+        let shouldFail = FailureSwitch()
+        shouldFail.on = true
         let content = ProcessStatusPaneContent(
             target: .pinned(getpid()),
             tabLookup: { _ in nil },
             coreMetricsProvider: { pid in
-                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+                shouldFail.on ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
             }
         )
         content.setUp(visible: true)
         #expect(content.runState == .unavailable)
         #expect(content.snapshot == nil, "never sampled successfully yet — nothing to have shown before the failure")
 
-        shouldFail = false
+        shouldFail.on = false
         content.sampleNowForTesting()
 
         #expect(content.runState == .running)
@@ -840,18 +841,18 @@ struct ProcessStatusPaneContentTests {
     /// at all), this test would catch that regression at the content layer
     /// even though the view-level symptom would be invisible today.
     @Test func loadOpenFilesStillWorksForALivePidWhoseCoreMetricsSampleIsUnavailable() {
-        var shouldFail = false
+        let shouldFail = FailureSwitch()
         let content = ProcessStatusPaneContent(
             target: .pinned(getpid()),
             tabLookup: { _ in nil },
             coreMetricsProvider: { pid in
-                shouldFail ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
+                shouldFail.on ? .failure(.unexpected(errno: 99)) : ProcessInspector.coreMetrics(pid: pid)
             }
         )
         content.setUp(visible: true) // establishes a real snapshot (with this live pid) first
         #expect(content.runState == .running)
 
-        shouldFail = true
+        shouldFail.on = true
         content.sampleNowForTesting()
         #expect(content.runState == .unavailable)
         #expect(content.snapshot?.pid == getpid(), "the last-known snapshot (and its pid) is kept, not cleared, on .unexpected")

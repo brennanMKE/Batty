@@ -551,14 +551,14 @@ struct GitStatusPaneContentTests {
     /// `waitForDeferredTeardown()` must actually reach the scanner's
     /// `waitForPendingTeardownSynchronously()` — not just compile-time
     /// conformance, but the real call happening.
-    @Test func tearDownAsDeferredTeardownWaitingReachesTheScanner() async throws {
+    @Test func tearDownAsDeferredTeardownWaitingReachesTheScanner() async {
         let scanner = RecordingScanner()
         let (content, _) = makeContent(scanner: scanner)
         content.setUp(visible: true)
         guard await awaitScanHandled(content, atLeast: 1) else { return }
         content.tearDown()
 
-        let deferredTeardownWaiting = try #require(content as? DeferredTeardownWaiting)
+        let deferredTeardownWaiting: any DeferredTeardownWaiting = content
         deferredTeardownWaiting.waitForDeferredTeardown()
 
         #expect(scanner.waitForPendingTeardownSynchronouslyCount == 1)

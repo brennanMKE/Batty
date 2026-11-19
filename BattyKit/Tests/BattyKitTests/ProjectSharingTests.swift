@@ -341,12 +341,12 @@ struct ProjectSharingStoreTests {
         #expect(store.syncError == ProjectSyncError.quotaExceeded(reason: .totalTooLarge).localizedDescription)
     }
 
-    @Test func theLocalOnlyBackendNeverRefuses() throws {
+    @Test func theLocalOnlyBackendNeverRefuses() {
         let backend = LocalOnlyProjectSyncBackend()
         let huge = ProjectSyncRecord(
             id: UUID(), name: String(repeating: "n", count: 2_000_000), rootPath: "~/x", color: .teal, symbol: .chip,
             layout: .preset(.singlePane), runStartupCommandsOnOpen: true, modifiedAt: nil)
-        try backend.publish(huge)
+        backend.publish(huge)
         #expect(backend.calls == [.publish(huge)])
     }
 

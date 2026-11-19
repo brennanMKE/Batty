@@ -2,8 +2,15 @@
 
 import AppKit
 import Foundation
+import Synchronization
 import Testing
 @testable import BattyKit
+
+nonisolated private final class PostCounter: Sendable {
+    private let value = Mutex(0)
+    var count: Int { value.withLock { $0 } }
+    func increment() { value.withLock { $0 += 1 } }
+}
 
 /// #0316: `PasteDispatcher`'s target resolution once read
 /// `store.keyWindowRuntime() ?? store.windows[0]` directly before this
@@ -93,10 +100,10 @@ struct PasteConfirmationNonTerminalPaneTests {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("line one\nline two\n", forType: .string)
 
-        var posted = false
+        let posted = PostCounter()
         let observer = NotificationCenter.default.addObserver(
             forName: .battyRequestPaste, object: nil, queue: nil
-        ) { _ in posted = true }
+        ) { _ in posted.increment() }
         defer { NotificationCenter.default.removeObserver(observer) }
 
         // #0332 N2: assert the responder-chain fallback actually ran, not
@@ -108,7 +115,7 @@ struct PasteConfirmationNonTerminalPaneTests {
 
         PasteDispatcher.handlePasteRequest(store: store)
 
-        #expect(!posted, "a non-terminal focused pane must never surface a paste confirmation for a paste that cannot land")
+        #expect(posted.count == 0, "a non-terminal focused pane must never surface a paste confirmation for a paste that cannot land")
         #expect(forwardedStandardPaste, "must fall back to the standard responder-chain paste, not silently drop it")
     }
 }

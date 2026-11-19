@@ -414,7 +414,7 @@ struct SessionDetailLayoutConvergenceTests {
         // the terminal is first responder here depends on whether the
         // selection's deferred focus request has landed yet, so take it out
         // of the measurement.
-        fixture.probe.window.makeFirstResponder(nil)
+        _ = fixture.probe.window.makeFirstResponder(nil)
         _ = await fixture.probe.settle()
         #expect(viewsNeedingUpdateConstraints(fixture).isEmpty)
         let original = terminal.frame
