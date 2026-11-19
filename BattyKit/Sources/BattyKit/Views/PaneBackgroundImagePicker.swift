@@ -27,6 +27,7 @@ enum PaneBackgroundImagePicker {
         sources: [URL]
     ) async -> Bool {
         guard let adopted = await importer.adoptImage(path: libraryPath, from: sources) else { return false }
+        guard !Task.isCancelled else { return false }
         let editor = BackgroundOverrideEditor(target: pane, appWide: appWide, originalOverride: pane.backgroundOverride)
         editor.selectCustom()
         editor.update { $0.pickingImage(path: adopted) }
@@ -34,18 +35,22 @@ enum PaneBackgroundImagePicker {
     }
 }
 
-/// Every write starts from the pick or Cancel.
+/// Every write starts from a pick or from closing the picker. Each pick
+/// applies without closing; a newer pick cancels an older one still copying.
 struct PaneBackgroundImagePickerSheet: View {
     let pane: PaneRuntime
     let store: AppStateStore
     @Binding var isPresented: Bool
+
+    /// Not cancelled on disappear, so a double click's apply still lands.
+    @State private var applyTask: Task<Void, Never>?
 
     var body: some View {
         BackgroundImagesView(
             model: store.backgroundImages,
             current: pane.effectiveBackground(appWide: store.backgroundGate.settings()).value.imagePath,
             onPick: pick,
-            onCancel: { isPresented = false }
+            onClose: { isPresented = false }
         )
     }
 
@@ -54,10 +59,10 @@ struct PaneBackgroundImagePickerSheet: View {
         let appWide = store.backgroundGate.settings()
         let importer = store.backgroundImageImporter
         let sources = store.backgroundImages.pickSources
-        Task {
-            if await PaneBackgroundImagePicker.apply(libraryPath: path, to: pane, appWide: appWide, importer: importer, sources: sources) {
-                isPresented = false
-            } else {
+        applyTask?.cancel()
+        applyTask = Task {
+            let applied = await PaneBackgroundImagePicker.apply(libraryPath: path, to: pane, appWide: appWide, importer: importer, sources: sources)
+            if !applied, !Task.isCancelled {
                 logger.error("could not use the picked image for a Pane")
             }
         }

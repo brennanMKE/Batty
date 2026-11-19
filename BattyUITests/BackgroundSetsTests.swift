@@ -41,12 +41,12 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
     }
 
     @MainActor
-    private func pick(_ id: String, in app: XCUIApplication) {
+    private func pick(_ id: String, in app: XCUIApplication, closing: Bool = true) {
         XCTAssertTrue(element("background-images.picker.root", in: app).waitForExistence(timeout: 5), "Choose did not open the picker")
         showBackgroundSets(in: app)
         let target = scrollToCell(id, in: app)
         XCTAssertTrue(target.exists && target.isHittable, "no cell for \(id)")
-        target.click()
+        if closing { target.doubleClick() } else { target.click() }
     }
 
     /// The sheet is too short for every set, and the lazy grid builds a cell
@@ -182,10 +182,10 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         let none = app.buttons["appearance-background.no-image"]
         let hadImage = none.waitForExistence(timeout: 5) && none.isEnabled
         app.buttons["appearance-background.choose-image"].click()
-        pick(missing, in: app)
+        pick(missing, in: app, closing: false)
         XCTAssertTrue(element("background-sets.cell.\(missing).failed", in: app).waitForExistence(timeout: 15), "the cell showed no failure")
         XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed after a failure")
-        app.buttons["background-images.picker.cancel"].click()
+        app.buttons["background-images.picker.done"].click()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
         XCTAssertEqual(none.isEnabled, hadImage, "the background changed after a failed download")
     }
@@ -197,7 +197,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         defer { app.terminate() }
         _ = openSettingsChooser(in: app)
         app.buttons["appearance-background.choose-image"].click()
-        pick(missing, in: app)
+        pick(missing, in: app, closing: false)
         XCTAssertTrue(element("background-sets.cell.\(missing).failed", in: app).waitForExistence(timeout: 15), "the cell showed no failure")
         let cell01 = cell("beautiful-landscapes-01", in: app)
         let cell02 = cell(missing, in: app)
@@ -205,7 +205,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         XCTAssertTrue(cell02.exists)
         XCTAssertLessThanOrEqual(cell01.frame.maxX, cell02.frame.minX, "the sheet is too narrow for two columns")
         XCTAssertEqual(cell01.frame.minY, cell02.frame.minY, accuracy: 0.5, "the failed cell's picture does not line up with its neighbour")
-        app.buttons["background-images.picker.cancel"].click()
+        app.buttons["background-images.picker.done"].click()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
     }
 
@@ -230,17 +230,18 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         let none = openSettingsChooser(in: app)
         let hadImage = none.isEnabled
         app.buttons["appearance-background.choose-image"].click()
-        pick(id, in: app)
+        pick(id, in: app, closing: false)
         let progress = element("background-sets.cell.\(id).progress", in: app)
         XCTAssertTrue(progress.waitForExistence(timeout: 10), "no spinner over the downloading cell")
         XCTAssertFalse(element("background-sets.cell.\(id).cancel", in: app).exists, "the cell still shows a Cancel button")
-        cell(id, in: app).click()
+        // Apart in time and place, so macOS doesn't merge it into a double click.
+        cell(id, in: app).coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.3)).click()
         XCTAssertTrue(waitFor({ !progress.exists }, timeout: 10), "the second click did not cancel the download")
         XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed after a cancel")
         BackgroundCatalogFixture.release(id, in: catalogFolder)
         Thread.sleep(forTimeInterval: 1)
         XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the cancelled pick was applied")
-        app.buttons["background-images.picker.cancel"].click()
+        app.buttons["background-images.picker.done"].click()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
         XCTAssertEqual(none.isEnabled, hadImage, "the background changed after a cancelled download")
     }
@@ -254,14 +255,70 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         defer { BackgroundCatalogFixture.release(first, in: catalogFolder) }
         let none = openSettingsChooser(in: app)
         app.buttons["appearance-background.choose-image"].click()
-        pick(first, in: app)
+        pick(first, in: app, closing: false)
         XCTAssertTrue(element("background-sets.cell.\(first).progress", in: app).waitForExistence(timeout: 10), "no spinner over the downloading cell")
-        cell(second, in: app).click()
+        cell(second, in: app).doubleClick()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 15), "the picker stayed open")
         let requests = fullSizeRequests()
         XCTAssertTrue(requests.contains(BackgroundCatalogFixture.fullPath(first)))
         XCTAssertTrue(requests.contains(BackgroundCatalogFixture.fullPath(second)))
         XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the pick did not set an image")
+    }
+
+    @MainActor
+    func testSingleClickAppliesASetImageAndKeepsThePickerOpen() throws {
+        let id = "cool-vehicles-01"
+        let app = try launch()
+        defer { app.terminate() }
+        let none = openSettingsChooser(in: app)
+        app.buttons["appearance-background.choose-image"].click()
+        pick(id, in: app, closing: false)
+        XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 15), "the single click did not apply the image")
+        XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed after a single click")
+        XCTAssertTrue(cell(id, in: app).isSelected, "the clicked cell is not selected")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5), "Escape did not close the picker")
+        XCTAssertTrue(none.isEnabled, "Escape dropped the clicked image")
+    }
+
+    @MainActor
+    func testDoubleClickPicksASetImageAndClosesThePicker() throws {
+        let id = "future-cities-02"
+        let app = try launch()
+        defer { app.terminate() }
+        try BackgroundCatalogFixture.hold(id, in: catalogFolder)
+        defer { BackgroundCatalogFixture.release(id, in: catalogFolder) }
+        let disclosure = app.descendants(matching: .disclosureTriangle).firstMatch
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        disclosure.click()
+        let gear = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pane-background-settings.'")).firstMatch
+        XCTAssertTrue(gear.waitForExistence(timeout: 5))
+        gear.click()
+        let custom = app.buttons["pane-background-sheet.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        custom.click()
+        app.buttons["pane-background-sheet.choose-image"].click()
+        pick(id, in: app)
+        XCTAssertTrue(element("background-sets.cell.\(id).progress", in: app).waitForExistence(timeout: 10), "no spinner over the downloading cell")
+        XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed before the download finished")
+        BackgroundCatalogFixture.release(id, in: catalogFolder)
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 15), "the picker stayed open")
+        XCTAssertTrue(waitFor({ app.buttons["pane-background-sheet.no-image"].isEnabled }, timeout: 10), "the pick did not set an image")
+        app.buttons["pane-background-sheet.done"].click()
+    }
+
+    @MainActor
+    func testReturnAfterASingleClickClosesThePickerWithThatImage() throws {
+        let id = "cool-vehicles-02"
+        let app = try launch()
+        defer { app.terminate() }
+        let none = openSettingsChooser(in: app)
+        app.buttons["appearance-background.choose-image"].click()
+        pick(id, in: app, closing: false)
+        XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 15), "the single click did not apply the image")
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 10), "Return did not close the picker")
+        XCTAssertTrue(none.isEnabled)
     }
 
     @MainActor
@@ -380,7 +437,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         record("sets later click", targetBefore, targetAfter)
         XCTAssertEqual(targetAfter.minY, targetBefore.minY, accuracy: 1, "the grid moved on a later click")
         XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed, so a pick finished")
-        app.buttons["background-images.picker.cancel"].click()
+        app.buttons["background-images.picker.done"].click()
     }
 
     private struct ShippedBottom {
@@ -585,7 +642,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
             bottom.last.click()
             XCTAssertTrue(waitFor({ !progress.exists }, timeout: 5), "the second click did not cancel the download")
         }
-        XCTAssertTrue(element("background-images.picker.root", in: bottom.app).exists, "the picker closed")
+        XCTAssertTrue(element("background-images.picker.root", in: bottom.app).exists, "the picker closed after a single click")
     }
 
     @MainActor
@@ -638,6 +695,6 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         let after = BackgroundCatalogFixture.requests(in: catalogFolder).filter { $0 == "catalog.json" }.count
         XCTAssertGreaterThanOrEqual(after, checks, "the held check was never logged")
         XCTAssertGreaterThanOrEqual(after, 2, "Background Sets appearing did not check the catalog again")
-        XCTAssertTrue(element("background-images.picker.root", in: bottom.app).exists, "the picker closed")
+        XCTAssertTrue(element("background-images.picker.root", in: bottom.app).exists, "the picker closed after a single click")
     }
 }

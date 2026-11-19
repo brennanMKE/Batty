@@ -118,7 +118,7 @@ struct BackgroundSetsScrollStabilityTests {
     }
 
     private func host(current: HostedImageKey?) -> (NSWindow, NSView) {
-        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, current: current, onPick: { _ in }))
+        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, current: current, onPick: { _ in }, onClose: {}))
         controller.sizingOptions = []
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 760, height: 432),
@@ -170,7 +170,7 @@ struct BackgroundSetsScrollStabilityTests {
         await hosted.browseAppeared()
         try await downloadUnevenPattern()
 
-        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: { _ in }))
+        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: { _ in }, onClose: {}))
         controller.sizingOptions = []
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 760, height: 432),
@@ -217,7 +217,7 @@ struct BackgroundSetsScrollStabilityTests {
         await hosted.browseAppeared()
         try await downloadUnevenPattern()
 
-        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: { _ in }))
+        let controller = NSHostingController(rootView: BackgroundSetsView(model: store.backgroundImages, onPick: { _ in }, onClose: {}))
         controller.sizingOptions = []
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 760, height: 432),

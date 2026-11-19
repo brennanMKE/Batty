@@ -16,15 +16,27 @@ struct BackgroundSetsView: View {
     /// The image in use, shown selected and scrolled to once its catalog loads.
     let current: HostedImageKey?
     let onPick: (String) -> Void
+    let onClose: () -> Void
 
     @State private var selection: GridSelection<HostedImageKey>
     @State private var query = ""
     @State private var scrollOnce = PickerScrollOnce()
+    /// Written only by a click, never read in `body`: Return re-picks it.
+    @State private var lastClicked: HostedBackgroundImage?
+    /// The filter field keeps its own focus; a click moves focus here so Return
+    /// reaches the grid.
+    @FocusState private var gridFocused: Bool
 
-    init(model: BackgroundImagesModel, current: HostedImageKey? = nil, onPick: @escaping (String) -> Void) {
+    init(
+        model: BackgroundImagesModel,
+        current: HostedImageKey? = nil,
+        onPick: @escaping (String) -> Void,
+        onClose: @escaping () -> Void
+    ) {
         self.model = model
         self.current = current
         self.onPick = onPick
+        self.onClose = onClose
         _selection = State(initialValue: GridSelection(id: current))
     }
 
@@ -37,7 +49,7 @@ struct BackgroundSetsView: View {
         let sections = BackgroundCatalogFilter.sections(hosted.contents, query: query)
         let trimmed = BackgroundCatalogFilter.normalizedQuery(query)
         VStack(spacing: 0) {
-            BackgroundSetsControls(hosted: hosted, query: $query)
+            BackgroundSetsControls(hosted: hosted, query: $query, onSubmit: finish)
             Divider()
             ScrollViewReader { proxy in
                 ScrollView {
@@ -56,6 +68,10 @@ struct BackgroundSetsView: View {
                     .padding(Self.spacing)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .focusable()
+                .focusEffectDisabled()
+                .focused($gridFocused)
+                .onKeyPress(.return) { finish(); return .handled }
                 .task { await hosted.browseAppeared() }
                 // A scroll issued from `onAppear` lands nowhere: the scroll
                 // view has no size yet. Its first real size is the earliest it
@@ -166,7 +182,7 @@ struct BackgroundSetsView: View {
                         catalogURL: catalogURL,
                         model: model,
                         selection: selection,
-                        activate: { click(image, key: key) }
+                        activate: { clickCount in click(image, key: key, clickCount: clickCount) }
                     )
                     .id(key)
                 }
@@ -176,9 +192,30 @@ struct BackgroundSetsView: View {
         .accessibilityIdentifier("background-sets.set.\(set.name)")
     }
 
-    private func click(_ image: HostedBackgroundImage, key: HostedImageKey) {
+    private func click(_ image: HostedBackgroundImage, key: HostedImageKey, clickCount: Int) {
+        gridFocused = true
+        pick(image, key: key, clickCount: clickCount)
+    }
+
+    private func pick(_ image: HostedBackgroundImage, key: HostedImageKey, clickCount: Int) {
+        let onPick = onPick
+        let onClose = onClose
+        let task = hosted.pickOrCancel(image, clickCount: clickCount) { path in
+            onPick(path)
+            if clickCount >= 2 { onClose() }
+        }
         // After a cancelling click nothing is being picked, so nothing is highlighted.
-        selection.select(hosted.pickOrCancel(image) { onPick($0) } == nil ? nil : key)
+        selection.select(task == nil ? nil : key)
+        lastClicked = task == nil ? nil : image
+    }
+
+    /// Return: picks the last clicked image and closes once it applies.
+    private func finish() {
+        if let image = lastClicked, selection.id == HostedImageKey(image) {
+            pick(image, key: HostedImageKey(image), clickCount: 2)
+        } else {
+            onClose()
+        }
     }
 }
 
@@ -186,6 +223,7 @@ struct BackgroundSetsView: View {
 private struct BackgroundSetsControls: View {
     let hosted: HostedBackgroundsModel
     @Binding var query: String
+    let onSubmit: () -> Void
 
     private static let spacing: CGFloat = 16
 
@@ -194,6 +232,7 @@ private struct BackgroundSetsControls: View {
             TextField("Filter", text: $query, prompt: Text("Filter sets and images"))
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 260)
+                .onSubmit(onSubmit)
                 .accessibilityIdentifier("background-sets.filter")
             if !query.isEmpty {
                 Button {
@@ -231,7 +270,9 @@ private struct HostedBackgroundCell: View {
     /// re-renders the cells and not the grids.
     let model: BackgroundImagesModel
     let selection: GridSelection<HostedImageKey>
-    let activate: () -> Void
+    /// Takes the click count: the mouse's for a tap, one for an accessibility
+    /// action, which has no mouse event of its own.
+    let activate: (Int) -> Void
 
     @State private var thumbnail: BackgroundImageThumbnail?
     @State private var digest: String?
@@ -281,10 +322,11 @@ private struct HostedBackgroundCell: View {
         .accessibilityAddTraits(selection.id == key ? .isSelected : [])
         .accessibilityIdentifier("background-sets.cell.\(accessibilityName)")
         .contentShape(Rectangle())
-        .onTapGesture(perform: activate)
+        .onTapGesture { activate(BackgroundPickerClick.currentClickCount()) }
+        .accessibilityAction { activate(1) }
         .accessibilityActions {
             if isDownloading {
-                Button("Cancel Download", action: activate)
+                Button("Cancel Download") { activate(1) }
             }
         }
     }

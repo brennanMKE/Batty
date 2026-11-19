@@ -70,7 +70,7 @@ struct BackgroundImagesViewScrollTests {
 
     private func host(_ model: BackgroundImagesModel, current: String?) -> (NSWindow, NSView) {
         let controller = NSHostingController(rootView: BackgroundImagesView(
-            model: model, current: current, onPick: { _ in }, onCancel: {}))
+            model: model, current: current, onPick: { _ in }, onClose: {}))
         controller.sizingOptions = []
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 620, height: 460),
