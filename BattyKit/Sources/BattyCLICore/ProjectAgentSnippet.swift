@@ -15,6 +15,7 @@ public nonisolated enum ProjectAgentSnippet {
         This project is often worked on inside Batty (macOS terminal multiplexer). When `BATTY_PANE_ID` is set you are in a Batty Pane; drive Batty with `batty` (`batty-beta` in Batty Beta) — run `batty capabilities` first.
 
         - Show status in Batty Panes (`batty pane split --view git-status --unique`) rather than printing it.
+        - Start dev servers with `batty server start --port N -- <command>` (or `batty server attach --port N` if one is already running) when `batty capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.
         - Use `batty notify` to get the user's attention.
         \(endMarker)
         """

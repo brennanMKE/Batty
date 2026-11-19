@@ -138,6 +138,12 @@ struct SessionProjectCapture: Equatable {
                 return ProjectPane(kind: .gitStatus, repositoryPath: repository)
             case .processStatus, .systemMetrics, .lmStudioDashboard:
                 return ProjectPane(kind: pane.kind)
+            case .server:
+                notes[.tabDirectory(slot: slot, tab: 0)] = String(
+                    localized: "Server views aren't saved in Projects, so this slot is an empty terminal.",
+                    comment: "Project Editor: a captured Server Pane becomes an empty terminal slot"
+                )
+                return .terminal()
             }
         }
 

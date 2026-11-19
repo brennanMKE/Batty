@@ -157,4 +157,25 @@ public nonisolated enum XPCVerb {
     /// matches), a Project whose root is gone, and a startup-command prompt
     /// the user dismissed.
     public static let projectOpen = "projectOpen"
+
+    /// #0648: starts a dev server in a terminal Pane under a Server Pane for
+    /// its port, or reuses the Server Pane already showing that port and
+    /// restarts there. Request payload is `ServerStartRequest`; the reply is
+    /// `ServerReply`. Fails with the `serverPane` flag off.
+    public static let serverStart = "serverStart"
+
+    /// #0648: shows a Server Pane for a server started elsewhere, or returns
+    /// the one already showing that port unchanged. Request payload is
+    /// `ServerAttachRequest`; the reply is `ServerReply`.
+    public static let serverAttach = "serverAttach"
+
+    /// #0648: stops the server a Server Pane shows (SIGINT, then SIGTERM,
+    /// then SIGKILL). Request payload is `ServerControlRequest`; the reply is
+    /// `ServerReply`.
+    public static let serverStop = "serverStop"
+
+    /// #0648: stops and runs the server's command again. Request payload is
+    /// `ServerControlRequest`; the reply is `ServerReply`. Fails for an
+    /// attached server with no `--command`.
+    public static let serverRestart = "serverRestart"
 }

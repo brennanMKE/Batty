@@ -30,7 +30,23 @@ struct PaneContentKindTests {
             "process-status",
             "lm-studio-dashboard",
             "system-metrics",
+            "server",
         ])
+    }
+
+    @Test func serverRawValueIsServer() {
+        #expect(PaneContentKind.server.rawValue == "server")
+        #expect(PaneContentKind(rawValue: "server") == .server)
+    }
+
+    @Test func paneSplitKindsExcludeServer() {
+        #expect(!PaneContentKind.paneSplitKinds.contains(.server))
+        #expect(PaneContentKind.paneSplitKinds.count == PaneContentKind.allCases.count - 1)
+    }
+
+    @Test func projectSlotKindsExcludeServer() {
+        #expect(!PaneContentKind.projectSlotKinds.contains(.server))
+        #expect(PaneContentKind.projectSlotKinds.contains(.terminal))
     }
 
     @Test func everyNonTerminalIdentifierIsKebabCase() {

@@ -36,7 +36,7 @@ struct ProjectTests {
         )
         let decoded = try roundTrip(project)
         #expect(decoded == project)
-        #expect(Set(decoded.layout.panes.map(\.kind)) == Set(PaneContentKind.allCases))
+        #expect(Set(decoded.layout.panes.map(\.kind)) == Set(PaneContentKind.projectSlotKinds))
         #expect(decoded.paneCount == 5)
         #expect(decoded.tabCount == 2)
         #expect(decoded.startupCommands == [ProjectStartupCommand(paneIndex: 0, tabIndex: 0, command: "npm run dev")])

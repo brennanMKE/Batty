@@ -525,7 +525,7 @@ extension PaneSplitCommand: CapabilitiesDescribable {
     /// reproducible as a fixed string at all (two of the four runtime
     /// messages interpolate the offending `--view` value).
     nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
-        let nonTerminalKinds = PaneContentKind.allCases.filter { $0 != .terminal }.map(\.rawValue)
+        let nonTerminalKinds = PaneContentKind.paneSplitKinds.filter { $0 != .terminal }.map(\.rawValue)
         return CapabilitiesInputSchemaPayload(
             properties: [
                 // No `names`: there is no single `--direction` flag to name
@@ -536,7 +536,7 @@ extension PaneSplitCommand: CapabilitiesDescribable {
                 "direction": CapabilitiesPropertyPayload(cliKind: .flag, type: "string", description: "Split direction. Defaults to horizontal.", required: false, enumValues: SplitDirectionFlag.allCases.map { String(describing: $0) }, enumValueNames: ["horizontal": ["-h", "--horizontal"], "vertical": ["-v", "--vertical"]], defaultValue: "horizontal"),
                 "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["-c", "--command"], type: "string", description: "Run this command in the new pane instead of the default shell.", required: false),
                 "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane id to split. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
-                "view": CapabilitiesPropertyPayload(cliKind: .option, names: ["--view"], type: "string", description: "Pane content kind for the new pane. Defaults to terminal.", required: false, enumValues: PaneContentKind.allCases.map(\.rawValue), defaultValue: PaneContentKind.terminal.rawValue),
+                "view": CapabilitiesPropertyPayload(cliKind: .option, names: ["--view"], type: "string", description: "Pane content kind for the new pane. Defaults to terminal.", required: false, enumValues: PaneContentKind.paneSplitKinds.map(\.rawValue), defaultValue: PaneContentKind.terminal.rawValue),
                 "pid": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pid"], type: "integer", description: "Pin a process-status pane to this pid instead of following a terminal's foreground process. Only valid with --view process-status.", required: false, minimum: 1),
                 "path": CapabilitiesPropertyPayload(cliKind: .option, names: ["--path"], type: "string", description: "Directory for the new pane to monitor (only valid with --view git-status). Resolved to an absolute path.", required: false),
                 "unique": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--unique"], type: "boolean", description: "With --view <kind>, print the id of an existing visible pane of that kind instead of creating one. viewOptions differences (--path/--pid) do not defeat the match. Requires a non-terminal --view.", required: false, defaultValue: "false"),

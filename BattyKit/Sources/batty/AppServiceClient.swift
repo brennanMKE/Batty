@@ -278,6 +278,16 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// The four `server` verbs (#0648) share one reply type.
+    static func server(verb: String, request: some Encodable, endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<ServerReply> {
+        let requestPayload = try? JSONEncoder().encode(request)
+        let outcome: Outcome<ServerReply> = perform(verb: verb, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: verb)
+        if case .success(let reply) = outcome {
+            logger.info("\(verb, privacy: .public) -> pane=\(reply.paneID, privacy: .public) state=\(reply.state.rawValue, privacy: .public)")
+        }
+        return outcome
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

@@ -442,3 +442,13 @@ struct CapturedProjectStartupTests {
         #expect(captured.layout.panes[0].tabs.map(\.startupCommand) == ["make", nil])
     }
 }
+
+@MainActor
+struct SessionProjectCaptureServerPaneTests {
+    @Test func serverPaneCapturesAsEmptyTerminalSlotWithNote() {
+        let captured = capture(split(.horizontal, .leaf(pane(tabs: [tab(root)])), .leaf(pane(.server))))
+        #expect(captured.layout.panes.map(\.kind) == [.terminal, .terminal])
+        #expect(captured.layout.panes[1] == .terminal())
+        #expect(captured.notes[.tabDirectory(slot: 1, tab: 0)] != nil)
+    }
+}

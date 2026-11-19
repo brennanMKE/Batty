@@ -19,6 +19,7 @@ public enum SettingsPreference {
     public static let backgroundCatalogsAutoCheckKey = "co.sstools.Batty.backgroundCatalogsAutoCheck"
     static let defaultBackgroundCatalogsAutoCheck = true
     public static let cmdNumberTargetKey = "co.sstools.Batty.cmdNumberTarget"
+    public static let serverPanePlacementKey = "co.sstools.Batty.serverPanePlacement"
     public static let autoNameFromFilesKey = "co.sstools.Batty.autoNameFromFiles"
     public static let autoNameWithAIKey = "co.sstools.Batty.autoNameWithAI"
     public static let summarizeNotificationsWithAIKey = "co.sstools.Batty.summarizeNotificationsWithAI"
@@ -309,6 +310,31 @@ public enum PasteStrictness: String, CaseIterable, Sendable {
             let dangerous = ["rm ", "sudo ", "dd ", " > /", " | sh", "&&", ";"]
             return dangerous.contains(where: text.contains)
         }
+    }
+}
+
+/// Where `batty server start|attach` puts a new Server Pane.
+public enum ServerPanePlacement: String, CaseIterable, Sendable {
+    case right
+    case below
+
+    public var displayName: String {
+        switch self {
+        case .right: return String(localized: "Open to the Right", comment: "Settings: Server Pane placement")
+        case .below: return String(localized: "Open Below", comment: "Settings: Server Pane placement")
+        }
+    }
+
+    public var direction: SplitDirection {
+        switch self {
+        case .right: return .horizontal
+        case .below: return .vertical
+        }
+    }
+
+    /// Unknown or absent values fall back to `.right`.
+    public static func resolved(defaults: UserDefaults = .standard) -> ServerPanePlacement {
+        defaults.string(forKey: SettingsPreference.serverPanePlacementKey).flatMap(ServerPanePlacement.init(rawValue:)) ?? .right
     }
 }
 

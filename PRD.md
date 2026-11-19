@@ -361,6 +361,7 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 - **Session presets.** Save named layouts (e.g. "frontend dev" = three panes with specific cwds) and launch them from a menu. *Delivered by Projects (1.3.0, #0469); no longer "not committed".*
 - **Per-surface theme overrides.** *Per-Session and per-Project Themes delivered (#0139, #0584); per-Pane remains not committed.*
 - **Bell-event filtering.** Per-session "ignore quiet bells" or pattern matchers for noisy programs.
+- **Server Pane (1.5.0, #0648).** A non-terminal Pane for one dev server port, created by `batty server start|attach`: state, PID, metrics, Open in Browser, Stop and Restart, with the command running in an ordinary terminal Pane beside it. Behind the `serverPane` feature flag until 1.5.0.
 - **Background-session freeze.** If memory becomes an issue, snapshot scrollback and kill PTYs for sessions not visited in N minutes; rehydrate on selection.
 
 ---

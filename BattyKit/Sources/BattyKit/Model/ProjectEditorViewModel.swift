@@ -454,7 +454,7 @@ final class ProjectEditorViewModel {
                     pane.repositoryPath ?? ".", field: .repository(slot: slot), project: project, rootIsUsable: rootIsUsable,
                     missingFolderWarning: String(localized: "This folder does not exist yet; the Git Status view will not find a repository there.", comment: "Project Editor warning"),
                     into: &result)
-            case .processStatus, .systemMetrics, .lmStudioDashboard:
+            case .processStatus, .systemMetrics, .lmStudioDashboard, .server:
                 break
             }
         }
@@ -773,7 +773,7 @@ final class ProjectEditorViewModel {
             }
         case .gitStatus:
             return !["", "."].contains((pane.repositoryPath ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
-        case .processStatus, .systemMetrics, .lmStudioDashboard:
+        case .processStatus, .systemMetrics, .lmStudioDashboard, .server:
             return true
         }
     }

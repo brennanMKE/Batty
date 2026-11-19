@@ -62,6 +62,13 @@ struct PaneSplitPayloadTests {
     /// Omitting `--view` client-side must produce a request that decodes
     /// with `kind == nil` — the wire/model default-to-terminal rule
     /// (`docs/pane-kinds.md` §4, #0315's user directive) starts here.
+    @Test func paneSplitRefusesServerKind() {
+        #expect(AppXPCService.paneSplitRefusal(kind: .server) != nil)
+        for kind in PaneContentKind.paneSplitKinds {
+            #expect(AppXPCService.paneSplitRefusal(kind: kind) == nil)
+        }
+    }
+
     @Test func requestDefaultKindIsNil() {
         let request = PaneSplitRequest(paneID: nil, direction: .horizontal)
         #expect(request.kind == nil)

@@ -1055,7 +1055,7 @@ struct ProjectEditorLayoutTests {
     }
 
     @Test func everyKindIsOfferedAndLMStudioUsesItsDisplayName() {
-        #expect(PaneContentKind.allCases.count == 5)
+        #expect(PaneContentKind.projectSlotKinds.count == 5)
         #expect(PaneContentKind.lmStudioDashboard.displayName == "LM Studio Dashboard")
     }
 

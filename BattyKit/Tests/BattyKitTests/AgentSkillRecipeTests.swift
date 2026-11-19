@@ -33,7 +33,7 @@ struct AgentSkillRecipeTests {
     }
 
     @Test func everyBattyInvocationUsesAShippedVerbAndFlag() throws {
-        let payload = CapabilitiesCommand.buildPayload(flags: FeatureFlags(sharedProjectImages: true, agentIntegration: true))
+        let payload = CapabilitiesCommand.buildPayload(flags: .allOnForTests)
         let verbs = Dictionary(uniqueKeysWithValues: payload.verbs.map { ($0.name, $0) })
         let nouns = Set(payload.verbs.compactMap { $0.name.split(separator: " ").count == 2 ? String($0.name.split(separator: " ")[0]) : nil })
         var checked = 0
@@ -46,7 +46,8 @@ struct AgentSkillRecipeTests {
                 let path = nouns.contains(first) && words.count > 1 ? "\(first) \(words[1])" : first
                 let verb = try #require(verbs[path], "SKILL.md runs `\(path)`, which the CLI does not ship: \(line)")
                 let known = Set(verb.inputSchema.properties.values.flatMap { $0.names + ($0.enumValueNames?.values.flatMap { $0 } ?? []) })
-                for word in words where word.hasPrefix("--") {
+                // Words after a bare `--` are the command `server start` runs, not flags.
+                for word in words.prefix(while: { $0 != "--" }) where word.hasPrefix("--") {
                     let flag = String(word.split(separator: "=")[0]).trimmingCharacters(in: CharacterSet(charactersIn: ")`;"))
                     #expect(known.contains(flag), "SKILL.md passes \(flag) to `\(path)`: \(line)")
                 }

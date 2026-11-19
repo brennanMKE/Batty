@@ -7,7 +7,7 @@ description: Drive the Batty macOS terminal multiplexer from its `batty`/`batty-
 
 **Authored against Batty CLI `1.5.0`.** Minimum compatible app version:
 `1.1.0` for §1–§7, `1.3.0` for §8 (Projects), and `1.5.0` for §9 (`mcp` and
-`agent install`, Batty Beta first). The minimum trails the authored-against
+`agent install`) and §10 (`server`), Batty Beta first. The minimum trails the authored-against
 version because each section only needs the release that introduced it; see
 the bootstrap table below for what a version difference means.
 
@@ -289,6 +289,26 @@ Omitted Session/Pane/Tab targets resolve to your own Pane through the
 `BATTY_*` variables, exactly as on the command line. `agent install`
 registers the server for Claude Code (plugin `batty`, or `batty-beta`),
 Cursor and OpenCode, and prints the entry to add for Codex.
+
+## 10. Dev servers (Beta only)
+
+`batty-beta` has `server start|attach|stop|restart` (#0648); Prod `batty`
+does not until 1.5.0. Check `capabilities --json` for `server start` first.
+
+**Rule:** when you start a dev server, start it with `server start`, or
+`server attach` it if it is already running, instead of running it in your own
+Pane. Let Batty place the Server Pane where the user's Settings say; pass
+`--split` only when the user asked for a specific placement.
+
+```bash
+"$BATTY" server start --port 8083 --wait --json -- go run .   # paneID, terminalPaneID, tabID, url, pid, state
+"$BATTY" server attach --port 3000                              # a server started elsewhere
+"$BATTY" server stop --port 8083
+```
+
+Re-running `server start` for the same port reuses its Server Pane and
+terminal and restarts; it never adds Panes. Do not open a browser yourself:
+the Server Pane has Open in Browser.
 
 ## What this skill deliberately does not cover
 

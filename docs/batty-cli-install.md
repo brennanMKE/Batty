@@ -70,6 +70,9 @@ The CLI now has five execution paths:
 | `batty tab focus <id>` | Select a Tab (implies focusing its containing Pane); id-based targeting only (no `<n>`) | XPC |
 | `batty project list [--json]` | List saved Projects: name, root, Pane count, and an `open` marker | XPC |
 | `batty project open <name> [--new] [--json]` | Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
+| `batty server start --port <n> [--url <u>] [--stats-url <u>] [--split right\|down] [--pane <id>] [--wait] [--timeout <s>] [--json] -- <command…>` | Beta only (`serverPane` flag, #0648). Run a dev server in a terminal Pane under a Server Pane for the port; reuses and restarts for a port that already has one | XPC |
+| `batty server attach --port <n> [--command <c>] [--cwd <d>] [--url <u>] [--stats-url <u>] [--split right\|down] [--wait] [--json]` | Beta only. Show a Server Pane for a server started elsewhere; Restart only with `--command` | XPC |
+| `batty server stop\|restart (--port <n> \| <server-pane-id>) [--pane <id>] [--json]` | Beta only. Stop (SIGINT, SIGTERM, SIGKILL) or restart the server | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
 | `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |

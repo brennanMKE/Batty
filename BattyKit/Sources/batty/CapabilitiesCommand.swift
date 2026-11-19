@@ -187,6 +187,13 @@ struct CapabilitiesCommand: ParsableCommand {
         // Serves until stdin closes; the tools it runs carry their own hints.
         "mcp": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
         "install": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        // Reuses the port's Server Pane, but restarts the server each time.
+        "start": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
+        // Returns the port's existing Server Pane unchanged.
+        "attach": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        // Ends a process; a second stop finds nothing running.
+        "stop": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false),
+        "restart": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false),
     ]
 
     /// The explicit per-verb-path opt-in into `annotationsByArchetype` — see
@@ -214,6 +221,10 @@ struct CapabilitiesCommand: ParsableCommand {
         "capabilities": "capabilities",
         "mcp": "mcp",
         "agent install": "install",
+        "server start": "start",
+        "server attach": "attach",
+        "server stop": "stop",
+        "server restart": "restart",
     ]
 
     static func annotations(forVerbPath verbPath: String) -> CapabilitiesAnnotationsPayload {

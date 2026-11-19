@@ -138,6 +138,9 @@ public final class PaneRuntime: Identifiable {
         case .processStatus: return nil
         case .lmStudioDashboard: return LMStudioDashboardPaneContent()
         case .systemMetrics: return SystemMetricsPaneContent()
+        // Needs a port and a backend, which only the `server` XPC verbs
+        // carry; they pass their own `contentFactory`.
+        case .server: return nil
         }
     }
 

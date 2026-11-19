@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Server Pane mock-up</title>
+<style>
+:root { --bg:#f6f6f6; --pane:#fff; --fg:#1d1d1f; --muted:#6e6e73; --line:#d9d9de; --green:#28a745; --amber:#d08b00; --red:#d83a3a; --gray:#8e8e93; }
+@media (prefers-color-scheme: dark) { :root { --bg:#1c1c1e; --pane:#232326; --fg:#f2f2f7; --muted:#98989f; --line:#3a3a3c; } }
+body { background:var(--bg); color:var(--fg); font:13px -apple-system, system-ui, sans-serif; margin:16px; }
+h1 { font-size:18px; } h2 { font-size:14px; margin-top:28px; color:var(--muted); }
+.pane { background:var(--pane); border:1px solid var(--line); border-radius:8px; max-width:640px; }
+.head { display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.chip { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+.dot { width:9px; height:9px; border-radius:50%; }
+.url { font-family:ui-monospace, Menlo, monospace; color:var(--muted); }
+.spacer { flex:1; }
+button { font:inherit; border:1px solid var(--line); background:var(--bg); color:var(--fg); border-radius:5px; padding:2px 8px; }
+.grid { display:grid; grid-template-columns:auto 1fr auto 1fr; gap:4px 12px; padding:10px 12px; border-bottom:1px solid var(--line); }
+.grid span:nth-child(odd) { color:var(--muted); }
+.stats { padding:10px 12px; font-family:ui-monospace, Menlo, monospace; }
+.stats div { display:grid; grid-template-columns:200px 90px 1fr; }
+.muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<h1>Server Pane (#0648) — drafted for user approval</h1>
+
+<h2>Listening, with expvar stats</h2>
+<div class="pane">
+  <div class="head"><span class="chip"><span class="dot" style="background:var(--green)"></span>Listening</span><span class="url">http://localhost:8083/</span><span class="muted">200</span><span class="spacer"></span><button>Open in Browser</button><button>Restart</button><button>Stop</button></div>
+  <div class="grid"><span>PID</span><span>41823</span><span>Uptime</span><span>3m 12s</span><span>CPU</span><span>0.4 %</span><span>Memory</span><span>18.2 MB</span><span>Exit</span><span>—</span><span>Command</span><span>go run .</span></div>
+  <div class="stats"><div class="muted">Stats</div><div><span>memstats.HeapAlloc</span><span>4.1 MB</span><span>▁▂▃▅▃▂</span></div><div><span>memstats.NumGC</span><span>12</span><span>▁▁▂▂▃▃</span></div><div><span>cmdline</span><span class="muted">/tmp/go-build/exe/site</span><span></span></div></div>
+</div>
+
+<h2>Starting</h2>
+<div class="pane"><div class="head"><span class="chip"><span class="dot" style="background:var(--gray)"></span>Starting</span><span class="url">http://localhost:8083/</span><span class="spacer"></span><button>Open in Browser</button><button>Restart</button><button>Stop</button></div></div>
+
+<h2>Attach, not listening (no Restart without --command)</h2>
+<div class="pane"><div class="head"><span class="chip"><span class="dot" style="background:var(--gray)"></span>Not listening</span><span class="url">http://localhost:9000/</span><span class="spacer"></span><button>Open in Browser</button></div></div>
+
+<h2>Listening, owned by another user</h2>
+<div class="pane"><div class="head"><span class="chip"><span class="dot" style="background:var(--green)"></span>Listening, owned by another user</span><span class="url">http://localhost:80/</span><span class="muted">301</span><span class="spacer"></span><button>Open in Browser</button></div></div>
+
+<h2>Not responding</h2>
+<div class="pane"><div class="head"><span class="chip"><span class="dot" style="background:var(--amber)"></span>Not responding</span><span class="url">http://localhost:8083/</span><span class="spacer"></span><button>Open in Browser</button><button>Restart</button><button>Stop</button></div></div>
+
+<h2>Crashed (1)</h2>
+<div class="pane"><div class="head"><span class="chip"><span class="dot" style="background:var(--red)"></span>Crashed (1)</span><span class="url">http://localhost:8083/</span><span class="spacer"></span><button>Open in Browser</button><button>Restart</button></div></div>
+
+<h2>Stopped, terminal closed</h2>
+<div class="pane"><div class="head"><span class="chip"><span class="dot" style="background:var(--gray)"></span>Stopped, terminal closed</span><span class="url">http://localhost:8083/</span><span class="spacer"></span><button>Open in Browser</button><button>Restart</button></div></div>
+</body>
+</html>

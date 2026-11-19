@@ -1,0 +1,6 @@
+{
+"cmdline": ["/tmp/go-build123/b001/exe/site","-addr",":8083"],
+"memstats": {"Alloc":4194304,"TotalAlloc":9000000,"Sys":12582912,"Lookups":0,"Mallocs":51234,"Frees":40000,"HeapAlloc":4194304,"HeapSys":7864320,"HeapIdle":2000000,"HeapInuse":5000000,"HeapReleased":0,"HeapObjects":11234,"PauseTotalNs":1234567,"NumGC":12,"GCCPUFraction":0.0001,"EnableGC":true,"PauseNs":[1,2,3],"BySize":[{"Size":0,"Mallocs":0,"Frees":0}]},
+"requests": 480,
+"build": {"version": "1.2.3", "dirty": false}
+}

@@ -59,7 +59,7 @@ public struct PaneView: View {
             switch pane.kind {
             case .terminal:
                 terminalBody
-            case .gitStatus, .processStatus, .lmStudioDashboard, .systemMetrics:
+            case .gitStatus, .processStatus, .lmStudioDashboard, .systemMetrics, .server:
                 // #0314 merge: a single shared non-terminal arm for every
                 // kind — `nonTerminalContent` (below) resolves which real
                 // view (if any) to render via `pane.content`'s runtime
@@ -404,6 +404,8 @@ public struct PaneView: View {
             ProcessStatusPaneView(content: processStatusContent, tree: tree)
         } else if let gitStatusContent = pane.content as? GitStatusPaneContent {
             GitStatusPaneView(content: gitStatusContent)
+        } else if let serverContent = pane.content as? ServerPaneContent {
+            ServerPaneView(content: serverContent, paneID: pane.id)
         } else {
             PaneContentPlaceholderView(kind: pane.kind)
         }

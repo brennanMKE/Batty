@@ -18,8 +18,8 @@ struct CapabilitiesCommandTests {
 
     // MARK: - Verb roster
 
-    static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false)
-    static let flagOn = FeatureFlags(sharedProjectImages: true, agentIntegration: true)
+    static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, serverPane: false)
+    static let flagOn = FeatureFlags.allOnForTests
 
     static let flagOffRoster: Set<String> = [
         "new", "ping", "status", "list",
@@ -31,10 +31,13 @@ struct CapabilitiesCommandTests {
     ]
 
     @Test(arguments: [false, true])
-    func verbRosterListsEveryShippedVerb(agentIntegration: Bool) {
-        let flags = agentIntegration ? Self.flagOn : Self.flagOff
+    func verbRosterListsEveryShippedVerb(flagsOn: Bool) {
+        let flags = flagsOn ? Self.flagOn : Self.flagOff
         let names = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name))
-        let expected = agentIntegration ? Self.flagOffRoster.union(["mcp", "agent install"]) : Self.flagOffRoster
+        let expected = flagsOn ? Self.flagOffRoster.union([
+            "mcp", "agent install",
+            "server start", "server attach", "server stop", "server restart",
+        ]) : Self.flagOffRoster
         #expect(names == expected)
     }
 
@@ -47,6 +50,11 @@ struct CapabilitiesCommandTests {
         let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.5.0", flags: Self.flagOn).joined(separator: "\n")
         #expect(text.contains("agent install [--dry-run] [--project DIR]"))
         #expect(!text.contains("git clone"))
+    }
+
+    @Test func flagOffPayloadHasNoServerVerbs() {
+        let names = CapabilitiesCommand.buildPayload(flags: Self.flagOff).verbs.map(\.name)
+        #expect(!names.contains { $0.hasPrefix("server") })
     }
 
     @Test func capabilitiesListsSessionRemind() {

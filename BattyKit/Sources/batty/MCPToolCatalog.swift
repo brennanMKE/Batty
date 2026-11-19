@@ -88,6 +88,9 @@ nonisolated struct MCPToolCatalog: Sendable {
                 "type": .string(property.type),
                 "description": .string(property.description),
             ]
+            if property.type == "array" {
+                schema["items"] = .object(["type": .string("string")])
+            }
             if let values = property.enumValues {
                 schema["enum"] = .array(values.map(MCPJSONValue.string))
             }
@@ -119,13 +122,16 @@ nonisolated struct MCPToolCatalog: Sendable {
         switch type {
         case "boolean": Bool(value).map(MCPJSONValue.bool)
         case "integer": Int(value).map(MCPJSONValue.int)
+        // A whole number stays `.int`, the form it decodes back to from JSON.
+        case "number": Int(value).map(MCPJSONValue.int) ?? Double(value).map(MCPJSONValue.double)
         default: .string(value)
         }
     }
 
     /// Validates a `tools/call`'s arguments and builds the argv for the verb:
     /// options as `--long=value`, boolean flags only when true, an enum-flag
-    /// as its own spelling, `--json` when available, the positional last after `--`.
+    /// as its own spelling, `--json` when available, the positional (each element
+    /// of an array positional as its own argument) last after `--`.
     func arguments(forToolName name: String, callArguments: [String: MCPJSONValue]) throws(MCPArgumentError) -> [String] {
         guard let verb = verb(forToolName: name) else { throw .unknownArgument(name) }
         let properties = verb.inputSchema.properties
@@ -138,12 +144,16 @@ nonisolated struct MCPToolCatalog: Sendable {
         }
 
         var argv = verb.name.split(separator: " ").map(String.init)
-        var positional: String?
+        var positional: [String] = []
         for key in callArguments.keys.sorted() {
             guard let property = properties[key], let value = callArguments[key] else { continue }
             switch property.cliKind {
             case .positional:
-                positional = value.argumentText
+                if case let .array(elements) = value {
+                    positional = elements.map(\.argumentText)
+                } else {
+                    positional = [value.argumentText]
+                }
             case .option:
                 argv.append("\(Self.longName(property))=\(value.argumentText)")
             case .flag:
@@ -157,8 +167,8 @@ nonisolated struct MCPToolCatalog: Sendable {
         if properties[Self.jsonProperty] != nil && !Self.jsonExcluded(by: callArguments, conflicts: verb.inputSchema.conflicts) {
             argv.append("--json")
         }
-        if let positional {
-            argv += ["--", positional]
+        if !positional.isEmpty {
+            argv += ["--"] + positional
         }
         return argv
     }
@@ -180,8 +190,15 @@ nonisolated struct MCPToolCatalog: Sendable {
             break
         case let ("integer", .int(number)):
             if let minimum = property.minimum, number < minimum { throw .belowMinimum(key, minimum: minimum) }
+        case ("number", .int), ("number", .double):
+            break
         case let ("string", .string(text)):
             if let allowed = property.enumValues, !allowed.contains(text) { throw .notInEnum(key, allowed: allowed) }
+        case let ("array", .array(elements)):
+            // Array properties are string lists (a trailing `-- <command…>`).
+            for element in elements {
+                guard case .string = element else { throw .wrongType(key, expected: "array of strings") }
+            }
         default:
             throw .wrongType(key, expected: property.type)
         }

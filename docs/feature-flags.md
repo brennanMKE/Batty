@@ -32,6 +32,13 @@ Record each gate site (file, symbol, what the flag changes) as you add it, so re
   - `BattyCLI.subcommands(for:)` (`BattyKit/Sources/batty/BattyCLI.swift`): `MCPCommand` and `AgentNounCommand` are in the tree only with the flag on, so `--help`, `batty capabilities` and the MCP tool list never mention them otherwise.
   - `CapabilitiesCommand.skillInstallLines(cliVersion:flags:)`: with the flag on, plain-text `capabilities` points at `agent install` instead of the `git clone` recipe.
   - `AdvancedSettingsView` (`BattyKit/Sources/BattyKit/Views/SettingsView.swift`): the "AI Agents" section shows only when `store.featureFlags.agentIntegration`.
+- `serverPane` (#0648): the Server Pane and the `batty server` noun. It has a CLI `current` and a UI-test force-off override (`BATTY_UI_TEST_FORCE_SERVER_PANE_OFF=1` with `BATTY_UI_TEST_SCRIPT` set). Remove it in 1.5.0. Gate sites:
+  - `PaneContentKind.paneSplitKinds` / `projectSlotKinds` always exclude `.server` (not flag-dependent): `pane split --view` and Project slots never offer it.
+  - `AppXPCService.paneSplitRefusal`: `pane split` refuses `.server` (not flag-dependent).
+  - `BattyCLI.subcommands(for:)`: the `server` noun is in the CLI tree only with the flag on, so `--help`, `capabilities` and its verbs are absent otherwise. `CapabilitiesCommand.verbs(flags:)` / `buildPayload(flags:)` take the flags.
+  - `AppStateStore.startServerForXPC` / `attachServerForXPC` / `stopServerForXPC` / `restartServerForXPC` (`AppStateStore+Server.swift`): fail with "server panes are not available in this build" with the flag off, creating nothing.
+  - `SettingsView` (`GeneralSettingsView(showsServerPanes:)`): the Settings › General › Server Panes row is shown only with the flag on.
+  - Flag-off tests: `AppStateStoreServerTests.everyVerbFailsWithFlagOff`, `ServerCapabilitiesTests.serverVerbsAppearOnlyWithTheFlagOn`, `CapabilitiesCommandTests.flagOffPayloadHasNoServerVerbs`, `BattyUITests/CLIServerPaneTests/testServerVerbsAbsentWithFlagForcedOff`. Delete them with the flag.
 
 ## Retired flags
 

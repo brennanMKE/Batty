@@ -199,6 +199,12 @@ public final class AppStateStore {
     /// On in Batty Beta and off in Prod (`docs/feature-flags.md`).
     @ObservationIgnored public let featureFlags: FeatureFlags
 
+    /// Builds a Server Pane's content (#0648). Tests replace it to inject
+    /// fake scanners, probes and clocks.
+    @ObservationIgnored var makeServerContent: @MainActor (_ port: UInt16, _ url: URL?, _ statsURL: URL?, _ backend: ServerBackend) -> ServerPaneContent = { port, url, statsURL, backend in
+        ServerPaneContent(port: port, url: url, statsURL: statsURL, backend: backend, startsBackendOnSetUp: false)
+    }
+
     /// Built on first access, so `projects.json` is never touched until a
     /// Projects surface reads it.
     public var projectStore: ProjectStore {

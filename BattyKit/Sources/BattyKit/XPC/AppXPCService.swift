@@ -43,6 +43,12 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     // replaced on each new `watch` call. Cleaned up by AppEventWatcher when the subscription
     // ID is revoked (in shutdown or on connection teardown).
 
+    /// A Server Pane needs a port and a command, which `PaneSplitRequest`
+    /// doesn't carry.
+    static func paneSplitRefusal(kind: PaneContentKind) -> String? {
+        kind == .server ? "server panes are created with batty server start or batty server attach" : nil
+    }
+
     func ping(reply: @escaping @Sendable (String) -> Void) {
         let description = "pid \(ProcessInfo.processInfo.processIdentifier)"
         logger.info("ping -> \(description, privacy: .public)")
@@ -139,6 +145,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
                 let direction = SplitDirection(rawValue: request.direction.rawValue) ?? .horizontal
                 let kind = request.kind ?? .terminal
+                if let refusal = Self.paneSplitRefusal(kind: kind) {
+                    logger.error("perform paneSplit: refused kind \(kind.rawValue, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: refusal)))
+                    return
+                }
                 // #0383: `--unique` find-or-create. `findUniquePane` itself
                 // guards `kind != .terminal` (there is no sensible "the
                 // terminal Pane" to find) — the CLI also rejects `--unique`
@@ -505,10 +516,107 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
             }
 
+        case XPCVerb.serverStart, XPCVerb.serverAttach, XPCVerb.serverStop, XPCVerb.serverRestart:
+            Task { @MainActor [pendingRequests, storeProvider, clock] in
+                let response = await Self.serverResponse(verb: decoded.verb, payload: decoded.payload, store: storeProvider(), clock: clock)
+                pendingRequests.resolve(requestID, with: Self.encode(response))
+            }
+
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
             pendingRequests.resolve(requestID, with: Self.unknownVerbResponse(decoded.verb))
         }
+    }
+
+    /// The four `server` verbs (#0648). `--wait` replies once the state
+    /// leaves Starting or the bound passes on `clock`.
+    @MainActor
+    static func serverResponse(verb: String, payload: Data?, store: AppStateStore, clock: any SchedulingClock) async -> XPCResponse {
+        let decoder = JSONDecoder()
+        let result: Result<ServerXPCResult, ServerXPCError>
+        var wait = false
+        var timeout: Double = 60
+        switch verb {
+        case XPCVerb.serverStart:
+            guard let payload, let request = try? decoder.decode(ServerStartRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed server start request")
+            }
+            result = store.startServerForXPC(request)
+            wait = request.wait ?? false
+            timeout = request.waitTimeoutSeconds ?? timeout
+        case XPCVerb.serverAttach:
+            guard let payload, let request = try? decoder.decode(ServerAttachRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed server attach request")
+            }
+            result = store.attachServerForXPC(request)
+            wait = request.wait ?? false
+            timeout = request.waitTimeoutSeconds ?? timeout
+        default:
+            guard let payload, let request = try? decoder.decode(ServerControlRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed server request")
+            }
+            result = verb == XPCVerb.serverStop ? store.stopServerForXPC(request) : store.restartServerForXPC(request)
+        }
+        let outcome: ServerXPCResult
+        switch result {
+        case .failure(let error):
+            logger.error("perform \(verb, privacy: .public): \(error.message, privacy: .public)")
+            return XPCResponse(ok: false, error: error.message)
+        case .success(let value):
+            outcome = value
+        }
+        if verb == XPCVerb.serverStop || verb == XPCVerb.serverRestart || verb == XPCVerb.serverStart {
+            await outcome.content.awaitPendingWork()
+            if verb != XPCVerb.serverStart || !outcome.created, let reason = outcome.content.stopRefusal {
+                return XPCResponse(ok: false, error: "stop refused: \(reason)")
+            }
+        }
+        if wait {
+            let content = outcome.content
+            let state = await Self.firstStateLeavingStarting(content, clock: clock, timeout: timeout)
+            switch state {
+            case nil, .starting?:
+                return XPCResponse(ok: false, error: "timed out; still starting")
+            case .crashed(let code)?:
+                return XPCResponse(ok: false, error: "server exited (code \(code.map(String.init) ?? "unknown"))")
+            case .stopped(let code, _)?:
+                return XPCResponse(ok: false, error: "server stopped (code \(code.map(String.init) ?? "unknown"))")
+            default:
+                break
+            }
+        }
+        guard let replyData = try? JSONEncoder().encode(store.serverReply(outcome)) else {
+            return XPCResponse(ok: false, error: "failed to encode server reply")
+        }
+        logger.info("perform \(verb, privacy: .public) -> pane=\(outcome.paneID, privacy: .public) created=\(outcome.created, privacy: .public)")
+        return XPCResponse(ok: true, payload: replyData)
+    }
+
+    /// The first state after Starting, or nil once `timeout` passes on
+    /// `clock`, whichever comes first.
+    @MainActor
+    static func firstStateLeavingStarting(_ content: ServerPaneContent, clock: any SchedulingClock, timeout: Double) async -> ServerPaneState? {
+        var waiter: Task<Void, Never>?
+        var timer: Task<Void, Never>?
+        let state: ServerPaneState? = await withCheckedContinuation { (continuation: CheckedContinuation<ServerPaneState?, Never>) in
+            var resumed = false
+            func finish(_ value: ServerPaneState?) {
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(returning: value)
+            }
+            waiter = Task { @MainActor in
+                let state = await content.waitForState { $0 != .starting }
+                finish(state)
+            }
+            timer = Task { @MainActor in
+                await clock.sleep(for: .milliseconds(Int(timeout * 1000)))
+                finish(nil)
+            }
+        }
+        waiter?.cancel()
+        timer?.cancel()
+        return state
     }
 
     private static func unknownVerbResponse(_ verb: String) -> Data {

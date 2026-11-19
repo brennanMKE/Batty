@@ -19,4 +19,15 @@ import BattyXPCCore
 /// Lives in the `batty` target, not `BattyXPCCore`, which must not depend on
 /// `ArgumentParser` — `PaneContentKind`'s own doc comment already states
 /// this discipline for the CLI/broker split.
-extension PaneContentKind: ExpressibleByArgument {}
+///
+/// `.server` is hidden and rejected: Server Panes come from `batty server`.
+nonisolated extension PaneContentKind: ExpressibleByArgument {
+    public init?(argument: String) {
+        guard let kind = PaneContentKind(rawValue: argument), PaneContentKind.paneSplitKinds.contains(kind) else { return nil }
+        self = kind
+    }
+
+    public static var allValueStrings: [String] {
+        paneSplitKinds.map(\.rawValue)
+    }
+}

@@ -6,8 +6,8 @@ import Testing
 @testable import batty
 
 struct MCPToolCatalogTests {
-    nonisolated static let flagOn = FeatureFlags(sharedProjectImages: true, agentIntegration: true)
-    nonisolated static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false)
+    nonisolated static let flagOn = FeatureFlags(sharedProjectImages: true, agentIntegration: true, serverPane: true)
+    nonisolated static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, serverPane: false)
 
     private func catalog(_ flags: FeatureFlags = flagOn) -> MCPToolCatalog {
         MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: flags))
@@ -26,6 +26,36 @@ struct MCPToolCatalogTests {
         let verbs = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name)).subtracting(MCPToolCatalog.excludedVerbPaths)
         let tools = Set(catalog(flags).tools.map(\.name))
         #expect(tools == Set(verbs.map(MCPToolCatalog.toolName(forVerbPath:))))
+    }
+
+    @Test func serverVerbsBecomeToolsOnlyWithServerPaneOn() {
+        let serverTools: Set<String> = ["server_start", "server_attach", "server_stop", "server_restart"]
+        #expect(serverTools.isSubset(of: Set(catalog().tools.map(\.name))))
+        let agentOnly = FeatureFlags(sharedProjectImages: true, agentIntegration: true, serverPane: false)
+        #expect(Set(catalog(agentOnly).tools.map(\.name)).isDisjoint(with: serverTools))
+    }
+
+    @Test func serverStartPassesEachCommandWordAfterTheTerminator() throws {
+        let argv = try catalog().arguments(forToolName: "server_start", callArguments: [
+            "port": .int(8083),
+            "command": .array([.string("go"), .string("run"), .string(".")]),
+        ])
+        #expect(argv.starts(with: ["server", "start"]))
+        #expect(argv.contains("--port=8083"))
+        #expect(Array(argv.suffix(4)) == ["--", "go", "run", "."])
+        let timed = try catalog().arguments(forToolName: "server_start", callArguments: [
+            "port": .int(8083), "timeout": .double(2.5), "command": .array([.string("x")]),
+        ])
+        #expect(timed.contains("--timeout=2.5"))
+    }
+
+    @Test func arrayArgumentRejectsNonStringElements() {
+        #expect(throws: MCPArgumentError.wrongType("command", expected: "array of strings")) {
+            try catalog().arguments(forToolName: "server_start", callArguments: [
+                "port": .int(8083),
+                "command": .array([.int(1)]),
+            ])
+        }
     }
 
     @Test func toolPropertiesMatchVerbPropertiesExceptJSON() {
@@ -84,7 +114,7 @@ struct MCPToolCatalogTests {
                 guard let defaultValue = schema["default"] else { continue }
                 checked += 1
                 switch (schema["type"], defaultValue) {
-                case (.string("boolean")?, .bool), (.string("integer")?, .int), (.string("string")?, .string):
+                case (.string("boolean")?, .bool), (.string("integer")?, .int), (.string("number")?, .int), (.string("number")?, .double), (.string("string")?, .string):
                     break
                 default:
                     Issue.record("\(tool.name).\(key): default \(defaultValue) does not match \(String(describing: schema["type"]))")

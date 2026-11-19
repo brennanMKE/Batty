@@ -179,6 +179,12 @@ struct CapabilitiesInputSchemaTests {
         assertNamesAreInvocable(PaneSplitCommand.capabilitiesInputSchema, helpMessage: PaneSplitCommand.helpMessage())
     }
 
+    @Test func paneSplitViewEnumExcludesServer() throws {
+        let view = try #require(PaneSplitCommand.capabilitiesInputSchema.properties["view"])
+        #expect(!(view.enumValues ?? []).contains("server"))
+        #expect(throws: (any Error).self) { try PaneSplitCommand.parse(["--view", "server"]) }
+    }
+
     @Test func paneCloseCommandSchemaMatchesStoredProperties() throws {
         let instance = try PaneCloseCommand.parse([])
         assertSchemaMatchesStoredProperties(instance, schema: PaneCloseCommand.capabilitiesInputSchema)
@@ -254,7 +260,7 @@ struct CapabilitiesInputSchemaTests {
             guard !subcommands.isEmpty else { return [type] }
             return subcommands.flatMap(leafTypes)
         }
-        let flags = FeatureFlags(sharedProjectImages: agentIntegration, agentIntegration: agentIntegration)
+        let flags = agentIntegration ? FeatureFlags.allOnForTests : FeatureFlags(sharedProjectImages: false)
         let leaves = BattyCLI.subcommands(for: flags).flatMap(leafTypes)
         #expect(!leaves.isEmpty)
         for leaf in leaves {
@@ -266,7 +272,7 @@ struct CapabilitiesInputSchemaTests {
 
     @Test func viewParameterEnumMatchesPaneContentKindAllCases() throws {
         let view = try #require(PaneSplitCommand.capabilitiesInputSchema.properties["view"])
-        #expect(view.enumValues == PaneContentKind.allCases.map(\.rawValue))
+        #expect(view.enumValues == PaneContentKind.paneSplitKinds.map(\.rawValue))
         #expect(view.enumValues?.contains("git-status") == true)
         #expect(view.enumValues?.contains("process-status") == true)
         #expect(view.enumValues?.contains("lm-studio-dashboard") == true)
@@ -402,10 +408,9 @@ struct CapabilitiesInputSchemaTests {
     /// unclassified nor linger in the table after it is removed.
     @Test func leafArchetypeByVerbPathCoversExactlyTheShippedVerbPaths() {
         let keys = Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys)
-        let on = FeatureFlags(sharedProjectImages: true, agentIntegration: true)
-        let off = FeatureFlags(sharedProjectImages: false, agentIntegration: false)
-        #expect(keys == shippedVerbPaths(flags: on))
-        #expect(keys.subtracting(MCPToolCatalog.excludedVerbPaths) == shippedVerbPaths(flags: off))
+        let serverPaths: Set<String> = ["server start", "server attach", "server stop", "server restart"]
+        #expect(keys == shippedVerbPaths(flags: .allOnForTests))
+        #expect(keys.subtracting(MCPToolCatalog.excludedVerbPaths).subtracting(serverPaths) == shippedVerbPaths(flags: FeatureFlags(sharedProjectImages: false)))
     }
 
     @Test func everyArchetypeLeafArchetypeByVerbPathPointsAtExists() {
@@ -451,7 +456,7 @@ struct CapabilitiesInputSchemaTests {
     }
 
     @Test func everyVerbAnnotationsRoundTrip() throws {
-        for verb in CapabilitiesCommand.verbs() {
+        for verb in CapabilitiesCommand.verbs(flags: .allOnForTests) {
             let data = try JSONEncoder().encode(verb.annotations)
             let decoded = try JSONDecoder().decode(CapabilitiesAnnotationsPayload.self, from: data)
             #expect(decoded == verb.annotations)
@@ -465,7 +470,7 @@ struct CapabilitiesInputSchemaTests {
     }
 
     @Test func everyVerbInputSchemaHasTypeObject() {
-        for verb in CapabilitiesCommand.verbs() {
+        for verb in CapabilitiesCommand.verbs(flags: .allOnForTests) {
             #expect(verb.inputSchema.type == "object")
         }
     }
@@ -480,11 +485,11 @@ struct CapabilitiesInputSchemaTests {
         // true` on the property and absent from the object-level array, so
         // the standard field a schema validator actually reads said the
         // verb had no required parameters at all.
-        let notify = CapabilitiesCommand.verbs().first { $0.name == "notify" }
+        let notify = CapabilitiesCommand.verbs(flags: .allOnForTests).first { $0.name == "notify" }
         #expect(notify?.inputSchema.required == ["title"])
-        let paneShow = CapabilitiesCommand.verbs().first { $0.name == "pane show" }
+        let paneShow = CapabilitiesCommand.verbs(flags: .allOnForTests).first { $0.name == "pane show" }
         #expect(paneShow?.inputSchema.required == ["id"])
-        let projectOpen = CapabilitiesCommand.verbs().first { $0.name == "project open" }
+        let projectOpen = CapabilitiesCommand.verbs(flags: .allOnForTests).first { $0.name == "project open" }
         #expect(projectOpen?.inputSchema.required == ["name"])
     }
 
@@ -495,7 +500,7 @@ struct CapabilitiesInputSchemaTests {
     /// open` drift is the reason this exists as a roster-wide check rather
     /// than one more hand-written case.
     @Test func everyVerbsRequiredArrayMatchesItsPerPropertyFlags() {
-        for verb in CapabilitiesCommand.verbs() {
+        for verb in CapabilitiesCommand.verbs(flags: .allOnForTests) {
             let flagged = verb.inputSchema.properties.filter(\.value.required).keys.sorted()
             #expect(
                 verb.inputSchema.required.sorted() == flagged,
@@ -512,7 +517,7 @@ struct CapabilitiesInputSchemaTests {
     /// not, because the Swift name is still `required`.
     @Test func noPropertySubschemaUsesAReservedJSONSchemaKeywordWithTheWrongType() throws {
         let reserved: Set<String> = ["required", "properties", "items", "allOf", "anyOf", "oneOf", "$ref"]
-        for verb in CapabilitiesCommand.verbs() {
+        for verb in CapabilitiesCommand.verbs(flags: .allOnForTests) {
             for (name, property) in verb.inputSchema.properties {
                 let data = try JSONEncoder().encode(property)
                 let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -527,7 +532,7 @@ struct CapabilitiesInputSchemaTests {
     // `properties.view.enum` were empty (`"git-status"` also appears inside
     // `conflicts[].allowedValues`).
     @Test func paneSplitSampleShapeForAnAgent() throws {
-        let verb = try #require(CapabilitiesCommand.verbs().first { $0.name == "pane split" })
+        let verb = try #require(CapabilitiesCommand.verbs(flags: .allOnForTests).first { $0.name == "pane split" })
         let view = try #require(verb.inputSchema.properties["view"])
         #expect(view.enumValues == ["terminal", "git-status", "process-status", "lm-studio-dashboard", "system-metrics"])
         let direction = try #require(verb.inputSchema.properties["direction"])
@@ -537,5 +542,52 @@ struct CapabilitiesInputSchemaTests {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         _ = try encoder.encode(verb)
+    }
+}
+
+extension FeatureFlags {
+    /// Every flag on, so tree-walking tests cover flagged verbs; `.current`
+    /// is off under `swift test`.
+    static let allOnForTests = FeatureFlags(sharedProjectImages: true, agentIntegration: true, serverPane: true)
+}
+
+struct ServerCapabilitiesTests {
+    private let serverVerbs: Set<String> = ["server start", "server attach", "server stop", "server restart"]
+
+    @Test func serverVerbsAppearOnlyWithTheFlagOn() {
+        let on = Set(CapabilitiesCommand.verbs(flags: .allOnForTests).map(\.name))
+        let off = Set(CapabilitiesCommand.verbs(flags: FeatureFlags(sharedProjectImages: true, serverPane: false)).map(\.name))
+        #expect(serverVerbs.isSubset(of: on))
+        #expect(off.isDisjoint(with: serverVerbs))
+    }
+
+    @Test func serverVerbsHaveFullInputSchemas() throws {
+        for name in serverVerbs {
+            let verb = try #require(CapabilitiesCommand.verbs(flags: .allOnForTests).first { $0.name == name })
+            #expect(!verb.inputSchema.properties.isEmpty, "\(name) has no inputSchema")
+        }
+        #expect(ServerStartCommand.capabilitiesInputSchema.required.sorted() == ["command", "port"])
+    }
+
+}
+
+extension CapabilitiesInputSchemaTests {
+    @Test func serverStartCommandSchemaMatchesStoredProperties() throws {
+        let instance = try ServerStartCommand.parse(["--port", "1", "--", "x"])
+        assertSchemaMatchesStoredProperties(instance, schema: ServerStartCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerStartCommand.capabilitiesInputSchema, helpMessage: ServerStartCommand.helpMessage())
+    }
+
+    @Test func serverAttachCommandSchemaMatchesStoredProperties() throws {
+        let instance = try ServerAttachCommand.parse(["--port", "1"])
+        assertSchemaMatchesStoredProperties(instance, schema: ServerAttachCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerAttachCommand.capabilitiesInputSchema, helpMessage: ServerAttachCommand.helpMessage())
+    }
+
+    @Test func serverStopAndRestartSchemasMatchStoredProperties() throws {
+        assertSchemaMatchesStoredProperties(try ServerStopCommand.parse(["--port", "1"]), schema: ServerStopCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerStopCommand.capabilitiesInputSchema, helpMessage: ServerStopCommand.helpMessage())
+        assertSchemaMatchesStoredProperties(try ServerRestartCommand.parse(["--port", "1"]), schema: ServerRestartCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerRestartCommand.capabilitiesInputSchema, helpMessage: ServerRestartCommand.helpMessage())
     }
 }

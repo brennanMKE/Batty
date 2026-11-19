@@ -14,7 +14,7 @@ public struct SettingsView: View {
 
     public var body: some View {
         TabView {
-            GeneralSettingsView()
+            GeneralSettingsView(showsServerPanes: store?.featureFlags.serverPane ?? false)
                 .tabItem { Label("General", systemImage: "gearshape") }
 
             AppearanceSettingsView(store: store)
@@ -40,6 +40,8 @@ private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
     @AppStorage(SettingsPreference.autoNameFromFilesKey) private var autoNameFromFiles: Bool = SettingsPreference.defaultAutoNameFromFiles
     @AppStorage(SettingsPreference.autoNameWithAIKey) private var autoNameWithAI: Bool = SettingsPreference.defaultAutoNameWithAI
+    @AppStorage(SettingsPreference.serverPanePlacementKey) private var serverPanePlacement: String = ServerPanePlacement.right.rawValue
+    let showsServerPanes: Bool
 
     private var aiNamingSupported: Bool {
         if #available(macOS 26, *) { return true }
@@ -104,6 +106,21 @@ private struct GeneralSettingsView: View {
                 Text("Sessions: jump to session 1–9 with Cmd-1…9, tabs with Cmd-Option-1…9. Tabs: reversed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if showsServerPanes {
+                Section("Server Panes") {
+                    Picker("New Server Panes", selection: $serverPanePlacement) {
+                        ForEach(ServerPanePlacement.allCases, id: \.rawValue) { placement in
+                            Text(placement.displayName).tag(placement.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("settings-server-pane-placement")
+                    Text("Where batty server start and attach put a Server Pane. --split right or --split down overrides it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)

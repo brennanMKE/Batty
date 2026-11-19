@@ -220,9 +220,37 @@ public final class TabRuntime: Identifiable {
         terminalDelegate.onTitleChange = { [weak self] title in
             self?.receiveTitleChange(title)
         }
-        terminalDelegate.onCommandFinished = { [weak self] _, _ in
+        terminalDelegate.onCommandFinished = { [weak self] exitCode, _ in
             self?.receiveCommandFinished()
+            self?.notifyCommandFinishedObservers(exitCode: exitCode)
         }
+    }
+
+    /// Extra listeners for OSC 133 D, beside ``receiveCommandFinished()``.
+    /// Called from libghostty's callback (event origin).
+    @ObservationIgnored private var commandFinishedObservers: [UUID: (Int?) -> Void] = [:]
+
+    @discardableResult
+    public func addCommandFinishedObserver(_ observer: @escaping (Int?) -> Void) -> UUID {
+        let id = UUID()
+        commandFinishedObservers[id] = observer
+        return id
+    }
+
+    public func removeCommandFinishedObserver(_ id: UUID) {
+        commandFinishedObservers.removeValue(forKey: id)
+    }
+
+    func notifyCommandFinishedObservers(exitCode: Int?) {
+        for observer in Array(commandFinishedObservers.values) {
+            observer(exitCode)
+        }
+    }
+
+    /// Types `line` into the shell now, followed by Return.
+    @discardableResult
+    public func runCommandLine(_ line: String) -> Bool {
+        TerminalViewStateInputSink(tab: self).runLine(line)
     }
 
     /// The Theme a new Tab starts in: its Session's effective Theme for the

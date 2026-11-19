@@ -96,6 +96,10 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   covering six states including an exited process, a permission-denied
   metric, and no sibling terminal to follow. No code ships with either
   file.
+  [`design/server-pane-view.md`](design/server-pane-view.md) (#0648,
+  drafted for user approval) is the Server Pane created by `batty server
+  start|attach`, with the mock-up
+  [`design/server-pane-view.html`](design/server-pane-view.html).
   [`design/system-metrics-view.md`](design/system-metrics-view.md) (#0314
   phase 1) is the whole-system counterpart to #0305, gated on its own
   feasibility spike: `ProcessInfo.thermalState` works (coarse four-state,

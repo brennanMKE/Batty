@@ -690,6 +690,17 @@ part of whichever issue implements it.
 
 ---
 
+### Implementation note: `server`, the sixth kind (#0648)
+
+`PaneContentKind.server` is a Server Pane for one TCP port, and it is
+**CLI-only**: only `batty server start|attach` creates one, because it needs
+a port and a command. `pane split --view` never offers it
+(`PaneContentKind.paneSplitKinds`), `AppXPCService` refuses it on `pane
+split`, a Project slot can't hold it (`projectSlotKinds`), and Save Session
+as Project captures it as an empty terminal slot. The command runs in an
+ordinary terminal Pane below the Server Pane, so the terminal-host boundary
+in §3 is unchanged. See `docs/design/server-pane-view.md`.
+
 ## 6. Regression evidence plan
 
 **This issue ships no code — the manual terminal-pane checklist in
