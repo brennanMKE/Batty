@@ -69,21 +69,16 @@ nonisolated enum MCPErrorCode {
 actor MCPServer {
     static let supportedProtocolVersions = ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"]
 
-    static let instructions = """
-        You may be running inside Batty, a macOS terminal multiplexer. These tools mirror \
-        the batty command-line verbs (tool name = verb path with spaces as underscores). \
-        Omitted Session/Pane/Tab targets resolve to your own Pane through the BATTY_* \
-        environment variables. Call capabilities for the full vocabulary.
-        """
-
     private let catalog: MCPToolCatalog
     private let runner: MCPToolRunner
     private let serverName: String
     private let serverVersion: String
+    private let instructions: String
     private var inFlight: [MCPJSONValue: Task<Void, Never>] = [:]
 
-    init(catalog: MCPToolCatalog, runner: MCPToolRunner, serverName: String, serverVersion: String) {
+    init(catalog: MCPToolCatalog, runner: MCPToolRunner, serverName: String, serverVersion: String, instructions: String) {
         self.catalog = catalog
+        self.instructions = instructions
         self.runner = runner
         self.serverName = serverName
         self.serverVersion = serverVersion
@@ -151,7 +146,7 @@ actor MCPServer {
             "protocolVersion": .string(version),
             "capabilities": .object(["tools": .object(["listChanged": .bool(false)])]),
             "serverInfo": .object(["name": .string(serverName), "version": .string(serverVersion)]),
-            "instructions": .string(Self.instructions),
+            "instructions": .string(instructions),
         ])
     }
 

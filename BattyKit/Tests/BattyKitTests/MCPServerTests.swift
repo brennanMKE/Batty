@@ -3,6 +3,7 @@
 import BattyXPCCore
 import Foundation
 import os
+import BattyCLICore
 import Testing
 @testable import batty
 
@@ -84,12 +85,14 @@ nonisolated struct MCPHarness {
     let reader: PipeLineReader
     let serving: Task<Void, Never>
 
-    init(runner: MCPToolRunner, flags: FeatureFlags = MCPToolCatalogTests.flagOn) {
+    init(runner: MCPToolRunner, flags: FeatureFlags = MCPToolCatalogTests.flagOn, environment: [String: String] = [:]) {
+        let catalog = MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: flags))
         let server = MCPServer(
-            catalog: MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: flags)),
+            catalog: catalog,
             runner: runner,
             serverName: "batty",
-            serverVersion: "1.5.0"
+            serverVersion: "1.5.0",
+            instructions: MCPInstructions.text(environment: environment, catalog: catalog, cliName: "batty")
         )
         reader = PipeLineReader(output.fileHandleForReading)
         let inputHandle = input.fileHandleForReading
@@ -136,6 +139,41 @@ struct MCPServerTests {
         #expect(reply["result"]?["capabilities"]?["tools"] != nil)
         #expect(reply["result"]?["serverInfo"]?["name"] == .string("batty"))
         await harness.close()
+    }
+
+    static let sessionID = "11111111-1111-1111-1111-111111111111"
+    static let tabID = "22222222-2222-2222-2222-222222222222"
+    static let paneID = "33333333-3333-3333-3333-333333333333"
+    static let inBatty = [
+        BattyContextEnvironmentKey.sessionID.rawValue: sessionID,
+        BattyContextEnvironmentKey.tabID.rawValue: tabID,
+        BattyContextEnvironmentKey.paneID.rawValue: paneID,
+    ]
+
+    private func initializeInstructions(environment: [String: String]) async throws -> String {
+        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok), environment: environment)
+        harness.send(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#)
+        let reply = try await harness.reply()
+        await harness.close()
+        return try #require(reply["result"]?["instructions"]?.stringValue)
+    }
+
+    @Test func initializeInstructionsNameSessionTabAndPaneInBatty() async throws {
+        let text = try await initializeInstructions(environment: Self.inBatty)
+        for needle in [Self.sessionID, Self.tabID, Self.paneID, "terminal Pane of Batty", "`pane_split`", "`server_start`", "`notify`", "`session_remind`"] {
+            #expect(text.contains(needle), "missing \(needle)")
+        }
+        #expect(!text.contains("not running in a Batty Pane"))
+    }
+
+    @Test func initializeInstructionsOutsideBattySayNotAndNameNoIDs() async throws {
+        let text = try await initializeInstructions(environment: [:])
+        #expect(text.contains("not running in a Batty Pane"))
+        #expect(text.contains("`pane_split`"))
+        for id in [Self.sessionID, Self.tabID, Self.paneID] {
+            #expect(!text.uppercased().contains(id))
+        }
+        #expect(!text.contains("Session: "))
     }
 
     @Test func initializeWithUnknownVersionAnswersWithLatestSupported() async throws {

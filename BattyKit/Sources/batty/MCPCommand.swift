@@ -18,11 +18,17 @@ struct MCPCommand: ParsableCommand {
             throw ExitCode.failure
         }
         let payload = CapabilitiesCommand.buildPayload()
+        let catalog = MCPToolCatalog(payload: payload)
         let server = MCPServer(
-            catalog: MCPToolCatalog(payload: payload),
+            catalog: catalog,
             runner: SubprocessToolRunner(executableURL: executableURL),
             serverName: ServiceNames.current.cliCommandName,
-            serverVersion: payload.cliVersion
+            serverVersion: payload.cliVersion,
+            instructions: MCPInstructions.text(
+                environment: ProcessInfo.processInfo.environment,
+                catalog: catalog,
+                cliName: ServiceNames.current.cliCommandName
+            )
         )
         // The root command is a blocking ParsableCommand, so bridge here.
         let done = DispatchSemaphore(value: 0)

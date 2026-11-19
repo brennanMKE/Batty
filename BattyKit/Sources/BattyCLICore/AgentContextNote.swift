@@ -15,12 +15,17 @@ public nonisolated enum AgentContextNote {
         ]
     }
 
+    public static func identityLines(context: BattyIdentityContext) -> [String] {
+        [
+            "You are running in a terminal Pane of Batty, a macOS terminal multiplexer.",
+            "Session: \(context.sessionID.uuidString)",
+            "Tab: \(context.tabID.uuidString)",
+            "Pane: \(context.paneID.uuidString)",
+        ]
+    }
+
     public static func header(context: BattyIdentityContext, cliName: String) -> String {
-        """
-        You are running in a terminal Pane of Batty, a macOS terminal multiplexer.
-        Session: \(context.sessionID.uuidString)
-        Tab: \(context.tabID.uuidString)
-        Pane: \(context.paneID.uuidString)
+        identityLines(context: context).joined(separator: "\n") + "\n" + """
         Drive Batty with the `\(cliName)` MCP tools when they are available, otherwise the `\(cliName)` CLI (run `\(cliName) capabilities` first). Tools and commands given no Session, Tab or Pane act on this Pane.
         """
     }

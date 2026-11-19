@@ -420,6 +420,10 @@ can't drift from the CLI:
 - A call re-runs the same `batty` binary with the verb's argv, adding `--json`
   when the verb has it (not with `new --no-wait`). The child inherits the
   server's environment, so omitted targets resolve through `BATTY_*` as usual.
+- The `initialize` result's `instructions` are built from the server's `BATTY_*`
+  at start-up: in a Pane they name its Session, Tab and Pane; outside Batty
+  they say so. A short tool-per-task map follows, filtered to the tools the
+  catalog has.
 - Exit `0` returns stdout as text. Any other exit is a tool error whose text
   starts `exit <code>: <meaning>`, then stderr, then stdout; the
   "Failure handling" table below applies unchanged.
