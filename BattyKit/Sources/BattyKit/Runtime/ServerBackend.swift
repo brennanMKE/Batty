@@ -143,7 +143,8 @@ public final class TerminalTabServerBackend: ServerBackend {
         return sink
     }
 
-    /// The Tab's shell as last found, re-checked by pid and start time.
+    /// The Tab's shell, found once and never replaced: a later lookup could
+    /// pick a newer Tab's shell that also started after the baseline.
     private var shellStamp: ProcessStamp?
 
     /// The listener's job group, only when the listener descends from this
@@ -151,20 +152,20 @@ public final class TerminalTabServerBackend: ServerBackend {
     public func stopDecision(listenerPid: pid_t?, table: ProcessTableReading) -> ServerStopDecision {
         guard let listenerPid else { return .nothing }
         let snapshot = table.snapshot()
-        guard let shell = shell(in: snapshot, table: table) else {
-            return .refused("the shell of this Server Pane's terminal was not found")
+        let shell: ProcessRecord
+        if let shellStamp {
+            guard let record = snapshot.records[shellStamp.pid], record.stamp == shellStamp, !record.isZombie else {
+                return .refused("the shell of this Server Pane's terminal has exited")
+            }
+            shell = record
+        } else {
+            guard let found = ServerJobResolver.locateTabShell(tabID: tabID, spawnedAfter: spawnBaseline, snapshot: snapshot, table: table) else {
+                return .refused("the shell of this Server Pane's terminal was not found")
+            }
+            shellStamp = found.stamp
+            shell = found
         }
         return ServerJobResolver.planGroupStop(listener: listenerPid, shell: shell, snapshot: snapshot, selfPid: table.selfPid)
-    }
-
-    private func shell(in snapshot: ProcessSnapshot, table: ProcessTableReading) -> ProcessRecord? {
-        if let shellStamp, let record = snapshot.records[shellStamp.pid], record.stamp == shellStamp, !record.isZombie {
-            return record
-        }
-        shellStamp = nil
-        let found = ServerJobResolver.locateTabShell(tabID: tabID, spawnedAfter: spawnBaseline, snapshot: snapshot, table: table)
-        shellStamp = found?.stamp
-        return found
     }
 }
 

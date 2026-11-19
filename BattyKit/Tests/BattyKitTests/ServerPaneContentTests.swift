@@ -127,9 +127,9 @@ struct ServerPaneContentTests {
         table = FakeProcessTable(tabID: id)
     }
 
-    func terminalBackend(command: String = "go run .", sink: FakeServerTerminalSink? = nil, present: @escaping () -> Bool = { true }) -> TerminalTabServerBackend {
+    func terminalBackend(command: String = "go run .", sink: FakeServerTerminalSink? = nil, present: @escaping () -> Bool = { true }, spawnBaseline: ShellSpawnBaseline? = nil) -> TerminalTabServerBackend {
         let target = sink ?? self.sink
-        return TerminalTabServerBackend(tabID: tabID, command: command, workingDirectory: "/tmp/site", lookup: { _ in present() ? target : nil })
+        return TerminalTabServerBackend(tabID: tabID, command: command, workingDirectory: "/tmp/site", spawnBaseline: spawnBaseline, lookup: { _ in present() ? target : nil })
     }
 
     func content(
@@ -450,6 +450,72 @@ struct ServerPaneContentTests {
         #expect(await drive(stop, clock: clock) == false)
         #expect(signaller.signals == [SIGINT])
         #expect(content.state == .listening(pid: FakeProcessTable.listener))
+    }
+
+    /// The Tab's shell hides its environment, so it is found by start time
+    /// after a baseline; a tick with a listener caches it.
+    func cachedHiddenShellContent() async -> ServerPaneContent {
+        table.environments[FakeProcessTable.shell] = []
+        table.add(ProcessRecord(pid: FakeProcessTable.login, ppid: FakeProcessTable.batty, pgid: FakeProcessTable.login, uid: 0, startSeconds: 50))
+        let content = content(backend: terminalBackend(spawnBaseline: ShellSpawnBaseline(seconds: 40, microseconds: 0)))
+        scanner.listener = FakeProcessTable.listener
+        await active(content)
+        await content.performTick()
+        #expect(content.stopRefusal == nil)
+        return content
+    }
+
+    /// A newer Tab whose hidden-environment shell started after the baseline
+    /// and whose job group listens on the Pane's port.
+    func addNewerTabServingThePort() {
+        table.add(ProcessRecord(pid: 100_210, ppid: FakeProcessTable.batty, pgid: 100_210, uid: 0, startSeconds: 60))
+        table.add(ProcessRecord(pid: 100_610, ppid: 100_210, pgid: 100_610, startSeconds: 60))
+        table.environments[100_610] = []
+        table.add(ProcessRecord(pid: 100_710, ppid: 100_610, pgid: 100_710, startSeconds: 61))
+        table.add(ProcessRecord(pid: 100_910, ppid: 100_710, pgid: 100_710, startSeconds: 62))
+        scanner.listener = 100_910
+    }
+
+    @Test func stopRefusesAfterTheTabShellExitsEvenWhenANewerShellHoldsThePort() async {
+        let content = await cachedHiddenShellContent()
+        for pid in [FakeProcessTable.shell, FakeProcessTable.jobLeader, FakeProcessTable.listener] {
+            table.records.removeValue(forKey: pid)
+        }
+        addNewerTabServingThePort()
+        await content.performTick()
+        #expect(content.stopRefusal?.contains("exited") == true)
+        #expect(await content.performStop() == false)
+        await content.performRestart()
+        #expect(sink.ran.isEmpty)
+        #expect(signaller.sent.isEmpty)
+    }
+
+    @Test func zombieTabShellRefusesStopWithoutRelookup() async {
+        let content = await cachedHiddenShellContent()
+        table.add(ProcessRecord(pid: FakeProcessTable.shell, ppid: FakeProcessTable.login, pgid: FakeProcessTable.shell, isZombie: true))
+        addNewerTabServingThePort()
+        await content.performTick()
+        #expect(content.stopRefusal?.contains("exited") == true)
+        #expect(await content.performStop() == false)
+        #expect(signaller.sent.isEmpty)
+    }
+
+    @Test func stopRetriesTheLookupWhileNoShellHasBeenFound() async {
+        table.environments[FakeProcessTable.shell] = []
+        table.add(ProcessRecord(pid: FakeProcessTable.login, ppid: FakeProcessTable.batty, pgid: FakeProcessTable.login, uid: 0, startSeconds: 50))
+        table.add(ProcessRecord(pid: 100_210, ppid: FakeProcessTable.batty, pgid: 100_210, uid: 0, startSeconds: 51))
+        table.add(ProcessRecord(pid: 100_610, ppid: 100_210, pgid: 100_610, startSeconds: 51))
+        let content = content(backend: terminalBackend(spawnBaseline: ShellSpawnBaseline(seconds: 40, microseconds: 0)))
+        scanner.listener = FakeProcessTable.listener
+        await active(content)
+        await content.performTick()
+        #expect(content.stopRefusal?.contains("not found") == true)
+        table.records.removeValue(forKey: 100_210)
+        table.records.removeValue(forKey: 100_610)
+        await content.performTick()
+        #expect(content.stopRefusal == nil)
+        _ = await content.performStop()
+        #expect(signaller.sent.first?.0 == .processGroup(FakeProcessTable.jobLeader))
     }
 
     @Test func attachStopRefusesAListenerThatIsBattyOrAnAncestor() async {
