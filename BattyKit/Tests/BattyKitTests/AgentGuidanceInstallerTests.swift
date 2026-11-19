@@ -92,12 +92,15 @@ nonisolated struct AgentGuidanceInstallerTests {
         let fixture = try AgentInstallFixture()
         defer { fixture.cleanUp() }
         try fixture.mkdir(".cursor")
+        try fixture.mkdir(".codex")
         let runner = RecordingCommandRunner()
         let before = try FileManager.default.contentsOfDirectory(atPath: fixture.home.path(percentEncoded: false))
         let plan = fixture.installer(runner: runner, executables: ["claude": claude]).plan(identity: try fixture.identity())
-        #expect(plan.hosts == [.claudeCode, .cursor, .crossTool])
+        #expect(plan.hosts == [.claudeCode, .cursor, .codex, .crossTool])
         #expect(plan.render().contains(".cursor/skills/batty-cli"))
+        #expect(plan.render().contains(".codex/config.toml"))
         #expect(runner.calls.isEmpty)
+        #expect(fixture.read(".codex/config.toml") == nil)
         #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.home.path(percentEncoded: false)) == before)
     }
 
@@ -286,18 +289,195 @@ nonisolated struct AgentGuidanceInstallerTests {
         #expect(text.contains("\"batty\""))
     }
 
-    @Test func codexMCPEntryIsPrintedNotWritten() throws {
+    private func backups(_ fixture: AgentInstallFixture) -> [String] {
+        let dir = fixture.home.appending(path: "Library/Application Support/Batty/AgentGuidanceBackups")
+        return (try? FileManager.default.contentsOfDirectory(atPath: dir.path(percentEncoded: false))) ?? []
+    }
+
+    private func codexConfig(_ fixture: AgentInstallFixture) -> URL {
+        fixture.home.appending(path: ".codex/config.toml")
+    }
+
+    private func configBytes(_ fixture: AgentInstallFixture) -> [UInt8]? {
+        (try? Data(contentsOf: codexConfig(fixture))).map { Array($0) }
+    }
+
+    private func backupURL(_ fixture: AgentInstallFixture) -> URL {
+        fixture.home.appending(path: "Library/Application Support/Batty/AgentGuidanceBackups/\(backups(fixture).first ?? "")/codex/config.toml")
+    }
+
+    private func outcome(_ report: AgentInstallReport) -> AgentInstallOutcome? {
+        report.entries.first { if case .writeCodexMCPBlock = $0.action { true } else { false } }?.outcome
+    }
+
+    private static let codexFixture = "# top comment\nmodel = \"o3\"\n\n[mcp_servers.other]\ncommand = \"x\"  # keep\n\n[profiles.x]\nk = 1\n"
+
+    @Test func codexBlockIsAppendedKeepingOtherTablesByteForByte() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        try Data(Self.codexFixture.utf8).write(to: codexConfig(fixture))
+        let installer = fixture.installer()
+        let identity = try fixture.identity()
+        let report = installer.apply(installer.plan(identity: identity))
+        guard case .done? = outcome(report) else { Issue.record("expected done"); return }
+        #expect(configBytes(fixture) == Array((Self.codexFixture + "\n" + CodexConfigBlock.block(identity: identity)).utf8))
+        #expect(backups(fixture).count == 1)
+        #expect(try Data(contentsOf: backupURL(fixture)) == Data(Self.codexFixture.utf8))
+    }
+
+    @Test func codexRerunReplacesOnlyItsMarkedBlock() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        try Data(Self.codexFixture.utf8).write(to: codexConfig(fixture))
+        let installer = fixture.installer()
+        let identity = try fixture.identity()
+        _ = installer.apply(installer.plan(identity: identity))
+        let tail = "\n[profiles.after]\nk = 2\n"
+        let edited = try #require(fixture.read(".codex/config.toml"))
+            .replacingOccurrences(of: identity.cliExecutablePath, with: "/hand/edited") + tail
+        try Data(edited.utf8).write(to: codexConfig(fixture))
+        _ = installer.apply(installer.plan(identity: identity))
+        #expect(configBytes(fixture) == Array((Self.codexFixture + "\n" + CodexConfigBlock.block(identity: identity) + tail).utf8))
+    }
+
+    @Test func codexRerunWithCurrentBlockIsUnchanged() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        try Data(Self.codexFixture.utf8).write(to: codexConfig(fixture))
+        let installer = fixture.installer()
+        let identity = try fixture.identity()
+        _ = installer.apply(installer.plan(identity: identity))
+        let first = configBytes(fixture)
+        let backupsBefore = backups(fixture)
+        try FileManager.default.removeItem(at: fixture.home.appending(path: "Library/Application Support/Batty/AgentGuidanceBackups"))
+        let report = installer.apply(installer.plan(identity: identity))
+        #expect(outcome(report) == .unchanged)
+        #expect(backupsBefore.count == 1)
+        #expect(backups(fixture).isEmpty)
+        #expect(configBytes(fixture) == first)
+    }
+
+    @Test func codexUnmarkedTableOfSameNameIsManualAndUntouched() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        let original = "[mcp_servers.batty]\ncommand = \"mine\"\n"
+        try Data(original.utf8).write(to: codexConfig(fixture))
+        let installer = fixture.installer()
+        let report = installer.apply(installer.plan(identity: try fixture.identity()))
+        guard case let .manual(text)? = outcome(report) else { Issue.record("expected manual"); return }
+        #expect(text.contains("[mcp_servers.batty]"))
+        #expect(configBytes(fixture) == Array(original.utf8))
+        #expect(backups(fixture).isEmpty)
+    }
+
+    @Test func codexMissingConfigIsCreated() throws {
         let fixture = try AgentInstallFixture()
         defer { fixture.cleanUp() }
         try fixture.mkdir(".codex")
         let installer = fixture.installer()
         let identity = try fixture.identity()
-        let plan = installer.plan(identity: identity)
-        let printed = plan.actions.compactMap { if case let .printMCPEntry(.codex, text) = $0 { text } else { nil } }.first
-        #expect(printed?.contains("[mcp_servers.batty]") == true)
-        #expect(printed?.contains(identity.cliExecutablePath) == true)
-        _ = installer.apply(plan)
-        #expect(!FileManager.default.fileExists(atPath: fixture.home.appending(path: ".codex/config.toml").path(percentEncoded: false)))
+        let report = installer.apply(installer.plan(identity: identity))
+        #expect(outcome(report) == .done(""))
+        #expect(configBytes(fixture) == Array(CodexConfigBlock.block(identity: identity).utf8))
+        #expect(backups(fixture).isEmpty)
+    }
+
+    @Test func codexConfigHonoursCODEX_HOME() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        let codexHome = fixture.root.appending(path: "codexhome", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        let installer = fixture.installer(environment: ["CODEX_HOME": codexHome.path(percentEncoded: false)])
+        _ = installer.apply(installer.plan(identity: try fixture.identity()))
+        #expect(FileManager.default.fileExists(atPath: codexHome.appending(path: "config.toml").path(percentEncoded: false)))
+        #expect(fixture.read(".codex/config.toml") == nil)
+    }
+
+    @Test func codexConfigPermissionsArePreserved() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        let path = codexConfig(fixture).path(percentEncoded: false)
+        try Data(Self.codexFixture.utf8).write(to: codexConfig(fixture))
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        let installer = fixture.installer()
+        _ = installer.apply(installer.plan(identity: try fixture.identity()))
+        let permissions = try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int
+        #expect(permissions == 0o600)
+        let backupPermissions = try FileManager.default.attributesOfItem(atPath: backupURL(fixture).path(percentEncoded: false))[.posixPermissions] as? Int
+        #expect(backupPermissions == 0o600)
+    }
+
+    @Test func codexCRLFRerunReplacesTheBlockWithoutADuplicateTable() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        let original = Self.codexFixture.replacingOccurrences(of: "\n", with: "\r\n")
+        try Data(original.utf8).write(to: codexConfig(fixture))
+        let installer = fixture.installer()
+        let identity = try fixture.identity()
+        _ = installer.apply(installer.plan(identity: identity))
+        let crlfBlock = CodexConfigBlock.block(identity: identity, lineEnding: "\r\n")
+        #expect(configBytes(fixture) == Array((original + "\r\n" + crlfBlock).utf8))
+        let tail = "\r\n[profiles.after]\r\nk = 2\r\n"
+        let edited = String(decoding: try #require(configBytes(fixture)), as: UTF8.self)
+            .replacingOccurrences(of: identity.cliExecutablePath, with: "/hand/edited") + tail
+        try Data(edited.utf8).write(to: codexConfig(fixture))
+        let report = installer.apply(installer.plan(identity: identity))
+        guard case .done? = outcome(report) else { Issue.record("expected done, got \(String(describing: outcome(report)))"); return }
+        let result = String(decoding: try #require(configBytes(fixture)), as: UTF8.self)
+        #expect(configBytes(fixture) == Array((original + "\r\n" + crlfBlock + tail).utf8))
+        #expect(result.components(separatedBy: "[mcp_servers.batty]").count == 2)
+        #expect(outcome(installer.apply(installer.plan(identity: identity))) == .unchanged)
+    }
+
+    @Test func codexCRLFUnmarkedTableOfSameNameIsManualAndUntouched() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        let original = "a = 1\r\n[mcp_servers.batty]\r\ncommand = \"mine\"\r\n"
+        try Data(original.utf8).write(to: codexConfig(fixture))
+        let installer = fixture.installer()
+        let report = installer.apply(installer.plan(identity: try fixture.identity()))
+        guard case .manual? = outcome(report) else { Issue.record("expected manual"); return }
+        #expect(configBytes(fixture) == Array(original.utf8))
+        #expect(backups(fixture).isEmpty)
+    }
+
+    @Test func codexBOMIsPreserved() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
+        let original = bom + Array(Self.codexFixture.utf8)
+        try Data(original).write(to: codexConfig(fixture))
+        let installer = fixture.installer()
+        let identity = try fixture.identity()
+        _ = installer.apply(installer.plan(identity: identity))
+        #expect(configBytes(fixture) == original + Array(("\n" + CodexConfigBlock.block(identity: identity)).utf8))
+        #expect(try Data(contentsOf: backupURL(fixture)) == Data(original))
+        #expect(outcome(installer.apply(installer.plan(identity: identity))) == .unchanged)
+        #expect(configBytes(fixture) == original + Array(("\n" + CodexConfigBlock.block(identity: identity)).utf8))
+    }
+
+    @Test func codexConfigSymlinkIsKept() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        try fixture.mkdir(".codex")
+        let target = fixture.root.appending(path: "dotfiles/config.toml")
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(Self.codexFixture.utf8).write(to: target)
+        try FileManager.default.createSymbolicLink(at: codexConfig(fixture), withDestinationURL: target)
+        let installer = fixture.installer()
+        let identity = try fixture.identity()
+        _ = installer.apply(installer.plan(identity: identity))
+        let type = try FileManager.default.attributesOfItem(atPath: codexConfig(fixture).path(percentEncoded: false))[.type] as? FileAttributeType
+        #expect(type == .typeSymbolicLink)
+        #expect(try Data(contentsOf: target) == Data((Self.codexFixture + "\n" + CodexConfigBlock.block(identity: identity)).utf8))
     }
 
     @Test func oneFailedDestinationDoesNotAbortTheRest() throws {
@@ -315,6 +495,7 @@ nonisolated struct AgentGuidanceInstallerTests {
         let fixture = try AgentInstallFixture()
         defer { fixture.cleanUp() }
         try fixture.mkdir(".cursor")
+        try fixture.mkdir(".codex")
         let installer = fixture.installer(executables: ["claude": claude])
         _ = installer.apply(installer.plan(identity: try fixture.identity(beta: false)))
         _ = installer.apply(installer.plan(identity: try fixture.identity(beta: true)))
@@ -324,5 +505,8 @@ nonisolated struct AgentGuidanceInstallerTests {
         #expect(fixture.read("Library/Application Support/Batty Beta/AgentPlugin/.claude-plugin/marketplace.json") != nil)
         let servers = try #require(try fixture.json(".cursor/mcp.json")["mcpServers"] as? [String: Any])
         #expect(Set(servers.keys) == ["batty", "batty-beta"])
+        let codex = try #require(fixture.read(".codex/config.toml"))
+        #expect(codex.components(separatedBy: "# batty:begin").count == 2)
+        #expect(codex.components(separatedBy: "# batty-beta:begin").count == 2)
     }
 }

@@ -443,7 +443,7 @@ The app bundle carries this skill at
   `~/.cursor/mcp.json` or `opencode.json`. Only Batty's key changes, the old
   file is backed up first, and a file that isn't strict JSON is left alone with
   the entry printed.
-- **Codex:** the skill, and the `[mcp_servers.<key>]` block printed for you to add.
+- **Codex:** the skill, and a marked `[mcp_servers.<key>]` block written into `config.toml` (backed up first; re-runs replace only that block), with `env_vars` forwarding `BATTY_SESSION_ID`, `BATTY_TAB_ID` and `BATTY_PANE_ID`.
 - **`~/.agents/skills`:** always.
 - Beta uses `batty-beta` names throughout, so Prod and Beta installs never
   collide. Moving the app means running the install again.

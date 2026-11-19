@@ -31,7 +31,8 @@ public nonisolated enum AgentInstallAction: Sendable, Equatable {
     case copySkill(host: AgentHost, destination: URL)
     /// Sets `keyPath` in a strict-JSON config file, keeping everything else.
     case mergeMCPEntry(host: AgentHost, file: URL, keyPath: [String], entry: AgentJSON)
-    case printMCPEntry(host: AgentHost, text: String)
+    /// Appends or replaces Batty's marked `[mcp_servers.<key>]` block in Codex's `config.toml`.
+    case writeCodexMCPBlock(file: URL, key: String, block: String)
 
     public var summary: String {
         switch self {
@@ -45,8 +46,8 @@ public nonisolated enum AgentInstallAction: Sendable, Equatable {
             "\(host.rawValue): copy the skill to \(destination.path(percentEncoded: false))"
         case let .mergeMCPEntry(host, file, keyPath, _):
             "\(host.rawValue): add MCP server \(keyPath.joined(separator: ".")) to \(file.path(percentEncoded: false))"
-        case let .printMCPEntry(host, text):
-            "\(host.rawValue): add this MCP server entry yourself:\n" + text.split(separator: "\n").map { "    \($0)" }.joined(separator: "\n")
+        case let .writeCodexMCPBlock(file, key, _):
+            "\(AgentHost.codex.rawValue): add MCP server mcp_servers.\(key) to \(file.path(percentEncoded: false)) (marked block)"
         }
     }
 }
@@ -282,12 +283,11 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         if executableLookup("codex") != nil || exists(codexDirectory) {
             hosts.append(.codex)
             actions.append(.copySkill(host: .codex, destination: codexDirectory.appending(path: "skills/\(skillDirectory)", directoryHint: .isDirectory)))
-            // Foundation can't round-trip TOML, so Codex's config is never edited.
-            actions.append(.printMCPEntry(host: .codex, text: """
-                [mcp_servers.\(key)]
-                command = "\(identity.cliExecutablePath)"
-                args = ["mcp"]
-                """))
+            actions.append(.writeCodexMCPBlock(
+                file: codexDirectory.appending(path: "config.toml", directoryHint: .notDirectory),
+                key: key,
+                block: CodexConfigBlock.block(identity: identity)
+            ))
         }
 
         hosts.append(.crossTool)
@@ -334,8 +334,10 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
                 throw InstallError(message: "exit \(result.status): \(result.stderr.isEmpty ? result.stdout : result.stderr)".trimmingCharacters(in: .whitespacesAndNewlines))
             }
             return .done(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
-        case .printClaudeCommands, .printMCPEntry:
+        case .printClaudeCommands:
             return .manual("")
+        case let .writeCodexMCPBlock(file, key, block):
+            return try writeCodexMCPBlock(identity: identity, file: file, key: key, block: block, stamp: stamp)
         case let .copySkill(host, destination):
             return try copySkill(identity: identity, host: host, destination: destination, stamp: stamp)
         case let .mergeMCPEntry(host, file, keyPath, entry):
@@ -499,6 +501,50 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         }
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: file, options: .atomic)
+        return .done(detail)
+    }
+
+    /// Only the marked block is written; the rest of the file keeps its bytes. The previous file is backed up first.
+    private func writeCodexMCPBlock(identity: AgentGuidanceIdentity, file: URL, key: String, block: String, stamp: String) throws -> AgentInstallOutcome {
+        let target = file.resolvingSymlinksInPath()
+        let indented = block.split(separator: "\n").map { "    \($0)" }.joined(separator: "\n")
+        let original = try? Data(contentsOf: target)
+        var existing: String?
+        // `String(data:encoding:)` drops a UTF-8 BOM, so it is split off here and written back.
+        let bom = Data([0xEF, 0xBB, 0xBF])
+        let hasBOM = original?.starts(with: bom) ?? false
+        if let original {
+            guard let text = String(data: hasBOM ? original.dropFirst(bom.count) : original, encoding: .utf8) else {
+                return .manual("    \(file.lastPathComponent) is not UTF-8, so it was left untouched. Add this entry yourself:\n\(indented)")
+            }
+            existing = text
+        }
+        let merged: String
+        switch CodexConfigBlock.merge(existing: existing, block: block, key: key) {
+        case .unchanged:
+            return .unchanged
+        case let .conflict(reason):
+            return .manual("    \(file.lastPathComponent): \(reason), so it was left untouched. Add this entry yourself:\n\(indented)")
+        case let .write(text):
+            merged = text
+        }
+        var detail = ""
+        var permissions: Any?
+        if let original {
+            permissions = try? FileManager.default.attributesOfItem(atPath: target.path(percentEncoded: false))[.posixPermissions]
+            let backup = appSupportDirectory(for: identity).appending(path: "AgentGuidanceBackups/\(stamp)/\(Self.slug(.codex))/\(file.lastPathComponent)", directoryHint: .notDirectory)
+            try FileManager.default.createDirectory(at: backup.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try original.write(to: backup, options: .atomic)
+            if let permissions {
+                try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: backup.path(percentEncoded: false))
+            }
+            detail = "previous file backed up to \(backup.path(percentEncoded: false))"
+        }
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try ((hasBOM ? bom : Data()) + Data(merged.utf8)).write(to: target, options: .atomic)
+        if let permissions {
+            try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: target.path(percentEncoded: false))
+        }
         return .done(detail)
     }
 

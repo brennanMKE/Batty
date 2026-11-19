@@ -288,7 +288,8 @@ comes back as a tool error starting `exit <code>:`, so §7 still applies.
 Omitted Session/Pane/Tab targets resolve to your own Pane through the
 `BATTY_*` variables, exactly as on the command line. `agent install`
 registers the server for Claude Code (plugin `batty`, or `batty-beta`),
-Cursor and OpenCode, and prints the entry to add for Codex.
+Cursor and OpenCode, and writes a marked `[mcp_servers.<key>]` block into
+Codex's `config.toml` (backed up first) that forwards `BATTY_*` via `env_vars`.
 
 ## 10. Dev servers (Beta only)
 
