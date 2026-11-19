@@ -93,6 +93,22 @@ nonisolated final class ThemeTests: XCTestCase {
 
     // MARK: - Theme Selector filter scroll — [[0394]]
 
+    /// The Theme selector's footer shows the shared Escape hint.
+    @MainActor
+    func testThemeSelectorFooterShowsTheEscapeHint() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        app.typeKey("t", modifierFlags: [.command, .shift])
+
+        let root = app.descendants(matching: .any).matching(identifier: "theme-selector.root").firstMatch
+        XCTAssertTrue(root.waitForExistence(timeout: 5), "Theme Selector must open on Cmd-Shift-T")
+        let hint = root.descendants(matching: .any).matching(identifier: "picker-hint.escape").firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5), "Theme Selector footer has no Escape hint")
+        XCTAssertEqual((hint.label.isEmpty ? (hint.value as? String) ?? "" : hint.label), "Esc to dismiss")
+    }
+
     /// With the list scrolled deep into the catalog, typing a filter that
     /// matches an early Theme must bring that Theme into view, on the first
     /// keystroke and on a later one.

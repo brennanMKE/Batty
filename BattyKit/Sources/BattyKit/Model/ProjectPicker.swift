@@ -257,6 +257,8 @@ struct ProjectPickerModel: Equatable {
         selectedID = id
     }
 
+    var escapeHint: PickerEscapeHint { isFiltering ? .clear : .dismiss }
+
     /// Escape clears a filter first and asks to dismiss only when there is none.
     mutating func escape() -> ProjectPickerEscape {
         guard isFiltering else { return .dismiss }

@@ -321,9 +321,12 @@ struct CommandPaletteView: View {
                     .onChange(of: query) { _, _ in selectedIndex = 0 }
                 }
             }
+
+            PickerHintBar()
         }
         .frame(width: 580, height: 420)
         .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("command-palette.root")
         .onAppear { queryFocused = true }
     }

@@ -291,11 +291,7 @@ struct OpenQuicklyView: View {
                 }
             }
 
-            if let selectedProject {
-                projectFooter(selectedProject)
-            } else if let name = selectedTabHintName(in: results) {
-                tabFooter(name)
-            }
+            footer(project: selectedProject, tabHintName: selectedTabHintName(in: results))
         }
         .frame(width: 540, height: 380)
         .background(.regularMaterial)
@@ -316,36 +312,24 @@ struct OpenQuicklyView: View {
         }
     }
 
-    private func projectFooter(_ project: OpenQuicklyProjectRow) -> some View {
-        HStack(spacing: 18) {
-            Text(project.hint)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .accessibilityIdentifier("open-quickly.hint")
-            Spacer()
-            Text("\u{2325}\u{21A9} Open another copy")
-        }
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .top) { Divider() }
-    }
-
-    private func tabFooter(_ name: String) -> some View {
-        HStack {
-            Text("\u{2325}\u{21A9} Open another copy of \(name)")
-                .lineLimit(1)
-                .accessibilityIdentifier("open-quickly.tab-hint")
-            Spacer()
-        }
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .top) { Divider() }
+    private func footer(project: OpenQuicklyProjectRow?, tabHintName: String?) -> some View {
+        PickerHintBar(
+            leading: {
+                if let project {
+                    Text(project.hint)
+                        .fontWeight(.semibold)
+                        .accessibilityIdentifier("open-quickly.hint")
+                } else if let tabHintName {
+                    Text("\u{2325}\u{21A9} Open another copy of \(tabHintName)")
+                        .accessibilityIdentifier("open-quickly.tab-hint")
+                }
+            },
+            keys: {
+                if project != nil {
+                    Text("\u{2325}\u{21A9} Open another copy")
+                }
+            }
+        )
     }
 
     private func selectedTabHintName(in results: [OpenQuicklyEntry]) -> String? {

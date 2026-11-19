@@ -685,7 +685,7 @@ Quickly was caught as `[0150]`.
   `.openNew`. On a plain Tab row Option-Return is a plain Return. On a Tab row of a Project-backed
   Session (#0499) Option-Return reports `.openProject(projectID, .openNew)` and does not jump, so the
   user lands on the Tab row and can open another copy without pressing Down; a selected Tab row of
-  that kind shows the footer line `open-quickly.tab-hint` ("Open another copy of <name>", where <name> is the saved Project's own name, not the Session's title; no footer if the Project is gone), distinct from
+  that kind shows the footer line `open-quickly.tab-hint` ("Open another copy of <name>", where <name> is the saved Project's own name, not the Session's title; no leading hint if the Project is gone; the footer itself, with its Escape hint, is always shown), distinct from
   `open-quickly.hint`, which appears only for a selected Project row (the UI test helper
   `selectProjectRowInOpenQuickly` presses Down until that hint appears). The view only reports an
   `OpenQuicklyAction`;
@@ -736,9 +736,24 @@ shortcuts come from `DialogButtonRowLayout.placements`, pinned by
 Users: Paste confirmation, Rename Tab, Rename Session, the Background sheet,
 the Project Theme sheet, the Symbol picker, the Background Images picker
 (Done only), the Quick Reminder bar's date step (Back, Set), the trust sheet
-and the Project Editor footer. Keyboard pickers with no buttons keep their hint
-captions. Settings ▸ Clear Capture confirms in a `.confirmationDialog`
+and the Project Editor footer. Keyboard pickers with no buttons use a hint bar
+instead (see "Picker hint bars"). Settings ▸ Clear Capture confirms in a `.confirmationDialog`
 ("Delete all captured records?", Delete, Cancel), like the other confirms.
+
+## Picker hint bars
+
+Every keyboard picker shows its key hints in one footer bar, `PickerHintBar`
+(`BattyKit/Sources/BattyKit/Views/PickerHintBar.swift`), and none in its header.
+Leading is the hint for the current selection (optional, truncates first);
+trailing is the key list, always ending with the Escape hint
+(`picker-hint.escape`). "Esc to dismiss" means close without choosing; "Esc to
+clear" appears only in the Open Project picker while a filter is typed
+(`PickerEscapeHint`). Style: `.callout`, `.secondary`, `controlBackgroundColor`
+under a top `Divider`, padding 16 / 10 so the text lines up with each picker's
+16 pt content inset (not `DialogButtonRow.bar`'s 20 / 12, which sizes for
+buttons). Users: Layout picker, Theme selector, Session Theme selector, Session
+color picker ("↩ Set"), Open Project picker, Open Quickly (always shown) and the
+Command Palette.
 
 ---
 
@@ -1164,8 +1179,8 @@ Command Palette entries are built in `CommandPaletteView.allCommands`.
 - A non-blank filter collapses to one compact four-column grid
   (`project-picker.rest` alone; the Open now strip is hidden and open matches
   keep their OPEN badge in the grid) under an "N matches" heading. Escape clears a
-  non-blank filter and dismisses only when the filter is blank; the header
-  caption reads "Esc to clear" or "Esc to dismiss" to match.
+  non-blank filter and dismisses only when the filter is blank; the footer's
+  Escape hint reads "Esc to clear" or "Esc to dismiss" to match.
 - Arrow keys move the selection through `ProjectPickerGridCursor` over the
   tiers in reading order, without wrapping. Left and right step one card and
   cross the tier boundary. The filter field's key handlers consume the arrows and

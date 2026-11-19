@@ -30,9 +30,6 @@ struct LayoutPickerView: View {
                 Text("Choose a Layout")
                     .font(.headline)
                 Spacer()
-                Text("Esc to dismiss")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -79,6 +76,8 @@ struct LayoutPickerView: View {
                 .onKeyPress(.downArrow)  { moveSelection(columnCount);  return .handled }
                 .onKeyPress(.return)     { activate();                   return .handled }
                 .onKeyPress(.escape)     { isPresented = false;          return .handled }
+
+            PickerHintBar()
         }
         .frame(width: 600, height: 420)
         .background(.regularMaterial)

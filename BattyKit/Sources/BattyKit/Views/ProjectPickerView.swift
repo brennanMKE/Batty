@@ -58,7 +58,6 @@ struct ProjectPickerView: View {
             HStack {
                 Text("Open a Project").font(.headline)
                 Spacer()
-                Text(current.isFiltering ? LocalizedStringKey("Esc to clear") : LocalizedStringKey("Esc to dismiss")).font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -297,26 +296,25 @@ struct ProjectPickerView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 18) {
-            Text(model.hint)
-                .fontWeight(.semibold)
-                .accessibilityLabel(Text(model.hint))
-                .accessibilityIdentifier("project-picker.hint")
-            Spacer()
-            if model.selectedID != nil {
-                Text("\u{2325}\u{21A9} Open another copy")
-                Text("\u{2318}E Edit")
+        let current = model
+        return PickerHintBar(
+            escape: current.escapeHint,
+            leading: {
+                Text(current.hint)
+                    .fontWeight(.semibold)
+                    .accessibilityLabel(Text(current.hint))
+                    .accessibilityIdentifier("project-picker.hint")
+            },
+            keys: {
+                if current.selectedID != nil {
+                    Text("\u{2325}\u{21A9} Open another copy")
+                    Text("\u{2318}E Edit")
+                }
+                if current.offersNewProject {
+                    Text("\u{2318}N New Project\u{2026}")
+                }
             }
-            if model.offersNewProject {
-                Text("\u{2318}N New Project\u{2026}")
-            }
-        }
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(alignment: .top) { Divider() }
+        )
     }
 
     /// Command-N is File > New Session and Command-E is the default for
