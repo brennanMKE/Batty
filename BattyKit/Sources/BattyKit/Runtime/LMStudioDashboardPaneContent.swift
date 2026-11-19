@@ -520,7 +520,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         // closures themselves (review round 1, B1).
         process.standardOutput.map { ($0 as? Pipe)?.fileHandleForReading.readabilityHandler = nil }
         process.standardError.map { ($0 as? Pipe)?.fileHandleForReading.readabilityHandler = nil }
-        process.terminate()
+        ProcessSignal.send(SIGTERM, to: process)
         if boundedWait {
             scheduleTeardownReap(for: process, label: "model-stream")
         }
@@ -713,7 +713,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
         // cleared explicitly, not just stdout's.
         process.standardOutput.map { ($0 as? Pipe)?.fileHandleForReading.readabilityHandler = nil }
         process.standardError.map { ($0 as? Pipe)?.fileHandleForReading.readabilityHandler = nil }
-        process.terminate()
+        ProcessSignal.send(SIGTERM, to: process)
         if boundedWait {
             scheduleTeardownReap(for: process, label: "runtime-stream")
         }
@@ -788,7 +788,7 @@ public final class LMStudioDashboardPaneContent: PaneContentLifecycle {
 
     // MARK: - Helpers
 
-    /// `SIGTERM` is already sent by the caller (`process.terminate()`) before
+    /// `SIGTERM` is already sent by the caller (`ProcessSignal.send(SIGTERM, to:)`) before
     /// this is reached. #0354: the bounded wait for the child to actually
     /// exit — and the `SIGKILL` escalation if it doesn't — used to run as a
     /// `Thread.sleep` poll on the calling thread, which was always the main

@@ -13,6 +13,7 @@ import Testing
 /// is a plain `/bin/sh` one-liner standing in for `lms log stream`, so the
 /// real pipe → NDJSON-parse → observable-state path is exercised end to
 /// end, not just mocked away.
+@Suite(.auditsSignals)
 @MainActor
 struct LMStudioDashboardPaneContentTests {
 

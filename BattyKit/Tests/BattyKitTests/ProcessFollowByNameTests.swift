@@ -1,14 +1,19 @@
 // ProcessFollowByNameTests.swift
 
 import Foundation
+import OSLog
+import Security
 import Testing
 @testable import BattyKit
+
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ProcessFollowByNameTests")
 
 /// Follow-by-name (mode C) of `ProcessStatusPaneContent`, driven through the
 /// `nameResolver` and `coreMetricsProvider` seams and a `TestClock`. No
 /// real time passes in any test here except the real-process tests, which
 /// wait on nothing but process exit they forced themselves. Those are
 /// `nonisolated`, so blocking on a child's exit never stalls the main actor.
+@Suite(.auditsSignals)
 @MainActor
 struct ProcessFollowByNameTests {
 
@@ -721,7 +726,26 @@ struct ProcessFollowByNameTests {
         let name = "bt0486-" + UUID().uuidString.prefix(6).lowercased()
         let url = directory.appendingPathComponent(name)
         try FileManager.default.copyItem(at: URL(fileURLWithPath: "/bin/cat"), to: url)
+        try adHocSign(url)
         return url
+    }
+
+    /// A copy of an Apple platform binary still carries its platform
+    /// signature, and the kernel SIGKILLs it ("Code Signature Invalid") moments
+    /// after exec from a path outside the system volume. Whether the test sees
+    /// the child alive first is a race it loses under load. Re-signing ad hoc
+    /// makes the copy an ordinary non-platform binary that runs from anywhere.
+    private nonisolated static func adHocSign(_ url: URL) throws {
+        let codesign = Process()
+        codesign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        codesign.arguments = ["--force", "--sign", "-", url.path]
+        codesign.standardOutput = FileHandle.nullDevice
+        codesign.standardError = FileHandle.nullDevice
+        try codesign.run()
+        codesign.waitUntilExit()
+        guard codesign.terminationStatus == 0 else {
+            throw CocoaError(.executableLoad, userInfo: [NSFilePathErrorKey: url.path])
+        }
     }
 
     @Test nonisolated func theRealEnumeratorFindsAUniquelyNamedProcessAndItsReplacement() async throws {
@@ -778,6 +802,19 @@ struct ProcessFollowByNameTests {
         }
     }
 
+    /// Whether the copied executable still exists, its size against
+    /// `/bin/cat`, and an in-process static code-signing check of it.
+    private static func executableReport(_ url: URL) -> String {
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int).map(String.init) ?? "missing"
+        let original = (try? FileManager.default.attributesOfItem(atPath: "/bin/cat")[.size] as? Int).map(String.init) ?? "?"
+        var code: SecStaticCode?
+        var status = SecStaticCodeCreateWithPath(url as CFURL, [], &code)
+        if status == errSecSuccess, let code {
+            status = SecStaticCodeCheckValidity(code, [], nil)
+        }
+        return "executable size=\(size) (/bin/cat \(original)) codesign=\(status)"
+    }
+
     /// Evaluated only on failure. Per owned child: whether it is still
     /// running and signalable (`kill0` `ESRCH` means it exited), and the raw
     /// `proc_pidinfo` result with `errno` (signalable but a short `rc` means a
@@ -804,6 +841,13 @@ struct ProcessFollowByNameTests {
             if read.info != nil, let identity = ProcessInspector.listedIdentity(pid: pid) {
                 line += " identity=\(identity)"
             }
+            line += "; " + DeathRecords.report(ObjectIdentifier(process))
+            if let url = process.executableURL {
+                line += "; " + executableReport(url)
+            }
+            let when = Date().formatted(.iso8601.time(includingFractionalSeconds: true))
+            line += "; failed at \(when)"
+            logger.error("follow-test child pid \(pid, privacy: .public) check failed at \(when, privacy: .public)")
             return line
         }).joined(separator: "; "))
     }

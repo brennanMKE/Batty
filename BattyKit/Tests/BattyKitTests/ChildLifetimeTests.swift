@@ -3,6 +3,7 @@
 import Darwin
 import Foundation
 import Testing
+@testable import BattyKit
 
 nonisolated struct ChildLifetimeTests {
 
@@ -68,8 +69,8 @@ nonisolated struct ChildLifetimeTests {
             Issue.record("the child never installed its SIGTERM trap")
             return
         }
-        kill(process.processIdentifier, SIGTERM)
-        kill(process.processIdentifier, SIGKILL)
+        ProcessSignal.send(SIGTERM, toPid: process.processIdentifier)
+        ProcessSignal.send(SIGKILL, toPid: process.processIdentifier)
 
         guard await exited() else {
             Issue.record("the child survived SIGKILL")

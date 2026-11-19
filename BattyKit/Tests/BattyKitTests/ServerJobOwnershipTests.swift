@@ -123,22 +123,13 @@ struct ServerJobOwnershipTests {
     /// The real table reads a spawned child's parent, group and start time,
     /// and Batty's ancestry.
     @Test func systemTableRecordsASpawnedChild() async throws {
-        var pid: pid_t = 0
         let baseline = ShellSpawnBaseline.now()
-        var argv: [UnsafeMutablePointer<CChar>?] = [strdup("/bin/sleep"), strdup("30"), nil]
-        defer { for pointer in argv where pointer != nil { free(pointer) } }
-        try #require(posix_spawn(&pid, "/bin/sleep", nil, nil, &argv, environ) == 0)
+        let child = try TestChildSpawner.spawn("/bin/sleep", arguments: ["/bin/sleep", "30"], ownGroup: false)
+        let pid = child.pid
         let table = SystemProcessTable()
         let record = table.snapshot().records[pid]
-        let child = pid
-        kill(child, SIGKILL)
-        let reaped = await awaitBounded {
-            await Task.detached {
-                var status: Int32 = 0
-                _ = waitpid(child, &status, 0)
-            }.value
-        }
-        #expect(reaped)
+        child.signal(SIGKILL)
+        #expect(await child.reap() != nil)
         #expect(record?.ppid == getpid())
         #expect(record?.pgid == getpgrp())
         #expect(record.map(baseline.precedes) == true)

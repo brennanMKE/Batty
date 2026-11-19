@@ -28,6 +28,7 @@ import Testing
 /// .init` calls `setUp()` on it — so this suite exercises this kind's own
 /// teardown code (including real, if harmless, subprocesses for the B2
 /// end-to-end proof below), not a generic stand-in.
+@Suite(.auditsSignals)
 @MainActor
 struct LMStudioDashboardWiringTests {
 

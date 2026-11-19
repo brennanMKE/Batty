@@ -50,7 +50,7 @@ nonisolated enum TeardownReaper {
             return
         }
         logger.error("\(logPrefix, privacy: .public): \(label, privacy: .public) did not exit within \(bound, privacy: .public)s bound; sending SIGKILL")
-        kill(process.processIdentifier, SIGKILL)
+        ProcessSignal.send(SIGKILL, to: process)
         let killDeadline = Date().addingTimeInterval(min(bound, 0.5))
         while process.isRunning, Date() < killDeadline {
             try? await Task.sleep(for: .milliseconds(20))

@@ -358,14 +358,22 @@ struct ServerPaneInAppDisplayTests {
 
     @Test func openInBattyShownOnlyForAllowedListeningURLs() async {
         let clock = TestClock()
-        let allowed = ServerPaneContent(port: 1, url: URL(string: "http://127.0.0.1:1/"), backend: FakeInProcessBackend(), clock: clock, opener: { _ in })
+        let signaller = FakeProcessSignaller()
+        let table = FakeProcessTable(tabID: UUID())
+        let allowed = ServerPaneContent(
+            port: 1, url: URL(string: "http://127.0.0.1:1/"), backend: FakeInProcessBackend(), clock: clock,
+            scanner: FakePortScanner(), signaller: signaller, processTable: table, opener: { _ in }
+        )
         allowed.setUp(visible: true)
         await clock.waitForSleepers(1)
         #expect(!allowed.canOpenPreview)
         allowed.openPreview = {}
         await allowed.performTick()
         #expect(allowed.canOpenPreview)
-        let foreign = ServerPaneContent(port: 1, url: URL(string: "http://example.com:1/"), backend: FakeInProcessBackend(), clock: clock, opener: { _ in })
+        let foreign = ServerPaneContent(
+            port: 1, url: URL(string: "http://example.com:1/"), backend: FakeInProcessBackend(), clock: clock,
+            scanner: FakePortScanner(), signaller: signaller, processTable: table, opener: { _ in }
+        )
         foreign.openPreview = {}
         foreign.setUp(visible: true)
         await foreign.performTick()
@@ -373,5 +381,6 @@ struct ServerPaneInAppDisplayTests {
         #expect(!foreign.canOpenPreview)
         allowed.tearDown()
         foreign.tearDown()
+        #expect(signaller.sent.isEmpty)
     }
 }

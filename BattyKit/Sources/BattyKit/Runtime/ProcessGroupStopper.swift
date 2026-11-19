@@ -71,6 +71,7 @@ public enum ProcessGroupStopper {
                 logger.error("stop refused before signal \(sig, privacy: .public): \(reason, privacy: .public)")
                 return .refused(reason)
             }
+            if Task.isCancelled { return .refused("cancelled") }
             let rc = signaller.signal(target, sig)
             if sig == SIGKILL { return .killed }
             if rc == ESRCH { return .exited(after: sig) }
@@ -127,13 +128,14 @@ public nonisolated final class SystemProcessSignaller: ProcessSignalling {
     public func signal(_ target: StopTarget, _ sig: Int32) -> Int32 {
         switch target {
         case .processGroup(let pgid):
-            return killpg(pgid, sig) == 0 ? 0 : errno
+            return ProcessSignal.send(sig, toGroup: pgid)
         case .processTree(let root):
             let pids = Self.tree(root: root)
             guard !pids.isEmpty else { return ESRCH }
             var firstError: Int32 = 0
-            for pid in pids where kill(pid, sig) != 0 && firstError == 0 {
-                firstError = errno
+            for pid in pids {
+                let rc = ProcessSignal.send(sig, toPid: pid)
+                if rc != 0, firstError == 0 { firstError = rc }
             }
             return firstError
         }

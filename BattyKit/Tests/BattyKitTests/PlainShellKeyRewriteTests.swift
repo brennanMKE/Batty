@@ -61,39 +61,18 @@ struct PlainShellKeyRewriteTests {
         #expect(result.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.capsLock])
     }
 
-    private func spawnSleeper(joiningGroup pgid: pid_t) throws -> pid_t {
-        var attr: posix_spawnattr_t?
-        posix_spawnattr_init(&attr)
-        defer { posix_spawnattr_destroy(&attr) }
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP))
-        posix_spawnattr_setpgroup(&attr, pgid)
-        var pid: pid_t = 0
-        let args: [UnsafeMutablePointer<CChar>?] = [strdup("sleep"), strdup("30"), nil]
-        defer { args.forEach { free($0) } }
-        let status = posix_spawn(&pid, "/bin/sleep", nil, &attr, args, environ)
-        try #require(status == 0)
-        return pid
-    }
-
     @Test func groupMemberCountIsExactForSingleAndMultiMemberGroups() throws {
-        let leader = try spawnSleeper(joiningGroup: 0)
-        let follower = try spawnSleeper(joiningGroup: leader)
-        var followerReaped = false
+        let leader = try TestChildSpawner.spawn("/bin/sleep", arguments: ["sleep", "30"], ownGroup: true)
+        let follower = try TestChildSpawner.spawn("/bin/sleep", arguments: ["sleep", "30"], ownGroup: true, joiningGroup: leader.pid)
         defer {
-            var status: Int32 = 0
-            if !followerReaped {
-                kill(follower, SIGKILL)
-                waitpid(follower, &status, 0)
-            }
-            kill(leader, SIGKILL)
-            waitpid(leader, &status, 0)
+            if follower.signal(SIGKILL) == 0 { follower.reapNow() }
+            leader.signal(SIGKILL)
+            leader.reapNow()
         }
-        #expect(PlainShellKeyRewrite.groupMemberCount(of: leader) == 2)
-        kill(follower, SIGKILL)
-        var status: Int32 = 0
-        waitpid(follower, &status, 0)
-        followerReaped = true
-        #expect(PlainShellKeyRewrite.groupMemberCount(of: leader) == 1)
+        #expect(PlainShellKeyRewrite.groupMemberCount(of: leader.pid) == 2)
+        follower.signal(SIGKILL)
+        follower.reapNow()
+        #expect(PlainShellKeyRewrite.groupMemberCount(of: leader.pid) == 1)
     }
 
     @Test func unknownForegroundProcessIsLeftAlone() {

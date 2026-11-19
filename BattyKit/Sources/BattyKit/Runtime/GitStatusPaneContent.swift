@@ -309,7 +309,7 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
 
     public func terminateIfRunning() {
         for process in snapshotActiveProcesses() where process.isRunning {
-            process.terminate()
+            ProcessSignal.send(SIGTERM, to: process)
         }
     }
 
@@ -317,7 +317,7 @@ public nonisolated final class ProcessGitStatusScanner: GitStatusScanning, @unch
         let processes = snapshotActiveProcesses().filter { $0.isRunning }
         guard !processes.isEmpty else { return }
         for process in processes {
-            process.terminate()
+            ProcessSignal.send(SIGTERM, to: process)
         }
         // #0422: `SIGTERM` above is synchronous; the bounded wait for it to
         // actually take effect (and the `SIGKILL` escalation if it

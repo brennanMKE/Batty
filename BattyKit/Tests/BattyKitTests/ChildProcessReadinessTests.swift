@@ -7,6 +7,7 @@ import Testing
 /// Direct coverage of `ChildProcessReadiness` (#0428) — both entry points,
 /// and the hang-guard expiry path neither one is supposed to rely on to
 /// succeed.
+@Suite(.auditsSignals)
 struct ChildProcessReadinessTests {
     @Test func waitForDataResolvesTrueOnceTheChildWritesToThePipe() async throws {
         let process = Process()
@@ -30,7 +31,7 @@ struct ChildProcessReadinessTests {
         let pipe = Pipe()
         process.standardOutput = pipe
         try process.run()
-        defer { process.terminate() }
+        defer { ProcessSignal.send(SIGTERM, to: process) }
 
         // No elapsed-time assertion here (AGENTS.md "Asynchronous tests"):
         // under heavy parallel load elsewhere in the suite, the hang

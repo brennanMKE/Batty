@@ -17,6 +17,7 @@ import Testing
 /// rather than touching `.shared` — the singleton is process-wide, and
 /// Swift Testing can run these in parallel with unrelated suites that also
 /// touch `.shared` (the real conformers' default).
+@Suite(.auditsSignals)
 struct PendingTeardownReapRegistryTests {
 
     // MARK: - Fixture
@@ -56,7 +57,7 @@ struct PendingTeardownReapRegistryTests {
         registry.deregister(token)
         #expect(registry.pendingCountForTesting == 0)
 
-        process.terminate()
+        ProcessSignal.send(SIGTERM, to: process)
     }
 
     @Test func deregisteringAnUnknownTokenIsANoOp() {
@@ -90,7 +91,7 @@ struct PendingTeardownReapRegistryTests {
         }
         let pid = process.processIdentifier
 
-        process.terminate()
+        ProcessSignal.send(SIGTERM, to: process)
         #expect(process.isRunning, "sanity check: the child must still be alive immediately after SIGTERM, or this isn't exercising the ignore-SIGTERM path")
 
         let graceClock = TestClock()
@@ -131,7 +132,7 @@ struct PendingTeardownReapRegistryTests {
 
         let graceClock = TestClock()
         for (index, entry) in fixtures.enumerated() {
-            entry.process.terminate()
+            ProcessSignal.send(SIGTERM, to: entry.process)
             registry.register(process: entry.process, label: "stubborn-\(index)", bound: 0.2, clock: graceClock)
         }
         #expect(registry.pendingCountForTesting == 2)

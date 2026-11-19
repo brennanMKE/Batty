@@ -20,6 +20,7 @@ import Testing
 /// The git fixtures block on `waitUntilExit()`, so the real-git tests and
 /// their helpers are `nonisolated`: on the main actor they would stall every
 /// other test in the run.
+@Suite(.auditsSignals)
 @MainActor
 struct ProcessGitStatusScannerTests {
 

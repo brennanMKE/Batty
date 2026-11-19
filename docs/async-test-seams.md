@@ -441,3 +441,13 @@ invoked from a queue XPC controls, not a Swift executor. See
 `docs/xpc/swift-concurrency-and-xpc.md` §1 (`SIGTRAP`/
 `_swift_task_checkIsolatedSwift`, and the quick-reference table's matching
 row) and `docs/xpc/FINDINGS.md:122` — not repeated here.
+
+## 7. Signals: `ProcessSignal`, `TestChildSpawner`, `.auditsSignals` and the canaries (#0676)
+
+Unit tests run on the host, so a test must never signal a process it didn't start.
+
+- **`ProcessSignal`** (`BattyKit/Sources/BattyKit/Runtime/ProcessSignal.swift`) is the only code that calls `kill`/`killpg` with a real signal; `SignalCallSiteAuditTests.onlyTheSeamSendsSignals` fails on any other `kill(`, `killpg(`, `.terminate()` or `.interrupt()` in `Sources/BattyKit` or `Tests/BattyKitTests` (`kill(pid, 0)` probes are fine). It always refuses pid ≤ 0, group ≤ 1 and our own group. `send(_:to: Process)` sends only while the `Process` is running and its pid's parent is still us, so a pid Foundation has reaped is never hit.
+- **`ProcessSignal.audit`** is nil in production. `SignalAudit.ensureInstalled()` (called by `ChildProcessFixture`, `TestChildSpawner` and the `.auditsSignals` suite trait) sets it to refuse, record and `Issue.record` any send to a pid or group the run didn't spawn, or already reaped, or that another test spawned.
+- **`TestChildSpawner.spawn`** is the `posix_spawn` helper: it registers the child, resets signal dispositions and mask, and returns an `OwnedChild` whose `signal`/`signalGroup` refuse after `reap()`.
+- **Canaries.** The first install starts two trap canaries (one in its own group with a `batty-0486` path, one in the runner's group). `SignalCanary.check()` is non-blocking; findings are recorded after every `.auditsSignals` test and in `ChildProcessFixture.killAndReapAll`.
+- **Don't copy an Apple platform binary to run it** (e.g. `/bin/cat` to a temp path): the kernel SIGKILLs the copy ("Code Signature Invalid") moments after exec. Re-sign the copy ad hoc, as `ProcessFollowByNameTests.uniqueCatCopy` does. `ChildProcessFixture.deathReport(for:)` tells you how a child ended.

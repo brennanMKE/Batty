@@ -122,7 +122,7 @@ struct ProcessInspectorTests {
         ChildLifetime.hold(process)
         try process.run()
         defer {
-            process.terminate()
+            ProcessSignal.send(SIGTERM, to: process)
             process.waitUntilExit()
         }
         let children = ProcessInspector.children(ofPid: getpid())
@@ -307,21 +307,16 @@ struct ProcessInspectorTests {
     /// production `commandLine(pid:)` path — not a copy of the parser,
     /// the actual function every other caller uses.
     @Test func commandLineHandlesARealProcessWithAZeroLengthArgvZeroWithoutLeakingItsEnvironment() throws {
-        var pid: pid_t = 0
-        var argv: [UnsafeMutablePointer<CChar>?] = [strdup(""), strdup("2"), nil]
-        var envp: [UnsafeMutablePointer<CChar>?] = [strdup("SECRET_TOKEN=supersecretvalue"), strdup("PATH=/usr/bin:/bin"), nil]
+        let child = try TestChildSpawner.spawn(
+            "/bin/sleep",
+            arguments: ["", "2"],
+            ownGroup: false,
+            environment: ["SECRET_TOKEN=supersecretvalue", "PATH=/usr/bin:/bin"]
+        )
+        let pid = child.pid
         defer {
-            for pointer in argv where pointer != nil { free(pointer) }
-            for pointer in envp where pointer != nil { free(pointer) }
-        }
-
-        let spawnRC = posix_spawn(&pid, "/bin/sleep", nil, nil, &argv, &envp)
-        #expect(spawnRC == 0)
-        guard spawnRC == 0 else { return }
-        defer {
-            kill(pid, SIGKILL)
-            var status: Int32 = 0
-            waitpid(pid, &status, 0)
+            child.signal(SIGKILL)
+            child.reapNow()
         }
         // No wait needed here (`#0431`, `docs/async-test-seams.md` §5 Q1):
         // XNU's exec path lays out argv/envp on the new image's stack
