@@ -4,6 +4,18 @@ A native macOS terminal multiplexer built on libghostty. Single-window default, 
 
 This file is binding guidance for every agent session and subagent (Claude Code, Codex, and others). `CLAUDE.md` only imports this file; edit guidance here, not there. **If something here contradicts a downstream skill, this file wins for code/repo conventions; `issues/Issues.md` wins for issue-tracker workflow.**
 
+## Top design goal: progressive disclosure (binding, user directive 2026-11-19)
+
+Batty must be as simple as possible to use on day 1. More features are discovered and adopted when the user needs them; they are never pushed on the user.
+
+- **No unsolicited UI.** Don't add launch sheets, onboarding popups, nag prompts, banners or automatic setup flows to introduce or enable a feature. A feature shows itself only after the user asks for it, or when it reports on something the user started (for example a bell from their own terminal program).
+- **Opt in through Settings.** Optional capabilities (the CLI tool, the MCP server and agent guidance, servers, Tailscale sharing, and so on) are explained, set up and turned on or off in Settings, with clear guidance there. They are off or out of the way until the user chooses them.
+- **Document, don't advertise.** New features go in Help, the docs and the changelog, not into the user's path.
+- **Defaults stay quiet and safe.** A new feature must not change what an existing user sees or how the app behaves until they opt in, and must not show permission prompts the user didn't cause (#0674).
+- **Keep the default surface small.** Prefer a menu item, a Settings row or a CLI verb over a new always-visible control. Never grow the Session row; don't add toolbar buttons without the user's explicit request.
+
+When a plan, design doc or review finds a change that conflicts with this goal, flag it and choose the opt-in alternative.
+
 ## Read these first
 
 When starting any non-trivial task, read in this order:
