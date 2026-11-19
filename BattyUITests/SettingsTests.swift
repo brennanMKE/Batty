@@ -1,5 +1,6 @@
 // SettingsTests.swift
 
+import AppKit
 import XCTest
 
 /// Settings window regression suite for [[0166]].
@@ -112,6 +113,32 @@ nonisolated final class SettingsTests: XCTestCase {
                       "Advanced must show the AI Agents Install… button")
         XCTAssertTrue(app.buttons["settings.agents.addToProject"].exists,
                       "Advanced must show the AI Agents Add to Project… button")
+    }
+
+    @MainActor
+    func testAdvancedSettingsCopiesGlobalInstructionsPrompt() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        app.typeKey(",", modifierFlags: [.command])
+        let advanced = app.toolbars.buttons["Advanced"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 10))
+        advanced.click()
+
+        let sentinel = "batty-uitest-sentinel-\(UUID().uuidString)"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(sentinel, forType: .string)
+
+        let copy = app.buttons["settings.agents.copyGlobalPrompt"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        copy.click()
+
+        let copied = NSPasteboard.general.string(forType: .string) ?? ""
+        XCTAssertNotEqual(copied, sentinel)
+        XCTAssertFalse(copied.isEmpty)
+        XCTAssertTrue(copied.contains("~/.codex/AGENTS.md"))
+        XCTAssertTrue(copied.contains("If those variables are not set, you are not in Batty; ignore this section."))
     }
 
     // MARK: - Helpers

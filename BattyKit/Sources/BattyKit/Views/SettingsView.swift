@@ -563,6 +563,30 @@ private struct AgentIntegrationRows: View {
             .disabled(model.isBusy)
             .accessibilityIdentifier("settings.agents.addToProject")
         }
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Global instructions")
+                Text("Copy a prompt for your agent. It adds or updates the Batty section in the agent's own global instructions file; Batty never edits that file.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Copy Prompt") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(AgentGlobalInstructionsPrompt.text, forType: .string)
+            }
+            .accessibilityIdentifier("settings.agents.copyGlobalPrompt")
+        }
+        DisclosureGroup("Show Prompt") {
+            ScrollView {
+                Text(AgentGlobalInstructionsPrompt.text)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("settings.agents.globalPrompt")
+            }
+            .frame(maxHeight: 260)
+        }
         switch model.state {
         case let .snippetWritten(file):
             resultText(String(localized: "Wrote \(file.path(percentEncoded: false))."))

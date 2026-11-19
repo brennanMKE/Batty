@@ -121,6 +121,32 @@ nonisolated struct AgentGuidanceInstallerTests {
         #expect(plan.actions.contains(.copySkill(host: .openCode, destination: fixture.home.appending(path: "xdg/opencode/skills/batty-cli", directoryHint: .isDirectory))))
     }
 
+    @Test func installNeverTouchesGlobalInstructionFiles() throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        for directory in [".claude", ".codex", ".config/opencode", ".cursor"] {
+            try fixture.mkdir(directory)
+        }
+        let sentinel = Data("## Batty\nhand-written\n".utf8)
+        let files = [".claude/CLAUDE.md", ".codex/AGENTS.md", ".config/opencode/AGENTS.md"]
+        for file in files {
+            try sentinel.write(to: fixture.home.appending(path: file))
+        }
+        let installer = fixture.installer(runner: RecordingCommandRunner(), executables: ["claude": claude])
+        let plan = installer.plan(identity: try fixture.identity())
+        let rendered = plan.render()
+        for fragment in ["CLAUDE.md", ".codex/AGENTS.md", "opencode/AGENTS.md"] {
+            #expect(!rendered.contains(fragment))
+        }
+        _ = installer.apply(plan)
+        for file in files {
+            #expect(try Data(contentsOf: fixture.home.appending(path: file)) == sentinel)
+        }
+        let backups = fixture.home.appending(path: "Library/Application Support/Batty/AgentGuidanceBackups", directoryHint: .isDirectory)
+        let backedUp = (FileManager.default.enumerator(atPath: backups.path(percentEncoded: false))?.allObjects as? [String]) ?? []
+        #expect(!backedUp.contains { $0.hasSuffix("CLAUDE.md") || $0.hasSuffix("AGENTS.md") })
+    }
+
     @Test(arguments: [false, true])
     func stagedMarketplaceUsesVariantNames(beta: Bool) throws {
         let fixture = try AgentInstallFixture()

@@ -291,6 +291,37 @@ registers the server for Claude Code (plugin `batty`, or `batty-beta`),
 Cursor and OpenCode, and writes a marked `[mcp_servers.<key>]` block into
 Codex's `config.toml` (backed up first) that forwards `BATTY_*` via `env_vars`.
 
+### Adding Batty to your global instructions
+
+Batty never edits your global instructions file. When the user asks you to add Batty to it, do what this prompt says; Settings → Advanced → AI Agents → Copy Prompt gives the user the same text:
+
+````text
+Add Batty to your global instructions, the file you read at the start of every session:
+
+- Claude Code: `~/.claude/CLAUDE.md`
+- Codex: `~/.codex/AGENTS.md`
+- OpenCode: `~/.config/opencode/AGENTS.md`
+- Cursor has no such file: show me the section below so I can paste it into Cursor's User Rules (Cursor Settings → Rules).
+
+If the file does not exist, create it. If it already has a `## Batty` section, replace that whole section, from its heading up to the next `## ` heading or the end of the file, with the text below; do not add a second one. Change nothing else in the file. Then tell me which file you changed.
+
+```markdown
+## Batty
+
+At the start of a session, run `env | grep '^BATTY'`. If `BATTY_SESSION_ID`, `BATTY_TAB_ID` and `BATTY_PANE_ID` are set, you are running in a terminal Pane of Batty, a macOS terminal multiplexer, and can drive it:
+
+- Prefer the `batty` MCP tools (`batty-beta` in Batty Beta) when they are available (`batty mcp`, installed by `batty agent install`). Otherwise use the CLI: `batty` (or `batty-beta` in Batty Beta). Run `batty capabilities` to see the available commands.
+- Use Batty to split Panes and set reminders (`batty session remind`) when they help the user follow your work.
+- Show status in Batty Panes (`batty pane split --view git-status --unique`) rather than printing it.
+- Start dev servers with `batty server start --port N -- <command>` (or `batty server attach --port N` if one is already running) when `batty capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.
+- Preview static pages with `batty server serve <dir> --open`, never `python3 -m http.server`.
+- Use `batty notify` to get the user's attention.
+- Close the Panes and Sessions you open when you are done with them.
+
+If those variables are not set, you are not in Batty; ignore this section.
+```
+````
+
 ## 10. Dev servers (Beta only)
 
 `batty-beta` has `server start|attach|stop|restart` (#0648); Prod `batty`

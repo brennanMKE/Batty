@@ -1,5 +1,6 @@
 // AgentSkillFlagDriftTests.swift
 
+import BattyCLICore
 import BattyXPCCore
 import Foundation
 import Testing
@@ -190,7 +191,10 @@ struct AgentSkillFlagDriftTests {
     }
 
     @Test func everyFlagTheSkillShowsExistsOnItsVerbInCapabilities() throws {
-        let markdown = try Self.skillMarkdown()
+        // The embedded global-instructions prompt is prose built from code and
+        // pinned by AgentGlobalInstructionsPromptTests; its "`batty capabilities`
+        // lists it ... pass `--split`" sentence would read as `capabilities --split`.
+        let markdown = try Self.skillMarkdown().replacingOccurrences(of: AgentGlobalInstructionsPrompt.text, with: "")
         let pairs = Self.verbFlagPairs(in: markdown)
         let knownFlags = Self.knownFlagsByVerb()
 
