@@ -191,11 +191,14 @@ nonisolated final class TestClock: SchedulingClock, @unchecked Sendable {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
             let id = UUID()
-            let timeoutWorkItem = DispatchWorkItem { [weak self] in
+            let progressGuard = MainQueueProgressGuard(
+                bound: bound,
+                progress: { [weak self] in self?.sleeperCount ?? 0 }
+            ) { [weak self] _ in
                 self?.removeRegistrationWaiter(id: id)
                 once.resume(false)
             }
-            once.setOnResumed { timeoutWorkItem.cancel() }
+            once.setOnResumed { progressGuard.cancel() }
             lock.lock()
             if sleepers.count >= count {
                 lock.unlock()
@@ -204,8 +207,14 @@ nonisolated final class TestClock: SchedulingClock, @unchecked Sendable {
             }
             registrationWaiters[id] = RegistrationWaiter(threshold: count) { once.resume(true) }
             lock.unlock()
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeoutWorkItem)
+            progressGuard.arm()
         }
+    }
+
+    private var sleeperCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return sleepers.count
     }
 
     private func removeRegistrationWaiter(id: UUID) {

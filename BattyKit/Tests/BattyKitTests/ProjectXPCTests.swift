@@ -65,17 +65,77 @@ private final class EventRecorder {
     }
 }
 
+/// How far one XPC request got, so a missing reply names the step it
+/// reached instead of only "no reply".
+nonisolated final class XPCRequestTrace: @unchecked Sendable {
+    enum Step: Int, Sendable {
+        case sent
+        case appTaskStarted
+        case replied
+    }
+
+    private let lock = NSLock()
+    private var steps: [Step] = []
+
+    func record(_ step: Step) {
+        lock.withLock { steps.append(step) }
+    }
+
+    var count: Int { lock.withLock { steps.count } }
+
+    var last: Step? { lock.withLock { steps.last } }
+
+    func describe(verb: String) -> String {
+        let current = lock.withLock { () -> [Step] in
+            guard let start = steps.lastIndex(of: .sent) else { return steps }
+            return Array(steps[start...])
+        }
+        if current.contains(.replied) { return "\(verb): replied" }
+        if current.contains(.appTaskStarted) {
+            if verb == XPCVerb.projectOpen {
+                return "\(verb): the app's Task started and fetched the store (openProjectForXPC entered), but the completion never ran"
+            }
+            return "\(verb): the app's Task started and fetched the store, but never replied"
+        }
+        return "\(verb): no store fetch recorded (the app's Task never started, or this verb never fetches the store)"
+    }
+}
+
+@MainActor
+private let serviceTraces = NSMapTable<AppXPCService, XPCRequestTrace>.weakToStrongObjects()
+
+@MainActor
+private func makeService(_ store: AppStateStore, clock: TestClock = TestClock()) -> AppXPCService {
+    let trace = XPCRequestTrace()
+    let service = AppXPCService(store: {
+        trace.record(.appTaskStarted)
+        return store
+    }, clock: clock)
+    serviceTraces.setObject(trace, forKey: service)
+    return service
+}
+
+/// Calls `service.perform` directly from the main actor and resumes from
+/// its reply closure, so the only main-queue hop left is the app's own
+/// `Task { @MainActor }`. The hang guard is a `MainQueueProgressGuard`, so
+/// a deep main queue under load is not mistaken for a lost reply.
 @MainActor
 private func perform(_ service: AppXPCService, verb: String, payload: Data? = nil) async throws -> XPCResponse {
     let requestData = try JSONEncoder().encode(XPCRequest(verb: verb, payload: payload))
-    let responseTask = Task { @MainActor in
-        await withCheckedContinuation { (continuation: CheckedContinuation<Data, Never>) in
-            service.perform(requestData) { continuation.resume(returning: $0) }
+    let trace = serviceTraces.object(forKey: service) ?? XPCRequestTrace()
+    trace.record(.sent)
+    let responseData: Data? = await withCheckedContinuation { (continuation: CheckedContinuation<Data?, Never>) in
+        let once = ResumeOnce(continuation)
+        let progressGuard = MainQueueProgressGuard(progress: { trace.count }, onExpire: { _ in once.resume(nil) })
+        once.setOnResumed { progressGuard.cancel() }
+        progressGuard.arm()
+        service.perform(requestData) { data in
+            trace.record(.replied)
+            once.resume(data)
         }
     }
-    try #require(await awaitBounded { _ = await responseTask.value }, "no XPC reply for \(verb)")
-    let responseData = await responseTask.value
-    return try JSONDecoder().decode(XPCResponse.self, from: responseData)
+    let reply = try #require(responseData, "no XPC reply for \(trace.describe(verb: verb))")
+    return try JSONDecoder().decode(XPCResponse.self, from: reply)
 }
 
 @MainActor
@@ -89,12 +149,34 @@ private func reply(_ response: XPCResponse) throws -> ProjectOpenReply {
 
 @MainActor
 struct ProjectXPCTests {
+    // MARK: - Request trace
+
+    @Test func aLostReplyNamesTheStepItReached() {
+        let neverStarted = XPCRequestTrace()
+        neverStarted.record(.sent)
+        #expect(neverStarted.describe(verb: XPCVerb.projectOpen)
+            == "projectOpen: no store fetch recorded (the app's Task never started, or this verb never fetches the store)")
+
+        let stalled = XPCRequestTrace()
+        stalled.record(.sent)
+        stalled.record(.appTaskStarted)
+        #expect(stalled.describe(verb: XPCVerb.projectOpen)
+            == "projectOpen: the app's Task started and fetched the store (openProjectForXPC entered), but the completion never ran")
+        #expect(stalled.describe(verb: XPCVerb.projectList)
+            == "projectList: the app's Task started and fetched the store, but never replied")
+
+        stalled.record(.replied)
+        stalled.record(.sent)
+        #expect(stalled.describe(verb: XPCVerb.projectList)
+            == "projectList: no store fetch recorded (the app's Task never started, or this verb never fetches the store)")
+    }
+
     // MARK: - Unknown verbs
 
     @Test func aVerbTheAppNeverHeardOfStillGetsTheSameWording() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        let service = AppXPCService(store: { store }, clock: TestClock())
+        let service = makeService(store)
         let response = try await perform(service, verb: "projectDelete")
         #expect(response.error == "unknown verb: projectDelete")
     }
@@ -109,7 +191,7 @@ struct ProjectXPCTests {
         try store.projectStore.upsert(zed)
         try store.projectStore.upsert(alpha)
         _ = try store.openProject(id: alpha.id)
-        let service = AppXPCService(store: { store }, clock: TestClock())
+        let service = makeService(store)
 
         let response = try await perform(service, verb: XPCVerb.projectList)
 
@@ -132,7 +214,7 @@ struct ProjectXPCTests {
         for project in [never, old, busy, recent] { try store.projectStore.upsert(project) }
         store.projectUsageClock = { Date(timeIntervalSince1970: 300) }
         _ = try store.openProject(id: busy.id)
-        let service = AppXPCService(store: { store }, clock: TestClock())
+        let service = makeService(store)
 
         let response = try await perform(service, verb: XPCVerb.projectList)
 
@@ -144,7 +226,7 @@ struct ProjectXPCTests {
     @Test func listOfAnEmptyStoreIsAnEmptyArray() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        let response = try await perform(AppXPCService(store: { store }, clock: TestClock()), verb: XPCVerb.projectList)
+        let response = try await perform(makeService(store), verb: XPCVerb.projectList)
         #expect(response.ok)
         #expect(try JSONDecoder().decode(ProjectListReply.self, from: try #require(response.payload)).projects.isEmpty)
     }
@@ -153,7 +235,7 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         try FileManager.default.createDirectory(at: fixture.projectsFile, withIntermediateDirectories: true)
         let store = fixture.store()
-        let response = try await perform(AppXPCService(store: { store }, clock: TestClock()), verb: XPCVerb.projectList)
+        let response = try await perform(makeService(store), verb: XPCVerb.projectList)
         #expect(response.ok == false)
         #expect(response.error?.contains(fixture.projectsFile.path) == true)
         #expect(response.payload == nil)
@@ -166,7 +248,7 @@ struct ProjectXPCTests {
         let store = fixture.store()
         let project = fixture.project("Batty")
         try store.projectStore.upsert(project)
-        let service = AppXPCService(store: { store }, clock: TestClock())
+        let service = makeService(store)
         let recorder = EventRecorder()
         defer { recorder.stop() }
 
@@ -198,7 +280,7 @@ struct ProjectXPCTests {
         let store = fixture.store()
         try store.projectStore.upsert(fixture.project("Batty"))
         try store.projectStore.upsert(fixture.project("Homelab"))
-        let service = AppXPCService(store: { store }, clock: TestClock())
+        let service = makeService(store)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
         let response = try await open(service, "Battey")
@@ -215,21 +297,21 @@ struct ProjectXPCTests {
         let fixture = try Fixture()
         let store = fixture.store()
         try store.projectStore.upsert(fixture.project("Batty"))
-        let response = try await open(AppXPCService(store: { store }, clock: TestClock()), "Completely Different")
+        let response = try await open(makeService(store), "Completely Different")
         #expect(try #require(response.error).contains("batty project list"))
     }
 
     @Test func openingWithNoSavedProjectsSaysSo() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        let response = try await open(AppXPCService(store: { store }, clock: TestClock()), "Batty")
+        let response = try await open(makeService(store), "Batty")
         #expect(try #require(response.error).contains("no saved Projects"))
     }
 
     @Test func aMalformedOpenRequestFails() async throws {
         let fixture = try Fixture()
         let store = fixture.store()
-        let response = try await perform(AppXPCService(store: { store }, clock: TestClock()), verb: XPCVerb.projectOpen, payload: Data("nope".utf8))
+        let response = try await perform(makeService(store), verb: XPCVerb.projectOpen, payload: Data("nope".utf8))
         #expect(response.ok == false)
         #expect(response.error == "malformed project open request")
     }
@@ -242,7 +324,7 @@ struct ProjectXPCTests {
         try store.projectStore.upsert(project)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
-        let response = try await open(AppXPCService(store: { store }, clock: TestClock()), "Gone")
+        let response = try await open(makeService(store), "Gone")
 
         #expect(response.ok == false)
         #expect(try #require(response.error).contains("no longer exists"))
@@ -260,7 +342,7 @@ struct ProjectXPCTests {
         let store = fixture.store()
         try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let clock = TestClock()
-        let service = AppXPCService(store: { store }, clock: clock)
+        let service = makeService(store, clock: clock)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
         let pending = Task { @MainActor in try await open(service, "Batty") }
@@ -283,7 +365,7 @@ struct ProjectXPCTests {
         let store = fixture.store()
         try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let clock = TestClock()
-        let service = AppXPCService(store: { store }, clock: clock)
+        let service = makeService(store, clock: clock)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
         let pending = Task { @MainActor in try await open(service, "Batty") }
@@ -302,7 +384,7 @@ struct ProjectXPCTests {
         let store = fixture.store()
         try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let clock = TestClock()
-        let service = AppXPCService(store: { store }, clock: clock)
+        let service = makeService(store, clock: clock)
         let sessionsBefore = store.windows.flatMap(\.sessions).count
 
         let pending = Task { @MainActor in try await open(service, "batty") }
@@ -336,7 +418,7 @@ struct ProjectXPCTests {
         let existing = try store.openProject(id: project.id).session
         let clock = TestClock()
 
-        let response = try await open(AppXPCService(store: { store }, clock: clock), "Batty")
+        let response = try await open(makeService(store, clock: clock), "Batty")
 
         let focused = try reply(response)
         #expect(!focused.created)
@@ -358,7 +440,7 @@ struct ProjectXPCTests {
         try store.projectStore.upsert(fixture.project("Batty", command: "./build.sh"))
         let log = activations(store)
         let clock = TestClock()
-        let pending = Task { @MainActor in try await open(AppXPCService(store: { store }, clock: clock), "Batty") }
+        let pending = Task { @MainActor in try await open(makeService(store, clock: clock), "Batty") }
         #expect(await clock.waitForSleepers(1))
         #expect(log.count == 1, "the sheet's window is activated when it is queued")
         store.cancelStartupTrust(requestID: try pendingRequest(in: store).id)
@@ -394,7 +476,7 @@ struct ProjectXPCTests {
         try store.projectStore.upsert(project)
         _ = try store.openProject(id: project.id)
         let log = activations(store)
-        _ = try await open(AppXPCService(store: { store }, clock: TestClock()), "Batty")
+        _ = try await open(makeService(store), "Batty")
         #expect(log.count == 1)
     }
 

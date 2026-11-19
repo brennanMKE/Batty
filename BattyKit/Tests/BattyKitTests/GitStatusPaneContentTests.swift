@@ -61,6 +61,30 @@ private final class WatcherBox {
     }
 }
 
+/// How far the scans behind a wait got, so a hang-guard failure says
+/// where it stopped. Its `count` is the progress a `MainQueueProgressGuard`
+/// watches.
+nonisolated final class ScanTrace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entered = 0
+    private var returned = 0
+    private var handled = 0
+
+    func recordEntered() { lock.withLock { entered += 1 } }
+    func recordReturned() { lock.withLock { returned += 1 } }
+    func recordHandled() { lock.withLock { handled += 1 } }
+
+    var count: Int { lock.withLock { entered + returned + handled } }
+
+    func describe() -> String {
+        let (entered, returned, handled) = lock.withLock { (self.entered, self.returned, self.handled) }
+        if entered == 0 { return "scan never started" }
+        if returned < entered { return "scan entered (held at the gate)" }
+        if handled < returned { return "scan returned but its result was never handled" }
+        return "handled \(handled)"
+    }
+}
+
 /// Lets a test observe "a scan has started" and control exactly when it
 /// resolves — replaces `RecordingScanner`'s old `scanDelayNanoseconds` real,
 /// fixed delay with an explicit continuation a test releases itself
@@ -114,11 +138,14 @@ private nonisolated final class ScanGate: @unchecked Sendable {
     /// §1): on expiry this resolves `false`, never how it's meant to
     /// succeed.
     @discardableResult
-    func waitForScanStarted(bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
+    func waitForScanStarted(trace: ScanTrace, bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
-            let timeoutWorkItem = DispatchWorkItem { once.resume(false) }
-            once.setOnResumed { timeoutWorkItem.cancel() }
+            let progressGuard = MainQueueProgressGuard(bound: bound, progress: { trace.count }) { [weak self] _ in
+                self?.lock.withLock { self?.startWaiter = nil }
+                once.resume(false)
+            }
+            once.setOnResumed { progressGuard.cancel() }
             let resumeNow: Bool = lock.withLock {
                 if hasStarted { return true }
                 startWaiter = { once.resume(true) }
@@ -127,7 +154,7 @@ private nonisolated final class ScanGate: @unchecked Sendable {
             if resumeNow {
                 once.resume(true)
             } else {
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeoutWorkItem)
+                progressGuard.arm()
             }
         }
     }
@@ -156,12 +183,15 @@ private nonisolated final class RecordingScanner: GitStatusScanning, @unchecked 
     /// `GitStatusPaneContent.handleScanResult`), with no real delay
     /// (`#0430`; replaces the old `scanDelayNanoseconds`).
     var gate: ScanGate?
+    let trace = ScanTrace()
 
     func scan(atPath path: String) async -> GitStatusScanResult {
         scanCount += 1
+        trace.recordEntered()
         if let gate {
             await gate.markStartedAndAwaitRelease()
         }
+        trace.recordReturned()
         return nextResult
     }
 
@@ -188,8 +218,12 @@ private func makeContent(
         debounceNanoseconds: debounceNanoseconds,
         clock: clock
     )
+    scanTraces.setObject(scanner.trace, forKey: content)
     return (content, box)
 }
+
+@MainActor
+private let scanTraces = NSMapTable<GitStatusPaneContent, ScanTrace>.weakToStrongObjects()
 
 /// Races a real signal (delivered via `signal()`) against a hang-guard
 /// timeout — the same `ResumeOnce` + cancellable `DispatchWorkItem` shape
@@ -243,13 +277,16 @@ private nonisolated final class ScanHandledSignal: @unchecked Sendable {
     /// `bound` is a hang-guard only, the same rule `ChildProcessReadiness`/
     /// `TestClock.waitForSleepers` follow: on expiry this resolves `false`,
     /// never how it's meant to succeed.
-    func wait(bound: TimeInterval) async -> Bool {
+    func wait(trace: ScanTrace, bound: TimeInterval) async -> Bool {
         let alreadySignaled: Bool = lock.withLock { isSignaled }
         if alreadySignaled { return true }
         return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
-            let timeoutWorkItem = DispatchWorkItem { once.resume(false) }
-            once.setOnResumed { timeoutWorkItem.cancel() }
+            let progressGuard = MainQueueProgressGuard(bound: bound, progress: { trace.count }) { [weak self] _ in
+                self?.lock.withLock { self?.pendingResume = nil }
+                once.resume(false)
+            }
+            once.setOnResumed { progressGuard.cancel() }
             let resumeNow: Bool = lock.withLock {
                 if isSignaled { return true }
                 pendingResume = { once.resume($0) }
@@ -258,7 +295,7 @@ private nonisolated final class ScanHandledSignal: @unchecked Sendable {
             if resumeNow {
                 once.resume(true)
             } else {
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeoutWorkItem)
+                progressGuard.arm()
             }
         }
     }
@@ -290,16 +327,18 @@ private func awaitScanHandled(
         return true
     }
     let signal = ScanHandledSignal()
+    let trace = scanTraces.object(forKey: content) ?? ScanTrace()
     content.onScanResultHandledForTesting = { handledCount in
+        trace.recordHandled()
         if handledCount >= count {
             signal.signal()
         }
     }
-    let reached = await signal.wait(bound: bound)
+    let reached = await signal.wait(trace: trace, bound: bound)
     content.onScanResultHandledForTesting = nil
     if !reached {
         Issue.record(
-            "scan-result-handled wait never reached count \(count)",
+            "scan-result-handled wait never reached count \(count): \(trace.describe())",
             sourceLocation: sourceLocation
         )
     }
@@ -308,6 +347,18 @@ private func awaitScanHandled(
 
 @MainActor
 struct GitStatusPaneContentTests {
+
+    @Test func scanTraceDescribesHowFarAScanGot() {
+        let trace = ScanTrace()
+        #expect(trace.describe() == "scan never started")
+        trace.recordEntered()
+        #expect(trace.describe() == "scan entered (held at the gate)")
+        trace.recordReturned()
+        #expect(trace.describe() == "scan returned but its result was never handled")
+        trace.recordHandled()
+        #expect(trace.describe() == "handled 1")
+        #expect(trace.count == 3)
+    }
 
     // MARK: - Lifecycle: setup
 
@@ -602,7 +653,7 @@ struct GitStatusPaneContentTests {
         let (content, _) = makeContent(scanner: scanner)
         content.setUp(visible: true)
 
-        guard await gate.waitForScanStarted() else {
+        guard await gate.waitForScanStarted(trace: scanner.trace) else {
             Issue.record("waitForScanStarted() never reached its threshold")
             // Release whatever `RecordingScanner.scan(atPath:)` would
             // otherwise still be parked on, and tear the pane down, so an

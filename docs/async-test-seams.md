@@ -274,6 +274,19 @@ For every shape:
   expiry that survives at `TestBounds.hangGuard` is a signal bug to
   root-cause, not a reason to go higher.
 
+  Waits whose steps run on the main queue (`ProjectXPCTests.perform`,
+  `GitStatusPaneContentTests`' `ScanGate`/`ScanHandledSignal`,
+  `TestClock.waitForSleepers`) use `MainQueueProgressGuard`
+  (`Support/MainQueueProgressGuard.swift`, #0678) instead of a one-shot
+  `asyncAfter`. Its interval is still `TestBounds.hangGuard`, but it expires
+  only after two consecutive intervals in which the wait's progress count
+  did not advance and a sentinel posted to `DispatchQueue.main` at the start
+  of the interval already ran; an interval whose sentinel is still queued
+  counts as backlogged and re-arms. A deep main queue under load is not
+  mistaken for a lost event, and a lost event on an idle queue fails in
+  about two intervals. Its own tests drive it with
+  `ManualProgressGuardScheduler`, never real time.
+
   Two categories are deliberately excluded from
   `TestBounds.hangGuard` and must keep their own literal:
   - The `0.2s` bounds in `ChildProcessReadinessTests`,

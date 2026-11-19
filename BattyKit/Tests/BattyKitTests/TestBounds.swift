@@ -22,6 +22,9 @@ import Foundation
 ///   make each of those tests take the full 60s to *pass*, not fail.
 /// - `PendingTeardownReapRegistry.register(process:label:bound:)`'s
 ///   production reap bound: real production behavior, not a test wait.
+/// Waits whose steps run on the main queue use it as the interval of a
+/// `MainQueueProgressGuard`, which expires only after two quiet intervals
+/// with a drained main queue (#0678).
 nonisolated enum TestBounds {
     static let hangGuard: TimeInterval = 60
 }
