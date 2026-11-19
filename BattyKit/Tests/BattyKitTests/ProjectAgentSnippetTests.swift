@@ -86,4 +86,12 @@ nonisolated struct ProjectAgentSnippetTests {
         #expect(ProjectAgentSnippet.confirmationRequired(isTTY: true, yes: true, dryRun: true) == .preview)
         #expect(ProjectAgentSnippet.confirmationRequired(isTTY: false, yes: false, dryRun: true) == .preview)
     }
+
+    @Test func blockCarriesTheSharedRuleLines() {
+        for line in AgentContextNote.ruleLines(cliName: "batty") {
+            #expect(ProjectAgentSnippet.block.contains(line))
+        }
+        #expect(ProjectAgentSnippet.block.hasPrefix(ProjectAgentSnippet.beginMarker))
+        #expect(ProjectAgentSnippet.block.hasSuffix(ProjectAgentSnippet.endMarker))
+    }
 }

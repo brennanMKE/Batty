@@ -221,6 +221,7 @@ struct CapabilitiesCommand: ParsableCommand {
         "capabilities": "capabilities",
         "mcp": "mcp",
         "agent install": "install",
+        "agent context": "id",
         "server start": "start",
         "server attach": "attach",
         "server stop": "stop",

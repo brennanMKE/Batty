@@ -10,7 +10,7 @@ struct AgentNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "agent",
         abstract: "Set up AI coding agents to use Batty.",
-        subcommands: [AgentInstallCommand.self]
+        subcommands: [AgentInstallCommand.self, AgentContextCommand.self]
     )
 }
 
@@ -116,6 +116,35 @@ extension AgentInstallCommand: CapabilitiesDescribable {
             "dry-run": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--dry-run"], type: "boolean", description: "Print what would be installed and write nothing.", required: false, defaultValue: "false"),
             "project": CapabilitiesPropertyPayload(cliKind: .option, names: ["--project"], type: "string", description: "Also add a Batty section to this project's AGENTS.md or CLAUDE.md.", required: false),
             "yes": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--yes"], type: "boolean", description: "Write the project section without asking (required when not interactive).", required: false, defaultValue: "false"),
+        ])
+    }
+}
+
+/// `batty agent context`: tells an AI agent it is in a Batty Pane, from `BATTY_*` alone.
+struct AgentContextCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "context",
+        abstract: "Print a note telling an AI agent it is in a Batty Pane, from BATTY_* alone."
+    )
+
+    @Flag(name: .long, help: "Emit JSON instead of a plain-text note.")
+    var json = false
+
+    nonisolated func run() {
+        let output = AgentContextNote.render(
+            environment: ProcessInfo.processInfo.environment,
+            cliName: ServiceNames.current.cliCommandName,
+            json: json
+        )
+        if let stdout = output.stdout { print(stdout) }
+        if let stderr = output.stderr { fputs(stderr + "\n", Foundation.stderr) }
+    }
+}
+
+extension AgentContextCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of a plain-text note.", required: false, defaultValue: "false"),
         ])
     }
 }

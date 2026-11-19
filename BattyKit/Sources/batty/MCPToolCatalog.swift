@@ -46,7 +46,7 @@ nonisolated enum MCPArgumentError: Error, Equatable, CustomStringConvertible {
 /// The MCP view of `batty capabilities`: one tool per verb, built from the
 /// same payload so the two can't drift. Pure; running a tool is the runner's job.
 nonisolated struct MCPToolCatalog: Sendable {
-    static let excludedVerbPaths: Set<String> = ["mcp", "agent install"]
+    static let excludedVerbPaths: Set<String> = ["mcp", "agent install", "agent context"]
 
     /// Never a tool parameter: every call asks for JSON when the verb has it.
     static let jsonProperty = "json"

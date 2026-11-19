@@ -280,7 +280,7 @@ again. Do not try to work around the prompt.
 ## 9. Using Batty through MCP
 
 `batty mcp` (from `1.5.0`) is a stdio MCP server whose tools are exactly the
-verbs `capabilities --json` lists, minus `mcp` and `agent install`. A tool's
+verbs `capabilities --json` lists, minus `mcp`, `agent install` and `agent context`. A tool's
 name is its verb path with spaces as underscores (`pane_split`,
 `session_remind`), and its parameters are that verb's `inputSchema`
 properties without `json`: every call that can return JSON does. A failed call

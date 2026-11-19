@@ -131,6 +131,12 @@ struct CapabilitiesInputSchemaTests {
         assertNamesAreInvocable(AgentInstallCommand.capabilitiesInputSchema, helpMessage: AgentInstallCommand.helpMessage())
     }
 
+    @Test func agentContextCommandSchemaMatchesStoredProperties() throws {
+        let instance = try AgentContextCommand.parse([])
+        assertSchemaMatchesStoredProperties(instance, schema: AgentContextCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(AgentContextCommand.capabilitiesInputSchema, helpMessage: AgentContextCommand.helpMessage())
+    }
+
     @Test func pingCommandHasNoParameters() throws {
         let instance = try PingCommand.parse([])
         assertSchemaMatchesStoredProperties(instance, schema: PingCommand.capabilitiesInputSchema)

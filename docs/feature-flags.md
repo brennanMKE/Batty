@@ -28,7 +28,7 @@ Record each gate site (file, symbol, what the flag changes) as you add it, so re
   - `ProjectStore.sharedImagesEnabled`: true only with a transport. False keeps records, merges and `projects.json` as they were.
   - `BattyKit/Sources/BattyKit/Help/10-projects.md` keeps "choose the image on each Mac" until the flag goes, because Help ships in Prod. Update that sentence when removing the flag.
 
-- `agentIntegration` (#0647, for #0646): `batty mcp`, `batty agent install` and the Settings section that runs the installer. The bundled `AgentGuidance/` skill ships in both variants, because a file nothing reads is inert. `FeatureFlags.current` gives the CLI its value. #0648 and #0649 may reuse it. Remove it in the release that ships #0646. Gate sites:
+- `agentIntegration` (#0647, for #0646): `batty mcp`, `batty agent install`, `batty agent context` (gated with the rest of `agent`) and the Settings section that runs the installer. The bundled `AgentGuidance/` skill ships in both variants, because a file nothing reads is inert. `FeatureFlags.current` gives the CLI its value. #0648 and #0649 may reuse it. Remove it in the release that ships #0646. Gate sites:
   - `BattyCLI.subcommands(for:)` (`BattyKit/Sources/batty/BattyCLI.swift`): `MCPCommand` and `AgentNounCommand` are in the tree only with the flag on, so `--help`, `batty capabilities` and the MCP tool list never mention them otherwise.
   - `CapabilitiesCommand.skillInstallLines(cliVersion:flags:)`: with the flag on, plain-text `capabilities` points at `agent install` instead of the `git clone` recipe.
   - `AdvancedSettingsView` (`BattyKit/Sources/BattyKit/Views/SettingsView.swift`): the "AI Agents" section shows only when `store.featureFlags.agentIntegration`.

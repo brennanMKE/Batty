@@ -411,7 +411,7 @@ stdio MCP server: newline-delimited JSON-RPC 2.0 on stdin/stdout, serving until
 stdin closes. Its tools are generated from `batty capabilities --json`, so they
 can't drift from the CLI:
 
-- One tool per verb, except `mcp` and `agent install`. The tool name is the
+- One tool per verb, except `mcp`, `agent install` and `agent context`. The tool name is the
   verb path with spaces as underscores (`pane_split`, `session_remind`).
 - Parameters are the verb's `inputSchema` properties without `json`; the
   Batty-only keys (`cliKind`, `names`, `enumValueNames`, `cliRequired`,

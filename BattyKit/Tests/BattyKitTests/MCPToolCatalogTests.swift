@@ -35,6 +35,11 @@ struct MCPToolCatalogTests {
         #expect(Set(catalog(agentOnly).tools.map(\.name)).isDisjoint(with: serverTools))
     }
 
+    @Test func agentContextIsNotATool() {
+        #expect(CapabilitiesCommand.verbs(flags: Self.flagOn).contains { $0.name == "agent context" })
+        #expect(catalog().tool(named: "agent_context") == nil)
+    }
+
     @Test func catalogIncludesServerServe() {
         #expect(catalog().tools.contains { $0.name == "server_serve" })
     }
