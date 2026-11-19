@@ -3,8 +3,7 @@
 import Foundation
 
 /// Main-actor fan-out of "a file under the root changed", after the
-/// debounce. The server's reload clients and Batty's own preview Panes both
-/// hang off it.
+/// debounce. The server's reload clients hang off it.
 @MainActor
 public final class StaticReloadBroadcaster {
     public var onBroadcast: (@MainActor () -> Void)?

@@ -24,8 +24,6 @@ nonisolated enum MCPInstructions {
              line: "Dev servers: `server_start` (or `server_attach` if one already runs); don't open a browser yourself."),
         Hint(tools: ["server_serve"], argument: "open", value: nil,
              line: "Static sites: `server_serve` with `open: true`, never `python3 -m http.server`."),
-        Hint(tools: ["server_preview"], argument: nil, value: nil,
-             line: "Show a page: `server_preview`."),
         Hint(tools: ["notify"], argument: nil, value: nil,
              line: "Get the user's attention: `notify`."),
         Hint(tools: ["session_remind"], argument: nil, value: nil,

@@ -37,7 +37,7 @@ struct CapabilitiesCommandTests {
         let names = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name))
         let expected = flagsOn ? Self.flagOffRoster.union([
             "mcp", "agent install", "agent context",
-            "server start", "server attach", "server serve", "server preview", "server stop", "server restart",
+            "server start", "server attach", "server serve", "server stop", "server restart",
         ]) : Self.flagOffRoster
         #expect(names == expected)
     }

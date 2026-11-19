@@ -191,12 +191,6 @@ struct CapabilitiesInputSchemaTests {
         #expect(throws: (any Error).self) { try PaneSplitCommand.parse(["--view", "server"]) }
     }
 
-    @Test func paneSplitViewEnumExcludesWebPreview() throws {
-        let view = try #require(PaneSplitCommand.capabilitiesInputSchema.properties["view"])
-        #expect(!(view.enumValues ?? []).contains("web-preview"))
-        #expect(throws: (any Error).self) { try PaneSplitCommand.parse(["--view", "web-preview"]) }
-    }
-
     @Test func paneCloseCommandSchemaMatchesStoredProperties() throws {
         let instance = try PaneCloseCommand.parse([])
         assertSchemaMatchesStoredProperties(instance, schema: PaneCloseCommand.capabilitiesInputSchema)
@@ -445,7 +439,7 @@ struct CapabilitiesInputSchemaTests {
     /// unclassified nor linger in the table after it is removed.
     @Test func leafArchetypeByVerbPathCoversExactlyTheShippedVerbPaths() {
         let keys = Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys)
-        let serverPaths: Set<String> = ["server start", "server attach", "server serve", "server preview", "server stop", "server restart"]
+        let serverPaths: Set<String> = ["server start", "server attach", "server serve", "server stop", "server restart"]
         #expect(keys == shippedVerbPaths(flags: .allOnForTests))
         #expect(keys.subtracting(MCPToolCatalog.excludedVerbPaths).subtracting(serverPaths) == shippedVerbPaths(flags: FeatureFlags(sharedProjectImages: false)))
     }
@@ -589,7 +583,7 @@ extension FeatureFlags {
 }
 
 struct ServerCapabilitiesTests {
-    private let serverVerbs: Set<String> = ["server start", "server attach", "server serve", "server preview", "server stop", "server restart"]
+    private let serverVerbs: Set<String> = ["server start", "server attach", "server serve", "server stop", "server restart"]
 
     @Test func serverVerbsAppearOnlyWithTheFlagOn() {
         let on = Set(CapabilitiesCommand.verbs(flags: .allOnForTests).map(\.name))
@@ -606,10 +600,10 @@ struct ServerCapabilitiesTests {
         #expect(ServerStartCommand.capabilitiesInputSchema.required.sorted() == ["command", "port"])
     }
 
-    @Test func previewHasAFullInputSchemaWithTheURLPortConflict() throws {
-        let schema = ServerPreviewCommand.capabilitiesInputSchema
-        #expect(Set(schema.properties.keys) == ["url", "port", "split", "pane", "json"])
-        #expect(schema.conflicts.contains { $0.kind == .mutuallyExclusive && Set($0.parameters ?? []) == ["url", "port"] })
+    @Test func noServerPreviewVerbOrTool() {
+        #expect(!CapabilitiesCommand.verbs(flags: .allOnForTests).contains { $0.name == "server preview" })
+        let catalog = MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: .allOnForTests))
+        #expect(!catalog.tools.contains { $0.name == "server_preview" })
     }
 
     @Test func serveHasAFullInputSchema() throws {
@@ -636,11 +630,6 @@ extension CapabilitiesInputSchemaTests {
     @Test func serverServeCommandSchemaMatchesStoredProperties() throws {
         assertSchemaMatchesStoredProperties(try ServerServeCommand.parse([]), schema: ServerServeCommand.capabilitiesInputSchema)
         assertNamesAreInvocable(ServerServeCommand.capabilitiesInputSchema, helpMessage: ServerServeCommand.helpMessage())
-    }
-
-    @Test func serverPreviewCommandSchemaMatchesStoredProperties() throws {
-        assertSchemaMatchesStoredProperties(try ServerPreviewCommand.parse(["--port", "1"]), schema: ServerPreviewCommand.capabilitiesInputSchema)
-        assertNamesAreInvocable(ServerPreviewCommand.capabilitiesInputSchema, helpMessage: ServerPreviewCommand.helpMessage())
     }
 
     @Test func serverStopAndRestartSchemasMatchStoredProperties() throws {

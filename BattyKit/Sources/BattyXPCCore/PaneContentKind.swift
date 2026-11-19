@@ -42,10 +42,6 @@ public nonisolated enum PaneContentKind: String, Codable, Sendable, Hashable, Ca
     /// #0648 — `docs/design/server-pane-view.md` (drafted for user approval).
     /// Created only by `batty server start|attach`, never by `pane split`.
     case server
-    /// #0649 — `docs/design/web-preview-pane.md` (drafted for user approval).
-    /// Created only by `batty server preview`, `serve --open` and a Server
-    /// Pane's Open in Batty button, never by `pane split`.
-    case webPreview = "web-preview"
 
     // Deliberately not built here (review round 1, non-blocking):
     // `docs/pane-kinds.md` §5 designs a per-kind `isSingletonPerSession`
@@ -76,23 +72,19 @@ public nonisolated enum PaneContentKind: String, Codable, Sendable, Hashable, Ca
         case .lmStudioDashboard: return "LM Studio Dashboard"
         case .systemMetrics: return "System Metrics"
         case .server: return "Server"
-        case .webPreview: return "Web Preview"
         }
     }
 
     /// Kinds `batty pane split --view` accepts. `.server` is excluded: a
     /// Server Pane needs a port and a command, which only `batty server
-    /// start|attach` carries. `.webPreview` is excluded: it needs a URL, and
-    /// it is gated by the `serverPane` flag, which the static `pane split`
-    /// schema can't express.
+    /// start|attach` carries.
     public static var paneSplitKinds: [PaneContentKind] {
-        allCases.filter { $0 != .server && $0 != .webPreview }
+        allCases.filter { $0 != .server }
     }
 
     /// Kinds a Project slot can hold. `.server` is excluded for the same
     /// reason: a slot has no port or command to start a server with.
-    /// `.webPreview` is excluded because a slot has no URL to show.
     public static var projectSlotKinds: [PaneContentKind] {
-        allCases.filter { $0 != .server && $0 != .webPreview }
+        allCases.filter { $0 != .server }
     }
 }

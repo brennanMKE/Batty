@@ -18,7 +18,6 @@ public enum ServerXPCError: Error, Equatable, Sendable {
     case portInUse(Int)
     case alreadyServing(root: String, port: Int)
     case bindFailed(String)
-    case previewURLNotAllowed
 
     public var message: String {
         switch self {
@@ -33,7 +32,6 @@ public enum ServerXPCError: Error, Equatable, Sendable {
         case .portInUse(let port): return "port \(port) is in use"
         case .alreadyServing(let root, let port): return "already serving \(root) on port \(port); stop it first"
         case .bindFailed(let reason): return "could not listen on 127.0.0.1: \(reason)"
-        case .previewURLNotAllowed: return WebPreviewURLPolicy.refusalMessage
         }
     }
 }
@@ -42,13 +40,11 @@ public struct ServerXPCResult {
     public let paneID: UUID
     public let content: ServerPaneContent
     public let created: Bool
-    public var previewPaneID: UUID?
 
-    public init(paneID: UUID, content: ServerPaneContent, created: Bool, previewPaneID: UUID? = nil) {
+    public init(paneID: UUID, content: ServerPaneContent, created: Bool) {
         self.paneID = paneID
         self.content = content
         self.created = created
-        self.previewPaneID = previewPaneID
     }
 }
 
@@ -172,11 +168,6 @@ extension AppStateStore {
         let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: pane.id)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
         wireRestart(content, serverPaneID: pane.id)
-        let serverPaneID = pane.id
-        content.openPreview = { [weak self, weak content] in
-            guard let self, let content else { return }
-            _ = self.openWebPreview(url: content.url, besideServerPane: serverPaneID)
-        }
         return content
     }
 
@@ -305,7 +296,7 @@ extension AppStateStore {
         return ServerReply(
             paneID: result.paneID, terminalPaneID: tabID.flatMap(paneID(holdingTab:)), tabID: tabID,
             url: content.url.absoluteString, pid: pid ?? content.listenerPid, state: state, exitCode: exitCode, created: result.created,
-            root: (content.backend as? InAppStaticServerBackend)?.root, previewPaneID: result.previewPaneID
+            root: (content.backend as? InAppStaticServerBackend)?.root
         )
     }
 }

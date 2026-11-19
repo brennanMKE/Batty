@@ -42,7 +42,6 @@ private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.autoNameFromFilesKey) private var autoNameFromFiles: Bool = SettingsPreference.defaultAutoNameFromFiles
     @AppStorage(SettingsPreference.autoNameWithAIKey) private var autoNameWithAI: Bool = SettingsPreference.defaultAutoNameWithAI
     @AppStorage(SettingsPreference.serverPanePlacementKey) private var serverPanePlacement: String = ServerPanePlacement.right.rawValue
-    @AppStorage(SettingsPreference.servedSiteOpenTargetKey) private var servedSiteOpenTarget: String = ServedSiteOpenTarget.batty.rawValue
     let showsServerPanes: Bool
 
     private var aiNamingSupported: Bool {
@@ -133,16 +132,6 @@ private struct GeneralSettingsView: View {
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("settings-server-pane-placement")
                     Text("Where batty server start and attach put a Server Pane. --split right or --split down overrides it.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker("Open served sites in", selection: $servedSiteOpenTarget) {
-                        ForEach(ServedSiteOpenTarget.allCases, id: \.rawValue) { target in
-                            Text(target.displayName).tag(target.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("settings-served-site-open-target")
-                    Text("Where batty server serve --open shows the site.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

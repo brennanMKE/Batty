@@ -58,7 +58,6 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     static func paneSplitRefusal(kind: PaneContentKind) -> String? {
         switch kind {
         case .server: "server panes are created with batty server start or batty server attach"
-        case .webPreview: "web previews are opened with batty server preview"
         default: nil
         }
     }
@@ -577,12 +576,6 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
             }
 
-        case XPCVerb.serverPreview:
-            Task { @MainActor [pendingRequests, storeProvider] in
-                let response = Self.previewResponse(payload: decoded.payload, store: storeProvider())
-                pendingRequests.resolve(requestID, with: Self.encode(response))
-            }
-
         case XPCVerb.serverStart, XPCVerb.serverAttach, XPCVerb.serverStop, XPCVerb.serverRestart, XPCVerb.serverServe:
             Task { @MainActor [pendingRequests, storeProvider, clock] in
                 let response = await Self.serverResponse(verb: decoded.verb, payload: decoded.payload, store: storeProvider(), clock: clock)
@@ -756,25 +749,6 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             return XPCResponse(ok: false, error: "failed to encode reply")
         }
         return XPCResponse(ok: true, payload: data)
-    }
-
-    /// `server preview` (#0649).
-    @MainActor
-    static func previewResponse(payload: Data?, store: AppStateStore) -> XPCResponse {
-        guard let payload, let request = try? JSONDecoder().decode(WebPreviewRequest.self, from: payload) else {
-            return XPCResponse(ok: false, error: "malformed server preview request")
-        }
-        switch store.openWebPreviewForXPC(request) {
-        case .failure(let error):
-            logger.error("perform serverPreview: \(error.message, privacy: .public)")
-            return XPCResponse(ok: false, error: error.message)
-        case .success(let result):
-            let reply = WebPreviewReply(paneID: result.paneID, url: result.content.url.absoluteString, created: result.created)
-            guard let data = try? JSONEncoder().encode(reply) else {
-                return XPCResponse(ok: false, error: "failed to encode preview reply")
-            }
-            return XPCResponse(ok: true, payload: data)
-        }
     }
 
     /// The four `server` verbs (#0648). `--wait` replies once the state

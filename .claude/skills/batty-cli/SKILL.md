@@ -346,11 +346,10 @@ To preview static pages (a folder of HTML), serve them from Batty rather than
 `python3 -m http.server` (check `capabilities --json` for `server serve`):
 
 ```bash
-"$BATTY" server serve ./dist --open --json   # paneID, url (127.0.0.1 only), root, previewPaneID
-"$BATTY" server preview --port 3000          # any loopback dev server in a Web Preview Pane
+"$BATTY" server serve ./dist --open --json   # paneID, url (127.0.0.1 only), root
 ```
 
-Edits under the folder reload the preview. Re-running `serve` on the same
+Edits under the folder reload the page in the browser. Re-running `serve` on the same
 folder reuses its Server Pane; closing that Pane stops the server.
 
 ## What this skill deliberately does not cover

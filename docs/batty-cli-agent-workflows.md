@@ -496,18 +496,15 @@ Batty instead of running `python3 -m http.server`:
 
 ```bash
 batty-beta server serve ./dist --open --json
-# {"paneID": "...", "url": "http://127.0.0.1:52144/", "root": "/…/dist", "state": "listening", "previewPaneID": "...", "created": true}
+# {"paneID": "...", "url": "http://127.0.0.1:52144/", "root": "/…/dist", "state": "listening", "created": true}
 ```
 
 - The server binds 127.0.0.1 only, on a free port unless `--port N`. Dotfiles
   and anything outside the folder are never served.
-- Editing a file under the folder reloads the Web Preview Pane and any browser
-  tab on the URL. `--no-inject` serves files byte-for-byte (browsers then
+- Editing a file under the folder reloads any browser tab on the URL. `--no-inject` serves files byte-for-byte (browsers then
   reload by hand).
 - Running `serve` again on the same folder reuses its Server Pane. Closing
   the Server Pane stops the server.
-- `batty-beta server preview --port 3000` shows any loopback dev server in a
-  Web Preview Pane.
 
 ## Dev servers: `server start` and `server attach` (Beta only until 1.5.0)
 

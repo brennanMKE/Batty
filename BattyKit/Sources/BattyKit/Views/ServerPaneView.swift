@@ -63,10 +63,6 @@ struct ServerPaneView: View {
             Spacer(minLength: 4)
             Button("Open in Browser") { content.openInBrowser() }
                 .accessibilityIdentifier("server-pane-open-browser")
-            if content.canOpenPreview {
-                Button("Open in Batty") { content.openPreview?() }
-                    .accessibilityIdentifier("server-pane-open-preview")
-            }
             if ServerPaneDisplay.showsRestart(canRestart: content.canRestart) {
                 Button("Restart") { content.restart() }
                     .accessibilityIdentifier("server-pane-restart")

@@ -211,14 +211,8 @@ public final class AppStateStore {
         InAppStaticServerBackend(resolver: resolver, injectsReloadScript: injects)
     }
 
-    /// Builds a Web Preview Pane's content (#0649). Tests replace it with
-    /// one whose engine is a fake.
-    @ObservationIgnored var makeWebPreviewContent: @MainActor (_ url: URL, _ reloadSource: @escaping @MainActor (URL) -> StaticReloadBroadcaster?) -> WebPreviewPaneContent = { url, reloadSource in
-        WebPreviewPaneContent(url: url, reloadSource: reloadSource)
-    }
-
-    /// Opens a URL in the default browser, for `serve --open` with the
-    /// browser setting. Tests record calls instead.
+    /// Opens a URL in the default browser, for `serve --open`. Tests record
+    /// calls instead.
     @ObservationIgnored var openURLInBrowser: @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
 
     /// Built on first access, so `projects.json` is never touched until a

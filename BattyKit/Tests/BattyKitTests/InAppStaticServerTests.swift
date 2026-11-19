@@ -548,6 +548,46 @@ struct AppStateStoreStaticServerTests {
             return
         }
     }
+
+    final class BrowserRecorder {
+        var opened: [URL] = []
+    }
+
+    func recordingFixture() throws -> (StaticServerStoreFixture, BrowserRecorder) {
+        let fixture = try StaticServerStoreFixture()
+        let recorder = BrowserRecorder()
+        fixture.store.openURLInBrowser = { recorder.opened.append($0) }
+        return (fixture, recorder)
+    }
+
+    @Test func serveOpenOpensTheServedURLInTheDefaultBrowser() async throws {
+        let (fixture, recorder) = try recordingFixture()
+        let result = try await fixture.serve(open: true).get()
+        #expect(recorder.opened == [result.content.url])
+        #expect(Set(fixture.session.tree.allPanes.map(\.id)) == [fixture.callingPaneID, result.paneID])
+    }
+
+    @Test func serveWithoutOpenOpensNothing() async throws {
+        let (fixture, recorder) = try recordingFixture()
+        _ = try await fixture.serve().get()
+        #expect(recorder.opened.isEmpty)
+    }
+
+    @Test func serveOpenOnAReusedServerOpensTheBrowserAgain() async throws {
+        let (fixture, recorder) = try recordingFixture()
+        let first = try await fixture.serve(open: true).get()
+        let second = try await fixture.serve(open: true).get()
+        #expect(!second.created)
+        #expect(recorder.opened == [first.content.url, first.content.url])
+    }
+
+    @Test func staleServedSiteOpenTargetIsIgnored() async throws {
+        let (fixture, recorder) = try recordingFixture()
+        fixture.base.defaults.set("batty", forKey: "co.sstools.Batty.servedSiteOpenTarget")
+        let result = try await fixture.serve(open: true).get()
+        #expect(recorder.opened == [result.content.url])
+        #expect(fixture.session.tree.allPanes.count == 2)
+    }
 }
 
 @MainActor
@@ -572,17 +612,14 @@ struct AppXPCServiceStaticServerTests {
 }
 
 @MainActor
-struct ServedSiteOpenTargetTests {
-    @Test func defaultsToBatty() {
-        let defaults = UserDefaults(suiteName: "ServedSiteOpenTargetTests-\(UUID().uuidString)")!
-        #expect(ServedSiteOpenTarget.resolved(defaults: defaults) == .batty)
-        defaults.set("browser", forKey: SettingsPreference.servedSiteOpenTargetKey)
-        #expect(ServedSiteOpenTarget.resolved(defaults: defaults) == .browser)
+struct ServerPaneInAppDisplayTests {
+    @Test func inAppListeningReadsServing() {
+        #expect(ServerPaneDisplay.stateText(.listening(pid: nil), isResponding: nil, kind: .inApp) == "Serving")
+        #expect(ServerPaneDisplay.stateText(.stopped(exitCode: nil, reason: .requested), isResponding: nil, kind: .inApp) == "Stopped")
     }
 
-    @Test func unknownStoredValueFallsBackToBatty() {
-        let defaults = UserDefaults(suiteName: "ServedSiteOpenTargetTests-\(UUID().uuidString)")!
-        defaults.set("safari", forKey: SettingsPreference.servedSiteOpenTargetKey)
-        #expect(ServedSiteOpenTarget.resolved(defaults: defaults) == .batty)
+    @Test func stopShownForInAppListening() {
+        #expect(ServerPaneDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .inApp))
+        #expect(!ServerPaneDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .external))
     }
 }

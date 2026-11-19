@@ -701,16 +701,10 @@ as Project captures it as an empty terminal slot. The command runs in an
 ordinary terminal Pane below the Server Pane, so the terminal-host boundary
 in §3 is unchanged. See `docs/design/server-pane-view.md`.
 
-### Implementation note: `web-preview`, the seventh kind (#0649)
+### Removed: `web-preview` (#0649, #0690)
 
-`PaneContentKind.webPreview` hosts a `WKWebView` for one loopback page. Like
-`server` it is **CLI-only** (`batty server preview`, `serve --open`, or a
-Server Pane's Open in Batty button): it needs a URL, and it is gated by the
-`serverPane` flag, which the static `pane split` schema can't express. The
-web view is an AppKit view inside the Pane body, below `TerminalHostView`,
-which returns `nil` from `hitTest` where no terminal is. The content owns the
-web view, creates it on first show, unmounts it while hidden and releases it
-in `tearDown`. See `docs/design/web-preview-pane.md`.
+A `web-preview` kind (a web view for one loopback page) existed in Beta from
+#0649 and was removed by #0690. The raw value is no longer decoded.
 
 ## 6. Regression evidence plan
 

@@ -1,10 +1,10 @@
-// CLIWebPreviewTests.swift
+// CLIServerServeTests.swift
 
 import XCTest
 
-/// `batty server serve|preview` against the real app (#0649). The server
+/// `batty server serve` against the real app (#0649). The server
 /// runs inside Batty, so the sandboxed runner never binds a socket.
-nonisolated final class CLIWebPreviewTests: XCTestCase {
+nonisolated final class CLIServerServeTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         BattyUITestHarness.sweepSentinels()
@@ -22,7 +22,7 @@ nonisolated final class CLIWebPreviewTests: XCTestCase {
             ? BattyUITestHarness.launchBatty()
             : BattyUITestHarness.launchBatty(script: [], extraEnvironment: extraEnvironment)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
-        let (_, initial) = try BattyCLI.connect(to: app, from: CLIWebPreviewTests.self)
+        let (_, initial) = try BattyCLI.connect(to: app, from: CLIServerServeTests.self)
         return (app, try XCTUnwrap(initial.selectedSession))
     }
 
@@ -73,49 +73,6 @@ nonisolated final class CLIWebPreviewTests: XCTestCase {
     }
 
     @MainActor
-    func testServeOpenRendersIndexInAPreviewPane() throws {
-        let (app, session) = try launch()
-        defer { app.terminate() }
-        let json = try reply(serve(try site(), from: session.focusedPaneID, ["--open"]))
-        let serverID = try XCTUnwrap((json["paneID"] as? String).flatMap(UUID.init(uuidString:)))
-        let previewID = try XCTUnwrap((json["previewPaneID"] as? String).flatMap(UUID.init(uuidString:)))
-        let topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(previewID) != nil })
-        XCTAssertEqual(topology.pane(previewID)?.kind, "web-preview")
-        let serverPane = BattyScreen.element("server-pane.\(serverID.uuidString)", in: app)
-        let previewPane = BattyScreen.element("web-preview.\(previewID.uuidString)", in: app)
-        XCTAssertTrue(serverPane.waitForExistence(timeout: 10))
-        XCTAssertTrue(previewPane.waitForExistence(timeout: 10))
-        XCTAssertGreaterThanOrEqual(previewPane.frame.minY, serverPane.frame.maxY - 2, "the preview is not below the Server Pane")
-        XCTAssertTrue(app.webViews.staticTexts["Batty preview fixture one"].waitForExistence(timeout: 20), "the preview did not render index.html")
-    }
-
-    @MainActor
-    func testEditingAFileReloadsThePreview() throws {
-        let (app, session) = try launch()
-        defer { app.terminate() }
-        let root = try site()
-        _ = try reply(serve(root, from: session.focusedPaneID, ["--open"]))
-        XCTAssertTrue(app.webViews.staticTexts["Batty preview fixture one"].waitForExistence(timeout: 20))
-        let staging = root.appending(path: ".index.html.tmp")
-        try page("Batty preview fixture two").write(to: staging, atomically: false, encoding: .utf8)
-        _ = try FileManager.default.replaceItemAt(root.appending(path: "index.html"), withItemAt: staging)
-        XCTAssertTrue(app.webViews.staticTexts["Batty preview fixture two"].waitForExistence(timeout: 20), "the preview did not reload after the edit")
-    }
-
-    @MainActor
-    func testClosingThePreviewPaneKeepsTheServer() throws {
-        let (app, session) = try launch()
-        defer { app.terminate() }
-        let json = try reply(serve(try site(), from: session.focusedPaneID, ["--open"]))
-        let serverID = try XCTUnwrap((json["paneID"] as? String).flatMap(UUID.init(uuidString:)))
-        let previewID = try XCTUnwrap(json["previewPaneID"] as? String)
-        BattyCLI.runExpectingSuccess(["pane", "close", "--pane", previewID])
-        let topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(UUID(uuidString: previewID)!) == nil })
-        XCTAssertNotNil(topology.pane(serverID), "closing the preview closed the Server Pane")
-        XCTAssertTrue(BattyUITestHarness.waitFor({ self.text("server-pane-state", in: app) == "Serving" }, timeout: 10))
-    }
-
-    @MainActor
     func testClosingTheServerPaneFreesThePort() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
@@ -132,22 +89,20 @@ nonisolated final class CLIWebPreviewTests: XCTestCase {
     }
 
     @MainActor
-    func testPreviewRefusesANonLoopbackURL() throws {
+    func testServerPreviewIsUnknown() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
-        let result = BattyCLI.run(["server", "preview", "--url", "https://example.com/", "--pane", session.focusedPaneID.uuidString])
+        let result = BattyCLI.run(["server", "preview", "--port", "8083", "--pane", session.focusedPaneID.uuidString])
         XCTAssertNotEqual(result.status, 0, result.summary)
-        XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a refused preview changed the layout")
+        XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "server preview changed the layout")
     }
 
     @MainActor
-    func testServeAndPreviewAbsentWithFlagForcedOff() throws {
+    func testServeAbsentWithFlagForcedOff() throws {
         let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FORCE_SERVER_PANE_OFF": "1"])
         defer { app.terminate() }
         let serveResult = serve(try site(), from: session.focusedPaneID)
         XCTAssertNotEqual(serveResult.status, 0, serveResult.summary)
-        let preview = BattyCLI.run(["server", "preview", "--port", "8083", "--pane", session.focusedPaneID.uuidString])
-        XCTAssertNotEqual(preview.status, 0, preview.summary)
         XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a flag-off serve changed the layout")
     }
 }

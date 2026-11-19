@@ -1,6 +1,6 @@
 # Web Preview Pane — design (#0649)
 
-**Status: drafted for user approval** (#0301 design-first gate). Implementation proceeds against this draft, as the Server Pane did; visual sign-off happens when the user checks the `resolved` issue. The mock-up is [`web-preview-pane.html`](web-preview-pane.html).
+**Status: Superseded** by #0690 (user decision 2026-11-19: no web view). The mock-up is [`web-preview-pane.html`](web-preview-pane.html).
 
 Read `docs/pane-kinds.md`, `docs/pane-view-lifecycle.md` and `docs/design/server-pane-view.md` first.
 

@@ -94,31 +94,6 @@ public nonisolated struct ServerServeRequest: Codable, Sendable, Equatable {
     }
 }
 
-/// `batty server preview` (#0649): a Web Preview Pane for a loopback URL.
-public nonisolated struct WebPreviewRequest: Codable, Sendable, Equatable {
-    public var paneID: UUID?
-    public var url: String
-    public var split: ServerSplit?
-
-    public init(paneID: UUID? = nil, url: String, split: ServerSplit? = nil) {
-        self.paneID = paneID
-        self.url = url
-        self.split = split
-    }
-}
-
-public nonisolated struct WebPreviewReply: Codable, Sendable, Equatable {
-    public var paneID: UUID
-    public var url: String
-    public var created: Bool
-
-    public init(paneID: UUID, url: String, created: Bool) {
-        self.paneID = paneID
-        self.url = url
-        self.created = created
-    }
-}
-
 public nonisolated struct ServerControlRequest: Codable, Sendable, Equatable {
     public var paneID: UUID?
     public var serverPaneID: UUID?
@@ -143,12 +118,9 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
     public var created: Bool
     /// The served folder, for an in-app static server (#0649).
     public var root: String?
-    /// The Web Preview Pane `serve --open` opened or reused (#0649).
-    public var previewPaneID: UUID?
 
-    public init(paneID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil, previewPaneID: UUID? = nil) {
+    public init(paneID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil) {
         self.root = root
-        self.previewPaneID = previewPaneID
         self.paneID = paneID
         self.terminalPaneID = terminalPaneID
         self.tabID = tabID

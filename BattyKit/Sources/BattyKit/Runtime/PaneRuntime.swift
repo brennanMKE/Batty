@@ -141,8 +141,6 @@ public final class PaneRuntime: Identifiable {
         // Needs a port and a backend, which only the `server` XPC verbs
         // carry; they pass their own `contentFactory`.
         case .server: return nil
-        // Needs a URL, which only `batty server preview|serve` carry.
-        case .webPreview: return nil
         }
     }
 

@@ -16,12 +16,6 @@ extension ServerXPCError {
     }
 }
 
-public struct WebPreviewXPCResult {
-    public let paneID: UUID
-    public let content: WebPreviewPaneContent
-    public let created: Bool
-}
-
 extension AppStateStore {
     /// The Server Pane serving `rootRealPath` in the Session holding `paneID`.
     public func findStaticServerPane(sessionContaining paneID: UUID, root rootRealPath: String) -> PaneRuntime? {
@@ -29,22 +23,6 @@ extension AppStateStore {
         return session.tree.allPanes.first {
             (($0.content as? ServerPaneContent)?.backend as? InAppStaticServerBackend)?.root == rootRealPath
         }
-    }
-
-    /// The change broadcaster of the in-app server listening on `port`, in
-    /// any window.
-    public func staticReloadBroadcaster(forPort port: Int) -> StaticReloadBroadcaster? {
-        for window in windows {
-            for session in window.sessions {
-                for pane in session.tree.allPanes {
-                    if let backend = (pane.content as? ServerPaneContent)?.backend as? InAppStaticServerBackend,
-                       backend.isServing, backend.port.map(Int.init) == port {
-                        return backend.broadcaster
-                    }
-                }
-            }
-        }
-        return nil
     }
 
     /// `batty server serve` (#0649). Binds before the Pane exists, because
@@ -101,70 +79,11 @@ extension AppStateStore {
         return .success(openIfAsked(ServerXPCResult(paneID: serverPane.id, content: content, created: true), open: request.open))
     }
 
-    /// `serve --open`: a Web Preview Pane below the Server Pane, or the
-    /// browser, per Settings.
+    /// `serve --open`: the served URL in the default browser.
     private func openIfAsked(_ result: ServerXPCResult, open: Bool?) -> ServerXPCResult {
         guard open == true else { return result }
-        var opened = result
-        switch ServedSiteOpenTarget.resolved(defaults: preferences) {
-        case .batty:
-            if case .success(let preview) = openWebPreview(url: result.content.url, besideServerPane: result.paneID) {
-                opened.previewPaneID = preview.paneID
-            }
-        case .browser:
-            openURLInBrowser(result.content.url)
-        }
-        return opened
-    }
-
-    // MARK: - Web Preview Panes
-
-    public func openWebPreviewForXPC(_ request: WebPreviewRequest) -> Result<WebPreviewXPCResult, ServerXPCError> {
-        guard featureFlags.serverPane else { return .failure(.flagOff) }
-        guard let url = URL(string: request.url), WebPreviewURLPolicy.isAllowedTopLevel(url), WebPreviewURLPolicy.origin(of: url) != nil else {
-            return .failure(.previewURLNotAllowed)
-        }
-        let resolved = resolveCallingPane(request.paneID)
-        guard case .success(let (_, _, callingPaneID)) = resolved else {
-            if case .failure(let error) = resolved { return .failure(error) }
-            return .failure(.noPane)
-        }
-        return openWebPreview(url: url, beside: callingPaneID, direction: direction(for: request.split))
-    }
-
-    /// From a Server Pane's Open in Batty button or `serve --open`: below
-    /// that Server Pane.
-    public func openWebPreview(url: URL, besideServerPane serverPaneID: UUID) -> Result<WebPreviewXPCResult, ServerXPCError> {
-        guard WebPreviewURLPolicy.isAllowedTopLevel(url), WebPreviewURLPolicy.origin(of: url) != nil else { return .failure(.previewURLNotAllowed) }
-        return openWebPreview(url: url, beside: serverPaneID, direction: .vertical)
-    }
-
-    /// One preview per (Session, origin): the same origin again navigates
-    /// the existing Pane and shows it. Keyboard focus stays where it was.
-    private func openWebPreview(url: URL, beside paneID: UUID, direction: SplitDirection) -> Result<WebPreviewXPCResult, ServerXPCError> {
-        guard let (window, session) = locate(paneID: paneID) else { return .failure(.unknownPane) }
-        let origin = WebPreviewURLPolicy.origin(of: url)
-        if let existing = session.tree.allPanes.first(where: {
-            guard let preview = $0.content as? WebPreviewPaneContent else { return false }
-            return WebPreviewURLPolicy.origin(of: preview.url) == origin
-        }), let content = existing.content as? WebPreviewPaneContent {
-            content.navigate(to: url)
-            showIfHidden(existing, in: window)
-            return .success(WebPreviewXPCResult(paneID: existing.id, content: content, created: false))
-        }
-        let focused = session.tree.focusedPaneID
-        let content = makeWebPreviewContent(url) { [weak self] target in
-            WebPreviewURLPolicy.origin(of: target).flatMap { self?.staticReloadBroadcaster(forPort: $0.port) }
-        }
-        let isSessionSelected = window.selectedSessionID == session.id && window.isWindowVisible
-        guard let pane = session.tree.splitPane(id: paneID, direction: direction, kind: .webPreview, contentFactory: { _ in content }, isSessionSelected: isSessionSelected) else {
-            return .failure(.unknownPane)
-        }
-        session.tree.focusedPaneID = focused
-        let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: pane.id)
-        AppEventWatcher.shared.send(eventType: event.type, payload: event)
-        logger.info("web preview: pane \(pane.id, privacy: .public)")
-        return .success(WebPreviewXPCResult(paneID: pane.id, content: content, created: true))
+        openURLInBrowser(result.content.url)
+        return result
     }
 
     private func reuse(_ pane: PaneRuntime, in window: WindowRuntime, requestedPort: UInt16?, open: Bool?) async -> Result<ServerXPCResult, ServerXPCError> {

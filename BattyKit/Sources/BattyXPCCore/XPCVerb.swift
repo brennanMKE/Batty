@@ -187,9 +187,4 @@ public nonisolated enum XPCVerb {
     /// Pane. Request `ServerServeRequest`, reply `ServerReply`. Fails with
     /// the `serverPane` flag off.
     public static let serverServe = "serverServe"
-
-    /// #0649: opens or reuses a Web Preview Pane for a loopback URL.
-    /// Request `WebPreviewRequest`, reply `WebPreviewReply`. Fails with the
-    /// `serverPane` flag off.
-    public static let serverPreview = "serverPreview"
 }

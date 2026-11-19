@@ -105,7 +105,7 @@ enum ProjectTreeBuilder {
                 return Slot(kind: .gitStatus, tabs: nil, path: directory(pane.repositoryPath ?? "."))
             case .processStatus, .systemMetrics, .lmStudioDashboard:
                 return Slot(kind: pane.kind, tabs: nil, path: nil)
-            case .server, .webPreview:
+            case .server:
                 return Slot(kind: .terminal, tabs: nil, path: nil)
             }
         }

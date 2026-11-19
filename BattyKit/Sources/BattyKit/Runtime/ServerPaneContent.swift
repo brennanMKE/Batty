@@ -93,8 +93,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
     @ObservationIgnored private let processTable: ProcessTableReading
     @ObservationIgnored private let stopBounds: StopBounds
     @ObservationIgnored private let opener: @MainActor (URL) -> Void
-    /// Opens a Web Preview Pane for `url`; set by the store.
-    @ObservationIgnored public var openPreview: (() -> Void)?
     /// Makes a terminal backend in a new terminal Pane under this one, for
     /// Restart when there is no terminal to type into. Set by the store.
     @ObservationIgnored public var makeTerminalBackend: ((_ command: String, _ workingDirectory: String?) -> ServerBackend?)?
@@ -435,11 +433,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
 
     public func openInBrowser() {
         opener(url)
-    }
-
-    public var canOpenPreview: Bool {
-        guard case .listening = state, openPreview != nil else { return false }
-        return WebPreviewURLPolicy.isAllowedTopLevel(url)
     }
 
     /// Stops an attached server, if running, then swaps in `replacement`:

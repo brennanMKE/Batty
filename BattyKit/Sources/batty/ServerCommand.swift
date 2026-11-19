@@ -13,7 +13,7 @@ struct ServerNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "server",
         abstract: "Start, attach to, serve, stop or restart a dev server shown in a Server Pane.",
-        subcommands: [ServerStartCommand.self, ServerAttachCommand.self, ServerServeCommand.self, ServerPreviewCommand.self, ServerStopCommand.self, ServerRestartCommand.self]
+        subcommands: [ServerStartCommand.self, ServerAttachCommand.self, ServerServeCommand.self, ServerStopCommand.self, ServerRestartCommand.self]
     )
 }
 
@@ -236,7 +236,7 @@ struct ServerServeCommand: ParsableCommand {
     @Option(name: .long, help: "Port to listen on (1-65535). Defaults to a free port.")
     var port: Int?
 
-    @Flag(name: .long, help: "Also open the site, in a Web Preview Pane or the browser per Settings.")
+    @Flag(name: .long, help: "Also open the site in the default browser.")
     var open = false
 
     @Flag(name: .long, help: "Serve files byte-for-byte, with no live-reload script in HTML.")
@@ -248,7 +248,7 @@ struct ServerServeCommand: ParsableCommand {
     @Option(name: .long, help: "Pane whose Session gets the Server Pane. Falls back to BATTY_PANE_ID, then the focused pane.")
     var pane: String?
 
-    @Flag(name: .long, help: "Emit JSON (paneID, url, root, state, previewPaneID) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (paneID, url, root, state) instead of the id.")
     var json = false
 
     nonisolated func validate() throws {
@@ -264,83 +264,6 @@ struct ServerServeCommand: ParsableCommand {
 
     nonisolated func run() throws {
         _ = try sendServer(verb: XPCVerb.serverServe, request: try request(), json: json, timeout: serverStopTimeout)
-    }
-}
-
-struct ServerPreviewCommand: ParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "preview",
-        abstract: "Show a local page in a Web Preview Pane, printing the Pane's id.",
-        discussion: """
-        Example: batty server preview --port 8083
-
-        Only http(s) URLs on localhost, 127.0.0.1 or [::1] are shown. \
-        Running preview again for the same origin navigates the existing \
-        Web Preview Pane.
-        """,
-        helpNames: .long
-    )
-
-    @Option(name: .long, help: "Loopback URL to show.")
-    var url: String?
-
-    @Option(name: .long, help: "Port to show at http://127.0.0.1:<port>/ (1-65535).")
-    var port: Int?
-
-    @Option(name: .long, help: "Where the Web Preview Pane goes: right or down. Defaults to the Server Pane placement setting.")
-    var split: ServerSplit?
-
-    @Option(name: .long, help: "Pane the Web Preview Pane opens beside. Falls back to BATTY_PANE_ID, then the focused pane.")
-    var pane: String?
-
-    @Flag(name: .long, help: "Emit JSON (paneID, url, created) instead of the id.")
-    var json = false
-
-    nonisolated func validate() throws {
-        _ = try targetURL()
-    }
-
-    nonisolated func targetURL() throws -> String {
-        switch (url, port) {
-        case (nil, nil): throw ValidationError("give --url or --port")
-        case (.some, .some): throw ValidationError("give --url or --port, not both")
-        case (nil, .some(let port)):
-            try validatePort(port)
-            return "http://127.0.0.1:\(port)/"
-        case (.some(let url), nil):
-            guard let parsed = URL(string: url), WebPreviewURLPolicy.isAllowedTopLevel(parsed), WebPreviewURLPolicy.origin(of: parsed) != nil else {
-                throw ValidationError(WebPreviewURLPolicy.refusalMessage)
-            }
-            return url
-        }
-    }
-
-    nonisolated func run() throws {
-        let request = WebPreviewRequest(paneID: try resolveCallingPaneID(flag: pane), url: try targetURL(), split: split)
-        let endpoint = try resolveServerEndpoint()
-        switch AppServiceClient.webPreview(request: request, endpoint: endpoint, timeout: 15) {
-        case .success(let reply):
-            if json {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-                guard let data = try? encoder.encode(reply), let text = String(data: data, encoding: .utf8) else {
-                    fputs("batty: failed to encode preview reply as JSON\n", stderr)
-                    throw ExitCode.failure
-                }
-                print(text)
-            } else {
-                print(reply.paneID.uuidString)
-            }
-        case .unreachable:
-            fputs("batty: app unavailable\n", stderr)
-            throw ExitCode(XPCExitCode.appUnavailable)
-        case .requestFailed(let message):
-            fputs("batty: request failed — \(message)\n", stderr)
-            throw ExitCode(XPCExitCode.requestFailed)
-        case .appTerminated:
-            fputs("batty: app terminated\n", stderr)
-            throw ExitCode(XPCExitCode.sessionTerminated)
-        }
     }
 }
 
@@ -458,27 +381,12 @@ extension ServerServeCommand: CapabilitiesDescribable {
         CapabilitiesInputSchemaPayload(properties: [
             "dir": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Folder to serve. Defaults to this directory.", required: false),
             "port": CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "Port to listen on (1-65535). Defaults to a free port.", required: false),
-            "open": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--open"], type: "boolean", description: "Also open the site, in a Web Preview Pane or the browser per Settings.", required: false, defaultValue: "false"),
+            "open": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--open"], type: "boolean", description: "Also open the site in the default browser.", required: false, defaultValue: "false"),
             "no-inject": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--no-inject"], type: "boolean", description: "Serve files byte-for-byte, with no live-reload script in HTML.", required: false, defaultValue: "false"),
             "split": splitProperty,
             "pane": paneProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (paneID, url, root, state, previewPaneID) instead of the id.", required: false, defaultValue: "false"),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (paneID, url, root, state) instead of the id.", required: false, defaultValue: "false"),
         ])
-    }
-}
-
-extension ServerPreviewCommand: CapabilitiesDescribable {
-    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
-        CapabilitiesInputSchemaPayload(
-            properties: [
-                "url": CapabilitiesPropertyPayload(cliKind: .option, names: ["--url"], type: "string", description: "Loopback URL to show.", required: false),
-                "port": CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "Port to show at http://127.0.0.1:<port>/ (1-65535).", required: false),
-                "split": CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Where the Web Preview Pane goes: right or down. Defaults to the Server Pane placement setting.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue)),
-                "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane the Web Preview Pane opens beside. Falls back to BATTY_PANE_ID, then the focused pane.", required: false),
-                "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (paneID, url, created) instead of the id.", required: false, defaultValue: "false"),
-            ],
-            conflicts: [.mutuallyExclusive(["url", "port"], description: "Give exactly one of --url or --port.")]
-        )
     }
 }
 

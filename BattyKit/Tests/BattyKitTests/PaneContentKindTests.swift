@@ -1,5 +1,6 @@
 // PaneContentKindTests.swift
 
+import BattyXPCCore
 import Foundation
 import Testing
 @testable import BattyKit
@@ -31,7 +32,6 @@ struct PaneContentKindTests {
             "lm-studio-dashboard",
             "system-metrics",
             "server",
-            "web-preview",
         ])
     }
 
@@ -42,21 +42,22 @@ struct PaneContentKindTests {
 
     @Test func paneSplitKindsExcludeServer() {
         #expect(!PaneContentKind.paneSplitKinds.contains(.server))
-        #expect(PaneContentKind.paneSplitKinds.count == PaneContentKind.allCases.count - 2)
+        #expect(PaneContentKind.paneSplitKinds.count == PaneContentKind.allCases.count - 1)
     }
 
-    @Test func webPreviewRawValueIsWebPreview() {
-        #expect(PaneContentKind.webPreview.rawValue == "web-preview")
-        #expect(PaneContentKind(rawValue: "web-preview") == .webPreview)
-        #expect(PaneContentKind.webPreview.displayName == "Web Preview")
-    }
-
-    @Test func paneSplitKindsExcludeWebPreview() {
-        #expect(!PaneContentKind.paneSplitKinds.contains(.webPreview))
-    }
-
-    @Test func projectSlotKindsExcludeWebPreview() {
-        #expect(!PaneContentKind.projectSlotKinds.contains(.webPreview))
+    @Test func retiredWebPreviewRawValueIsUnknown() throws {
+        #expect(PaneContentKind(rawValue: "web-preview") == nil)
+        let pane = """
+        {"id":"\(UUID().uuidString)","isHidden":false,"kind":"web-preview"}
+        """
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(Pane.self, from: Data(pane.utf8))
+        }
+        let topology = """
+        {"id":"\(UUID().uuidString)","isHidden":false,"isFocused":false,"activeTabID":"\(UUID().uuidString)","tabs":[],"kind":"web-preview"}
+        """
+        let decoded = try JSONDecoder().decode(TopologyPanePayload.self, from: Data(topology.utf8))
+        #expect(decoded.kind == nil)
     }
 
     @Test func projectSlotKindsExcludeServer() {

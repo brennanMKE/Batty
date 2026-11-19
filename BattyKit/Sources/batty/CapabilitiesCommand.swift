@@ -228,7 +228,6 @@ struct CapabilitiesCommand: ParsableCommand {
         "server stop": "stop",
         "server restart": "restart",
         "server serve": "start",
-        "server preview": "split",
     ]
 
     static func annotations(forVerbPath verbPath: String) -> CapabilitiesAnnotationsPayload {

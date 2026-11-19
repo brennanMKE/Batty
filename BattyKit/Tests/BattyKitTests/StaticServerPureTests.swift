@@ -278,14 +278,6 @@ nonisolated struct StaticHTTPResponderTests {
         }
     }
 
-    @Test func battyPreviewUserAgentGetsExactBytes() throws {
-        try withFixture { fixture throws in
-            let response = try respond(get("/", extra: "User-Agent: Mozilla/5.0 BattyPreview/1\r\n"), fixture: fixture)
-            let original = try Data(contentsOf: fixture.root.appendingPathComponent("index.html"))
-            #expect(response.body == original)
-        }
-    }
-
     @Test func noInjectServesExactBytes() throws {
         try withFixture { fixture throws in
             let response = try respond(get("/"), fixture: fixture, inject: false)

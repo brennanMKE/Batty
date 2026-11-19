@@ -39,24 +39,9 @@ struct ServerCommandParsingTests {
         #expect(plain.inject == nil)
     }
 
-    @Test func previewRequiresURLOrPort() {
-        #expect(throws: (any Error).self) { try ServerPreviewCommand.parse([]) }
-    }
-
-    @Test func previewRejectsBothURLAndPort() {
-        #expect(throws: (any Error).self) { try ServerPreviewCommand.parse(["--url", "http://127.0.0.1:1/", "--port", "1"]) }
-    }
-
-    @Test func previewRejectsANonLoopbackURL() {
-        #expect(throws: (any Error).self) { try ServerPreviewCommand.parse(["--url", "https://example.com/"]) }
-        #expect(throws: (any Error).self) { try ServerPreviewCommand.parse(["--url", "http://127.0.0.1.evil.com/"]) }
-        #expect(throws: (any Error).self) { try ServerPreviewCommand.parse(["--url", "file:///etc/passwd"]) }
-        #expect(throws: Never.self) { try ServerPreviewCommand.parse(["--url", "http://localhost:3000/app"]) }
-    }
-
-    @Test func previewPortBuildsA127URL() throws {
-        #expect(try ServerPreviewCommand.parse(["--port", "8083"]).targetURL() == "http://127.0.0.1:8083/")
-        #expect(throws: (any Error).self) { try ServerPreviewCommand.parse(["--port", "0"]) }
+    @Test func serverPreviewIsAnUnknownSubcommand() {
+        #expect(throws: (any Error).self) { try ServerNounCommand.parseAsRoot(["preview", "--port", "8083"]) }
+        #expect(!ServerNounCommand.configuration.subcommands.contains { $0.configuration.commandName == "preview" })
     }
 
     @Test func startRejectsPortOutOfRange() {

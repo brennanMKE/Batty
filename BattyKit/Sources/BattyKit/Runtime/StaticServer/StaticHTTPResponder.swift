@@ -35,10 +35,6 @@ public nonisolated struct StaticResponse: Sendable {
 /// Turns one parsed request into a response. Pure apart from reading the
 /// resolved file.
 public nonisolated enum StaticHTTPResponder {
-    /// Batty's own Web Preview Pane identifies itself with this, and reloads
-    /// in-process instead of through the injected script.
-    public static let previewUserAgentToken = "BattyPreview/"
-
     public static func respond(to head: HTTPRequestHead, resolver: StaticFilePathResolver, options: StaticResponderOptions) -> StaticResponse {
         guard head.method == "GET" || head.method == "HEAD" else {
             var response = simple(405)
@@ -58,7 +54,6 @@ public nonisolated enum StaticHTTPResponder {
         }
 
         let injects = options.injectsReloadScript
-            && !(head.header("user-agent") ?? "").contains(previewUserAgentToken)
         var response: StaticResponse
         switch resolver.resolve(target: head.target) {
         case .forbidden:

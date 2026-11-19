@@ -144,12 +144,6 @@ struct SessionProjectCapture: Equatable {
                     comment: "Project Editor: a captured Server Pane becomes an empty terminal slot"
                 )
                 return .terminal()
-            case .webPreview:
-                notes[.tabDirectory(slot: slot, tab: 0)] = String(
-                    localized: "Web previews aren't saved in Projects, so this slot is an empty terminal.",
-                    comment: "Project Editor: a captured Web Preview Pane becomes an empty terminal slot"
-                )
-                return .terminal()
             }
         }
 
