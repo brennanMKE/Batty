@@ -183,13 +183,4 @@ extension AppStateStore {
         projectStore.retryLoadIfNeeded()
         windowRuntime.projectPickerShown = true
     }
-
-    /// Hiding never touches `projectStore`.
-    public func toggleProjectPicker(in windowRuntime: WindowRuntime) {
-        if windowRuntime.projectPickerShown {
-            windowRuntime.projectPickerShown = false
-        } else {
-            presentProjectPicker(in: windowRuntime)
-        }
-    }
 }

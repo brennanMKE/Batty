@@ -88,7 +88,7 @@ nonisolated final class ProjectsStartupTests: ProjectsUITestCase {
         XCTAssertFalse(sheet(in: app).exists, "the trust sheet appeared for an approved command set")
 
         // Editing the command brings the sheet back.
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Runner", in: app)
         replaceText(in: "project-editor.tab.1.command", with: "touch \(BattyCLI.shellQuoted(edited.path))", app: app)
         click("project-editor.save", in: app)

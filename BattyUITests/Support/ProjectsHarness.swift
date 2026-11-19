@@ -266,8 +266,7 @@ nonisolated class ProjectsUITestCase: XCTestCase {
 
     @MainActor
     func presentPicker(in app: XCUIApplication) {
-        chooseFromOpenProjectSubmenu("Choose Project", in: app)
-        XCTAssertTrue(element("project-picker.root", in: app).waitForExistence(timeout: 10), "the Open Project picker did not appear")
+        presentPickerFromSidebar(in: app)
     }
 
     /// Clicks the Sidebar footer's Open Project button, which presents the
@@ -303,7 +302,7 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: option ? [.option] : [])
     }
 
-    /// File > Open Project > Choose Project..., filter, Return (Option-Return
+    /// Sidebar Open Project button, filter, Return (Option-Return
     /// for another copy). Waits for the sheet to close.
     @MainActor
     func openThroughPicker(_ name: String, option: Bool = false, in app: XCUIApplication) {
@@ -355,11 +354,8 @@ nonisolated class ProjectsUITestCase: XCTestCase {
     }
 
     @MainActor
-    func openEditorFromProjectsMenu(in app: XCUIApplication) {
-        let projects = openMenu("Projects", in: app)
-        let item = menuItem("Projects", in: projects)
-        XCTAssertTrue(item.waitForExistence(timeout: 5), "Projects menu has no Projects… item: \(menuTitles(projects))")
-        item.click()
+    func openEditorFromFileMenu(in app: XCUIApplication) {
+        chooseFromOpenProjectSubmenu("Projects", in: app)
         XCTAssertTrue(editorWindow(in: app).waitForExistence(timeout: 10), "the Project Editor did not open")
     }
 

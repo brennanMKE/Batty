@@ -508,20 +508,6 @@ struct ProjectXPCTests {
         #expect(log.ids.count == 1)
     }
 
-    @Test func aPickerToggleNamingAWindowIsHandledByThatWindowOnly() {
-        let named = WindowID(), other = WindowID()
-        let info: [AnyHashable: Any] = [ProjectPickerToggle.windowIDKey: named]
-        #expect(ProjectPickerToggle.shouldHandle(userInfo: info, windowID: named, isKeyWindow: false))
-        #expect(!ProjectPickerToggle.shouldHandle(userInfo: info, windowID: other, isKeyWindow: true))
-    }
-
-    @Test func aPickerToggleNamingNoWindowIsHandledByTheKeyWindowOnly() {
-        let id = WindowID()
-        #expect(ProjectPickerToggle.shouldHandle(userInfo: nil, windowID: id, isKeyWindow: true))
-        #expect(!ProjectPickerToggle.shouldHandle(userInfo: nil, windowID: id, isKeyWindow: false))
-        #expect(!ProjectPickerToggle.shouldHandle(userInfo: ["other": 1], windowID: id, isKeyWindow: false))
-    }
-
     // MARK: - Wire shapes
 
     @Test func openRequestHasNoFieldThatSkipsThePrompt() throws {

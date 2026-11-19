@@ -17,11 +17,11 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
     // MARK: - 5. Project Editor
 
     @MainActor
-    func testEditProjectsMenuOpensTheEditorOnTheStoredProjects() throws {
+    func testFileMenuProjectsOpensTheEditorOnTheStoredProjects() throws {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         XCTAssertTrue(element("project-editor.list.row.Existing", in: app).waitForExistence(timeout: 5), "the editor does not list the stored Project")
 
         let windowMenu = openMenu("Window", in: app)
@@ -40,11 +40,26 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
     }
 
     @MainActor
-    func testProjectsMenuOpensInBrowseState() throws {
+    func testFileMenuProjectsSelectsTheCurrentSessionsProject() throws {
+        let (app, _) = try launchApp(projects: [try existingProject()])
+        defer { app.terminate() }
+
+        openThroughPicker("Existing", in: app)
+        XCTAssertNotNil(waitForSessions(named: "Existing").first, "the Project did not open")
+        openEditorFromFileMenu(in: app)
+        XCTAssertTrue(
+            waitFor({ (self.element("project-editor.name", in: app).value as? String) == "Existing" }, timeout: 5),
+            "the editor did not select the current Session's Project"
+        )
+        XCTAssertFalse(element("project-editor.browse", in: app).exists, "the editor opened in browse state")
+    }
+
+    @MainActor
+    func testFileMenuProjectsOpensInBrowseStateForAPlainSession() throws {
         let (app, _) = try launchApp(projects: [try existingProject(), try secondProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         assertBrowseState(in: app)
         XCTAssertFalse(paneCard(1, in: app).exists, "the browse state shows a Project's layout")
         XCTAssertFalse(element("project-editor.name", in: app).exists, "the browse state shows a Project's fields")
@@ -57,7 +72,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         assertBrowseState(in: app)
         element("project-editor.browse.new-project", in: app).click()
         XCTAssertTrue(element("project-editor.list.row.new", in: app).waitForExistence(timeout: 5), "no Untitled row")
@@ -70,7 +85,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
         let sessionCount = try XCTUnwrap(initial).sessions.count
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         assertBrowseState(in: app)
         app.typeKey("n", modifierFlags: .command)
         XCTAssertTrue(element("project-editor.list.row.new", in: app).waitForExistence(timeout: 5), "Cmd-N did not start a New Project")
@@ -85,7 +100,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         defer { app.terminate() }
 
         let contentIdentifier = app.windows.firstMatch.identifier
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         replaceText(in: "project-editor.name", with: "Existing Changed", app: app)
 
@@ -98,7 +113,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(waitFor({ !content.exists }, timeout: 10), "the content window did not close")
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         app.typeKey("n", modifierFlags: .command)
         let sheet = editorWindow(in: app).sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Cmd-N did not reach the editor with no content window")
@@ -112,10 +127,10 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject(), try secondProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Second", in: app)
         replaceText(in: "project-editor.name", with: "Second Edited", app: app)
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         XCTAssertFalse(app.sheets.firstMatch.waitForExistence(timeout: 1), "reopening asked about unsaved changes")
         XCTAssertEqual(element("project-editor.name", in: app).value as? String, "Second Edited")
     }
@@ -128,7 +143,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.new-project", in: app)
         replaceText(in: "project-editor.name", with: "Fresh Grid", app: app)
         replaceText(in: "project-editor.root", with: root.path, app: app)
@@ -180,7 +195,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Existing", in: app)
         replaceText(in: "project-editor.name", with: "Existing Renamed", app: app)
 
@@ -202,7 +217,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Existing", in: app)
         let revert = element("project-editor.revert", in: app)
         XCTAssertTrue(revert.waitForExistence(timeout: 5), "no Revert button in the editor footer")
@@ -363,7 +378,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [withCommand, withoutCommand])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         let hint = element("project-editor.commands-off-hint", in: app)
 
         click("project-editor.list.row.Commanded", in: app)
@@ -389,7 +404,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [custom])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Custom", in: app)
         XCTAssertTrue(element("project-editor.layout.custom", in: app).waitForExistence(timeout: 5))
 
@@ -453,7 +468,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.background.edit", in: app)
         let follow = app.buttons["project-background-sheet.follow"]
@@ -467,7 +482,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.background.edit", in: app)
         let custom = app.buttons["project-background-sheet.custom"]
@@ -487,7 +502,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.tab.1.background.edit", in: app)
         let follow = app.buttons["project-tab-background-sheet.follow"]
@@ -501,7 +516,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.pane.background.edit", in: app)
         let follow = app.buttons["project-pane-background-sheet.follow"]
@@ -516,7 +531,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.tab.1.background.edit", in: app)
         let custom = app.buttons["project-tab-background-sheet.custom"]
@@ -553,7 +568,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.theme.edit", in: app)
         let follow = app.buttons["project-theme-sheet.follow"]
@@ -567,7 +582,7 @@ nonisolated final class ProjectsEditorTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: [try existingProject()])
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         selectProjectInEditor(named: "Existing", in: app)
         click("project-editor.theme.edit", in: app)
         let slot = app.radioButtons["Dark"]

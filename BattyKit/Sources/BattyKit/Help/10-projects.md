@@ -7,13 +7,13 @@ A **Project** is a saved recipe for a session: a name, a root folder, a session 
 - **File ▸ Open Project ▸ New Project…** opens the Project Editor on a blank Project.
 - **Projects ▸ Save Session as Project…** starts from the session you are looking at, capturing its layout, panes and tabs. Right-click a session in the sidebar and choose **Save as Project…** for the same thing.
 - If the session was opened from a Project, the Projects menu and the sidebar menu also offer **Update "Name"…** to replace that Project's layout and tabs. To keep it as a separate Project instead, use **Projects ▸ Save Session as New Project…** or, in the sidebar menu, **Save as New Project…**.
-- **Projects ▸ Projects…** opens the Projects window listing your Projects. Click one to edit, reorder, or delete it, or click **New Project…** (or press ⌘N in that window) to start one.
+- **File ▸ Open Project ▸ Projects…** opens the Projects window listing your Projects. When the current session was opened from a Project, that Project is selected. Click one to edit, reorder, or delete it, or click **New Project…** (or press ⌘N in that window) to start one.
 
 In the editor, set the name, the **Root folder**, the **Session color** and **Symbol**, then click panes in the layout to choose what each one shows and to add **Tabs**. **Copy from current Session** fills the layout from the session you have selected. Click **Save**, then **Open** to open it.
 
 ## Opening a Project
 
-- **File ▸ Open Project ▸ *name*** opens that Project. **Choose Project…**, below your Projects in the submenu, shows the Open a Project picker.
+- **File ▸ Open Project ▸ *name*** opens that Project. **Projects…** and **New Project…** sit below your Projects in the submenu. To pick a Project from the keyboard, use **Open Project…** in the Command Palette or the Sidebar's Open Project button.
 - The briefcase button at the bottom of the sidebar, next to `+`, opens the same picker.
 - The Command Palette lists **Open Project…** and one **Open Project: *name*** row per Project.
 - [Open Quickly](05-shortcuts.md) lists your Projects too (see below).

@@ -121,21 +121,19 @@ public struct BattyCommands: Commands {
             )) {
                 Label(name, systemImage: ProjectAppearance.systemName(symbol: symbol, customName: customSymbolName))
             }
+            .disabled(keyWindow == nil)
         case .divider:
             Divider()
-        case .chooseProject:
-            Button("Choose Project\u{2026}") {
-                // With an auxiliary window key (Settings, Help or the Project
-                // Editor) the default target comes forward and the toggle names
-                // it, so the picker shows there whatever the key window is.
-                if store.auxiliaryWindowIsKey, let target = store.defaultTargetWindow() {
-                    store.activateWindow(target)
-                    NotificationCenter.default.post(
-                        name: .battyToggleProjectPicker, object: nil,
-                        userInfo: [ProjectPickerToggle.windowIDKey: target.id])
-                } else {
-                    postToContentWindow(.battyToggleProjectPicker)
-                }
+        case .projects:
+            Button {
+                ProjectEditorWindowController.shared.show(
+                    store: store,
+                    selecting: ProjectFileMenuModel.editorSelection(
+                        projectID: store.defaultTargetWindow()?.selectedSession?.projectID,
+                        projects: store.projectStore.projects,
+                        editorIsOpen: store.projectEditorIsOpen))
+            } label: {
+                Label("Projects\u{2026}", systemImage: "folder.badge.gearshape")
             }
         case .newProject:
             Button("New Project\u{2026}") {
@@ -190,19 +188,10 @@ public struct BattyCommands: Commands {
                 } label: {
                     Label("Open Project", systemImage: "folder")
                 }
-                .disabled(keyWindow == nil)
             }
 
             CommandMenu("Projects") {
                 saveSessionMenuItems(saveSessionMenu)
-
-                Divider()
-
-                Button {
-                    ProjectEditorWindowController.shared.show(store: store)
-                } label: {
-                    Label("Projects\u{2026}", systemImage: "folder.badge.gearshape")
-                }
             }
         }
 
