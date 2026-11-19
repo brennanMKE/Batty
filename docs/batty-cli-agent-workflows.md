@@ -440,7 +440,9 @@ The app bundle carries this skill at
 - **Claude Code:** stages a local plugin marketplace in
   `~/Library/Application Support/<Batty|Batty Beta>/AgentPlugin/` (plugin
   `batty` or `batty-beta`, with the skill and an MCP server running the
-  bundled CLI by absolute path), then runs `claude plugin marketplace add` and
+  bundled CLI by absolute path, and a `SessionStart` hook that runs `agent
+  context`, so a session started in a Pane learns which Pane before its first
+  turn), then runs `claude plugin marketplace add` and
   `claude plugin install`. Both are safe to re-run. When `claude` isn't found
   it prints the two commands instead.
 - **Cursor and OpenCode:** the skill, plus an MCP entry merged into

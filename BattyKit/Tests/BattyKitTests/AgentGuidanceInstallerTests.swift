@@ -186,6 +186,40 @@ nonisolated struct AgentGuidanceInstallerTests {
         #expect(runner.calls.count == 4)
         #expect(Array(runner.calls[2...]) == Array(runner.calls[..<2]))
         #expect(second.entries.contains { $0.outcome == .unchanged })
+        let hooks = try fixture.json("Library/Application Support/Batty/AgentPlugin/batty/hooks/hooks.json")
+        let sessionStart = try #require((hooks["hooks"] as? [String: Any])?["SessionStart"] as? [[String: Any]])
+        #expect(sessionStart.count == 1)
+        #expect((sessionStart.first?["hooks"] as? [[String: Any]])?.count == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func pluginSessionStartHookRunsAgentContext(beta: Bool) throws {
+        let fixture = try AgentInstallFixture()
+        defer { fixture.cleanUp() }
+        let installer = fixture.installer(executables: ["claude": claude])
+        let identity = try fixture.identity(beta: beta)
+        _ = installer.apply(installer.plan(identity: identity))
+        let support = beta ? "Library/Application Support/Batty Beta/AgentPlugin" : "Library/Application Support/Batty/AgentPlugin"
+        let plugin = beta ? "batty-beta" : "batty"
+        let file = try fixture.json("\(support)/\(plugin)/hooks/hooks.json")
+        #expect(Set(file.keys) == ["description", "hooks"])
+        let hooks = try #require(file["hooks"] as? [String: Any])
+        #expect(Set(hooks.keys) == ["SessionStart"])
+        let groups = try #require(hooks["SessionStart"] as? [[String: Any]])
+        #expect(groups.count == 1)
+        #expect(groups.first?["matcher"] == nil)
+        let entries = try #require(groups.first?["hooks"] as? [[String: Any]])
+        #expect(entries.count == 1)
+        let hook = try #require(entries.first)
+        #expect(hook["type"] as? String == "command")
+        #expect(hook["timeout"] as? Int == 10)
+        #expect(hook["command"] as? String == "'\(identity.cliExecutablePath)' agent context")
+        if beta { #expect(identity.cliExecutablePath.contains("Batty Beta.app")) }
+    }
+
+    @Test func sessionStartHookCommandQuotesForShell() {
+        #expect(AgentGuidanceInstaller.sessionStartHookCommand(cliExecutablePath: "/A/Batty Beta.app/x/batty") == "'/A/Batty Beta.app/x/batty' agent context")
+        #expect(AgentGuidanceInstaller.sessionStartHookCommand(cliExecutablePath: "/A/It's.app/batty") == "'/A/It'\\''s.app/batty' agent context")
     }
 
     @Test func missingClaudeBinaryStagesAndPrintsTheCommands() throws {

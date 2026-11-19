@@ -23,7 +23,7 @@ public nonisolated enum AgentHost: String, Sendable, Equatable, CaseIterable {
 }
 
 public nonisolated enum AgentInstallAction: Sendable, Equatable {
-    /// Writes the local Claude Code marketplace (manifests, `.mcp.json`, skill).
+    /// Writes the local Claude Code marketplace (manifests, `.mcp.json`, SessionStart hook, skill).
     case stageMarketplace(directory: URL)
     case runClaude(executable: URL, arguments: [String])
     /// `claude` was not found: these commands are for the user to run.
@@ -382,9 +382,24 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         try writeJSON([
             "mcpServers": [identity.pluginName: ["command": identity.cliExecutablePath, "args": ["mcp"]]],
         ], to: pluginDirectory.appending(path: ".mcp.json"))
+        try writeJSON([
+            "description": "Tell Claude Code it is running in a Batty Pane, and which one.",
+            "hooks": ["SessionStart": [[
+                "hooks": [[
+                    "type": "command",
+                    "command": Self.sessionStartHookCommand(cliExecutablePath: identity.cliExecutablePath),
+                    "timeout": 10,
+                ]],
+            ]]],
+        ], to: pluginDirectory.appending(path: "hooks/hooks.json"))
         let skill = pluginDirectory.appending(path: "skills/\(AgentGuidanceIdentity.skillName)/SKILL.md")
         try fileManager.createDirectory(at: skill.deletingLastPathComponent(), withIntermediateDirectories: true)
         try skillText(identity: identity, renamed: false).write(to: skill, options: .atomic)
+    }
+
+    /// Claude Code runs a command without `args` through `sh -c`, so the path is always quoted.
+    public static func sessionStartHookCommand(cliExecutablePath: String) -> String {
+        "'" + cliExecutablePath.replacingOccurrences(of: "'", with: "'\\''") + "' agent context"
     }
 
     private func writeJSON(_ object: Any, to file: URL) throws {
