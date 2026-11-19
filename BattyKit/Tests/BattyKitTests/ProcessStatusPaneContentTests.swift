@@ -13,15 +13,9 @@ import Testing
 /// the *real* kernel will and won't hand back.
 ///
 /// `.serialized` (review round 2, B3) — see `GitStatusPaneContentTests`'s
-/// matching doc comment for what this is (and is not) protecting against:
-/// this suite in particular also spawns and `waitUntilExit()`s real
-/// `/bin/sleep` children from several of *its own* tests
-/// (`pinnedTargetTombstonesOnExitAndStopsSampling`,
-/// `tombstoningOnTheImmediateSampleNeverSchedulesThePeriodicTask`,
-/// `exitedStateShowsTheLastSuccessfulSampleTimeNotTheDetectionTime`), which
-/// block the MainActor synchronously for as long as they run — serializing
-/// means the timing-sensitive tests in this same suite never get caught
-/// mid-wait behind one of those blocking calls from a *sibling* test.
+/// matching doc comment for what this is (and is not) protecting against.
+/// Its tests await their children's exits off the main actor, so it now only
+/// orders the suite's own sampling tests against each other.
 @Suite(.serialized)
 @MainActor
 struct ProcessStatusPaneContentTests {
@@ -397,13 +391,14 @@ struct ProcessStatusPaneContentTests {
 
     // MARK: - Exited / tombstone state (§3.6), pinned mode
 
-    @Test func pinnedTargetTombstonesOnExitAndStopsSampling() throws {
+    @Test func pinnedTargetTombstonesOnExitAndStopsSampling() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["0.05"]
+        let exited = ChildProcessFixture.exitEvent(of: process)
         try process.run()
         let pid = process.processIdentifier
-        process.waitUntilExit()
+        guard await exited() else { Issue.record("sleep 0.05 never exited"); return }
 
         let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
         content.setUp(visible: true)
@@ -660,13 +655,14 @@ struct ProcessStatusPaneContentTests {
     /// (`isSamplingTaskAlive`), not just by re-reading `runState` after a
     /// wait, so a regression is caught even if a future change makes the
     /// second detection idempotent in some other way.
-    @Test func tombstoningOnTheImmediateSampleNeverSchedulesThePeriodicTask() throws {
+    @Test func tombstoningOnTheImmediateSampleNeverSchedulesThePeriodicTask() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["0.05"]
+        let exited = ChildProcessFixture.exitEvent(of: process)
         try process.run()
         let pid = process.processIdentifier
-        process.waitUntilExit()
+        guard await exited() else { Issue.record("sleep 0.05 never exited"); return }
 
         let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
         content.setUp(visible: true)
@@ -681,12 +677,12 @@ struct ProcessStatusPaneContentTests {
     // MARK: - `.exited` shows the last successful sample's time, not the
     // detection time (review round 1, B5)
 
-    @Test func exitedStateShowsTheLastSuccessfulSampleTimeNotTheDetectionTime() throws {
+    @Test func exitedStateShowsTheLastSuccessfulSampleTimeNotTheDetectionTime() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/cat")
         ChildLifetime.hold(process)
         try process.run()
-        defer { ChildProcessFixture.killAndReap(process) }
+        defer { await ChildProcessFixture.killAndAwaitExit(process) }
         let pid = process.processIdentifier
 
         let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
@@ -697,7 +693,7 @@ struct ProcessStatusPaneContentTests {
         }
         let lastGoodCapture = try #require(content.lastSampleAt)
 
-        ChildProcessFixture.killAndReap(process)
+        await ChildProcessFixture.killAndAwaitExit(process)
         content.sampleNowForTesting()
 
         guard case .exited = content.runState else {
@@ -793,13 +789,14 @@ struct ProcessStatusPaneContentTests {
     /// surface as `.unavailable`, never as `.loaded([])`, which would read
     /// on screen as a confident, measured "Open Files (0)" for a process
     /// that no longer exists to measure.
-    @Test func loadOpenFilesForAnExitedProcessIsUnavailableNeverALoadedZero() throws {
+    @Test func loadOpenFilesForAnExitedProcessIsUnavailableNeverALoadedZero() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["0.05"]
+        let exited = ChildProcessFixture.exitEvent(of: process)
         try process.run()
         let pid = process.processIdentifier
-        process.waitUntilExit()
+        guard await exited() else { Issue.record("sleep 0.05 never exited"); return }
 
         let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
         content.setUp(visible: true)

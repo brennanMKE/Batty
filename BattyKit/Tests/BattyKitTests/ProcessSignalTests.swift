@@ -5,22 +5,6 @@ import Foundation
 import Testing
 @testable import BattyKit
 
-/// Resolves true once `process` has terminated. The handler must be set
-/// before the process runs; `ChildProcessFixture.run` chains it.
-nonisolated private func exitEvent(of process: Process) -> () async -> Bool {
-    let stream = AsyncStream<Void> { continuation in
-        process.terminationHandler = { _ in
-            continuation.yield()
-            continuation.finish()
-        }
-    }
-    return {
-        await awaitBounded {
-            for await _ in stream { break }
-        }
-    }
-}
-
 @Suite(.auditsSignals)
 nonisolated struct ProcessSignalTests {
     @Test func hardRefusalsCoverPidZeroAndNegativeAndGroupsZeroOneAndOurOwn() {
@@ -39,7 +23,7 @@ nonisolated struct ProcessSignalTests {
         defer { fixture.killAndReapAll() }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
-        let exited = exitEvent(of: process)
+        let exited = ChildProcessFixture.exitEvent(of: process)
         let before = SignalAudit.violations.count
         try fixture.run(process)
         #expect(await exited())
@@ -145,7 +129,7 @@ nonisolated struct ChildProcessFixtureTests {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/cat")
         ChildLifetime.hold(process)
-        let exited = exitEvent(of: process)
+        let exited = ChildProcessFixture.exitEvent(of: process)
         try fixture.run(process)
         ProcessSignal.send(SIGKILL, to: process)
         #expect(await exited())
@@ -159,7 +143,7 @@ nonisolated struct ChildProcessFixtureTests {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", "exit 3"]
-        let exited = exitEvent(of: process)
+        let exited = ChildProcessFixture.exitEvent(of: process)
         try fixture.run(process)
         #expect(await exited())
         let report = fixture.deathReport(for: process)

@@ -180,20 +180,24 @@ struct ProcessGroupStopperRealProcessTests {
     private struct Fixture {
         let child: OwnedChild
         let pipe: Pipe
+        let input: Pipe
         var pid: pid_t { child.pid }
         var output: FileHandle { pipe.fileHandleForReading }
     }
 
     private func spawn(_ script: String) throws -> Fixture {
         let pipe = Pipe()
+        let input = Pipe()
         let child = try TestChildSpawner.spawn(
             "/bin/sh",
             arguments: ["/bin/sh", "-c", script],
             ownGroup: true,
+            stdin: input.fileHandleForReading.fileDescriptor,
             stdout: pipe.fileHandleForWriting.fileDescriptor
         )
         try pipe.fileHandleForWriting.close()
-        return Fixture(child: child, pipe: pipe)
+        try input.fileHandleForReading.close()
+        return Fixture(child: child, pipe: pipe, input: input)
     }
 
     /// Resolves at EOF: every holder of the pipe has exited. False when the
@@ -227,7 +231,7 @@ struct ProcessGroupStopperRealProcessTests {
     }
 
     @Test func interruptEndsAGoRunStyleParentAndChild() async throws {
-        let fixture = try spawn("/bin/sh -c 'echo ready; exec /bin/sleep 30'; /bin/sleep 30")
+        let fixture = try spawn("/bin/sh -c 'echo ready; exec /bin/cat'; exec /bin/cat")
         #expect(await ChildProcessReadiness.waitForData(on: fixture.pipe))
         let clock = TestClock()
         let signaller = SystemProcessSignaller()
@@ -245,7 +249,7 @@ struct ProcessGroupStopperRealProcessTests {
     }
 
     @Test func ignoredInterruptAndTerminateEndInSIGKILLForTheWholeGroup() async throws {
-        let fixture = try spawn("trap '' INT TERM; /bin/sh -c 'echo ready; exec /bin/sleep 30'; /bin/sleep 30")
+        let fixture = try spawn("trap '' INT TERM; /bin/sh -c 'echo ready; exec /bin/cat'; exec /bin/cat")
         #expect(await ChildProcessReadiness.waitForData(on: fixture.pipe))
         let clock = TestClock()
         let signaller = SystemProcessSignaller()

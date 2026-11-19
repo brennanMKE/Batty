@@ -41,13 +41,14 @@ struct ProcessInspectorTests {
     /// §1.4: an exited pid gives `ESRCH`, distinguishable from `EPERM` —
     /// spawns a real short-lived process, waits for it to exit, then
     /// samples the now-stale pid, mirroring the spike's own methodology.
-    @Test func coreMetricsFailsProcessNotFoundAfterTheTargetExits() throws {
+    @Test func coreMetricsFailsProcessNotFoundAfterTheTargetExits() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["0.05"]
+        let exited = ChildProcessFixture.exitEvent(of: process)
         try process.run()
         let pid = process.processIdentifier
-        process.waitUntilExit()
+        guard await exited() else { Issue.record("sleep 0.05 never exited"); return }
 
         let result = ProcessInspector.coreMetrics(pid: pid)
         guard case .failure(let failure) = result else {
@@ -116,14 +117,14 @@ struct ProcessInspectorTests {
         #expect(descriptors == nil)
     }
 
-    @Test func childrenOfPidFindsARealSpawnedChildProcess() throws {
+    @Test func childrenOfPidFindsARealSpawnedChildProcess() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/cat")
         ChildLifetime.hold(process)
         try process.run()
         defer {
             ProcessSignal.send(SIGTERM, to: process)
-            process.waitUntilExit()
+            await ChildProcessFixture.killAndAwaitExit(process)
         }
         let children = ProcessInspector.children(ofPid: getpid())
         #expect(children?.contains { $0.id == process.processIdentifier } == true)
@@ -302,21 +303,21 @@ struct ProcessInspectorTests {
     /// buffer from an actually-spawned process instead: `posix_spawn`
     /// (not `Foundation.Process`, which does not offer a way to set a
     /// literal empty `argv[0]`) a real same-uid child with `argv = {"",
-    /// "2"}` and an environment containing a marker secret, then reads
+    /// "-"}` and an environment containing a marker secret, then reads
     /// that child's own real `KERN_PROCARGS2` buffer back through the
     /// production `commandLine(pid:)` path — not a copy of the parser,
     /// the actual function every other caller uses.
-    @Test func commandLineHandlesARealProcessWithAZeroLengthArgvZeroWithoutLeakingItsEnvironment() throws {
-        let child = try TestChildSpawner.spawn(
-            "/bin/sleep",
-            arguments: ["", "2"],
+    @Test func commandLineHandlesARealProcessWithAZeroLengthArgvZeroWithoutLeakingItsEnvironment() async throws {
+        let child = try TestChildSpawner.spawnHeld(
+            "/bin/cat",
+            arguments: ["", "-"],
             ownGroup: false,
             environment: ["SECRET_TOKEN=supersecretvalue", "PATH=/usr/bin:/bin"]
         )
         let pid = child.pid
         defer {
             child.signal(SIGKILL)
-            child.reapNow()
+            _ = await child.reap()
         }
         // No wait needed here (`#0431`, `docs/async-test-seams.md` §5 Q1):
         // XNU's exec path lays out argv/envp on the new image's stack
@@ -330,7 +331,7 @@ struct ProcessInspectorTests {
         }
 
         #expect(!commandLine.contains("SECRET_TOKEN"), "a zero-length argv[0] must not cause the parser to overrun into the environment block — got \(commandLine)")
-        #expect(commandLine == " 2", "the empty argv[0] should be preserved as an empty element, not skipped as padding")
+        #expect(commandLine == " -", "the empty argv[0] should be preserved as an empty element, not skipped as padding")
     }
 
     // MARK: - fd listing grows past its initial capacity (review round 1, S2)

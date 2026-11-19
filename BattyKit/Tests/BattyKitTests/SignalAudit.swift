@@ -165,10 +165,12 @@ nonisolated final class OwnedChild: @unchecked Sendable {
     let ownGroup: Bool
     private let lock = NSLock()
     private var reaped = false
+    private let held: Pipe?
 
-    init(pid: pid_t, ownGroup: Bool) {
+    init(pid: pid_t, ownGroup: Bool, holding: Pipe? = nil) {
         self.pid = pid
         self.ownGroup = ownGroup
+        self.held = holding
     }
 
     /// Returns 0 or an errno; `ESRCH` once reaped, without sending.
@@ -265,6 +267,26 @@ nonisolated enum TestChildSpawner {
         guard rc == 0 else { throw POSIXError(POSIXErrorCode(rawValue: rc) ?? .EIO) }
         SpawnedProcessRegistry.register(pid, ownGroup: ownGroup && joiningGroup == nil)
         return OwnedChild(pid: pid, ownGroup: ownGroup && joiningGroup == nil)
+    }
+
+    /// Spawns a child whose stdin is a pipe only the returned `OwnedChild`
+    /// holds, so a stdin reader such as `/bin/cat` lives until it is killed
+    /// or the `OwnedChild` goes away, never on a wall-clock timer.
+    static func spawnHeld(
+        _ executable: String,
+        arguments: [String],
+        ownGroup: Bool,
+        joiningGroup: pid_t? = nil,
+        environment: [String]? = nil,
+        stdout: Int32? = nil
+    ) throws -> OwnedChild {
+        let pipe = Pipe()
+        let child = try spawn(
+            executable, arguments: arguments, ownGroup: ownGroup, joiningGroup: joiningGroup,
+            environment: environment, stdin: pipe.fileHandleForReading.fileDescriptor, stdout: stdout
+        )
+        try? pipe.fileHandleForReading.close()
+        return OwnedChild(pid: child.pid, ownGroup: child.ownGroup, holding: pipe)
     }
 }
 

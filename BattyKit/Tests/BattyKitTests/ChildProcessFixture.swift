@@ -2,6 +2,7 @@
 
 import Darwin
 import Foundation
+import Testing
 @testable import BattyKit
 
 /// Owns a batch of test-spawned child processes end-to-end: track → run →
@@ -94,6 +95,42 @@ nonisolated final class ChildProcessFixture: @unchecked Sendable {
         guard let process, process.isRunning else { return }
         ProcessSignal.send(SIGKILL, to: process)
         process.waitUntilExit()
+    }
+
+    /// `killAndReap(_:)` off the main actor, so a `@MainActor` test can
+    /// clean up with `defer { await ... }` without blocking it.
+    static func killAndAwaitExit(_ process: Process?) async {
+        guard let process else { return }
+        let pid = process.processIdentifier
+        let finished = await awaitBounded {
+            await Task.detached { killAndReap(process) }.value
+        }
+        if !finished { Issue.record("child \(pid) was not reaped before the hang guard expired") }
+    }
+
+    /// `killAndReapAll()` off the main actor.
+    func killAndAwaitAll() async {
+        let finished = await awaitBounded {
+            await Task.detached { self.killAndReapAll() }.value
+        }
+        if !finished { Issue.record("fixture children were not reaped before the hang guard expired") }
+    }
+
+    /// Resolves true once `process` has exited and been reaped. Call before
+    /// `run()`: it installs the `terminationHandler`, which
+    /// `ChildProcessFixture.run` chains.
+    static func exitEvent(of process: Process) -> () async -> Bool {
+        let stream = AsyncStream<Void> { continuation in
+            process.terminationHandler = { _ in
+                continuation.yield()
+                continuation.finish()
+            }
+        }
+        return {
+            await awaitBounded {
+                for await _ in stream { break }
+            }
+        }
     }
 }
 

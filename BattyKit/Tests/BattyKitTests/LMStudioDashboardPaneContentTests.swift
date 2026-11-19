@@ -824,15 +824,15 @@ struct LMStudioDashboardPaneContentTests {
         // A safety net for *any* exit from here on — a failed readiness
         // guard below, a throwing `#require`, or simply falling off the end
         // — so a real child is never left alive with the gate stuck closed.
-        // `defer` bodies are synchronous, and both `gate.open()` and
-        // `killAndReap` are: opening an already-open gate or killing an
+        // The kills are awaited off the main actor. Opening an
+        // already-open gate or killing an
         // already-dead process is a harmless no-op, so this runs safely
         // even after the test's own explicit `gate.open()` below already
         // did the real cleanup.
         defer {
             gate.open()
-            killAndReap(box.model)
-            killAndReap(box.runtime)
+            await ChildProcessFixture.killAndAwaitExit(box.model)
+            await ChildProcessFixture.killAndAwaitExit(box.runtime)
         }
 
         content.setUp(visible: true)
@@ -929,7 +929,7 @@ struct LMStudioDashboardPaneContentTests {
         // exactly what nothing is left holding — so clean them up here
         // whatever happens below.
         defer {
-            for process in box.models + box.runtimes { killAndReap(process) }
+            for process in box.models + box.runtimes { await ChildProcessFixture.killAndAwaitExit(process) }
         }
 
         let terminationHandled = EventCounter(content.streamTerminationHandledEventsForTesting())
@@ -1012,8 +1012,8 @@ struct LMStudioDashboardPaneContentTests {
             // `box.model`/`box.runtime` directly instead of relying on
             // `content` to do it.
             content.tearDown()
-            killAndReap(box.model)
-            killAndReap(box.runtime)
+            await ChildProcessFixture.killAndAwaitExit(box.model)
+            await ChildProcessFixture.killAndAwaitExit(box.runtime)
             return
         }
 
@@ -1470,14 +1470,6 @@ nonisolated private final class EventCounter: @unchecked Sendable {
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeoutWorkItem)
         }
     }
-}
-
-/// A test's own failure-branch cleanup, not the normal path. Forwards to
-/// `ChildProcessFixture.killAndReap(_:)` (#0441), which replaced this file's
-/// own copy — kept as a thin wrapper so call sites here don't need to change.
-@MainActor
-private func killAndReap(_ process: Process?) {
-    ChildProcessFixture.killAndReap(process)
 }
 
 private nonisolated final class InFlightChangeFlag: @unchecked Sendable {

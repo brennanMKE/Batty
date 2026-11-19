@@ -61,17 +61,17 @@ struct PlainShellKeyRewriteTests {
         #expect(result.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.capsLock])
     }
 
-    @Test func groupMemberCountIsExactForSingleAndMultiMemberGroups() throws {
-        let leader = try TestChildSpawner.spawn("/bin/sleep", arguments: ["sleep", "30"], ownGroup: true)
-        let follower = try TestChildSpawner.spawn("/bin/sleep", arguments: ["sleep", "30"], ownGroup: true, joiningGroup: leader.pid)
+    @Test func groupMemberCountIsExactForSingleAndMultiMemberGroups() async throws {
+        let leader = try TestChildSpawner.spawnHeld("/bin/cat", arguments: ["cat"], ownGroup: true)
+        let follower = try TestChildSpawner.spawnHeld("/bin/cat", arguments: ["cat"], ownGroup: true, joiningGroup: leader.pid)
         defer {
-            if follower.signal(SIGKILL) == 0 { follower.reapNow() }
+            if follower.signal(SIGKILL) == 0 { _ = await follower.reap() }
             leader.signal(SIGKILL)
-            leader.reapNow()
+            _ = await leader.reap()
         }
         #expect(PlainShellKeyRewrite.groupMemberCount(of: leader.pid) == 2)
         follower.signal(SIGKILL)
-        follower.reapNow()
+        #expect(await follower.reap() != nil)
         #expect(PlainShellKeyRewrite.groupMemberCount(of: leader.pid) == 1)
     }
 

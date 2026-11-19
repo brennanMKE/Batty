@@ -451,3 +451,20 @@ Unit tests run on the host, so a test must never signal a process it didn't star
 - **`TestChildSpawner.spawn`** is the `posix_spawn` helper: it registers the child, resets signal dispositions and mask, and returns an `OwnedChild` whose `signal`/`signalGroup` refuse after `reap()`.
 - **Canaries.** The first install starts two trap canaries (one in its own group with a `batty-0486` path, one in the runner's group). `SignalCanary.check()` is non-blocking; findings are recorded after every `.auditsSignals` test and in `ChildProcessFixture.killAndReapAll`.
 - **Don't copy an Apple platform binary to run it** (e.g. `/bin/cat` to a temp path): the kernel SIGKILLs the copy ("Code Signature Invalid") moments after exec. Re-sign the copy ad hoc, as `ProcessFollowByNameTests.uniqueCatCopy` does. `ChildProcessFixture.deathReport(for:)` tells you how a child ended.
+
+## 8. Child processes: no main-actor waits, no timed lifetimes (#0677)
+
+Two rules for every child a BattyKit test spawns:
+
+- **No blocking wait on the main actor.** `Process.waitUntilExit()`, a blocking `waitpid`, `OwnedChild.reapNow()` and the synchronous `ChildProcessFixture.killAndReap`/`killAndReapAll` stall every other main-actor test while they wait. Use them only from `nonisolated` code.
+- **No child that lives on a wall-clock timer.** A `sleep 30` child either outlives its test or, under load, dies before the test is done with it. A child that must stay alive holds a stdin pipe nobody writes to (`/bin/cat`), and ends when it is killed or the pipe closes. A self-exiting child (`sleep 0.05`, `chmod`) is fine; await its exit.
+
+Helpers (`ChildProcessFixture.swift`, `SignalAudit.swift`):
+
+- `ChildProcessFixture.exitEvent(of:)` returns a closure that resolves `true` once the process has exited and been reaped. Create it **before** `run()`: it installs the `terminationHandler`, which `ChildProcessFixture.run` chains.
+- `ChildProcessFixture.killAndAwaitExit(_:)` and `fixture.killAndAwaitAll()` `SIGKILL` and reap off the main actor, recording an issue if the hang guard expires.
+- `TestChildSpawner.spawnHeld(...)` spawns with a held stdin pipe; the returned `OwnedChild` owns its write end. Reap with `await child.reap()`.
+
+A `@MainActor` suite cleans up with `defer { await ChildProcessFixture.killAndAwaitExit(process) }` or `defer { await fixture.killAndAwaitAll() }`; Swift accepts `await` in a `defer` of an `async` function.
+
+`ChildProcessWaitAuditTests` scans `Tests/BattyKitTests` for both rules. Allowlisted: `ChildProcessFixture.swift`, `SignalAudit.swift`, `AtlasOwnershipExperimentTests.swift` (slow tier) and the audit's own file. The scan is lexical: a wait counts as `nonisolated` when its enclosing `func` (or the attribute line above it) or its top-level declaration (or that declaration's attributes) says so. So a blocking wait inside a `Task.detached` closure in a main-actor function is still flagged (route it through a helper), and a `sleep` child whose argument is built at run time is not seen.

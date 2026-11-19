@@ -8,7 +8,7 @@ import Testing
 /// and the hang-guard expiry path neither one is supposed to rely on to
 /// succeed.
 @Suite(.auditsSignals)
-struct ChildProcessReadinessTests {
+nonisolated struct ChildProcessReadinessTests {
     @Test func waitForDataResolvesTrueOnceTheChildWritesToThePipe() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")

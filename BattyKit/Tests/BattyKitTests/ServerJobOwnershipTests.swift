@@ -124,7 +124,7 @@ struct ServerJobOwnershipTests {
     /// and Batty's ancestry.
     @Test func systemTableRecordsASpawnedChild() async throws {
         let baseline = ShellSpawnBaseline.now()
-        let child = try TestChildSpawner.spawn("/bin/sleep", arguments: ["/bin/sleep", "30"], ownGroup: false)
+        let child = try TestChildSpawner.spawnHeld("/bin/cat", arguments: ["/bin/cat"], ownGroup: false)
         let pid = child.pid
         let table = SystemProcessTable()
         let record = table.snapshot().records[pid]

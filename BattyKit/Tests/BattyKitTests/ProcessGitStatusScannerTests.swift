@@ -312,21 +312,21 @@ struct ProcessGitStatusScannerTests {
     // its subprocess to exit (fire-and-forget `terminateIfRunning()`) and
     // immediately starts a new one, so two `run()` calls can genuinely be
     // in flight on the same `ProcessGitStatusScanner` at once. These tests
-    // register real, independently-spawned `/bin/sleep` processes through
+    // register real, independently-spawned `/bin/cat` processes through
     // the `addActiveProcess`/`removeActiveProcess` testability hooks —
     // exactly the calls `run()` itself makes around a real `git`
     // subprocess — so the tracking behavior is exercised deterministically
     // instead of racing an actual git subprocess's short, nondeterministic
     // duration.
 
-    /// A process that runs long enough to still be alive when the test
-    /// asserts on it, but that dies immediately on `SIGTERM`: `sleep` has
-    /// no handler for it, so the default disposition (terminate) applies
-    /// — so assertions check final state, not timing.
-    private static func makeSleepProcess(seconds: Int = 30) -> Process {
+    /// A process that stays alive until it is signalled (its stdin is held
+    /// open, never written), and that dies immediately on `SIGTERM`: `cat`
+    /// has no handler for it, so the default disposition (terminate)
+    /// applies — so assertions check final state, not timing.
+    private static func makeHeldProcess() -> Process {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
-        process.arguments = [String(seconds)]
+        process.executableURL = URL(fileURLWithPath: "/bin/cat")
+        ChildLifetime.hold(process)
         process.standardOutput = Pipe()
         process.standardError = Pipe()
         return process
@@ -335,9 +335,9 @@ struct ProcessGitStatusScannerTests {
     @Test func terminateAndWaitBrieflyTerminatesEveryOverlappingTrackedProcess() async throws {
         let scanner = ProcessGitStatusScanner()
         let fixture = ChildProcessFixture()
-        defer { fixture.killAndReapAll() }
-        let processA = Self.makeSleepProcess()
-        let processB = Self.makeSleepProcess()
+        defer { await fixture.killAndAwaitAll() }
+        let processA = Self.makeHeldProcess()
+        let processB = Self.makeHeldProcess()
         try fixture.run(processA)
         try fixture.run(processB)
 
@@ -404,11 +404,11 @@ struct ProcessGitStatusScannerTests {
             Issue.record("child never signaled readiness")
             // No `defer` is registered yet at this point — release the
             // child directly so an early return here can't orphan it.
-            ChildProcessFixture.killAndReap(process)
+            await ChildProcessFixture.killAndAwaitExit(process)
             return
         }
         let pid = process.processIdentifier
-        defer { ChildProcessFixture.killAndReap(process) }
+        defer { await ChildProcessFixture.killAndAwaitExit(process) }
         scanner.addActiveProcess(process)
 
         scanner.terminateAndWaitBriefly()
@@ -471,11 +471,11 @@ struct ProcessGitStatusScannerTests {
         try process.run()
         guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
             Issue.record("child never signaled readiness")
-            ChildProcessFixture.killAndReap(process)
+            await ChildProcessFixture.killAndAwaitExit(process)
             return
         }
         let pid = process.processIdentifier
-        defer { ChildProcessFixture.killAndReap(process) }
+        defer { await ChildProcessFixture.killAndAwaitExit(process) }
         scanner.addActiveProcess(process)
 
         scanner.terminateAndWaitBriefly()
@@ -531,11 +531,11 @@ struct ProcessGitStatusScannerTests {
             Issue.record("child never signaled readiness")
             // No `defer` is registered yet at this point — release the
             // child directly so an early return here can't orphan it.
-            ChildProcessFixture.killAndReap(process)
+            await ChildProcessFixture.killAndAwaitExit(process)
             return
         }
         let pid = process.processIdentifier
-        defer { ChildProcessFixture.killAndReap(process) }
+        defer { await ChildProcessFixture.killAndAwaitExit(process) }
         scanner.addActiveProcess(process)
 
         scanner.terminateAndWaitBriefly()
@@ -545,7 +545,7 @@ struct ProcessGitStatusScannerTests {
         guard await gate.waitForParkedWaiter() else {
             Issue.record("waitForParkedWaiter() never reached its threshold")
             // The child itself is released by this function's own
-            // `defer { ChildProcessFixture.killAndReap(process) }` above —
+            // `defer { await ChildProcessFixture.killAndAwaitExit(process) }` above —
             // opening the gate and awaiting the scanner's own reap here
             // ensures its detached task (parked or not) finishes before
             // the test returns, so it can't outlive the test.
@@ -578,12 +578,14 @@ struct ProcessGitStatusScannerTests {
         await scanner.awaitPendingTeardownReapsForTesting()
     }
 
-    @Test func terminateIfRunningSignalsEveryOverlappingTrackedProcess() throws {
+    @Test func terminateIfRunningSignalsEveryOverlappingTrackedProcess() async throws {
         let scanner = ProcessGitStatusScanner()
         let fixture = ChildProcessFixture()
-        defer { fixture.killAndReapAll() }
-        let processA = Self.makeSleepProcess()
-        let processB = Self.makeSleepProcess()
+        defer { await fixture.killAndAwaitAll() }
+        let processA = Self.makeHeldProcess()
+        let processB = Self.makeHeldProcess()
+        let exitedA = ChildProcessFixture.exitEvent(of: processA)
+        let exitedB = ChildProcessFixture.exitEvent(of: processB)
         try fixture.run(processA)
         try fixture.run(processB)
 
@@ -591,12 +593,12 @@ struct ProcessGitStatusScannerTests {
         scanner.addActiveProcess(processB)
 
         scanner.terminateIfRunning()
-        processA.waitUntilExit()
-        processB.waitUntilExit()
+        #expect(await exitedA())
+        #expect(await exitedB())
 
         #expect(!processA.isRunning)
         #expect(!processB.isRunning)
-        // `sleep` has no handler for `SIGTERM`, so a process that exited
+        // `cat` has no handler for `SIGTERM`, so a process that exited
         // for any other reason (e.g. a production regression that stopped
         // signaling it, and it merely ran to completion or was never
         // started) must not pass here just because it's no longer running.
@@ -607,12 +609,13 @@ struct ProcessGitStatusScannerTests {
     /// The root-cause scenario, pinned directly: a scan that finishes and
     /// clears its own slot (`removeActiveProcess`, mirroring `run()`'s own
     /// `defer`) must not clobber a different, still-running scan's entry.
-    @Test func aCompletedScansCleanupDoesNotClobberAnotherStillRunningScan() throws {
+    @Test func aCompletedScansCleanupDoesNotClobberAnotherStillRunningScan() async throws {
         let scanner = ProcessGitStatusScanner()
         let fixture = ChildProcessFixture()
-        defer { fixture.killAndReapAll() }
-        let processA = Self.makeSleepProcess()
-        let processB = Self.makeSleepProcess()
+        defer { await fixture.killAndAwaitAll() }
+        let processA = Self.makeHeldProcess()
+        let processB = Self.makeHeldProcess()
+        let exitedB = ChildProcessFixture.exitEvent(of: processB)
         try fixture.run(processA)
         try fixture.run(processB)
 
@@ -623,7 +626,7 @@ struct ProcessGitStatusScannerTests {
         scanner.removeActiveProcess(processA)
 
         scanner.terminateIfRunning()
-        processB.waitUntilExit()
+        #expect(await exitedB())
 
         #expect(!processB.isRunning, "the still-tracked process must still be signaled")
         #expect(processA.isRunning, "the untracked (already-cleared) process must be untouched by terminate calls")

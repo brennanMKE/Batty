@@ -42,10 +42,10 @@ struct PendingTeardownReapRegistryTests {
 
     // MARK: - register / deregister
 
-    @Test func registerThenDeregisterLeavesNothingPending() throws {
+    @Test func registerThenDeregisterLeavesNothingPending() async throws {
         let registry = PendingTeardownReapRegistry()
         let fixture = ChildProcessFixture()
-        defer { fixture.killAndReapAll() }
+        defer { await fixture.killAndAwaitAll() }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/cat")
         ChildLifetime.hold(process)
@@ -82,7 +82,7 @@ struct PendingTeardownReapRegistryTests {
     @Test func drainSynchronouslyKillsAndReapsARegisteredSigtermIgnoringProcess() async throws {
         let registry = PendingTeardownReapRegistry()
         let fixture = ChildProcessFixture()
-        defer { fixture.killAndReapAll() }
+        defer { await fixture.killAndAwaitAll() }
         let (process, readyPipe) = Self.makeStubbornProcess()
         try fixture.run(process)
         guard await ChildProcessReadiness.waitForData(on: readyPipe) else {
@@ -117,7 +117,7 @@ struct PendingTeardownReapRegistryTests {
     @Test func drainSynchronouslyReapsEveryRegisteredEntryIndependently() async throws {
         let registry = PendingTeardownReapRegistry()
         let fixture = ChildProcessFixture()
-        defer { fixture.killAndReapAll() }
+        defer { await fixture.killAndAwaitAll() }
         let fixtures = [Self.makeStubbornProcess(), Self.makeStubbornProcess()]
         for (process, readyPipe) in fixtures {
             // Tracked by `fixture` before `run()` — if a later fixture's

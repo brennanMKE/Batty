@@ -274,8 +274,8 @@ struct LMStudioDashboardWiringTests {
         // both children are dead.
         defer {
             gate.open()
-            killAndReap(box.model)
-            killAndReap(box.runtime)
+            await ChildProcessFixture.killAndAwaitExit(box.model)
+            await ChildProcessFixture.killAndAwaitExit(box.runtime)
         }
 
         guard await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL) else {
@@ -391,8 +391,8 @@ struct LMStudioDashboardWiringTests {
         // process is a harmless no-op.
         defer {
             gate.open()
-            killAndReap(box.model)
-            killAndReap(box.runtime)
+            await ChildProcessFixture.killAndAwaitExit(box.model)
+            await ChildProcessFixture.killAndAwaitExit(box.runtime)
         }
 
         guard await LMStudioSIGTERMIgnoringFixture.waitForReadyFile(modelReadyURL) else {
@@ -443,13 +443,4 @@ struct LMStudioDashboardWiringTests {
         // observe on a terminal pane.
         #expect(store.sessions[0].tree.allPanes[0].content == nil)
     }
-}
-
-/// A test's own failure-branch cleanup, not the normal path. Forwards to
-/// `ChildProcessFixture.killAndReap(_:)` (#0441), which replaced this file's
-/// own copy (previously duplicated from `LMStudioDashboardPaneContentTests.swift`)
-/// — kept as a thin wrapper so call sites here don't need to change.
-@MainActor
-private func killAndReap(_ process: Process?) {
-    ChildProcessFixture.killAndReap(process)
 }

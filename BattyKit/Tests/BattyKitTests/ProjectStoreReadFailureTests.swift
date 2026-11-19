@@ -6,7 +6,9 @@ import Testing
 @testable import BattyKit
 
 /// A temp folder holding a `projects.json` of three Projects. `cleanup` undoes
-/// any mode or ACL first, because a mode `000` folder can't be removed.
+/// any mode first, because a mode `000` folder can't be removed; a test that
+/// applies an ACL also defers `removeACLIfApplied()`, declared after
+/// `cleanup` so it runs first.
 @MainActor
 private final class ReadFailureFixture {
     static let stamp = Date(timeIntervalSince1970: 1_750_000_000)
@@ -34,7 +36,6 @@ private final class ReadFailureFixture {
     func cleanup() {
         try? setMode(0o755, folder)
         try? setMode(0o644, file)
-        if aclApplied { try? runChmod(["-N", file.path]) }
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -59,22 +60,33 @@ private final class ReadFailureFixture {
         try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
     }
 
-    func runChmod(_ arguments: [String]) throws {
+    nonisolated static func runChmod(_ arguments: [String]) async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/chmod")
         process.arguments = arguments
+        let exited = ChildProcessFixture.exitEvent(of: process)
         try process.run()
-        process.waitUntilExit()
+        guard await exited() else {
+            Issue.record("chmod \(arguments) never exited")
+            return
+        }
         #expect(process.terminationStatus == 0)
     }
 
-    func denyRead() throws {
+    func denyRead() async throws {
         aclApplied = true
-        try runChmod(["+a", "\(NSUserName()) deny read", file.path])
+        try await Self.runChmod(["+a", "\(NSUserName()) deny read", file.path])
     }
 
-    func removeACL() throws {
-        try runChmod(["-N", file.path])
+    func removeACL() async throws {
+        try await Self.runChmod(["-N", file.path])
+        aclApplied = false
+    }
+
+    func removeACLIfApplied() async {
+        guard aclApplied else { return }
+        try? await Self.runChmod(["-N", file.path])
+        aclApplied = false
     }
 
     var backupFile: URL { folder.appendingPathComponent(ProjectStore.backupFileName) }
@@ -344,15 +356,16 @@ struct ProjectStoreReadFailureTests {
         #expect(fixture.diskNames == ["One", "Two", "Three", "Shared"])
     }
 
-    @Test func aclDenyReadStillInPlaceRefusesUpsert() throws {
+    @Test func aclDenyReadStillInPlaceRefusesUpsert() async throws {
         let fixture = try ReadFailureFixture()
         defer { fixture.cleanup() }
-        try fixture.denyRead()
+        defer { await fixture.removeACLIfApplied() }
+        try await fixture.denyRead()
         let store = fixture.realStore()
 
         #expect(throws: fixture.unreadableError) { try store.upsert(fixture.project("New")) }
 
-        try fixture.removeACL()
+        try await fixture.removeACL()
         #expect(try fixture.fileBytesAreUnchanged())
     }
 
