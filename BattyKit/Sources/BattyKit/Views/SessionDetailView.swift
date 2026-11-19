@@ -165,12 +165,11 @@ public struct SessionDetailView: View {
         // Pane waits until the user switches to it. The `pending` captured
         // here (from `presenting:`) is threaded into every action instead
         // of re-reading `windowRuntime.selectedSession?.pendingClipboardConfirmation`
-        // at tap time: a second request can displace this one while the
-        // dialog is still showing (`SessionRuntime.requestClipboardReadConfirmation`
-        // denies the displaced one immediately), and resolving by identity
-        // means a stale tap against the request the user actually read
-        // safely no-ops instead of answering whatever is live now (#0390
-        // round 2, B2). Switching Sessions away from a still-pending
+        // at tap time: a request arriving while this one is showing is
+        // denied at once and never replaces it (`SessionRuntime.requestClipboardReadConfirmation`),
+        // and resolving by identity means a late tap against a request
+        // already resolved by a Session switch safely no-ops (#0390 round 2,
+        // B2). Switching Sessions away from a still-pending
         // request denies it explicitly in `WindowRuntime.selectedSessionID`'s
         // `didSet`, rather than relying on this dialog's own
         // dismiss handler below, which by then would be reading the

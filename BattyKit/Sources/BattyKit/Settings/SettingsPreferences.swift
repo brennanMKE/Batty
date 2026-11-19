@@ -11,6 +11,7 @@ public enum SettingsPreference {
     public static let bellSoundKey = "co.sstools.Batty.bellSound"
     public static let systemNotificationsKey = "co.sstools.Batty.systemNotifications"
     public static let pasteStrictnessKey = "co.sstools.Batty.pasteStrictness"
+    public static let clipboardReadKey = "co.sstools.Batty.clipboardRead"
     public static let confirmQuitKey = "co.sstools.Batty.confirmQuit"
     /// Set the first time Background Sets is shown. No request reaches a
     /// background catalog before then.
@@ -41,6 +42,7 @@ public enum SettingsPreference {
     public static let defaultBellSound: Bool = true
     public static let defaultSystemNotifications: Bool = true
     public static let defaultPasteStrictness: String = PasteStrictness.never.rawValue
+    public static let defaultClipboardRead: String = ClipboardReadPolicy.never.rawValue
     public static let defaultConfirmQuit: Bool = true
     public static let defaultCmdNumberTarget: String = CmdNumberTarget.sessions.rawValue
     public static let defaultAutoNameFromFiles: Bool = true
@@ -125,6 +127,12 @@ public enum SettingsPreference {
             return defaultSystemNotifications
         }
         return defaults.bool(forKey: systemNotificationsKey)
+    }
+
+    /// An unknown stored value resolves to `.never`, the fail-safe choice.
+    static func resolvedClipboardReadPolicy(defaults: UserDefaults) -> ClipboardReadPolicy {
+        let raw = defaults.string(forKey: clipboardReadKey) ?? defaultClipboardRead
+        return ClipboardReadPolicy(rawValue: raw) ?? .never
     }
 
     static func resolvedPasteStrictness(defaults: UserDefaults) -> PasteStrictness {
@@ -283,6 +291,21 @@ public enum SettingsPreference {
             backgroundOpacityCellsKey,
         ] {
             defaults.removeObject(forKey: key)
+        }
+    }
+}
+
+/// How Batty answers a program's OSC 52 clipboard read.
+public enum ClipboardReadPolicy: String, CaseIterable, Sendable {
+    case ask
+    case allow
+    case never
+
+    public var displayName: String {
+        switch self {
+        case .ask: return String(localized: "Ask")
+        case .allow: return String(localized: "Allow")
+        case .never: return String(localized: "Never")
         }
     }
 }

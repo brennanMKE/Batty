@@ -148,50 +148,97 @@ struct SessionClipboardConfirmationTests {
         #expect(session.rememberedClipboardDecision(for: .osc52Read) == nil)
     }
 
-    /// #0390 round 2, B2: a second request arriving while the first is
-    /// still awaiting the user's answer must not leave the first hanging
-    /// (surviving only on upstream's `deinit` backstop) or get silently
-    /// dropped. It's resolved to deny, explicitly, the moment it's
-    /// displaced.
-    @Test func displacedRequestIsExplicitlyDeniedRatherThanLeftPending() {
+    /// #0674: a request arriving while one is pending is denied at once
+    /// and never replaces the dialog the user is reading.
+    @Test func secondRequestWhilePendingIsDeniedAndDoesNotReplaceTheDialog() throws {
         let session = SessionRuntime()
         var firstDecisions: [Bool] = []
         session.requestClipboardReadConfirmation(kind: .osc52Read) { firstDecisions.append($0) }
+        let first = try #require(session.pendingClipboardConfirmation)
 
         var secondDecisions: [Bool] = []
-        session.requestClipboardReadConfirmation(kind: .paste) { secondDecisions.append($0) }
+        session.requestClipboardReadConfirmation(kind: .osc52Read) { secondDecisions.append($0) }
 
-        #expect(firstDecisions == [false])
-        #expect(secondDecisions.isEmpty)
-        #expect(isKind(session.pendingClipboardConfirmation?.kind, .paste))
+        #expect(secondDecisions == [false])
+        #expect(firstDecisions.isEmpty)
+        #expect(session.pendingClipboardConfirmation?.id == first.id)
+
+        session.answerPendingClipboardConfirmation(first, allow: true)
+        #expect(firstDecisions == [true])
     }
 
-    /// #0390 round 2, B2: a view holding a reference to a request that has
-    /// since been displaced (e.g. a stale button closure) must not be able
-    /// to resolve whichever request happens to be pending *now* — it
-    /// should no-op against its own, already-answered request instead of
-    /// clobbering the live one's bookkeeping.
-    @Test func answeringAStaleDisplacedRequestDoesNotAffectTheCurrentlyPendingRequest() {
+    @Test func differentKindWhilePendingIsAlsoDeniedQuietly() throws {
+        let session = SessionRuntime()
+        session.requestClipboardReadConfirmation(kind: .osc52Read) { _ in }
+        let first = try #require(session.pendingClipboardConfirmation)
+
+        var pasteDecisions: [Bool] = []
+        session.requestClipboardReadConfirmation(kind: .paste) { pasteDecisions.append($0) }
+
+        #expect(pasteDecisions == [false])
+        #expect(session.pendingClipboardConfirmation?.id == first.id)
+        #expect(session.rememberedClipboardDecision(for: .paste) == nil)
+    }
+
+    /// #0390 round 2, B2: a late tap against a request already cancelled
+    /// (e.g. by a Session switch) must no-op rather than fire again or
+    /// touch whatever is pending now.
+    @Test func answeringAStaleCancelledRequestDoesNotAffectTheCurrentlyPendingRequest() throws {
         let session = SessionRuntime()
         var firstDecisions: [Bool] = []
         session.requestClipboardReadConfirmation(kind: .osc52Read) { firstDecisions.append($0) }
-        let staleRequest = try! #require(session.pendingClipboardConfirmation)
+        let staleRequest = try #require(session.pendingClipboardConfirmation)
+        session.cancelPendingClipboardConfirmation(staleRequest)
+        #expect(firstDecisions == [false])
 
         var secondDecisions: [Bool] = []
         session.requestClipboardReadConfirmation(kind: .paste) { secondDecisions.append($0) }
-        #expect(firstDecisions == [false]) // displaced, already denied
 
-        // A stale "Allow" tap against the request that used to be pending.
         session.answerPendingClipboardConfirmation(staleRequest, allow: true)
 
-        // The live (second) request is untouched: still pending, still
-        // unanswered, and its kind's remembered decision was not set by
-        // the stale tap.
         #expect(isKind(session.pendingClipboardConfirmation?.kind, .paste))
         #expect(secondDecisions.isEmpty)
         #expect(session.rememberedClipboardDecision(for: .paste) == nil)
-        // The stale request's own decision does not fire a second time.
+        #expect(session.rememberedClipboardDecision(for: .osc52Read) == nil)
         #expect(firstDecisions == [false])
+    }
+
+    @Test func readWithPolicyNeverDeniesWithoutPrompt() {
+        let session = SessionRuntime()
+        var decisions: [Bool] = []
+        routeClipboardConfirmation(to: session, kind: .osc52Read, readPolicy: .never, context: .unresolved(tabID: UUID())) { decisions.append($0) }
+
+        #expect(decisions == [false])
+        #expect(session.pendingClipboardConfirmation == nil)
+        #expect(session.rememberedClipboardDecision(for: .osc52Read) == nil)
+    }
+
+    @Test func readWithPolicyAllowAllowsWithoutPrompt() {
+        let session = SessionRuntime()
+        var decisions: [Bool] = []
+        routeClipboardConfirmation(to: session, kind: .osc52Read, readPolicy: .allow, context: .unresolved(tabID: UUID())) { decisions.append($0) }
+
+        #expect(decisions == [true])
+        #expect(session.pendingClipboardConfirmation == nil)
+    }
+
+    @Test func readWithPolicyAskShowsPendingWithContext() {
+        let session = SessionRuntime()
+        let context = ClipboardRequestContext(sessionID: session.id, sessionTitle: "Work", tabID: UUID(), paneIndex: 2, processName: "nvim")
+        var decisions: [Bool] = []
+        routeClipboardConfirmation(to: session, kind: .osc52Read, readPolicy: .ask, context: context) { decisions.append($0) }
+
+        #expect(session.pendingClipboardConfirmation?.context == context)
+        #expect(decisions.isEmpty)
+    }
+
+    @Test func policyAppliesOnlyToReads() {
+        let session = SessionRuntime()
+        var decisions: [Bool] = []
+        routeClipboardConfirmation(to: session, kind: .osc52Write, readPolicy: .never, context: .unresolved(tabID: UUID())) { decisions.append($0) }
+
+        #expect(isKind(session.pendingClipboardConfirmation?.kind, .osc52Write))
+        #expect(decisions.isEmpty)
     }
 
     /// #0390 round 2, B4: with no route wired to a Session at all (e.g. the
@@ -233,7 +280,7 @@ struct SessionClipboardConfirmationTests {
     @Test func missingSessionClipboardConfirmationRouteDenies() {
         var decisions: [Bool] = []
 
-        routeClipboardReadConfirmation(to: nil, kind: .osc52Read) { decisions.append($0) }
+        routeClipboardConfirmation(to: nil, kind: .osc52Read, readPolicy: .ask, context: .unresolved(tabID: UUID())) { decisions.append($0) }
 
         #expect(decisions == [false])
     }
@@ -242,7 +289,7 @@ struct SessionClipboardConfirmationTests {
         let session = SessionRuntime()
         var decisions: [Bool] = []
 
-        routeClipboardReadConfirmation(to: session, kind: .osc52Read) { decisions.append($0) }
+        routeClipboardConfirmation(to: session, kind: .osc52Read, readPolicy: .ask, context: .unresolved(tabID: UUID())) { decisions.append($0) }
 
         #expect(isKind(session.pendingClipboardConfirmation?.kind, .osc52Read))
         #expect(decisions.isEmpty)

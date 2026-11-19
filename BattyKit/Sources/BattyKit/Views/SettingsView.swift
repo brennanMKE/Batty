@@ -36,6 +36,7 @@ public struct SettingsView: View {
 private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.defaultShellKey) private var shellOverride: String = ""
     @AppStorage(SettingsPreference.pasteStrictnessKey) private var pasteStrictness: String = SettingsPreference.defaultPasteStrictness
+    @AppStorage(SettingsPreference.clipboardReadKey) private var clipboardRead: String = SettingsPreference.defaultClipboardRead
     @AppStorage(SettingsPreference.confirmQuitKey) private var confirmQuit: Bool = SettingsPreference.defaultConfirmQuit
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
     @AppStorage(SettingsPreference.autoNameFromFilesKey) private var autoNameFromFiles: Bool = SettingsPreference.defaultAutoNameFromFiles
@@ -71,6 +72,19 @@ private struct GeneralSettingsView: View {
                 }
                 .pickerStyle(.menu)
                 Text("Confirms before injecting potentially risky text. Cmd-V to a TextField is unaffected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Clipboard") {
+                Picker("Programs can read the clipboard", selection: $clipboardRead) {
+                    ForEach(ClipboardReadPolicy.allCases, id: \.rawValue) { policy in
+                        Text(policy.displayName).tag(policy.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("settings.clipboardRead")
+                Text("A program in a Pane, including one on a remote host over ssh, can ask to read the clipboard (OSC 52), which may hold passwords or tokens. Never denies without asking. Programs can always write to the clipboard.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
