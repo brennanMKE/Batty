@@ -494,12 +494,18 @@ private struct AdvancedSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Command-Line Tool") {
-                CLIInstallRow(model: cliModel)
-            }
             if store?.featureFlags.agentIntegration == true {
-                Section("AI Agents") {
+                Section("Command Line and AI Agents") {
+                    AgentSetupIntro()
+                    CLIInstallRow(model: cliModel, showsAgentGuidance: true)
+                    AgentHostRows(model: agentModel)
+                }
+                Section("Agent Instructions (optional)") {
                     AgentIntegrationRows(model: agentModel)
+                }
+            } else {
+                Section("Command-Line Tool") {
+                    CLIInstallRow(model: cliModel)
                 }
             }
             Section("Broker Agent") {
@@ -528,30 +534,138 @@ private struct AdvancedSettingsView: View {
     }
 }
 
+private struct AgentSetupIntro: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        HStack(alignment: .top) {
+            Text("Batty works on its own. Set these up only if you want to run Batty from a shell or let AI coding agents open Sessions and Panes. Choose either one, or both.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Learn More") {
+                openWindow(id: "help")
+            }
+            .accessibilityIdentifier("settings.agents.help")
+        }
+    }
+}
+
+private struct AgentHostRows: View {
+    @Bindable var model: AgentIntegrationModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("MCP server and agent guidance")
+            Text("Lets AI coding agents control Batty through its MCP server, with a skill that explains how. Batty keeps what you install up to date after each update.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .task { await model.loadStatus() }
+        .sheet(isPresented: Binding(get: { model.isConfirming }, set: { if !$0 { model.cancel() } })) {
+            AgentIntegrationConfirmationSheet(model: model)
+        }
+        ForEach(model.statuses) { status in
+            hostRow(status)
+        }
+        HStack {
+            Spacer()
+            Button("Install Selected…") {
+                let hosts = model.selectedHosts
+                Task { await model.beginInstall(hosts: hosts) }
+            }
+            .disabled(model.isBusy || model.selectedHosts.isEmpty)
+            .accessibilityIdentifier("settings.agents.install")
+        }
+        if case let .finished(report) = model.state {
+            resultText(report.render())
+        } else if let note = model.setupNote {
+            resultText(note, identifier: "settings.agents.setup-note")
+        }
+    }
+
+    @ViewBuilder
+    private func hostRow(_ status: AgentHostStatus) -> some View {
+        let slug = AgentGuidanceInstaller.slug(status.host)
+        HStack {
+            switch status.state {
+            case .notFound, .notInstalled:
+                Toggle(isOn: Binding(
+                    get: { model.selectedHosts.contains(status.host) },
+                    set: { on in
+                        if on { model.selectedHosts.insert(status.host) } else { model.selectedHosts.remove(status.host) }
+                    }
+                )) {
+                    labels(status)
+                }
+                .toggleStyle(.checkbox)
+                .disabled(status.state == .notFound || model.isBusy)
+                .accessibilityIdentifier("settings.agents.host.\(slug).checkbox")
+            case .installed, .updateAvailable:
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                labels(status)
+            }
+            Spacer()
+            Text(statusText(status.state))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("settings.agents.host.\(slug).status")
+            if case .updateAvailable = status.state {
+                Button("Update…") {
+                    Task { await model.beginInstall(hosts: [status.host]) }
+                }
+                .disabled(model.isBusy)
+            }
+            switch status.state {
+            case .installed, .updateAvailable:
+                Button("Remove…") {
+                    Task { await model.beginRemove(host: status.host) }
+                }
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("settings.agents.host.\(slug).remove")
+            default:
+                EmptyView()
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.agents.host.\(slug)")
+    }
+
+    private func labels(_ status: AgentHostStatus) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: AgentHostStatus.displayName(status.host))
+            Text(status.state == .notFound ? String(localized: "Install \(AgentHostStatus.displayName(status.host)) first.") : status.writes)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func statusText(_ state: AgentHostStatus.State) -> String {
+        switch state {
+        case .notFound: String(localized: "Not found")
+        case .notInstalled: String(localized: "Not installed")
+        case let .installed(version): version.map { String(localized: "Installed (\($0))") } ?? String(localized: "Installed")
+        case .updateAvailable: String(localized: "Update available")
+        }
+    }
+
+    private func resultText(_ text: String, identifier: String = "settings.agents.result") -> some View {
+        Text(text)
+            .font(.system(.caption, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .accessibilityIdentifier(identifier)
+    }
+}
+
 private struct AgentIntegrationRows: View {
     let model: AgentIntegrationModel
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Agent guidance")
-                Text("Installs the Batty skill and MCP server for Claude Code, Codex, Cursor and OpenCode.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Install…") {
-                Task { await model.beginInstall() }
-            }
-            .disabled(model.isBusy)
-            .accessibilityIdentifier("settings.agents.install")
-        }
-        .sheet(isPresented: Binding(get: { model.isConfirming }, set: { if !$0 { model.cancel() } })) {
-            AgentIntegrationConfirmationSheet(model: model)
-        }
-        if case let .finished(report) = model.state {
-            resultText(report.render())
-        }
+        Text("Agents with the MCP server already know about Batty. To mention Batty in a project's or your agent's own instructions too:")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Project instructions")
@@ -627,12 +741,22 @@ private struct AgentIntegrationConfirmationSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             switch model.state {
             case let .previewing(plan):
-                Text("Install Agent Guidance").font(.headline)
+                Text("Install MCP Server and Agent Guidance").font(.headline)
                 Text("Batty will make these changes:")
                 details(plan.render())
                 DialogButtonRow(
                     confirm: DialogButton("Install", identifier: "settings.agents.confirm-install") {
                         Task { await model.confirmInstall() }
+                    },
+                    cancel: .cancel(identifier: "settings.agents.cancel") { model.cancel() }
+                )
+            case let .previewingRemoval(plan):
+                Text("Remove from \(plan.hosts.map(AgentHostStatus.displayName).joined(separator: ", "))").font(.headline)
+                Text("Batty will make these changes. Removed files are moved to a backup folder:")
+                details(plan.actions.map { "  - \($0.summary)" }.joined(separator: "\n"))
+                DialogButtonRow(
+                    confirm: DialogButton("Remove", identifier: "settings.agents.confirm-remove") {
+                        Task { await model.confirmRemove() }
                     },
                     cancel: .cancel(identifier: "settings.agents.cancel") { model.cancel() }
                 )
@@ -871,14 +995,21 @@ private struct BrokerAgentRow: View {
 
 private struct CLIInstallRow: View {
     @Bindable var model: CLIInstallModel
+    var showsAgentGuidance = false
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: model.commandName)
-                Text("Symlinks `\(model.commandName)` to \(model.installPath). Not required to run Batty.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if showsAgentGuidance {
+                    Text("Symlinks `\(model.commandName)` to \(model.installPath). Lets you and your scripts run Batty commands in any terminal. Not needed for the MCP server.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Symlinks `\(model.commandName)` to \(model.installPath). Not required to run Batty.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 switch model.state {
                 case .failed(let reason):
                     Text(reason)
@@ -918,5 +1049,7 @@ private struct CLIInstallRow: View {
                 Text("Uninstalling\u{2026}").foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.cli.row")
     }
 }

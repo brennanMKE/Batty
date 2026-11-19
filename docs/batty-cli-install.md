@@ -80,7 +80,7 @@ The CLI now has five execution paths:
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
 | `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |
 | `batty mcp` | Serve the verbs as MCP tools over stdin/stdout (Beta, `agentIntegration`) | Re-executes `batty` per call |
-| `batty agent install [--dry-run] [--project <dir>] [--yes]` | Install the bundled skill and MCP server for Claude Code, Cursor, OpenCode and Codex; optionally add a Batty section to a project's agent file (Beta, `agentIntegration`) | Local files, `claude` CLI |
+| `batty agent install [--dry-run] [--project <dir>] [--yes]` | Install the bundled skill and MCP server for Claude Code, Cursor, OpenCode and Codex; optionally add a Batty section to a project's agent file (Beta, `agentIntegration`). Settings → Advanced → Command Line and AI Agents does the same per host, can remove it, and refreshes only the hosts installed there after an update; neither needs the `/usr/local/bin` symlink | Local files, `claude` CLI |
 | `batty agent context [--json]` | Tell an AI agent it is in a Batty Pane and which one; prints nothing outside Batty, always exits 0 (Beta, `agentIntegration`) | Environment only |
 
 Run `batty <subcommand> --help` for exact options. The full noun/verb grammar

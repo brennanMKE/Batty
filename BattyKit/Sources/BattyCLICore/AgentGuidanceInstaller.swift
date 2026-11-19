@@ -33,6 +33,20 @@ public nonisolated enum AgentInstallAction: Sendable, Equatable {
     case mergeMCPEntry(host: AgentHost, file: URL, keyPath: [String], entry: AgentJSON)
     /// Appends or replaces Batty's marked `[mcp_servers.<key>]` block in Codex's `config.toml`.
     case writeCodexMCPBlock(file: URL, key: String, block: String)
+    /// Moves Batty's skill folder to the backups folder.
+    case removeSkill(host: AgentHost, destination: URL)
+    /// Removes `keyPath` from a strict-JSON config file, keeping everything else.
+    case removeMCPEntry(host: AgentHost, file: URL, keyPath: [String])
+    /// Removes Batty's marked block from Codex's `config.toml`.
+    case removeCodexMCPBlock(file: URL, key: String)
+
+    public var host: AgentHost {
+        switch self {
+        case .stageMarketplace, .runClaude, .printClaudeCommands: .claudeCode
+        case let .copySkill(host, _), let .mergeMCPEntry(host, _, _, _), let .removeSkill(host, _), let .removeMCPEntry(host, _, _): host
+        case .writeCodexMCPBlock, .removeCodexMCPBlock: .codex
+        }
+    }
 
     public var summary: String {
         switch self {
@@ -48,6 +62,12 @@ public nonisolated enum AgentInstallAction: Sendable, Equatable {
             "\(host.rawValue): add MCP server \(keyPath.joined(separator: ".")) to \(file.path(percentEncoded: false))"
         case let .writeCodexMCPBlock(file, key, _):
             "\(AgentHost.codex.rawValue): add MCP server mcp_servers.\(key) to \(file.path(percentEncoded: false)) (marked block)"
+        case let .removeSkill(host, destination):
+            "\(host.rawValue): remove the skill at \(destination.path(percentEncoded: false))"
+        case let .removeMCPEntry(host, file, keyPath):
+            "\(host.rawValue): remove MCP server \(keyPath.joined(separator: ".")) from \(file.path(percentEncoded: false))"
+        case let .removeCodexMCPBlock(file, key):
+            "\(AgentHost.codex.rawValue): remove MCP server mcp_servers.\(key) from \(file.path(percentEncoded: false)) (marked block)"
         }
     }
 }
@@ -61,6 +81,11 @@ public nonisolated struct AgentInstallPlan: Sendable, Equatable {
         var lines = ["\(identity.cliCommandName) \(identity.version) agent guidance — detected: \(hosts.map(\.rawValue).joined(separator: ", "))"]
         lines += actions.map { "  - \($0.summary)" }
         return lines.joined(separator: "\n")
+    }
+
+    /// Only the actions for `hosts`, in plan order.
+    public func restricted(to allowed: Set<AgentHost>) -> AgentInstallPlan {
+        AgentInstallPlan(identity: identity, hosts: hosts.filter(allowed.contains), actions: actions.filter { allowed.contains($0.host) })
     }
 }
 
@@ -81,6 +106,17 @@ public nonisolated struct AgentInstallReport: Sendable, Equatable {
 
     public static func == (lhs: AgentInstallReport, rhs: AgentInstallReport) -> Bool {
         lhs.entries.map(\.action) == rhs.entries.map(\.action) && lhs.entries.map(\.outcome) == rhs.entries.map(\.outcome)
+    }
+
+    /// The `manual:` and `FAILED:` lines of `render()`.
+    public var problemLines: [String] {
+        entries.compactMap { action, outcome in
+            switch outcome {
+            case let .manual(detail): "  manual: \(action.summary)\(detail.isEmpty ? "" : "\n" + detail)"
+            case let .failed(reason): "  FAILED: \(action.summary) — \(reason)"
+            case .done, .unchanged: nil
+            }
+        }
     }
 
     public func render() -> String {
@@ -296,6 +332,41 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         return AgentInstallPlan(identity: identity, hosts: hosts, actions: actions)
     }
 
+    /// Undoes what `plan` writes for `hosts`, whether or not they are still detected.
+    /// Claude Code's plugin is removed through its own commands.
+    public func removalPlan(identity: AgentGuidanceIdentity, hosts: Set<AgentHost>) -> AgentInstallPlan {
+        var actions: [AgentInstallAction] = []
+        let key = identity.pluginName
+        let skillDirectory = identity.hostSkillDirectoryName
+        let ordered = AgentHost.allCases.filter(hosts.contains)
+        for host in ordered {
+            switch host {
+            case .claudeCode:
+                let uninstall = ["plugin", "uninstall", "\(identity.pluginName)@\(identity.marketplaceName)"]
+                let remove = ["plugin", "marketplace", "remove", identity.marketplaceName]
+                if let claude = executableLookup("claude") {
+                    actions.append(.runClaude(executable: claude, arguments: uninstall))
+                    actions.append(.runClaude(executable: claude, arguments: remove))
+                } else {
+                    actions.append(.printClaudeCommands([uninstall, remove].map { (["claude"] + $0.map(Self.shellQuoted)).joined(separator: " ") }))
+                }
+            case .openCode:
+                actions.append(.removeSkill(host: .openCode, destination: openCodeDirectory.appending(path: "skills/\(skillDirectory)", directoryHint: .isDirectory)))
+                actions.append(.removeMCPEntry(host: .openCode, file: openCodeDirectory.appending(path: "opencode.json", directoryHint: .notDirectory), keyPath: ["mcp", key]))
+            case .cursor:
+                let cursorDirectory = homeDirectory.appending(path: ".cursor", directoryHint: .isDirectory)
+                actions.append(.removeSkill(host: .cursor, destination: cursorDirectory.appending(path: "skills/\(skillDirectory)", directoryHint: .isDirectory)))
+                actions.append(.removeMCPEntry(host: .cursor, file: cursorDirectory.appending(path: "mcp.json", directoryHint: .notDirectory), keyPath: ["mcpServers", key]))
+            case .codex:
+                actions.append(.removeSkill(host: .codex, destination: codexDirectory.appending(path: "skills/\(skillDirectory)", directoryHint: .isDirectory)))
+                actions.append(.removeCodexMCPBlock(file: codexDirectory.appending(path: "config.toml", directoryHint: .notDirectory), key: key))
+            case .crossTool:
+                actions.append(.removeSkill(host: .crossTool, destination: homeDirectory.appending(path: ".agents/skills/\(skillDirectory)", directoryHint: .isDirectory)))
+            }
+        }
+        return AgentInstallPlan(identity: identity, hosts: ordered, actions: actions)
+    }
+
     private static func shellQuoted(_ text: String) -> String {
         text.contains(where: { " '\"$\\".contains($0) }) ? "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'" : text
     }
@@ -342,6 +413,12 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
             return try copySkill(identity: identity, host: host, destination: destination, stamp: stamp)
         case let .mergeMCPEntry(host, file, keyPath, entry):
             return try mergeMCPEntry(identity: identity, host: host, file: file, keyPath: keyPath, entry: entry, stamp: stamp)
+        case let .removeSkill(host, destination):
+            return try removeSkill(identity: identity, host: host, destination: destination, stamp: stamp)
+        case let .removeMCPEntry(host, file, keyPath):
+            return try removeMCPEntry(identity: identity, host: host, file: file, keyPath: keyPath, stamp: stamp)
+        case let .removeCodexMCPBlock(file, key):
+            return try removeCodexMCPBlock(identity: identity, file: file, key: key, stamp: stamp)
         }
     }
 
@@ -563,13 +640,71 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         return .done(detail)
     }
 
+    private func backupURL(identity: AgentGuidanceIdentity, host: AgentHost, name: String, stamp: String, directory: Bool) -> URL {
+        appSupportDirectory(for: identity).appending(path: "AgentGuidanceBackups/\(stamp)/\(Self.slug(host))/\(name)", directoryHint: directory ? .isDirectory : .notDirectory)
+    }
+
+    private func removeSkill(identity: AgentGuidanceIdentity, host: AgentHost, destination: URL, stamp: String) throws -> AgentInstallOutcome {
+        let fileManager = FileManager.default
+        guard (try? fileManager.attributesOfItem(atPath: destination.path(percentEncoded: false))) != nil else { return .unchanged }
+        let backup = backupURL(identity: identity, host: host, name: destination.lastPathComponent, stamp: stamp, directory: true)
+        try fileManager.createDirectory(at: backup.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileManager.moveItem(at: destination, to: backup)
+        return .done("moved to \(backup.path(percentEncoded: false))")
+    }
+
+    private func removeMCPEntry(identity: AgentGuidanceIdentity, host: AgentHost, file: URL, keyPath: [String], stamp: String) throws -> AgentInstallOutcome {
+        guard keyPath.count == 2 else { throw InstallError(message: "bad key path") }
+        guard let original = try? Data(contentsOf: file) else { return .unchanged }
+        guard case var .object(root)? = try? JSONDecoder().decode(ConfigJSON.self, from: original) else {
+            return .manual("    \(file.lastPathComponent) is not strict JSON (comments?), so it was left untouched. Remove \"\(keyPath[1])\" under \"\(keyPath[0])\" yourself.")
+        }
+        guard case var .object(section)? = root[keyPath[0]], section[keyPath[1]] != nil else { return .unchanged }
+        section[keyPath[1]] = nil
+        root[keyPath[0]] = .object(section)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        var data = try encoder.encode(ConfigJSON.object(root))
+        data.append(0x0A)
+        let backup = backupURL(identity: identity, host: host, name: file.lastPathComponent, stamp: stamp, directory: false)
+        try FileManager.default.createDirectory(at: backup.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try original.write(to: backup, options: .atomic)
+        try data.write(to: file, options: .atomic)
+        return .done("previous file backed up to \(backup.path(percentEncoded: false))")
+    }
+
+    private func removeCodexMCPBlock(identity: AgentGuidanceIdentity, file: URL, key: String, stamp: String) throws -> AgentInstallOutcome {
+        let target = file.resolvingSymlinksInPath()
+        guard let original = try? Data(contentsOf: target) else { return .unchanged }
+        let bom = Data([0xEF, 0xBB, 0xBF])
+        let hasBOM = original.starts(with: bom)
+        guard let text = String(data: hasBOM ? original.dropFirst(bom.count) : original, encoding: .utf8) else {
+            throw InstallError(message: "\(file.lastPathComponent) is not UTF-8; left untouched")
+        }
+        let remaining: String
+        switch CodexConfigBlock.removing(key: key, from: text) {
+        case .unchanged: return .unchanged
+        case let .conflict(reason): throw InstallError(message: "\(file.lastPathComponent): \(reason); left untouched")
+        case let .write(newText): remaining = newText
+        }
+        let permissions = try? FileManager.default.attributesOfItem(atPath: target.path(percentEncoded: false))[.posixPermissions]
+        let backup = backupURL(identity: identity, host: .codex, name: file.lastPathComponent, stamp: stamp, directory: false)
+        try FileManager.default.createDirectory(at: backup.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try original.write(to: backup, options: .atomic)
+        try ((hasBOM ? bom : Data()) + Data(remaining.utf8)).write(to: target, options: .atomic)
+        if let permissions {
+            try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: target.path(percentEncoded: false))
+        }
+        return .done("previous file backed up to \(backup.path(percentEncoded: false))")
+    }
+
     static func entryText(keyPath: [String], entry: AgentJSON) -> String {
         let object: [String: Any] = [keyPath[0]: [keyPath[1]: entry.foundation]]
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
 
-    private static func slug(_ host: AgentHost) -> String {
+    public static func slug(_ host: AgentHost) -> String {
         switch host {
         case .claudeCode: "claude-code"
         case .openCode: "opencode"

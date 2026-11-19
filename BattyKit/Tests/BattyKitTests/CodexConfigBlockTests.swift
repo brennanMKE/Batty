@@ -149,4 +149,22 @@ nonisolated struct CodexConfigBlockTests {
         let result = CodexConfigBlock.merge(existing: text, block: block(), key: "batty")
         guard case .conflict = result else { Issue.record("expected conflict, got \(result)"); return }
     }
+
+    @Test func removingDeletesOnlyBattyBlock() {
+        let user = "[profile]\nmodel = \"x\"\n"
+        guard case let .write(merged) = CodexConfigBlock.merge(existing: user, block: block(), key: "batty") else {
+            Issue.record("expected a write")
+            return
+        }
+        #expect(CodexConfigBlock.removing(key: "batty", from: merged) == .write(user))
+        #expect(CodexConfigBlock.removing(key: "batty", from: user) == .unchanged)
+    }
+
+    @Test func removingWithUnbalancedMarkersFails() {
+        let text = "# batty:begin\n[mcp_servers.batty]\n"
+        guard case .conflict = CodexConfigBlock.removing(key: "batty", from: text) else {
+            Issue.record("expected a conflict")
+            return
+        }
+    }
 }

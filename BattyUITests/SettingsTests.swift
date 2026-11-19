@@ -115,6 +115,43 @@ nonisolated final class SettingsTests: XCTestCase {
                       "Advanced must show the AI Agents Add to Project… button")
     }
 
+    /// Never clicks Install: nothing may be written to the VM's home.
+    @MainActor
+    func testAdvancedSettingsShowsGuidedAgentSetup() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        app.typeKey(",", modifierFlags: [.command])
+        let advanced = app.toolbars.buttons["Advanced"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 10))
+        advanced.click()
+
+        XCTAssertTrue(app.descendants(matching: .any)["settings.cli.row"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settings.agents.help"].exists)
+        let otherAgents = app.descendants(matching: .any)["settings.agents.host.agents"]
+        XCTAssertTrue(otherAgents.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["settings.agents.host.agents.status"].exists)
+
+        let install = app.buttons["settings.agents.install"]
+        XCTAssertTrue(install.exists)
+        XCTAssertFalse(install.isEnabled, "Install Selected… must wait for a checked host")
+        let checkbox = app.checkBoxes["settings.agents.host.agents.checkbox"]
+        XCTAssertTrue(checkbox.waitForExistence(timeout: 5))
+        checkbox.click()
+        XCTAssertTrue(install.isEnabled)
+    }
+
+    @MainActor
+    func testFreshLaunchShowsNoAgentSetupPrompt() throws {
+        let app = BattyUITestHarness.launchBatty()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.sheets.count, 0)
+        XCTAssertFalse(app.descendants(matching: .any)["agent-setup-offer"].exists)
+    }
+
     @MainActor
     func testAdvancedSettingsCopiesGlobalInstructionsPrompt() throws {
         let app = BattyUITestHarness.launchBatty()

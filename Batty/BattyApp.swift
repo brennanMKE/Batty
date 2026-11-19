@@ -106,6 +106,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         LaunchWindowGuard.installAtFirstQuiescence {
             LaunchWindowGuard.openContentWindowIfMissing(store: AppStateStore.shared)
             AppStateStore.shared.startBackgroundCatalogChecks()
+            AppStateStore.shared.startAgentSetupCheck()
         }
     }
 

@@ -347,7 +347,7 @@ What Batty gives AI coding agents so they can drive it from any project (#0646, 
 - **Plugin:** the Claude Code plugin `batty` (`batty-beta` in Beta) that `batty agent install` stages and installs, carrying the skill and the MCP server entry.
 - **Project snippet:** the short Batty section, between `<!-- batty:begin -->` and `<!-- batty:end -->`, added to a project's `AGENTS.md` or `CLAUDE.md` only after the user confirms.
 
-Settings → Advanced → AI Agents runs the same installer with a preview first.
+Settings → Advanced → Command Line and AI Agents installs or removes the MCP server and skill per agent host, with a preview first, and never prompts on its own. After an update Batty silently refreshes only the hosts the user installed there. The command-line tool is a separate choice: the MCP entries run the CLI inside the app bundle, so they work without it.
 
 ---
 

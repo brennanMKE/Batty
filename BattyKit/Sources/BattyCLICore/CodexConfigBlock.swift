@@ -91,6 +91,25 @@ public nonisolated enum CodexConfigBlock {
         return .write(result)
     }
 
+    /// Removes the marked block and the blank line `merge` put before it.
+    /// Unbalanced markers are a conflict; no markers is `.unchanged`.
+    public static func removing(key: String, from text: String) -> Result {
+        var lines = splitLines(text)
+        let begins = lines.indices.filter { lines[$0].content.trimmingCharacters(in: .whitespaces).hasPrefix("# \(key):begin") }
+        let ends = lines.indices.filter { lines[$0].content.trimmingCharacters(in: .whitespaces) == "# \(key):end" }
+        switch (begins.count, ends.count) {
+        case (0, 0):
+            return .unchanged
+        case (1, 1) where begins[0] < ends[0]:
+            var lower = begins[0]
+            if lower > 0, lines[lower - 1].content.trimmingCharacters(in: .whitespaces).isEmpty { lower -= 1 }
+            lines.removeSubrange(lower...ends[0])
+            return .write(lines.map { $0.content + $0.ending }.joined())
+        default:
+            return .conflict("unbalanced Batty markers (# \(key):begin / # \(key):end)")
+        }
+    }
+
     struct Line: Equatable {
         var content: String
         /// `"\n"`, `"\r\n"`, or empty for a last line with no terminator.
