@@ -429,12 +429,12 @@ struct ProjectPickerModelTests {
 
 @MainActor
 struct ProjectFileMenuModelTests {
-    @Test func zeroProjectsLeavesChooseAndNewWithoutALeadingDivider() {
+    @Test func zeroProjectsLeavesProjectsAndNewWithoutALeadingDivider() {
         let model = ProjectFileMenuModel.make(projects: [], openProjectIDs: [])
-        #expect(model.items == [.chooseProject, .newProject])
+        #expect(model.items == [.projects, .newProject])
     }
 
-    @Test func listsProjectsInRankedOrderThenDividerChooseAndNew() {
+    @Test func listsProjectsInRankedOrderThenDividerProjectsAndNew() {
         let a = project("Zulu"), b = project("Alpha", lastOpenedAt: 50), c = project("Mike", lastOpenedAt: 90)
         let model = ProjectFileMenuModel.make(projects: [a, b, c], openProjectIDs: [c.id])
         #expect(model.items == [
@@ -442,7 +442,7 @@ struct ProjectFileMenuModelTests {
             .project(id: a.id, name: "Zulu", symbol: .folder, isOpen: false),
             .project(id: c.id, name: "Mike", symbol: .folder, isOpen: true),
             .divider,
-            .chooseProject,
+            .projects,
             .newProject,
         ])
     }
@@ -460,6 +460,24 @@ struct ProjectFileMenuModelTests {
         let a = project("Alpha")
         let items = ProjectFileMenuModel.make(projects: [a], openProjectIDs: []).items
         #expect(Set(items.map(\.id)).count == items.count)
+    }
+
+    @Test func editorSelectionIsTheSessionsProjectWhenItExists() {
+        let a = project("Alpha")
+        #expect(ProjectFileMenuModel.editorSelection(projectID: a.id, projects: [a], editorIsOpen: false) == a.id)
+    }
+
+    @Test func editorSelectionIsNilWithNoProjectID() {
+        #expect(ProjectFileMenuModel.editorSelection(projectID: nil, projects: [project("Alpha")], editorIsOpen: false) == nil)
+    }
+
+    @Test func editorSelectionIsNilForADeletedProject() {
+        #expect(ProjectFileMenuModel.editorSelection(projectID: UUID(), projects: [project("Alpha")], editorIsOpen: false) == nil)
+    }
+
+    @Test func editorSelectionIsNilWhileTheEditorIsOpen() {
+        let a = project("Alpha")
+        #expect(ProjectFileMenuModel.editorSelection(projectID: a.id, projects: [a], editorIsOpen: true) == nil)
     }
 }
 
@@ -504,24 +522,6 @@ struct ProjectPickerPresentationTests {
         let fixture = StoreFixture()
         let store = try failedReadStore(fixture)
         store.presentProjectPicker(in: store.windows[0])
-        #expect(store.windows[0].projectPickerShown)
-        #expect(store.projectStore.unreadableFilePath == nil)
-        #expect(Set(store.projectStore.projects.map(\.name)) == ["Alpha", "Beta"])
-    }
-
-    @Test func togglingAShownPickerHidesItWithoutReadingTheFile() throws {
-        let fixture = StoreFixture()
-        let store = try failedReadStore(fixture)
-        store.windows[0].projectPickerShown = true
-        store.toggleProjectPicker(in: store.windows[0])
-        #expect(!store.windows[0].projectPickerShown)
-        #expect(store.projectStore.unreadableFilePath != nil)
-    }
-
-    @Test func togglingAHiddenPickerPresentsAndRetries() throws {
-        let fixture = StoreFixture()
-        let store = try failedReadStore(fixture)
-        store.toggleProjectPicker(in: store.windows[0])
         #expect(store.windows[0].projectPickerShown)
         #expect(store.projectStore.unreadableFilePath == nil)
         #expect(Set(store.projectStore.projects.map(\.name)) == ["Alpha", "Beta"])
@@ -601,7 +601,7 @@ struct ProjectPaletteEntryTests {
         #expect(recorder.calls.map(\.0) == [a.id])
     }
 
-    @Test func thePickerEntryHandsTheHostADirectPresentAfterDismissInsteadOfBroadcasting() throws {
+    @Test func thePickerEntryHandsTheHostADirectPresentAfterDismiss() throws {
         let fixture = StoreFixture()
         let store = try fixture.store()
         var deferred: [@MainActor () -> Void] = []
@@ -610,10 +610,6 @@ struct ProjectPaletteEntryTests {
             isPresented: .constant(true), store: store,
             afterDismiss: { deferred.append($0) },
             presentProjectPicker: { presented += 1 })
-        var posted = 0
-        let token = NotificationCenter.default.addObserver(
-            forName: .battyToggleProjectPicker, object: nil, queue: nil) { _ in posted += 1 }
-        defer { NotificationCenter.default.removeObserver(token) }
 
         view.allCommands.first { $0.id == "extra:openProjectPicker" }?.action()
         #expect(presented == 0)
@@ -621,7 +617,6 @@ struct ProjectPaletteEntryTests {
 
         deferred.forEach { $0() }
         #expect(presented == 1)
-        #expect(posted == 0)
     }
 
     @Test func withNoProjectsStillOffersThePicker() throws {

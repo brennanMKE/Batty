@@ -964,7 +964,7 @@ read-only; see `docs/design/git-status-view.md`.
 
 The Project Editor (#0474) is where a user defines Projects. It is one
 process-global AppKit window titled "Projects", created on demand by
-`ProjectEditorWindowController` from Projects ▸ **Projects…**. It is not a content window: it is
+`ProjectEditorWindowController` from File ▸ Open Project ▸ **Projects…**. It is not a content window: it is
 never registered with `AppStateStore.registerNSWindow`, so content-window
 shortcuts are off while it is key (`BattyShortcuts` declines the chord, and
 the menu items that act on a Session, Pane or Tab resolve no target, see
@@ -972,10 +972,15 @@ below), and the Open button's target is `defaultTargetWindow()`. Layout, left to
 column (Name, Root folder, Session color, Layout strip, Pane preview), and the
 Pane inspector, with a footer.
 
-Entry points include Projects ▸ **Projects…** and the Sidebar's
+Entry points include File ▸ Open Project ▸ **Projects…** (#0656) and the Sidebar's
 **Edit Project…** on a Project-backed Session row
 (`menu.sidebar.editProject`, #0653), which selects that Project and runs the
-unsaved-changes prompt when another draft is dirty.
+unsaved-changes prompt when another draft is dirty. Projects… selects the
+Project of `defaultTargetWindow()`'s selected Session when it still exists
+(`ProjectFileMenuModel.editorSelection`), and otherwise opens in browse state.
+With the editor already open it only brings it forward and selects nothing, so
+it never raises the unsaved-changes prompt. Projects… and New Project… work
+with no content window.
 
 **Invariants:**
 
@@ -1089,7 +1094,7 @@ unsaved-changes prompt when another draft is dirty.
 
 **Not covered by unit tests (for the Tart VM suite, #0478):**
 
-- Projects ▸ Projects… is present.
+- File ▸ Open Project ▸ Projects… is present.
 - The editor window opens and comes forward when already open. With it key,
   ⌘T adds no Tab, ⇧⌘X sends no exit and ⌘V pastes nothing into the background
   window's Terminal (⌘V still pastes into a focused editor field), while ⌘W
@@ -1106,9 +1111,9 @@ unsaved-changes prompt when another draft is dirty.
 ## Open Project picker, File menu and Command Palette entries
 
 The Open Project picker (#0475) is a sheet on `SessionDetailView`, like the
-Layout picker, presented from `WindowRuntime.projectPickerShown` (#0490). The
-File menu's `.battyToggleProjectPicker` is guarded on `isKeyWindow` (#0242)
-unless it names a window. Its logic lives in `ProjectPickerModel`; the File menu's
+Layout picker, presented from `WindowRuntime.projectPickerShown` (#0490)
+through `AppStateStore.presentProjectPicker(in:)`, from the Sidebar footer's
+Open Project button and the Command Palette's "Open Project..." row. Its logic lives in `ProjectPickerModel`; the File menu's
 Open Project submenu is `ProjectFileMenuModel` rendered by `BattyCommands`; the
 Command Palette entries are built in `CommandPaletteView.allCommands`.
 
@@ -1208,24 +1213,17 @@ Command Palette entries are built in `CommandPaletteView.allCommands`.
   `onDismiss` by calling a closure `SessionDetailView` hands it, which presents
   on this window directly (#0483) through `AppStateStore.presentProjectPicker(in:)`.
   Every presenter goes through that action, which retries a failed
-  `projects.json` read before the sheet appears. It does not broadcast
-  `.battyToggleProjectPicker`: that handler is gated on `isKeyWindow`, which is
-  not guaranteed to hold inside the palette's `onDismiss`.
+  `projects.json` read before the sheet appears.
 - The File menu items have no key equivalents and there is no new
-  `ShortcutAction`. The submenu is disabled when no window is registered.
+  `ShortcutAction`. The submenu is always enabled; only its Project items are
+  disabled when no window is registered (#0656).
 - Choosing a Project from the submenu while Settings, Help or the Project Editor
   is key (#0485) brings the target content window forward: `openProject`
   (create) and `requestOpenProject` (trust sheet) call `activateWindow` when
   `auxiliaryWindowIsKey`, in the same menu action, so the new Session or the
   trust sheet is visible. This also covers the editor's Open button, which leaves the editor open behind it.
-- Choose Project... from Settings, Help or the Project Editor brings the target
-  content window forward and presents the picker there: the menu action posts
-  `.battyToggleProjectPicker` with the target's `WindowID` in `userInfo`
-  (`ProjectPickerToggle`), and `SessionDetailView` handles a toggle that names
-  its window whether or not that window is key yet. An unnamed toggle
-  is still handled by the key window only. Elsewhere the item
-  posts the unnamed toggle through `postToContentWindow`, which drops it while
-  an auxiliary window is key.
+- Projects... from Settings, Help or the editor opens the editor on the target
+  Window's Session's Project (#0656).
   `defaultTargetWindow()` and the CLI's activation are unchanged, and a content
   window key changes nothing.
 - The Sidebar footer's Open Project button (`session-sidebar.open-project-button`,
@@ -1254,14 +1252,14 @@ Command Palette entries are built in `CommandPaletteView.allCommands`.
 - Empty state `project-picker.empty`, with `project-picker.new-project` when no
   Projects exist.
 - File menu: submenu title "Open Project", items titled by Project name (a
-  check mark marks an open Project), "Choose Project...", "New Project...".
+  check mark marks an open Project), "Projects...", "New Project...".
 - Command Palette: rows titled "Open Project: <name>" and "Open Project...".
 
 **Not covered by unit tests (for the Tart VM suite, #0478, plus the manual
 check below):**
 
 - File > Open Project shows each seeded Project, checks the
-  open one, and Choose Project... presents the sheet.
+  open one, and Projects... opens the Project Editor.
 - Typing narrows the cards; arrows move the selection; Return opens and
   Option-Return opens another copy; Escape dismisses; clicking a card selects
   it and double-clicking opens it.
@@ -1314,7 +1312,7 @@ the root is stored as the root and flagged with a warning on its field.
 
 - Sidebar row context menu: "Save as Project..." (after Mute Notifications,
   before Close). Captures that row's Session.
-- Projects > "Save Session as Project...", then a separator and "Projects...".
+- Projects > "Save Session as Project..." (the menu holds only the Save/Update items).
   Captures the key Window's selected Session; disabled with none.
 - Command Palette `extra:saveSessionAsProject` "Save Session as Project...".
 - Project Editor "Copy from current Session" beside the Layout title
@@ -1374,7 +1372,7 @@ unchanged; these are the ones they do not cover):
   title text ("Open Project: <name>", "Open Project...", "Save Session as Project...").
 - `tab-chip.<title>`, `session-row.<title>`, `pane-terminal.<pane id>`, `git-status.snapshot`.
 - Menu items have no identifiers; the File item "Open Project" (submenu: Project names,
-  "Choose Project...", "New Project..."), the Projects items "Save Session as Project..." and "Projects...", the
+  "Projects...", "New Project..."), the Projects item "Save Session as Project...", the
   Sidebar item "Save as Project...", and the Window item "Projects" are found by title.
 
 **Coverage map** (the checklists above and in the #0474-#0477 sections):
@@ -1402,11 +1400,13 @@ unchanged; these are the ones they do not cover):
 | iCloud key-value backend: keys, limits, change notifications, pruning; refused share leaves the flag and file; picker and editor error (#0503) | `ICloudKeyValueProjectSyncBackendTests`, `ProjectSharingStoreTests`, `ProjectSharingPickerTests`, `ProjectEditorSharingTests` (BattyKit) |
 | Record split, portable path, merge rules, store and backend routing, picker card fields, editor draft (#0501) | `ProjectSharingModelTests`, `PortablePathTests`, `ProjectSyncMergeTests`, `ProjectSharingStoreTests`, `ProjectSharingPickerTests`, `ProjectEditorSharingTests` (BattyKit) |
 | Cursor transitions, tier split, New Project card, two-step Escape, match count, relative time (#0493) | `ProjectPickerGridCursorTests`, `ProjectPickerModelTests`, `ProjectRecencyRelativeTextTests` (BattyKit) |
-| OPEN badge, File check mark, Escape, Choose/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
+| OPEN badge, File check mark, Escape, Projects/New items | `ProjectsOpenTests.testOpenBadgeAndFileMenuCheckMarkFollowTheOpenProject` |
 | Palette "Open Project: <name>" and "Open Project..." | `ProjectsOpenTests.testCommandPaletteOpensAProject`, `...OpenProjectRowPresentsThePicker` and `...WithReturn` (both assert that the picker presents, #0483) |
 | Trust sheet, Open Without Running, Run Commands, remembered approval, edited command | `ProjectsStartupTests.testTrustSheetGatesStartupCommandsAndRemembersApproval` |
 | Waiting indicator for a shell that never reports OSC 7 (`/bin/sh`), Run Now, Dismiss (#0479) | `ProjectsStartupTests.testShellThatNeverReportsShowsWaitingIndicatorWithRunNowAndDismiss` |
-| Projects ▸ Projects..., Window menu entry | `ProjectsEditorTests.testEditProjectsMenuOpensTheEditorOnTheStoredProjects` |
+| File ▸ Open Project ▸ Projects..., Window menu entry | `ProjectsEditorTests.testFileMenuProjectsOpensTheEditorOnTheStoredProjects` |
+| Projects... selects the Session's Project, browse state for a plain Session | `ProjectsEditorTests.testFileMenuProjectsSelectsTheCurrentSessionsProject`, `...OpensInBrowseStateForAPlainSession` |
+| Projects... with Settings key | `ProjectsAuxiliaryOpenTests.testProjectsFromSettingsOpensTheEditorOnTheTargetSessionsProject` |
 | Create, Save, Open, Tab directory | `ProjectsEditorTests.testEditorCreatesAProjectAndOpenOpensIt` |
 | Revert leaves the store unchanged and the window open | `ProjectsEditorTests.testRevertLeavesTheStoredProjectUnchanged` |
 | ⌘S saves, Escape does nothing in the editor (#0654) | `ProjectsEditorTests.testCommandSSavesAndEscapeLeavesTheEditorOpen` |

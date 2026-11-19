@@ -2240,9 +2240,9 @@ public final class AppStateStore {
     /// trust sheet's button via `resolveStartupTrust`, and `openProject`'s
     /// focus-existing branch, reached from GUI project opens (Command
     /// Palette, project editor) via `ProjectOpenPresenter` and from
-    /// `UITestDriver`; `openProject`'s create path and `requestOpenProject`'s
-    /// trust-sheet path when a GUI open starts with an auxiliary window key;
-    /// and File > Open Project > Choose Project... under the same condition —
+    /// `UITestDriver`; and `openProject`'s create path and
+    /// `requestOpenProject`'s trust-sheet path when a GUI open starts with an
+    /// auxiliary window key —
     /// never from view-update code. No-op when the window has no
     /// registered `NSWindow` yet (unit tests, headless CLI-only contexts)
     /// — the selection/focus writes above already ran regardless, which is

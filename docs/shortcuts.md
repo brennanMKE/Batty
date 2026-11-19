@@ -285,8 +285,7 @@ their Window explicitly (`PasteDispatcher.confirm(_:in:)`,
 
 File > Open Project > a Project name has no chord, so it is not blocked: it
 brings the content window forward and opens there (#0485), including the
-startup-command trust sheet. Choose Project... from Settings, Help or the
-Project Editor brings the content window forward and presents the picker there.
+startup-command trust sheet. Projects… opens the Project Editor and is never blocked; with an auxiliary window key it selects the Project of the default target Window's Session.
 
 Why this exists, in two pieces:
 

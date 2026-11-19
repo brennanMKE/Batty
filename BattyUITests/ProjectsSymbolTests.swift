@@ -33,7 +33,7 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         waitForRowIcon("Board", "terminal.fill", in: app)
         waitForRowIcon(original.name, "circle.fill", in: app)
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Board", in: app)
         let button = element("project-editor.symbol", in: app)
         XCTAssertTrue(button.waitForExistence(timeout: 5), "no Symbol button in the editor")
@@ -62,7 +62,7 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: try seed(symbol: "terminal"))
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Board", in: app)
         let button = element("project-editor.symbol", in: app)
         dismissBanners(in: app)
@@ -80,7 +80,7 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: try seed(symbol: "terminal"))
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Board", in: app)
         let button = element("project-editor.symbol", in: app)
         XCTAssertTrue(button.waitForExistence(timeout: 5))
@@ -100,7 +100,7 @@ nonisolated final class ProjectsSymbolTests: ProjectsUITestCase {
         let (app, _) = try launchApp(projects: try seed(symbol: "terminal"))
         defer { app.terminate() }
 
-        openEditorFromProjectsMenu(in: app)
+        openEditorFromFileMenu(in: app)
         click("project-editor.list.row.Board", in: app)
         let button = element("project-editor.symbol", in: app)
         XCTAssertTrue(button.waitForExistence(timeout: 5))
