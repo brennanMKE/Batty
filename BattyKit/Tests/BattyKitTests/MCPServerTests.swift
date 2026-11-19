@@ -39,7 +39,12 @@ nonisolated final class PipeLineReader: @unchecked Sendable {
         }
     }
 
-    func next() async -> String? {
+    /// `nil` at end of file or when `bound` passes first.
+    func next(bound: TimeInterval = TestBounds.hangGuard) async -> String? {
+        await awaitBoundedValue(bound: bound) { await self.nextLine() }.flatMap { $0 }
+    }
+
+    private func nextLine() async -> String? {
         await iterator.next()
     }
 }
@@ -110,19 +115,51 @@ nonisolated struct MCPHarness {
         input.fileHandleForWriting.write(bytes)
     }
 
-    func reply() async throws -> MCPJSONValue {
-        let line = try #require(await reader.next())
+    func reply(_ step: String, sourceLocation: SourceLocation = #_sourceLocation) async throws -> MCPJSONValue {
+        let line = try #require(await reader.next(), "no reply for \(step) within \(TestBounds.hangGuard)s", sourceLocation: sourceLocation)
         return try JSONDecoder().decode(MCPJSONValue.self, from: Data(line.utf8))
     }
 
+    func awaitSignal(_ stream: AsyncStream<Void>, _ step: String, sourceLocation: SourceLocation = #_sourceLocation) async throws {
+        let signalled = await awaitBoundedValue { () -> Bool in
+            for await _ in stream { return true }
+            return false
+        }
+        try #require(signalled == true, "no signal for \(step) within \(TestBounds.hangGuard)s", sourceLocation: sourceLocation)
+    }
+
+    /// Idempotent: closes input, awaits the serve loop, then closes output.
     func close() async {
         try? input.fileHandleForWriting.close()
-        await serving.value
+        let serving = serving
+        let returned = await awaitBounded { await serving.value }
+        if !returned {
+            Issue.record("serve did not return after input closed")
+            serving.cancel()
+        }
+        try? output.fileHandleForWriting.close()
+    }
+
+    static func withHarness<T>(
+        runner: MCPToolRunner,
+        flags: FeatureFlags = MCPToolCatalogTests.flagOn,
+        environment: [String: String] = [:],
+        _ body: (MCPHarness) async throws -> T
+    ) async throws -> T {
+        let harness = MCPHarness(runner: runner, flags: flags, environment: environment)
+        do {
+            let value = try await body(harness)
+            await harness.close()
+            return value
+        } catch {
+            await harness.close()
+            throw error
+        }
     }
 }
 
-@Suite(.timeLimit(.minutes(1)))
-struct MCPServerTests {
+@Suite(.timeLimit(.minutes(2)))
+nonisolated struct MCPServerTests {
     static let ok = MCPToolRunResult(exitCode: 0, stdout: "{\"paneID\":\"P\"}\n", stderr: "")
 
     private func text(_ reply: MCPJSONValue) -> String? {
@@ -131,14 +168,14 @@ struct MCPServerTests {
     }
 
     @Test func initializeEchoesASupportedProtocolVersionAndAdvertisesTools() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}"#)
-        let reply = try await harness.reply()
-        #expect(reply["id"] == .int(1))
-        #expect(reply["result"]?["protocolVersion"] == .string("2025-06-18"))
-        #expect(reply["result"]?["capabilities"]?["tools"] != nil)
-        #expect(reply["result"]?["serverInfo"]?["name"] == .string("batty"))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}"#)
+            let reply = try await harness.reply("initialize")
+            #expect(reply["id"] == .int(1))
+            #expect(reply["result"]?["protocolVersion"] == .string("2025-06-18"))
+            #expect(reply["result"]?["capabilities"]?["tools"] != nil)
+            #expect(reply["result"]?["serverInfo"]?["name"] == .string("batty"))
+        }
     }
 
     static let sessionID = "11111111-1111-1111-1111-111111111111"
@@ -151,11 +188,11 @@ struct MCPServerTests {
     ]
 
     private func initializeInstructions(environment: [String: String]) async throws -> String {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok), environment: environment)
-        harness.send(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#)
-        let reply = try await harness.reply()
-        await harness.close()
-        return try #require(reply["result"]?["instructions"]?.stringValue)
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok), environment: environment) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#)
+            let reply = try await harness.reply("initialize")
+            return try #require(reply["result"]?["instructions"]?.stringValue)
+        }
     }
 
     @Test func initializeInstructionsNameSessionTabAndPaneInBatty() async throws {
@@ -177,186 +214,199 @@ struct MCPServerTests {
     }
 
     @Test func initializeWithUnknownVersionAnswersWithLatestSupported() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}"#)
-        let reply = try await harness.reply()
-        #expect(reply["result"]?["protocolVersion"] == .string(MCPServer.supportedProtocolVersions[0]))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}"#)
+            let reply = try await harness.reply("initialize (unknown version)")
+            #expect(reply["result"]?["protocolVersion"] == .string(MCPServer.supportedProtocolVersions[0]))
+        }
     }
 
     @Test func toolsListOverStdioMatchesCatalog() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","id":"a","method":"tools/list"}"#)
-        let reply = try await harness.reply()
-        guard case let .array(tools)? = reply["result"]?["tools"] else {
-            Issue.record("no tools array")
-            return
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":"a","method":"tools/list"}"#)
+            let reply = try await harness.reply("tools/list")
+            guard case let .array(tools)? = reply["result"]?["tools"] else {
+                Issue.record("no tools array")
+                return
+            }
+            let catalog = MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: MCPToolCatalogTests.flagOn))
+            #expect(tools.compactMap { $0["name"]?.stringValue } == catalog.tools.map(\.name))
+            #expect(tools == catalog.tools.map(\.listEntry))
         }
-        let catalog = MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: MCPToolCatalogTests.flagOn))
-        #expect(tools.compactMap { $0["name"]?.stringValue } == catalog.tools.map(\.name))
-        #expect(tools == catalog.tools.map(\.listEntry))
-        await harness.close()
     }
 
     @Test func toolsCallIdRunsTheVerbWithJSONAndReturnsItsStdout() async throws {
         let runner = ScriptedRunner(result: Self.ok)
-        let harness = MCPHarness(runner: runner)
-        harness.send(#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"id","arguments":{}}}"#)
-        let reply = try await harness.reply()
-        #expect(text(reply) == Self.ok.stdout)
-        #expect(reply["result"]?["isError"] == .bool(false))
-        #expect(runner.calls.withLock { $0 } == [["id", "--json"]])
-        await harness.close()
+        try await MCPHarness.withHarness(runner: runner) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"id","arguments":{}}}"#)
+            let reply = try await harness.reply("tools/call id")
+            #expect(text(reply) == Self.ok.stdout)
+            #expect(reply["result"]?["isError"] == .bool(false))
+            #expect(runner.calls.withLock { $0 } == [["id", "--json"]])
+        }
     }
 
     @Test func toolsCallCapabilitiesReturnsTheCapabilitiesJSON() async throws {
         let payload = CapabilitiesCommand.buildPayload(flags: MCPToolCatalogTests.flagOn)
         let json = try String(decoding: JSONEncoder().encode(payload), as: UTF8.self)
         let runner = ScriptedRunner(result: MCPToolRunResult(exitCode: 0, stdout: json, stderr: ""))
-        let harness = MCPHarness(runner: runner)
-        harness.send(#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"capabilities"}}"#)
-        let reply = try await harness.reply()
-        let returned = try #require(text(reply))
-        #expect(try JSONDecoder().decode(CapabilitiesPayload.self, from: Data(returned.utf8)) == payload)
-        #expect(runner.calls.withLock { $0 } == [["capabilities", "--json"]])
-        await harness.close()
+        try await MCPHarness.withHarness(runner: runner) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"capabilities"}}"#)
+            let reply = try await harness.reply("tools/call capabilities")
+            let returned = try #require(text(reply))
+            #expect(try JSONDecoder().decode(CapabilitiesPayload.self, from: Data(returned.utf8)) == payload)
+            #expect(runner.calls.withLock { $0 } == [["capabilities", "--json"]])
+        }
     }
 
     @Test func nonZeroExitIsAToolErrorCarryingExitCodeMeaningAndStderr() async throws {
         let runner = ScriptedRunner(result: MCPToolRunResult(exitCode: 1, stdout: "", stderr: "batty: no such pane\n"))
-        let harness = MCPHarness(runner: runner)
-        harness.send(#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pane_focus","arguments":{"id":"X"}}}"#)
-        let reply = try await harness.reply()
-        #expect(reply["result"]?["isError"] == .bool(true))
-        let body = try #require(text(reply))
-        #expect(body.hasPrefix("exit 1: CLI-side failure"))
-        #expect(body.contains("batty: no such pane"))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: runner) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pane_focus","arguments":{"id":"X"}}}"#)
+            let reply = try await harness.reply("tools/call pane_focus")
+            #expect(reply["result"]?["isError"] == .bool(true))
+            let body = try #require(text(reply))
+            #expect(body.hasPrefix("exit 1: CLI-side failure"))
+            #expect(body.contains("batty: no such pane"))
+        }
     }
 
     @Test func invalidArgumentsAreAToolErrorNotAProtocolError() async throws {
         let runner = ScriptedRunner(result: Self.ok)
-        let harness = MCPHarness(runner: runner)
-        harness.send(#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"id","arguments":{"bogus":1}}}"#)
-        let reply = try await harness.reply()
-        #expect(reply["result"]?["isError"] == .bool(true))
-        #expect(runner.calls.withLock { $0 }.isEmpty)
-        await harness.close()
+        try await MCPHarness.withHarness(runner: runner) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"id","arguments":{"bogus":1}}}"#)
+            let reply = try await harness.reply("tools/call bogus arguments")
+            #expect(reply["result"]?["isError"] == .bool(true))
+            #expect(runner.calls.withLock { $0 }.isEmpty)
+        }
     }
 
     @Test func unknownToolIsInvalidParams() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"mcp"}}"#)
-        let reply = try await harness.reply()
-        #expect(reply["error"]?["code"] == .int(-32602))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"mcp"}}"#)
+            let reply = try await harness.reply("tools/call unknown tool")
+            #expect(reply["error"]?["code"] == .int(-32602))
+        }
     }
 
     @Test func unknownMethodIsMethodNotFound() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","id":7,"method":"resources/list"}"#)
-        let reply = try await harness.reply()
-        #expect(reply["error"]?["code"] == .int(-32601))
-        #expect(reply["id"] == .int(7))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":7,"method":"resources/list"}"#)
+            let reply = try await harness.reply("resources/list")
+            #expect(reply["error"]?["code"] == .int(-32601))
+            #expect(reply["id"] == .int(7))
+        }
     }
 
     @Test func malformedLineIsParseErrorWithNullID() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send("{not json")
-        let reply = try await harness.reply()
-        #expect(reply["error"]?["code"] == .int(-32700))
-        #expect(reply["id"] == .null)
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send("{not json")
+            let reply = try await harness.reply("malformed line")
+            #expect(reply["error"]?["code"] == .int(-32700))
+            #expect(reply["id"] == .null)
+        }
     }
 
     @Test func notificationsGetNoReply() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
-        harness.send(#"{"jsonrpc":"2.0","method":"some/unknown"}"#)
-        harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
-        let reply = try await harness.reply()
-        #expect(reply["id"] == .int(8))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
+            harness.send(#"{"jsonrpc":"2.0","method":"some/unknown"}"#)
+            harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
+            let reply = try await harness.reply("ping (id 8)")
+            #expect(reply["id"] == .int(8))
+        }
     }
 
     @Test func pingAnswersEmptyResult() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","id":9,"method":"ping"}"#)
-        let reply = try await harness.reply()
-        #expect(reply["result"] == .object([:]))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":9,"method":"ping"}"#)
+            let reply = try await harness.reply("ping (id 9)")
+            #expect(reply["result"] == .object([:]))
+        }
     }
 
     @Test func cancelledNotificationCancelsTheInFlightCall() async throws {
         let runner = SuspendingRunner()
-        let harness = MCPHarness(runner: runner)
-        var started = runner.started.makeAsyncIterator()
-        var cancelled = runner.cancelled.makeAsyncIterator()
-        harness.send(#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"id"}}"#)
-        _ = await started.next()
-        harness.send(#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":10}}"#)
-        _ = await cancelled.next()
-        harness.send(#"{"jsonrpc":"2.0","id":11,"method":"ping"}"#)
-        let reply = try await harness.reply()
-        #expect(reply["id"] == .int(11))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: runner) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"id"}}"#)
+            try await harness.awaitSignal(runner.started, "runner started")
+            harness.send(#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":10}}"#)
+            try await harness.awaitSignal(runner.cancelled, "runner saw cancellation")
+            harness.send(#"{"jsonrpc":"2.0","id":11,"method":"ping"}"#)
+            let reply = try await harness.reply("ping after cancel (id 11)")
+            #expect(reply["id"] == .int(11))
+        }
     }
 
     @Test(arguments: ["\u{2028}", "\u{2029}", "\u{0085}"])
     func rawLineSeparatorInsideAStringIsOneMessage(separator: String) async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send(#"{"jsonrpc":"2.0","id":7,"method":"ping","params":{"x":"a"# + separator + #"b"}}"#)
-        harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
-        let first = try await harness.reply()
-        #expect(first["id"] == .int(7))
-        #expect(first["result"] == .object([:]))
-        #expect(first["error"] == nil)
-        let second = try await harness.reply()
-        #expect(second["id"] == .int(8))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send(#"{"jsonrpc":"2.0","id":7,"method":"ping","params":{"x":"a"# + separator + #"b"}}"#)
+            harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
+            let first = try await harness.reply("ping with separator (id 7)")
+            #expect(first["id"] == .int(7))
+            #expect(first["result"] == .object([:]))
+            #expect(first["error"] == nil)
+            let second = try await harness.reply("ping (id 8)")
+            #expect(second["id"] == .int(8))
+        }
     }
 
     @Test func loneCarriageReturnMidLineIsNotAMessageBoundary() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.send("{\"jsonrpc\":\"2.0\",\r\"id\":7,\"method\":\"ping\"}")
-        harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
-        let first = try await harness.reply()
-        #expect(first["id"] == .int(7))
-        #expect(first["error"] == nil)
-        let second = try await harness.reply()
-        #expect(second["id"] == .int(8))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.send("{\"jsonrpc\":\"2.0\",\r\"id\":7,\"method\":\"ping\"}")
+            harness.send(#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#)
+            let first = try await harness.reply("ping with lone CR (id 7)")
+            #expect(first["id"] == .int(7))
+            #expect(first["error"] == nil)
+            let second = try await harness.reply("ping (id 8)")
+            #expect(second["id"] == .int(8))
+        }
     }
 
     @Test func crlfTerminatedLineIsParsed() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.sendRaw(Data(#"{"jsonrpc":"2.0","id":12,"method":"ping"}"#.utf8 + [0x0D, 0x0A]))
-        harness.send(#"{"jsonrpc":"2.0","id":14,"method":"ping"}"#)
-        let first = try await harness.reply()
-        #expect(first["id"] == .int(12))
-        #expect(first["result"] == .object([:]))
-        let second = try await harness.reply()
-        #expect(second["id"] == .int(14))
-        await harness.close()
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.sendRaw(Data(#"{"jsonrpc":"2.0","id":12,"method":"ping"}"#.utf8 + [0x0D, 0x0A]))
+            harness.send(#"{"jsonrpc":"2.0","id":14,"method":"ping"}"#)
+            let first = try await harness.reply("CRLF ping (id 12)")
+            #expect(first["id"] == .int(12))
+            #expect(first["result"] == .object([:]))
+            let second = try await harness.reply("ping (id 14)")
+            #expect(second["id"] == .int(14))
+        }
     }
 
     @Test func finalLineWithoutNewlineIsProcessedAtEndOfFile() async throws {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        harness.sendRaw(Data(#"{"jsonrpc":"2.0","id":13,"method":"ping"}"#.utf8))
-        await harness.close()
-        let reply = try await harness.reply()
-        #expect(reply["id"] == .int(13))
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            harness.sendRaw(Data(#"{"jsonrpc":"2.0","id":13,"method":"ping"}"#.utf8))
+            await harness.close()
+            let reply = try await harness.reply("unterminated ping (id 13)")
+            #expect(reply["id"] == .int(13))
+        }
     }
 
-    @Test func serveReturnsWhenInputCloses() async {
-        let harness = MCPHarness(runner: ScriptedRunner(result: Self.ok))
-        await harness.close()
-        #expect(harness.serving.isCancelled == false)
+    @Test func serveReturnsWhenInputCloses() async throws {
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { harness in
+            await harness.close()
+            #expect(harness.serving.isCancelled == false)
+        }
+    }
+
+    @Test func idleInputOnOneServerDoesNotStallAnother() async throws {
+        try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { idle in
+            idle.send(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#)
+            let first = try await idle.reply("ping on A")
+            #expect(first["id"] == .int(1))
+            try await MCPHarness.withHarness(runner: ScriptedRunner(result: Self.ok)) { other in
+                other.send(#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#)
+                let second = try await other.reply("ping on B while A idles")
+                #expect(second["id"] == .int(2))
+            }
+        }
     }
 }
 
-struct MCPLineFramerTests {
+nonisolated struct MCPLineFramerTests {
     private func frame(_ bytes: [UInt8]) -> (lines: [Data], rest: Data?) {
         var framer = MCPLineFramer()
         let lines = bytes.compactMap { framer.append($0) }

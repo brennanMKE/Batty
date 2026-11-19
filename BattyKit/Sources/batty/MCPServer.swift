@@ -87,11 +87,19 @@ actor MCPServer {
     /// Returns when `input` reaches end of file, after cancelling and
     /// awaiting any calls still running.
     func serve(input: FileHandle, output: FileHandle) async {
+        await serve(chunks: MCPInput.chunks(from: input), output: output)
+    }
+
+    /// Returns when `chunks` ends, after cancelling and awaiting any calls
+    /// still running.
+    func serve<Input: AsyncSequence>(chunks: Input, output: FileHandle) async where Input.Element == Data {
         do {
             var framer = MCPLineFramer()
-            for try await byte in input.bytes {
-                if let line = framer.append(byte) {
-                    handle(line: line, output: output)
+            for try await chunk in chunks {
+                for byte in chunk {
+                    if let line = framer.append(byte) {
+                        handle(line: line, output: output)
+                    }
                 }
             }
             if let last = framer.finish() {

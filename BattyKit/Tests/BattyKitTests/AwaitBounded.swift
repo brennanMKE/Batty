@@ -19,3 +19,24 @@ nonisolated func awaitBounded(
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeout)
     }
 }
+
+/// Value-returning sibling of `awaitBounded`: `nil` when the guard fires,
+/// after cancelling the operation so a stuck iterator is released.
+nonisolated func awaitBoundedValue<T: Sendable>(
+    bound: TimeInterval = TestBounds.hangGuard,
+    _ operation: @escaping @Sendable () async -> T
+) async -> T? {
+    await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
+        let once = ResumeOnce(continuation)
+        let task = Task {
+            let value = await operation()
+            once.resume(value)
+        }
+        let timeout = DispatchWorkItem {
+            once.resume(nil)
+            task.cancel()
+        }
+        once.setOnResumed { timeout.cancel() }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeout)
+    }
+}
