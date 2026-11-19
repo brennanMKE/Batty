@@ -363,6 +363,7 @@ Start with **Path A** (`libghostty-spm` prebuilt xcframework) for the fastest "h
 - **Bell-event filtering.** Per-session "ignore quiet bells" or pattern matchers for noisy programs.
 - **Server Pane (1.5.0, #0648).** A non-terminal Pane for one dev server port, created by `batty server start|attach`: state, PID, metrics, Open in Browser, Stop and Restart, with the command running in an ordinary terminal Pane beside it. Behind the `serverPane` feature flag until 1.5.0.
 - **Static server and Web Preview Pane (1.5.0, #0649).** `batty server serve <dir>` serves a folder on 127.0.0.1 from inside Batty with reload on change, and a `web-preview` Pane shows loopback pages in Batty. Behind the `serverPane` flag until 1.5.0.
+- **Agent integration: `batty mcp` and `batty agent install` (1.5.0, #0647).** `batty mcp` is a stdio MCP server whose tools are the verbs `batty capabilities --json` lists (minus `mcp` and `agent install`). `batty agent install`, or Settings → Advanced → AI Agents, installs the agent skill bundled in the app and registers the MCP server for Claude Code, Cursor and OpenCode, printing the entry to add for Codex, so agents in any project learn to drive Batty without copying the skill by hand. Behind the `agentIntegration` feature flag until 1.5.0.
 - **Background-session freeze.** If memory becomes an issue, snapshot scrollback and kill PTYs for sessions not visited in N minutes; rehydrate on selection.
 
 ---
