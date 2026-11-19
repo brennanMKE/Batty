@@ -481,7 +481,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
 
         choose.click()
         expectPicker(in: app)
-        XCTAssertTrue(app.radioButtons["My Images"].firstMatch.isSelected, "the picker did not open on My Images")
+        assertBackgroundPickerTab(.myImages, in: app)
         XCTAssertTrue(waitFor({ target.exists && target.isHittable && target.isSelected }, timeout: 10), "\(name) is not selected and in view")
     }
 

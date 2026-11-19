@@ -73,8 +73,11 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
         openPaneBackgroundPicker(in: app)
         let tab = app.radioButtons["Background Sets"].firstMatch
         XCTAssertTrue(tab.waitForExistence(timeout: 5), "no Background Sets tab")
-        XCTAssertTrue(tab.isSelected, "the picker did not open on Background Sets")
+        assertBackgroundPickerTab(.backgroundSets, in: app)
         XCTAssertTrue(element("background-sets.root", in: app).waitForExistence(timeout: 5), "no Background Sets view")
+        app.radioButtons["My Images"].firstMatch.click()
+        assertBackgroundPickerTab(.myImages, in: app)
+        XCTAssertNotEqual(backgroundPickerTab(in: app), .backgroundSets)
     }
 
     @MainActor
@@ -100,7 +103,7 @@ nonisolated final class BackgroundSetsTests: ProjectsUITestCase {
 
         choose.click()
         XCTAssertTrue(element("background-images.picker.root", in: app).waitForExistence(timeout: 5), "Choose did not open the picker")
-        XCTAssertTrue(app.radioButtons["Background Sets"].firstMatch.isSelected, "the picker did not open on Background Sets")
+        assertBackgroundPickerTab(.backgroundSets, in: app)
         let target = cell(id, in: app)
         XCTAssertTrue(waitFor({ target.exists && target.isHittable && target.isSelected }, timeout: 10), "\(id) is not selected and in view")
     }
