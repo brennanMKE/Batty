@@ -76,6 +76,20 @@ final class PaneBackgroundImagePickerTests {
         #expect(override.withImagePath(Self.otherPath) == Self.paneCustom)
     }
 
+    @Test func applyInACancelledTaskWritesNothing() async throws {
+        let pane = pane()
+        pane.setBackgroundOverride(Self.paneCustom)
+        let path = try libraryImage()
+        // Cancelled before its body runs. The copy doesn't check cancellation,
+        // so only the check after it keeps the Pane unchanged.
+        let task = Task { await apply(path, to: pane) }
+        task.cancel()
+        #expect(await task.value == false)
+        #expect(pane.backgroundOverride == Self.paneCustom)
+        let copies = try FileManager.default.contentsOfDirectory(atPath: importedFolder.path)
+        #expect(!copies.isEmpty, "the copy ran, so the cancellation check is what stopped the write")
+    }
+
     @Test func anUnreadablePathLeavesThePaneUnchanged() async throws {
         let pane = pane()
         pane.setBackgroundOverride(Self.paneCustom)

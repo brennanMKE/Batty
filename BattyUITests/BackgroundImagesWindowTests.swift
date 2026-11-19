@@ -119,7 +119,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         openPaneBackgroundPicker(in: app)
         showMyImages(in: app)
         waitForPicture("Harbor-menu", in: app)
-        cell("Harbor-menu", in: app).click()
+        cell("Harbor-menu", in: app).doubleClick()
         XCTAssertTrue(waitFor({ !self.pickerRoot(in: app).exists }, timeout: 10), "the picker stayed open")
         let disclosure = app.descendants(matching: .disclosureTriangle).firstMatch
         XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
@@ -376,7 +376,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         expectPicker(in: app)
         showMyImages(in: app)
         waitForPicture("Harbor-pane", in: app)
-        cell("Harbor-pane", in: app).click()
+        cell("Harbor-pane", in: app).doubleClick()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5), "the picker stayed open")
         XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the pick did not set an image")
         app.buttons["pane-background-sheet.done"].click()
@@ -430,7 +430,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         expectPicker(in: app)
         showMyImages(in: app)
         waitForPicture("Harbor-copy", in: app)
-        cell("Harbor-copy", in: app).click()
+        cell("Harbor-copy", in: app).doubleClick()
         let none = app.buttons["project-background-sheet.no-image"]
         XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the pick did not set an image")
         app.buttons["project-background-sheet.done"].click()
@@ -442,7 +442,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
     }
 
     @MainActor
-    func testPickerOffersAddFromFileAndCancelLeavesTheImageAlone() throws {
+    func testPickerOffersAddFromFileAndDoneLeavesTheImageAlone() throws {
         let (app, _) = try launchApp(projects: [], connectCLI: false)
         defer { app.terminate() }
         openPaneSheet(in: app)
@@ -450,7 +450,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         expectPicker(in: app)
         showMyImages(in: app)
         XCTAssertTrue(app.buttons["background-images.add"].exists)
-        app.buttons["background-images.picker.cancel"].click()
+        app.buttons["background-images.picker.done"].click()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
         XCTAssertFalse(app.buttons["pane-background-sheet.no-image"].isEnabled)
     }
@@ -475,7 +475,7 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
             root.scroll(byDeltaX: 0, deltaY: -120)
         }
         XCTAssertTrue(target.exists && target.isHittable, "no cell for \(name)")
-        target.click()
+        target.doubleClick()
         XCTAssertTrue(waitFor({ !root.exists }, timeout: 10), "the picker stayed open")
         XCTAssertTrue(waitFor({ app.buttons["pane-background-sheet.no-image"].isEnabled }, timeout: 10), "the pick did not set an image")
 
@@ -483,5 +483,80 @@ nonisolated final class BackgroundImagesWindowTests: ProjectsUITestCase {
         expectPicker(in: app)
         XCTAssertTrue(app.radioButtons["My Images"].firstMatch.isSelected, "the picker did not open on My Images")
         XCTAssertTrue(waitFor({ target.exists && target.isHittable && target.isSelected }, timeout: 10), "\(name) is not selected and in view")
+    }
+
+    @MainActor
+    private func openPaneChooser(with name: String, in app: XCUIApplication) -> XCUIElement {
+        openPaneSheet(in: app)
+        let none = app.buttons["pane-background-sheet.no-image"]
+        XCTAssertFalse(none.isEnabled)
+        app.buttons["pane-background-sheet.choose-image"].click()
+        expectPicker(in: app)
+        showMyImages(in: app)
+        waitForPicture(name, in: app)
+        return none
+    }
+
+    @MainActor
+    func testSingleClickAppliesTheImageAndKeepsThePickerOpen() throws {
+        _ = try BackgroundImageFixture.write(named: "Harbor-single", in: libraryFolder)
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        let none = openPaneChooser(with: "Harbor-single", in: app)
+        let target = cell("Harbor-single", in: app)
+        target.click()
+        XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the single click did not apply the image")
+        XCTAssertTrue(element("background-images.picker.root", in: app).exists, "the picker closed after a single click")
+        XCTAssertTrue(target.isSelected)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5), "Escape did not close the picker")
+        XCTAssertTrue(none.isEnabled, "Escape dropped the clicked image")
+        app.buttons["pane-background-sheet.done"].click()
+    }
+
+    @MainActor
+    func testGearSheetCancelRevertsAnImageAppliedFromThePicker() throws {
+        _ = try BackgroundImageFixture.write(named: "Harbor-revert", in: libraryFolder)
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        let none = openPaneChooser(with: "Harbor-revert", in: app)
+        cell("Harbor-revert", in: app).click()
+        XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the single click did not apply the image")
+        app.buttons["background-images.picker.done"].click()
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5))
+        app.buttons["pane-background-sheet.cancel"].click()
+        let gear = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pane-background-settings.'")).firstMatch
+        XCTAssertTrue(gear.waitForExistence(timeout: 5))
+        gear.click()
+        let custom = app.buttons["pane-background-sheet.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5))
+        custom.click()
+        XCTAssertFalse(app.buttons["pane-background-sheet.no-image"].isEnabled, "the gear sheet's Cancel kept the image")
+    }
+
+    @MainActor
+    func testDoubleClickPicksTheImageAndClosesThePicker() throws {
+        _ = try BackgroundImageFixture.write(named: "Harbor-double", in: libraryFolder)
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        let none = openPaneChooser(with: "Harbor-double", in: app)
+        cell("Harbor-double", in: app).doubleClick()
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5), "the picker stayed open")
+        XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "the pick did not set an image")
+        app.buttons["pane-background-sheet.done"].click()
+    }
+
+    @MainActor
+    func testReturnPicksTheSelectedImageAndClosesThePicker() throws {
+        _ = try BackgroundImageFixture.write(named: "Harbor-return", in: libraryFolder)
+        let (app, _) = try launchApp(projects: [], connectCLI: false)
+        defer { app.terminate() }
+        let none = openPaneChooser(with: "Harbor-return", in: app)
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertTrue(waitFor({ self.cell("Harbor-return", in: app).isSelected }, timeout: 5), "the arrow key selected nothing")
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 5), "Return did not close the picker")
+        XCTAssertTrue(waitFor({ none.isEnabled }, timeout: 10), "Return did not set an image")
+        app.buttons["pane-background-sheet.done"].click()
     }
 }

@@ -227,7 +227,7 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `WindowSeeThrough.apply` is the only writer of `isOpaque` and `backgroundColor`. See [view-hierarchy.md](view-hierarchy.md), "See-through windows".
 - A see-through window must pass the checklist in [terminal-pane-requirements.md](terminal-pane-requirements.md) §6.
 - A path handed to the Pane or app-wide folder comes from `importImage`, whose encode guarantees the pixel limit, or from `adoptImage`, whose `isWithinPixelLimit` check stands in for it. The gate checks shape and digest only and nothing checks a Pane's path, so the static `adopt` must never be the route into those folders.
-- Background Images opens only as a picker sheet: Pane ▸ Background Images… for the focused terminal Pane, or Choose… in a background control. There is no standalone window (#0629). Remove… is in the picker, by right-click or by arrow-key selection then Remove… or Delete. `BackgroundImagesScrollMonitor` watches the picker's window and logs an unexplained scroll jump with its recent events (#0624).
+- Background Images opens only as a picker sheet: Pane ▸ Background Images… for the focused terminal Pane, or Choose… in a background control. There is no standalone window (#0629). Remove… is in the picker, by right-click or by arrow-key selection then Remove… or Delete. A single click applies an image and keeps the picker open; a double click, or Return on the selection, applies it and closes the picker; Escape or Done closes it and keeps the last image clicked (#0659). `BackgroundImagesScrollMonitor` watches the picker's window and logs an unexplained scroll jump with its recent events (#0624).
 - The Background Images library (`BackgroundImages/`, `.keepAll`) is outside every other folder's cleanup. Stored paths never name it: a pick copies out of it. Uses are matched by digest, and Remove clears them before deleting any file.
 
 **Accessibility identifiers:**
@@ -236,8 +236,8 @@ A terminal can show an image behind its text, let the desktop show through, or b
 - `pane-background-sheet.*`, `session-background-sheet.*`, `project-background-sheet.*`: the override sheets.
 - `appearance-background.*`: the Settings section.
 - `project-editor.background.*`: the Project Editor's Background row.
-- The picker picks on click, like the Theme selector, so it has no Choose button: its bar is Add from File…, Remove… and the message on the leading edge, then the total and Cancel (Escape). Return goes to the grid's selection (#0654).
-- `background-images.picker.root`: the picker sheet. Also `.add`, `.remove`, `.confirm-remove`, `.total`, `.message`, `.empty`, `.empty-add`, `.picker.cancel`.
+- A click applies at once, like the Theme selector, so the picker has no Choose button: its bar is Add from File…, Remove… and the message on the leading edge, then the total and Done (Escape). Done, not Cancel, because closing undoes nothing; a gear sheet's own Cancel still reverts. Return picks the grid's selection and closes (#0654, #0659).
+- `background-images.picker.root`: the picker sheet. Also `.add`, `.remove`, `.confirm-remove`, `.total`, `.message`, `.empty`, `.empty-add`, `.picker.done`.
 - `background-images.cell.<name>`: the cell, which XCUITest reads as a Group with no value, so a test proves a thumbnail by its pixels. `.cell.<name>.uses` and `.cell.<name>.size` are its lines, read through `value`.
 - `session-row.<title>`: its label and value carry the warning on a Session whose Project image can't be used. The warning has no identifier of its own.
 
@@ -735,7 +735,7 @@ shortcuts come from `DialogButtonRowLayout.placements`, pinned by
 
 Users: Paste confirmation, Rename Tab, Rename Session, the Background sheet,
 the Project Theme sheet, the Symbol picker, the Background Images picker
-(Cancel only), the Quick Reminder bar's date step (Back, Set), the trust sheet
+(Done only), the Quick Reminder bar's date step (Back, Set), the trust sheet
 and the Project Editor footer. Keyboard pickers with no buttons keep their hint
 captions. Settings ▸ Clear Capture confirms in a `.confirmationDialog`
 ("Delete all captured records?", Delete, Cancel), like the other confirms.

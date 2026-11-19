@@ -131,7 +131,7 @@ nonisolated final class BackgroundCatalogSettingsTests: ProjectsUITestCase {
             root.scroll(byDeltaX: 0, deltaY: -120)
         }
         XCTAssertTrue(cell.exists && cell.isHittable, "no cell for \(imageID)")
-        cell.click()
+        cell.doubleClick()
         XCTAssertTrue(waitFor({ !self.element("background-images.picker.root", in: app).exists }, timeout: 15), "the picker stayed open")
         let noImage = app.buttons["appearance-background.no-image"]
         XCTAssertTrue(waitFor({ noImage.isEnabled }, timeout: 10), "the pick did not set an image")

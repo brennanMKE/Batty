@@ -488,6 +488,38 @@ struct HostedBackgroundsModelTests {
         #expect(!hosted.available.contains(key))
     }
 
+    @Test func doubleClickingTheDownloadingPickJoinsItAndDeliversOnce() async throws {
+        try serveCatalog(["one"])
+        await hosted.browseAppeared()
+        let one = try image("one")
+        let key = HostedImageKey(url: url("one.png"))
+        var firstPicked: [String] = []
+        var secondPicked: [String] = []
+        let before = fetcher.requests.count
+        fetcher.hold(one.full)
+        let first = try #require(hosted.pickOrCancel(one) { firstPicked.append($0) })
+        #expect(await fetcher.waitForRequests(before + 1))
+        let second = try #require(hosted.pickOrCancel(one, clickCount: 2) { secondPicked.append($0) })
+        fetcher.release(one.full)
+        await first.value
+        await second.value
+        #expect(firstPicked.isEmpty)
+        #expect(secondPicked.count == 1)
+        #expect(fetcher.requests.count == before + 1)
+        #expect(hosted.fetches[key] == nil)
+    }
+
+    @Test func doubleClickingADownloadedImageDeliversIt() async throws {
+        try serveCatalog(["one"])
+        await hosted.browseAppeared()
+        let one = try image("one")
+        await hosted.pickOrCancel(one) { _ in }?.value
+        var picked: [String] = []
+        let task = try #require(hosted.pickOrCancel(one, clickCount: 2) { picked.append($0) })
+        await task.value
+        #expect(picked.count == 1)
+    }
+
     @Test func clickingAQueuedPickAgainCancelsItAndLeavesTheQueue() async throws {
         try serveCatalog(["one", "two", "three"])
         await hosted.browseAppeared()

@@ -4,7 +4,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The Background Images picker: the sheet a background control or
-/// Pane > Background Images… opens over whatever asked. It also adds and
+/// Pane > Background Images… opens over whatever asked. A single click
+/// applies an image and keeps the picker open; a double click or Return
+/// applies and closes; Escape or Done closes and keeps it. It also adds and
 /// removes library images. Nothing in `body` writes observed state: the
 /// model's writes start from `.task`, a button or the file importer's result,
 /// and each cell's picture is its own `@State`.
@@ -14,7 +16,7 @@ struct BackgroundImagesView: View {
     let model: BackgroundImagesModel
     let current: String?
     let onPick: (String) -> Void
-    let onCancel: () -> Void
+    let onClose: () -> Void
 
     /// Both nil until the sheet appears, so neither tab is built before the
     /// opening tab is decided.
@@ -27,6 +29,8 @@ struct BackgroundImagesView: View {
     @State private var isAdding = false
     @State private var removal: BackgroundImagesModel.RemovalPlan?
     @FocusState private var gridFocused: Bool
+    /// Written only by a click, Return or Add, never read in `body`.
+    @State private var pickTask: Task<Void, Never>?
 
     private static let minimumCellWidth: CGFloat = 170
     private static let spacing: CGFloat = 16
@@ -66,7 +70,7 @@ struct BackgroundImagesView: View {
                         .onChange(of: currentEntryShown) { scrollToCurrent(proxy) }
                 }
             case .backgroundSets:
-                BackgroundSetsView(model: model, current: opening?.hostedKey, onPick: onPick)
+                BackgroundSetsView(model: model, current: opening?.hostedKey, onPick: onPick, onClose: onClose)
             case nil:
                 Color.clear
             }
@@ -160,7 +164,8 @@ struct BackgroundImagesView: View {
                         isCurrent: entry.digest == currentDigest
                     )
                     .contentShape(Rectangle())
-                    .onTapGesture { click(entry) }
+                    .onTapGesture { click(entry, clickCount: BackgroundPickerClick.currentClickCount()) }
+                    .accessibilityAction { click(entry, clickCount: 1) }
                     .contextMenu {
                         Button("Remove…") { requestRemoval(of: entry) }
                     }
@@ -228,9 +233,10 @@ struct BackgroundImagesView: View {
     private var bottomBar: some View {
         DialogButtonRow(
             confirm: nil,
-            cancel: .cancel(identifier: "background-images.picker.cancel") {
+            // Done, not Cancel: a click has already applied its image.
+            cancel: DialogButton("Done", identifier: "background-images.picker.done") {
                 model.hosted.supersedePicks()
-                onCancel()
+                onClose()
             },
             style: .bar
         ) {
@@ -291,30 +297,36 @@ struct BackgroundImagesView: View {
         selection.select(digests[start.map { cursor.moved(from: $0, direction) } ?? 0])
     }
 
-    private func click(_ entry: BackgroundImageEntry) {
+    private func click(_ entry: BackgroundImageEntry, clickCount: Int) {
         selection.select(entry.digest)
         gridFocused = true
-        pick(entry)
+        pick(entry, closing: clickCount >= 2)
     }
 
     private func activateSelection() {
         guard let entry = selectedEntry else { return }
-        pick(entry)
+        pick(entry, closing: true)
     }
 
     /// Asks the thumbnailer rather than the cell, whose picture may still be
     /// loading: a cell that turns out usable is picked once the check finishes,
     /// and one the check rejects, as "Can't be used" shows, never is.
-    private func pick(_ entry: BackgroundImageEntry) {
+    /// A newer pick cancels an older one still checking, so the last click wins.
+    private func pick(_ entry: BackgroundImageEntry, closing: Bool) {
+        pickTask?.cancel()
         model.hosted.supersedePicks()
         let thumbnailer = model.thumbnailer
-        Task {
-            guard await thumbnailer.thumbnail(for: entry).state == .usable else { return }
+        let onPick = onPick
+        let onClose = onClose
+        pickTask = Task {
+            guard await thumbnailer.thumbnail(for: entry).state == .usable, !Task.isCancelled else { return }
             onPick(entry.path)
+            if closing { onClose() }
         }
     }
 
     private func add(_ url: URL) {
+        pickTask?.cancel()
         model.hosted.supersedePicks()
         Task {
             guard let entry = await model.add(from: url) else { return }

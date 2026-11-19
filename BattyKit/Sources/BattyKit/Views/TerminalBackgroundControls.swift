@@ -66,11 +66,8 @@ struct TerminalBackgroundControls: View {
             BackgroundImagesView(
                 model: images,
                 current: current.imagePath,
-                onPick: { path in
-                    onPickedLibraryImage(path)
-                    isChoosingImage = false
-                },
-                onCancel: { isChoosingImage = false }
+                onPick: onPickedLibraryImage,
+                onClose: { isChoosingImage = false }
             )
         }
     }
