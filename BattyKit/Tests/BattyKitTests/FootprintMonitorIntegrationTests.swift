@@ -139,7 +139,7 @@ struct FormatGBLocaleTests {
 /// loadable catalog to resolve against — exercising the exact production
 /// call (`AppStateStore.footprintWarningMessage`) and the exact production
 /// catalog file on disk, not a copy of either.
-struct FootprintWarningMessageLocalizationTests {
+nonisolated struct FootprintWarningMessageLocalizationTests {
 
     private static var catalogURL: URL {
         URL(fileURLWithPath: #filePath)
@@ -194,29 +194,33 @@ struct FootprintWarningMessageLocalizationTests {
     }
 
     @Test(arguments: ["en", "fr", "de", "ru"])
-    func rendersCorrectSingularGrammarForOneSessionAcrossLocales(languageID: String) throws {
+    func rendersCorrectSingularGrammarForOneSessionAcrossLocales(languageID: String) async throws {
         let bundle = try Self.compileCatalogBundle(languages: ["en", "fr", "de", "ru"])
 
-        let message = AppStateStore.footprintWarningMessage(
-            footprintText: "4.30 GB",
-            sessionCount: 1,
-            bundle: bundle,
-            locale: Locale(identifier: languageID)
-        )
+        let message = await MainActor.run {
+            AppStateStore.footprintWarningMessage(
+                footprintText: "4.30 GB",
+                sessionCount: 1,
+                bundle: bundle,
+                locale: Locale(identifier: languageID)
+            )
+        }
 
         #expect(message == "Batty is using 4.30 GB across 1 Terminal Session. Close some to free memory.")
     }
 
     @Test(arguments: ["en", "fr", "de", "ru"])
-    func rendersCorrectPluralGrammarForMultipleSessionsAcrossLocales(languageID: String) throws {
+    func rendersCorrectPluralGrammarForMultipleSessionsAcrossLocales(languageID: String) async throws {
         let bundle = try Self.compileCatalogBundle(languages: ["en", "fr", "de", "ru"])
 
-        let message = AppStateStore.footprintWarningMessage(
-            footprintText: "4.30 GB",
-            sessionCount: 3,
-            bundle: bundle,
-            locale: Locale(identifier: languageID)
-        )
+        let message = await MainActor.run {
+            AppStateStore.footprintWarningMessage(
+                footprintText: "4.30 GB",
+                sessionCount: 3,
+                bundle: bundle,
+                locale: Locale(identifier: languageID)
+            )
+        }
 
         #expect(message == "Batty is using 4.30 GB across 3 Terminal Sessions. Close some to free memory.")
     }

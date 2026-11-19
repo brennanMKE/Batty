@@ -169,18 +169,18 @@ struct LMStudioDashboardWiringTests {
         content.makeModelStreamProcess = { _ in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            // `exec` (not a bare `sleep 60`) keeps this a single process, so
-            // `terminate()`'s `SIGTERM` reaches `sleep` directly instead of
-            // only `sh`, which would otherwise die and orphan `sleep` for up
-            // to its own 60s lifetime.
-            process.arguments = ["-c", "exec sleep 60"]
+            // A single-pid child that lives until killed, so `terminate()`'s
+            // `SIGTERM` reaches it directly.
+            process.arguments = ["-c", "\(ChildLifetime.holdCommand)"]
+            ChildLifetime.hold(process)
             box.model = process
             return process
         }
         content.makeRuntimeStreamProcess = { _ in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "exec sleep 60"]
+            process.arguments = ["-c", "\(ChildLifetime.holdCommand)"]
+            ChildLifetime.hold(process)
             box.runtime = process
             return process
         }

@@ -33,7 +33,7 @@ nonisolated private final class LockedOutputBuffer: @unchecked Sendable {
     }
 }
 
-struct AgentSkillInstallScriptTests {
+nonisolated struct AgentSkillInstallScriptTests {
 
     private static func installScript() throws -> String {
         // #filePath: .../BattyKit/Tests/BattyKitTests/AgentSkillInstallScriptTests.swift

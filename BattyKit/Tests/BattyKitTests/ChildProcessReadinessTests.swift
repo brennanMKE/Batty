@@ -25,7 +25,8 @@ struct ChildProcessReadinessTests {
     @Test func waitForDataResolvesFalseWithinTheBoundWhenNothingIsEverWritten() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "exec sleep 30"]
+        process.arguments = ["-c", "\(ChildLifetime.holdCommand)"]
+        ChildLifetime.hold(process)
         let pipe = Pipe()
         process.standardOutput = pipe
         try process.run()

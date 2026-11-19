@@ -16,15 +16,13 @@ import Testing
 @MainActor
 struct LMStudioDashboardPaneContentTests {
 
-    /// `exec` (not a bare `sleep 60`) keeps this a single process: without
-    /// it, `sleep` runs as `sh`'s forked child, and `terminate()`'s
-    /// `SIGTERM` — which only reaches `sh`'s pid — kills `sh` without
-    /// forwarding the signal, orphaning `sleep` for up to its own 60s
-    /// lifetime.
+    /// A single-pid child (`ChildLifetime.holdCommand`) that lives until it
+    /// is killed, so `terminate()`'s `SIGTERM` reaches it directly.
     private func makeSleepForeverProcess(_ url: URL) -> Process {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "exec sleep 60"]
+        process.arguments = ["-c", "\(ChildLifetime.holdCommand)"]
+        ChildLifetime.hold(process)
         return process
     }
 
@@ -321,7 +319,8 @@ struct LMStudioDashboardPaneContentTests {
                 // doesn't wait for that `Task` to actually finish calling
                 // `spawnModelStream`.
                 let normalLine = self.predictionInputLine(modelIdentifier: "after-full-delay", timestamp: self.nowMillis())
-                process.arguments = ["-c", "printf '%s\\n' '\(normalLine)'; exec sleep 60"]
+                process.arguments = ["-c", "printf '%s\\n' '\(normalLine)'; \(ChildLifetime.holdCommand)"]
+                ChildLifetime.hold(process)
             }
             return process
         }
@@ -381,7 +380,8 @@ struct LMStudioDashboardPaneContentTests {
             let outputLine = self.predictionOutputLine(modelIdentifier: "m", timestamp: self.nowMillis())
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "printf '%s\\n' 'Streaming logs from LM Studio' '' '\(inputLine)' '\(outputLine)'; exec sleep 60"]
+            process.arguments = ["-c", "printf '%s\\n' 'Streaming logs from LM Studio' '' '\(inputLine)' '\(outputLine)'; \(ChildLifetime.holdCommand)"]
+            ChildLifetime.hold(process)
             return process
         }
 
@@ -419,7 +419,8 @@ struct LMStudioDashboardPaneContentTests {
         content.makeRuntimeStreamProcess = { _ in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "printf '%s\\n' '\(lines[0])' '\(lines[1])' '\(lines[2])'; exec sleep 60"]
+            process.arguments = ["-c", "printf '%s\\n' '\(lines[0])' '\(lines[1])' '\(lines[2])'; \(ChildLifetime.holdCommand)"]
+            ChildLifetime.hold(process)
             return process
         }
 
@@ -450,7 +451,8 @@ struct LMStudioDashboardPaneContentTests {
             let inputLine = self.predictionInputLine(modelIdentifier: "m", timestamp: self.nowMillis())
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; exec sleep 60"]
+            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; \(ChildLifetime.holdCommand)"]
+            ChildLifetime.hold(process)
             return process
         }
         let lineApplied = EventCounter(content.lineAppliedEventsForTesting())
@@ -544,7 +546,8 @@ struct LMStudioDashboardPaneContentTests {
             let inputLine = self.predictionInputLine(modelIdentifier: "m", timestamp: self.nowMillis())
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; exec sleep 60"]
+            process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; \(ChildLifetime.holdCommand)"]
+            ChildLifetime.hold(process)
             return process
         }
         let lineApplied = EventCounter(content.lineAppliedEventsForTesting())
@@ -639,7 +642,8 @@ struct LMStudioDashboardPaneContentTests {
                 let inputLine = self.predictionInputLine(modelIdentifier: "m", timestamp: self.nowMillis())
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/bin/sh")
-                process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; exec sleep 60"]
+                process.arguments = ["-c", "printf '%s\\n' '\(inputLine)'; \(ChildLifetime.holdCommand)"]
+                ChildLifetime.hold(process)
                 return process
             }
         } else {
@@ -863,17 +867,22 @@ struct LMStudioDashboardPaneContentTests {
         // `tearDown()` already returned above, the gate is still closed,
         // and both children are still alive — proving the wait really was
         // moved off the main actor, not just made faster.
-        #expect(model.isRunning)
-        #expect(runtime.isRunning)
+        #expect(model.isRunning, "model-stream child exited before teardown")
+        #expect(runtime.isRunning, "runtime-stream child exited before teardown")
         // The grace period hasn't started while the gate is closed.
         #expect(graceClock.pendingCount == 0)
 
         gate.open()
         // Both reaps are now inside the grace period, and nothing is
         // SIGKILLed before it elapses.
-        #expect(await graceClock.waitForSleepers(2))
-        #expect(model.isRunning)
-        #expect(runtime.isRunning)
+        guard await graceClock.waitForSleepers(2) else {
+            Issue.record("both reaps never slept on the grace clock")
+            gate.open()
+            await content.awaitPendingTeardownReapsForTesting()
+            return
+        }
+        #expect(model.isRunning, "model-stream child exited before teardown")
+        #expect(runtime.isRunning, "runtime-stream child exited before teardown")
         #expect(await graceClock.advance(by: .milliseconds(200)) == 2)
         await content.awaitPendingTeardownReapsForTesting()
 
@@ -1150,7 +1159,8 @@ struct LMStudioDashboardPaneContentTests {
             let script = lines.map { "printf '%s\\n' '\($0)'" }.joined(separator: "; ")
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "\(script); exec sleep 60"]
+            process.arguments = ["-c", "\(script); \(ChildLifetime.holdCommand)"]
+            ChildLifetime.hold(process)
             return process
         }
 
@@ -1212,11 +1222,12 @@ struct LMStudioDashboardPaneContentTests {
             head -c \(fillerByteCount) /dev/zero | tr '\\0' 'p'
             printf '%s\\n' '\(suffix)'
             printf '%s\\n' '\(normalLine)'
-            exec sleep 60
+            \(ChildLifetime.holdCommand)
             """
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
             process.arguments = ["-c", script]
+            ChildLifetime.hold(process)
             return process
         }
 
@@ -1292,7 +1303,8 @@ struct LMStudioDashboardPaneContentTests {
             } else {
                 // Respawned process: one normal, complete line.
                 let normalLine = self.predictionInputLine(modelIdentifier: "after-respawn", timestamp: self.nowMillis())
-                process.arguments = ["-c", "printf '%s\\n' '\(normalLine)'; exec sleep 60"]
+                process.arguments = ["-c", "printf '%s\\n' '\(normalLine)'; \(ChildLifetime.holdCommand)"]
+                ChildLifetime.hold(process)
             }
             return process
         }

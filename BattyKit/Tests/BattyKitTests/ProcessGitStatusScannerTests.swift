@@ -377,7 +377,8 @@ struct ProcessGitStatusScannerTests {
     private static func makeStubbornProcess() -> (process: Process, readyPipe: Pipe) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "trap '' TERM; echo ready; exec sleep 60"]
+        process.arguments = ["-c", "trap '' TERM; echo ready; \(ChildLifetime.holdCommand)"]
+        ChildLifetime.hold(process)
         let readyPipe = Pipe()
         process.standardOutput = readyPipe
         process.standardError = Pipe()

@@ -27,13 +27,16 @@ import Foundation
 /// `LMStudioDashboardWiringTests.swift`, and the ad-hoc
 /// `defer { if process.isRunning { kill(pid, SIGKILL) } }` pattern
 /// duplicated across `PendingTeardownReapRegistryTests`.
-@MainActor
-final class ChildProcessFixture {
+///
+/// `nonisolated` and lock-guarded, so a `nonisolated` test can own one and
+/// block on reaping off the main actor.
+nonisolated final class ChildProcessFixture: @unchecked Sendable {
+    private let lock = NSLock()
     private var processes: [Process] = []
 
     /// Tracks `process` for cleanup, then runs it.
     func run(_ process: Process) throws {
-        processes.append(process)
+        lock.withLock { processes.append(process) }
         try process.run()
     }
 
@@ -41,10 +44,13 @@ final class ChildProcessFixture {
     /// they were registered. Idempotent, and safe to call on a process that
     /// never started or has already exited.
     func killAndReapAll() {
-        for process in processes {
+        let tracked = lock.withLock {
+            defer { processes.removeAll() }
+            return processes
+        }
+        for process in tracked {
             Self.killAndReap(process)
         }
-        processes.removeAll()
     }
 
     /// Sends `SIGKILL` to `process` if it's still running, then blocks until

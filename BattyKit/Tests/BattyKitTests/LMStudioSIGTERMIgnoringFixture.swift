@@ -25,25 +25,21 @@ import Foundation
 /// handler for the same bytes — a FIFO node the child writes into
 /// separately from its stdout avoids that entirely.
 ///
-/// `exec` (not a bare `sleep 60`) replaces the shell's own process image
-/// with `sleep` instead of forking it; `SIG_IGN` survives `exec`, so the
-/// ignored disposition `trap` set carries over to `sleep` directly and
-/// exactly one process exists at any point — a `SIGKILL` on that single pid
-/// leaves nothing behind. Without `exec`, `sleep` runs as `sh`'s forked
-/// child, so a signal that only reaches `sh`'s pid (the pid `Process`
-/// reports and the one `terminate()`/`SIGKILL` target) orphans the `sleep`
-/// grandchild for up to its own 60s lifetime.
-enum LMStudioSIGTERMIgnoringFixture {
+/// The script ends in `ChildLifetime.holdCommand`: `exec` replaces the
+/// shell with `cat`, `SIG_IGN` survives `exec`, so exactly one process exists
+/// and it ignores `SIGTERM`. It lives until it is killed, never on a timer.
+nonisolated enum LMStudioSIGTERMIgnoringFixture {
     /// A process that installs a `SIGTERM` trap, signals readiness by
     /// writing into the FIFO at `readyFileURL` (created by
     /// `makeReadyDirectory`/this function — see below), then execs into
-    /// `sleep 60`. Callers must wait on `waitForReadyFile(_:)` before
+    /// `ChildLifetime.holdCommand`. Callers must wait on `waitForReadyFile(_:)` before
     /// treating the process's disposition as installed.
     static func makeProcess(readyFileURL: URL) -> Process {
         ChildProcessReadiness.makeFIFO(at: readyFileURL.path)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "trap '' TERM; echo ready > '\(readyFileURL.path)'; exec sleep 60"]
+        process.arguments = ["-c", "trap '' TERM; echo ready > '\(readyFileURL.path)'; \(ChildLifetime.holdCommand)"]
+        ChildLifetime.hold(process)
         return process
     }
 

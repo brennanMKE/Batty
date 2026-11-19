@@ -276,8 +276,8 @@ For every shape:
 
   Two categories are deliberately excluded from
   `TestBounds.hangGuard` and must keep their own literal:
-  - The `0.2s` bounds in `ChildProcessReadinessTests` and
-    `TestTeardownReapGateTests` — negative tests that expect the wait to
+  - The `0.2s` bounds in `ChildProcessReadinessTests`,
+    `TestTeardownReapGateTests` and `FakeSharedImageTransportTests` — negative tests that expect the wait to
     expire and assert `false`; routing them through the 60s constant would
     make each of those tests take the full 60s to *pass*, not fail.
   - `PendingTeardownReapRegistry.register(process:label:bound:)`'s `bound`

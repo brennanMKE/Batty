@@ -683,9 +683,10 @@ struct ProcessStatusPaneContentTests {
 
     @Test func exitedStateShowsTheLastSuccessfulSampleTimeNotTheDetectionTime() throws {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
-        process.arguments = ["0.4"]
+        process.executableURL = URL(fileURLWithPath: "/bin/cat")
+        ChildLifetime.hold(process)
         try process.run()
+        defer { ChildProcessFixture.killAndReap(process) }
         let pid = process.processIdentifier
 
         let content = ProcessStatusPaneContent(target: .pinned(pid), tabLookup: { _ in nil })
@@ -696,7 +697,7 @@ struct ProcessStatusPaneContentTests {
         }
         let lastGoodCapture = try #require(content.lastSampleAt)
 
-        process.waitUntilExit()
+        ChildProcessFixture.killAndReap(process)
         content.sampleNowForTesting()
 
         guard case .exited = content.runState else {

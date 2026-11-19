@@ -18,7 +18,7 @@ struct SharedProjectImagesTests {
     private func requireHeldRead() async -> Bool {
         let held = await w.fake.waitForHeldRead()
         if !held {
-            Issue.record("no read reached the gate")
+            Issue.record("no read reached the gate; transport calls: \(w.fake.calls)")
             w.fake.releaseReads()
         }
         return held

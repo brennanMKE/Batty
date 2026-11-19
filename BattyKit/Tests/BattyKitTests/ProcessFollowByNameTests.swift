@@ -6,8 +6,9 @@ import Testing
 
 /// Follow-by-name (mode C) of `ProcessStatusPaneContent`, driven through the
 /// `nameResolver` and `coreMetricsProvider` seams and a `TestClock`. No
-/// real time passes in any test here except the real-process test, which
-/// waits on nothing but process exit it forced itself.
+/// real time passes in any test here except the real-process tests, which
+/// wait on nothing but process exit they forced themselves. Those are
+/// `nonisolated`, so blocking on a child's exit never stalls the main actor.
 @MainActor
 struct ProcessFollowByNameTests {
 
@@ -578,8 +579,8 @@ struct ProcessFollowByNameTests {
         content.tearDown()
     }
 
-    @Test func aSeededFollowOfTheSecondRealProcessShowsThatProcess() throws {
-        let executable = try uniqueSleepCopy()
+    @Test nonisolated func aSeededFollowOfTheSecondRealProcessShowsThatProcess() async throws {
+        let executable = try Self.uniqueCatCopy()
         defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
         let name = executable.lastPathComponent
         let fixture = ChildProcessFixture()
@@ -589,20 +590,23 @@ struct ProcessFollowByNameTests {
         for _ in 0..<2 {
             let process = Process()
             process.executableURL = executable
-            process.arguments = ["300"]
+            ChildLifetime.hold(process)
             try fixture.run(process)
             processes.append(process)
         }
-        let second = processes[1].processIdentifier
-        try #require(processes[1].isRunning, walkDiagnostic(processes[1]))
+        let secondProcess = processes[1]
+        let second = secondProcess.processIdentifier
+        try await MainActor.run {
+            try #require(secondProcess.isRunning, Self.walkDiagnostic(secondProcess))
 
-        let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil })
-        content.setUp(visible: true)
-        content.retarget(to: .followingName(name), seedPid: second)
-        #expect(content.runState == .running)
-        #expect(content.snapshot?.pid == second)
-        #expect(content.snapshot?.listedName == name)
-        content.tearDown()
+            let content = ProcessStatusPaneContent(target: nil, tabLookup: { _ in nil }, clock: TestClock())
+            content.setUp(visible: true)
+            content.retarget(to: .followingName(name), seedPid: second)
+            #expect(content.runState == .running, Self.walkDiagnostic(secondProcess, content: content))
+            #expect(content.snapshot?.pid == second, Self.walkDiagnostic(secondProcess, content: content))
+            #expect(content.snapshot?.listedName == name, Self.walkDiagnostic(secondProcess, content: content))
+            content.tearDown()
+        }
     }
 
     // MARK: - Failed walk
@@ -710,67 +714,86 @@ struct ProcessFollowByNameTests {
 
     // MARK: - Real enumerator
 
-    private func uniqueSleepCopy() throws -> URL {
+    private nonisolated static func uniqueCatCopy() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("batty-0486-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let name = "bt0486-" + UUID().uuidString.prefix(6).lowercased()
         let url = directory.appendingPathComponent(name)
-        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/bin/sleep"), to: url)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/bin/cat"), to: url)
         return url
     }
 
-    @Test func theRealEnumeratorFindsAUniquelyNamedProcessAndItsReplacement() throws {
-        let executable = try uniqueSleepCopy()
+    @Test nonisolated func theRealEnumeratorFindsAUniquelyNamedProcessAndItsReplacement() async throws {
+        let executable = try Self.uniqueCatCopy()
         defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
         let name = executable.lastPathComponent
         #expect(name.count <= 15)
         let fixture = ChildProcessFixture()
         defer { fixture.killAndReapAll() }
 
-        #expect(ProcessInspector.firstSameUserProcess(named: name) == .notRunning)
+        await MainActor.run {
+            #expect(ProcessInspector.firstSameUserProcess(named: name) == .notRunning)
+        }
 
         func launch() throws -> Process {
             let process = Process()
             process.executableURL = executable
-            process.arguments = ["300"]
+            ChildLifetime.hold(process)
             try fixture.run(process)
             return process
         }
 
         let first = try launch()
-        try #require(first.isRunning, walkDiagnostic(first))
-        #expect(
-            ProcessInspector.firstSameUserProcess(named: name) == .found(first.processIdentifier),
-            walkDiagnostic(first)
-        )
-        #expect(ProcessInspector.listedName(pid: first.processIdentifier) == name)
+        let content = try await MainActor.run {
+            try #require(first.isRunning, Self.walkDiagnostic(first))
+            #expect(
+                ProcessInspector.firstSameUserProcess(named: name) == .found(first.processIdentifier),
+                Self.walkDiagnostic(first)
+            )
+            #expect(ProcessInspector.listedName(pid: first.processIdentifier) == name, Self.walkDiagnostic(first))
 
-        let content = ProcessStatusPaneContent(target: .followingName(name), tabLookup: { _ in nil })
-        content.setUp(visible: true)
-        #expect(content.runState == .running)
-        #expect(content.snapshot?.pid == first.processIdentifier)
+            let content = ProcessStatusPaneContent(target: .followingName(name), tabLookup: { _ in nil }, clock: TestClock())
+            content.setUp(visible: true)
+            #expect(content.runState == .running, Self.walkDiagnostic(first, content: content))
+            #expect(content.snapshot?.pid == first.processIdentifier, Self.walkDiagnostic(first, content: content))
+            return content
+        }
 
         ChildProcessFixture.killAndReap(first)
-        content.sampleNowForTesting()
-        #expect(content.runState == .waiting)
-        content.sampleNowForTesting()
-        #expect(content.runState == .waiting, "nothing with that name is running")
+        await MainActor.run {
+            content.sampleNowForTesting()
+            #expect(content.runState == .waiting, Self.walkDiagnostic(first, content: content))
+            content.sampleNowForTesting()
+            #expect(content.runState == .waiting, Self.walkDiagnostic(first, content: content, note: "nothing with that name is running"))
+        }
 
         let second = try launch()
-        try #require(second.isRunning, walkDiagnostic(second))
-        content.sampleNowForTesting()
-        #expect(content.runState == .running)
-        #expect(content.snapshot?.pid == second.processIdentifier, walkDiagnostic(second))
-        content.tearDown()
+        try await MainActor.run {
+            try #require(second.isRunning, Self.walkDiagnostic(second))
+            content.sampleNowForTesting()
+            #expect(content.runState == .running, Self.walkDiagnostic(second, content: content))
+            #expect(content.snapshot?.pid == second.processIdentifier, Self.walkDiagnostic(second, content: content))
+            content.tearDown()
+        }
     }
 
     /// Evaluated only on failure. Per owned child: whether it is still
     /// running and signalable (`kill0` `ESRCH` means it exited), and the raw
     /// `proc_pidinfo` result with `errno` (signalable but a short `rc` means a
     /// per-pid read failed). A failed whole walk is logged by `allPids`.
-    private func walkDiagnostic(_ processes: Process...) -> Comment {
-        Comment(rawValue: processes.map { process in
+    /// With `content`, also its run state and followed pid.
+    private static func walkDiagnostic(
+        _ processes: Process...,
+        content: ProcessStatusPaneContent? = nil,
+        note: String? = nil
+    ) -> Comment {
+        var prefix: [String] = []
+        if let note { prefix.append(note) }
+        if let content {
+            prefix.append("runState=\(content.runState) followedPid=\(content.followedPid.map(String.init) ?? "nil")")
+        }
+        return Comment(rawValue: (prefix + processes.map { process in
             let pid = process.processIdentifier
             let running = process.isRunning
             errno = 0
@@ -782,6 +805,6 @@ struct ProcessFollowByNameTests {
                 line += " identity=\(identity)"
             }
             return line
-        }.joined(separator: "; "))
+        }).joined(separator: "; "))
     }
 }

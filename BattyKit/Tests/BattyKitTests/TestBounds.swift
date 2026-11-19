@@ -16,8 +16,8 @@ import Foundation
 ///
 /// Deliberately excluded — these are not hang guards and must not route
 /// through this constant:
-/// - The `0.2s` bounds in `ChildProcessReadinessTests` and
-///   `TestTeardownReapGateTests`: negative tests that expect the wait to
+/// - The `0.2s` bounds in `ChildProcessReadinessTests`,
+///   `TestTeardownReapGateTests` and `FakeSharedImageTransportTests`: negative tests that expect the wait to
 ///   expire and assert `false` — routing them through this constant would
 ///   make each of those tests take the full 60s to *pass*, not fail.
 /// - `PendingTeardownReapRegistry.register(process:label:bound:)`'s

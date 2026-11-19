@@ -31,7 +31,8 @@ struct PendingTeardownReapRegistryTests {
     private static func makeStubbornProcess() -> (process: Process, readyPipe: Pipe) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "trap '' TERM; echo ready; exec sleep 60"]
+        process.arguments = ["-c", "trap '' TERM; echo ready; \(ChildLifetime.holdCommand)"]
+        ChildLifetime.hold(process)
         let readyPipe = Pipe()
         process.standardOutput = readyPipe
         process.standardError = Pipe()
@@ -45,8 +46,8 @@ struct PendingTeardownReapRegistryTests {
         let fixture = ChildProcessFixture()
         defer { fixture.killAndReapAll() }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
-        process.arguments = ["60"]
+        process.executableURL = URL(fileURLWithPath: "/bin/cat")
+        ChildLifetime.hold(process)
         try fixture.run(process)
 
         let token = registry.register(process: process, label: "test", bound: 5)

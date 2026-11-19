@@ -36,7 +36,11 @@ nonisolated final class FakeSharedImageTransport: SharedImageTransport, @uncheck
         return body()
     }
 
+    /// Callers hold `lock`.
+    private func record(_ call: Call) { _calls.append(call) }
+
     var calls: [Call] { locked { _calls } }
+    var lastCall: Call? { locked { _calls.last } }
     func resetCalls() { locked { _calls = [] } }
     func count(_ call: Call) -> Int { locked { _calls.filter { $0 == call }.count } }
     var writes: [Call] { locked { _calls.filter { if case .write = $0 { return true } else { return false } } } }
@@ -68,40 +72,58 @@ nonisolated final class FakeSharedImageTransport: SharedImageTransport, @uncheck
         for continuation in held { continuation.resume() }
     }
 
-    /// True once a read is suspended on the gate. False only if none came
-    /// within `bound`, which is a failure guard and never the success path.
+    /// True once a read is suspended on the gate. False only if no transport
+    /// call came within `bound` (each call re-arms the guard), which means the
+    /// pass is stuck; a failure guard, never the success path.
     func waitForHeldRead(bound: TimeInterval = TestBounds.hangGuard) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             let once = ResumeOnce(continuation)
             let id = UUID()
-            let timeout = DispatchWorkItem { [weak self] in
-                self?.locked { self?._readWaiters[id] = nil }
-                once.resume(false)
-            }
-            once.setOnResumed { timeout.cancel() }
-            let ready = locked {
-                if !_heldReads.isEmpty { return true }
+            let ready: Int? = locked {
+                if !_heldReads.isEmpty { return nil }
                 _readWaiters[id] = once
-                return false
+                return _calls.count
             }
-            if ready {
+            guard let callCount = ready else {
                 once.resume(true)
-            } else {
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeout)
+                return
+            }
+            armNoProgressGuard(id: id, once: once, callCount: callCount, bound: bound)
+        }
+    }
+
+    /// Whoever removes the waiter from `_readWaiters` resumes it: a read
+    /// resumes `true`, this guard `false` only after `bound` with no new call.
+    private func armNoProgressGuard(id: UUID, once: ResumeOnce<Bool>, callCount: Int, bound: TimeInterval) {
+        enum Outcome { case alreadyResumed, progressed(Int), stuck }
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self else { return once.resume(false) }
+            let outcome: Outcome = locked {
+                guard _readWaiters[id] != nil else { return .alreadyResumed }
+                if _calls.count > callCount { return .progressed(_calls.count) }
+                _readWaiters[id] = nil
+                return .stuck
+            }
+            switch outcome {
+            case .alreadyResumed: break
+            case .progressed(let count): armNoProgressGuard(id: id, once: once, callCount: count, bound: bound)
+            case .stuck: once.resume(false)
             }
         }
+        once.setOnResumed { timeout.cancel() }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + bound, execute: timeout)
     }
 
     func availability() async -> SharedImageAvailability {
         locked {
-            _calls.append(.availability)
+            record(.availability)
             return _availability
         }
     }
 
     func state(digest: String) async throws -> SharedImageFileState {
         locked {
-            _calls.append(.state(digest))
+            record(.state(digest))
             if _files[digest] == nil { return .absent }
             return _evicted.contains(digest) ? .notDownloaded : .local
         }
@@ -109,7 +131,7 @@ nonisolated final class FakeSharedImageTransport: SharedImageTransport, @uncheck
 
     func requestDownload(digest: String) async throws {
         let error: Error? = locked {
-            _calls.append(.requestDownload(digest))
+            record(.requestDownload(digest))
             return _downloadError
         }
         if let error { throw error }
@@ -117,7 +139,7 @@ nonisolated final class FakeSharedImageTransport: SharedImageTransport, @uncheck
 
     func read(digest: String) async throws -> Data {
         let shouldHold = locked {
-            _calls.append(.read(digest))
+            record(.read(digest))
             return _holdReads
         }
         if shouldHold {
@@ -140,7 +162,7 @@ nonisolated final class FakeSharedImageTransport: SharedImageTransport, @uncheck
 
     func write(from source: URL, digest: String) async throws {
         let error: Error? = locked {
-            _calls.append(.write(digest))
+            record(.write(digest))
             return _writeError
         }
         if let error { throw error }
@@ -150,28 +172,28 @@ nonisolated final class FakeSharedImageTransport: SharedImageTransport, @uncheck
 
     func uploadProblem(digest: String) async -> SharedImageUploadProblem? {
         locked {
-            _calls.append(.uploadProblem(digest))
+            record(.uploadProblem(digest))
             return _uploadProblem
         }
     }
 
     func isUploaded(digest: String) async -> Bool {
         locked {
-            _calls.append(.isUploaded(digest))
+            record(.isUploaded(digest))
             return _isUploaded
         }
     }
 
     func listDigests() async throws -> [String] {
         locked {
-            _calls.append(.list)
+            record(.list)
             return Array(_files.keys)
         }
     }
 
     func delete(digest: String) async throws {
         locked {
-            _calls.append(.delete(digest))
+            record(.delete(digest))
             _files[digest] = nil
         }
     }

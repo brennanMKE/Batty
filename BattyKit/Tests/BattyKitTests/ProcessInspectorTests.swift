@@ -118,8 +118,8 @@ struct ProcessInspectorTests {
 
     @Test func childrenOfPidFindsARealSpawnedChildProcess() throws {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
-        process.arguments = ["2"]
+        process.executableURL = URL(fileURLWithPath: "/bin/cat")
+        ChildLifetime.hold(process)
         try process.run()
         defer {
             process.terminate()
