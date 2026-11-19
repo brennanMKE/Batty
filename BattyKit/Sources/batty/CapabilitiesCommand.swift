@@ -214,6 +214,7 @@ struct CapabilitiesCommand: ParsableCommand {
         "pane hide": "hide",
         "pane show": "show",
         "tab focus": "focus",
+        "tab new": "new",
         "project list": "list",
         "project open": "open",
         "id": "id",

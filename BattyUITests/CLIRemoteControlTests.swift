@@ -432,6 +432,48 @@ nonisolated final class CLIRemoteControlTests: XCTestCase {
         BattyScreen.expectMatches(refocused, in: app)
     }
 
+    @MainActor
+    func testTabNewAddsAnActiveTabRunningTheCommand() throws {
+        let (app, _, initial) = try launch()
+        defer { app.terminate() }
+
+        let session = try XCTUnwrap(initial.selectedSession)
+        let pane = try XCTUnwrap(session.pane(session.focusedPaneID))
+        let firstTab = pane.activeTabID
+
+        let sentinel = BattyUITestHarness.sentinelPath(named: "tab-new-command")
+        let script = try BattyCLI.makeScript(in: scratch, named: "tab-new-sentinel.sh", body: "touch \(BattyCLI.shellQuoted(sentinel))")
+        let created = BattyCLI.runExpectingSuccess(["tab", "new", "--pane", pane.id.uuidString, "-c", script])
+        let newTab = try XCTUnwrap(created.lines.last.flatMap(UUID.init(uuidString:)), "tab new did not print a tab id: \(created.summary)")
+        XCTAssertTrue(BattyUITestHarness.waitForFile(at: sentinel, timeout: 15), "-c did not run in the new Tab")
+
+        let twoTabs = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(pane.id)?.tabIDs.count == 2 }, "tab new did not add a Tab")
+        XCTAssertEqual(twoTabs.pane(pane.id)?.activeTabID, newTab, "the new Tab should be active")
+        XCTAssertEqual(twoTabs.selectedSession?.focusedPaneID, session.focusedPaneID, "tab new must not move focus to another Pane")
+
+        func chips() -> [XCUIElement] {
+            BattyScreen.elements(withPrefix: "tab-chip.", in: app).sorted { $0.frame.minX < $1.frame.minX }
+        }
+        // The first Tab's chip is the leftmost; any active chip outside its
+        // frame belongs to the new Tab (titles can collide, see
+        // testTabFocusMovesTheActiveTabChip).
+        let settled = waitFor({
+            guard let first = chips().first, (first.value as? String) == "inactive" else { return false }
+            return chips().contains { ($0.value as? String) == "active" && !first.frame.contains($0.frame) }
+        }, timeout: 10)
+        XCTAssertTrue(settled, "expected the new Tab's chip to be active to the right of the first chip")
+
+        BattyCLI.runExpectingSuccess(["tab", "new", "--pane", pane.id.uuidString, "--background"])
+        let threeTabs = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(pane.id)?.tabIDs.count == 3 }, "tab new --background did not add a Tab")
+        XCTAssertEqual(threeTabs.pane(pane.id)?.activeTabID, newTab, "--background must leave the active Tab alone")
+        XCTAssertNotEqual(threeTabs.pane(pane.id)?.activeTabID, firstTab)
+
+        let unknown = BattyCLI.run(["tab", "new", "--pane", UUID().uuidString])
+        XCTAssertEqual(unknown.status, 4, "an unknown --pane should exit 4: \(unknown.summary)")
+
+        BattyScreen.expectMatches(threeTabs, in: app)
+    }
+
     // MARK: - session close
 
     @MainActor

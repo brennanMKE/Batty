@@ -41,7 +41,8 @@ The CLI now has five execution paths:
 - Live queries and acknowledged mutations use the broker-mediated XPC
   channel: `ping`, `status`, `list`, `session info`, `session focus`,
   `session close`, `pane split`, `pane close`, `pane focus`, `pane hide`,
-  `pane show`, `tab focus`, `notify`, `project list` and `project open`.
+  `pane show`, `tab focus`, `tab new`, `notify`, `project list` and
+  `project open`.
 - `id` (alias `whoami`) reads `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
   `BATTY_TAB_ID` from the environment without contacting the broker or app.
 - `capabilities` reads neither the environment nor the app: its verb roster
@@ -68,6 +69,7 @@ The CLI now has five execution paths:
 | `batty pane hide [--pane <id>]` | Hide a Pane (the eye-toggle's CLI equivalent); idempotent | XPC |
 | `batty pane show <pane-id>` | Show (un-hide) a Pane by id; idempotent; no env/focused-element fallback | XPC |
 | `batty tab focus <id>` | Select a Tab (implies focusing its containing Pane); id-based targeting only (no `<n>`) | XPC |
+| `batty tab new [--pane <id>] [-c <cmd>] [--cwd <dir>] [--background] [--json]` | Open a terminal Tab in a Pane and print its id | XPC |
 | `batty project list [--json]` | List saved Projects: name, root, Pane count, and an `open` marker | XPC |
 | `batty project open <name> [--new] [--json]` | Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
 | `batty server start --port <n> [--url <u>] [--stats-url <u>] [--split right\|down] [--pane <id>] [--wait] [--timeout <s>] [--json] -- <command…>` | Beta only (`serverPane` flag, #0648). Run a dev server in a terminal Pane under a Server Pane for the port; reuses and restarts for a port that already has one | XPC |
@@ -1229,6 +1231,19 @@ Grounded directly in the code above, not aspirational:
   config directive), and `batty id [--json]` (alias `whoami`) reads them
   with **no app round-trip** — it works even when the app/broker is
   unreachable, which is what distinguishes it from `list`/`session info`.
+- **`tab new`, #0667.** `batty tab new [--pane <id>] [-c|--command <cmd>]
+  [--cwd <dir>] [--background] [--json]` adds a terminal Tab to a Pane over
+  the `tabNew` verb (`TabNewRequest { paneID?, sourceTabID?, command?,
+  workingDirectory?, background? }` → `TabNewReply { sessionID, paneID,
+  tabID }`). Target: `--pane` → `BATTY_PANE_ID` → the focused Pane. Working
+  directory: `--cwd` (made absolute by the CLI, exit `1` when it isn't an
+  existing directory) → the caller's Tab (`BATTY_TAB_ID`) when it is in the
+  target Pane → the Pane's active Tab. `-c` behaves as in `pane split -c`.
+  The new Tab becomes the Pane's active Tab unless `--background`; the
+  focused Pane, selected Session and key window never change. Prints the
+  Tab id, or the reply with `--json`. An unknown or non-terminal Pane exits
+  `4`. Emits `tab_created` (and `active_tab_changed` when selected), both
+  `fromCli: true`.
 - **First mutating XPC verb, #0282.** `batty pane split [-h|--horizontal |
   -v|--vertical] [-c|--command <cmd>] [--pane <id>] [--view <kind>]` splits
   the calling/target pane and prints the new pane's id to stdout on
@@ -1415,7 +1430,7 @@ Grounded directly in the code above, not aspirational:
 - **The rest of the command surface is still growing.** `session`/`pane`
   now each have real subcommands (`session info`, `session focus`,
   `session close`, `pane split`, `pane close`, `pane focus`, `pane hide`,
-  `pane show`), `tab` has `tab focus`, and the bare `notify` verb has
+  `pane show`), `tab` has `tab focus` and `tab new`, and the bare `notify` verb has
   shipped, but the full `session`/`pane`/`tab`/`window` noun/verb grammar,
   `--json` on every verb, client-generated ids for chaining, and the
   `open` bare verb remain `issues/0257.md`'s (open) Tier 0 + Tier 1

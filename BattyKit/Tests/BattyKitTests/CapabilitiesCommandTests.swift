@@ -26,6 +26,7 @@ struct CapabilitiesCommandTests {
         "session info", "session focus", "session close", "session remind",
         "pane split", "pane close", "pane focus", "pane hide", "pane show",
         "tab focus",
+        "tab new",
         "project list", "project open",
         "id", "notify", "capabilities",
     ]

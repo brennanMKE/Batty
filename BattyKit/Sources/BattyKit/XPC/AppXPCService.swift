@@ -304,6 +304,44 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
                 }
             }
+        case XPCVerb.tabNew:
+            Task { @MainActor [pendingRequests, storeProvider] in
+                let store = storeProvider()
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(TabNewRequest.self, from: payloadData)
+                else {
+                    logger.error("perform tabNew: malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed tab new request")))
+                    return
+                }
+                guard let targetPaneID = request.paneID ?? store.focusedPaneIDFallback() else {
+                    logger.error("perform tabNew: no pane to target")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no pane to target")))
+                    return
+                }
+                let outcome = store.newTabForXPC(
+                    paneID: targetPaneID,
+                    sourceTabID: request.sourceTabID,
+                    command: request.command,
+                    workingDirectory: request.workingDirectory,
+                    background: request.background ?? false
+                )
+                switch outcome {
+                case let .created(sessionID, paneID, tabID):
+                    guard let replyData = try? JSONEncoder().encode(TabNewReply(sessionID: sessionID, paneID: paneID, tabID: tabID)) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode tab new reply")))
+                        return
+                    }
+                    logger.info("perform tabNew -> pane=\(paneID, privacy: .public) tab=\(tabID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .unknownPane:
+                    logger.error("perform tabNew: unknown pane id \(targetPaneID, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
+                case .notTerminal:
+                    logger.error("perform tabNew: pane \(targetPaneID, privacy: .public) is not a terminal pane")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "pane is not a terminal pane")))
+                }
+            }
         case XPCVerb.tabFocus:
             Task { @MainActor [pendingRequests] in
                 guard let payloadData = decoded.payload,

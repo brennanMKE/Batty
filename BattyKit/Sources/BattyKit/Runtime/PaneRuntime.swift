@@ -287,16 +287,18 @@ public final class PaneRuntime: Identifiable {
     /// guards a call-site bug, not a fatal invariant, and the caller is
     /// often shared UI dispatch code where a crash is worse than a no-op.
     @discardableResult
-    public func addTab(inheritingCWDFrom source: TabRuntime? = nil) -> TabRuntime {
+    public func addTab(inheritingCWDFrom source: TabRuntime? = nil, workingDirectory: String? = nil, command: String? = nil, select: Bool = true) -> TabRuntime {
         guard kind == .terminal else {
             let kindName = kind.rawValue
             logger.error("addTab called on a non-terminal pane (kind=\(kindName, privacy: .public)); ignoring")
             return activeTab ?? tabs[0]
         }
-        let cwd = source?.terminal.workingDirectory
-        let tab = TabRuntime(workingDirectory: cwd, backgroundGate: tabBackgroundGate, paneBackgroundOverride: backgroundOverride, sessionBackgroundOverride: sessionBackgroundOverride, sessionThemeOverride: sessionThemeOverride)
+        let cwd = workingDirectory ?? source?.terminal.workingDirectory
+        let tab = TabRuntime(workingDirectory: cwd, command: command, backgroundGate: tabBackgroundGate, paneBackgroundOverride: backgroundOverride, sessionBackgroundOverride: sessionBackgroundOverride, sessionThemeOverride: sessionThemeOverride)
         tabs.append(tab)
-        activeTabID = tab.id
+        if select {
+            activeTabID = tab.id
+        }
         if let sessionID {
             tab.attachContext(paneID: id, sessionID: sessionID)
         }

@@ -2244,6 +2244,63 @@ public final class AppStateStore {
         return .unknownTab
     }
 
+    // MARK: - XPC tab new (#0667)
+
+    /// Outcome of `newTabForXPC` — the app-side source of `tab new`.
+    public enum TabNewOutcome: Equatable, Sendable {
+        case created(sessionID: UUID, paneID: UUID, tabID: UUID)
+        case unknownPane
+        case notTerminal
+    }
+
+    /// The Tab a new Tab inherits its working directory from: the caller's
+    /// Tab when it lives in `pane`, else the Pane's active Tab.
+    static func tabNewSource(in pane: PaneRuntime, sourceTabID: UUID?) -> TabRuntime? {
+        if let sourceTabID, let tab = pane.tabs.first(where: { $0.id == sourceTabID }) {
+            return tab
+        }
+        return pane.activeTab
+    }
+
+    /// `tab new`: adds a terminal Tab to the Pane without touching the
+    /// focused Pane, the selected Session or the key window, so an agent
+    /// never moves the user's typing out of the Pane they're in. Without
+    /// `background` the new Tab becomes the Pane's active Tab.
+    @discardableResult
+    public func newTabForXPC(paneID: UUID, sourceTabID: UUID?, command: String?, workingDirectory: String?, background: Bool) -> TabNewOutcome {
+        for window in windows {
+            for session in window.sessions {
+                guard let pane = session.tree.allPanes.first(where: { $0.id == paneID }) else { continue }
+                // Checked here because `addTab`'s own kind gate returns the
+                // existing active Tab instead of failing.
+                guard pane.kind == .terminal else { return .notTerminal }
+                let oldTabID = pane.activeTabID
+                let oldTabTitle = pane.tabs.first(where: { $0.id == oldTabID })?.titleOverride ?? ""
+                let tab = pane.addTab(
+                    inheritingCWDFrom: Self.tabNewSource(in: pane, sourceTabID: sourceTabID),
+                    workingDirectory: workingDirectory,
+                    command: command.flatMap { $0.isEmpty ? nil : $0 },
+                    select: !background
+                )
+                let created = WatchEventPayload(type: "tab_created", sessionID: session.id, targetPaneID: pane.id, tabID: tab.id, fromCli: true)
+                AppEventWatcher.shared.send(eventType: created.type, payload: created)
+                if pane.activeTabID != oldTabID {
+                    let changed = WatchEventPayload(
+                        type: "active_tab_changed",
+                        sessionID: session.id,
+                        targetPaneID: pane.id,
+                        oldTabTitle: oldTabTitle,
+                        newTabTitle: tab.titleOverride ?? "",
+                        fromCli: true
+                    )
+                    AppEventWatcher.shared.send(eventType: changed.type, payload: changed)
+                }
+                return .created(sessionID: session.id, paneID: pane.id, tabID: tab.id)
+            }
+        }
+        return .unknownPane
+    }
+
     /// Makes `window`'s `NSWindow` key and front and brings the app itself
     /// forward — the cross-window bring-forward half of the focus verbs'
     /// activation. The XPC focus verbs are always the out-of-app case (an

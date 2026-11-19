@@ -227,6 +227,12 @@ struct CapabilitiesInputSchemaTests {
         assertNamesAreInvocable(TabFocusCommand.capabilitiesInputSchema, helpMessage: TabFocusCommand.helpMessage())
     }
 
+    @Test func tabNewCommandSchemaMatchesStoredProperties() throws {
+        let instance = try TabNewCommand.parse([])
+        assertSchemaMatchesStoredProperties(instance, schema: TabNewCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(TabNewCommand.capabilitiesInputSchema, helpMessage: TabNewCommand.helpMessage())
+    }
+
     @Test func idCommandSchemaMatchesStoredProperties() throws {
         let instance = try IDCommand.parse([])
         assertSchemaMatchesStoredProperties(instance, schema: IDCommand.capabilitiesInputSchema)

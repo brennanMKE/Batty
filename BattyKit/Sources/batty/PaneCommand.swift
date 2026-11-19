@@ -19,7 +19,7 @@ struct PaneNounCommand: ParsableCommand {
 /// Shared `--pane` resolution for every `pane` subcommand: explicit flag →
 /// `BATTY_PANE_ID` env → `nil` (let the app resolve the focused pane).
 /// `nonisolated` — called from each subcommand's `nonisolated func run()`.
-private nonisolated func resolveTargetPaneID(flag: String?) throws -> UUID? {
+nonisolated func resolveTargetPaneID(flag: String?) throws -> UUID? {
     switch BattyTargetResolver.resolve(flag: flag, environmentKey: .paneID) {
     case let .success(id):
         return id

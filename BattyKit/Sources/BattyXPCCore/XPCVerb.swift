@@ -79,6 +79,10 @@ public nonisolated enum XPCVerb {
     /// `TabFocusRequest.tabID` and "no tab to target" — the CLI surfaces
     /// both as exit `4`.
     public static let tabFocus = "tabFocus"
+    /// Opens a terminal Tab in a Pane. Request `TabNewRequest`, reply
+    /// `TabNewReply`. An unknown Pane, a non-terminal Pane and "no pane to
+    /// target" are failure replies (CLI exit `4`).
+    public static let tabNew = "tabNew"
 
     /// #0382: the seventh mutating XPC verb. Ends every Tab's Terminal
     /// Session across the target session's panes and removes the session —

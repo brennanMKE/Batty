@@ -5,16 +5,13 @@ import BattyCLICore
 import BattyXPCCore
 import Foundation
 
-/// `batty tab` — new for #0381, which needs exactly one subcommand
-/// (`focus`) and deliberately builds no others. #0257's "a filed ticket
-/// reads as scheduled work" rule (restated by #0382) means `tab new`,
-/// `tab rename`, and `tab close` stay unbuilt until they're each actually
-/// scheduled, not stubbed out here alongside `focus`.
+/// `batty tab` — `focus` (#0381) and `new` (#0667). `tab rename` and
+/// `tab close` stay unbuilt until scheduled.
 struct TabNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "tab",
-        abstract: "Focus or otherwise control a Batty tab.",
-        subcommands: [TabFocusCommand.self]
+        abstract: "Open, focus or otherwise control a Batty tab.",
+        subcommands: [TabFocusCommand.self, TabNewCommand.self]
     )
 }
 
@@ -104,6 +101,121 @@ extension TabFocusCommand: CapabilitiesDescribable {
     nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
         CapabilitiesInputSchemaPayload(properties: [
             "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Tab id to focus. Falls back to BATTY_TAB_ID, then the focused tab, when omitted.", required: false),
+        ])
+    }
+}
+
+/// `batty tab new`: opens a terminal Tab in a Pane over XPC. Selects the
+/// new Tab (unless `--background`) but never moves keyboard focus to
+/// another Pane, Session or window.
+struct TabNewCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "new",
+        abstract: "Open a new terminal tab in the calling/target pane, printing the tab's id.",
+        helpNames: .long
+    )
+
+    @Option(name: .long, help: "Pane id to add the tab to. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.")
+    var pane: String?
+
+    @Option(name: [.customShort("c"), .long], help: "Run this command in the new tab instead of the default shell. The tab stays open after it exits.")
+    var command: String?
+
+    @Option(name: .long, help: "Working directory for the new tab. Defaults to the calling tab's, else the pane's active tab's.")
+    var cwd: String?
+
+    @Flag(name: .long, help: "Add the tab without selecting it.")
+    var background: Bool = false
+
+    @Flag(name: .long, help: "Emit JSON (sessionID, paneID, tabID) instead of the id.")
+    var json: Bool = false
+
+    enum CwdError: Error, Equatable {
+        case notADirectory(String)
+    }
+
+    /// Absolute, standardized path, or an error when it isn't an existing
+    /// directory: libghostty would otherwise silently start the shell in
+    /// its default directory.
+    nonisolated static func resolveWorkingDirectory(_ raw: String, currentDirectory: String) -> Result<String, CwdError> {
+        let expanded = (raw as NSString).expandingTildeInPath
+        let url = expanded.hasPrefix("/")
+            ? URL(fileURLWithPath: expanded)
+            : URL(fileURLWithPath: expanded, relativeTo: URL(fileURLWithPath: currentDirectory, isDirectory: true))
+        let path = url.standardizedFileURL.path
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return .failure(.notADirectory(path))
+        }
+        return .success(path)
+    }
+
+    nonisolated func run() throws {
+        let targetPaneID = try resolveTargetPaneID(flag: pane)
+        let sourceTabID: UUID?
+        if case let .success(id) = BattyTargetResolver.resolve(flag: nil, environmentKey: .tabID) {
+            sourceTabID = id
+        } else {
+            sourceTabID = nil
+        }
+        var workingDirectory: String?
+        if let cwd {
+            switch Self.resolveWorkingDirectory(cwd, currentDirectory: FileManager.default.currentDirectoryPath) {
+            case let .success(path):
+                workingDirectory = path
+            case let .failure(.notADirectory(path)):
+                fputs("batty: --cwd is not a directory: \(path)\n", stderr)
+                throw ExitCode.failure
+            }
+        }
+        let request = TabNewRequest(paneID: targetPaneID, sourceTabID: sourceTabID, command: command, workingDirectory: workingDirectory, background: background)
+
+        switch AppConnectDance.resolveEndpoint() {
+        case .failure(.brokerUnreachable):
+            fputs("batty: broker unreachable\n", stderr)
+            throw ExitCode(XPCExitCode.brokerUnreachable)
+        case .failure(.appUnavailable):
+            fputs("batty: app unavailable\n", stderr)
+            throw ExitCode(XPCExitCode.appUnavailable)
+        case .failure(.appRunningUnregistered):
+            fputs("batty: Batty is running but isn't responding to the broker — try relaunching it\n", stderr)
+            throw ExitCode(XPCExitCode.appRunningUnregistered)
+        case .failure(.appBundleUnresolved(let message)):
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode(XPCExitCode.appBundleUnresolved)
+        case .success(let endpoint):
+            switch AppServiceClient.tabNew(endpoint: endpoint, request: request, timeout: 3.0) {
+            case .success(let reply):
+                if json {
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+                    let data = try encoder.encode(reply)
+                    print(String(decoding: data, as: UTF8.self))
+                } else {
+                    print(reply.tabID.uuidString)
+                }
+            case .unreachable:
+                fputs("batty: app unavailable\n", stderr)
+                throw ExitCode(XPCExitCode.appUnavailable)
+            case .requestFailed(let message):
+                fputs("batty: request failed — \(message)\n", stderr)
+                throw ExitCode(XPCExitCode.requestFailed)
+            case .appTerminated:
+                fputs("batty: app terminated\n", stderr)
+                throw ExitCode(XPCExitCode.sessionTerminated)
+            }
+        }
+    }
+}
+
+extension TabNewCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane id to add the tab to. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
+            "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["-c", "--command"], type: "string", description: "Run this command in the new tab instead of the default shell. The tab stays open after it exits.", required: false),
+            "cwd": CapabilitiesPropertyPayload(cliKind: .option, names: ["--cwd"], type: "string", description: "Working directory for the new tab. Defaults to the calling tab's, else the pane's active tab's.", required: false),
+            "background": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--background"], type: "boolean", description: "Add the tab without selecting it.", required: false, defaultValue: "false"),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (sessionID, paneID, tabID) instead of the id.", required: false, defaultValue: "false"),
         ])
     }
 }

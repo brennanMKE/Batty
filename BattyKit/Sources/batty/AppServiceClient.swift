@@ -166,6 +166,17 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// Opens a terminal Tab; a failure reply (unknown or non-terminal
+    /// Pane, no Pane to target) is `.requestFailed`, exit `4`.
+    static func tabNew(
+        endpoint: NSXPCListenerEndpoint,
+        request: TabNewRequest,
+        timeout: TimeInterval
+    ) -> Outcome<TabNewReply> {
+        let requestPayload = try? JSONEncoder().encode(request)
+        return perform(verb: XPCVerb.tabNew, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "tabNew")
+    }
+
     /// #0381. Reuses the same mutating-verb dance. The app either selects
     /// the target tab (if not already selected), focuses its containing
     /// pane, and activates the session/window, or reports a failure

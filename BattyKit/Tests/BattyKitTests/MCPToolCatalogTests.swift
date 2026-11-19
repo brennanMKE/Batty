@@ -178,6 +178,24 @@ struct MCPToolCatalogTests {
         #expect(!argv.contains("-c"))
     }
 
+    @Test func catalogIncludesTabNew() {
+        #expect(catalog().tools.contains { $0.name == "tab_new" })
+    }
+
+    @Test func tabNewArgumentsUseLongOptions() throws {
+        let argv = try catalog().arguments(forToolName: "tab_new", callArguments: [
+            "command": .string("make test"),
+            "cwd": .string("/tmp"),
+            "background": .bool(true),
+        ])
+        #expect(argv.starts(with: ["tab", "new"]))
+        #expect(argv.contains("--command=make test"))
+        #expect(argv.contains { $0.hasPrefix("--cwd") })
+        #expect(argv.contains("--background"))
+        #expect(argv.contains("--json"))
+        #expect(!argv.contains("-c"))
+    }
+
     @Test func jsonFlagIsAddedWhenTheVerbHasIt() throws {
         #expect(try catalog().arguments(forToolName: "id", callArguments: [:]) == ["id", "--json"])
         #expect(try catalog().arguments(forToolName: "ping", callArguments: [:]) == ["ping"])
