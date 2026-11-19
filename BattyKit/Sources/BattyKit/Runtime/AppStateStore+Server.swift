@@ -14,6 +14,11 @@ public enum ServerXPCError: Error, Equatable, Sendable {
     case unknownServer
     case cannotRestart
     case stopRefused(String)
+    case notADirectory(String)
+    case portInUse(Int)
+    case alreadyServing(root: String, port: Int)
+    case bindFailed(String)
+    case previewURLNotAllowed
 
     public var message: String {
         switch self {
@@ -24,6 +29,11 @@ public enum ServerXPCError: Error, Equatable, Sendable {
         case .unknownServer: return "no server pane for that port in this session"
         case .cannotRestart: return "this server has no command to restart; attach with --command"
         case .stopRefused(let reason): return "stop refused: \(reason)"
+        case .notADirectory(let path): return "not a directory: \(path)"
+        case .portInUse(let port): return "port \(port) is in use"
+        case .alreadyServing(let root, let port): return "already serving \(root) on port \(port); stop it first"
+        case .bindFailed(let reason): return "could not listen on 127.0.0.1: \(reason)"
+        case .previewURLNotAllowed: return WebPreviewURLPolicy.refusalMessage
         }
     }
 }
@@ -32,12 +42,20 @@ public struct ServerXPCResult {
     public let paneID: UUID
     public let content: ServerPaneContent
     public let created: Bool
+    public var previewPaneID: UUID?
+
+    public init(paneID: UUID, content: ServerPaneContent, created: Bool, previewPaneID: UUID? = nil) {
+        self.paneID = paneID
+        self.content = content
+        self.created = created
+        self.previewPaneID = previewPaneID
+    }
 }
 
 extension AppStateStore {
     // MARK: - Lookup
 
-    private func locate(paneID: UUID) -> (WindowRuntime, SessionRuntime)? {
+    func locate(paneID: UUID) -> (WindowRuntime, SessionRuntime)? {
         for window in windows {
             if let session = window.sessions.first(where: { $0.tree.allPanes.contains { $0.id == paneID } }) {
                 return (window, session)
@@ -81,17 +99,17 @@ extension AppStateStore {
         return session.tree.allPanes.first { $0.id == paneID }?.content as? ServerPaneContent
     }
 
-    private func resolveCallingPane(_ paneID: UUID?) -> Result<(WindowRuntime, SessionRuntime, UUID), ServerXPCError> {
+    func resolveCallingPane(_ paneID: UUID?) -> Result<(WindowRuntime, SessionRuntime, UUID), ServerXPCError> {
         guard let target = paneID ?? focusedPaneIDFallback() else { return .failure(.noPane) }
         guard let (window, session) = locate(paneID: target) else { return .failure(.unknownPane) }
         return .success((window, session, target))
     }
 
-    private static func validPort(_ port: Int) -> UInt16? {
+    static func validPort(_ port: Int) -> UInt16? {
         (1...65535).contains(port) ? UInt16(port) : nil
     }
 
-    private func direction(for split: ServerSplit?) -> SplitDirection {
+    func direction(for split: ServerSplit?) -> SplitDirection {
         switch split {
         case .right: return .horizontal
         case .down: return .vertical
@@ -99,7 +117,7 @@ extension AppStateStore {
         }
     }
 
-    private func showIfHidden(_ pane: PaneRuntime, in window: WindowRuntime) {
+    func showIfHidden(_ pane: PaneRuntime, in window: WindowRuntime) {
         if pane.isHidden { window.showPane(id: pane.id) }
     }
 
@@ -132,7 +150,7 @@ extension AppStateStore {
         }
     }
 
-    private func createServerPane(
+    func createServerPane(
         session: SessionRuntime, window: WindowRuntime, callingPaneID: UUID,
         port: UInt16, url: URL?, statsURL: URL?, split: ServerSplit?, backend: ServerBackend
     ) -> ServerPaneContent? {
@@ -144,6 +162,11 @@ extension AppStateStore {
         let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: pane.id)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
         wireRestart(content, serverPaneID: pane.id)
+        let serverPaneID = pane.id
+        content.openPreview = { [weak self, weak content] in
+            guard let self, let content else { return }
+            _ = self.openWebPreview(url: content.url, besideServerPane: serverPaneID)
+        }
         return content
     }
 
@@ -160,6 +183,9 @@ extension AppStateStore {
         let cwd = request.workingDirectory
 
         if let existing = findServerPane(sessionContaining: callingPaneID, port: port), let content = existing.content as? ServerPaneContent {
+            if let inApp = content.backend as? InAppStaticServerBackend {
+                return .failure(.alreadyServing(root: inApp.root, port: Int(port)))
+            }
             showIfHidden(existing, in: window)
             if let backend = content.backend as? TerminalTabServerBackend, backend.isAvailable {
                 content.update(command: request.command, workingDirectory: cwd)
@@ -258,6 +284,8 @@ extension AppStateStore {
         var exitCode: Int?
         var pid: Int32?
         switch content.state {
+        case _ where content.backend is InProcessServerBackend:
+            state = (content.backend as? InProcessServerBackend)?.isServing == true ? .listening : .stopped
         case .starting: state = .starting
         case .listening(let listener): state = .listening; pid = listener
         case .stopping: state = .stopping
@@ -266,7 +294,8 @@ extension AppStateStore {
         }
         return ServerReply(
             paneID: result.paneID, terminalPaneID: tabID.flatMap(paneID(holdingTab:)), tabID: tabID,
-            url: content.url.absoluteString, pid: pid ?? content.listenerPid, state: state, exitCode: exitCode, created: result.created
+            url: content.url.absoluteString, pid: pid ?? content.listenerPid, state: state, exitCode: exitCode, created: result.created,
+            root: (content.backend as? InAppStaticServerBackend)?.root, previewPaneID: result.previewPaneID
         )
     }
 }

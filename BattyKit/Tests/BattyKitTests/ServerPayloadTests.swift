@@ -20,6 +20,22 @@ struct ServerPayloadTests {
         #expect(try roundTripOffActor(reply) == reply)
     }
 
+    @Test func serveRequestRoundTrips() throws {
+        let serve = ServerServeRequest(paneID: UUID(), root: "/tmp/site", port: 8000, open: true, inject: false, split: .down)
+        #expect(try roundTripOffActor(serve) == serve)
+        let reply = ServerReply(paneID: UUID(), url: "http://127.0.0.1:8000/", state: .listening, created: true, root: "/tmp/site", previewPaneID: UUID())
+        #expect(try roundTripOffActor(reply) == reply)
+    }
+
+    @Test func replyWithoutRootDecodes() throws {
+        let reply = try JSONDecoder().decode(ServerReply.self, from: Data(#"{"paneID":"6F9619FF-8B86-D011-B42D-00C04FC964FF","url":"u","state":"listening","created":false}"#.utf8))
+        #expect(reply.root == nil)
+        #expect(reply.previewPaneID == nil)
+        let serve = try JSONDecoder().decode(ServerServeRequest.self, from: Data(#"{"root":"/x"}"#.utf8))
+        #expect(serve.port == nil)
+        #expect(serve.inject == nil)
+    }
+
     @Test func absentOptionalKeysDecodeAsNil() throws {
         let start = try JSONDecoder().decode(ServerStartRequest.self, from: Data(#"{"port":1,"command":"x","workingDirectory":"/"}"#.utf8))
         #expect(start.paneID == nil)

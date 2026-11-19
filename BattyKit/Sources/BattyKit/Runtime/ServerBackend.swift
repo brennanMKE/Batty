@@ -42,6 +42,36 @@ public protocol ServerBackend: AnyObject {
     func stopDecision(listenerPid: pid_t?, table: ProcessTableReading) -> ServerStopDecision
 }
 
+/// What a Server Pane shows for a server that runs inside Batty.
+public nonisolated struct ServingFacts: Equatable, Sendable {
+    public var root: String
+    public var requestCount: Int
+    public var reloadClientCount: Int
+    public var lastChangeAt: Date?
+    public var injectsReloadScript: Bool
+
+    public init(root: String, requestCount: Int, reloadClientCount: Int, lastChangeAt: Date?, injectsReloadScript: Bool) {
+        self.root = root
+        self.requestCount = requestCount
+        self.reloadClientCount = reloadClientCount
+        self.lastChangeAt = lastChangeAt
+        self.injectsReloadScript = injectsReloadScript
+    }
+}
+
+/// A server whose listener is Batty itself (#0649). The Server Pane never
+/// scans, probes, samples or signals for it: every one of those would find
+/// Batty's own pid.
+@MainActor
+public protocol InProcessServerBackend: ServerBackend {
+    var isServing: Bool { get }
+    var servingFacts: ServingFacts { get }
+    func stopServing()
+    /// Serves again on the same port; awaits the stopped listener's
+    /// release of it first.
+    func resumeServing() async throws(StaticServerError)
+}
+
 /// A terminal Tab, as a Server Pane's terminal backend needs it, so tests
 /// never need a live surface.
 @MainActor

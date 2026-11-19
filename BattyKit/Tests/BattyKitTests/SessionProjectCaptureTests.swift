@@ -451,4 +451,11 @@ struct SessionProjectCaptureServerPaneTests {
         #expect(captured.layout.panes[1] == .terminal())
         #expect(captured.notes[.tabDirectory(slot: 1, tab: 0)] != nil)
     }
+
+    @Test func webPreviewPaneCapturesAsEmptyTerminalSlotWithNote() {
+        let captured = capture(split(.horizontal, .leaf(pane(tabs: [tab(root)])), .leaf(pane(.webPreview))))
+        #expect(captured.layout.panes.map(\.kind) == [.terminal, .terminal])
+        #expect(captured.layout.panes[1] == .terminal())
+        #expect(captured.notes[.tabDirectory(slot: 1, tab: 0)]?.contains("Web previews") == true)
+    }
 }

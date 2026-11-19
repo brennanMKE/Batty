@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web Preview Pane</title>
+<style>
+:root { --bg:#1a1b26; --pane:#1f2335; --line:#3b4261; --fg:#c0caf5; --dim:#737aa2; --accent:#7aa2f7; }
+body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg); font:13px -apple-system, system-ui, sans-serif; }
+h1 { font-size:16px; } h2 { font-size:13px; color:var(--dim); margin-top:28px; }
+.pane { border:1px solid var(--line); border-radius:6px; background:var(--pane); max-width:720px; overflow:hidden; }
+.bar { display:flex; gap:6px; align-items:center; padding:6px 8px; border-bottom:1px solid var(--line); }
+.btn { border:1px solid var(--line); border-radius:4px; padding:2px 8px; color:var(--fg); }
+.btn.off { color:var(--dim); }
+.url { flex:1; font:12px ui-monospace, Menlo, monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.page { background:#fff; color:#222; height:200px; padding:16px; }
+.err { height:200px; display:flex; flex-direction:column; gap:10px; align-items:center; justify-content:center; color:var(--dim); }
+</style>
+</head>
+<body>
+<h1>Web Preview Pane (#0649), drafted for user approval</h1>
+<h2>Loaded</h2>
+<div class="pane">
+  <div class="bar"><span class="btn">&lsaquo;</span><span class="btn off">&rsaquo;</span><span class="btn">&#8635;</span>
+  <span class="url">http://127.0.0.1:52144/index.html</span><span class="btn">Open in Browser</span></div>
+  <div class="page"><h3>Batty preview fixture one</h3><p>The page renders here.</p></div>
+</div>
+<h2>Load failed</h2>
+<div class="pane">
+  <div class="bar"><span class="btn off">&lsaquo;</span><span class="btn off">&rsaquo;</span><span class="btn">&#8635;</span>
+  <span class="url">http://127.0.0.1:3000/</span><span class="btn">Open in Browser</span></div>
+  <div class="err"><div>Could not connect to the server.</div><span class="btn">Reload</span></div>
+</div>
+</body>
+</html>

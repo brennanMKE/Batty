@@ -29,10 +29,18 @@ struct MCPToolCatalogTests {
     }
 
     @Test func serverVerbsBecomeToolsOnlyWithServerPaneOn() {
-        let serverTools: Set<String> = ["server_start", "server_attach", "server_stop", "server_restart"]
+        let serverTools: Set<String> = ["server_start", "server_attach", "server_stop", "server_restart", "server_serve", "server_preview"]
         #expect(serverTools.isSubset(of: Set(catalog().tools.map(\.name))))
         let agentOnly = FeatureFlags(sharedProjectImages: true, agentIntegration: true, serverPane: false)
         #expect(Set(catalog(agentOnly).tools.map(\.name)).isDisjoint(with: serverTools))
+    }
+
+    @Test func catalogIncludesServerServe() {
+        #expect(catalog().tools.contains { $0.name == "server_serve" })
+    }
+
+    @Test func catalogIncludesServerPreview() {
+        #expect(catalog().tools.contains { $0.name == "server_preview" })
     }
 
     @Test func serverStartPassesEachCommandWordAfterTheTerminator() throws {

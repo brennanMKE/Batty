@@ -200,7 +200,7 @@ struct ServerPaneContentTests {
         content.setUp(visible: false)
         sink.finish(0)
         #expect(content.state == .crashed(exitCode: 0))
-        #expect(ServerPaneDisplay.stateText(content.state, isResponding: nil, attach: false) == "Exited (0)")
+        #expect(ServerPaneDisplay.stateText(content.state, isResponding: nil, kind: .terminal) == "Exited (0)")
     }
 
     @Test func stopSignalsTheJobGroupNotTheShell() async {

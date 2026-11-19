@@ -74,6 +74,51 @@ public nonisolated struct ServerAttachRequest: Codable, Sendable, Equatable {
 
 /// Names the Server Pane by id, or by port within the calling Pane's
 /// Session.
+/// `batty server serve [<dir>]` (#0649). `root` is absolute (the CLI
+/// resolves it). `inject` nil means on.
+public nonisolated struct ServerServeRequest: Codable, Sendable, Equatable {
+    public var paneID: UUID?
+    public var root: String
+    public var port: Int?
+    public var open: Bool?
+    public var inject: Bool?
+    public var split: ServerSplit?
+
+    public init(paneID: UUID? = nil, root: String, port: Int? = nil, open: Bool? = nil, inject: Bool? = nil, split: ServerSplit? = nil) {
+        self.paneID = paneID
+        self.root = root
+        self.port = port
+        self.open = open
+        self.inject = inject
+        self.split = split
+    }
+}
+
+/// `batty server preview` (#0649): a Web Preview Pane for a loopback URL.
+public nonisolated struct WebPreviewRequest: Codable, Sendable, Equatable {
+    public var paneID: UUID?
+    public var url: String
+    public var split: ServerSplit?
+
+    public init(paneID: UUID? = nil, url: String, split: ServerSplit? = nil) {
+        self.paneID = paneID
+        self.url = url
+        self.split = split
+    }
+}
+
+public nonisolated struct WebPreviewReply: Codable, Sendable, Equatable {
+    public var paneID: UUID
+    public var url: String
+    public var created: Bool
+
+    public init(paneID: UUID, url: String, created: Bool) {
+        self.paneID = paneID
+        self.url = url
+        self.created = created
+    }
+}
+
 public nonisolated struct ServerControlRequest: Codable, Sendable, Equatable {
     public var paneID: UUID?
     public var serverPaneID: UUID?
@@ -96,8 +141,14 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
     public var exitCode: Int?
     /// False when an existing Server Pane was reused.
     public var created: Bool
+    /// The served folder, for an in-app static server (#0649).
+    public var root: String?
+    /// The Web Preview Pane `serve --open` opened or reused (#0649).
+    public var previewPaneID: UUID?
 
-    public init(paneID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool) {
+    public init(paneID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil, previewPaneID: UUID? = nil) {
+        self.root = root
+        self.previewPaneID = previewPaneID
         self.paneID = paneID
         self.terminalPaneID = terminalPaneID
         self.tabID = tabID

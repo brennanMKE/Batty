@@ -16,6 +16,7 @@ extension PaneContentKind {
         case .systemMetrics: "\u{25A5}"
         case .lmStudioDashboard: "LM"
         case .server: "\u{25CE}"
+        case .webPreview: "\u{25D0}"
         }
     }
 
@@ -27,6 +28,7 @@ extension PaneContentKind {
         case .systemMetrics: "#B48EF0"
         case .lmStudioDashboard: "#F07FA8"
         case .server: "#9ECE6A"
+        case .webPreview: "#7DCFFF"
         }
         return RGBColor(hex: hex)?.swiftUIColor ?? .gray
     }
@@ -39,6 +41,7 @@ extension PaneContentKind {
         case .systemMetrics: String(localized: "CPU, memory and GPU load for this Mac.", comment: "Project Editor: System Metrics view blurb")
         case .lmStudioDashboard: String(localized: "Loaded models and server status from LM Studio.", comment: "Project Editor: LM Studio view blurb")
         case .server: String(localized: "State and metrics for a dev server on one port.", comment: "Project Editor: Server view blurb")
+        case .webPreview: String(localized: "A page from a local dev server.", comment: "Project Editor: Web Preview view blurb")
         }
     }
 
@@ -803,7 +806,7 @@ private struct PaneCard: View {
                     let relative = pane.repositoryPath.map { $0 == "." ? "" : $0 } ?? ""
                     Text(String(localized: "Repository: root/\(relative)", comment: "Project Editor: Git Status Pane card; the argument is the relative folder"))
                         .foregroundStyle(.secondary)
-                case .processStatus, .systemMetrics, .lmStudioDashboard, .server:
+                case .processStatus, .systemMetrics, .lmStudioDashboard, .server, .webPreview:
                     Text(pane.kind.projectEditorBlurb).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -868,7 +871,7 @@ private struct PaneInspector: View {
                             identifier: "project-editor.repository",
                             choose: { chooseFolder(tab: nil) }
                         )
-                    case .processStatus, .systemMetrics, .lmStudioDashboard, .server:
+                    case .processStatus, .systemMetrics, .lmStudioDashboard, .server, .webPreview:
                         Text("\(pane.kind.projectEditorBlurb) Nothing to set up for this view.")
                             .foregroundStyle(.secondary)
                     }

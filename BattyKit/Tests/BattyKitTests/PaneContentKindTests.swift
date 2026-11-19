@@ -31,6 +31,7 @@ struct PaneContentKindTests {
             "lm-studio-dashboard",
             "system-metrics",
             "server",
+            "web-preview",
         ])
     }
 
@@ -41,7 +42,21 @@ struct PaneContentKindTests {
 
     @Test func paneSplitKindsExcludeServer() {
         #expect(!PaneContentKind.paneSplitKinds.contains(.server))
-        #expect(PaneContentKind.paneSplitKinds.count == PaneContentKind.allCases.count - 1)
+        #expect(PaneContentKind.paneSplitKinds.count == PaneContentKind.allCases.count - 2)
+    }
+
+    @Test func webPreviewRawValueIsWebPreview() {
+        #expect(PaneContentKind.webPreview.rawValue == "web-preview")
+        #expect(PaneContentKind(rawValue: "web-preview") == .webPreview)
+        #expect(PaneContentKind.webPreview.displayName == "Web Preview")
+    }
+
+    @Test func paneSplitKindsExcludeWebPreview() {
+        #expect(!PaneContentKind.paneSplitKinds.contains(.webPreview))
+    }
+
+    @Test func projectSlotKindsExcludeWebPreview() {
+        #expect(!PaneContentKind.projectSlotKinds.contains(.webPreview))
     }
 
     @Test func projectSlotKindsExcludeServer() {

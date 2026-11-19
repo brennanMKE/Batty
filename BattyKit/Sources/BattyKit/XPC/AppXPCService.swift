@@ -46,7 +46,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     /// A Server Pane needs a port and a command, which `PaneSplitRequest`
     /// doesn't carry.
     static func paneSplitRefusal(kind: PaneContentKind) -> String? {
-        kind == .server ? "server panes are created with batty server start or batty server attach" : nil
+        switch kind {
+        case .server: "server panes are created with batty server start or batty server attach"
+        case .webPreview: "web previews are opened with batty server preview"
+        default: nil
+        }
     }
 
     func ping(reply: @escaping @Sendable (String) -> Void) {
@@ -516,7 +520,13 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
             }
 
-        case XPCVerb.serverStart, XPCVerb.serverAttach, XPCVerb.serverStop, XPCVerb.serverRestart:
+        case XPCVerb.serverPreview:
+            Task { @MainActor [pendingRequests, storeProvider] in
+                let response = Self.previewResponse(payload: decoded.payload, store: storeProvider())
+                pendingRequests.resolve(requestID, with: Self.encode(response))
+            }
+
+        case XPCVerb.serverStart, XPCVerb.serverAttach, XPCVerb.serverStop, XPCVerb.serverRestart, XPCVerb.serverServe:
             Task { @MainActor [pendingRequests, storeProvider, clock] in
                 let response = await Self.serverResponse(verb: decoded.verb, payload: decoded.payload, store: storeProvider(), clock: clock)
                 pendingRequests.resolve(requestID, with: Self.encode(response))
@@ -525,6 +535,25 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         default:
             logger.error("perform: unknown verb \(decoded.verb, privacy: .public)")
             pendingRequests.resolve(requestID, with: Self.unknownVerbResponse(decoded.verb))
+        }
+    }
+
+    /// `server preview` (#0649).
+    @MainActor
+    static func previewResponse(payload: Data?, store: AppStateStore) -> XPCResponse {
+        guard let payload, let request = try? JSONDecoder().decode(WebPreviewRequest.self, from: payload) else {
+            return XPCResponse(ok: false, error: "malformed server preview request")
+        }
+        switch store.openWebPreviewForXPC(request) {
+        case .failure(let error):
+            logger.error("perform serverPreview: \(error.message, privacy: .public)")
+            return XPCResponse(ok: false, error: error.message)
+        case .success(let result):
+            let reply = WebPreviewReply(paneID: result.paneID, url: result.content.url.absoluteString, created: result.created)
+            guard let data = try? JSONEncoder().encode(reply) else {
+                return XPCResponse(ok: false, error: "failed to encode preview reply")
+            }
+            return XPCResponse(ok: true, payload: data)
         }
     }
 
@@ -551,6 +580,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             result = store.attachServerForXPC(request)
             wait = request.wait ?? false
             timeout = request.waitTimeoutSeconds ?? timeout
+        case XPCVerb.serverServe:
+            guard let payload, let request = try? decoder.decode(ServerServeRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed server serve request")
+            }
+            result = await store.serveStaticForXPC(request)
         default:
             guard let payload, let request = try? decoder.decode(ServerControlRequest.self, from: payload) else {
                 return XPCResponse(ok: false, error: "malformed server request")
@@ -569,6 +603,9 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             await outcome.content.awaitPendingWork()
             if verb != XPCVerb.serverStart || !outcome.created, let reason = outcome.content.stopRefusal {
                 return XPCResponse(ok: false, error: "stop refused: \(reason)")
+            }
+            if verb == XPCVerb.serverRestart, let error = outcome.content.lastError {
+                return XPCResponse(ok: false, error: error)
             }
         }
         if wait {

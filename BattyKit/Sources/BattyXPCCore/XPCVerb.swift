@@ -178,4 +178,14 @@ public nonisolated enum XPCVerb {
     /// `ServerControlRequest`; the reply is `ServerReply`. Fails for an
     /// attached server with no `--command`.
     public static let serverRestart = "serverRestart"
+
+    /// #0649: serves a folder from inside Batty on 127.0.0.1 in a Server
+    /// Pane. Request `ServerServeRequest`, reply `ServerReply`. Fails with
+    /// the `serverPane` flag off.
+    public static let serverServe = "serverServe"
+
+    /// #0649: opens or reuses a Web Preview Pane for a loopback URL.
+    /// Request `WebPreviewRequest`, reply `WebPreviewReply`. Fails with the
+    /// `serverPane` flag off.
+    public static let serverPreview = "serverPreview"
 }

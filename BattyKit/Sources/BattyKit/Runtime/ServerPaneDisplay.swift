@@ -8,8 +8,11 @@ public enum ServerPaneDisplay {
         case neutral, good, warning, bad
     }
 
-    public static func stateText(_ state: ServerPaneState, isResponding: Bool?, attach: Bool) -> String {
+    public static func stateText(_ state: ServerPaneState, isResponding: Bool?, kind: ServerBackendKind) -> String {
+        let attach = kind == .external
         switch state {
+        case .listening where kind == .inApp:
+            return String(localized: "Serving", comment: "Server Pane state: Batty's own static server is serving")
         case .starting:
             return attach
                 ? String(localized: "Not listening", comment: "Server Pane state: attach found nothing on the port")
@@ -43,10 +46,18 @@ public enum ServerPaneDisplay {
         }
     }
 
+    public static func liveReloadText(_ facts: ServingFacts?) -> String {
+        guard let facts else { return "—" }
+        guard facts.injectsReloadScript else { return String(localized: "Off", comment: "Server Pane: live reload is off (--no-inject)") }
+        return facts.reloadClientCount == 1
+            ? String(localized: "1 browser", comment: "Server Pane: one browser tab is listening for reloads")
+            : String(localized: "\(facts.reloadClientCount) browsers", comment: "Server Pane: browser tabs listening for reloads; the argument is the count")
+    }
+
     public static func showsRestart(canRestart: Bool) -> Bool { canRestart }
 
-    public static func showsStop(_ state: ServerPaneState, canStop: Bool) -> Bool {
-        if case .listening(nil) = state { return false }
+    public static func showsStop(_ state: ServerPaneState, canStop: Bool, kind: ServerBackendKind) -> Bool {
+        if case .listening(nil) = state, kind != .inApp { return false }
         return canStop
     }
 }

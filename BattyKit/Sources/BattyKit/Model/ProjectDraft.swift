@@ -145,7 +145,7 @@ struct ProjectDraft: Equatable {
                     let path = Self.normalizedRelativePath(pane.repositoryPath)
                     normalized.repositoryPath = path == "." ? nil : path
                     normalized.clearTerminalOnlyFields()
-                case .processStatus, .systemMetrics, .lmStudioDashboard, .server:
+                case .processStatus, .systemMetrics, .lmStudioDashboard, .server, .webPreview:
                     normalized.tabs = []
                     normalized.repositoryPath = nil
                     normalized.clearTerminalOnlyFields()

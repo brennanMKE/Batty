@@ -16,6 +16,7 @@ public nonisolated enum ProjectAgentSnippet {
 
         - Show status in Batty Panes (`batty pane split --view git-status --unique`) rather than printing it.
         - Start dev servers with `batty server start --port N -- <command>` (or `batty server attach --port N` if one is already running) when `batty capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.
+        - Preview static pages with `batty server serve <dir> --open`, never `python3 -m http.server`.
         - Use `batty notify` to get the user's attention.
         \(endMarker)
         """

@@ -8,7 +8,7 @@ struct ServerPaneView: View {
     let content: ServerPaneContent
     let paneID: UUID
 
-    private var isAttach: Bool { content.backend.kind == .external }
+    private var kind: ServerBackendKind { content.backend.kind }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,6 +20,14 @@ struct ServerPaneView: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 6)
                     .accessibilityIdentifier("server-pane-stop-refused")
+            }
+            if let error = content.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+                    .accessibilityIdentifier("server-pane-error")
             }
             Divider()
             facts
@@ -38,7 +46,7 @@ struct ServerPaneView: View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
                 Circle().fill(toneColor).frame(width: 9, height: 9)
-                Text(ServerPaneDisplay.stateText(content.state, isResponding: content.isResponding, attach: isAttach))
+                Text(ServerPaneDisplay.stateText(content.state, isResponding: content.isResponding, kind: kind))
                     .fontWeight(.semibold)
                     .accessibilityIdentifier("server-pane-state")
             }
@@ -55,11 +63,15 @@ struct ServerPaneView: View {
             Spacer(minLength: 4)
             Button("Open in Browser") { content.openInBrowser() }
                 .accessibilityIdentifier("server-pane-open-browser")
+            if content.canOpenPreview {
+                Button("Open in Batty") { content.openPreview?() }
+                    .accessibilityIdentifier("server-pane-open-preview")
+            }
             if ServerPaneDisplay.showsRestart(canRestart: content.canRestart) {
                 Button("Restart") { content.restart() }
                     .accessibilityIdentifier("server-pane-restart")
             }
-            if ServerPaneDisplay.showsStop(content.state, canStop: content.canStop) {
+            if ServerPaneDisplay.showsStop(content.state, canStop: content.canStop, kind: kind) {
                 Button("Stop") { content.stop() }
                     .accessibilityIdentifier("server-pane-stop")
             }
@@ -78,7 +90,49 @@ struct ServerPaneView: View {
         }
     }
 
+    @ViewBuilder
     private var facts: some View {
+        if kind == .inApp {
+            servingFactsGrid
+        } else {
+            processFacts
+        }
+    }
+
+    private var servingFactsGrid: some View {
+        let facts = content.servingFacts
+        return Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+            GridRow {
+                label("Root")
+                Text(facts?.root ?? content.backend.workingDirectory ?? "—")
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("server-pane-root")
+            }
+            GridRow {
+                label("Requests")
+                Text(facts.map { String($0.requestCount) } ?? "—").accessibilityIdentifier("server-pane-requests")
+            }
+            GridRow {
+                label("Live reload")
+                Text(ServerPaneDisplay.liveReloadText(facts)).accessibilityIdentifier("server-pane-live-reload")
+            }
+            GridRow {
+                label("Last change")
+                if let date = facts?.lastChangeAt {
+                    Text(date, style: .relative)
+                } else {
+                    Text("—")
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var processFacts: some View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
             GridRow {
                 label("PID")

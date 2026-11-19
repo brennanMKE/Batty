@@ -75,6 +75,10 @@ public final class ServerPaneContent: PaneContentLifecycle {
     /// provably this Pane's server (for example a process from another Tab
     /// that holds the port).
     public private(set) var stopRefusal: String?
+    /// The in-app server's facts, copied on each tick while visible.
+    public private(set) var servingFacts: ServingFacts?
+    /// Why the last in-app Restart failed.
+    public private(set) var lastError: String?
 
     private let controller = PaneLifecycleController()
     public var lifecyclePhase: PaneLifecyclePhase { controller.phase }
@@ -89,6 +93,8 @@ public final class ServerPaneContent: PaneContentLifecycle {
     @ObservationIgnored private let processTable: ProcessTableReading
     @ObservationIgnored private let stopBounds: StopBounds
     @ObservationIgnored private let opener: @MainActor (URL) -> Void
+    /// Opens a Web Preview Pane for `url`; set by the store.
+    @ObservationIgnored public var openPreview: (() -> Void)?
     /// Makes a terminal backend in a new terminal Pane under this one, for
     /// Restart when there is no terminal to type into. Set by the store.
     @ObservationIgnored public var makeTerminalBackend: ((_ command: String, _ workingDirectory: String?) -> ServerBackend?)?
@@ -197,7 +203,8 @@ public final class ServerPaneContent: PaneContentLifecycle {
         stopTicks()
         stopTask?.cancel()
         stopTask = nil
-        let shouldStop = backend.stopsOnTearDown
+        (backend as? InProcessServerBackend)?.stopServing()
+        let shouldStop = backend.stopsOnTearDown && !(backend is InProcessServerBackend)
         let decision = shouldStop ? backend.stopDecision(listenerPid: listenerPid, table: processTable) : .nothing
         backend.detach()
         if case .signal(let plan) = decision {
@@ -241,6 +248,12 @@ public final class ServerPaneContent: PaneContentLifecycle {
 
         if backend.kind == .terminal, !backend.isAvailable, state != .stopped(exitCode: nil, reason: .terminalClosed) {
             receive(.terminalGone)
+            return
+        }
+        if let inProcess = backend as? InProcessServerBackend {
+            let facts = inProcess.servingFacts
+            if servingFacts != facts { servingFacts = facts }
+            if inProcess.isServing, state == .starting { setState(.listening(pid: nil)) }
             return
         }
         guard state.isRunning, state != .stopping else { return }
@@ -395,7 +408,7 @@ public final class ServerPaneContent: PaneContentLifecycle {
 
     public var canStop: Bool {
         guard backend.canStop, stopRefusal == nil, state.isRunning, state != .stopping else { return false }
-        if case .listening(nil) = state { return false }
+        if case .listening(nil) = state, !(backend is InProcessServerBackend) { return false }
         return true
     }
 
@@ -422,6 +435,11 @@ public final class ServerPaneContent: PaneContentLifecycle {
 
     public func openInBrowser() {
         opener(url)
+    }
+
+    public var canOpenPreview: Bool {
+        guard case .listening = state, openPreview != nil else { return false }
+        return WebPreviewURLPolicy.isAllowedTopLevel(url)
     }
 
     /// Stops an attached server, if running, then swaps in `replacement`:
@@ -452,6 +470,12 @@ public final class ServerPaneContent: PaneContentLifecycle {
     @discardableResult
     func performStop() async -> Bool {
         guard canStop else { return stopRefusal == nil }
+        if let inProcess = backend as? InProcessServerBackend {
+            inProcess.stopServing()
+            stopRequested = true
+            setState(.stopped(exitCode: nil, reason: .requested))
+            return true
+        }
         let decision = backend.stopDecision(listenerPid: listenerPid, table: processTable)
         let plan: StopPlan
         switch decision {
@@ -493,6 +517,23 @@ public final class ServerPaneContent: PaneContentLifecycle {
 
     func performRestart() async {
         guard stopRefusal == nil else { return }
+        if let inProcess = backend as? InProcessServerBackend {
+            if inProcess.isServing { inProcess.stopServing() }
+            do {
+                try await inProcess.resumeServing()
+            } catch {
+                if lastError != error.message { lastError = error.message }
+                setState(.stopped(exitCode: nil, reason: .requested))
+                return
+            }
+            guard controller.phase != .tornDown else {
+                inProcess.stopServing()
+                return
+            }
+            if lastError != nil { lastError = nil }
+            beginStarting()
+            return
+        }
         if state.isRunning, canStop {
             guard await performStop() else { return }
         }

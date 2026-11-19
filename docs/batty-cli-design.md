@@ -51,8 +51,9 @@ Both are behind the `agentIntegration` flag until #0646 ships.
 `serverPane` flag), with verbs `start`, `attach`, `stop` and `restart`. It is
 not folded into `pane split --view server` because `start` needs a trailing
 `-- <command…>`, a working directory and a terminal Pane as well as the view,
-and `stop`/`restart` act on a running process rather than a Pane. #0649's
-static file server is planned as `batty server serve` under the same noun.
+and `stop`/`restart` act on a running process rather than a Pane. #0649 adds
+`serve` (a static file server inside Batty) and `preview` (a Web Preview Pane
+for a loopback URL) under the same noun, so they share its flag gate.
 No `workspace`, no `worktree`; `surface` is not a noun, but it is an
 accepted **alias** for `tab` (see §1.2).
 
@@ -130,6 +131,8 @@ only if needed · **[skip]** off-mission for Batty.
 - `batty server start --port N [--url U] [--stats-url U] [--split right|down] [--wait [--timeout S]] -- <command…>` — run a dev server in a new terminal Pane under a Server Pane for its port; re-running for the same port reuses both and restarts. **Shipped over XPC (#0648, Beta).**
 - `batty server attach --port N [--command C [--cwd D]]` — a Server Pane for a server started elsewhere; Restart only with `--command`. **Shipped over XPC (#0648, Beta).**
 - `batty server stop|restart (--port N | <server-pane-id>)` — SIGINT, then SIGTERM, then SIGKILL; restart types the command again. **Shipped over XPC (#0648, Beta).**
+- `batty server serve [<dir>] [--port N] [--open] [--no-inject] [--split right|down]` — serve a folder from inside Batty on 127.0.0.1 in a Server Pane, with reload on change; `--open` adds a Web Preview Pane (or the browser, per Settings). **Shipped over XPC (#0649, Beta).**
+- `batty server preview (--url U | --port N) [--split right|down]` — a Web Preview Pane for a loopback page; the same origin again reuses it. **Shipped over XPC (#0649, Beta).**
 
 ### B. Focus / navigation  [core, 1-way]
 - `batty pane focus <up|down|left|right|id>` · `batty pane next|prev`. *(herdr `pane.focus_direction`/`neighbor`, cmux `surface.focus`)*
@@ -196,7 +199,9 @@ renders them in the session sidebar / pane chrome / bell feed it already has.
 ### Deliberately skip (off-mission — consistent with `docs/supacode-feature-review.md`)
 git worktree verbs, GitHub/PR, per-repo run-scripts, plugin system, in-app
 browser automation, remote-tmux attach, telemetry. These are what the other apps
-are *for*; adopting them re-bloats Batty.
+are *for*; adopting them re-bloats Batty. The Web Preview Pane (#0649) is a
+viewer for loopback pages with no verbs to click, type into or script the
+page, so it stays outside "in-app browser automation".
 
 ---
 

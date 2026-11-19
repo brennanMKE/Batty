@@ -33,6 +33,7 @@ There is exactly one Server Pane per (Session, port). Re-running `start` reuses 
 ```
 
 - **Header:** a state chip (colored dot plus text), the URL, the last HTTP status, and three buttons: Open in Browser, Restart, Stop. Restart is hidden when the backend can't restart; Stop is hidden for a listener owned by another user or when nothing is running. Stop and Restart are hidden, with a one-line reason under the header, for a listener Stop may not signal (§4, decision 4).
+- **Open in Batty** (#0649): shown next to Open in Browser while the state is listening and the URL is a loopback `http(s)` URL; opens a Web Preview Pane (`docs/design/web-preview-pane.md`) below the Server Pane.
 - **Facts grid:** PID, uptime (from the listener's kernel start time), CPU % (delta-based), memory (physical footprint, never RSS, #0290), last exit code, command (the stored command, or the recovered command line of an attached process, read-only).
 - **Stats:** only when `/debug/vars` (or `--stats-url`) returned a JSON object. Numeric leaves that have changed get a sparkline; constants are plain values; strings and bools are text. A non-loopback stats host is labeled "Stats from <host>".
 
@@ -70,4 +71,18 @@ Exit detection is event-driven through the Tab's OSC 133 command-finished callba
 
 ## 5. Accessibility identifiers
 
-`server-pane.<paneID>`, `server-pane-state`, `server-pane-url`, `server-pane-pid`, `server-pane-open-browser`, `server-pane-restart`, `server-pane-stop`, `server-pane-stop-refused`, `server-pane-stats`.
+`server-pane.<paneID>`, `server-pane-state`, `server-pane-url`, `server-pane-pid`, `server-pane-open-browser`, `server-pane-open-preview`, `server-pane-restart`, `server-pane-stop`, `server-pane-stop-refused`, `server-pane-stats`, and for the in-app static server `server-pane-root`, `server-pane-requests`, `server-pane-live-reload`.
+
+## 6. In-app static server (#0649)
+
+`batty server serve [<dir>] [--port N] [--open] [--no-inject] [--split right|down] [--pane ID] [--json]` serves a folder from inside Batty and shows it in a Server Pane with the `inApp` backend.
+
+1. **Grammar:** under the `server` noun, so it shares the flag gate and `stop`/`restart --port`. `<dir>` defaults to the CLI's current directory and is made absolute client-side.
+2. **Implementation:** Network.framework `NWListener` in-process, a small HTTP/1.1 `GET`/`HEAD` handler, one request per connection, `Connection: close`. No new package dependency.
+3. **Binding:** `127.0.0.1` only, not configurable. Without `--port` the kernel picks a free port; with `--port N` a busy port is an error (`port N is in use`), never a fallback. The URL is `http://127.0.0.1:<port>/`.
+4. **Security:** percent-decode once; `NUL` and `..` segments are 403; any segment starting with `.` is 404 (`.git/`, `.env` are never served or confirmed); the `realpath` of the target must be the root's `realpath` or under it (403 otherwise); only regular files are served; `/__batty/` never maps to a file; the `Host` header must be `127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>` (403 otherwise, against DNS rebinding); every response is `Cache-Control: no-store` and `X-Content-Type-Options: nosniff` with no CORS headers; other methods are 405 with `Allow`, a head over 16 KiB is 431, malformed requests are 400.
+5. **Directories:** no trailing slash redirects (301). `index.html` is served when present, else a minimal listing (names only, dotfiles hidden, sorted, escaped).
+6. **MIME types:** a fixed table, the same on every macOS; text types are UTF-8; others are `application/octet-stream`. A single byte range is honoured (206/416) so media seeks.
+7. **Reload on change:** an FSEvents stream on the root (dot-components ignored) feeds a 150 ms trailing debounce on the main actor. Browsers get a one-line injected `EventSource` script on `/__batty/reload` in `text/html` responses (before the last `</body>`); Batty previews (`BattyPreview/` user agent) get exact bytes and reload in-process. `--no-inject` serves every file byte-for-byte. The watcher lives while the server serves, not while the Pane is visible: FSEvents is event-driven, not periodic, so this is not the "periodic work while suspended" `docs/pane-view-lifecycle.md` §4 forbids.
+8. **Lifetime:** one server per (Session, root `realpath`); `serve` again on the same root reuses the Pane (shown if hidden, resumed if stopped). A different explicit `--port` on the same root fails (`already serving <root> on port P; stop it first`). `stopsOnTearDown`: closing the Server Pane closes the listener, every connection and the watcher synchronously; quitting Batty frees the socket. Stop keeps the Pane, "Stopped"; Restart rebinds the same port (a busy port leaves it Stopped with `port N is in use`). Batty never signals a process for this backend: Batty itself is the listener.
+9. **Display:** the chip reads "Serving" (green) or "Stopped". The facts grid shows Root, Requests, Live reload ("N browsers" or "Off") and Last change. No PID, CPU, memory, stats or HTTP probe.

@@ -288,6 +288,11 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// `server preview` (#0649).
+    static func webPreview(request: WebPreviewRequest, endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<WebPreviewReply> {
+        perform(verb: XPCVerb.serverPreview, requestPayload: try? JSONEncoder().encode(request), endpoint: endpoint, timeout: timeout, logLabel: XPCVerb.serverPreview)
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

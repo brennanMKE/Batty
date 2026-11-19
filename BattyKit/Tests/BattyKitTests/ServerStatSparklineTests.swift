@@ -24,17 +24,17 @@ struct ServerStatSparklineTests {
 
 struct ServerPaneViewStateTests {
     @Test func stateChipTextForEveryState() {
-        #expect(ServerPaneDisplay.stateText(.starting, isResponding: nil, attach: false) == "Starting")
-        #expect(ServerPaneDisplay.stateText(.starting, isResponding: nil, attach: true) == "Not listening")
-        #expect(ServerPaneDisplay.stateText(.listening(pid: 1), isResponding: true, attach: false) == "Listening")
-        #expect(ServerPaneDisplay.stateText(.listening(pid: nil), isResponding: true, attach: true) == "Listening, owned by another user")
-        #expect(ServerPaneDisplay.stateText(.listening(pid: 1), isResponding: false, attach: false) == "Not responding")
-        #expect(ServerPaneDisplay.stateText(.stopping, isResponding: nil, attach: false) == "Stopping")
-        #expect(ServerPaneDisplay.stateText(.stopped(exitCode: 130, reason: .requested), isResponding: nil, attach: false) == "Stopped")
-        #expect(ServerPaneDisplay.stateText(.stopped(exitCode: nil, reason: .terminalClosed), isResponding: nil, attach: false) == "Stopped, terminal closed")
-        #expect(ServerPaneDisplay.stateText(.crashed(exitCode: 0), isResponding: nil, attach: false) == "Exited (0)")
-        #expect(ServerPaneDisplay.stateText(.crashed(exitCode: 1), isResponding: nil, attach: false) == "Crashed (1)")
-        #expect(ServerPaneDisplay.stateText(.crashed(exitCode: nil), isResponding: nil, attach: false) == "Crashed")
+        #expect(ServerPaneDisplay.stateText(.starting, isResponding: nil, kind: .terminal) == "Starting")
+        #expect(ServerPaneDisplay.stateText(.starting, isResponding: nil, kind: .external) == "Not listening")
+        #expect(ServerPaneDisplay.stateText(.listening(pid: 1), isResponding: true, kind: .terminal) == "Listening")
+        #expect(ServerPaneDisplay.stateText(.listening(pid: nil), isResponding: true, kind: .external) == "Listening, owned by another user")
+        #expect(ServerPaneDisplay.stateText(.listening(pid: 1), isResponding: false, kind: .terminal) == "Not responding")
+        #expect(ServerPaneDisplay.stateText(.stopping, isResponding: nil, kind: .terminal) == "Stopping")
+        #expect(ServerPaneDisplay.stateText(.stopped(exitCode: 130, reason: .requested), isResponding: nil, kind: .terminal) == "Stopped")
+        #expect(ServerPaneDisplay.stateText(.stopped(exitCode: nil, reason: .terminalClosed), isResponding: nil, kind: .terminal) == "Stopped, terminal closed")
+        #expect(ServerPaneDisplay.stateText(.crashed(exitCode: 0), isResponding: nil, kind: .terminal) == "Exited (0)")
+        #expect(ServerPaneDisplay.stateText(.crashed(exitCode: 1), isResponding: nil, kind: .terminal) == "Crashed (1)")
+        #expect(ServerPaneDisplay.stateText(.crashed(exitCode: nil), isResponding: nil, kind: .terminal) == "Crashed")
     }
 
     @Test func restartHiddenWithoutCapability() {
@@ -43,7 +43,7 @@ struct ServerPaneViewStateTests {
     }
 
     @Test func stopHiddenForAnotherUsersListener() {
-        #expect(!ServerPaneDisplay.showsStop(.listening(pid: nil), canStop: true))
-        #expect(ServerPaneDisplay.showsStop(.listening(pid: 10), canStop: true))
+        #expect(!ServerPaneDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .terminal))
+        #expect(ServerPaneDisplay.showsStop(.listening(pid: 10), canStop: true, kind: .terminal))
     }
 }

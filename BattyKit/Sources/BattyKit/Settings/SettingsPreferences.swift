@@ -20,6 +20,7 @@ public enum SettingsPreference {
     static let defaultBackgroundCatalogsAutoCheck = true
     public static let cmdNumberTargetKey = "co.sstools.Batty.cmdNumberTarget"
     public static let serverPanePlacementKey = "co.sstools.Batty.serverPanePlacement"
+    public static let servedSiteOpenTargetKey = "co.sstools.Batty.servedSiteOpenTarget"
     public static let autoNameFromFilesKey = "co.sstools.Batty.autoNameFromFiles"
     public static let autoNameWithAIKey = "co.sstools.Batty.autoNameWithAI"
     public static let summarizeNotificationsWithAIKey = "co.sstools.Batty.summarizeNotificationsWithAI"
@@ -335,6 +336,24 @@ public enum ServerPanePlacement: String, CaseIterable, Sendable {
     /// Unknown or absent values fall back to `.right`.
     public static func resolved(defaults: UserDefaults = .standard) -> ServerPanePlacement {
         defaults.string(forKey: SettingsPreference.serverPanePlacementKey).flatMap(ServerPanePlacement.init(rawValue:)) ?? .right
+    }
+}
+
+/// Where `batty server serve --open` opens the site (#0649).
+public enum ServedSiteOpenTarget: String, CaseIterable, Sendable {
+    case batty
+    case browser
+
+    public var displayName: String {
+        switch self {
+        case .batty: return String(localized: "Batty", comment: "Settings: open served sites in a Batty Web Preview Pane")
+        case .browser: return String(localized: "Default Browser", comment: "Settings: open served sites in the default browser")
+        }
+    }
+
+    /// Unknown or absent values fall back to `.batty`.
+    public static func resolved(defaults: UserDefaults = .standard) -> ServedSiteOpenTarget {
+        defaults.string(forKey: SettingsPreference.servedSiteOpenTargetKey).flatMap(ServedSiteOpenTarget.init(rawValue:)) ?? .batty
     }
 }
 
