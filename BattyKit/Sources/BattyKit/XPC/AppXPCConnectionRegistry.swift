@@ -35,6 +35,7 @@ public nonisolated final class AppXPCConnectionRegistry: @unchecked Sendable {
     /// touch a stored connection concurrently, regardless of which queue
     /// XPC delivers the accept/invalidation callback on.
     private var connections: [ObjectIdentifier: NSXPCConnection] = [:]
+    private var unregisterHandlers: [ObjectIdentifier: [UUID: @Sendable () -> Void]] = [:]
 
     public init() {}
 
@@ -64,13 +65,39 @@ public nonisolated final class AppXPCConnectionRegistry: @unchecked Sendable {
     /// connection, but `invalidateAll()` racing a peer-driven invalidation
     /// on the same connection is exactly the case this tolerates.
     public func unregister(id: ObjectIdentifier) {
-        let newCount: Int = {
+        let (newCount, handlers): (Int, [@Sendable () -> Void]) = {
             lock.lock()
             defer { lock.unlock() }
             connections.removeValue(forKey: id)
-            return connections.count
+            let handlers = unregisterHandlers.removeValue(forKey: id).map { Array($0.values) } ?? []
+            return (connections.count, handlers)
         }()
         logger.info("unregistered connection — active clients=\(newCount, privacy: .public)")
+        for handler in handlers { handler() }
+    }
+
+    /// Runs `handler` once when the connection `id` unregisters (its peer
+    /// went away, or the app is quitting). Runs it at once and returns nil
+    /// when `id` is not registered.
+    @discardableResult
+    public func onUnregister(id: ObjectIdentifier, _ handler: @escaping @Sendable () -> Void) -> UUID? {
+        let token: UUID? = {
+            lock.lock()
+            defer { lock.unlock() }
+            guard connections[id] != nil else { return nil }
+            let token = UUID()
+            unregisterHandlers[id, default: [:]][token] = handler
+            return token
+        }()
+        if token == nil { handler() }
+        return token
+    }
+
+    public func removeUnregisterHandler(id: ObjectIdentifier, token: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        unregisterHandlers[id]?.removeValue(forKey: token)
+        if unregisterHandlers[id]?.isEmpty == true { unregisterHandlers.removeValue(forKey: id) }
     }
 
     /// Invalidates every tracked connection and clears the registry. Used
@@ -78,14 +105,17 @@ public nonisolated final class AppXPCConnectionRegistry: @unchecked Sendable {
     /// connection tears down deliberately rather than being abandoned mid
     /// -teardown when the process actually exits.
     public func invalidateAll() {
-        let snapshot: [NSXPCConnection] = {
+        let (snapshot, handlers): ([NSXPCConnection], [@Sendable () -> Void]) = {
             lock.lock()
             defer { lock.unlock() }
             let values = Array(connections.values)
             connections.removeAll()
-            return values
+            let handlers = unregisterHandlers.values.flatMap { $0.values }
+            unregisterHandlers.removeAll()
+            return (values, handlers)
         }()
         logger.info("invalidateAll: tearing down \(snapshot.count, privacy: .public) connection(s)")
+        for handler in handlers { handler() }
         for connection in snapshot {
             connection.invalidate()
         }

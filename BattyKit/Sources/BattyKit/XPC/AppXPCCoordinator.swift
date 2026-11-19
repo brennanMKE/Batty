@@ -15,8 +15,8 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 public final class AppXPCCoordinator {
     public private(set) var isRegisteredWithBroker = false
 
-    private let service = AppXPCService()
-    private let connectionRegistry = AppXPCConnectionRegistry()
+    private let service: AppXPCService
+    private let connectionRegistry: AppXPCConnectionRegistry
     private let repairGuard: BrokerRepairGuard
     private let reconnectBudget: BrokerReconnectBudget
     private let brokerAgentController: BrokerAgentController
@@ -72,6 +72,9 @@ public final class AppXPCCoordinator {
         self.repairGuard = repairGuard
         self.reconnectBudget = reconnectBudget
         self.brokerAgentController = brokerAgentController
+        let registry = AppXPCConnectionRegistry()
+        self.connectionRegistry = registry
+        self.service = AppXPCService(connectionRegistry: registry)
     }
 
     public func start() {

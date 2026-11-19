@@ -30,6 +30,7 @@ nonisolated enum MCPArgumentError: Error, Equatable, CustomStringConvertible {
     case wrongType(String, expected: String)
     case notInEnum(String, allowed: [String])
     case belowMinimum(String, minimum: Int)
+    case aboveMaximum(String, maximum: Int)
     case missingRequired(String)
 
     var description: String {
@@ -38,6 +39,7 @@ nonisolated enum MCPArgumentError: Error, Equatable, CustomStringConvertible {
         case let .wrongType(name, expected): "argument \"\(name)\" must be a \(expected)"
         case let .notInEnum(name, allowed): "argument \"\(name)\" must be one of: \(allowed.joined(separator: ", "))"
         case let .belowMinimum(name, minimum): "argument \"\(name)\" must be at least \(minimum)"
+        case let .aboveMaximum(name, maximum): "argument \"\(name)\" must be at most \(maximum)"
         case let .missingRequired(name): "missing required argument \"\(name)\""
         }
     }
@@ -96,6 +98,9 @@ nonisolated struct MCPToolCatalog: Sendable {
             }
             if let minimum = property.minimum {
                 schema["minimum"] = .int(minimum)
+            }
+            if let maximum = property.maximum {
+                schema["maximum"] = .int(maximum)
             }
             if let value = property.defaultValue, let typed = typedDefault(value, type: property.type) {
                 schema["default"] = typed
@@ -190,8 +195,11 @@ nonisolated struct MCPToolCatalog: Sendable {
             break
         case let ("integer", .int(number)):
             if let minimum = property.minimum, number < minimum { throw .belowMinimum(key, minimum: minimum) }
-        case ("number", .int), ("number", .double):
-            break
+            if let maximum = property.maximum, number > maximum { throw .aboveMaximum(key, maximum: maximum) }
+        case let ("number", .int(number)):
+            if let maximum = property.maximum, number > maximum { throw .aboveMaximum(key, maximum: maximum) }
+        case let ("number", .double(number)):
+            if let maximum = property.maximum, !(number <= Double(maximum)) { throw .aboveMaximum(key, maximum: maximum) }
         case let ("string", .string(text)):
             if let allowed = property.enumValues, !allowed.contains(text) { throw .notInEnum(key, allowed: allowed) }
         case let ("array", .array(elements)):

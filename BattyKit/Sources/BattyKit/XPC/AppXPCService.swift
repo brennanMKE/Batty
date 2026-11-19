@@ -29,13 +29,23 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     /// a test can supply its own store.
     private let storeProvider: @MainActor @Sendable () -> AppStateStore
     private let clock: any SchedulingClock
+    /// Ends a `--wait` when its CLI's connection goes away.
+    private let connectionRegistry: AppXPCConnectionRegistry?
+    private let resolvedShell: @MainActor @Sendable () -> String
+    private let commandWaitTab: @MainActor @Sendable (TabRuntime) -> any CommandWaitTab
 
     init(
         store: @escaping @MainActor @Sendable () -> AppStateStore = { AppStateStore.shared },
-        clock: any SchedulingClock = SystemClock()
+        clock: any SchedulingClock = SystemClock(),
+        connectionRegistry: AppXPCConnectionRegistry? = nil,
+        resolvedShell: @escaping @MainActor @Sendable () -> String = { SettingsPreference.resolvedShell() },
+        commandWaitTab: @escaping @MainActor @Sendable (TabRuntime) -> any CommandWaitTab = { TabRuntimeCommandWaitTab(tab: $0) }
     ) {
         self.storeProvider = store
         self.clock = clock
+        self.connectionRegistry = connectionRegistry
+        self.resolvedShell = resolvedShell
+        self.commandWaitTab = commandWaitTab
         super.init()
     }
 
@@ -60,12 +70,20 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     }
 
     func perform(_ request: Data, reply: @escaping @Sendable (Data) -> Void) {
+        perform(request, connectionID: NSXPCConnection.current().map(ObjectIdentifier.init), reply: reply)
+    }
+
+    func perform(_ request: Data, connectionID: ObjectIdentifier?, reply: @escaping @Sendable (Data) -> Void) {
         guard let decoded = try? JSONDecoder().decode(XPCRequest.self, from: request) else {
             logger.error("perform: failed to decode request")
             reply(Self.encode(XPCResponse(ok: false, error: "malformed request")))
             return
         }
         let requestID = pendingRequests.register(reply)
+        if Self.isCommandWait(decoded) {
+            startCommandWait(decoded, requestID: requestID, connectionID: connectionID)
+            return
+        }
         switch decoded.verb {
         case XPCVerb.status:
             // AppStateStore.shared is MainActor-isolated; hop in rather than
@@ -130,7 +148,8 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
 
 
         case XPCVerb.paneSplit:
-            Task { @MainActor [pendingRequests] in
+            Task { @MainActor [pendingRequests, storeProvider] in
+                let store = storeProvider()
                 guard let payloadData = decoded.payload,
                       let request = try? JSONDecoder().decode(PaneSplitRequest.self, from: payloadData)
                 else {
@@ -142,7 +161,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 // fallback tier as sessionInfo's nil sessionID, one level
                 // down (the target session's focused pane rather than the
                 // focused session itself).
-                guard let targetPaneID = request.paneID ?? AppStateStore.shared.focusedPaneIDFallback() else {
+                guard let targetPaneID = request.paneID ?? store.focusedPaneIDFallback() else {
                     logger.error("perform paneSplit: no pane to target")
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "no pane to split")))
                     return
@@ -161,7 +180,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 // invariant lives on the function that can violate it, not
                 // duplicated here.
                 if request.unique == true,
-                   let existingPaneID = AppStateStore.shared.findUniquePane(paneID: targetPaneID, kind: kind) {
+                   let existingPaneID = store.findUniquePane(paneID: targetPaneID, kind: kind) {
                     guard let replyData = try? JSONEncoder().encode(PaneSplitReply(paneID: existingPaneID, created: false)) else {
                         pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane split reply")))
                         return
@@ -178,12 +197,12 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 // already rejected the mismatched combination client-side).
                 let path = request.viewOptions?["path"]
                 let processStatusPid = request.viewOptions?["pid"].flatMap { Int32($0) }
-                guard let newPaneID = AppStateStore.shared.splitPane(id: targetPaneID, direction: direction, command: request.command, kind: kind, processStatusPid: processStatusPid, path: path) else {
+                guard let newPaneID = store.splitPane(id: targetPaneID, direction: direction, command: request.command, kind: kind, processStatusPid: processStatusPid, path: path) else {
                     logger.error("perform paneSplit: unknown pane id \(targetPaneID, privacy: .public)")
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "unknown pane id")))
                     return
                 }
-                guard let replyData = try? JSONEncoder().encode(PaneSplitReply(paneID: newPaneID, created: true)) else {
+                guard let replyData = try? JSONEncoder().encode(PaneSplitReply(paneID: newPaneID, created: true, tabID: kind == .terminal ? store.terminalPane(id: newPaneID)?.tabs.first?.id : nil)) else {
                     pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode pane split reply")))
                     return
                 }
@@ -576,6 +595,169 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         }
     }
 
+    // MARK: - Command wait (#0668)
+
+    private struct WaitProbe: Decodable { let wait: Bool? }
+
+    static func isCommandWait(_ request: XPCRequest) -> Bool {
+        guard request.verb == XPCVerb.paneSplit || request.verb == XPCVerb.tabNew,
+              let payload = request.payload,
+              let probe = try? JSONDecoder().decode(WaitProbe.self, from: payload)
+        else { return false }
+        return probe.wait == true
+    }
+
+    /// Runs the wait in a Task that a disconnect of the requesting CLI
+    /// cancels; the command itself keeps running.
+    private func startCommandWait(_ decoded: XPCRequest, requestID: UUID, connectionID: ObjectIdentifier?) {
+        let task = Task { @MainActor [pendingRequests, storeProvider, clock, resolvedShell, commandWaitTab] in
+            let response = await Self.commandWaitResponse(
+                verb: decoded.verb,
+                payload: decoded.payload,
+                store: storeProvider(),
+                shell: resolvedShell(),
+                clock: clock,
+                makeTab: commandWaitTab
+            )
+            pendingRequests.resolve(requestID, with: Self.encode(response))
+        }
+        guard let connectionID, let registry = connectionRegistry else { return }
+        let token = registry.onUnregister(id: connectionID) { task.cancel() }
+        guard let token else { return }
+        Task {
+            await task.value
+            registry.removeUnregisterHandler(id: connectionID, token: token)
+        }
+    }
+
+    /// Why a `--wait` request is refused before anything is created, or nil.
+    @MainActor
+    static func commandWaitRefusal(command: String?, kind: PaneContentKind, unique: Bool, shell: String) -> String? {
+        guard let command, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "--wait needs a command"
+        }
+        guard CommandWaitShell.singleLine(command) != nil else {
+            return "--wait needs a single-line command"
+        }
+        guard kind == .terminal else { return "--wait needs a terminal pane" }
+        guard !unique else { return "--wait cannot be combined with --unique" }
+        guard CommandWaitShell.supportsShellIntegration(shell) else {
+            return "--wait needs bash or zsh; the default shell is \(CommandWaitShell.basename(shell)), which has no shell integration in Batty"
+        }
+        return nil
+    }
+
+    @MainActor
+    static func commandWaitResponse(
+        verb: String,
+        payload: Data?,
+        store: AppStateStore,
+        shell: String,
+        clock: any SchedulingClock,
+        makeTab: @MainActor (TabRuntime) -> any CommandWaitTab
+    ) async -> XPCResponse {
+        let decoder = JSONDecoder()
+        switch verb {
+        case XPCVerb.paneSplit:
+            guard let payload, let request = try? decoder.decode(PaneSplitRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed pane split request")
+            }
+            guard let timeout = commandWaitTimeout(request.waitTimeoutSeconds) else {
+                return XPCResponse(ok: false, error: invalidWaitTimeoutError(request.waitTimeoutSeconds))
+            }
+            if let refusal = commandWaitRefusal(command: request.command, kind: request.kind ?? .terminal, unique: request.unique == true, shell: shell) {
+                logger.error("perform paneSplit --wait: refused: \(refusal, privacy: .public)")
+                return XPCResponse(ok: false, error: refusal)
+            }
+            guard let targetPaneID = request.paneID ?? store.focusedPaneIDFallback() else {
+                return XPCResponse(ok: false, error: "no pane to split")
+            }
+            let direction = SplitDirection(rawValue: request.direction.rawValue) ?? .horizontal
+            guard let newPaneID = store.splitPane(id: targetPaneID, direction: direction, command: nil, kind: .terminal),
+                  let tab = store.terminalPane(id: newPaneID)?.tabs.first
+            else {
+                return XPCResponse(ok: false, error: "unknown pane id")
+            }
+            let outcome = await runCommandWait(request.command ?? "", tab: tab, timeout: timeout, clock: clock, makeTab: makeTab)
+            guard let outcome else { return XPCResponse(ok: false, error: "wait cancelled: client disconnected") }
+            logger.info("perform paneSplit --wait -> pane=\(newPaneID, privacy: .public) result=\(outcome.result.rawValue, privacy: .public)")
+            return encodeReply(PaneSplitReply(paneID: newPaneID, created: true, tabID: tab.id, exitCode: outcome.exitCode, durationMs: outcome.durationMs, waitResult: outcome.result))
+        case XPCVerb.tabNew:
+            guard let payload, let request = try? decoder.decode(TabNewRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed tab new request")
+            }
+            guard let timeout = commandWaitTimeout(request.waitTimeoutSeconds) else {
+                return XPCResponse(ok: false, error: invalidWaitTimeoutError(request.waitTimeoutSeconds))
+            }
+            if let refusal = commandWaitRefusal(command: request.command, kind: .terminal, unique: false, shell: shell) {
+                logger.error("perform tabNew --wait: refused: \(refusal, privacy: .public)")
+                return XPCResponse(ok: false, error: refusal)
+            }
+            guard let targetPaneID = request.paneID ?? store.focusedPaneIDFallback() else {
+                return XPCResponse(ok: false, error: "no pane to target")
+            }
+            if let pane = store.terminalPane(id: targetPaneID), pane.isHidden {
+                return XPCResponse(ok: false, error: "pane is hidden; show it with batty pane show before using --wait")
+            }
+            let created = store.newTabForXPC(paneID: targetPaneID, sourceTabID: request.sourceTabID, command: nil, workingDirectory: request.workingDirectory, background: request.background ?? false)
+            switch created {
+            case .unknownPane:
+                return XPCResponse(ok: false, error: "unknown pane id")
+            case .notTerminal:
+                return XPCResponse(ok: false, error: "pane is not a terminal pane")
+            case let .created(sessionID, paneID, tabID):
+                guard let tab = store.tabRuntime(id: tabID) else {
+                    return XPCResponse(ok: false, error: "unknown tab id")
+                }
+                let outcome = await runCommandWait(request.command ?? "", tab: tab, timeout: timeout, clock: clock, makeTab: makeTab)
+                guard let outcome else { return XPCResponse(ok: false, error: "wait cancelled: client disconnected") }
+                logger.info("perform tabNew --wait -> tab=\(tabID, privacy: .public) result=\(outcome.result.rawValue, privacy: .public)")
+                return encodeReply(TabNewReply(sessionID: sessionID, paneID: paneID, tabID: tabID, exitCode: outcome.exitCode, durationMs: outcome.durationMs, waitResult: outcome.result))
+            }
+        default:
+            return XPCResponse(ok: false, error: "unknown verb: \(verb)")
+        }
+    }
+
+    /// The wire timeout as a `Duration`, or nil when `WaitTimeout` rejects it.
+    /// Never trust the client: converting infinity or `1e300` to `Int` traps.
+    private static func commandWaitTimeout(_ seconds: Double?) -> Duration? {
+        WaitTimeout.duration(seconds ?? CommandWaitDefaults.timeoutSeconds)
+    }
+
+    private static func invalidWaitTimeoutError(_ seconds: Double?) -> String {
+        "wait timeout " + (WaitTimeout.validationError(seconds ?? CommandWaitDefaults.timeoutSeconds) ?? "is out of range")
+    }
+
+    /// nil when the wait was cancelled.
+    @MainActor
+    private static func runCommandWait(
+        _ command: String,
+        tab: TabRuntime,
+        timeout: Duration,
+        clock: any SchedulingClock,
+        makeTab: @MainActor (TabRuntime) -> any CommandWaitTab
+    ) async -> (result: CommandWaitResult, exitCode: Int?, durationMs: Int?)? {
+        let line = CommandWaitShell.singleLine(command) ?? command
+        let outcome = await CommandWaiter.run(line, on: makeTab(tab), timeout: timeout, clock: clock)
+        switch outcome {
+        case let .exited(exitCode, durationNanos):
+            return (.exited, exitCode, Int(durationNanos / 1_000_000))
+        case .timedOut: return (.timedOut, nil, nil)
+        case .shellNotReady: return (.shellNotReady, nil, nil)
+        case .notStarted: return (.notStarted, nil, nil)
+        case .tabClosed: return (.tabClosed, nil, nil)
+        case .cancelled: return nil
+        }
+    }
+
+    private static func encodeReply<T: Encodable>(_ reply: T) -> XPCResponse {
+        guard let data = try? JSONEncoder().encode(reply) else {
+            return XPCResponse(ok: false, error: "failed to encode reply")
+        }
+        return XPCResponse(ok: true, payload: data)
+    }
+
     /// `server preview` (#0649).
     @MainActor
     static func previewResponse(payload: Data?, store: AppStateStore) -> XPCResponse {
@@ -608,12 +790,18 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             guard let payload, let request = try? decoder.decode(ServerStartRequest.self, from: payload) else {
                 return XPCResponse(ok: false, error: "malformed server start request")
             }
+            if request.wait == true, let seconds = request.waitTimeoutSeconds, let error = WaitTimeout.validationError(seconds) {
+                return XPCResponse(ok: false, error: "wait timeout \(error)")
+            }
             result = store.startServerForXPC(request)
             wait = request.wait ?? false
             timeout = request.waitTimeoutSeconds ?? timeout
         case XPCVerb.serverAttach:
             guard let payload, let request = try? decoder.decode(ServerAttachRequest.self, from: payload) else {
                 return XPCResponse(ok: false, error: "malformed server attach request")
+            }
+            if request.wait == true, let seconds = request.waitTimeoutSeconds, let error = WaitTimeout.validationError(seconds) {
+                return XPCResponse(ok: false, error: "wait timeout \(error)")
             }
             result = store.attachServerForXPC(request)
             wait = request.wait ?? false
@@ -668,9 +856,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     }
 
     /// The first state after Starting, or nil once `timeout` passes on
-    /// `clock`, whichever comes first.
+    /// `clock`, whichever comes first. nil at once for a timeout
+    /// `WaitTimeout` rejects.
     @MainActor
     static func firstStateLeavingStarting(_ content: ServerPaneContent, clock: any SchedulingClock, timeout: Double) async -> ServerPaneState? {
+        guard let duration = WaitTimeout.duration(timeout) else { return nil }
         var waiter: Task<Void, Never>?
         var timer: Task<Void, Never>?
         let state: ServerPaneState? = await withCheckedContinuation { (continuation: CheckedContinuation<ServerPaneState?, Never>) in
@@ -685,7 +875,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 finish(state)
             }
             timer = Task { @MainActor in
-                await clock.sleep(for: .milliseconds(Int(timeout * 1000)))
+                await clock.sleep(for: duration)
                 finish(nil)
             }
         }

@@ -64,6 +64,16 @@ extension AppStateStore {
         return nil
     }
 
+    /// The terminal Pane `id`, in any window.
+    func terminalPane(id: UUID) -> PaneRuntime? {
+        for window in windows {
+            for session in window.sessions {
+                if let pane = session.tree.allPanes.first(where: { $0.id == id && $0.kind == .terminal }) { return pane }
+            }
+        }
+        return nil
+    }
+
     func tabRuntime(id: UUID) -> TabRuntime? {
         for window in windows {
             for session in window.sessions {

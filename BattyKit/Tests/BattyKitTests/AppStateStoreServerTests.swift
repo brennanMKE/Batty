@@ -257,6 +257,30 @@ struct AppXPCServiceServerTests {
         #expect(response.error == "timed out; still starting")
     }
 
+    @Test(arguments: [1e300, Double.greatestFiniteMagnitude, 0, -1, 86_401])
+    func anOutOfRangeWaitTimeoutIsRefusedBeforeStartingOrAttaching(_ seconds: Double) async throws {
+        let fixture = ServerStoreFixture()
+        let panesBefore = fixture.session.tree.allPanes.count
+        let start = try JSONEncoder().encode(ServerStartRequest(paneID: fixture.callingPaneID, port: 8083, command: "go run .", workingDirectory: "/tmp", wait: true, waitTimeoutSeconds: seconds))
+        let startResponse = await respond(fixture, verb: XPCVerb.serverStart, payload: start)
+        #expect(!startResponse.ok)
+        #expect(startResponse.error?.hasPrefix("wait timeout must be") == true)
+
+        let attach = try JSONEncoder().encode(ServerAttachRequest(paneID: fixture.callingPaneID, port: 8083, wait: true, waitTimeoutSeconds: seconds))
+        let attachResponse = await respond(fixture, verb: XPCVerb.serverAttach, payload: attach)
+        #expect(!attachResponse.ok)
+        #expect(attachResponse.error?.hasPrefix("wait timeout must be") == true)
+
+        #expect(fixture.session.tree.allPanes.count == panesBefore)
+    }
+
+    @Test(arguments: [Double.infinity, -Double.infinity, Double.nan, 1e300])
+    func firstStateLeavingStartingReturnsAtOnceForAnInvalidTimeout(_ seconds: Double) async throws {
+        let fixture = ServerStoreFixture()
+        let content = try fixture.start().content
+        #expect(await AppXPCService.firstStateLeavingStarting(content, clock: fixture.clock, timeout: seconds) == nil)
+    }
+
     @Test func malformedPayloadIsAFailure() async {
         let fixture = ServerStoreFixture()
         let response = await respond(fixture, verb: XPCVerb.serverStart, payload: Data("{}".utf8))

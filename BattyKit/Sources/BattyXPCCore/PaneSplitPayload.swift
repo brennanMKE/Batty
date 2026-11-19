@@ -75,8 +75,13 @@ public nonisolated struct PaneSplitRequest: Codable, Sendable, Equatable {
     /// "always create" is the only option available without new
     /// version-negotiation infrastructure this issue does not own.
     public let unique: Bool?
+    /// Type `command` into a shell and reply once it finishes (#0668).
+    public let wait: Bool?
+    public let waitTimeoutSeconds: Double?
 
-    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil, viewOptions: [String: String]? = nil, unique: Bool? = nil) {
+    public init(paneID: UUID?, direction: TopologySplitDirection, command: String? = nil, kind: PaneContentKind? = nil, viewOptions: [String: String]? = nil, unique: Bool? = nil, wait: Bool? = nil, waitTimeoutSeconds: Double? = nil) {
+        self.wait = wait
+        self.waitTimeoutSeconds = waitTimeoutSeconds
         self.paneID = paneID
         self.direction = direction
         self.command = command
@@ -103,9 +108,19 @@ public nonisolated struct PaneSplitReply: Codable, Sendable, Equatable {
     /// created" (see `PaneCommand.swift`'s CLI-visible warning for that
     /// case).
     public let created: Bool?
+    /// The new terminal Pane's Tab.
+    public let tabID: UUID?
+    /// Set only with `wait`.
+    public let exitCode: Int?
+    public let durationMs: Int?
+    public let waitResult: CommandWaitResult?
 
-    public init(paneID: UUID, created: Bool? = nil) {
+    public init(paneID: UUID, created: Bool? = nil, tabID: UUID? = nil, exitCode: Int? = nil, durationMs: Int? = nil, waitResult: CommandWaitResult? = nil) {
         self.paneID = paneID
         self.created = created
+        self.tabID = tabID
+        self.exitCode = exitCode
+        self.durationMs = durationMs
+        self.waitResult = waitResult
     }
 }

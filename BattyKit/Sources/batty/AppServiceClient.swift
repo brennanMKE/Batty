@@ -80,9 +80,11 @@ nonisolated enum AppServiceClient {
         kind: PaneContentKind? = nil,
         viewOptions: [String: String]? = nil,
         unique: Bool? = nil,
+        wait: Bool? = nil,
+        waitTimeoutSeconds: Double? = nil,
         timeout: TimeInterval
     ) -> Outcome<PaneSplitReply> {
-        let requestPayload = try? JSONEncoder().encode(PaneSplitRequest(paneID: paneID, direction: direction, command: command, kind: kind, viewOptions: viewOptions, unique: unique))
+        let requestPayload = try? JSONEncoder().encode(PaneSplitRequest(paneID: paneID, direction: direction, command: command, kind: kind, viewOptions: viewOptions, unique: unique, wait: wait, waitTimeoutSeconds: waitTimeoutSeconds))
         let outcome: Outcome<PaneSplitReply> = perform(verb: XPCVerb.paneSplit, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "paneSplit")
         if case .success(let payload) = outcome {
             logger.info("paneSplit -> pane=\(payload.paneID, privacy: .public)")

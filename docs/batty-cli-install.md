@@ -63,13 +63,13 @@ The CLI now has five execution paths:
 | `batty session info [--session <id>] [--json]` | Print one Session; target is flag → `BATTY_SESSION_ID` → focused Session | XPC |
 | `batty session focus <id>` | Select a Session and activate its window; id-based targeting only (no `<name>`) | XPC |
 | `batty session close [--session <id>]` | Close a Session, ending every Tab's Terminal Session across its panes | XPC |
-| `batty pane split [-h\|-v] [-c <command>] [--pane <id>] [--view <kind>] [--unique]` | Split a Pane (or, with `--unique`, find-or-create) and print the Pane id | XPC |
+| `batty pane split [-h\|-v] [-c <command> [--wait [--timeout S]]] [--pane <id>] [--view <kind>] [--unique] [--json]` | Split a Pane (or, with `--unique`, find-or-create) and print the Pane id; `--wait` blocks until the command exits | XPC |
 | `batty pane close [--pane <id>]` | Close every Tab in a Pane and remove the Pane | XPC |
 | `batty pane focus <id>` | Focus a Pane, leaving its selected Tab unchanged; directional targeting (`up\|down\|left\|right`) is deferred | XPC |
 | `batty pane hide [--pane <id>]` | Hide a Pane (the eye-toggle's CLI equivalent); idempotent | XPC |
 | `batty pane show <pane-id>` | Show (un-hide) a Pane by id; idempotent; no env/focused-element fallback | XPC |
 | `batty tab focus <id>` | Select a Tab (implies focusing its containing Pane); id-based targeting only (no `<n>`) | XPC |
-| `batty tab new [--pane <id>] [-c <cmd>] [--cwd <dir>] [--background] [--json]` | Open a terminal Tab in a Pane and print its id | XPC |
+| `batty tab new [--pane <id>] [-c <cmd> [--wait [--timeout S]]] [--cwd <dir>] [--background] [--json]` | Open a terminal Tab in a Pane and print its id; `--wait` blocks until the command exits | XPC |
 | `batty project list [--json]` | List saved Projects: name, root, Pane count, and an `open` marker | XPC |
 | `batty project open <name> [--new] [--json]` | Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
 | `batty server start --port <n> [--url <u>] [--stats-url <u>] [--split right\|down] [--pane <id>] [--wait] [--timeout <s>] [--json] -- <command…>` | Beta only (`serverPane` flag, #0648). Run a dev server in a terminal Pane under a Server Pane for the port; reuses and restarts for a port that already has one | XPC |
@@ -1244,6 +1244,30 @@ Grounded directly in the code above, not aspirational:
   Tab id, or the reply with `--json`. An unknown or non-terminal Pane exits
   `4`. Emits `tab_created` (and `active_tab_changed` when selected), both
   `fromCli: true`.
+- **`--wait` on `pane split -c` and `tab new -c`, #0668.** `--wait
+  [--timeout S]` (default 600 s) starts the user's shell, types the command
+  into it once the shell reports ready (the Server Pane's mechanism), and
+  replies on the first OSC 133 D after typing. The Tab keeps its shell at a
+  prompt afterwards. Without `--wait`, `-c` is unchanged (the command
+  replaces the shell). Requests gain `wait`, `waitTimeoutSeconds`; replies
+  gain `exitCode`, `durationMs`, `waitResult` (`exited`, `timedOut`,
+  `shellNotReady`, `notStarted`, `tabClosed`), and `PaneSplitReply` gains
+  `tabID` on every created terminal Pane. `pane split` gains `--json`.
+  The reply is always printed (id, or JSON with `--json`); the CLI exits `0`
+  only for exit status 0, otherwise `4` with `command exited N`, `still
+  running after S seconds` (the command keeps running), or the matching
+  message for the other outcomes. Refused before anything is created (exit
+  `4`): a default shell other than bash or zsh (no shell integration), a
+  hidden target Pane for `tab new`, a multi-line command, a non-terminal
+  `--view`, `--unique`. The CLI rejects `--wait` without `-c` and
+  `--timeout` without `--wait` (exit `1`), and a `--timeout` that is not
+  finite, not positive, or above 86400 s (usage error, exit `64`; the same
+  bound, `WaitTimeout`, now applies to `server start/attach --timeout`).
+  The app re-checks the wire value and refuses an out-of-range one before
+  creating anything. Killing the CLI (or MCP
+  `notifications/cancelled`, which SIGTERMs it) cancels the app-side wait
+  through the connection's invalidation; the command keeps running. Batty
+  quitting answers with the termination sentinel (exit `5`).
 - **First mutating XPC verb, #0282.** `batty pane split [-h|--horizontal |
   -v|--vertical] [-c|--command <cmd>] [--pane <id>] [--view <kind>]` splits
   the calling/target pane and prints the new pane's id to stdout on

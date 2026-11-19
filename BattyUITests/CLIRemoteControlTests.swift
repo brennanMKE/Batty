@@ -26,8 +26,8 @@ nonisolated final class CLIRemoteControlTests: XCTestCase {
     // MARK: - Helpers
 
     @MainActor
-    private func launch() throws -> (app: XCUIApplication, appURL: URL, initial: CLITopology) {
-        let app = BattyUITestHarness.launchBatty()
+    private func launch(extraArguments: [String] = []) throws -> (app: XCUIApplication, appURL: URL, initial: CLITopology) {
+        let app = BattyUITestHarness.launchBatty(extraArguments: extraArguments)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
         let (appURL, initial) = try BattyCLI.connect(to: app, from: CLIRemoteControlTests.self)
         return (app, appURL, initial)
@@ -475,6 +475,52 @@ nonisolated final class CLIRemoteControlTests: XCTestCase {
     }
 
     // MARK: - session close
+
+    @MainActor
+    func testCommandWaitReportsTheCommandsExitStatus() throws {
+        let (app, _, initial) = try launch(extraArguments: ["-co.sstools.Batty.defaultShell", "/bin/zsh"])
+        defer { app.terminate() }
+
+        let session = try XCTUnwrap(initial.selectedSession)
+        let pane = try XCTUnwrap(session.pane(session.focusedPaneID))
+
+        let succeeded = BattyCLI.run(["tab", "new", "--pane", pane.id.uuidString, "-c", "true", "--wait", "--timeout", "60", "--json"])
+        XCTAssertEqual(succeeded.status, 0, succeeded.summary)
+        XCTAssertTrue(succeeded.output.contains(#""exitCode" : 0"#), succeeded.summary)
+        XCTAssertTrue(succeeded.output.contains(#""waitResult" : "exited""#), succeeded.summary)
+
+        let failed = BattyCLI.run(["tab", "new", "--pane", pane.id.uuidString, "-c", "sh -c 'exit 3'", "--wait", "--timeout", "60", "--json"])
+        XCTAssertEqual(failed.status, 4, failed.summary)
+        XCTAssertTrue(failed.output.contains(#""exitCode" : 3"#), failed.summary)
+        XCTAssertTrue(failed.output.contains("command exited 3"), failed.summary)
+
+        let afterTabs = try XCTUnwrap(BattyCLI.topology()?.pane(pane.id)?.tabIDs.count)
+        XCTAssertEqual(afterTabs, pane.tabIDs.count + 2, "the waited Tabs should stay open at a shell prompt")
+
+        let split = BattyCLI.run(["pane", "split", "--pane", pane.id.uuidString, "-c", "true", "--wait", "--timeout", "60", "--json"])
+        XCTAssertEqual(split.status, 0, split.summary)
+        XCTAssertTrue(split.output.contains(#""paneID""#), split.summary)
+        XCTAssertTrue(split.output.contains(#""tabID""#), split.summary)
+    }
+
+    @MainActor
+    func testCommandWaitRefusesAShellWithoutIntegration() throws {
+        let (app, _, initial) = try launch(extraArguments: ["-co.sstools.Batty.defaultShell", "/bin/sh"])
+        defer { app.terminate() }
+
+        let session = try XCTUnwrap(initial.selectedSession)
+        let pane = try XCTUnwrap(session.pane(session.focusedPaneID))
+        let paneCount = session.panes.count
+
+        let split = BattyCLI.run(["pane", "split", "--pane", pane.id.uuidString, "-c", "true", "--wait"])
+        XCTAssertEqual(split.status, 4, split.summary)
+        XCTAssertTrue(split.output.contains("shell integration"), split.summary)
+        XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, paneCount)
+
+        let tab = BattyCLI.run(["tab", "new", "--pane", pane.id.uuidString, "-c", "true", "--wait"])
+        XCTAssertEqual(tab.status, 4, tab.summary)
+        XCTAssertEqual(BattyCLI.topology()?.pane(pane.id)?.tabIDs.count, pane.tabIDs.count)
+    }
 
     @MainActor
     func testSessionCloseRemovesTheRowAndRefusesTheLastSession() throws {

@@ -19,6 +19,17 @@ enum StartupCommandReadiness {
     static let deadline: Duration = .seconds(10)
 }
 
+/// What happened to a delivery, for a caller waiting on the typed command.
+/// Each fires at most once per delivery.
+public enum StartupCommandDeliveryEvent: Sendable, Equatable {
+    /// Fires in the same main turn, immediately before the first line is typed.
+    case willType
+    /// The terminal surface refused input partway through.
+    case refused
+    /// Given up before anything was typed.
+    case abandoned
+}
+
 /// A Project Tab's startup command, delivered to its shell as typed input.
 /// `paste(text:)` is a bracketed paste, so a trailing newline would land in
 /// the edit line instead of running it; each line is therefore pasted and
@@ -31,11 +42,19 @@ final class StartupCommandDelivery {
     private(set) var isDelivered = false
     private(set) var isFinished = false
     private var finishedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var events: ((StartupCommandDeliveryEvent) -> Void)?
 
-    init(command: String, sink: any TerminalInputSink) {
+    init(command: String, sink: any TerminalInputSink, events: ((StartupCommandDeliveryEvent) -> Void)? = nil) {
         self.lines = Self.lines(from: command)
         self.commandText = lines.joined(separator: "\n")
         self.sink = sink
+        self.events = events
+    }
+
+    private func send(_ event: StartupCommandDeliveryEvent) {
+        let handler = events
+        if event != .willType { events = nil }
+        handler?(event)
     }
 
     var hasCommand: Bool { !lines.isEmpty }
@@ -73,6 +92,8 @@ final class StartupCommandDelivery {
     /// Gives up on this delivery without typing anything (Dismiss, the shell
     /// exiting, or being replaced by a re-arm), releasing anyone waiting on it.
     func abandon() {
+        if !isDelivered { send(.abandoned) }
+        events = nil
         isDelivered = true
         finish()
     }
@@ -95,12 +116,15 @@ final class StartupCommandDelivery {
     private func deliver() -> Bool {
         guard !isDelivered else { return false }
         isDelivered = true
+        if !lines.isEmpty { send(.willType) }
         for line in lines {
             guard sink.runLine(line) else {
                 logger.error("startup command not delivered: terminal surface refused input")
+                send(.refused)
                 return false
             }
         }
+        events = nil
         return true
     }
 }

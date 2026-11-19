@@ -280,6 +280,21 @@ public final class TerminalHostStore {
         frames[id]
     }
 
+    private var releaseObservers: [UUID: (tabID: UUID, handler: () -> Void)] = [:]
+
+    /// Runs `handler` when ``releaseTerminalView(forTabID:)`` is called for
+    /// `tabID`, the one path every way of closing a Tab goes through.
+    @discardableResult
+    public func addReleaseObserver(forTabID tabID: UUID, _ handler: @escaping () -> Void) -> UUID {
+        let token = UUID()
+        releaseObservers[token] = (tabID, handler)
+        return token
+    }
+
+    public func removeReleaseObserver(_ token: UUID) {
+        releaseObservers.removeValue(forKey: token)
+    }
+
     /// Remove and release the terminal view for `tabID`. Called only when
     /// the tab is being closed for real — directly by every close path
     /// (`PaneRuntime.removeTab`, `PaneRuntime.closeOtherTabs`,
@@ -321,9 +336,13 @@ public final class TerminalHostStore {
     /// as a diagnostic, after the surface free above has already
     /// happened.
     ///
-    /// Idempotent: a tab whose view was never created, or one already
-    /// released, is a no-op (the guard returns before touching anything).
+    /// Idempotent for the view: a tab whose view was never created, or one
+    /// already released, frees nothing (the guard returns before touching
+    /// it). Release observers still run on every call, a repeat included.
     public func releaseTerminalView(forTabID id: UUID) {
+        for (_, observer) in releaseObservers where observer.tabID == id {
+            observer.handler()
+        }
         releasedTabIDs.insert(id)
         // Before the early return: a Tab whose view was never created can
         // still have been marked shown (or, in tests, given a frame).

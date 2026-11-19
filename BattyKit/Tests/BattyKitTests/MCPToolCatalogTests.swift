@@ -176,6 +176,51 @@ struct MCPToolCatalogTests {
         #expect(argv.contains("--command=npm test"))
         #expect(argv.contains("--vertical"))
         #expect(!argv.contains("-c"))
+        #expect(argv.contains("--json"))
+    }
+
+    @Test func paneSplitWaitArgumentsUseLongOptions() throws {
+        let argv = try catalog().arguments(forToolName: "pane_split", callArguments: [
+            "command": .string("make test"),
+            "wait": .bool(true),
+            "timeout": .int(30),
+        ])
+        #expect(argv.contains("--wait"))
+        #expect(argv.contains("--timeout=30"))
+        #expect(argv.contains("--json"))
+    }
+
+    @Test func tabNewWaitArgumentsUseLongOptions() throws {
+        let argv = try catalog().arguments(forToolName: "tab_new", callArguments: [
+            "command": .string("make test"),
+            "wait": .bool(true),
+            "timeout": .int(30),
+        ])
+        #expect(argv.contains("--wait"))
+        #expect(argv.contains("--timeout=30"))
+        #expect(argv.contains("--json"))
+    }
+
+    @Test(arguments: ["pane_split", "tab_new", "server_start", "server_attach"])
+    func timeoutSchemaCarriesTheMaximum(_ toolName: String) throws {
+        let tool = try #require(catalog().tool(named: toolName))
+        guard case let .object(timeout)? = properties(tool)["timeout"] else {
+            Issue.record("\(toolName) has no timeout property")
+            return
+        }
+        #expect(timeout["maximum"] == .int(86_400))
+    }
+
+    @Test func timeoutAboveTheMaximumIsRejectedBeforeTheCLIRuns() {
+        #expect(throws: MCPArgumentError.aboveMaximum("timeout", maximum: 86_400)) {
+            try catalog().arguments(forToolName: "tab_new", callArguments: ["command": .string("true"), "wait": .bool(true), "timeout": .double(1e300)])
+        }
+        #expect(throws: MCPArgumentError.aboveMaximum("timeout", maximum: 86_400)) {
+            try catalog().arguments(forToolName: "pane_split", callArguments: ["command": .string("true"), "wait": .bool(true), "timeout": .int(86_401)])
+        }
+        #expect(throws: Never.self) {
+            try catalog().arguments(forToolName: "tab_new", callArguments: ["command": .string("true"), "wait": .bool(true), "timeout": .double(86_400)])
+        }
     }
 
     @Test func catalogIncludesTabNew() {

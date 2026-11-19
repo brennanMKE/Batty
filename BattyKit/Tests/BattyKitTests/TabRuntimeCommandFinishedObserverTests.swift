@@ -18,6 +18,16 @@ struct TabRuntimeCommandFinishedObserverTests {
         #expect(second == [3, nil])
     }
 
+    @Test func eventObserverReceivesExitCodeAndDuration() {
+        let tab = TabRuntime()
+        var events: [(Int?, UInt64)] = []
+        tab.addCommandFinishedEventObserver { events.append(($0, $1)) }
+        tab.terminalDelegate.onCommandFinished?(2, 1_500_000_000)
+        #expect(events.count == 1)
+        #expect(events.first?.0 == 2)
+        #expect(events.first?.1 == 1_500_000_000)
+    }
+
     @Test func removedObserverIsNotCalled() {
         let tab = TabRuntime()
         var calls = 0

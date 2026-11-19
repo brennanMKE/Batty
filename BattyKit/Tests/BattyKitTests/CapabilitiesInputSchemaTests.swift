@@ -338,9 +338,9 @@ struct CapabilitiesInputSchemaTests {
 
     // MARK: - The four PaneCommand.swift conflicts (#0402 Gap 2)
 
-    @Test func paneSplitConflictsCoverAllFourImperativeRules() throws {
+    @Test func paneSplitConflictsCoverEveryImperativeRule() throws {
         let conflicts = PaneSplitCommand.capabilitiesInputSchema.conflicts
-        #expect(conflicts.count == 4)
+        #expect(conflicts.count == 6)
         let byParameter = Dictionary(uniqueKeysWithValues: conflicts.map { ($0.parameter, $0) })
 
         let unique = try #require(byParameter["unique"])
@@ -365,9 +365,28 @@ struct CapabilitiesInputSchemaTests {
         #expect(path.allowedValues == ["git-status"])
         #expect(path.allowsOmission == false)
 
+        let wait = try #require(byParameter["wait"])
+        #expect(wait.requiresParameter == "command")
+        #expect(wait.allowedValues == nil)
+        #expect(wait.allowsOmission == false)
+
+        let timeout = try #require(byParameter["timeout"])
+        #expect(timeout.requiresParameter == "wait")
+        #expect(timeout.allowedValues == ["true"])
+        #expect(timeout.allowsOmission == false)
+
         for conflict in conflicts {
             #expect(!conflict.description.isEmpty)
         }
+    }
+
+    @Test func tabNewConflictsTieTimeoutToWaitAndWaitToCommand() throws {
+        let conflicts = TabNewCommand.capabilitiesInputSchema.conflicts
+        let byParameter = Dictionary(uniqueKeysWithValues: conflicts.map { ($0.parameter, $0) })
+        #expect(conflicts.count == 2)
+        #expect(byParameter["wait"]?.requiresParameter == "command")
+        #expect(byParameter["timeout"]?.requiresParameter == "wait")
+        #expect(byParameter["timeout"]?.allowedValues == ["true"])
     }
 
     // B2 (round-1 review): `command` is the one rule among the four where

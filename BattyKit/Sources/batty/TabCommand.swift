@@ -118,7 +118,7 @@ struct TabNewCommand: ParsableCommand {
     @Option(name: .long, help: "Pane id to add the tab to. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.")
     var pane: String?
 
-    @Option(name: [.customShort("c"), .long], help: "Run this command in the new tab instead of the default shell. The tab stays open after it exits.")
+    @Option(name: [.customShort("c"), .long], help: "Run this command in the new tab in place of the default shell; the tab stays open after it exits. With --wait it is typed into the shell instead.")
     var command: String?
 
     @Option(name: .long, help: "Working directory for the new tab. Defaults to the calling tab's, else the pane's active tab's.")
@@ -127,8 +127,14 @@ struct TabNewCommand: ParsableCommand {
     @Flag(name: .long, help: "Add the tab without selecting it.")
     var background: Bool = false
 
-    @Flag(name: .long, help: "Emit JSON (sessionID, paneID, tabID) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (sessionID, paneID, tabID, and with --wait exitCode, durationMs, waitResult) instead of the id.")
     var json: Bool = false
+
+    @Flag(name: .long, help: ArgumentHelp(stringLiteral: CommandWaitCLI.waitDescription))
+    var wait: Bool = false
+
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: CommandWaitCLI.timeoutDescription))
+    var timeout: Double?
 
     enum CwdError: Error, Equatable {
         case notADirectory(String)
@@ -150,7 +156,17 @@ struct TabNewCommand: ParsableCommand {
         return .success(path)
     }
 
+    nonisolated func validate() throws {
+        if let timeout, let error = WaitTimeout.validationError(timeout) {
+            throw ValidationError("--timeout \(error)")
+        }
+    }
+
     nonisolated func run() throws {
+        if let message = CommandWaitCLI.validationError(wait: wait, timeout: timeout, command: command) {
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode.failure
+        }
         let targetPaneID = try resolveTargetPaneID(flag: pane)
         let sourceTabID: UUID?
         if case let .success(id) = BattyTargetResolver.resolve(flag: nil, environmentKey: .tabID) {
@@ -168,7 +184,7 @@ struct TabNewCommand: ParsableCommand {
                 throw ExitCode.failure
             }
         }
-        let request = TabNewRequest(paneID: targetPaneID, sourceTabID: sourceTabID, command: command, workingDirectory: workingDirectory, background: background)
+        let request = TabNewRequest(paneID: targetPaneID, sourceTabID: sourceTabID, command: command, workingDirectory: workingDirectory, background: background, wait: wait ? true : nil, waitTimeoutSeconds: wait ? (timeout ?? CommandWaitDefaults.timeoutSeconds) : nil)
 
         switch AppConnectDance.resolveEndpoint() {
         case .failure(.brokerUnreachable):
@@ -184,7 +200,7 @@ struct TabNewCommand: ParsableCommand {
             fputs("batty: \(message)\n", stderr)
             throw ExitCode(XPCExitCode.appBundleUnresolved)
         case .success(let endpoint):
-            switch AppServiceClient.tabNew(endpoint: endpoint, request: request, timeout: 3.0) {
+            switch AppServiceClient.tabNew(endpoint: endpoint, request: request, timeout: CommandWaitCLI.clientTimeout(wait: wait, timeout: timeout)) {
             case .success(let reply):
                 if json {
                     let encoder = JSONEncoder()
@@ -194,6 +210,9 @@ struct TabNewCommand: ParsableCommand {
                 } else {
                     print(reply.tabID.uuidString)
                 }
+                let outcome = CommandWaitCLI.exit(for: reply.waitResult, exitCode: reply.exitCode, timeoutSeconds: timeout ?? CommandWaitDefaults.timeoutSeconds)
+                if let message = outcome.message { fputs("batty: \(message)\n", stderr) }
+                if outcome.status != 0 { throw ExitCode(outcome.status) }
             case .unreachable:
                 fputs("batty: app unavailable\n", stderr)
                 throw ExitCode(XPCExitCode.appUnavailable)
@@ -210,12 +229,12 @@ struct TabNewCommand: ParsableCommand {
 
 extension TabNewCommand: CapabilitiesDescribable {
     nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
-        CapabilitiesInputSchemaPayload(properties: [
+        CapabilitiesInputSchemaPayload(properties: ([
             "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane id to add the tab to. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
-            "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["-c", "--command"], type: "string", description: "Run this command in the new tab instead of the default shell. The tab stays open after it exits.", required: false),
+            "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["-c", "--command"], type: "string", description: "Run this command in the new tab in place of the default shell; the tab stays open after it exits. With --wait it is typed into the shell instead.", required: false),
             "cwd": CapabilitiesPropertyPayload(cliKind: .option, names: ["--cwd"], type: "string", description: "Working directory for the new tab. Defaults to the calling tab's, else the pane's active tab's.", required: false),
             "background": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--background"], type: "boolean", description: "Add the tab without selecting it.", required: false, defaultValue: "false"),
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (sessionID, paneID, tabID) instead of the id.", required: false, defaultValue: "false"),
-        ])
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (sessionID, paneID, tabID, and with --wait exitCode, durationMs, waitResult) instead of the id.", required: false, defaultValue: "false"),
+        ] as [String: CapabilitiesPropertyPayload]).merging(CommandWaitCLI.waitProperties()) { current, _ in current }, conflicts: CommandWaitCLI.waitConflicts)
     }
 }

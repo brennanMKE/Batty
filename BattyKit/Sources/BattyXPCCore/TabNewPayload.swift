@@ -17,13 +17,18 @@ public nonisolated struct TabNewRequest: Codable, Sendable, Equatable {
     public let command: String?
     public let workingDirectory: String?
     public let background: Bool?
+    /// Type `command` into a shell and reply once it finishes (#0668).
+    public let wait: Bool?
+    public let waitTimeoutSeconds: Double?
 
-    public init(paneID: UUID?, sourceTabID: UUID?, command: String?, workingDirectory: String?, background: Bool?) {
+    public init(paneID: UUID?, sourceTabID: UUID?, command: String?, workingDirectory: String?, background: Bool?, wait: Bool? = nil, waitTimeoutSeconds: Double? = nil) {
         self.paneID = paneID
         self.sourceTabID = sourceTabID
         self.command = command
         self.workingDirectory = workingDirectory
         self.background = background
+        self.wait = wait
+        self.waitTimeoutSeconds = waitTimeoutSeconds
     }
 }
 
@@ -32,10 +37,17 @@ public nonisolated struct TabNewReply: Codable, Sendable, Equatable {
     public let sessionID: UUID
     public let paneID: UUID
     public let tabID: UUID
+    /// Set only with `wait`.
+    public let exitCode: Int?
+    public let durationMs: Int?
+    public let waitResult: CommandWaitResult?
 
-    public init(sessionID: UUID, paneID: UUID, tabID: UUID) {
+    public init(sessionID: UUID, paneID: UUID, tabID: UUID, exitCode: Int? = nil, durationMs: Int? = nil, waitResult: CommandWaitResult? = nil) {
         self.sessionID = sessionID
         self.paneID = paneID
         self.tabID = tabID
+        self.exitCode = exitCode
+        self.durationMs = durationMs
+        self.waitResult = waitResult
     }
 }

@@ -86,6 +86,9 @@ public nonisolated struct CapabilitiesPropertyPayload: Codable, Sendable, Equata
     /// a runtime lower bound (`pane split --pid`, rejected client-side at
     /// `PaneCommand.swift` when non-positive).
     public let minimum: Int?
+    /// JSON Schema `maximum` — the upper bound of a numeric parameter
+    /// (`--timeout`, bounded by `WaitTimeout.maximumSeconds`).
+    public let maximum: Int?
 
     enum CodingKeys: String, CodingKey {
         case cliKind
@@ -97,6 +100,7 @@ public nonisolated struct CapabilitiesPropertyPayload: Codable, Sendable, Equata
         case enumValueNames
         case defaultValue = "default"
         case minimum
+        case maximum
     }
 
     public init(
@@ -108,7 +112,8 @@ public nonisolated struct CapabilitiesPropertyPayload: Codable, Sendable, Equata
         enumValues: [String]? = nil,
         enumValueNames: [String: [String]]? = nil,
         defaultValue: String? = nil,
-        minimum: Int? = nil
+        minimum: Int? = nil,
+        maximum: Int? = nil
     ) {
         self.cliKind = cliKind
         self.names = names
@@ -119,6 +124,7 @@ public nonisolated struct CapabilitiesPropertyPayload: Codable, Sendable, Equata
         self.enumValueNames = enumValueNames
         self.defaultValue = defaultValue
         self.minimum = minimum
+        self.maximum = maximum
     }
 }
 
@@ -156,7 +162,8 @@ public nonisolated struct CapabilitiesConstraintPayload: Codable, Sendable, Equa
     /// `.requires` only: the other parameter it is stated in terms of.
     public let requiresParameter: String?
     /// `.requires` only: the values `requiresParameter` may hold for
-    /// `parameter` to be usable.
+    /// `parameter` to be usable. nil means any value: `requiresParameter`
+    /// only has to be supplied.
     public let allowedValues: [String]?
     /// `.requires` only: see `Kind.requires`'s doc comment.
     public let allowsOmission: Bool?
@@ -200,7 +207,7 @@ public nonisolated struct CapabilitiesConstraintPayload: Codable, Sendable, Equa
     public static func requires(
         parameter: String,
         requiresParameter: String,
-        allowedValues: [String],
+        allowedValues: [String]?,
         allowsOmission: Bool,
         description: String
     ) -> Self {

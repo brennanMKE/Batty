@@ -85,4 +85,55 @@ struct AppXPCConnectionRegistryTests {
         registry.invalidateAll()
         #expect(registry.count == 0)
     }
+
+    @Test func unregisterRunsThatConnectionsHandlers() {
+        let registry = AppXPCConnectionRegistry()
+        let first = makeConnection()
+        let second = makeConnection()
+        registry.register(first)
+        registry.register(second)
+        let calls = Counter()
+        #expect(registry.onUnregister(id: ObjectIdentifier(first)) { calls.increment() } != nil)
+        registry.unregister(id: ObjectIdentifier(second))
+        #expect(calls.value == 0)
+        registry.unregister(id: ObjectIdentifier(first))
+        #expect(calls.value == 1)
+        registry.unregister(id: ObjectIdentifier(first))
+        #expect(calls.value == 1)
+    }
+
+    @Test func handlerForAnUnregisteredConnectionRunsImmediately() {
+        let registry = AppXPCConnectionRegistry()
+        let calls = Counter()
+        #expect(registry.onUnregister(id: ObjectIdentifier(makeConnection())) { calls.increment() } == nil)
+        #expect(calls.value == 1)
+    }
+
+    @Test func invalidateAllRunsHandlers() {
+        let registry = AppXPCConnectionRegistry()
+        let connection = makeConnection()
+        registry.register(connection)
+        let calls = Counter()
+        registry.onUnregister(id: ObjectIdentifier(connection)) { calls.increment() }
+        registry.invalidateAll()
+        #expect(calls.value == 1)
+    }
+
+    @Test func removedHandlerDoesNotRun() throws {
+        let registry = AppXPCConnectionRegistry()
+        let connection = makeConnection()
+        registry.register(connection)
+        let calls = Counter()
+        let token = try #require(registry.onUnregister(id: ObjectIdentifier(connection)) { calls.increment() })
+        registry.removeUnregisterHandler(id: ObjectIdentifier(connection), token: token)
+        registry.unregister(id: ObjectIdentifier(connection))
+        #expect(calls.value == 0)
+    }
+}
+
+private nonisolated final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
 }

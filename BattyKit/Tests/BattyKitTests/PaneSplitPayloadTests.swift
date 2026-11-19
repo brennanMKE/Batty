@@ -350,4 +350,18 @@ struct PaneSplitPayloadTests {
         #expect(SplitDirection(rawValue: TopologySplitDirection.horizontal.rawValue) == .horizontal)
         #expect(SplitDirection(rawValue: TopologySplitDirection.vertical.rawValue) == .vertical)
     }
+
+    @Test nonisolated func waitFieldsRoundTripOffTheMainActor() throws {
+        let request = PaneSplitRequest(paneID: UUID(), direction: .vertical, command: "make", wait: true, waitTimeoutSeconds: 12.5)
+        #expect(try roundTripOffActor(request) == request)
+        let reply = PaneSplitReply(paneID: UUID(), created: true, tabID: UUID(), exitCode: 0, durationMs: 4, waitResult: .exited)
+        #expect(try roundTripOffActor(reply) == reply)
+    }
+
+    @Test nonisolated func replyWithoutTabIDOrWaitFieldsDecodes() throws {
+        let id = UUID()
+        let decoded = try JSONDecoder().decode(PaneSplitReply.self, from: Data(#"{"paneID":"\#(id)","created":true}"#.utf8))
+        #expect(decoded == PaneSplitReply(paneID: id, created: true))
+        #expect(decoded.tabID == nil)
+    }
 }

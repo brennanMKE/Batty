@@ -220,18 +220,24 @@ public final class TabRuntime: Identifiable {
         terminalDelegate.onTitleChange = { [weak self] title in
             self?.receiveTitleChange(title)
         }
-        terminalDelegate.onCommandFinished = { [weak self] exitCode, _ in
+        terminalDelegate.onCommandFinished = { [weak self] exitCode, durationNanos in
             self?.receiveCommandFinished()
-            self?.notifyCommandFinishedObservers(exitCode: exitCode)
+            self?.notifyCommandFinishedObservers(exitCode: exitCode, durationNanos: durationNanos)
         }
     }
 
     /// Extra listeners for OSC 133 D, beside ``receiveCommandFinished()``.
     /// Called from libghostty's callback (event origin).
-    @ObservationIgnored private var commandFinishedObservers: [UUID: (Int?) -> Void] = [:]
+    @ObservationIgnored private var commandFinishedObservers: [UUID: (Int?, UInt64) -> Void] = [:]
 
     @discardableResult
     public func addCommandFinishedObserver(_ observer: @escaping (Int?) -> Void) -> UUID {
+        addCommandFinishedEventObserver { exitCode, _ in observer(exitCode) }
+    }
+
+    /// Like ``addCommandFinishedObserver(_:)``, with libghostty's duration.
+    @discardableResult
+    public func addCommandFinishedEventObserver(_ observer: @escaping (Int?, UInt64) -> Void) -> UUID {
         let id = UUID()
         commandFinishedObservers[id] = observer
         return id
@@ -241,9 +247,9 @@ public final class TabRuntime: Identifiable {
         commandFinishedObservers.removeValue(forKey: id)
     }
 
-    func notifyCommandFinishedObservers(exitCode: Int?) {
+    func notifyCommandFinishedObservers(exitCode: Int?, durationNanos: UInt64) {
         for observer in Array(commandFinishedObservers.values) {
-            observer(exitCode)
+            observer(exitCode, durationNanos)
         }
     }
 
@@ -268,13 +274,19 @@ public final class TabRuntime: Identifiable {
         armStartupCommand(command, sink: TerminalViewStateInputSink(tab: self))
     }
 
+    /// ``armStartupCommand(_:)`` that reports what happened to the delivery.
+    public func armStartupCommand(_ command: String, events: @escaping (StartupCommandDeliveryEvent) -> Void) {
+        armStartupCommand(command, sink: TerminalViewStateInputSink(tab: self), events: events)
+    }
+
     @discardableResult
     func armStartupCommand(
         _ command: String,
         sink: any TerminalInputSink,
-        clock: any SchedulingClock = SystemClock()
+        clock: any SchedulingClock = SystemClock(),
+        events: ((StartupCommandDeliveryEvent) -> Void)? = nil
     ) -> StartupCommandDelivery {
-        let delivery = StartupCommandDelivery(command: command, sink: sink)
+        let delivery = StartupCommandDelivery(command: command, sink: sink, events: events)
         terminalDelegate.armStartupCommand(delivery, clock: clock)
         return delivery
     }

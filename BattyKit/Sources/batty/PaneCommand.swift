@@ -55,7 +55,7 @@ struct PaneSplitCommand: ParsableCommand {
     @Flag(help: "Split direction. Defaults to horizontal.")
     var direction: SplitDirectionFlag = .horizontal
 
-    @Option(name: [.customShort("c"), .long], help: "Run this command in the new pane instead of the default shell.")
+    @Option(name: [.customShort("c"), .long], help: "Run this command in the new pane in place of the default shell; with --wait it is typed into the shell instead.")
     var command: String?
 
     @Option(name: .long, help: "Pane id to split. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.")
@@ -102,7 +102,34 @@ struct PaneSplitCommand: ParsableCommand {
     @Flag(name: .long, help: "With --view <kind>, print the id of an existing visible pane of that kind instead of creating one. viewOptions differences (--path/--pid) do not defeat the match. Requires a non-terminal --view.")
     var unique: Bool = false
 
+    @Flag(name: .long, help: ArgumentHelp(stringLiteral: CommandWaitCLI.waitDescription))
+    var wait: Bool = false
+
+    @Option(name: .long, help: ArgumentHelp(stringLiteral: CommandWaitCLI.timeoutDescription))
+    var timeout: Double?
+
+    @Flag(name: .long, help: "Emit JSON (paneID, created, tabID, and with --wait exitCode, durationMs, waitResult) instead of the id.")
+    var json: Bool = false
+
+    nonisolated func validate() throws {
+        if let timeout, let error = WaitTimeout.validationError(timeout) {
+            throw ValidationError("--timeout \(error)")
+        }
+    }
+
     nonisolated func run() throws {
+        if let message = CommandWaitCLI.validationError(wait: wait, timeout: timeout, command: command) {
+            fputs("batty: \(message)\n", stderr)
+            throw ExitCode.failure
+        }
+        if wait, let view, view != .terminal {
+            fputs("batty: --wait is not valid with --view \(view.rawValue)\n", stderr)
+            throw ExitCode.failure
+        }
+        if wait, unique {
+            fputs("batty: --wait cannot be combined with --unique\n", stderr)
+            throw ExitCode.failure
+        }
         let targetPaneID = try resolveTargetPaneID(flag: pane)
         let wireDirection: TopologySplitDirection = direction == .vertical ? .vertical : .horizontal
         let commandOverride = command.flatMap { $0.isEmpty ? nil : $0 }
@@ -172,7 +199,7 @@ struct PaneSplitCommand: ParsableCommand {
             throw ExitCode(XPCExitCode.appBundleUnresolved)
         case .success(let endpoint):
             let wireUnique: Bool? = unique ? true : nil
-            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, viewOptions: wireViewOptions, unique: wireUnique, timeout: 3.0) {
+            switch AppServiceClient.paneSplit(endpoint: endpoint, paneID: targetPaneID, direction: wireDirection, command: commandOverride, kind: resolvedKind, viewOptions: wireViewOptions, unique: wireUnique, wait: wait ? true : nil, waitTimeoutSeconds: wait ? (timeout ?? CommandWaitDefaults.timeoutSeconds) : nil, timeout: CommandWaitCLI.clientTimeout(wait: wait, timeout: timeout)) {
             case .success(let reply):
                 // No `batty: ` prefix (N1, #0383 review round 1): every
                 // other `batty: ` line in this file sits on a path that
@@ -190,7 +217,16 @@ struct PaneSplitCommand: ParsableCommand {
                     // ignored `--unique` and created unconditionally.
                     fputs("--unique is not supported by the running Batty; a new pane may have been created\n", stderr)
                 }
-                print(reply.paneID)
+                if json {
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+                    print(String(decoding: try encoder.encode(reply), as: UTF8.self))
+                } else {
+                    print(reply.paneID)
+                }
+                let outcome = CommandWaitCLI.exit(for: reply.waitResult, exitCode: reply.exitCode, timeoutSeconds: timeout ?? CommandWaitDefaults.timeoutSeconds)
+                if let message = outcome.message { fputs("batty: \(message)\n", stderr) }
+                if outcome.status != 0 { throw ExitCode(outcome.status) }
             case .unreachable:
                 fputs("batty: app unavailable\n", stderr)
                 throw ExitCode(XPCExitCode.appUnavailable)
@@ -534,13 +570,14 @@ extension PaneSplitCommand: CapabilitiesDescribable {
                 // spellings, one per logical value, so each value's own
                 // invocation is in `enumValueNames` instead.
                 "direction": CapabilitiesPropertyPayload(cliKind: .flag, type: "string", description: "Split direction. Defaults to horizontal.", required: false, enumValues: SplitDirectionFlag.allCases.map { String(describing: $0) }, enumValueNames: ["horizontal": ["-h", "--horizontal"], "vertical": ["-v", "--vertical"]], defaultValue: "horizontal"),
-                "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["-c", "--command"], type: "string", description: "Run this command in the new pane instead of the default shell.", required: false),
+                "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["-c", "--command"], type: "string", description: "Run this command in the new pane in place of the default shell; with --wait it is typed into the shell instead.", required: false),
+                "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (paneID, created, tabID, and with --wait exitCode, durationMs, waitResult) instead of the id.", required: false, defaultValue: "false"),
                 "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane id to split. Falls back to BATTY_PANE_ID, then the focused pane, when omitted.", required: false),
                 "view": CapabilitiesPropertyPayload(cliKind: .option, names: ["--view"], type: "string", description: "Pane content kind for the new pane. Defaults to terminal.", required: false, enumValues: PaneContentKind.paneSplitKinds.map(\.rawValue), defaultValue: PaneContentKind.terminal.rawValue),
                 "pid": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pid"], type: "integer", description: "Pin a process-status pane to this pid instead of following a terminal's foreground process. Only valid with --view process-status.", required: false, minimum: 1),
                 "path": CapabilitiesPropertyPayload(cliKind: .option, names: ["--path"], type: "string", description: "Directory for the new pane to monitor (only valid with --view git-status). Resolved to an absolute path.", required: false),
                 "unique": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--unique"], type: "boolean", description: "With --view <kind>, print the id of an existing visible pane of that kind instead of creating one. viewOptions differences (--path/--pid) do not defeat the match. Requires a non-terminal --view.", required: false, defaultValue: "false"),
-            ],
+            ].merging(CommandWaitCLI.waitProperties()) { current, _ in current },
             conflicts: [
                 // `allowsOmission: false` — `unique`/`pid`/`path` each
                 // require `view` to be *present* and equal to a specific
@@ -561,7 +598,7 @@ extension PaneSplitCommand: CapabilitiesDescribable {
                 .requires(parameter: "command", requiresParameter: "view", allowedValues: [PaneContentKind.terminal.rawValue], allowsOmission: true, description: "--command is not valid with a non-terminal --view <kind> (non-terminal panes have no shell); omitting --view (which defaults to terminal) is fine"),
                 .requires(parameter: "pid", requiresParameter: "view", allowedValues: [PaneContentKind.processStatus.rawValue], allowsOmission: false, description: "--pid is only valid with --view process-status"),
                 .requires(parameter: "path", requiresParameter: "view", allowedValues: [PaneContentKind.gitStatus.rawValue], allowsOmission: false, description: "--path is not valid with --view <kind> (only git-status accepts --path)"),
-            ]
+            ] + CommandWaitCLI.waitConflicts
         )
     }
 }

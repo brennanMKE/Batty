@@ -119,7 +119,7 @@ struct ServerStartCommand: ParsableCommand {
     @Flag(name: .long, help: "Wait until the server listens, exits, or --timeout passes.")
     var wait = false
 
-    @Option(name: .long, help: "Seconds --wait waits. Defaults to 60.")
+    @Option(name: .long, help: "Seconds --wait waits, at most 86400. Defaults to 60.")
     var timeout: Double = 60
 
     @Flag(name: .long, help: "Emit JSON (paneID, terminalPaneID, tabID, url, pid, state) instead of the id.")
@@ -131,7 +131,7 @@ struct ServerStartCommand: ParsableCommand {
     nonisolated func validate() throws {
         try validatePort(port)
         guard !command.isEmpty else { throw ValidationError("give the server command after --, for example: -- go run .") }
-        guard timeout > 0 else { throw ValidationError("--timeout must be positive") }
+        if let error = WaitTimeout.validationError(timeout) { throw ValidationError("--timeout \(error)") }
     }
 
     nonisolated func request(currentDirectory: String = FileManager.default.currentDirectoryPath) throws -> ServerStartRequest {
@@ -188,7 +188,7 @@ struct ServerAttachCommand: ParsableCommand {
     @Flag(name: .long, help: "Wait until the server listens or --timeout passes.")
     var wait = false
 
-    @Option(name: .long, help: "Seconds --wait waits. Defaults to 60.")
+    @Option(name: .long, help: "Seconds --wait waits, at most 86400. Defaults to 60.")
     var timeout: Double = 60
 
     @Flag(name: .long, help: "Emit JSON (paneID, url, pid, state) instead of the id.")
@@ -196,7 +196,7 @@ struct ServerAttachCommand: ParsableCommand {
 
     nonisolated func validate() throws {
         try validatePort(port)
-        guard timeout > 0 else { throw ValidationError("--timeout must be positive") }
+        if let error = WaitTimeout.validationError(timeout) { throw ValidationError("--timeout \(error)") }
     }
 
     nonisolated func request(currentDirectory: String = FileManager.default.currentDirectoryPath) throws -> ServerAttachRequest {
@@ -418,7 +418,7 @@ private nonisolated let paneProperty = CapabilitiesPropertyPayload(cliKind: .opt
 private nonisolated let urlProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--url"], type: "string", description: "URL to show and probe. Defaults to http://localhost:<port>/.", required: false)
 private nonisolated let statsURLProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--stats-url"], type: "string", description: "JSON endpoint for stats. Defaults to /debug/vars (Go expvar) on the server.", required: false)
 private nonisolated let portProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "TCP port the server listens on (1-65535).", required: true)
-private nonisolated let timeoutProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--timeout"], type: "number", description: "Seconds --wait waits. Defaults to 60.", required: false, defaultValue: "60")
+private nonisolated let timeoutProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--timeout"], type: "number", description: "Seconds --wait waits, at most 86400. Defaults to 60.", required: false, defaultValue: "60", maximum: Int(WaitTimeout.maximumSeconds))
 
 extension ServerStartCommand: CapabilitiesDescribable {
     nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {

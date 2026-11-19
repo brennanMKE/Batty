@@ -64,6 +64,15 @@ struct ServerCommandParsingTests {
         #expect(throws: (any Error).self) { try ServerStartCommand.parse(["--port", "65536", "--", "x"]) }
     }
 
+    @Test func waitTimeoutOutOfRangeIsRejected() {
+        for value in ["inf", "nan", "0", "-1", "86401", "1e300"] {
+            #expect(throws: (any Error).self, "start \(value)") { try ServerStartCommand.parse(["--port", "8083", "--wait", "--timeout", value, "--", "x"]) }
+            #expect(throws: (any Error).self, "attach \(value)") { try ServerAttachCommand.parse(["--port", "8083", "--wait", "--timeout", value]) }
+        }
+        #expect(throws: Never.self) { try ServerStartCommand.parse(["--port", "8083", "--wait", "--timeout", "86400", "--", "x"]) }
+        #expect(throws: Never.self) { try ServerAttachCommand.parse(["--port", "8083", "--wait", "--timeout", "86400"]) }
+    }
+
     @Test func singleTrailingArgumentIsUsedVerbatim() throws {
         let command = try ServerStartCommand.parse(["--port", "8083", "--", "go run . | tee log"])
         #expect(try command.request(currentDirectory: "/tmp").command == "go run . | tee log")
