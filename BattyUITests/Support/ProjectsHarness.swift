@@ -411,6 +411,39 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         return root
     }
 
+    /// The tab the Background Images picker shows, read from content only that tab builds:
+    /// a segment reports its state through AXValue, not AXSelected, so `isSelected` is false for both.
+    /// nil when neither or both show.
+    @MainActor
+    func backgroundPickerTab(in app: XCUIApplication) -> BackgroundPickerTab? {
+        let sets = element("background-sets.root", in: app).exists
+        let mine = element("background-images.add", in: app).exists
+        switch (sets, mine) {
+        case (true, false): return .backgroundSets
+        case (false, true): return .myImages
+        default: return nil
+        }
+    }
+
+    /// Waits up to `timeout` for `backgroundPickerTab == tab`; the failure message names what was seen
+    /// and each segment's `value` and `isSelected`.
+    @MainActor
+    func assertBackgroundPickerTab(_ tab: BackgroundPickerTab, in app: XCUIApplication,
+                                   timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line) {
+        let ok = waitFor({ self.backgroundPickerTab(in: app) == tab }, timeout: timeout)
+        let seen = backgroundPickerTab(in: app)?.rawValue ?? "neither or both"
+        XCTAssertTrue(ok, "the picker did not open on \(tab.rawValue); saw \(seen) \(segmentState(in: app))", file: file, line: line)
+    }
+
+    @MainActor
+    private func segmentState(in app: XCUIApplication) -> String {
+        [BackgroundPickerTab.myImages, .backgroundSets].map { t in
+            let rb = app.radioButtons[t.rawValue].firstMatch
+            guard rb.exists else { return "\(t.rawValue): missing" }
+            return "\(t.rawValue): value=\(String(describing: rb.value)) isSelected=\(rb.isSelected)"
+        }.joined(separator: "; ")
+    }
+
     @MainActor
     func replaceText(in identifier: String, with text: String, app: XCUIApplication) {
         let field = element(identifier, in: app)
@@ -625,4 +658,9 @@ nonisolated class ProjectsUITestCase: XCTestCase {
         runInTerminal("touch \(BattyCLI.shellQuoted(marker.path))", pane: pane, app: app)
         XCTAssertTrue(BattyUITestHarness.waitForFile(at: marker.path, timeout: 30), "the shell did not run a typed command", file: file, line: line)
     }
+}
+
+enum BackgroundPickerTab: String {
+    case myImages = "My Images"
+    case backgroundSets = "Background Sets"
 }
