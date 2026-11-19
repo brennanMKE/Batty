@@ -91,14 +91,14 @@ public final class SessionRuntime: Identifiable {
     /// Clipboard-read confirmation awaiting the user's answer, shown via
     /// `.confirmationDialog` in `SessionDetailView`. At most one at a time
     /// per Session: a second request arriving while one is already pending
-    /// immediately denies the first (`decide(false)`, in
-    /// `requestClipboardReadConfirmation(kind:decide:)`) rather than
-    /// queuing it — nothing here waits silently for a confirmation that
-    /// isn't the one on screen. `answerPendingClipboardConfirmation` and
+    /// is itself denied at once and the first stays on screen (in
+    /// `requestClipboardReadConfirmation(kind:context:outcome:decide:)`)
+    /// rather than queuing it — nothing here waits silently for a
+    /// confirmation that isn't the one on screen. `answerPendingClipboardConfirmation` and
     /// `cancelPendingClipboardConfirmation` take the specific
     /// `PendingClipboardConfirmation` the caller means to resolve and check
     /// its identity against whatever is *currently* pending, so a view
-    /// closure holding a reference to an already-displaced or
+    /// closure holding a reference to an already-cancelled or
     /// already-answered request safely no-ops instead of re-firing a
     /// decision or clobbering a newer request's bookkeeping (#0390 round 2,
     /// B2).
@@ -147,27 +147,36 @@ public final class SessionRuntime: Identifiable {
 
     /// Routes a clipboard confirmation from the terminal wrapper
     /// (`TerminalSurfaceClipboardConfirmationDelegate`) through this
-    /// Session's remembered-answer policy. A request already pending when
-    /// this is called is displaced and immediately denied — see
-    /// `pendingClipboardConfirmation`'s doc comment.
+    /// Session's remembered-answer policy. A request arriving while another
+    /// is pending is denied at once and the pending one is left untouched,
+    /// so a burst of requests never tears down the dialog the user is
+    /// reading. `outcome` reports how the request was decided, for logging.
     public func requestClipboardReadConfirmation(
         kind: TerminalClipboardRequestKind,
+        context: ClipboardRequestContext? = nil,
+        outcome: ((ClipboardDecisionReason) -> Void)? = nil,
         decide: @escaping (Bool) -> Void
     ) {
         if let remembered = rememberedDecision(for: kind) {
+            outcome?(.remembered)
             decide(remembered)
             return
         }
-        pendingClipboardConfirmation?.decide(false)
+        if pendingClipboardConfirmation != nil {
+            outcome?(.coalesced)
+            decide(false)
+            return
+        }
         pendingClipboardConfirmation = PendingClipboardConfirmation(
             kind: kind,
+            context: context,
             decide: decide
         )
     }
 
     /// The user answered the dialog for `request`. A no-op if `request`
-    /// isn't the request currently pending (already displaced by a later
-    /// request, or already resolved by a Session switch) — its decision
+    /// isn't the request currently pending (already resolved by a Session
+    /// switch or an earlier answer) — its decision
     /// already fired wherever that happened, and firing again here would
     /// double-answer it.
     public func answerPendingClipboardConfirmation(_ request: PendingClipboardConfirmation, allow: Bool) {

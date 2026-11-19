@@ -260,19 +260,28 @@ public struct PaneView: View {
                             // Stays wired after this view unmounts, so a
                             // hidden Pane's bells still record.
                             appStore?.wireBellReporting(for: tab)
-                            // #0390: route a clipboard-read confirmation
-                            // (OSC 52 / Kitty clipboard protocol) to this
-                            // tab's owning Session, which applies the
-                            // per-kind remembered-answer policy. No
-                            // resolvable Session -> routeClipboardReadConfirmation
-                            // denies on its own, so a tab that closes before
-                            // this wiring runs can't leave a request
+                            // #0390, #0674: route a clipboard confirmation
+                            // (OSC 52 / Kitty clipboard protocol) through the
+                            // app-wide read Setting, then this tab's owning
+                            // Session's per-kind policy. No resolvable store,
+                            // tab or Session denies, so a tab that closes
+                            // before this wiring runs can't leave a request
                             // unanswered. `[weak tab]` avoids a retain cycle:
                             // this closure is stored on `tab.terminalDelegate`,
                             // which `TabRuntime` owns.
                             tab.terminalDelegate.onClipboardReadConfirmationRequest = { [weak appStore, weak tab] kind, decide in
-                                let session = tab?.sessionID.flatMap { appStore?.session(id: $0) }
-                                routeClipboardReadConfirmation(to: session, kind: kind, decide: decide)
+                                guard let appStore, let tab else {
+                                    decide(false)
+                                    return
+                                }
+                                let session = tab.sessionID.flatMap { appStore.session(id: $0) }
+                                routeClipboardConfirmation(
+                                    to: session,
+                                    kind: kind,
+                                    readPolicy: appStore.clipboardReadPolicy,
+                                    context: appStore.clipboardRequestContext(forTabID: tab.id),
+                                    decide: decide
+                                )
                             }
                             // Initial resolve in case the surface reported its cwd
                             // before this wiring ran (the callback only catches
