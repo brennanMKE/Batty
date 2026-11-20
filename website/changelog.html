@@ -15,6 +15,30 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-4-1">
+            <h2>1.4.1 — 2026-11-19</h2>
+            <p class="meta">A quiet clipboard by default, an easier Background Images picker, and quicker ways to edit a Project.</p>
+            <h3>Improvements</h3>
+            <ul>
+                <li><strong>No more clipboard prompts.</strong> A terminal program asking to read the clipboard (OSC 52)
+                is now refused quietly by default, instead of an "Allow Clipboard Access?" dialog that kept coming back.
+                Choose Ask, Allow or Never in Settings &rarr; General &rarr; Clipboard. With Ask, the dialog names the
+                program, Session, Pane and Tab, and stays put while the program keeps asking. Copying to the clipboard
+                is unchanged. (#0674)</li>
+                <li><strong>Background Images picker.</strong> The picker opens on the tab that holds the current image,
+                with that image selected and scrolled into view. A single click shows an image and keeps the picker
+                open; a double click or Return picks it and closes the picker, as the Theme selector does, and Done
+                closes it keeping the image. (#0650, #0659)</li>
+                <li><strong>Edit Project&hellip; from the Sidebar.</strong> Right-click a Project's Session and choose
+                <em>Edit Project&hellip;</em>. Saving in the Project Editor now updates that Project's open Sessions: name,
+                color, background and Theme. (#0653)</li>
+                <li><strong>File &rarr; Open Project &rarr; Projects&hellip;</strong> opens the Project Editor on the
+                current Session's Project, replacing Choose Project&hellip;. (#0656)</li>
+                <li><strong>Consistent dialog buttons.</strong> The Project Editor and Batty's other sheets and dialogs
+                follow the macOS button layout, with Cancel on Escape and the default button on Return, and every
+                keyboard picker shows its key hints in the same footer. (#0654, #0655)</li>
+            </ul>
+        </article>
         <article id="v1-4-0">
             <h2>1.4.0 — 2026-11-17</h2>
             <p class="meta">Session Reminders with their own toolbar list, hosted background image sets, richer Projects, a Projects menu, and a faster, steadier window.</p>

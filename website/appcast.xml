@@ -27,6 +27,24 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.4.1</title>
+      <pubDate>Fri, 20 Nov 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-4-1</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <h2>A quiet clipboard and an easier Background Images picker</h2>
+        <p>Terminal programs asking to read the clipboard are now refused quietly by default, instead of an "Allow Clipboard Access?" prompt that kept coming back; choose Ask, Allow or Never in Settings &rarr; General &rarr; Clipboard.</p>
+        <p>Also: the Background Images picker opens on the current image, and a double click or Return picks and closes it; Edit Project&hellip; on a Project Session's right-click menu, with saves reaching open Sessions; File &rarr; Open Project &rarr; Projects&hellip;; and macOS-style dialog buttons and picker footers.</p>
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.4.1.dmg"
+        sparkle:version="202611200634"
+        sparkle:shortVersionString="1.4.1"
+        sparkle:edSignature="vQ51Ho7RictCx2zAjLoxQWiugdbgcNQZqgqvaDzqdJZTYivwhvzmIz9rBAlm2Hjlg3iubgKMMexemx/t9iyCBg=="
+        length="29209837"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.4.0</title>
       <pubDate>Tue, 17 Nov 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
