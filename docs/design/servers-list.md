@@ -41,7 +41,10 @@ scans.
 - Copy URL (`doc.on.doc`): `http://127.0.0.1:<port>/`, or the `--url` the CLI
   passed. A server bound only to `::1` answers the listener scan but not the
   probe or the copied URL.
-- Copy Tailnet URL, only once #0694 sets `ServerEntry.tailnetURL`.
+- Copy Tailnet URL (`network`), only while the server is shared on the
+  tailnet (`ServerEntry.tailnetURL`, #0694).
+- A red caption below the state (`servers.tailnet-error`, two lines at
+  most) when the last tailnet share or stop failed, in the tool's words.
 - A "…" menu: Open in Browser; Show Terminal (a `start` server whose Tab
   still exists); Restart and Stop only for servers Batty started (terminal
   and in-app kinds), disabled with the refusal reason as help when the
@@ -51,6 +54,9 @@ scans.
   leaves the list on its own, since its process may re-bind under a file
   watcher. The issue text asked for Copy only; the menu is the orchestrator's
   addition, kept in `ServersListView` so removing it is a one-file change.
+  With Tailscale running, the menu also has Share on Tailnet
+  (`servers.row.tailnet-share`) or Stop Sharing on Tailnet
+  (`servers.row.tailnet-unshare`), disabled while one runs (#0694).
 - No metrics, no expvar block: those were the Server Pane's, and the list is
   meant to stay minimal. `ServerStatsFetching` stays for #0693.
 
@@ -58,7 +64,8 @@ scans.
 
 `toolbar.servers`, `servers.row.<id>`, `servers.port`, `servers.state`,
 `servers.copy-url`, `servers.copy-tailnet-url`, `servers.row-menu`,
-`servers.row.unshare`,
+`servers.row.unshare`, `servers.row.tailnet-share`,
+`servers.row.tailnet-unshare`, `servers.tailnet-error`,
 `servers.empty`, `settings-always-show-servers`.
 
 ## Seams
@@ -72,4 +79,20 @@ scans.
   `unshare`, teardown); #0694 hooks its tailnet mapping removal there.
 - #0693: `ServerStatsFetching` for `GET /_batty/status`; `servingFacts` for
   static entries. The row is a `VStack`, so a status line can be added below.
-- #0694: `ServerEntry.tailnetURL`.
+- #0694: `ServerEntry.tailnetURL`/`tailnetError`/`isTailnetBusy`, written
+  by `AppStateStore.tailnet` (`TailnetSharing`).
+
+## Tailnet (#0694)
+
+- Detection runs `tailscale status --json` only while the list has entries
+  (on registration and when the popover opens), cached 10 s. Absent or not
+  running means no tailnet UI at all.
+- Every `tailscale` call goes through `TailscaleCommandRunning`; tests use a
+  fake, and UI tests set `BATTY_UI_TEST_FAKE_TAILSCALE=running|absent`.
+- Share runs `tailscale serve --bg --https=N http://127.0.0.1:N` after
+  checking `serve status` that port N is free; off is the same argv plus
+  `off`, run only while the port still holds exactly that mapping.
+- Batty turns off only mappings it made: on Stop Sharing, when the entry
+  leaves the registry (`ServerRegistry.onRemove`), and at quit
+  (`removeOwnedMappingsSynchronouslyForQuit`). An identical mapping it found
+  already there is adopted (URL shown) but never turned off.

@@ -3,8 +3,8 @@
 import Foundation
 
 /// Payloads for the `serverStart`, `serverShare`, `serverServe`,
-/// `serverList`, `serverStop`, `serverRestart` and `serverUnshare` XPC verbs
-/// (#0648, #0692). `nonisolated` at the type level for the
+/// `serverList`, `serverStop`, `serverRestart`, `serverUnshare` and
+/// `serverTailnet` XPC verbs (#0648, #0692, #0694). `nonisolated` at the type level for the
 /// same reason as every other payload in this module.
 
 /// Where `server start` puts its terminal Pane, split from the calling Pane.
@@ -62,14 +62,33 @@ public nonisolated struct ServerShareRequest: Codable, Sendable, Equatable {
     public var split: ServerSplit?
     /// False skips the Process Status Pane. Nil means open it.
     public var processView: Bool?
+    /// True also shares the server on the tailnet (#0694).
+    public var tailnet: Bool?
 
-    public init(paneID: UUID? = nil, port: Int, url: String? = nil, name: String? = nil, split: ServerSplit? = nil, processView: Bool? = nil) {
+    public init(paneID: UUID? = nil, port: Int, url: String? = nil, name: String? = nil, split: ServerSplit? = nil, processView: Bool? = nil, tailnet: Bool? = nil) {
         self.paneID = paneID
         self.port = port
         self.url = url
         self.name = name
         self.split = split
         self.processView = processView
+        self.tailnet = tailnet
+    }
+}
+
+/// `batty server tailnet`: share a tracked server on the tailnet, or stop
+/// (`off`). Names the server by id or by port.
+public nonisolated struct ServerTailnetRequest: Codable, Sendable, Equatable {
+    public var paneID: UUID?
+    public var serverID: UUID?
+    public var port: Int?
+    public var off: Bool?
+
+    public init(paneID: UUID? = nil, serverID: UUID? = nil, port: Int? = nil, off: Bool? = nil) {
+        self.paneID = paneID
+        self.serverID = serverID
+        self.port = port
+        self.off = off
     }
 }
 
@@ -122,8 +141,14 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
     public var kind: ServerKind?
     /// The Process Status Pane watching the listener, when one is open.
     public var processPaneID: UUID?
+    /// Set while the server is shared on the tailnet (#0694).
+    public var tailnetURL: String?
+    /// Why `share --tailnet` couldn't share on the tailnet; the share stands.
+    public var tailnetError: String?
 
-    public init(serverID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil, name: String? = nil, kind: ServerKind? = nil, processPaneID: UUID? = nil) {
+    public init(serverID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil, name: String? = nil, kind: ServerKind? = nil, processPaneID: UUID? = nil, tailnetURL: String? = nil, tailnetError: String? = nil) {
+        self.tailnetURL = tailnetURL
+        self.tailnetError = tailnetError
         self.root = root
         self.name = name
         self.kind = kind

@@ -29,7 +29,7 @@ struct MCPToolCatalogTests {
     }
 
     @Test func serverVerbsBecomeToolsOnlyWithServersOn() {
-        let serverTools: Set<String> = ["server_start", "server_share", "server_list", "server_stop", "server_restart", "server_unshare", "server_serve"]
+        let serverTools: Set<String> = ["server_start", "server_share", "server_list", "server_stop", "server_restart", "server_unshare", "server_serve", "server_tailnet"]
         #expect(serverTools.isSubset(of: Set(catalog().tools.map(\.name))))
         let agentOnly = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: false)
         #expect(Set(catalog(agentOnly).tools.map(\.name)).isDisjoint(with: serverTools))

@@ -562,7 +562,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
             }
 
-        case XPCVerb.serverStart, XPCVerb.serverShare, XPCVerb.serverList, XPCVerb.serverUnshare, XPCVerb.serverStop, XPCVerb.serverRestart, XPCVerb.serverServe:
+        case XPCVerb.serverStart, XPCVerb.serverShare, XPCVerb.serverList, XPCVerb.serverUnshare, XPCVerb.serverStop, XPCVerb.serverRestart, XPCVerb.serverServe, XPCVerb.serverTailnet:
             Task { @MainActor [pendingRequests, storeProvider, clock] in
                 let response = await Self.serverResponse(verb: decoded.verb, payload: decoded.payload, store: storeProvider(), clock: clock)
                 pendingRequests.resolve(requestID, with: Self.encode(response))
@@ -776,6 +776,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 return XPCResponse(ok: false, error: "malformed server serve request")
             }
             result = await store.serveStaticForXPC(request)
+        case XPCVerb.serverTailnet:
+            guard let payload, let request = try? decoder.decode(ServerTailnetRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed server tailnet request")
+            }
+            result = await store.tailnetServerForXPC(request)
         default:
             guard let payload, let request = try? decoder.decode(ServerControlRequest.self, from: payload) else {
                 return XPCResponse(ok: false, error: "malformed server request")

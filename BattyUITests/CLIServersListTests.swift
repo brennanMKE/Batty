@@ -3,8 +3,8 @@
 import Darwin
 import XCTest
 
-/// `batty server start|share|list|stop|unshare` and the toolbar's Servers
-/// list against the real app (#0648, #0691, #0692). The server
+/// `batty server start|share|list|stop|unshare|tailnet` and the toolbar's
+/// Servers list against the real app (#0648, #0691, #0692, #0694). The server
 /// is Python's `http.server`, run by Batty in a terminal Pane on a free port
 /// a helper Pane finds (the runner itself can't bind a socket).
 nonisolated final class CLIServersListTests: XCTestCase {
@@ -248,5 +248,89 @@ nonisolated final class CLIServersListTests: XCTestCase {
         XCTAssertNotEqual(share.status, 0, share.summary)
         XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a flag-off server start changed the layout")
         XCTAssertFalse(serversButton(in: app).exists, "the Servers button shows with the flag off")
+    }
+
+    // MARK: - Tailnet (#0694; the fake tailscale runner, never the real CLI)
+
+    /// Runs a python server in a terminal Pane and shares it without a
+    /// Process Status Pane. Returns the server id and the terminal Pane.
+    @MainActor
+    private func sharePythonServer(_ port: Int, from pane: UUID) throws -> (id: UUID, terminal: UUID) {
+        let terminal = BattyCLI.runExpectingSuccess(["pane", "split", "--pane", pane.uuidString, "-c", pythonServer(port).joined(separator: " ")])
+        let terminalID = try XCTUnwrap(terminal.ids.last)
+        let args = ["server", "share", "--port", String(port), "--pane", pane.uuidString, "--no-process-view", "--json"]
+        var share = BattyCLI.run(args)
+        if share.status != 0 {
+            XCTAssertTrue(BattyUITestHarness.waitFor({
+                share = BattyCLI.run(args)
+                return share.status == 0
+            }, timeout: 30), "server share never found the listener: \(share.summary)")
+        }
+        return (try serverID(reply(share)), terminalID)
+    }
+
+    @MainActor
+    private func openRowMenu(_ id: UUID, in app: XCUIApplication) -> XCUIElement {
+        let row = openRow(id, in: app)
+        let menu = row.descendants(matching: .any).matching(identifier: "servers.row-menu").firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.click()
+        let rowMenu = app.menus.containing(.menuItem, identifier: "servers.row.open-in-browser").firstMatch
+        XCTAssertTrue(rowMenu.waitForExistence(timeout: 5))
+        return rowMenu
+    }
+
+    @MainActor
+    func testServerTailnetShowsCopyTailnetURLAndStopSharing() throws {
+        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FAKE_TAILSCALE": "running"])
+        defer { app.terminate() }
+        let port = try freePort(from: session.focusedPaneID)
+        let (id, terminal) = try sharePythonServer(port, from: session.focusedPaneID)
+        let expected = "https://batty-vm.example.ts.net:\(port)/"
+
+        let tailnet = BattyCLI.run(["server", "tailnet", "--port", String(port), "--json"])
+        XCTAssertEqual(tailnet.status, 0, tailnet.summary)
+        XCTAssertEqual(try reply(tailnet)["tailnetURL"] as? String, expected)
+        let list = BattyCLI.run(["server", "list", "--json"])
+        XCTAssertTrue(list.output.contains(expected), "server list --json lacks the tailnet URL: \(list.summary)")
+
+        let row = openRow(id, in: app)
+        XCTAssertTrue(row.descendants(matching: .any).matching(identifier: "servers.copy-tailnet-url").firstMatch.waitForExistence(timeout: 10), "no Copy Tailnet URL")
+        let menu = row.descendants(matching: .any).matching(identifier: "servers.row-menu").firstMatch
+        menu.click()
+        let rowMenu = app.menus.containing(.menuItem, identifier: "servers.row.open-in-browser").firstMatch
+        XCTAssertTrue(rowMenu.waitForExistence(timeout: 5))
+        let stop = rowMenu.menuItems["servers.row.tailnet-unshare"]
+        XCTAssertTrue(stop.exists, "a tailnet-shared server has no Stop Sharing on Tailnet")
+        stop.click()
+        let copy = row.descendants(matching: .any).matching(identifier: "servers.copy-tailnet-url").firstMatch
+        XCTAssertTrue(BattyUITestHarness.waitFor({ !copy.exists }, timeout: 10), "Copy Tailnet URL stayed after Stop Sharing")
+        menu.click()
+        XCTAssertTrue(rowMenu.menuItems["servers.row.tailnet-share"].waitForExistence(timeout: 5), "no Share on Tailnet after stopping")
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
+
+        _ = BattyCLI.run(["server", "unshare", "--port", String(port)])
+        _ = BattyCLI.run(["pane", "close", "--pane", terminal.uuidString])
+    }
+
+    @MainActor
+    func testNoTailnetActionWithoutTailscale() throws {
+        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FAKE_TAILSCALE": "absent"])
+        defer { app.terminate() }
+        let port = try freePort(from: session.focusedPaneID)
+        let (id, terminal) = try sharePythonServer(port, from: session.focusedPaneID)
+
+        let rowMenu = openRowMenu(id, in: app)
+        XCTAssertFalse(rowMenu.menuItems["servers.row.tailnet-share"].exists, "Share on Tailnet shows without Tailscale")
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
+
+        let tailnet = BattyCLI.run(["server", "tailnet", "--port", String(port)])
+        XCTAssertNotEqual(tailnet.status, 0, tailnet.summary)
+        XCTAssertTrue(tailnet.summary.contains("isn't installed"), tailnet.summary)
+
+        _ = BattyCLI.run(["server", "unshare", "--port", String(port)])
+        _ = BattyCLI.run(["pane", "close", "--pane", terminal.uuidString])
     }
 }

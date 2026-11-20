@@ -22,6 +22,7 @@ public enum ServerXPCError: Error, Equatable, Sendable {
     case portShared(Int)
     case notManaged
     case managedServer
+    case tailnet(String)
 
     public var message: String {
         switch self {
@@ -40,6 +41,7 @@ public enum ServerXPCError: Error, Equatable, Sendable {
         case .portShared(let port): return "port \(port) is held by a shared server Batty didn't start; stop that process, then run server start"
         case .notManaged: return "this server was shared, not started by Batty, so Batty won't signal it; use batty server unshare to remove it from the list"
         case .managedServer: return "Batty started this server; use batty server stop"
+        case .tailnet(let message): return message
         }
     }
 }
@@ -47,10 +49,13 @@ public enum ServerXPCError: Error, Equatable, Sendable {
 public struct ServerXPCResult {
     public let entry: ServerEntry
     public let created: Bool
+    /// `share --tailnet` shared the server but not on the tailnet.
+    public var tailnetError: String?
 
-    public init(entry: ServerEntry, created: Bool) {
+    public init(entry: ServerEntry, created: Bool, tailnetError: String? = nil) {
         self.entry = entry
         self.created = created
+        self.tailnetError = tailnetError
     }
 }
 
@@ -154,6 +159,7 @@ extension AppStateStore {
             self?.serverListenerChanged(entry, pid: pid)
         }
         servers.register(entry)
+        tailnet.refreshStatusIfStale()
         return entry
     }
 
@@ -274,7 +280,28 @@ extension AppStateStore {
             ensureProcessStatusPane(for: entry, pid: pid, anchor: anchor, direction: direction(for: request.split))
         }
         logger.info("server share: server \(entry.id, privacy: .public) port \(port, privacy: .public) created=\(created, privacy: .public)")
-        return .success(ServerXPCResult(entry: entry, created: created))
+        var result = ServerXPCResult(entry: entry, created: created)
+        if request.tailnet == true, case .failure(let error) = await tailnet.share(entry: entry).value {
+            result.tailnetError = error.message
+        }
+        return .success(result)
+    }
+
+    public func tailnetServerForXPC(_ request: ServerTailnetRequest) async -> Result<ServerXPCResult, ServerXPCError> {
+        let control = ServerControlRequest(paneID: request.paneID, serverID: request.serverID, port: request.port)
+        let resolved = resolveServer(control)
+        guard case .success(let entry) = resolved else {
+            if case .failure(let error) = resolved { return .failure(error) }
+            return .failure(.unknownServer)
+        }
+        if request.off == true {
+            if case .failure(let error) = await tailnet.unshare(port: entry.port, entry: entry, reportForeign: true).value {
+                return .failure(.tailnet(error.message))
+            }
+        } else if case .failure(let error) = await tailnet.share(entry: entry).value {
+            return .failure(.tailnet(error.message))
+        }
+        return .success(ServerXPCResult(entry: entry, created: false))
     }
 
     public func unshareServerForXPC(_ request: ServerControlRequest) -> Result<ServerXPCResult, ServerXPCError> {
@@ -333,6 +360,14 @@ extension AppStateStore {
     public func copyServerTailnetURL(_ entry: ServerEntry) {
         guard let url = entry.tailnetURL else { return }
         copyToPasteboard(url.absoluteString)
+    }
+
+    public func shareServerOnTailnet(_ entry: ServerEntry) {
+        _ = tailnet.share(entry: entry)
+    }
+
+    public func stopSharingServerOnTailnet(_ entry: ServerEntry) {
+        _ = tailnet.unshare(port: entry.port, entry: entry)
     }
 
     public func openServerInBrowser(_ entry: ServerEntry) {
@@ -394,7 +429,8 @@ extension AppStateStore {
             url: entry.url.absoluteString, pid: wire.pid, state: wire.state, exitCode: wire.exitCode, created: result.created,
             root: (entry.backend as? InAppStaticServerBackend)?.root,
             name: ServerEntryDisplay.name(for: entry), kind: ServerEntryDisplay.kind(entry.backend.kind),
-            processPaneID: liveProcessPaneID(entry)
+            processPaneID: liveProcessPaneID(entry),
+            tailnetURL: entry.tailnetURL?.absoluteString, tailnetError: result.tailnetError
         )
     }
 }

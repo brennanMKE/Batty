@@ -26,6 +26,7 @@ private struct ServersToolbarButton: View {
     var body: some View {
         Button {
             isShown.toggle()
+            if isShown { store.tailnet.refreshStatusIfStale() }
         } label: {
             Label("Servers", systemImage: "server.rack")
                 .symbolRenderingMode(.hierarchical)

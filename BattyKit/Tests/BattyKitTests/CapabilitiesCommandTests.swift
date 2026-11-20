@@ -37,7 +37,7 @@ struct CapabilitiesCommandTests {
         let names = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name))
         let expected = flagsOn ? Self.flagOffRoster.union([
             "mcp", "agent install", "agent context",
-            "server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare",
+            "server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare", "server tailnet",
         ]) : Self.flagOffRoster
         #expect(names == expected)
     }
@@ -69,6 +69,11 @@ struct CapabilitiesCommandTests {
         let unshare = CapabilitiesCommand.annotations(forVerbPath: "server unshare")
         #expect(!unshare.destructiveHint && !unshare.idempotentHint)
         #expect(CapabilitiesCommand.annotations(forVerbPath: "server list").readOnlyHint)
+    }
+
+    @Test func tailnetIsIdempotentNotDestructiveAndOpenWorld() {
+        #expect(CapabilitiesCommand.annotations(forVerbPath: "server tailnet")
+            == .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true))
     }
 
     @Test func capabilitiesListsSessionRemind() {

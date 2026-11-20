@@ -37,6 +37,17 @@ struct ServerPayloadTests {
         #expect(reply.name == nil)
         #expect(reply.kind == nil)
         #expect(reply.processPaneID == nil)
+        #expect(reply.tailnetURL == nil)
+        #expect(reply.tailnetError == nil)
+    }
+
+    @Test func tailnetRequestRoundTrips() throws {
+        let request = ServerTailnetRequest(paneID: UUID(), serverID: UUID(), port: 3000, off: true)
+        #expect(try roundTripOffActor(request) == request)
+        let share = ServerShareRequest(port: 3000, tailnet: true)
+        #expect(try roundTripOffActor(share) == share)
+        let reply = ServerReply(serverID: UUID(), url: "http://127.0.0.1:3000/", state: .listening, created: false, tailnetURL: "https://h.t.ts.net:3000/", tailnetError: "e")
+        #expect(try roundTripOffActor(reply) == reply)
     }
 
     @Test func serveRequestRoundTrips() throws {

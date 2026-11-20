@@ -167,6 +167,9 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         // scheduled for it. `PendingTeardownReapRegistry` is independent of
         // the model tree — draining it here catches that reap regardless.
         PendingTeardownReapRegistry.shared.drainSynchronously()
+        // #0694: the tailnet mappings Batty made outlive the app unless
+        // turned off here; never touches mappings Batty didn't make.
+        AppStateStore.shared.tailnet.removeOwnedMappingsSynchronouslyForQuit(timeout: 5)
     }
 }
 

@@ -193,6 +193,8 @@ struct CapabilitiesCommand: ParsableCommand {
         "share": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
         // Signals nothing; a second unshare finds no server and fails.
         "unshare": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
+        // Changes the tailnet's serve config, outside Batty.
+        "tailnet": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true),
         // Ends a process; a second stop finds nothing running.
         "stop": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false),
         "restart": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false),
@@ -231,6 +233,7 @@ struct CapabilitiesCommand: ParsableCommand {
         "server stop": "stop",
         "server restart": "restart",
         "server unshare": "unshare",
+        "server tailnet": "tailnet",
         "server serve": "start",
     ]
 

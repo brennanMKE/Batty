@@ -12,8 +12,8 @@ import Foundation
 struct ServerNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "server",
-        abstract: "Start, share, serve, list, stop, restart or unshare a dev server listed in the toolbar's Servers.",
-        subcommands: [ServerStartCommand.self, ServerShareCommand.self, ServerServeCommand.self, ServerListCommand.self, ServerStopCommand.self, ServerRestartCommand.self, ServerUnshareCommand.self]
+        abstract: "Start, share, serve, list, stop, restart, unshare or share on the tailnet a dev server listed in the toolbar's Servers.",
+        subcommands: [ServerStartCommand.self, ServerShareCommand.self, ServerServeCommand.self, ServerListCommand.self, ServerStopCommand.self, ServerRestartCommand.self, ServerUnshareCommand.self, ServerTailnetCommand.self]
     )
 }
 
@@ -81,9 +81,18 @@ private nonisolated func sendServer(verb: String, request: some Encodable, json:
         try printJSON(reply)
     } else {
         print(reply.serverID.uuidString)
+        if let tailnet = reply.tailnetURL { print(tailnet) }
+    }
+    if let error = reply.tailnetError {
+        fputs("batty: tailnet: \(error)\n", stderr)
+        throw ExitCode(XPCExitCode.requestFailed)
     }
     return reply
 }
+
+/// `tailscale serve` may run an HTTPS-certificate flow; the app bounds each
+/// call at 20 s.
+private nonisolated let tailnetTimeout: TimeInterval = 60
 
 /// Generous enough for a Stop that escalates all the way to SIGKILL.
 private nonisolated let serverStopTimeout: TimeInterval = 15
@@ -176,7 +185,9 @@ struct ServerShareCommand: ParsableCommand {
         Pane. Batty never stops or restarts a shared server: stop it \
         yourself, and use batty server unshare to remove it from the list. \
         Running share again for the same port returns the same server and \
-        reuses its Process Status Pane.
+        reuses its Process Status Pane. --tailnet also runs batty server \
+        tailnet; if that step fails the share stands and the command exits \
+        nonzero.
         """,
         helpNames: .long
     )
@@ -199,7 +210,10 @@ struct ServerShareCommand: ParsableCommand {
     @Flag(name: .long, help: "Don't open a Process Status Pane on the server's process.")
     var noProcessView = false
 
-    @Flag(name: .long, help: "Emit JSON (serverID, name, kind, processPaneID, url, pid, state) instead of the id.")
+    @Flag(name: .long, help: "Also share the server on your tailnet with tailscale serve.")
+    var tailnet = false
+
+    @Flag(name: .long, help: "Emit JSON (serverID, name, kind, processPaneID, url, tailnetURL, pid, state) instead of the id.")
     var json = false
 
     nonisolated func validate() throws {
@@ -209,12 +223,12 @@ struct ServerShareCommand: ParsableCommand {
     nonisolated func request() throws -> ServerShareRequest {
         ServerShareRequest(
             paneID: try resolveCallingPaneID(flag: pane), port: port, url: url, name: name,
-            split: split, processView: noProcessView ? false : nil
+            split: split, processView: noProcessView ? false : nil, tailnet: tailnet ? true : nil
         )
     }
 
     nonisolated func run() throws {
-        _ = try sendServer(verb: XPCVerb.serverShare, request: try request(), json: json, timeout: serverStopTimeout)
+        _ = try sendServer(verb: XPCVerb.serverShare, request: try request(), json: json, timeout: tailnet ? tailnetTimeout : serverStopTimeout)
     }
 }
 
@@ -394,6 +408,52 @@ struct ServerUnshareCommand: ParsableCommand {
     }
 }
 
+struct ServerTailnetCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "tailnet",
+        abstract: "Share a listed server on your tailnet with tailscale serve, printing its id and tailnet URL; --off stops.",
+        discussion: """
+        Example: batty server tailnet --port 8083
+
+        Runs tailscale serve --bg --https=<port> http://127.0.0.1:<port>, so \
+        the server is reachable at https://<this Mac>.<tailnet>.ts.net:<port>/ \
+        from your tailnet devices. Needs Tailscale running with HTTPS \
+        certificates on. Batty turns off only the mappings it made: on \
+        --off, when the server leaves the list, and when Batty quits. A \
+        port already served by a mapping Batty didn't make is left alone.
+        """,
+        helpNames: .long
+    )
+
+    @Argument(help: "Server id. Omit to name it by --port.")
+    var id: String?
+
+    @Option(name: .long, help: "Port of the server.")
+    var port: Int?
+
+    @Flag(name: .long, help: "Stop sharing the server on the tailnet.")
+    var off = false
+
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
+    var pane: String?
+
+    @Flag(name: .long, help: "Emit JSON (serverID, url, tailnetURL, state) instead of the id.")
+    var json = false
+
+    nonisolated func validate() throws {
+        _ = try controlRequest(id: id, port: port, pane: nil)
+    }
+
+    nonisolated func request() throws -> ServerTailnetRequest {
+        let control = try controlRequest(id: id, port: port, pane: pane)
+        return ServerTailnetRequest(paneID: control.paneID, serverID: control.serverID, port: control.port, off: off ? true : nil)
+    }
+
+    nonisolated func run() throws {
+        _ = try sendServer(verb: XPCVerb.serverTailnet, request: try request(), json: json, timeout: tailnetTimeout)
+    }
+}
+
 // MARK: - Capabilities
 
 private nonisolated let nameProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--name"], type: "string", description: "Name shown in the Servers list.", required: false)
@@ -432,7 +492,8 @@ extension ServerShareCommand: CapabilitiesDescribable {
             "split": CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Where the Process Status Pane goes: right (default) or down.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue)),
             "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane the Process Status Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false),
             "no-process-view": noProcessViewProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, name, kind, processPaneID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
+            "tailnet": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--tailnet"], type: "boolean", description: "Also share the server on your tailnet with tailscale serve.", required: false, defaultValue: "false"),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, name, kind, processPaneID, url, tailnetURL, pid, state) instead of the id.", required: false, defaultValue: "false"),
         ], required: ["port"])
     }
 }
@@ -478,4 +539,16 @@ extension ServerRestartCommand: CapabilitiesDescribable {
 
 extension ServerUnshareCommand: CapabilitiesDescribable {
     nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload { controlSchema() }
+}
+
+extension ServerTailnetCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Server id. Omit to name it by --port.", required: false),
+            "port": CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "Port of the server.", required: false),
+            "off": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--off"], type: "boolean", description: "Stop sharing the server on the tailnet.", required: false, defaultValue: "false"),
+            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Accepted for compatibility; has no effect.", required: false),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, url, tailnetURL, state) instead of the id.", required: false, defaultValue: "false"),
+        ])
+    }
 }

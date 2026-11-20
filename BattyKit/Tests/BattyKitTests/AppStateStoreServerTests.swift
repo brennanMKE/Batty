@@ -13,6 +13,7 @@ final class ServerStoreFixture {
     let scanner = FakePortScanner()
     let probe = FakeHTTPProbe()
     let signaller = FakeProcessSignaller()
+    let tailscale = FakeTailscaleRunner()
     let store: AppStateStore
     var copied: [String] = []
     var opened: [URL] = []
@@ -28,6 +29,8 @@ final class ServerStoreFixture {
             )
         }
         store.serverPortScanner = scanner
+        store.tailnet.runner = tailscale
+        store.tailnet.locate = { FakeTailscaleRunner.executable }
         store.copyToPasteboard = { [weak self] in self?.copied.append($0) }
         store.openURLInBrowser = { [weak self] in self?.opened.append($0) }
     }
@@ -406,8 +409,58 @@ struct AppStateStoreServerTests {
         #expect(throws: ServerXPCError.flagOff) { try fixture.store.unshareServerForXPC(ServerControlRequest(port: 8083)).get() }
         #expect(throws: ServerXPCError.flagOff) { try fixture.store.stopServerForXPC(ServerControlRequest(port: 8083)).get() }
         #expect(throws: ServerXPCError.flagOff) { try fixture.store.restartServerForXPC(ServerControlRequest(port: 8083)).get() }
+        await #expect(throws: ServerXPCError.flagOff) { try await fixture.store.tailnetServerForXPC(ServerTailnetRequest(port: 8083)).get() }
+        #expect(fixture.tailscale.calls.isEmpty)
         #expect(fixture.session.tree.allPanes.count == 1)
         #expect(fixture.store.servers.entries.isEmpty)
+    }
+}
+
+@MainActor
+struct ServerTailnetVerbTests {
+    @Test func tailnetVerbOnAnUnknownServerFails() async {
+        let fixture = ServerStoreFixture()
+        await #expect(throws: ServerXPCError.unknownServer) { try await fixture.store.tailnetServerForXPC(ServerTailnetRequest(port: 3000)).get() }
+        #expect(fixture.tailscale.serveCalls.isEmpty)
+    }
+
+    @Test func shareWithTailnetSharesAfterRegistering() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let result = try await fixture.store.shareServerForXPC(ServerShareRequest(paneID: fixture.callingPaneID, port: 3000, processView: false, tailnet: true)).get()
+        let reply = fixture.store.serverReply(result)
+        #expect(reply.tailnetURL == "https://host.tailnet.ts.net:3000/")
+        #expect(reply.tailnetError == nil)
+        #expect(fixture.tailscale.serveCalls == [TailscaleArgs.serveOn(port: 3000)])
+    }
+
+    @Test func shareWithTailnetFailureKeepsTheShareAndReportsTheError() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.tailscale.status = TailscaleFixtures.loggedOut
+        fixture.scanner.listener = FakeProcessTable.listener
+        let result = try await fixture.store.shareServerForXPC(ServerShareRequest(paneID: fixture.callingPaneID, port: 3000, processView: false, tailnet: true)).get()
+        let reply = fixture.store.serverReply(result)
+        #expect(fixture.store.servers.entries.map(\.id) == [result.entry.id])
+        #expect(reply.tailnetURL == nil)
+        #expect(reply.tailnetError == TailnetError.loggedOut.message)
+    }
+
+    @Test func listIncludesTheTailnetURL() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        _ = try await fixture.share(port: 3000, processView: false)
+        _ = try await fixture.store.tailnetServerForXPC(ServerTailnetRequest(port: 3000)).get()
+        let list = try fixture.store.listServersForXPC().get()
+        #expect(list.servers.map(\.tailnetURL) == ["https://host.tailnet.ts.net:3000/"])
+    }
+
+    @Test func tailnetOffOnAServerNotSharedIsANoOp() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        _ = try await fixture.share(port: 3000, processView: false)
+        let result = try await fixture.store.tailnetServerForXPC(ServerTailnetRequest(port: 3000, off: true)).get()
+        #expect(result.entry.tailnetURL == nil)
+        #expect(fixture.tailscale.serveCalls.isEmpty)
     }
 }
 

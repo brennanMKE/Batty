@@ -183,6 +183,11 @@ public nonisolated enum XPCVerb {
     /// Fails for a server Batty started.
     public static let serverUnshare = "serverUnshare"
 
+    /// #0694: shares a tracked server on the tailnet with `tailscale serve`,
+    /// or stops (`off`). Request payload is `ServerTailnetRequest`; the
+    /// reply is `ServerReply`.
+    public static let serverTailnet = "serverTailnet"
+
     /// #0648: stops a tracked server (SIGINT, then SIGTERM,
     /// then SIGKILL). Request payload is `ServerControlRequest`; the reply is
     /// `ServerReply`. Fails for a shared server.

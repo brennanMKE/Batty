@@ -50,6 +50,13 @@ private struct ServerRow: View {
                         .foregroundStyle(color(ServerEntryDisplay.tone(entry.state, isResponding: entry.isResponding)))
                         .accessibilityIdentifier("servers.state")
                 }
+                if let error = entry.tailnetError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                        .accessibilityIdentifier("servers.tailnet-error")
+                }
             }
             Spacer(minLength: 8)
             Button {
@@ -87,6 +94,17 @@ private struct ServerRow: View {
             if store.serverTerminalTabID(entry) != nil {
                 Button("Show Terminal") { store.showServerTerminal(entry) }
                     .accessibilityIdentifier("servers.row.show-terminal")
+            }
+            if store.tailnet.offersSharing || entry.tailnetURL != nil {
+                if entry.tailnetURL == nil {
+                    Button("Share on Tailnet") { store.shareServerOnTailnet(entry) }
+                        .disabled(entry.isTailnetBusy)
+                        .accessibilityIdentifier("servers.row.tailnet-share")
+                } else {
+                    Button("Stop Sharing on Tailnet") { store.stopSharingServerOnTailnet(entry) }
+                        .disabled(entry.isTailnetBusy)
+                        .accessibilityIdentifier("servers.row.tailnet-unshare")
+                }
             }
             if ServerEntryDisplay.offersStopAndRestart(kind: entry.backend.kind) {
                 Divider()

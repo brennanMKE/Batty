@@ -12,6 +12,9 @@ public final class ServerRegistry {
     /// In registration order.
     public private(set) var entries: [ServerEntry] = []
 
+    /// Called after an entry leaves the list, before it tears down.
+    @ObservationIgnored public var onRemove: ((ServerEntry) -> Void)?
+
     public init() {}
 
     public var activeEntries: [ServerEntry] {
@@ -44,6 +47,7 @@ public final class ServerRegistry {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         let entry = entries.remove(at: index)
         entry.onFinished = nil
+        onRemove?(entry)
         entry.tearDown()
     }
 }

@@ -42,8 +42,13 @@ public final class ServerEntry {
     public let id = UUID()
     public let port: UInt16
     public let url: URL
-    /// Set by the tailnet share (#0694); nil until then.
+    /// The `https://<host>.<tailnet>.ts.net[:port]/` URL while the port is
+    /// served on the tailnet (`TailnetSharing`); nil otherwise.
     public internal(set) var tailnetURL: URL?
+    /// Why the last tailnet share or stop failed, in the tool's words.
+    public internal(set) var tailnetError: String?
+    /// True while a tailnet share or stop runs for this entry.
+    public internal(set) var isTailnetBusy = false
     public private(set) var backend: ServerBackend
     public private(set) var state: ServerEntryState
     public private(set) var listenerPid: pid_t?

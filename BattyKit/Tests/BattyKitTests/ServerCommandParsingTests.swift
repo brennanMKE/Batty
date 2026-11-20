@@ -148,4 +148,26 @@ struct ServerCommandParsingTests {
         #expect(throws: (any Error).self) { try ServerStopCommand.parse([]) }
         #expect(throws: (any Error).self) { try ServerRestartCommand.parse(["not-a-uuid"]) }
     }
+
+    @Test func tailnetAcceptsPortOrID() throws {
+        let byPort = try ServerTailnetCommand.parse(["--port", "3000"])
+        #expect(try byPort.request().port == 3000)
+        #expect(try byPort.request().off == nil)
+        let id = UUID()
+        #expect(try ServerTailnetCommand.parse([id.uuidString]).request().serverID == id)
+    }
+
+    @Test func tailnetAcceptsOff() throws {
+        #expect(try ServerTailnetCommand.parse(["--port", "3000", "--off"]).request().off == true)
+    }
+
+    @Test func tailnetRequiresPortOrID() {
+        #expect(throws: (any Error).self) { try ServerTailnetCommand.parse([]) }
+        #expect(throws: (any Error).self) { try ServerTailnetCommand.parse(["--port", "0"]) }
+    }
+
+    @Test func shareAcceptsTailnet() throws {
+        #expect(try ServerShareCommand.parse(["--port", "3000", "--tailnet"]).request().tailnet == true)
+        #expect(try ServerShareCommand.parse(["--port", "3000"]).request().tailnet == nil)
+    }
 }

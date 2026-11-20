@@ -202,6 +202,9 @@ public final class AppStateStore {
     /// Every tracked server, app-wide (#0691).
     public let servers = ServerRegistry()
 
+    /// Opt-in tailnet sharing of tracked servers (#0694).
+    public let tailnet = TailnetSharing.make()
+
     /// Builds a server entry (#0648). Tests replace it to inject
     /// scanners, probes and clocks.
     @ObservationIgnored var makeServerEntry: @MainActor (_ port: UInt16, _ url: URL?, _ backend: ServerBackend) -> ServerEntry = { port, url, backend in
@@ -1586,6 +1589,8 @@ public final class AppStateStore {
                 self?.handleWindowDidBecomeKey(window)
             }
         }
+        tailnet.hasTrackedServers = { [weak self] in !(self?.servers.entries.isEmpty ?? true) }
+        servers.onRemove = { [weak self] entry in self?.tailnet.entryRemoved(port: entry.port) }
     }
 
     deinit {

@@ -439,7 +439,7 @@ struct CapabilitiesInputSchemaTests {
     /// unclassified nor linger in the table after it is removed.
     @Test func leafArchetypeByVerbPathCoversExactlyTheShippedVerbPaths() {
         let keys = Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys)
-        let serverPaths: Set<String> = ["server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare"]
+        let serverPaths: Set<String> = ["server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare", "server tailnet"]
         #expect(keys == shippedVerbPaths(flags: .allOnForTests))
         #expect(keys.subtracting(MCPToolCatalog.excludedVerbPaths).subtracting(serverPaths) == shippedVerbPaths(flags: FeatureFlags(sharedProjectImages: false)))
     }
@@ -583,7 +583,7 @@ extension FeatureFlags {
 }
 
 struct ServerCapabilitiesTests {
-    private let serverVerbs: Set<String> = ["server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare"]
+    private let serverVerbs: Set<String> = ["server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare", "server tailnet"]
 
     @Test func serverVerbsAppearOnlyWithTheFlagOn() {
         let on = Set(CapabilitiesCommand.verbs(flags: .allOnForTests).map(\.name))
@@ -632,6 +632,11 @@ extension CapabilitiesInputSchemaTests {
         assertNamesAreInvocable(ServerListCommand.capabilitiesInputSchema, helpMessage: ServerListCommand.helpMessage())
         assertSchemaMatchesStoredProperties(try ServerUnshareCommand.parse(["--port", "1"]), schema: ServerUnshareCommand.capabilitiesInputSchema)
         assertNamesAreInvocable(ServerUnshareCommand.capabilitiesInputSchema, helpMessage: ServerUnshareCommand.helpMessage())
+    }
+
+    @Test func serverTailnetCommandSchemaMatchesStoredProperties() throws {
+        assertSchemaMatchesStoredProperties(try ServerTailnetCommand.parse(["--port", "1"]), schema: ServerTailnetCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerTailnetCommand.capabilitiesInputSchema, helpMessage: ServerTailnetCommand.helpMessage())
     }
 
     @Test func serverServeCommandSchemaMatchesStoredProperties() throws {
