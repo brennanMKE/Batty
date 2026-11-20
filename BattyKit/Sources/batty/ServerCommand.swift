@@ -12,8 +12,8 @@ import Foundation
 struct ServerNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "server",
-        abstract: "Start, attach to, serve, stop or restart a dev server listed in the toolbar's Servers.",
-        subcommands: [ServerStartCommand.self, ServerAttachCommand.self, ServerServeCommand.self, ServerStopCommand.self, ServerRestartCommand.self]
+        abstract: "Start, share, serve, list, stop, restart or unshare a dev server listed in the toolbar's Servers.",
+        subcommands: [ServerStartCommand.self, ServerShareCommand.self, ServerServeCommand.self, ServerListCommand.self, ServerStopCommand.self, ServerRestartCommand.self, ServerUnshareCommand.self]
     )
 }
 
@@ -46,24 +46,10 @@ private nonisolated func resolveCallingPaneID(flag: String?) throws -> UUID? {
     }
 }
 
-/// Sends a `server` verb and prints the reply: the server id, or
-/// `ServerReply` as JSON.
-private nonisolated func sendServer(verb: String, request: some Encodable, json: Bool, timeout: TimeInterval) throws -> ServerReply {
-    let endpoint = try resolveServerEndpoint()
-    switch AppServiceClient.server(verb: verb, request: request, endpoint: endpoint, timeout: timeout) {
-    case .success(let reply):
-        if json {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            guard let data = try? encoder.encode(reply), let text = String(data: data, encoding: .utf8) else {
-                fputs("batty: failed to encode server reply as JSON\n", stderr)
-                throw ExitCode.failure
-            }
-            print(text)
-        } else {
-            print(reply.serverID.uuidString)
-        }
-        return reply
+private nonisolated func failOutcome<T>(_ outcome: AppServiceClient.Outcome<T>) throws -> T {
+    switch outcome {
+    case .success(let value):
+        return value
     case .unreachable:
         fputs("batty: app unavailable\n", stderr)
         throw ExitCode(XPCExitCode.appUnavailable)
@@ -74,6 +60,29 @@ private nonisolated func sendServer(verb: String, request: some Encodable, json:
         fputs("batty: app terminated\n", stderr)
         throw ExitCode(XPCExitCode.sessionTerminated)
     }
+}
+
+private nonisolated func printJSON(_ value: some Encodable) throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    guard let data = try? encoder.encode(value), let text = String(data: data, encoding: .utf8) else {
+        fputs("batty: failed to encode server reply as JSON\n", stderr)
+        throw ExitCode.failure
+    }
+    print(text)
+}
+
+/// Sends a `server` verb and prints the reply: the server id, or
+/// `ServerReply` as JSON.
+private nonisolated func sendServer(verb: String, request: some Encodable, json: Bool, timeout: TimeInterval) throws -> ServerReply {
+    let endpoint = try resolveServerEndpoint()
+    let reply = try failOutcome(AppServiceClient.server(verb: verb, request: request, endpoint: endpoint, timeout: timeout))
+    if json {
+        try printJSON(reply)
+    } else {
+        print(reply.serverID.uuidString)
+    }
+    return reply
 }
 
 /// Generous enough for a Stop that escalates all the way to SIGKILL.
@@ -94,9 +103,11 @@ struct ServerStartCommand: ParsableCommand {
         directory; the keyboard stays in the calling Pane. One argument after \
         `--` is used verbatim as shell text; several are quoted and joined. \
         Running it again for the same port reuses that server and its \
-        terminal, replaces the command and restarts. --wait waits until \
-        something listens on the port (exit 0), the command exits (exit 4) or \
-        --timeout passes (exit 4).
+        terminal, replaces the command and restarts. Once the port listens, a \
+        Process Status Pane on the listener opens below the terminal Pane \
+        (--no-process-view skips it). --wait waits until something listens \
+        on the port (exit 0), the command exits (exit 4) or --timeout passes \
+        (exit 4).
         """,
         helpNames: .long
     )
@@ -107,8 +118,8 @@ struct ServerStartCommand: ParsableCommand {
     @Option(name: .long, help: "URL to copy and probe. Defaults to http://127.0.0.1:<port>/.")
     var url: String?
 
-    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
-    var statsUrl: String?
+    @Option(name: .long, help: "Name shown in the Servers list.")
+    var name: String?
 
     @Option(name: .long, help: "Where the terminal Pane goes: right (default) or down.")
     var split: ServerSplit?
@@ -116,13 +127,16 @@ struct ServerStartCommand: ParsableCommand {
     @Option(name: .long, help: "Pane the terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.")
     var pane: String?
 
+    @Flag(name: .long, help: "Don't open a Process Status Pane on the server's process.")
+    var noProcessView = false
+
     @Flag(name: .long, help: "Wait until the server listens, exits, or --timeout passes.")
     var wait = false
 
     @Option(name: .long, help: "Seconds --wait waits, at most 86400. Defaults to 60.")
     var timeout: Double = 60
 
-    @Flag(name: .long, help: "Emit JSON (serverID, terminalPaneID, tabID, url, pid, state) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (serverID, name, kind, terminalPaneID, tabID, processPaneID, url, pid, state) instead of the id.")
     var json = false
 
     @Argument(parsing: .postTerminator, help: "The server command, after --.")
@@ -138,7 +152,7 @@ struct ServerStartCommand: ParsableCommand {
         ServerStartRequest(
             paneID: try resolveCallingPaneID(flag: pane), port: port, command: ShellCommandJoiner.join(command),
             workingDirectory: URL(fileURLWithPath: currentDirectory).standardizedFileURL.path,
-            url: url, statsURL: statsUrl, split: split, wait: wait ? true : nil, waitTimeoutSeconds: wait ? timeout : nil
+            url: url, name: name, split: split, processView: noProcessView ? false : nil, wait: wait ? true : nil, waitTimeoutSeconds: wait ? timeout : nil
         )
     }
 
@@ -149,17 +163,20 @@ struct ServerStartCommand: ParsableCommand {
 
 extension ServerSplit: ExpressibleByArgument {}
 
-struct ServerAttachCommand: ParsableCommand {
+struct ServerShareCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "attach",
-        abstract: "List a server started elsewhere in the toolbar's Servers, printing the server's id.",
+        commandName: "share",
+        abstract: "List a server already listening on 127.0.0.1 in the toolbar's Servers and watch its process, printing the server's id.",
         discussion: """
-        Example: batty server attach --port 8083
+        Example: batty server share --port 8083
 
-        Batty never reruns a command it read from another process. Pass \
-        --command (and --cwd) to make Restart available; Restart then runs \
-        it in a new terminal Pane. Running attach again for the same port \
-        returns the existing server unchanged.
+        Fails when nothing of yours listens on the port. Opens a Process \
+        Status Pane on the listening process beside the calling Pane \
+        (--no-process-view skips it); the keyboard stays in the calling \
+        Pane. Batty never stops or restarts a shared server: stop it \
+        yourself, and use batty server unshare to remove it from the list. \
+        Running share again for the same port returns the same server and \
+        reuses its Process Status Pane.
         """,
         helpNames: .long
     )
@@ -167,50 +184,65 @@ struct ServerAttachCommand: ParsableCommand {
     @Option(name: .long, help: "TCP port the server listens on (1-65535).")
     var port: Int
 
+    @Option(name: .long, help: "Name shown in the Servers list.")
+    var name: String?
+
     @Option(name: .long, help: "URL to copy and probe. Defaults to http://127.0.0.1:<port>/.")
     var url: String?
 
-    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
-    var statsUrl: String?
-
-    @Option(name: .long, help: "Shell command Restart runs. Without it the server has no Restart.")
-    var command: String?
-
-    @Option(name: .long, help: "Directory --command runs in. Defaults to this directory.")
-    var cwd: String?
-
-    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
+    @Option(name: .long, help: "Where the Process Status Pane goes: right (default) or down.")
     var split: ServerSplit?
 
-    @Option(name: .long, help: "Pane Restart splits a new terminal Pane from. Falls back to BATTY_PANE_ID, then the focused pane.")
+    @Option(name: .long, help: "Pane the Process Status Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.")
     var pane: String?
 
-    @Flag(name: .long, help: "Wait until the server listens or --timeout passes.")
-    var wait = false
+    @Flag(name: .long, help: "Don't open a Process Status Pane on the server's process.")
+    var noProcessView = false
 
-    @Option(name: .long, help: "Seconds --wait waits, at most 86400. Defaults to 60.")
-    var timeout: Double = 60
-
-    @Flag(name: .long, help: "Emit JSON (serverID, url, pid, state) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (serverID, name, kind, processPaneID, url, pid, state) instead of the id.")
     var json = false
 
     nonisolated func validate() throws {
         try validatePort(port)
-        if let error = WaitTimeout.validationError(timeout) { throw ValidationError("--timeout \(error)") }
     }
 
-    nonisolated func request(currentDirectory: String = FileManager.default.currentDirectoryPath) throws -> ServerAttachRequest {
-        let directory = command == nil ? nil : URL(fileURLWithPath: cwd ?? ".", relativeTo: URL(fileURLWithPath: currentDirectory, isDirectory: true)).standardizedFileURL.path
-        return ServerAttachRequest(
-            paneID: try resolveCallingPaneID(flag: pane), port: port, url: url, statsURL: statsUrl,
-            command: command, workingDirectory: directory, split: split, wait: wait ? true : nil, waitTimeoutSeconds: wait ? timeout : nil
+    nonisolated func request() throws -> ServerShareRequest {
+        ServerShareRequest(
+            paneID: try resolveCallingPaneID(flag: pane), port: port, url: url, name: name,
+            split: split, processView: noProcessView ? false : nil
         )
     }
 
     nonisolated func run() throws {
-        let reply = try sendServer(verb: XPCVerb.serverAttach, request: try request(), json: json, timeout: (wait ? timeout : 0) + serverStopTimeout)
-        if reply.state == .starting {
-            fputs("nothing is listening on port \(port) yet; the Servers list will update when something does\n", stderr)
+        _ = try sendServer(verb: XPCVerb.serverShare, request: try request(), json: json, timeout: serverStopTimeout)
+    }
+}
+
+struct ServerListCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "list",
+        abstract: "List the servers in the toolbar's Servers, one per line: id, name, port, kind, state, url.",
+        helpNames: .long
+    )
+
+    @Flag(name: .long, help: "Emit JSON ({ servers: [...] }) instead of lines.")
+    var json = false
+
+    nonisolated static func lines(_ reply: ServerListReply) -> [String] {
+        reply.servers.map { item in
+            var fields = [item.serverID.uuidString, item.name, String(item.port), item.kind.rawValue, item.state.rawValue, item.url]
+            if let tailnet = item.tailnetURL { fields.append(tailnet) }
+            return fields.joined(separator: "\t")
+        }
+    }
+
+    nonisolated func run() throws {
+        let endpoint = try resolveServerEndpoint()
+        let reply = try failOutcome(AppServiceClient.serverList(endpoint: endpoint, timeout: serverStopTimeout))
+        if json {
+            try printJSON(reply)
+        } else {
+            for line in Self.lines(reply) { print(line) }
         }
     }
 }
@@ -267,7 +299,7 @@ struct ServerServeCommand: ParsableCommand {
     }
 }
 
-/// `stop` and `restart` name the server by id or by port.
+/// `stop`, `restart` and `unshare` name the server by id or by port.
 private nonisolated func controlRequest(id: String?, port: Int?, pane: String?) throws -> ServerControlRequest {
     if let id {
         guard let uuid = UUID(uuidString: id) else { throw ValidationError("invalid server id: \(id)") }
@@ -281,7 +313,7 @@ private nonisolated func controlRequest(id: String?, port: Int?, pane: String?) 
 struct ServerStopCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "stop",
-        abstract: "Stop a server (SIGINT, then SIGTERM, then SIGKILL).",
+        abstract: "Stop a server Batty started (SIGINT, then SIGTERM, then SIGKILL). Refused for a shared server.",
         helpNames: .long
     )
 
@@ -309,7 +341,7 @@ struct ServerStopCommand: ParsableCommand {
 struct ServerRestartCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "restart",
-        abstract: "Stop the server and run its command again.",
+        abstract: "Stop a server Batty started and run its command again. Refused for a shared server.",
         helpNames: .long
     )
 
@@ -334,14 +366,43 @@ struct ServerRestartCommand: ParsableCommand {
     }
 }
 
+struct ServerUnshareCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "unshare",
+        abstract: "Remove a shared server from the toolbar's Servers without signalling it. Refused for a server Batty started.",
+        helpNames: .long
+    )
+
+    @Argument(help: "Server id. Omit to name it by --port.")
+    var id: String?
+
+    @Option(name: .long, help: "Port of the server.")
+    var port: Int?
+
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
+    var pane: String?
+
+    @Flag(name: .long, help: "Emit JSON instead of the id.")
+    var json = false
+
+    nonisolated func validate() throws {
+        _ = try controlRequest(id: id, port: port, pane: nil)
+    }
+
+    nonisolated func run() throws {
+        _ = try sendServer(verb: XPCVerb.serverUnshare, request: try controlRequest(id: id, port: port, pane: pane), json: json, timeout: serverStopTimeout)
+    }
+}
+
 // MARK: - Capabilities
 
+private nonisolated let nameProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--name"], type: "string", description: "Name shown in the Servers list.", required: false)
+private nonisolated let noProcessViewProperty = CapabilitiesPropertyPayload(cliKind: .flag, names: ["--no-process-view"], type: "boolean", description: "Don't open a Process Status Pane on the server's process.", required: false, defaultValue: "false")
 private nonisolated let ignoredSplitProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Accepted for compatibility; has no effect.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue))
 private nonisolated let splitProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Where the terminal Pane goes: right (default) or down.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue))
 private nonisolated let paneProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane the terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false)
 private nonisolated let ignoredPaneProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Accepted for compatibility; has no effect.", required: false)
 private nonisolated let urlProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--url"], type: "string", description: "URL to copy and probe. Defaults to http://127.0.0.1:<port>/.", required: false)
-private nonisolated let statsURLProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--stats-url"], type: "string", description: "Accepted for compatibility; has no effect.", required: false)
 private nonisolated let portProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "TCP port the server listens on (1-65535).", required: true)
 private nonisolated let timeoutProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--timeout"], type: "number", description: "Seconds --wait waits, at most 86400. Defaults to 60.", required: false, defaultValue: "60", maximum: Int(WaitTimeout.maximumSeconds))
 
@@ -350,31 +411,37 @@ extension ServerStartCommand: CapabilitiesDescribable {
         CapabilitiesInputSchemaPayload(properties: [
             "port": portProperty,
             "url": urlProperty,
-            "stats-url": statsURLProperty,
+            "name": nameProperty,
             "split": splitProperty,
             "pane": paneProperty,
+            "no-process-view": noProcessViewProperty,
             "wait": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--wait"], type: "boolean", description: "Wait until the server listens, exits, or --timeout passes.", required: false, defaultValue: "false"),
             "timeout": timeoutProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, terminalPaneID, tabID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, name, kind, terminalPaneID, tabID, processPaneID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
             "command": CapabilitiesPropertyPayload(cliKind: .positional, type: "array", description: "The server command, after --.", required: true),
         ], required: ["port", "command"])
     }
 }
 
-extension ServerAttachCommand: CapabilitiesDescribable {
+extension ServerShareCommand: CapabilitiesDescribable {
     nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
         CapabilitiesInputSchemaPayload(properties: [
             "port": portProperty,
+            "name": nameProperty,
             "url": urlProperty,
-            "stats-url": statsURLProperty,
-            "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["--command"], type: "string", description: "Shell command Restart runs. Without it the server has no Restart.", required: false),
-            "cwd": CapabilitiesPropertyPayload(cliKind: .option, names: ["--cwd"], type: "string", description: "Directory --command runs in. Defaults to this directory.", required: false),
-            "split": ignoredSplitProperty,
-            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane Restart splits a new terminal Pane from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false),
-            "wait": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--wait"], type: "boolean", description: "Wait until the server listens or --timeout passes.", required: false, defaultValue: "false"),
-            "timeout": timeoutProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
+            "split": CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Where the Process Status Pane goes: right (default) or down.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue)),
+            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane the Process Status Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false),
+            "no-process-view": noProcessViewProperty,
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, name, kind, processPaneID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
         ], required: ["port"])
+    }
+}
+
+extension ServerListCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload {
+        CapabilitiesInputSchemaPayload(properties: [
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON ({ servers: [...] }) instead of lines.", required: false, defaultValue: "false"),
+        ])
     }
 }
 
@@ -406,5 +473,9 @@ extension ServerStopCommand: CapabilitiesDescribable {
 }
 
 extension ServerRestartCommand: CapabilitiesDescribable {
+    nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload { controlSchema() }
+}
+
+extension ServerUnshareCommand: CapabilitiesDescribable {
     nonisolated static var capabilitiesInputSchema: CapabilitiesInputSchemaPayload { controlSchema() }
 }

@@ -168,19 +168,29 @@ public nonisolated enum XPCVerb {
     /// `ServerReply`. Fails with the `servers` flag off.
     public static let serverStart = "serverStart"
 
-    /// #0648: lists a server started elsewhere, or returns the entry
-    /// already tracking that port unchanged. Request payload is
-    /// `ServerAttachRequest`; the reply is `ServerReply`.
-    public static let serverAttach = "serverAttach"
+    /// #0692: lists a server Batty didn't start and opens a Process Status
+    /// Pane on its listener, or returns the entry already tracking that port.
+    /// Fails when nothing listens. Request payload is `ServerShareRequest`;
+    /// the reply is `ServerReply`.
+    public static let serverShare = "serverShare"
+
+    /// #0692: every tracked server. No request payload; the reply is
+    /// `ServerListReply`.
+    public static let serverList = "serverList"
+
+    /// #0692: removes a shared server from the list without signalling it.
+    /// Request payload is `ServerControlRequest`; the reply is `ServerReply`.
+    /// Fails for a server Batty started.
+    public static let serverUnshare = "serverUnshare"
 
     /// #0648: stops a tracked server (SIGINT, then SIGTERM,
     /// then SIGKILL). Request payload is `ServerControlRequest`; the reply is
-    /// `ServerReply`.
+    /// `ServerReply`. Fails for a shared server.
     public static let serverStop = "serverStop"
 
     /// #0648: stops and runs the server's command again. Request payload is
-    /// `ServerControlRequest`; the reply is `ServerReply`. Fails for an
-    /// attached server with no `--command`.
+    /// `ServerControlRequest`; the reply is `ServerReply`. Fails for a
+    /// shared server.
     public static let serverRestart = "serverRestart"
 
     /// #0649: serves a folder from inside Batty on 127.0.0.1 in a Server

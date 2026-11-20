@@ -439,7 +439,7 @@ struct CapabilitiesInputSchemaTests {
     /// unclassified nor linger in the table after it is removed.
     @Test func leafArchetypeByVerbPathCoversExactlyTheShippedVerbPaths() {
         let keys = Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys)
-        let serverPaths: Set<String> = ["server start", "server attach", "server serve", "server stop", "server restart"]
+        let serverPaths: Set<String> = ["server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare"]
         #expect(keys == shippedVerbPaths(flags: .allOnForTests))
         #expect(keys.subtracting(MCPToolCatalog.excludedVerbPaths).subtracting(serverPaths) == shippedVerbPaths(flags: FeatureFlags(sharedProjectImages: false)))
     }
@@ -583,7 +583,7 @@ extension FeatureFlags {
 }
 
 struct ServerCapabilitiesTests {
-    private let serverVerbs: Set<String> = ["server start", "server attach", "server serve", "server stop", "server restart"]
+    private let serverVerbs: Set<String> = ["server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare"]
 
     @Test func serverVerbsAppearOnlyWithTheFlagOn() {
         let on = Set(CapabilitiesCommand.verbs(flags: .allOnForTests).map(\.name))
@@ -621,10 +621,17 @@ extension CapabilitiesInputSchemaTests {
         assertNamesAreInvocable(ServerStartCommand.capabilitiesInputSchema, helpMessage: ServerStartCommand.helpMessage())
     }
 
-    @Test func serverAttachCommandSchemaMatchesStoredProperties() throws {
-        let instance = try ServerAttachCommand.parse(["--port", "1"])
-        assertSchemaMatchesStoredProperties(instance, schema: ServerAttachCommand.capabilitiesInputSchema)
-        assertNamesAreInvocable(ServerAttachCommand.capabilitiesInputSchema, helpMessage: ServerAttachCommand.helpMessage())
+    @Test func serverShareCommandSchemaMatchesStoredProperties() throws {
+        let instance = try ServerShareCommand.parse(["--port", "1"])
+        assertSchemaMatchesStoredProperties(instance, schema: ServerShareCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerShareCommand.capabilitiesInputSchema, helpMessage: ServerShareCommand.helpMessage())
+    }
+
+    @Test func serverListAndUnshareSchemasMatchStoredProperties() throws {
+        assertSchemaMatchesStoredProperties(try ServerListCommand.parse([]), schema: ServerListCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerListCommand.capabilitiesInputSchema, helpMessage: ServerListCommand.helpMessage())
+        assertSchemaMatchesStoredProperties(try ServerUnshareCommand.parse(["--port", "1"]), schema: ServerUnshareCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(ServerUnshareCommand.capabilitiesInputSchema, helpMessage: ServerUnshareCommand.helpMessage())
     }
 
     @Test func serverServeCommandSchemaMatchesStoredProperties() throws {

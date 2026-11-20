@@ -98,6 +98,10 @@ private struct ServerRow: View {
                     .disabled(!entry.canStop)
                     .accessibilityIdentifier("servers.row.stop")
                     .help(entry.stopRefusal ?? "")
+            } else {
+                Divider()
+                Button("Remove from List") { store.unshareServer(entry) }
+                    .accessibilityIdentifier("servers.row.unshare")
             }
         } label: {
             Label("More", systemImage: "ellipsis.circle")

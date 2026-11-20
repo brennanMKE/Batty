@@ -28,6 +28,12 @@ struct MCPInstructionsTests {
         }
     }
 
+    @Test func devServerHintNamesServerShare() {
+        let text = MCPInstructions.text(environment: MCPServerTests.inBatty, catalog: catalog(), cliName: "batty")
+        #expect(text.contains("`server_share`"))
+        #expect(!text.contains("server_attach"))
+    }
+
     @Test func serverHintsDropWithServersOff() {
         let flags = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: false)
         let text = MCPInstructions.text(environment: MCPServerTests.inBatty, catalog: catalog(flags), cliName: "batty")

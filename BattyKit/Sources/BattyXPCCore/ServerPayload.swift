@@ -2,8 +2,9 @@
 
 import Foundation
 
-/// Payloads for the `serverStart`, `serverAttach`, `serverStop` and
-/// `serverRestart` XPC verbs (#0648). `nonisolated` at the type level for the
+/// Payloads for the `serverStart`, `serverShare`, `serverServe`,
+/// `serverList`, `serverStop`, `serverRestart` and `serverUnshare` XPC verbs
+/// (#0648, #0692). `nonisolated` at the type level for the
 /// same reason as every other payload in this module.
 
 /// Where `server start` puts its terminal Pane, split from the calling Pane.
@@ -29,46 +30,46 @@ public nonisolated struct ServerStartRequest: Codable, Sendable, Equatable {
     public var command: String
     public var workingDirectory: String
     public var url: String?
-    public var statsURL: String?
+    /// Overrides the Servers list row's name.
+    public var name: String?
     public var split: ServerSplit?
+    /// False skips the Process Status Pane. Nil means open it.
+    public var processView: Bool?
     public var wait: Bool?
     public var waitTimeoutSeconds: Double?
 
-    public init(paneID: UUID? = nil, port: Int, command: String, workingDirectory: String, url: String? = nil, statsURL: String? = nil, split: ServerSplit? = nil, wait: Bool? = nil, waitTimeoutSeconds: Double? = nil) {
+    public init(paneID: UUID? = nil, port: Int, command: String, workingDirectory: String, url: String? = nil, name: String? = nil, split: ServerSplit? = nil, processView: Bool? = nil, wait: Bool? = nil, waitTimeoutSeconds: Double? = nil) {
         self.paneID = paneID
         self.port = port
         self.command = command
         self.workingDirectory = workingDirectory
         self.url = url
-        self.statsURL = statsURL
+        self.name = name
         self.split = split
+        self.processView = processView
         self.wait = wait
         self.waitTimeoutSeconds = waitTimeoutSeconds
     }
 }
 
-public nonisolated struct ServerAttachRequest: Codable, Sendable, Equatable {
+/// `batty server share`: tracks a server Batty didn't start. Batty never
+/// signals it.
+public nonisolated struct ServerShareRequest: Codable, Sendable, Equatable {
     public var paneID: UUID?
     public var port: Int
     public var url: String?
-    public var statsURL: String?
-    /// The command Restart runs. Without it the server has no Restart.
-    public var command: String?
-    public var workingDirectory: String?
+    public var name: String?
     public var split: ServerSplit?
-    public var wait: Bool?
-    public var waitTimeoutSeconds: Double?
+    /// False skips the Process Status Pane. Nil means open it.
+    public var processView: Bool?
 
-    public init(paneID: UUID? = nil, port: Int, url: String? = nil, statsURL: String? = nil, command: String? = nil, workingDirectory: String? = nil, split: ServerSplit? = nil, wait: Bool? = nil, waitTimeoutSeconds: Double? = nil) {
+    public init(paneID: UUID? = nil, port: Int, url: String? = nil, name: String? = nil, split: ServerSplit? = nil, processView: Bool? = nil) {
         self.paneID = paneID
         self.port = port
         self.url = url
-        self.statsURL = statsURL
-        self.command = command
-        self.workingDirectory = workingDirectory
+        self.name = name
         self.split = split
-        self.wait = wait
-        self.waitTimeoutSeconds = waitTimeoutSeconds
+        self.processView = processView
     }
 }
 
@@ -117,9 +118,16 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
     public var created: Bool
     /// The served folder, for an in-app static server (#0649).
     public var root: String?
+    public var name: String?
+    public var kind: ServerKind?
+    /// The Process Status Pane watching the listener, when one is open.
+    public var processPaneID: UUID?
 
-    public init(serverID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil) {
+    public init(serverID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil, name: String? = nil, kind: ServerKind? = nil, processPaneID: UUID? = nil) {
         self.root = root
+        self.name = name
+        self.kind = kind
+        self.processPaneID = processPaneID
         self.serverID = serverID
         self.terminalPaneID = terminalPaneID
         self.tabID = tabID
@@ -128,5 +136,49 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
         self.state = state
         self.exitCode = exitCode
         self.created = created
+    }
+}
+
+/// How a listed server runs: `terminal` (a command in a Batty terminal
+/// Pane), `external` (shared; Batty didn't start it) or `static` (a folder
+/// Batty serves).
+public nonisolated enum ServerKind: String, Codable, Sendable, CaseIterable {
+    case terminal
+    case external
+    case `static`
+}
+
+public nonisolated struct ServerListItem: Codable, Sendable, Equatable {
+    public var serverID: UUID
+    public var name: String
+    public var port: Int
+    public var kind: ServerKind
+    public var state: ServerState
+    public var url: String
+    public var tailnetURL: String?
+    public var pid: Int32?
+    public var terminalPaneID: UUID?
+    public var processPaneID: UUID?
+
+    public init(serverID: UUID, name: String, port: Int, kind: ServerKind, state: ServerState, url: String, tailnetURL: String? = nil, pid: Int32? = nil, terminalPaneID: UUID? = nil, processPaneID: UUID? = nil) {
+        self.serverID = serverID
+        self.name = name
+        self.port = port
+        self.kind = kind
+        self.state = state
+        self.url = url
+        self.tailnetURL = tailnetURL
+        self.pid = pid
+        self.terminalPaneID = terminalPaneID
+        self.processPaneID = processPaneID
+    }
+}
+
+/// `serverList`: every tracked server, in registration order.
+public nonisolated struct ServerListReply: Codable, Sendable, Equatable {
+    public var servers: [ServerListItem]
+
+    public init(servers: [ServerListItem]) {
+        self.servers = servers
     }
 }

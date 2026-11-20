@@ -199,21 +199,17 @@ public final class TerminalTabServerBackend: ServerBackend {
     }
 }
 
+/// A shared server (`batty server share`): a process Batty didn't start.
+/// Batty watches it and never signals it.
 @MainActor
 public final class ExternalProcessServerBackend: ServerBackend {
-    public let command: String?
-    public let workingDirectory: String?
-
-    public init(command: String?, workingDirectory: String?) {
-        self.command = command
-        self.workingDirectory = workingDirectory
-    }
+    public init() {}
 
     public var kind: ServerBackendKind { .external }
-    /// Restart needs a command the CLI passed; Batty never runs argv it
-    /// recovered from another process.
-    public var canRestart: Bool { command != nil }
-    public var canStop: Bool { true }
+    public var command: String? { nil }
+    public var workingDirectory: String? { nil }
+    public var canRestart: Bool { false }
+    public var canStop: Bool { false }
     public var stopsOnTearDown: Bool { false }
     public var isAvailable: Bool { true }
 
@@ -222,7 +218,6 @@ public final class ExternalProcessServerBackend: ServerBackend {
     public func detach() {}
 
     public func stopDecision(listenerPid: pid_t?, table: ProcessTableReading) -> ServerStopDecision {
-        guard let listenerPid else { return .nothing }
-        return ServerJobResolver.planTreeStop(listener: listenerPid, snapshot: table.snapshot(), selfPid: table.selfPid)
+        .nothing
     }
 }

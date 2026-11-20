@@ -37,7 +37,7 @@ struct CapabilitiesCommandTests {
         let names = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name))
         let expected = flagsOn ? Self.flagOffRoster.union([
             "mcp", "agent install", "agent context",
-            "server start", "server attach", "server serve", "server stop", "server restart",
+            "server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare",
         ]) : Self.flagOffRoster
         #expect(names == expected)
     }
@@ -56,6 +56,19 @@ struct CapabilitiesCommandTests {
     @Test func flagOffPayloadHasNoServerVerbs() {
         let names = CapabilitiesCommand.buildPayload(flags: Self.flagOff).verbs.map(\.name)
         #expect(!names.contains { $0.hasPrefix("server") })
+    }
+
+    @Test func stopAndRestartAreDestructive() {
+        #expect(CapabilitiesCommand.annotations(forVerbPath: "server stop").destructiveHint)
+        #expect(CapabilitiesCommand.annotations(forVerbPath: "server restart").destructiveHint)
+    }
+
+    @Test func shareIsIdempotentAndUnshareIsNotDestructive() {
+        let share = CapabilitiesCommand.annotations(forVerbPath: "server share")
+        #expect(share.idempotentHint && !share.destructiveHint && !share.readOnlyHint)
+        let unshare = CapabilitiesCommand.annotations(forVerbPath: "server unshare")
+        #expect(!unshare.destructiveHint && !unshare.idempotentHint)
+        #expect(CapabilitiesCommand.annotations(forVerbPath: "server list").readOnlyHint)
     }
 
     @Test func capabilitiesListsSessionRemind() {

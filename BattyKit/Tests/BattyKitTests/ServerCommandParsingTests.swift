@@ -52,10 +52,8 @@ struct ServerCommandParsingTests {
     @Test func waitTimeoutOutOfRangeIsRejected() {
         for value in ["inf", "nan", "0", "-1", "86401", "1e300"] {
             #expect(throws: (any Error).self, "start \(value)") { try ServerStartCommand.parse(["--port", "8083", "--wait", "--timeout", value, "--", "x"]) }
-            #expect(throws: (any Error).self, "attach \(value)") { try ServerAttachCommand.parse(["--port", "8083", "--wait", "--timeout", value]) }
         }
         #expect(throws: Never.self) { try ServerStartCommand.parse(["--port", "8083", "--wait", "--timeout", "86400", "--", "x"]) }
-        #expect(throws: Never.self) { try ServerAttachCommand.parse(["--port", "8083", "--wait", "--timeout", "86400"]) }
     }
 
     @Test func singleTrailingArgumentIsUsedVerbatim() throws {
@@ -79,12 +77,69 @@ struct ServerCommandParsingTests {
         #expect(throws: (any Error).self) { try ServerStartCommand.parse(["--port", "1", "--split", "left", "--", "x"]) }
     }
 
-    @Test func attachAcceptsCommandAndCwd() throws {
-        let command = try ServerAttachCommand.parse(["--port", "9000", "--command", "npm start", "--cwd", "web"])
-        let request = try command.request(currentDirectory: "/tmp/project")
-        #expect(request.command == "npm start")
-        #expect(request.workingDirectory == "/tmp/project/web")
-        #expect(try ServerAttachCommand.parse(["--port", "9000"]).request(currentDirectory: "/tmp").workingDirectory == nil)
+    @Test func shareRequiresPort() {
+        #expect(throws: (any Error).self) { try ServerShareCommand.parse([]) }
+        #expect(throws: (any Error).self) { try ServerShareCommand.parse(["--port", "0"]) }
+        #expect(throws: Never.self) { try ServerShareCommand.parse(["--port", "9000"]) }
+    }
+
+    @Test func shareAcceptsNameSplitAndNoProcessView() throws {
+        let request = try ServerShareCommand.parse(["--port", "9000", "--name", "web", "--split", "down", "--no-process-view", "--url", "http://localhost:9000/"]).request()
+        #expect(request.port == 9000)
+        #expect(request.name == "web")
+        #expect(request.split == .down)
+        #expect(request.processView == false)
+        #expect(request.url == "http://localhost:9000/")
+        let plain = try ServerShareCommand.parse(["--port", "9000"]).request()
+        #expect(plain.processView == nil)
+        #expect(plain.name == nil)
+        #expect(throws: (any Error).self) { try ServerShareCommand.parse(["--port", "9000", "--wait"]) }
+    }
+
+    @Test func attachIsAnUnknownSubcommand() {
+        #expect(throws: (any Error).self) { try ServerNounCommand.parseAsRoot(["attach", "--port", "8083"]) }
+        #expect(!ServerNounCommand.configuration.subcommands.contains { $0.configuration.commandName == "attach" })
+    }
+
+    @Test func startAcceptsNameAndNoProcessView() throws {
+        let request = try ServerStartCommand.parse(["--port", "8083", "--name", "api", "--no-process-view", "--", "x"]).request(currentDirectory: "/tmp")
+        #expect(request.name == "api")
+        #expect(request.processView == false)
+        #expect(try ServerStartCommand.parse(["--port", "8083", "--", "x"]).request(currentDirectory: "/tmp").processView == nil)
+    }
+
+    @Test func startRejectsStatsUrl() {
+        #expect(throws: (any Error).self) { try ServerStartCommand.parse(["--port", "8083", "--stats-url", "http://x/", "--", "x"]) }
+    }
+
+    @Test func listAcceptsJson() throws {
+        #expect(try ServerListCommand.parse(["--json"]).json)
+        #expect(try !ServerListCommand.parse([]).json)
+        #expect(throws: (any Error).self) { try ServerListCommand.parse(["--port", "1"]) }
+    }
+
+    @Test func listLinesAreTabSeparatedWithTailnetOnlyWhenSet() {
+        let a = UUID(), b = UUID()
+        let reply = ServerListReply(servers: [
+            ServerListItem(serverID: a, name: "go", port: 8083, kind: .terminal, state: .listening, url: "http://127.0.0.1:8083/"),
+            ServerListItem(serverID: b, name: "web", port: 9000, kind: .external, state: .starting, url: "http://127.0.0.1:9000/", tailnetURL: "https://h.ts.net/"),
+        ])
+        #expect(ServerListCommand.lines(reply) == [
+            "\(a.uuidString)\tgo\t8083\tterminal\tlistening\thttp://127.0.0.1:8083/",
+            "\(b.uuidString)\tweb\t9000\texternal\tstarting\thttp://127.0.0.1:9000/\thttps://h.ts.net/",
+        ])
+        #expect(ServerListCommand.lines(ServerListReply(servers: [])).isEmpty)
+    }
+
+    @Test func unshareAcceptsPortOrID() {
+        #expect(throws: Never.self) { try ServerUnshareCommand.parse(["--port", "8083"]) }
+        #expect(throws: Never.self) { try ServerUnshareCommand.parse([UUID().uuidString]) }
+    }
+
+    @Test func unshareRequiresPortOrID() {
+        #expect(throws: (any Error).self) { try ServerUnshareCommand.parse([]) }
+        #expect(throws: (any Error).self) { try ServerUnshareCommand.parse(["not-a-uuid"]) }
+        #expect(throws: (any Error).self) { try ServerUnshareCommand.parse(["--port", "0"]) }
     }
 
     @Test func stopAcceptsPortOrPaneID() throws {

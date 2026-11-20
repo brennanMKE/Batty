@@ -29,7 +29,7 @@ struct MCPToolCatalogTests {
     }
 
     @Test func serverVerbsBecomeToolsOnlyWithServersOn() {
-        let serverTools: Set<String> = ["server_start", "server_attach", "server_stop", "server_restart", "server_serve"]
+        let serverTools: Set<String> = ["server_start", "server_share", "server_list", "server_stop", "server_restart", "server_unshare", "server_serve"]
         #expect(serverTools.isSubset(of: Set(catalog().tools.map(\.name))))
         let agentOnly = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: false)
         #expect(Set(catalog(agentOnly).tools.map(\.name)).isDisjoint(with: serverTools))
@@ -38,6 +38,10 @@ struct MCPToolCatalogTests {
     @Test func agentContextIsNotATool() {
         #expect(CapabilitiesCommand.verbs(flags: Self.flagOn).contains { $0.name == "agent context" })
         #expect(catalog().tool(named: "agent_context") == nil)
+    }
+
+    @Test func noServerAttachTool() {
+        #expect(catalog().tool(named: "server_attach") == nil)
     }
 
     @Test func catalogIncludesServerServe() {
@@ -197,7 +201,7 @@ struct MCPToolCatalogTests {
         #expect(argv.contains("--json"))
     }
 
-    @Test(arguments: ["pane_split", "tab_new", "server_start", "server_attach"])
+    @Test(arguments: ["pane_split", "tab_new", "server_start"])
     func timeoutSchemaCarriesTheMaximum(_ toolName: String) throws {
         let tool = try #require(catalog().tool(named: toolName))
         guard case let .object(timeout)? = properties(tool)["timeout"] else {

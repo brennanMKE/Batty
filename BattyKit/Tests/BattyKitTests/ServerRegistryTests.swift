@@ -26,7 +26,7 @@ struct ServerRegistryTests {
     }
 
     func external(port: UInt16) -> ServerEntry {
-        entry(port: port, backend: ExternalProcessServerBackend(command: nil, workingDirectory: nil))
+        entry(port: port, backend: ExternalProcessServerBackend())
     }
 
     @Test func registerAddsEntriesInOrder() {
@@ -134,9 +134,9 @@ struct ServerEntryDisplayTests {
     }
 
     @Test func nameIsTheCommandsProgram() {
-        let python = entry(backend: ExternalProcessServerBackend(command: "python3 -m http.server 8000", workingDirectory: "/tmp"))
+        let python = entry(backend: TerminalTabServerBackend(tabID: UUID(), command: "python3 -m http.server 8000", workingDirectory: "/tmp", lookup: { _ in nil }))
         #expect(ServerEntryDisplay.name(for: python) == "python3")
-        let npm = entry(backend: ExternalProcessServerBackend(command: "/usr/local/bin/npm run dev", workingDirectory: "/tmp"))
+        let npm = entry(backend: TerminalTabServerBackend(tabID: UUID(), command: "/usr/local/bin/npm run dev", workingDirectory: "/tmp", lookup: { _ in nil }))
         #expect(ServerEntryDisplay.name(for: npm) == "npm")
     }
 
@@ -146,8 +146,8 @@ struct ServerEntryDisplayTests {
         #expect(ServerEntryDisplay.name(for: entry(backend: backend)) == expected)
     }
 
-    @Test func nameOfAnAttachedServerComesFromItsCommandLine() async {
-        let attached = entry(backend: ExternalProcessServerBackend(command: nil, workingDirectory: nil), commandLine: "/opt/homebrew/bin/node server.js")
+    @Test func nameOfASharedServerComesFromItsCommandLine() async {
+        let attached = entry(backend: ExternalProcessServerBackend(), commandLine: "/opt/homebrew/bin/node server.js")
         scanner.listener = 4321
         attached.setUp(visible: true)
         #expect(await clock.waitForSleepers(1))
@@ -155,8 +155,15 @@ struct ServerEntryDisplayTests {
         attached.tearDown()
     }
 
+    @Test func nameIsTheCustomNameWhenGiven() {
+        let shared = entry(backend: TerminalTabServerBackend(tabID: UUID(), command: "node server.js", workingDirectory: "/tmp", lookup: { _ in nil }))
+        #expect(ServerEntryDisplay.name(for: shared) == "node")
+        shared.customName = "site"
+        #expect(ServerEntryDisplay.name(for: shared) == "site")
+    }
+
     @Test func nameFallsBackToThePort() {
-        let attached = entry(port: 9123, backend: ExternalProcessServerBackend(command: nil, workingDirectory: nil))
+        let attached = entry(port: 9123, backend: ExternalProcessServerBackend())
         #expect(ServerEntryDisplay.name(for: attached) == "Port 9123")
     }
 
@@ -165,7 +172,7 @@ struct ServerEntryDisplayTests {
     }
 
     @Test func defaultURLIsLoopback127() {
-        #expect(entry(port: 8000, backend: ExternalProcessServerBackend(command: nil, workingDirectory: nil)).url.absoluteString == "http://127.0.0.1:8000/")
+        #expect(entry(port: 8000, backend: ExternalProcessServerBackend()).url.absoluteString == "http://127.0.0.1:8000/")
     }
 }
 

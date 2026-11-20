@@ -27,6 +27,7 @@ final class ServerStoreFixture {
                 signaller: signaller, processTable: FakeProcessTable(tabID: UUID()), opener: { _ in }, startsBackendOnSetUp: false
             )
         }
+        store.serverPortScanner = scanner
         store.copyToPasteboard = { [weak self] in self?.copied.append($0) }
         store.openURLInBrowser = { [weak self] in self?.opened.append($0) }
     }
@@ -38,8 +39,21 @@ final class ServerStoreFixture {
         try store.startServerForXPC(ServerStartRequest(paneID: paneID ?? callingPaneID, port: port, command: command, workingDirectory: "/tmp", url: url, split: split)).get()
     }
 
-    func attach(port: Int = 8083, command: String? = nil) throws -> ServerXPCResult {
-        try store.attachServerForXPC(ServerAttachRequest(paneID: callingPaneID, port: port, command: command, workingDirectory: command == nil ? nil : "/tmp")).get()
+    func start(port: Int = 8083, processView: Bool?) throws -> ServerXPCResult {
+        try store.startServerForXPC(ServerStartRequest(paneID: callingPaneID, port: port, command: "go run .", workingDirectory: "/tmp", processView: processView)).get()
+    }
+
+    /// Shares `port`; the fake scanner must report a listener first.
+    func share(port: Int = 8083, name: String? = nil, processView: Bool? = nil, split: ServerSplit? = nil) async throws -> ServerXPCResult {
+        try await store.shareServerForXPC(ServerShareRequest(paneID: callingPaneID, port: port, name: name, split: split, processView: processView)).get()
+    }
+
+    var processStatusPanes: [PaneRuntime] {
+        session.tree.allPanes.filter { $0.kind == .processStatus }
+    }
+
+    func processTarget(_ id: UUID?) -> ProcessStatusPaneContent.Target? {
+        (pane(id)?.content as? ProcessStatusPaneContent)?.target
     }
 
     func pane(_ id: UUID?) -> PaneRuntime? {
@@ -141,32 +155,213 @@ struct AppStateStoreServerTests {
         #expect(!b.created)
     }
 
-    @Test func attachTwiceReturnsTheSameEntryUnchanged() throws {
-        let fixture = ServerStoreFixture()
-        let first = try fixture.attach()
-        let second = try fixture.attach(command: "npm start")
-        #expect(second.entry === first.entry)
-        #expect(!second.created)
-        #expect(second.entry.backend.command == nil)
-    }
-
-    @Test func attachOpensNoPane() throws {
+    @Test func shareOfANonListeningPortFails() async {
         let fixture = ServerStoreFixture()
         let count = fixture.session.tree.allPanes.count
-        let result = try fixture.attach()
+        await #expect(throws: ServerXPCError.nothingListening(8083)) { try await fixture.share() }
+        #expect(fixture.store.servers.entries.isEmpty)
         #expect(fixture.session.tree.allPanes.count == count)
-        #expect(result.entry.backend.kind == .external)
-        #expect(fixture.store.servers.entry(port: 8083) === result.entry)
     }
 
-    @Test func startOnAnAttachedPortConvertsItToATerminalBackend() async throws {
+    @Test func shareRegistersAnExternalEntryAndOpensOneProcessStatusPaneOnTheListener() async throws {
         let fixture = ServerStoreFixture()
-        let attached = try fixture.attach()
+        let caller = fixture.callingPaneID
+        fixture.scanner.listener = FakeProcessTable.listener
+        let result = try await fixture.share(name: "web")
+        #expect(result.created)
+        #expect(result.entry.backend.kind == .external)
+        #expect(ServerEntryDisplay.name(for: result.entry) == "web")
+        let reply = fixture.store.serverReply(result)
+        #expect(reply.kind == .external)
+        #expect(reply.name == "web")
+        let processPane = try #require(reply.processPaneID)
+        #expect(fixture.processStatusPanes.map(\.id) == [processPane])
+        #expect(fixture.processTarget(processPane) == .pinned(FakeProcessTable.listener))
+        #expect(splitDirection(between: caller, and: processPane, in: fixture.session.tree.root) == .horizontal)
+        #expect(fixture.session.tree.focusedPaneID == caller)
+    }
+
+    @Test func repeatedShareReusesTheEntryAndTheProcessStatusPane() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let first = try await fixture.share()
+        let second = try await fixture.share()
+        #expect(second.entry === first.entry)
+        #expect(!second.created)
+        #expect(fixture.processStatusPanes.count == 1)
+        #expect(fixture.store.serverReply(second).processPaneID == fixture.store.serverReply(first).processPaneID)
+    }
+
+    @Test func shareWithNoProcessViewOpensNoPane() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let count = fixture.session.tree.allPanes.count
+        let result = try await fixture.share(processView: false)
+        #expect(fixture.session.tree.allPanes.count == count)
+        #expect(fixture.store.serverReply(result).processPaneID == nil)
+    }
+
+    @Test func shareAfterTheProcessStatusPaneWasClosedOpensANewOne() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let first = try #require(fixture.store.serverReply(try await fixture.share()).processPaneID)
+        fixture.session.tree.removePane(id: first)
+        #expect(fixture.processStatusPanes.isEmpty)
+        let second = try #require(fixture.store.serverReply(try await fixture.share()).processPaneID)
+        #expect(second != first)
+        #expect(fixture.processStatusPanes.map(\.id) == [second])
+    }
+
+    @Test func shareOnAStartedPortReturnsTheManagedEntry() async throws {
+        let fixture = ServerStoreFixture()
+        let started = try fixture.start(processView: false)
+        fixture.scanner.listener = FakeProcessTable.listener
+        let shared = try await fixture.share()
+        #expect(shared.entry === started.entry)
+        #expect(!shared.created)
+        #expect(shared.entry.backend.kind == .terminal)
+    }
+
+    @Test func stopRefusesASharedServer() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let entry = try await fixture.share().entry
+        await entry.performTick()
+        #expect(throws: ServerXPCError.notManaged) { try fixture.store.stopServerForXPC(ServerControlRequest(port: 8083)).get() }
+        await entry.awaitPendingWork()
+        #expect(fixture.signaller.sent.isEmpty)
+        #expect(fixture.store.servers.entry(port: 8083) === entry)
+    }
+
+    @Test func restartRefusesASharedServer() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let entry = try await fixture.share().entry
+        await entry.performTick()
+        #expect(throws: ServerXPCError.notManaged) { try fixture.store.restartServerForXPC(ServerControlRequest(serverID: entry.id)).get() }
+        await entry.awaitPendingWork()
+        #expect(fixture.signaller.sent.isEmpty)
+    }
+
+    @Test func unshareRemovesASharedServerWithoutSignalling() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let shared = try await fixture.share()
+        await shared.entry.performTick()
+        let processPane = fixture.store.serverReply(shared).processPaneID
+        let result = try fixture.store.unshareServerForXPC(ServerControlRequest(port: 8083)).get()
+        #expect(result.entry === shared.entry)
+        #expect(fixture.store.serverReply(result).state == .listening)
+        #expect(fixture.store.servers.entries.isEmpty)
+        #expect(fixture.signaller.sent.isEmpty)
+        #expect(fixture.processStatusPanes.map(\.id) == processPane.map { [$0] })
+    }
+
+    @Test func unshareRefusesAStartedServer() throws {
+        let fixture = ServerStoreFixture()
         let started = try fixture.start()
-        await started.entry.awaitPendingWork()
-        #expect(started.entry === attached.entry)
+        #expect(throws: ServerXPCError.managedServer) { try fixture.store.unshareServerForXPC(ServerControlRequest(serverID: started.entry.id)).get() }
+        #expect(fixture.store.servers.entries.count == 1)
+    }
+
+    @Test func unshareFromTheRowMenuRemovesOnlySharedServers() async throws {
+        let fixture = ServerStoreFixture()
+        let started = try fixture.start(port: 8083)
+        fixture.scanner.listener = FakeProcessTable.listener
+        let shared = try await fixture.share(port: 9000)
+        fixture.store.unshareServer(started.entry)
+        fixture.store.unshareServer(shared.entry)
+        #expect(fixture.store.servers.entries.map(\.id) == [started.entry.id])
+        #expect(fixture.signaller.sent.isEmpty)
+    }
+
+    @Test func startOnASharedPortThatStillListensFails() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let shared = try await fixture.share(processView: false)
+        await shared.entry.performTick()
+        let count = fixture.session.tree.allPanes.count
+        #expect(throws: ServerXPCError.portShared(8083)) { try fixture.start() }
+        #expect(shared.entry.backend.kind == .external)
+        #expect(fixture.session.tree.allPanes.count == count)
+        #expect(fixture.signaller.sent.isEmpty)
+    }
+
+    @Test func startOnASharedPortNoLongerListeningTakesItOver() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let shared = try await fixture.share(processView: false)
+        fixture.scanner.listener = nil
+        await shared.entry.performTick()
+        let started = try fixture.start()
+        #expect(started.entry === shared.entry)
         #expect(started.entry.backend.kind == .terminal)
         #expect(fixture.store.serverReply(started).terminalPaneID != nil)
+        #expect(fixture.signaller.sent.isEmpty)
+    }
+
+    @Test func startOpensTheProcessStatusPaneOnceThePortListens() async throws {
+        let fixture = ServerStoreFixture()
+        let caller = fixture.callingPaneID
+        let result = try fixture.start()
+        let terminalID = try #require(fixture.store.serverReply(result).terminalPaneID)
+        await result.entry.performTick()
+        #expect(fixture.processStatusPanes.isEmpty)
+        fixture.scanner.listener = FakeProcessTable.listener
+        await result.entry.performTick()
+        let processPane = try #require(fixture.processStatusPanes.first?.id)
+        #expect(fixture.processStatusPanes.count == 1)
+        #expect(fixture.processTarget(processPane) == .pinned(FakeProcessTable.listener))
+        #expect(splitDirection(between: terminalID, and: processPane, in: fixture.session.tree.root) == .vertical)
+        #expect(fixture.session.tree.focusedPaneID == caller)
+        #expect(fixture.store.serverReply(result).processPaneID == processPane)
+    }
+
+    @Test func startWithNoProcessViewOpensNoPane() async throws {
+        let fixture = ServerStoreFixture()
+        let result = try fixture.start(processView: false)
+        fixture.scanner.listener = FakeProcessTable.listener
+        await result.entry.performTick()
+        #expect(fixture.processStatusPanes.isEmpty)
+    }
+
+    @Test func restartRetargetsTheProcessStatusPaneToTheNewListener() async throws {
+        let fixture = ServerStoreFixture()
+        let result = try fixture.start()
+        fixture.scanner.listener = FakeProcessTable.listener
+        await result.entry.performTick()
+        let processPane = try #require(fixture.processStatusPanes.first?.id)
+        fixture.scanner.listener = 100_950
+        await result.entry.performTick()
+        #expect(fixture.processTarget(processPane) == .pinned(100_950))
+        #expect(fixture.processStatusPanes.count == 1)
+    }
+
+    @Test func aClosedProcessStatusPaneIsNotReopenedOnTheNextListener() async throws {
+        let fixture = ServerStoreFixture()
+        let result = try fixture.start()
+        fixture.scanner.listener = FakeProcessTable.listener
+        await result.entry.performTick()
+        let processPane = try #require(fixture.processStatusPanes.first?.id)
+        fixture.session.tree.removePane(id: processPane)
+        fixture.scanner.listener = 100_950
+        await result.entry.performTick()
+        #expect(fixture.processStatusPanes.isEmpty)
+    }
+
+    @Test func listReturnsEveryServerInRegistrationOrder() async throws {
+        let fixture = ServerStoreFixture()
+        let started = try fixture.start(port: 8083)
+        fixture.scanner.listener = FakeProcessTable.listener
+        let shared = try await fixture.share(port: 9000, name: "web")
+        let reply = try fixture.store.listServersForXPC().get()
+        #expect(reply.servers.map(\.serverID) == [started.entry.id, shared.entry.id])
+        #expect(reply.servers.map(\.kind) == [.terminal, .external])
+        #expect(reply.servers.map(\.port) == [8083, 9000])
+        #expect(reply.servers[1].name == "web")
+        #expect(reply.servers[0].terminalPaneID != nil)
+        #expect(reply.servers[1].processPaneID != nil)
+        #expect(reply.servers.allSatisfy { $0.tailnetURL == nil })
     }
 
     @Test func stopAndRestartResolveByPortAppWide() async throws {
@@ -203,10 +398,12 @@ struct AppStateStoreServerTests {
         }
     }
 
-    @Test func everyVerbFailsWithFlagOff() {
+    @Test func everyVerbFailsWithFlagOff() async {
         let fixture = ServerStoreFixture(servers: false)
         #expect(throws: ServerXPCError.flagOff) { try fixture.start() }
-        #expect(throws: ServerXPCError.flagOff) { try fixture.attach() }
+        await #expect(throws: ServerXPCError.flagOff) { try await fixture.share() }
+        #expect(throws: ServerXPCError.flagOff) { try fixture.store.listServersForXPC().get() }
+        #expect(throws: ServerXPCError.flagOff) { try fixture.store.unshareServerForXPC(ServerControlRequest(port: 8083)).get() }
         #expect(throws: ServerXPCError.flagOff) { try fixture.store.stopServerForXPC(ServerControlRequest(port: 8083)).get() }
         #expect(throws: ServerXPCError.flagOff) { try fixture.store.restartServerForXPC(ServerControlRequest(port: 8083)).get() }
         #expect(fixture.session.tree.allPanes.count == 1)
@@ -256,10 +453,11 @@ struct ServerEntryActionsTests {
         #expect(fixture.pane(terminalID)?.activeTabID == reply.tabID)
     }
 
-    @Test func showTerminalIsANoOpForAnAttachedServer() throws {
+    @Test func showTerminalIsANoOpForASharedServer() async throws {
         let fixture = ServerStoreFixture()
         let caller = fixture.callingPaneID
-        let entry = try fixture.attach().entry
+        fixture.scanner.listener = FakeProcessTable.listener
+        let entry = try await fixture.share(processView: false).entry
         #expect(fixture.store.serverTerminalTabID(entry) == nil)
         fixture.store.showServerTerminal(entry)
         #expect(fixture.session.tree.focusedPaneID == caller)
@@ -334,18 +532,13 @@ struct AppXPCServiceServerTests {
     }
 
     @Test(arguments: [1e300, Double.greatestFiniteMagnitude, 0, -1, 86_401])
-    func anOutOfRangeWaitTimeoutIsRefusedBeforeStartingOrAttaching(_ seconds: Double) async throws {
+    func anOutOfRangeWaitTimeoutIsRefusedBeforeStarting(_ seconds: Double) async throws {
         let fixture = ServerStoreFixture()
         let panesBefore = fixture.session.tree.allPanes.count
         let start = try JSONEncoder().encode(ServerStartRequest(paneID: fixture.callingPaneID, port: 8083, command: "go run .", workingDirectory: "/tmp", wait: true, waitTimeoutSeconds: seconds))
         let startResponse = await respond(fixture, verb: XPCVerb.serverStart, payload: start)
         #expect(!startResponse.ok)
         #expect(startResponse.error?.hasPrefix("wait timeout must be") == true)
-
-        let attach = try JSONEncoder().encode(ServerAttachRequest(paneID: fixture.callingPaneID, port: 8083, wait: true, waitTimeoutSeconds: seconds))
-        let attachResponse = await respond(fixture, verb: XPCVerb.serverAttach, payload: attach)
-        #expect(!attachResponse.ok)
-        #expect(attachResponse.error?.hasPrefix("wait timeout must be") == true)
 
         #expect(fixture.session.tree.allPanes.count == panesBefore)
     }
@@ -355,6 +548,35 @@ struct AppXPCServiceServerTests {
         let fixture = ServerStoreFixture()
         let content = try fixture.start().entry
         #expect(await AppXPCService.firstStateLeavingStarting(content, clock: fixture.clock, timeout: seconds) == nil)
+    }
+
+    @Test func serverListReplyListsTheServers() async throws {
+        let fixture = ServerStoreFixture()
+        let started = try fixture.start()
+        let response = await respond(fixture, verb: XPCVerb.serverList, payload: nil)
+        #expect(response.ok)
+        let reply = try JSONDecoder().decode(ServerListReply.self, from: try #require(response.payload))
+        #expect(reply.servers.map(\.serverID) == [started.entry.id])
+    }
+
+    @Test func serverShareOfANonListeningPortIsAFailure() async throws {
+        let fixture = ServerStoreFixture()
+        let payload = try JSONEncoder().encode(ServerShareRequest(paneID: fixture.callingPaneID, port: 8083))
+        let response = await respond(fixture, verb: XPCVerb.serverShare, payload: payload)
+        #expect(!response.ok)
+        #expect(response.error == "nothing of yours is listening on 127.0.0.1:8083")
+    }
+
+    @Test func serverUnshareRepliesWithTheRemovedServer() async throws {
+        let fixture = ServerStoreFixture()
+        fixture.scanner.listener = FakeProcessTable.listener
+        let shared = try await fixture.share(processView: false)
+        let payload = try JSONEncoder().encode(ServerControlRequest(port: 8083))
+        let response = await respond(fixture, verb: XPCVerb.serverUnshare, payload: payload)
+        #expect(response.ok)
+        let reply = try JSONDecoder().decode(ServerReply.self, from: try #require(response.payload))
+        #expect(reply.serverID == shared.entry.id)
+        #expect(fixture.store.servers.entries.isEmpty)
     }
 
     @Test func malformedPayloadIsAFailure() async {

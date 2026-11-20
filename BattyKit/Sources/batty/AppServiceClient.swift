@@ -301,6 +301,10 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    static func serverList(endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<ServerListReply> {
+        perform(verb: XPCVerb.serverList, requestPayload: nil, endpoint: endpoint, timeout: timeout, logLabel: XPCVerb.serverList)
+    }
+
     private static func perform<Payload: Decodable & Sendable>(
         verb: String,
         requestPayload: Data?,

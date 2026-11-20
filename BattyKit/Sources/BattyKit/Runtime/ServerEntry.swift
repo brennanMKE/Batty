@@ -13,7 +13,7 @@ public nonisolated enum ServerStopReason: Equatable, Sendable {
 }
 
 public nonisolated enum ServerEntryState: Equatable, Sendable {
-    /// The command was typed, or attach is waiting, and nothing listens yet.
+    /// The command was typed, or a shared server is waiting, and nothing listens yet.
     case starting
     /// `pid` is nil when the listener belongs to another user.
     case listening(pid: pid_t?)
@@ -75,11 +75,21 @@ public final class ServerEntry {
     /// there is no terminal to type into. Set by the store.
     @ObservationIgnored public var makeTerminalBackend: ((_ command: String, _ workingDirectory: String?) -> ServerBackend?)?
 
+    /// The Servers list row's name, from `--name`.
+    public var customName: String?
+    /// The Process Status Pane watching this server's listener.
+    @ObservationIgnored public var processStatusPaneID: UUID?
+    /// True until the first listener opens the Process Status Pane
+    /// (`server start` without `--no-process-view`).
+    @ObservationIgnored public var wantsProcessStatus = false
+    /// Called from a tick when the listener changes to a found pid.
+    @ObservationIgnored public var onListenerChange: ((ServerEntry, pid_t) -> Void)?
+
     /// The Pane `server start` was called from; Restart splits a new
     /// terminal Pane from it once the old terminal is gone.
     @ObservationIgnored public var anchorPaneID: UUID?
-    /// Called once the entry is no longer running and no Stop, Restart or
-    /// conversion is in flight. The registry removes the entry.
+    /// Called once the entry is no longer running and no Stop or Restart is
+    /// in flight. The registry removes the entry.
     @ObservationIgnored var onFinished: (@MainActor (ServerEntry) -> Void)?
 
     /// False when the creator builds the backend's terminal after this
@@ -212,6 +222,7 @@ public final class ServerEntry {
                 listenerPid = found
                 if backend.kind == .external { recoveredCommandLine = commandLineProvider(found) }
                 refreshStopRefusal()
+                onListenerChange?(self, found)
             } else if stopRefusal != nil {
                 refreshStopRefusal()
             }
@@ -321,24 +332,6 @@ public final class ServerEntry {
         opener(url)
     }
 
-    /// Stops an attached server, if running, then swaps in `replacement`:
-    /// `server start` on a port an attached entry holds.
-    public func convert(to replacement: ServerBackend) {
-        let previous = stopTask
-        stopTask = Task { [weak self] in
-            await previous?.value
-            guard let self else { return }
-            if self.backend.kind == .external, self.state.isRunning, self.canStop {
-                guard await self.performStop() else {
-                    self.finishPendingWork()
-                    return
-                }
-            }
-            self.replaceBackend(replacement)
-            self.finishPendingWork()
-        }
-    }
-
     private func finishPendingWork() {
         stopTask = nil
         notifyIfFinished()
@@ -349,7 +342,7 @@ public final class ServerEntry {
         onFinished?(self)
     }
 
-    /// The in-flight Stop, Restart or conversion, for tests and the XPC
+    /// The in-flight Stop or Restart, for tests and the XPC
     /// replies.
     public func awaitPendingWork() async {
         await stopTask?.value
@@ -436,7 +429,7 @@ public final class ServerEntry {
     }
 
     /// Swaps in a new backend and starts it, as `server start` on a port
-    /// an attached entry holds, or whose terminal is gone.
+    /// a shared entry holds while nothing listens, or whose terminal is gone.
     public func replaceBackend(_ replacement: ServerBackend) {
         backend.detach()
         backend = replacement

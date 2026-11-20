@@ -480,7 +480,7 @@ At the start of a session, run `env | grep '^BATTY'`. If `BATTY_SESSION_ID`, `BA
 - Prefer the `batty` MCP tools (`batty-beta` in Batty Beta) when they are available (`batty mcp`, installed by `batty agent install`). Otherwise use the CLI: `batty` (or `batty-beta` in Batty Beta). Run `batty capabilities` to see the available commands.
 - Use Batty to split Panes and set reminders (`batty session remind`) when they help the user follow your work.
 - Show status in Batty Panes (`batty pane split --view git-status --unique`) rather than printing it.
-- Start dev servers with `batty server start --port N -- <command>` (or `batty server attach --port N` if one is already running) when `batty capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.
+- Start dev servers with `batty server start --port N -- <command>` (or `batty server share --port N` if one is already running) when `batty capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.
 - Preview static pages with `batty server serve <dir> --open`, never `python3 -m http.server`.
 - Use `batty notify` to get the user's attention.
 - Close the Panes and Sessions you open when you are done with them.
@@ -506,13 +506,13 @@ batty-beta server serve ./dist --open --json
 - Running `serve` again on the same folder reuses its server.
   `batty-beta server stop <serverID>` stops it.
 
-## Dev servers: `server start` and `server attach` (Beta only until 1.5.0)
+## Dev servers: `server start` and `server share` (Beta only until 1.5.0)
 
 `batty-beta` has a `server` noun (#0648); `batty` (Prod) does not until 1.5.0,
 so check `capabilities --json` for `server start` first.
 
 The rule for agents: when you start a dev server, start it with
-`server start`, or `server attach` it if it is already running. Do not open a
+`server start`, or `server share` it if it is already running. Do not open a
 browser yourself. The command runs in a terminal Pane split to the right of
 yours; pass `--split down` only when the user asked for a specific placement.
 
@@ -537,15 +537,20 @@ batty-beta server start --port 8083 --wait --json -- go run .
   (another Tab's server, another app), stop and restart exit non-zero with
   `stop refused: <reason>` and signal nothing.
 
-Attach to a server started elsewhere:
+Share a server that is already running:
 
 ```bash
-batty-beta server attach --port 3000
-batty-beta server attach --port 3000 --command "npm run dev" --cwd ~/web   # adds Restart
+batty-beta server share --port 3000
+batty-beta server list
+batty-beta server unshare --port 3000
 ```
 
-Without `--command` the server has no Restart: Batty never reruns a
-command it read from another process.
+`share` fails when nothing of yours listens on the port. It lists the server
+and opens a Process Status Pane on its process beside yours
+(`--no-process-view` skips it). Batty never stops or restarts a shared
+server: `stop` and `restart` exit non-zero, and `unshare` removes it from the
+list without signalling it. `server start` also opens a Process Status Pane,
+below the terminal Pane, once the port listens.
 
 ## Failure handling
 

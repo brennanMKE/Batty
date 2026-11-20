@@ -262,30 +262,29 @@ struct ServerEntryTests {
         #expect(signaller.sent.first?.0 == .processTree(FakeProcessTable.listener))
     }
 
-    @Test func attachWithoutCommandCannotRestart() {
-        let content = content(backend: ExternalProcessServerBackend(command: nil, workingDirectory: nil))
+    @Test func aSharedServerCanNeitherStopNorRestart() async {
+        let content = content(backend: ExternalProcessServerBackend())
         content.makeTerminalBackend = { _, _ in nil }
-        #expect(!content.canRestart)
-    }
-
-    @Test func attachWithCommandRestartsIntoATerminalBackend() async {
-        let content = content(backend: ExternalProcessServerBackend(command: "go run .", workingDirectory: "/tmp/site"))
-        let newSink = FakeServerTerminalSink()
-        var requested: [(String, String?)] = []
-        content.makeTerminalBackend = { command, cwd in
-            requested.append((command, cwd))
-            return terminalBackend(command: command, sink: newSink)
-        }
         await active(content)
         scanner.listener = FakeProcessTable.listener
         await content.performTick()
-        #expect(content.recoveredCommandLine == "python3 -m http.server")
+        #expect(content.state == .listening(pid: FakeProcessTable.listener))
+        #expect(!content.canStop)
+        #expect(!content.canRestart)
+        #expect(content.stopRefusal == nil)
+    }
+
+    @Test func aSharedServerStopSendsNoSignal() async {
+        let content = content(backend: ExternalProcessServerBackend())
+        await active(content)
+        scanner.listener = FakeProcessTable.listener
+        await content.performTick()
+        content.stop()
+        content.restart()
+        await content.awaitPendingWork()
         await content.performRestart()
-        #expect(signaller.sent.first?.0 == .processTree(FakeProcessTable.listener))
-        #expect(requested.map(\.0) == ["go run ."])
-        #expect(content.backend.kind == .terminal)
-        #expect(newSink.armed == ["go run ."])
-        #expect(content.state == .starting)
+        #expect(signaller.sent.isEmpty)
+        #expect(content.state == .listening(pid: FakeProcessTable.listener))
     }
 
     /// The review's case: another Tab's agent already serves the port, in a
@@ -439,15 +438,19 @@ struct ServerEntryTests {
         #expect(signaller.sent.first?.0 == .processGroup(FakeProcessTable.jobLeader))
     }
 
-    @Test func attachStopRefusesAListenerThatIsBattyOrAnAncestor() async {
-        let content = content(backend: ExternalProcessServerBackend(command: nil, workingDirectory: nil))
+    @Test func listenerChangeFiresOnListenerChangeOncePerPid() async {
+        let content = content(backend: ExternalProcessServerBackend())
+        var seen: [pid_t] = []
+        content.onListenerChange = { _, pid in seen.append(pid) }
         await active(content)
-        for pid in [FakeProcessTable.batty, 100_050] {
-            scanner.listener = pid
-            await content.performTick()
-            #expect(content.stopRefusal != nil, "pid \(pid)")
-            #expect(await content.performStop() == false)
-        }
-        #expect(signaller.sent.isEmpty)
+        await content.performTick()
+        #expect(seen.isEmpty)
+        scanner.listener = FakeProcessTable.listener
+        await content.performTick()
+        await content.performTick()
+        #expect(seen == [FakeProcessTable.listener])
+        scanner.listener = 100_950
+        await content.performTick()
+        #expect(seen == [FakeProcessTable.listener, 100_950])
     }
 }

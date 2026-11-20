@@ -3,8 +3,8 @@
 import Darwin
 import XCTest
 
-/// `batty server start|attach|stop` and the toolbar's Servers list against
-/// the real app (#0648, #0691). The server
+/// `batty server start|share|list|stop|unshare` and the toolbar's Servers
+/// list against the real app (#0648, #0691, #0692). The server
 /// is Python's `http.server`, run by Batty in a terminal Pane on a free port
 /// a helper Pane finds (the runner itself can't bind a socket).
 nonisolated final class CLIServersListTests: XCTestCase {
@@ -114,7 +114,8 @@ nonisolated final class CLIServersListTests: XCTestCase {
 
         let topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(terminalID) != nil })
         XCTAssertEqual(topology.pane(terminalID)?.kind, "terminal")
-        XCTAssertEqual(topology.session(session.id)?.panes.allSatisfy { $0.kind == "terminal" }, true, "server start opened a non-terminal Pane")
+        let panes = try XCTUnwrap(topology.session(session.id)?.panes)
+        XCTAssertEqual(panes.filter { $0.kind != "terminal" }.map(\.kind), ["process-status"], "server start should open exactly one Process Status Pane besides terminals")
         XCTAssertEqual(topology.session(session.id)?.focusedPaneID, session.focusedPaneID, "server start moved keyboard focus")
 
         let row = openRow(id, in: app)
@@ -137,9 +138,9 @@ nonisolated final class CLIServersListTests: XCTestCase {
         XCTAssertEqual(stop.status, 0, stop.summary)
         XCTAssertEqual(try reply(stop)["state"] as? String, "stopped")
         XCTAssertTrue(BattyUITestHarness.waitFor({ !self.serversButton(in: app).exists }, timeout: 10), "the Servers button stayed after stop")
-        let attach = BattyCLI.run(["server", "attach", "--port", String(port), "--json"])
-        XCTAssertNotEqual(try reply(attach)["state"] as? String, "listening", "something still listens on \(port) after stop")
-        if let attached = try? serverID(reply(attach)) { _ = BattyCLI.run(["server", "stop", attached.uuidString]) }
+        let share = BattyCLI.run(["server", "share", "--port", String(port), "--no-process-view", "--json"])
+        XCTAssertNotEqual(share.status, 0, "something still listens on \(port) after stop: \(share.summary)")
+        if share.status == 0, let shared = try? serverID(reply(share)) { _ = BattyCLI.run(["server", "unshare", shared.uuidString]) }
     }
 
     @MainActor
@@ -162,32 +163,77 @@ nonisolated final class CLIServersListTests: XCTestCase {
         _ = BattyCLI.run(["server", "stop", "--port", String(port)])
     }
 
+    private func processStatusPanes(in session: UUID) -> [UUID] {
+        (BattyCLI.topology()?.session(session)?.panes ?? []).filter { $0.kind == "process-status" }.map(\.id)
+    }
+
     @MainActor
-    func testServerAttachListsAnExternalListener() throws {
+    func testServerShareListsTheServerAndOpensAProcessStatusPane() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
         let port = try freePort(from: session.focusedPaneID)
         let command = pythonServer(port).joined(separator: " ")
         let terminal = BattyCLI.runExpectingSuccess(["pane", "split", "--pane", session.focusedPaneID.uuidString, "-c", command])
         let terminalID = try XCTUnwrap(terminal.ids.last)
-        let attach = BattyCLI.run(["server", "attach", "--port", String(port), "--wait", "--timeout", "30", "--json"])
-        XCTAssertEqual(attach.status, 0, attach.summary)
-        let json = try reply(attach)
-        XCTAssertEqual(json["state"] as? String, "listening")
-        XCTAssertNotNil(json["pid"])
-        let row = openRow(try serverID(json), in: app)
+        var share = BattyCLI.run(["server", "share", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--json"])
+        if share.status != 0 {
+            XCTAssertTrue(BattyUITestHarness.waitFor({
+                share = BattyCLI.run(["server", "share", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--json"])
+                return share.status == 0
+            }, timeout: 30), "server share never found the listener: \(share.summary)")
+        }
+        let json = try reply(share)
+        XCTAssertEqual(json["kind"] as? String, "external")
+        let id = try serverID(json)
+        let processPane = try XCTUnwrap((json["processPaneID"] as? String).flatMap(UUID.init(uuidString:)), "no processPaneID in \(json)")
+        XCTAssertNotNil(BattyCLI.waitForTopology { $0.pane(processPane) != nil }, "the Process Status Pane never appeared")
+        XCTAssertEqual(processStatusPanes(in: session.id), [processPane])
+        XCTAssertTrue(BattyScreen.element("process-status-view", in: app).waitForExistence(timeout: 10), "no process-status-view")
+
+        let row = openRow(id, in: app)
         let menu = row.descendants(matching: .any).matching(identifier: "servers.row-menu").firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 5))
         menu.click()
         // Scoped to the row menu: app-wide menuItems also match the menu bar's Apple-menu Restart.
         let rowMenu = app.menus.containing(.menuItem, identifier: "servers.row.open-in-browser").firstMatch
         XCTAssertTrue(rowMenu.waitForExistence(timeout: 5))
-        XCTAssertTrue(rowMenu.menuItems["servers.row.open-in-browser"].waitForExistence(timeout: 5))
-        XCTAssertFalse(rowMenu.menuItems["servers.row.stop"].exists, "an attached server offers Stop in the Servers list")
-        XCTAssertFalse(rowMenu.menuItems["servers.row.restart"].exists, "an attached server offers Restart in the Servers list")
+        XCTAssertFalse(rowMenu.menuItems["servers.row.stop"].exists, "a shared server offers Stop in the Servers list")
+        XCTAssertFalse(rowMenu.menuItems["servers.row.restart"].exists, "a shared server offers Restart in the Servers list")
+        XCTAssertTrue(rowMenu.menuItems["servers.row.unshare"].exists, "a shared server has no Remove from List")
         app.typeKey(.escape, modifierFlags: [])
         app.typeKey(.escape, modifierFlags: [])
+
+        let again = BattyCLI.run(["server", "share", "--port", String(port), "--json"])
+        XCTAssertEqual(again.status, 0, again.summary)
+        XCTAssertEqual(try serverID(reply(again)), id)
+        XCTAssertEqual(processStatusPanes(in: session.id), [processPane], "a repeated share opened another Process Status Pane")
+
+        let stop = BattyCLI.run(["server", "stop", "--port", String(port)])
+        XCTAssertNotEqual(stop.status, 0, "server stop signalled a shared server: \(stop.summary)")
+        let unshare = BattyCLI.run(["server", "unshare", "--port", String(port)])
+        XCTAssertEqual(unshare.status, 0, unshare.summary)
+        let list = BattyCLI.run(["server", "list", "--json"])
+        XCTAssertEqual(list.status, 0, list.summary)
+        XCTAssertFalse(list.output.contains(id.uuidString), "unshare left the server listed")
+
+        _ = BattyCLI.run(["pane", "close", "--pane", processPane.uuidString])
         _ = BattyCLI.run(["pane", "close", "--pane", terminalID.uuidString])
+    }
+
+    @MainActor
+    func testServerListPrintsTheStartedServer() throws {
+        let (app, session) = try launch()
+        defer { app.terminate() }
+        let port = try freePort(from: session.focusedPaneID)
+        let id = try serverID(reply(start(port, from: session.focusedPaneID)))
+        let list = BattyCLI.run(["server", "list", "--json"])
+        XCTAssertEqual(list.status, 0, list.summary)
+        let json = try reply(list)
+        let servers = try XCTUnwrap(json["servers"] as? [[String: Any]], "no servers in \(json)")
+        let item = try XCTUnwrap(servers.first { $0["serverID"] as? String == id.uuidString }, "server list is missing \(id)")
+        XCTAssertEqual(item["kind"] as? String, "terminal")
+        XCTAssertEqual(item["port"] as? Int, port)
+        _ = BattyCLI.run(["server", "stop", id.uuidString])
     }
 
     @MainActor
@@ -198,6 +244,8 @@ nonisolated final class CLIServersListTests: XCTestCase {
         let port = 59_999
         let result = BattyCLI.run(["server", "start", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--"] + pythonServer(port))
         XCTAssertNotEqual(result.status, 0, result.summary)
+        let share = BattyCLI.run(["server", "share", "--port", String(port)])
+        XCTAssertNotEqual(share.status, 0, share.summary)
         XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a flag-off server start changed the layout")
         XCTAssertFalse(serversButton(in: app).exists, "the Servers button shows with the flag off")
     }

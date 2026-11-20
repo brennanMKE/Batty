@@ -562,7 +562,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
             }
 
-        case XPCVerb.serverStart, XPCVerb.serverAttach, XPCVerb.serverStop, XPCVerb.serverRestart, XPCVerb.serverServe:
+        case XPCVerb.serverStart, XPCVerb.serverShare, XPCVerb.serverList, XPCVerb.serverUnshare, XPCVerb.serverStop, XPCVerb.serverRestart, XPCVerb.serverServe:
             Task { @MainActor [pendingRequests, storeProvider, clock] in
                 let response = await Self.serverResponse(verb: decoded.verb, payload: decoded.payload, store: storeProvider(), clock: clock)
                 pendingRequests.resolve(requestID, with: Self.encode(response))
@@ -737,7 +737,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         return XPCResponse(ok: true, payload: data)
     }
 
-    /// The four `server` verbs (#0648). `--wait` replies once the state
+    /// The `server` verbs (#0648, #0692). `--wait` replies once the state
     /// leaves Starting or the bound passes on `clock`.
     @MainActor
     static func serverResponse(verb: String, payload: Data?, store: AppStateStore, clock: any SchedulingClock) async -> XPCResponse {
@@ -756,16 +756,21 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             result = store.startServerForXPC(request)
             wait = request.wait ?? false
             timeout = request.waitTimeoutSeconds ?? timeout
-        case XPCVerb.serverAttach:
-            guard let payload, let request = try? decoder.decode(ServerAttachRequest.self, from: payload) else {
-                return XPCResponse(ok: false, error: "malformed server attach request")
+        case XPCVerb.serverShare:
+            guard let payload, let request = try? decoder.decode(ServerShareRequest.self, from: payload) else {
+                return XPCResponse(ok: false, error: "malformed server share request")
             }
-            if request.wait == true, let seconds = request.waitTimeoutSeconds, let error = WaitTimeout.validationError(seconds) {
-                return XPCResponse(ok: false, error: "wait timeout \(error)")
+            result = await store.shareServerForXPC(request)
+        case XPCVerb.serverList:
+            switch store.listServersForXPC() {
+            case .failure(let error):
+                return XPCResponse(ok: false, error: error.message)
+            case .success(let reply):
+                guard let data = try? JSONEncoder().encode(reply) else {
+                    return XPCResponse(ok: false, error: "failed to encode server list")
+                }
+                return XPCResponse(ok: true, payload: data)
             }
-            result = store.attachServerForXPC(request)
-            wait = request.wait ?? false
-            timeout = request.waitTimeoutSeconds ?? timeout
         case XPCVerb.serverServe:
             guard let payload, let request = try? decoder.decode(ServerServeRequest.self, from: payload) else {
                 return XPCResponse(ok: false, error: "malformed server serve request")
@@ -775,7 +780,11 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             guard let payload, let request = try? decoder.decode(ServerControlRequest.self, from: payload) else {
                 return XPCResponse(ok: false, error: "malformed server request")
             }
-            result = verb == XPCVerb.serverStop ? store.stopServerForXPC(request) : store.restartServerForXPC(request)
+            switch verb {
+            case XPCVerb.serverStop: result = store.stopServerForXPC(request)
+            case XPCVerb.serverUnshare: result = store.unshareServerForXPC(request)
+            default: result = store.restartServerForXPC(request)
+            }
         }
         let outcome: ServerXPCResult
         switch result {

@@ -8,7 +8,7 @@ public nonisolated enum AgentContextNote {
     public static func ruleLines(cliName: String) -> [String] {
         [
             "- Show status in Batty Panes (`\(cliName) pane split --view git-status --unique`) rather than printing it.",
-            "- Start dev servers with `\(cliName) server start --port N -- <command>` (or `\(cliName) server attach --port N` if one is already running) when `\(cliName) capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.",
+            "- Start dev servers with `\(cliName) server start --port N -- <command>` (or `\(cliName) server share --port N` if one is already running) when `\(cliName) capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.",
             "- Preview static pages with `\(cliName) server serve <dir> --open`, never `python3 -m http.server`.",
             "- Use `\(cliName) notify` to get the user's attention.",
             "- Close the Panes and Sessions you open when you are done with them.",

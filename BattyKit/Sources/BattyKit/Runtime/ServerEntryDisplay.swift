@@ -1,5 +1,6 @@
 // ServerEntryDisplay.swift
 
+import BattyXPCCore
 import Foundation
 
 /// Pure text and visibility rules for the toolbar's Servers list.
@@ -9,13 +10,13 @@ public enum ServerEntryDisplay {
     }
 
     public static func stateText(_ state: ServerEntryState, isResponding: Bool?, kind: ServerBackendKind) -> String {
-        let attach = kind == .external
+        let shared = kind == .external
         switch state {
         case .listening where kind == .inApp:
             return String(localized: "Serving", comment: "Servers list state: Batty's own static server is serving")
         case .starting:
-            return attach
-                ? String(localized: "Not listening", comment: "Servers list state: attach found nothing on the port")
+            return shared
+                ? String(localized: "Not listening", comment: "Servers list state: nothing listens on a shared server's port")
                 : String(localized: "Starting", comment: "Servers list state")
         case .listening(let pid):
             if isResponding == false { return String(localized: "Not responding", comment: "Servers list state: listening but the HTTP probe failed") }
@@ -63,9 +64,19 @@ public enum ServerEntryDisplay {
         "127.0.0.1:\(port)"
     }
 
-    /// The row's name: the served folder, else the command's program, else
-    /// the port.
+    /// The wire kind; the in-app server is `static`.
+    public static func kind(_ kind: ServerBackendKind) -> ServerKind {
+        switch kind {
+        case .terminal: .terminal
+        case .external: .external
+        case .inApp: .static
+        }
+    }
+
+    /// The row's name: `--name`, else the served folder, else the command's
+    /// program, else the port.
     public static func name(for entry: ServerEntry) -> String {
+        if let custom = entry.customName, !custom.isEmpty { return custom }
         if let inApp = entry.backend as? InAppStaticServerBackend {
             let name = URL(fileURLWithPath: inApp.root).lastPathComponent
             if !name.isEmpty { return name }

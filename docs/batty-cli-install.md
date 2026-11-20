@@ -72,8 +72,10 @@ The CLI now has five execution paths:
 | `batty tab new [--pane <id>] [-c <cmd> [--wait [--timeout S]]] [--cwd <dir>] [--background] [--json]` | Open a terminal Tab in a Pane and print its id; `--wait` blocks until the command exits | XPC |
 | `batty project list [--json]` | List saved Projects: name, root, Pane count, and an `open` marker | XPC |
 | `batty project open <name> [--new] [--json]` | Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
-| `batty server start --port <n> [--url <u>] [--stats-url <u>] [--split right\|down] [--pane <id>] [--wait] [--timeout <s>] [--json] -- <command…>` | Beta only (`servers` flag, #0648). Run a dev server in a terminal Pane and list it in the toolbar's Servers; reuses and restarts for a port that already has one | XPC |
-| `batty server attach --port <n> [--command <c>] [--cwd <d>] [--url <u>] [--stats-url <u>] [--split right\|down] [--wait] [--json]` | Beta only. List a server started elsewhere in the toolbar's Servers; Restart only with `--command` | XPC |
+| `batty server start --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--wait] [--timeout <s>] [--json] -- <command…>` | Beta only (`servers` flag, #0648). Run a dev server in a terminal Pane and list it in the toolbar's Servers; reuses and restarts for a port that already has one | XPC |
+| `batty server share --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--json]` | Beta only (#0692). List a server already listening in the toolbar's Servers and open a Process Status Pane on it; Batty never signals it | XPC |
+| `batty server list [--json]` | Beta only. Every tracked server: id, name, port, kind, state, url | XPC |
+| `batty server unshare (<id> \| --port <n>) [--json]` | Beta only. Remove a shared server from the list without signalling it | XPC |
 | `batty server stop\|restart (--port <n> \| <server-id>) [--pane <id>] [--json]` | Beta only. Stop (SIGINT, SIGTERM, SIGKILL) or restart the server | XPC |
 | `batty server serve [<dir>] [--port <n>] [--open] [--no-inject] [--split right\|down] [--pane <id>] [--json]` | Beta only (#0649). Serve a folder from inside Batty on 127.0.0.1, listed in the toolbar's Servers, reloading pages on change; `--open` also opens it in the default browser | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
@@ -1261,7 +1263,7 @@ Grounded directly in the code above, not aspirational:
   `--view`, `--unique`. The CLI rejects `--wait` without `-c` and
   `--timeout` without `--wait` (exit `1`), and a `--timeout` that is not
   finite, not positive, or above 86400 s (usage error, exit `64`; the same
-  bound, `WaitTimeout`, now applies to `server start/attach --timeout`).
+  bound, `WaitTimeout`, now applies to `server start --timeout`).
   The app re-checks the wire value and refuses an out-of-range one before
   creating anything. Killing the CLI (or MCP
   `notifications/cancelled`, which SIGTERMs it) cancels the app-side wait

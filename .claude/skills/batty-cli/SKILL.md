@@ -313,7 +313,7 @@ At the start of a session, run `env | grep '^BATTY'`. If `BATTY_SESSION_ID`, `BA
 - Prefer the `batty` MCP tools (`batty-beta` in Batty Beta) when they are available (`batty mcp`, installed by `batty agent install`). Otherwise use the CLI: `batty` (or `batty-beta` in Batty Beta). Run `batty capabilities` to see the available commands.
 - Use Batty to split Panes and set reminders (`batty session remind`) when they help the user follow your work.
 - Show status in Batty Panes (`batty pane split --view git-status --unique`) rather than printing it.
-- Start dev servers with `batty server start --port N -- <command>` (or `batty server attach --port N` if one is already running) when `batty capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.
+- Start dev servers with `batty server start --port N -- <command>` (or `batty server share --port N` if one is already running) when `batty capabilities` lists it. Don't open a browser yourself; pass `--split` only when the user asked for a placement.
 - Preview static pages with `batty server serve <dir> --open`, never `python3 -m http.server`.
 - Use `batty notify` to get the user's attention.
 - Close the Panes and Sessions you open when you are done with them.
@@ -324,18 +324,20 @@ If those variables are not set, you are not in Batty; ignore this section.
 
 ## 10. Dev servers (Beta only)
 
-`batty-beta` has `server start|attach|stop|restart` (#0648); Prod `batty`
+`batty-beta` has `server start|share|serve|list|stop|restart|unshare` (#0648, #0692); Prod `batty`
 does not until 1.5.0. Check `capabilities --json` for `server start` first.
 
 **Rule:** when you start a dev server, start it with `server start`, or
-`server attach` it if it is already running, instead of running it in your own
+`server share` it if it is already running, instead of running it in your own
 Pane. The command runs in a terminal Pane split to the right of yours; pass
 `--split down` only when the user asked for a specific placement.
 
 ```bash
 "$BATTY" server start --port 8083 --wait --json -- go run .   # serverID, terminalPaneID, tabID, url, pid, state
-"$BATTY" server attach --port 3000                              # a server started elsewhere
-"$BATTY" server stop --port 8083
+"$BATTY" server share --port 3000                               # a server already running; never stopped by Batty
+"$BATTY" server list --json
+"$BATTY" server stop --port 8083                                # servers Batty started only
+"$BATTY" server unshare --port 3000                             # drop a shared server from the list
 ```
 
 Re-running `server start` for the same port reuses its server entry and

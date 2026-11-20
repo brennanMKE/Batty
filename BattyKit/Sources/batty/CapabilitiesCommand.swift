@@ -189,8 +189,10 @@ struct CapabilitiesCommand: ParsableCommand {
         "install": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
         // Reuses the port's server entry, but restarts the server each time.
         "start": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
-        // Returns the port's existing server entry unchanged.
-        "attach": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        // A repeated share reuses the entry and its Process Status Pane.
+        "share": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+        // Signals nothing; a second unshare finds no server and fails.
+        "unshare": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
         // Ends a process; a second stop finds nothing running.
         "stop": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false),
         "restart": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false),
@@ -224,9 +226,11 @@ struct CapabilitiesCommand: ParsableCommand {
         "agent install": "install",
         "agent context": "id",
         "server start": "start",
-        "server attach": "attach",
+        "server share": "share",
+        "server list": "list",
         "server stop": "stop",
         "server restart": "restart",
+        "server unshare": "unshare",
         "server serve": "start",
     ]
 

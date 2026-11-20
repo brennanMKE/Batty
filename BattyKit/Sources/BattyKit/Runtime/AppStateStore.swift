@@ -208,6 +208,9 @@ public final class AppStateStore {
         ServerEntry(port: port, url: url, backend: backend, startsBackendOnSetUp: false)
     }
 
+    /// Finds the listener for `server share` (#0692). Tests replace it.
+    @ObservationIgnored var serverPortScanner: PortListenerScanning = SystemPortListenerScanner()
+
     /// The Servers list's Copy actions. Tests replace it.
     @ObservationIgnored var copyToPasteboard: @MainActor (String) -> Void = { text in
         NSPasteboard.general.clearContents()
