@@ -293,11 +293,7 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
                 host: .openCode,
                 file: openCodeDirectory.appending(path: "opencode.json", directoryHint: .notDirectory),
                 keyPath: ["mcp", key],
-                entry: .object([
-                    ("type", .string("local")),
-                    ("command", .array([.string(identity.cliExecutablePath), .string("mcp")])),
-                    ("enabled", .bool(true)),
-                ])
+                entry: AgentMCPConfigSnippets.openCodeEntry(command: identity.cliExecutablePath)
             ))
         }
 
@@ -309,10 +305,7 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
                 host: .cursor,
                 file: cursorDirectory.appending(path: "mcp.json", directoryHint: .notDirectory),
                 keyPath: ["mcpServers", key],
-                entry: .object([
-                    ("command", .string(identity.cliExecutablePath)),
-                    ("args", .array([.string("mcp")])),
-                ])
+                entry: AgentMCPConfigSnippets.mcpServersEntry(command: identity.cliExecutablePath)
             ))
         }
 
@@ -367,7 +360,7 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         return AgentInstallPlan(identity: identity, hosts: ordered, actions: actions)
     }
 
-    private static func shellQuoted(_ text: String) -> String {
+    static func shellQuoted(_ text: String) -> String {
         text.contains(where: { " '\"$\\".contains($0) }) ? "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'" : text
     }
 
@@ -457,7 +450,7 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
             "author": ["name": "Batty"],
         ], to: pluginDirectory.appending(path: ".claude-plugin/plugin.json"))
         try writeJSON([
-            "mcpServers": [identity.pluginName: ["command": identity.cliExecutablePath, "args": ["mcp"]]],
+            "mcpServers": [identity.pluginName: AgentMCPConfigSnippets.mcpServersEntry(command: identity.cliExecutablePath).foundation],
         ], to: pluginDirectory.appending(path: ".mcp.json"))
         try writeJSON([
             "description": "Tell Claude Code it is running in a Batty Pane, and which one.",
@@ -558,6 +551,20 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         }
     }
 
+    private static func encodeConfig(_ value: ConfigJSON) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        var data = try encoder.encode(value)
+        data.append(0x0A)
+        return data
+    }
+
+    /// The bytes `mergeMCPEntry` writes when the config file does not exist yet.
+    static func freshConfigData(keyPath: [String], entry: AgentJSON) throws -> Data {
+        guard keyPath.count == 2 else { throw InstallError(message: "bad key path") }
+        return try encodeConfig(.object([keyPath[0]: .object([keyPath[1]: ConfigJSON(entry)])]))
+    }
+
     /// Only Batty's own key is replaced. The previous file is backed up first.
     private func mergeMCPEntry(identity: AgentGuidanceIdentity, host: AgentHost, file: URL, keyPath: [String], entry: AgentJSON, stamp: String) throws -> AgentInstallOutcome {
         guard keyPath.count == 2 else { throw InstallError(message: "bad key path") }
@@ -580,10 +587,7 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         if section[keyPath[1]] == value { return .unchanged }
         section[keyPath[1]] = value
         root[keyPath[0]] = .object(section)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        var data = try encoder.encode(ConfigJSON.object(root))
-        data.append(0x0A)
+        let data = try Self.encodeConfig(.object(root))
         var detail = ""
         if let original {
             let backup = appSupportDirectory(for: identity).appending(path: "AgentGuidanceBackups/\(stamp)/\(Self.slug(host))/\(file.lastPathComponent)", directoryHint: .notDirectory)
@@ -662,10 +666,7 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         guard case var .object(section)? = root[keyPath[0]], section[keyPath[1]] != nil else { return .unchanged }
         section[keyPath[1]] = nil
         root[keyPath[0]] = .object(section)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        var data = try encoder.encode(ConfigJSON.object(root))
-        data.append(0x0A)
+        let data = try Self.encodeConfig(.object(root))
         let backup = backupURL(identity: identity, host: host, name: file.lastPathComponent, stamp: stamp, directory: false)
         try FileManager.default.createDirectory(at: backup.deletingLastPathComponent(), withIntermediateDirectories: true)
         try original.write(to: backup, options: .atomic)

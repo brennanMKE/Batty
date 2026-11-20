@@ -1,0 +1,12 @@
+{
+  "mcp" : {
+    "batty" : {
+      "command" : [
+        "batty",
+        "mcp"
+      ],
+      "enabled" : true,
+      "type" : "local"
+    }
+  }
+}

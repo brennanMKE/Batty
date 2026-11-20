@@ -435,3 +435,7 @@ with `tools/demo/DemoCut` (trim, speed ramps, zoom punch-ins, overlays from
 copies a set into `website/demo/` (also gitignored). It never deploys. Commit before
 recording: the VM tests `git archive HEAD`. Each stage re-runs alone
 (`record 04`, `export <run-id>`, `cut <run-id>`, `check <run-id>`).
+
+## build-agent-snippets.sh
+
+Regenerates `website/docs/snippets/`, the per-host MCP config snippets (Claude Code, Codex, Cursor, OpenCode) and the global-instructions prompt, from the same renderer `batty agent install` uses (`AgentMCPConfigSnippets`). The folder is generator-owned: files it does not produce are removed. `--check` writes nothing and exits 1 when the committed files differ. `AgentMCPConfigSnippetsSiteTests` fails until the script is re-run after a change to the entry builders, `CodexConfigBlock` or `AgentGlobalInstructionsPrompt`.

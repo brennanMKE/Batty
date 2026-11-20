@@ -96,6 +96,12 @@ let package = Package(
             ],
             swiftSettings: swiftSettings
         ),
+        // Renders website/docs/snippets/ (tools/build-agent-snippets.sh).
+        .executableTarget(
+            name: "BattyAgentSnippets",
+            dependencies: ["BattyCLICore"],
+            swiftSettings: swiftSettings
+        ),
         .testTarget(
             name: "BattyKitTests",
             dependencies: [

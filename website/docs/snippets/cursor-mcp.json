@@ -1,0 +1,10 @@
+{
+  "mcpServers" : {
+    "batty" : {
+      "args" : [
+        "mcp"
+      ],
+      "command" : "batty"
+    }
+  }
+}

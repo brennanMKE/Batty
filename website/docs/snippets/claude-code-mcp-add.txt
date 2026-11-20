@@ -1,0 +1,1 @@
+claude mcp add --scope user batty -- batty mcp

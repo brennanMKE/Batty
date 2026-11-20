@@ -16,8 +16,7 @@ public nonisolated enum CodexConfigBlock {
     public static let forwardedVariables = ["BATTY_SESSION_ID", "BATTY_TAB_ID", "BATTY_PANE_ID"]
 
     public static func block(identity: AgentGuidanceIdentity, lineEnding: String = "\n") -> String {
-        lines(key: identity.pluginName, cliCommandName: identity.cliCommandName, command: identity.cliExecutablePath)
-            .map { $0 + lineEnding }.joined()
+        AgentMCPConfigSnippets.codexBlock(key: identity.pluginName, cliCommandName: identity.cliCommandName, command: identity.cliExecutablePath, lineEnding: lineEnding)
     }
 
     static func lines(key: String, cliCommandName: String, command: String) -> [String] {

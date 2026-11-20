@@ -1,0 +1,6 @@
+# batty:begin — managed by `batty agent install`; edits inside this block are replaced
+[mcp_servers.batty]
+command = "batty"
+args = ["mcp"]
+env_vars = ["BATTY_SESSION_ID", "BATTY_TAB_ID", "BATTY_PANE_ID"]
+# batty:end
