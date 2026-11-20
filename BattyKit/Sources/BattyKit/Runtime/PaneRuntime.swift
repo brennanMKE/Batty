@@ -94,6 +94,9 @@ public final class PaneRuntime: Identifiable {
     /// background clears it.
     @ObservationIgnored
     var pendingImage: ProjectTabImage?
+    /// The Project slot this Pane opened as and the value it gave it, so a
+    /// Project save can tell an inherited value from the user's.
+    @ObservationIgnored var projectBackgroundSeed: ProjectBackgroundSeed?
     /// Images that arrived since the Project opened, so a sheet's Cancel
     /// doesn't undo one that landed while it was open.
     @ObservationIgnored var arrivedImages: [ProjectTabImage: String] = [:]

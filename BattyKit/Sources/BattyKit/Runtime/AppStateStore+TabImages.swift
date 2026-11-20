@@ -184,12 +184,16 @@ extension AppStateStore {
             for pane in session.tree.allPanes where pane.pendingImage == identity {
                 pane.pendingImage = nil
                 guard let current = pane.backgroundOverride else { continue }
+                let seeded = pane.projectBackgroundSeed?.value == current
                 pane.restoreBackgroundOverride(current.withImagePath(path))
+                if seeded { pane.projectBackgroundSeed?.value = current.withImagePath(path) }
             }
             for tab in session.tree.allPanes.flatMap(\.tabs) where tab.pendingTabImage == identity {
                 tab.pendingTabImage = nil
                 guard let current = tab.backgroundOverride else { continue }
+                let seeded = tab.projectBackgroundSeed?.value == current
                 tab.setBackgroundOverride(current.withImagePath(path))
+                if seeded { tab.projectBackgroundSeed?.value = current.withImagePath(path) }
             }
         }
         openProjectEditorModel()?.tabImageArrived(projectID: projectID, identity: identity, path: path)

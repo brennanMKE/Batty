@@ -45,7 +45,9 @@ enum ProjectTreeBuilder {
     /// is applied; the caller records any problem it finds. Sizes, the active
     /// Tab and each Pane's background are restored here, before any view
     /// exists; hidden Panes and focus need the Session and are restored by
-    /// `WindowRuntime.addProjectSession`.
+    /// `WindowRuntime.addProjectSession`. Each Terminal Pane and its stored
+    /// Tabs are stamped with the slot they opened as and the value applied,
+    /// so a later Project save can reach the ones still following it.
     static func build(
         project: Project,
         contentFactory: ContentFactory? = nil,
@@ -170,13 +172,20 @@ enum ProjectTreeBuilder {
         }
         expand(layoutRoot, anchor: firstPane)
 
-        for (stored, runtime) in slotPanes where runtime.kind == .terminal {
+        let stampsSeeds = slotPanes.count == project.layout.paneCount
+        for (index, (stored, runtime)) in slotPanes.enumerated() where runtime.kind == .terminal {
             if let active = stored.activeTab, runtime.tabs.indices.contains(active) {
                 runtime.activeTabID = runtime.tabs[active].id
             }
-            guard let background = stored.background.map(checkBackground) else { continue }
-            runtime.restoreBackgroundOverride(background)
-            if background.imagePath == nil { runtime.pendingImage = stored.image }
+            if let background = stored.background.map(checkBackground) {
+                runtime.restoreBackgroundOverride(background)
+                if background.imagePath == nil { runtime.pendingImage = stored.image }
+            }
+            guard stampsSeeds else { continue }
+            runtime.projectBackgroundSeed = ProjectBackgroundSeed(slot: index, tab: nil, value: runtime.backgroundOverride)
+            for t in stored.tabs.indices where runtime.tabs.indices.contains(t) {
+                runtime.tabs[t].projectBackgroundSeed = ProjectBackgroundSeed(slot: index, tab: t, value: runtime.tabs[t].backgroundOverride)
+            }
         }
         if let fractions = project.layout.validFractions(), fractions.count == chains.count {
             for (anchors, sizes) in zip(chains, fractions) where anchors.count == sizes.count {

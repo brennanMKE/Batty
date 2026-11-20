@@ -63,6 +63,9 @@ public final class TabRuntime: Identifiable {
     /// Images that arrived since the Project opened, so a sheet's Cancel
     /// doesn't undo one that landed while it was open.
     @ObservationIgnored var arrivedImages: [ProjectTabImage: String] = [:]
+    /// The Project slot and Tab this Tab opened as and the value it gave it,
+    /// so a Project save can tell an inherited value from the user's.
+    @ObservationIgnored var projectBackgroundSeed: ProjectBackgroundSeed?
 
     /// The startup command the Project opened this Tab with, so Update Project
     /// keeps it on this Tab wherever it moves. New, duplicated and split Tabs
