@@ -1,0 +1,20 @@
+# Batty
+
+> Batty is a native macOS terminal multiplexer built on libghostty, with an agent-facing CLI and MCP server.
+
+Agents running in a Batty Pane can drive Batty through the `batty` command or the `batty mcp` server: open Sessions, Panes and Tabs, show status, run dev servers, and set Reminders. Start with the agent docs, which cover detecting Batty and setting it up for each coding agent.
+
+## Docs
+
+- [Agent docs](https://batty.sstools.co/docs/index.md): detect Batty, CLI and MCP setup for Claude Code, Codex, Cursor and OpenCode
+- [CLI reference](https://batty.sstools.co/docs/cli/index.md): every batty command and flag
+- [capabilities.json](https://batty.sstools.co/docs/cli/capabilities.json): machine-readable CLI surface
+
+## Downloads
+
+- [Batty 1.4.0 for macOS](https://batty.sstools.co/downloads/Batty-1.4.0.dmg)
+
+## Optional
+
+- [Changelog](https://batty.sstools.co/changelog.html)
+- [Source on GitHub](https://github.com/brennanMKE/Batty)

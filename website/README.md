@@ -29,6 +29,9 @@ Pages to spot-check:
 - `/backgrounds/catalog.json` — the built-in background catalog
 - `/docs/cli/index.html` — the CLI reference, generated from `docs/cli/capabilities.json`
 - `/docs/cli/capabilities.json` — expect `Content-Type: application/json`
+- `/robots.txt` — allows all agents and names the sitemap
+- `/sitemap.xml` — should parse as XML and list no held path
+- `/llms.txt` and `/llms-full.txt` — the agent-facing index and full docs (held until 1.5.0)
 
 ## Deployment
 
@@ -41,6 +44,8 @@ python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json
 python3 -I tools/build-backgrounds-page.py --check
 python3 -I tools/build-docs-page.py --check
 python3 -I tools/check-website-hold.py
+python3 -I tools/build-site-index.py --check
+python3 -I tools/build-site-index-selftest.py
 python3 -I tools/build-cli-reference.py --check
 python3 -I tools/build-cli-reference-selftest.py
 python3 -I tools/build-agent-downloads.py --check   # on release day, once the skill zips are committed
@@ -48,6 +53,12 @@ tidy -e -q website/*.html
 tidy -e -q website/docs/cli/index.html
 git lfs ls-files        # must list the background images, not pointer stubs
 ```
+
+`sitemap.xml`'s `<lastmod>` is each page's last commit day in UTC (today, in
+UTC, for an uncommitted page). Pages land on `main` by squash-merge, which
+makes a new commit with a new date, so after squash-merging a branch that
+touched a `.html` page run `python3 -I tools/build-site-index.py --check` on
+`main`; if it reports `sitemap.xml` stale, regenerate and commit it.
 
 Later generators add their `--check` here.
 
@@ -68,7 +79,9 @@ Never add `--delete`: older DMGs and catalog images exist only on the server, an
 
 - `https://batty.sstools.co/`, `/appcast.xml` and `/changelog.html` return 200.
 - `/backgrounds/catalog.json` returns 200 with `Content-Type: application/json` and an `ETag` or `Last-Modified` header; one full-size and one thumbnail URL return 200 with the expected `Content-Length`; `/backgrounds.html` returns 200. A 403 usually means a file was deployed without world read (`stat -f %Lp website/backgrounds.html` should print `644`).
+- `/robots.txt` and `/sitemap.xml` return 200.
 - A held path, e.g. `/docs/index.html`, returns 404 while held.
+- After 1.5.0, `/docs/index.md` returns `Content-Type: text/markdown` or `text/plain` with UTF-8; anything else needs an Apache `AddType` (user's change).
 
 The `SUFeedURL` in the Batty app's Info.plist must match wherever
 `appcast.xml` ends up — by default
@@ -92,6 +105,9 @@ When `scripts/release.sh` produces `dist/Batty-<sha>.dmg`:
 5. Package the skill: `python3 -I tools/build-agent-downloads.py`, then
    commit `website/docs/skill/batty-cli-skill-<version>.zip` and
    `batty-cli-skill-latest.zip`. `--check` confirms them.
+   Then regenerate the site index: `python3 -I tools/build-site-index.py`, and
+   commit `website/sitemap.xml`, `llms.txt` and `llms-full.txt` (also after any
+   page change, and after #0688 empties the hold).
 6. Update the Claude Code marketplace (user-run): in your clone of
    `brennanMKE/batty-plugins`, run `tools/sync-claude-marketplace.sh <clone>`,
    review the diff, then commit, tag `v<version>` and push it yourself.

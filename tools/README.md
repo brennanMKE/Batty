@@ -432,6 +432,22 @@ python3 -I tools/build-docs-page-selftest.py         # self-test
 
 The page lives under `docs/`, which `website/.deploy-hold` holds back until 1.5.0.
 
+## build-site-index.py
+
+Generates `website/sitemap.xml` (every `.html` page not held by
+`website/.deploy-hold`, `lastmod` from its last git commit, or today when
+uncommitted), `website/llms.txt` (llmstxt.org index of the agent docs, skill zip
+when committed, the newest DMG from `appcast.xml`, changelog and GitHub; every
+site link must exist) and `website/llms-full.txt` (`docs/index.md` and
+`docs/cli/index.md` with relative links made absolute). `website/robots.txt` is
+hand-written.
+
+```bash
+python3 -I tools/build-site-index.py                  # regenerate the three files
+python3 -I tools/build-site-index.py --check          # exit 1 if any is stale or a link is broken
+python3 -I tools/build-site-index-selftest.py         # self-test
+```
+
 ## build-agent-downloads.py
 
 Release-day packaging of the bundled `batty-cli` skill and the public Claude Code
