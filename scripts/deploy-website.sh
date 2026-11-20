@@ -11,9 +11,9 @@
 #                    Leave unset to let SSH pick the right key from ~/.ssh/config
 #                    or the default identity files.
 #
-# Idempotent. rsync --delete keeps the remote in sync with website/, so
-# files removed locally also disappear from the live site. Excludes
-# .DS_Store and editor cruft.
+# Idempotent. No rsync --delete: the server holds files that exist only
+# there (older DMGs, catalog images), so a file removed from website/ must
+# be removed on the server by hand. Excludes .DS_Store and editor cruft.
 #
 # Run after a release pipeline completes and after appcast.xml has been
 # regenerated for the new <item>. Does NOT bump versions, sign, notarize,
@@ -100,7 +100,6 @@ fi
 
 rsync \
     -avz \
-    --delete \
     --exclude '.DS_Store' \
     --exclude '*.swp' \
     --exclude '*.bak' \

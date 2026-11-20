@@ -1,0 +1,17 @@
+# website/.deploy-hold — paths on main that must not be deployed yet.
+#
+# rsync --exclude-from format, read by the documented deploy commands
+# (website/README.md "Deployment") and checked by tools/check-website-hold.py.
+#
+# Rules:
+#   - Every entry is anchored with a leading "/" relative to website/, so
+#     "/docs/" means website/docs/ only, not website/sub/docs/.
+#   - A trailing "/" marks a directory; anything else is one exact file.
+#   - No wildcards and no "+ "/"- " rule prefixes; the check rejects them.
+#
+# Each change that adds a held file confirms it is covered here. #0688
+# removes the agent entries on 1.5.0 release day.
+
+/docs/
+/llms.txt
+/llms-full.txt

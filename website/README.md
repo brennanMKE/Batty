@@ -30,12 +30,38 @@ Pages to spot-check:
 
 ## Deployment
 
-Pick a static host. Easiest options:
+The site is served from `photon:/var/www/vhosts/batty.sstools.co/`. Deploying is user-run, or done with the user's go-ahead each time.
 
-- **GitHub Pages** off a `gh-pages` branch of this repo or a dedicated
-  `batty-website` repo. Free TLS via custom-domain CNAME.
-- **Netlify** with the repo connected; auto-deploy on push.
-- **Static S3 + CloudFront** if you want full control over caching headers.
+**Pre-deploy checks.** Run from the repo root; all must exit 0:
+
+```bash
+python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json
+python3 -I tools/build-backgrounds-page.py --check
+python3 -I tools/check-website-hold.py
+tidy -e -q website/*.html
+git lfs ls-files        # must list the background images, not pointer stubs
+```
+
+Later generators add their `--check` here.
+
+**Held files.** `website/.deploy-hold` lists files that are on `main` but must not reach the server until the release that ships them. It is in rsync `--exclude-from` format: one entry per line, each anchored with a leading `/` relative to `website/` (`/docs/` means `website/docs/` only), a trailing `/` for a directory, no wildcards. Today it holds `/docs/`, `/llms.txt` and `/llms-full.txt` until 1.5.0 (#0680; #0688 empties it). A file on `main` under a held path never reaches the server, and no deployable page (`website/*.html`, `sitemap.xml`, `robots.txt`) may link a held path; `tools/check-website-hold.py` enforces that.
+
+**Deploy**, from the repo root:
+
+```bash
+rsync -avzn --exclude-from=website/.deploy-hold --exclude=README.md --exclude=.deploy-hold \
+    website/ photon:/var/www/vhosts/batty.sstools.co/   # dry run: read it; no held path, no README.md
+rsync -avz  --exclude-from=website/.deploy-hold --exclude=README.md --exclude=.deploy-hold \
+    website/ photon:/var/www/vhosts/batty.sstools.co/
+```
+
+Never add `--delete`: older DMGs and catalog images exist only on the server, and it would remove them. A file removed from `website/` stays on the server until deleted there by hand.
+
+**Post-deploy checks**, with `curl -sI`:
+
+- `https://batty.sstools.co/`, `/appcast.xml` and `/changelog.html` return 200.
+- `/backgrounds/catalog.json` returns 200 with `Content-Type: application/json` and an `ETag` or `Last-Modified` header; one full-size and one thumbnail URL return 200 with the expected `Content-Length`; `/backgrounds.html` returns 200. A 403 usually means a file was deployed without world read (`stat -f %Lp website/backgrounds.html` should print `644`).
+- A held path, e.g. `/docs/index.html`, returns 404 while held.
 
 The `SUFeedURL` in the Batty app's Info.plist must match wherever
 `appcast.xml` ends up — by default
@@ -53,7 +79,8 @@ When `scripts/release.sh` produces `dist/Batty-<sha>.dmg`:
 3. Add a `<article>` to `changelog.html` summarising user-visible
    changes. Use the same id (`v0-1-0` etc.) the appcast's
    `<sparkle:releaseNotesLink>` references.
-4. Push to the hosting destination.
+4. Deploy the site as described in [Deployment](#deployment) (pre-deploy
+   checks, dry run, real run, `curl -sI` checks).
 5. Attach the same DMG, as `Batty-<version>.dmg`, to the GitHub release
    for the tag (`gh release create` / `gh release upload`; user-run or
    explicitly approved, see `scripts/RELEASE.md` step 10). The appcast
@@ -78,16 +105,7 @@ A changed picture gets a new file name; never replace the bytes behind an existi
 
 `examples/background-catalog.json` is the example catalog that `backgrounds.html` shows and links for download. It lives outside `backgrounds/` so the check never sees it as an orphan, and `build-backgrounds-page.py` validates it on every run.
 
-Before every deploy, both must exit 0: `python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json` and `python3 -I tools/build-backgrounds-page.py --check`. Then, with the user's go-ahead each time:
-
-```bash
-rsync -avzn website/ photon:/var/www/vhosts/batty.sstools.co/   # dry run, read it
-rsync -avz  website/ photon:/var/www/vhosts/batty.sstools.co/
-```
-
-Never add `--delete`: it would remove the older DMGs on the server. Because there's no `--delete`, removing an image from the catalog doesn't remove it from the server; delete it there by hand if needed.
-
-After deploying, check with `curl -sI` that `https://batty.sstools.co/backgrounds/catalog.json` returns 200 with `Content-Type: application/json` and an `ETag` or `Last-Modified` header, and that one full-size and one thumbnail URL return 200 with the expected `Content-Length`. Also check that `https://batty.sstools.co/backgrounds.html` returns 200; a 403 there usually means the page was deployed without world read (`stat -f %Lp website/backgrounds.html` should print `644`).
+Deploy as described in [Deployment](#deployment); its checks include the two background checks. Because the deploy never uses `--delete`, removing an image from the catalog doesn't remove it from the server; delete it there by hand if needed.
 
 ## Assets
 

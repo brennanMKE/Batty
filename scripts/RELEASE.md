@@ -181,8 +181,14 @@ private key) in one pair of commands, non-destructively.
    ```
 
    Pushes `website/` to `$BATTY_EC2_HOST:$BATTY_EC2_PATH` via rsync over
-   SSH using `$BATTY_EC2_KEY`. Verifies the env vars and key
-   permissions before pushing. Sparkle clients poll the appcast on a
+   SSH using `$BATTY_EC2_KEY`, without `--delete` (older DMGs and catalog
+   images exist only on the server). Verifies the env vars and key
+   permissions before pushing. `website/README.md` "Deployment" is the
+   canonical process: pre-deploy checks including
+   `tools/check-website-hold.py`, a dry run, the user's go-ahead each
+   time, and the post-deploy `curl -sI` checks. Paths listed in
+   `website/.deploy-hold` must not reach the server until their release;
+   follow that section's hand-run rsync, which excludes them. Sparkle clients poll the appcast on a
    schedule, so the new version appears in "Check for Updates…" within
    a few hours.
 

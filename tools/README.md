@@ -411,6 +411,17 @@ Only the text between the `<!-- BEGIN BACKGROUND SETS … -->` /
 them by hand. `--check` also fails when the page's `og:image` isn't one of the
 catalog's thumbnails. Run it before every website deploy.
 
+## check-website-hold.py
+
+Fails when a deployable website page links a path held back by `website/.deploy-hold` (#0681). It scans top-level `website/*.html`, plus `sitemap.xml` and `robots.txt` when present, resolving relative, root-relative and `https://batty.sstools.co/` links. The hold file is rsync `--exclude-from` format: entries anchored with a leading `/`, a trailing `/` for a directory, no wildcards or `+`/`-` prefixes.
+
+Exit 0 when clean, 1 when a page links a held path, 2 when the hold file is missing or malformed. Run it before every website deploy (see `website/README.md` "Deployment").
+
+```bash
+python3 -I tools/check-website-hold.py
+python3 -I tools/check-website-hold-selftest.py
+```
+
 ## demo/ (#0505)
 
 `tools/demo/make-demos.sh all` regenerates the nine website demo clips end to end:
