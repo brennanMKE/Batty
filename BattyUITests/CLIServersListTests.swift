@@ -1,12 +1,13 @@
-// CLIServerPaneTests.swift
+// CLIServersListTests.swift
 
 import Darwin
 import XCTest
 
-/// `batty server start|attach|stop` against the real app (#0648). The server
+/// `batty server start|attach|stop` and the toolbar's Servers list against
+/// the real app (#0648, #0691). The server
 /// is Python's `http.server`, run by Batty in a terminal Pane on a free port
 /// a helper Pane finds (the runner itself can't bind a socket).
-nonisolated final class CLIServerPaneTests: XCTestCase {
+nonisolated final class CLIServersListTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         BattyUITestHarness.sweepSentinels()
@@ -24,7 +25,7 @@ nonisolated final class CLIServerPaneTests: XCTestCase {
             ? BattyUITestHarness.launchBatty()
             : BattyUITestHarness.launchBatty(script: [], extraEnvironment: extraEnvironment)
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10), "Batty did not open a window")
-        let (_, initial) = try BattyCLI.connect(to: app, from: CLIServerPaneTests.self)
+        let (_, initial) = try BattyCLI.connect(to: app, from: CLIServersListTests.self)
         return (app, try XCTUnwrap(initial.selectedSession))
     }
 
@@ -65,16 +66,42 @@ nonisolated final class CLIServerPaneTests: XCTestCase {
     @MainActor
     /// macOS exposes a SwiftUI `Text`'s string as its AX value, with an
     /// empty label.
-    private func stateText(in app: XCUIApplication) -> String {
-        let chip = BattyScreen.element("server-pane-state", in: app)
-        let label = chip.label
-        return label.isEmpty ? (chip.value as? String ?? "") : label
+    private func text(of element: XCUIElement) -> String {
+        let label = element.label
+        return label.isEmpty ? (element.value as? String ?? "") : label
+    }
+
+    private func serverID(_ json: [String: Any]) throws -> UUID {
+        try XCTUnwrap((json["serverID"] as? String).flatMap(UUID.init(uuidString:)), "no serverID in \(json)")
+    }
+
+    @MainActor
+    private func serversButton(in app: XCUIApplication) -> XCUIElement {
+        BattyScreen.element("toolbar.servers", in: app)
+    }
+
+    @MainActor
+    private func openRow(_ id: UUID, in app: XCUIApplication) -> XCUIElement {
+        let button = serversButton(in: app)
+        XCTAssertTrue(button.waitForExistence(timeout: 10), "no Servers toolbar button")
+        button.click()
+        let row = BattyScreen.element("servers.row.\(id.uuidString)", in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "no Servers row for \(id)")
+        return row
     }
 
     // MARK: - Tests
 
     @MainActor
-    func testServerStartShowsServerPaneAndTerminalAndReachesListening() throws {
+    func testFreshLaunchShowsNoServersButton() throws {
+        let (app, _) = try launch()
+        defer { app.terminate() }
+        XCTAssertTrue(BattyScreen.element("toolbar.bell-feed", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(serversButton(in: app).exists, "a fresh launch shows the Servers button")
+    }
+
+    @MainActor
+    func testServerStartShowsServersButtonWithItsPort() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
         let port = try freePort(from: session.focusedPaneID)
@@ -82,27 +109,41 @@ nonisolated final class CLIServerPaneTests: XCTestCase {
         XCTAssertEqual(result.status, 0, result.summary)
         let json = try reply(result)
         XCTAssertEqual(json["state"] as? String, "listening")
-        let serverID = try XCTUnwrap((json["paneID"] as? String).flatMap(UUID.init(uuidString:)))
+        let id = try serverID(json)
         let terminalID = try XCTUnwrap((json["terminalPaneID"] as? String).flatMap(UUID.init(uuidString:)))
 
-        let topology = try XCTUnwrap(BattyCLI.waitForTopology(includeDimensions: true) { $0.pane(serverID) != nil && $0.pane(terminalID) != nil })
-        XCTAssertEqual(topology.pane(serverID)?.kind, "server")
+        let topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(terminalID) != nil })
         XCTAssertEqual(topology.pane(terminalID)?.kind, "terminal")
+        XCTAssertEqual(topology.session(session.id)?.panes.allSatisfy { $0.kind == "terminal" }, true, "server start opened a non-terminal Pane")
         XCTAssertEqual(topology.session(session.id)?.focusedPaneID, session.focusedPaneID, "server start moved keyboard focus")
 
-        // Topology frames come from terminal views only, so the layout is
-        // checked on screen (y grows downward).
-        let serverPane = BattyScreen.element("server-pane.\(serverID.uuidString)", in: app)
-        let terminalPane = BattyScreen.terminalPane(terminalID, in: app)
-        XCTAssertTrue(serverPane.waitForExistence(timeout: 10))
-        XCTAssertTrue(terminalPane.waitForExistence(timeout: 10))
-        XCTAssertGreaterThanOrEqual(terminalPane.frame.minY, serverPane.frame.maxY - 2, "the terminal Pane is not below the Server Pane")
-        XCTAssertTrue(BattyUITestHarness.waitFor({ self.stateText(in: app) == "Listening" }, timeout: 15), "state chip reads \(stateText(in: app))")
-        _ = BattyCLI.run(["server", "stop", "--port", String(port), "--pane", session.focusedPaneID.uuidString])
+        let row = openRow(id, in: app)
+        let portText = row.descendants(matching: .any).matching(identifier: "servers.port").firstMatch
+        XCTAssertTrue(portText.waitForExistence(timeout: 5))
+        XCTAssertEqual(text(of: portText), "127.0.0.1:\(port)")
+        XCTAssertTrue(row.descendants(matching: .any).matching(identifier: "servers.copy-url").firstMatch.exists)
+        app.typeKey(.escape, modifierFlags: [])
+        _ = BattyCLI.run(["server", "stop", id.uuidString])
     }
 
     @MainActor
-    func testServerStartTwiceOnSamePortReusesThePane() throws {
+    func testServerStopRemovesTheServersButton() throws {
+        let (app, session) = try launch()
+        defer { app.terminate() }
+        let port = try freePort(from: session.focusedPaneID)
+        let id = try serverID(reply(start(port, from: session.focusedPaneID)))
+        XCTAssertTrue(serversButton(in: app).waitForExistence(timeout: 10), "no Servers toolbar button while a server runs")
+        let stop = BattyCLI.run(["server", "stop", id.uuidString, "--json"])
+        XCTAssertEqual(stop.status, 0, stop.summary)
+        XCTAssertEqual(try reply(stop)["state"] as? String, "stopped")
+        XCTAssertTrue(BattyUITestHarness.waitFor({ !self.serversButton(in: app).exists }, timeout: 10), "the Servers button stayed after stop")
+        let attach = BattyCLI.run(["server", "attach", "--port", String(port), "--json"])
+        XCTAssertNotEqual(try reply(attach)["state"] as? String, "listening", "something still listens on \(port) after stop")
+        if let attached = try? serverID(reply(attach)) { _ = BattyCLI.run(["server", "stop", attached.uuidString]) }
+    }
+
+    @MainActor
+    func testServerStartTwiceOnSamePortReusesTheEntry() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
         let port = try freePort(from: session.focusedPaneID)
@@ -111,70 +152,53 @@ nonisolated final class CLIServerPaneTests: XCTestCase {
         let second = start(port, from: session.focusedPaneID)
         XCTAssertEqual(second.status, 0, second.summary)
         let secondJSON = try reply(second)
-        XCTAssertEqual(secondJSON["paneID"] as? String, first["paneID"] as? String)
+        XCTAssertEqual(secondJSON["serverID"] as? String, first["serverID"] as? String)
         XCTAssertEqual(secondJSON["tabID"] as? String, first["tabID"] as? String)
         XCTAssertEqual(secondJSON["created"] as? Bool, false)
         XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, paneCount)
-        _ = BattyCLI.run(["server", "stop", "--port", String(port), "--pane", session.focusedPaneID.uuidString])
+        _ = openRow(try serverID(first), in: app)
+        XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'servers.row.'")).count, 1)
+        app.typeKey(.escape, modifierFlags: [])
+        _ = BattyCLI.run(["server", "stop", "--port", String(port)])
     }
 
     @MainActor
-    func testServerStopEndsTheProcessGroupAndShowsStopped() throws {
-        let (app, session) = try launch()
-        defer { app.terminate() }
-        let port = try freePort(from: session.focusedPaneID)
-        XCTAssertEqual(start(port, from: session.focusedPaneID).status, 0)
-        let stop = BattyCLI.run(["server", "stop", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--json"])
-        XCTAssertEqual(stop.status, 0, stop.summary)
-        XCTAssertEqual(try reply(stop)["state"] as? String, "stopped")
-        XCTAssertTrue(BattyUITestHarness.waitFor({ self.stateText(in: app) == "Stopped" }, timeout: 10), "state chip reads \(stateText(in: app))")
-        let attach = BattyCLI.run(["server", "attach", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--json"])
-        XCTAssertNotEqual(try reply(attach)["state"] as? String, "listening", "something still listens on \(port) after stop")
-    }
-
-    @MainActor
-    func testCloseServerPaneLeavesTerminalPaneRunning() throws {
-        let (app, session) = try launch()
-        defer { app.terminate() }
-        let port = try freePort(from: session.focusedPaneID)
-        let json = try reply(start(port, from: session.focusedPaneID))
-        let serverID = try XCTUnwrap(json["paneID"] as? String)
-        let terminalID = try XCTUnwrap((json["terminalPaneID"] as? String).flatMap(UUID.init(uuidString:)))
-        BattyCLI.runExpectingSuccess(["pane", "close", "--pane", serverID])
-        let topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(UUID(uuidString: serverID)!) == nil })
-        XCTAssertNotNil(topology.pane(terminalID), "closing the Server Pane closed its terminal Pane")
-        let attach = try reply(BattyCLI.run(["server", "attach", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--wait", "--timeout", "10", "--json"]))
-        XCTAssertEqual(attach["state"] as? String, "listening", "closing the Server Pane stopped the server")
-        _ = BattyCLI.run(["server", "stop", "--port", String(port), "--pane", session.focusedPaneID.uuidString])
-    }
-
-    @MainActor
-    func testServerAttachShowsExternalListenerWithoutRestart() throws {
+    func testServerAttachListsAnExternalListener() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
         let port = try freePort(from: session.focusedPaneID)
         let command = pythonServer(port).joined(separator: " ")
         let terminal = BattyCLI.runExpectingSuccess(["pane", "split", "--pane", session.focusedPaneID.uuidString, "-c", command])
         let terminalID = try XCTUnwrap(terminal.ids.last)
-        let attach = BattyCLI.run(["server", "attach", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--wait", "--timeout", "30", "--json"])
+        let attach = BattyCLI.run(["server", "attach", "--port", String(port), "--wait", "--timeout", "30", "--json"])
         XCTAssertEqual(attach.status, 0, attach.summary)
         let json = try reply(attach)
         XCTAssertEqual(json["state"] as? String, "listening")
         XCTAssertNotNil(json["pid"])
-        XCTAssertTrue(BattyScreen.element("server-pane-pid", in: app).waitForExistence(timeout: 10))
-        XCTAssertFalse(BattyScreen.element("server-pane-restart", in: app).exists, "an attached server without --command offers Restart")
-        XCTAssertTrue(BattyScreen.element("server-pane-stop", in: app).exists)
+        let row = openRow(try serverID(json), in: app)
+        let menu = row.descendants(matching: .any).matching(identifier: "servers.row-menu").firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.click()
+        // Scoped to the row menu: app-wide menuItems also match the menu bar's Apple-menu Restart.
+        let rowMenu = app.menus.containing(.menuItem, identifier: "servers.row.open-in-browser").firstMatch
+        XCTAssertTrue(rowMenu.waitForExistence(timeout: 5))
+        XCTAssertTrue(rowMenu.menuItems["servers.row.open-in-browser"].waitForExistence(timeout: 5))
+        XCTAssertFalse(rowMenu.menuItems["servers.row.stop"].exists, "an attached server offers Stop in the Servers list")
+        XCTAssertFalse(rowMenu.menuItems["servers.row.restart"].exists, "an attached server offers Restart in the Servers list")
+        app.typeKey(.escape, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
         _ = BattyCLI.run(["pane", "close", "--pane", terminalID.uuidString])
     }
 
     @MainActor
     func testServerVerbsAbsentWithFlagForcedOff() throws {
-        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FORCE_SERVER_PANE_OFF": "1"])
+        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FORCE_SERVERS_OFF": "1"])
         defer { app.terminate() }
         // Never bound: the verb is refused before anything runs.
         let port = 59_999
         let result = BattyCLI.run(["server", "start", "--port", String(port), "--pane", session.focusedPaneID.uuidString, "--"] + pythonServer(port))
         XCTAssertNotEqual(result.status, 0, result.summary)
         XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a flag-off server start changed the layout")
+        XCTAssertFalse(serversButton(in: app).exists, "the Servers button shows with the flag off")
     }
 }

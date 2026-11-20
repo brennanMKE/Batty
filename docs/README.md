@@ -96,9 +96,10 @@ top-level project documents at the repo root (`PRD.md`, `Concepts.md`,
   covering six states including an exited process, a permission-denied
   metric, and no sibling terminal to follow. No code ships with either
   file.
-  [`design/server-pane-view.md`](design/server-pane-view.md) (#0648,
-  drafted for user approval) is the Server Pane created by `batty server
-  start|attach`, with the mock-up
+  [`design/server-pane-view.md`](design/server-pane-view.md) (#0648) is
+  **superseded** by
+  [`design/servers-list.md`](design/servers-list.md) (#0691), the
+  toolbar's Servers list; the old mock-up is
   [`design/server-pane-view.html`](design/server-pane-view.html).
   [`design/web-preview-pane.md`](design/web-preview-pane.md) (#0649) is
   the Web Preview Pane design, superseded by #0690 (no web view), with

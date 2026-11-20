@@ -690,16 +690,13 @@ part of whichever issue implements it.
 
 ---
 
-### Implementation note: `server`, the sixth kind (#0648)
+### Removed: `server` (#0648, #0691)
 
-`PaneContentKind.server` is a Server Pane for one TCP port, and it is
-**CLI-only**: only `batty server start|attach` creates one, because it needs
-a port and a command. `pane split --view` never offers it
-(`PaneContentKind.paneSplitKinds`), `AppXPCService` refuses it on `pane
-split`, a Project slot can't hold it (`projectSlotKinds`), and Save Session
-as Project captures it as an empty terminal slot. The command runs in an
-ordinary terminal Pane below the Server Pane, so the terminal-host boundary
-in §3 is unchanged. See `docs/design/server-pane-view.md`.
+#0648 added a CLI-only `server` kind, the Server Pane. #0691 removed it:
+servers are listed in the toolbar's Servers list instead
+(`docs/design/servers-list.md`), and `batty server start` opens only an
+ordinary terminal Pane. Nothing persisted the kind, so `"server"` now
+decodes as an unknown kind, as `web-preview` does.
 
 ### Removed: `web-preview` (#0649, #0690)
 

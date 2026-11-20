@@ -329,28 +329,28 @@ does not until 1.5.0. Check `capabilities --json` for `server start` first.
 
 **Rule:** when you start a dev server, start it with `server start`, or
 `server attach` it if it is already running, instead of running it in your own
-Pane. Let Batty place the Server Pane where the user's Settings say; pass
-`--split` only when the user asked for a specific placement.
+Pane. The command runs in a terminal Pane split to the right of yours; pass
+`--split down` only when the user asked for a specific placement.
 
 ```bash
-"$BATTY" server start --port 8083 --wait --json -- go run .   # paneID, terminalPaneID, tabID, url, pid, state
+"$BATTY" server start --port 8083 --wait --json -- go run .   # serverID, terminalPaneID, tabID, url, pid, state
 "$BATTY" server attach --port 3000                              # a server started elsewhere
 "$BATTY" server stop --port 8083
 ```
 
-Re-running `server start` for the same port reuses its Server Pane and
+Re-running `server start` for the same port reuses its server entry and
 terminal and restarts; it never adds Panes. Do not open a browser yourself:
-the Server Pane has Open in Browser.
+the toolbar's Servers list has Copy URL and Open in Browser.
 
 To preview static pages (a folder of HTML), serve them from Batty rather than
 `python3 -m http.server` (check `capabilities --json` for `server serve`):
 
 ```bash
-"$BATTY" server serve ./dist --open --json   # paneID, url (127.0.0.1 only), root
+"$BATTY" server serve ./dist --open --json   # serverID, url (127.0.0.1 only), root
 ```
 
 Edits under the folder reload the page in the browser. Re-running `serve` on the same
-folder reuses its Server Pane; closing that Pane stops the server.
+folder reuses its server; `server stop <serverID>` stops it.
 
 ## What this skill deliberately does not cover
 

@@ -14,7 +14,7 @@ public struct SettingsView: View {
 
     public var body: some View {
         TabView {
-            GeneralSettingsView(showsServerPanes: store?.featureFlags.serverPane ?? false)
+            GeneralSettingsView(showsServers: store?.featureFlags.servers ?? false)
                 .tabItem { Label("General", systemImage: "gearshape") }
 
             AppearanceSettingsView(store: store)
@@ -41,8 +41,8 @@ private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.cmdNumberTargetKey) private var cmdNumberTarget: String = SettingsPreference.defaultCmdNumberTarget
     @AppStorage(SettingsPreference.autoNameFromFilesKey) private var autoNameFromFiles: Bool = SettingsPreference.defaultAutoNameFromFiles
     @AppStorage(SettingsPreference.autoNameWithAIKey) private var autoNameWithAI: Bool = SettingsPreference.defaultAutoNameWithAI
-    @AppStorage(SettingsPreference.serverPanePlacementKey) private var serverPanePlacement: String = ServerPanePlacement.right.rawValue
-    let showsServerPanes: Bool
+    @AppStorage(SettingsPreference.alwaysShowServersKey) private var alwaysShowServers: Bool = SettingsPreference.defaultAlwaysShowServers
+    let showsServers: Bool
 
     private var aiNamingSupported: Bool {
         if #available(macOS 26, *) { return true }
@@ -122,16 +122,11 @@ private struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if showsServerPanes {
-                Section("Server Panes") {
-                    Picker("New Server Panes", selection: $serverPanePlacement) {
-                        ForEach(ServerPanePlacement.allCases, id: \.rawValue) { placement in
-                            Text(placement.displayName).tag(placement.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("settings-server-pane-placement")
-                    Text("Where batty server start and attach put a Server Pane. --split right or --split down overrides it.")
+            if showsServers {
+                Section("Servers") {
+                    Toggle("Always show Servers in the toolbar", isOn: $alwaysShowServers)
+                        .accessibilityIdentifier("settings-always-show-servers")
+                    Text("Servers appears in the toolbar while a server started with batty server is running. Turn this on to keep it there.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -199,10 +199,19 @@ public final class AppStateStore {
     /// On in Batty Beta and off in Prod (`docs/feature-flags.md`).
     @ObservationIgnored public let featureFlags: FeatureFlags
 
-    /// Builds a Server Pane's content (#0648). Tests replace it to inject
-    /// fake scanners, probes and clocks.
-    @ObservationIgnored var makeServerContent: @MainActor (_ port: UInt16, _ url: URL?, _ statsURL: URL?, _ backend: ServerBackend) -> ServerPaneContent = { port, url, statsURL, backend in
-        ServerPaneContent(port: port, url: url, statsURL: statsURL, backend: backend, startsBackendOnSetUp: false)
+    /// Every tracked server, app-wide (#0691).
+    public let servers = ServerRegistry()
+
+    /// Builds a server entry (#0648). Tests replace it to inject
+    /// scanners, probes and clocks.
+    @ObservationIgnored var makeServerEntry: @MainActor (_ port: UInt16, _ url: URL?, _ backend: ServerBackend) -> ServerEntry = { port, url, backend in
+        ServerEntry(port: port, url: url, backend: backend, startsBackendOnSetUp: false)
+    }
+
+    /// The Servers list's Copy actions. Tests replace it.
+    @ObservationIgnored var copyToPasteboard: @MainActor (String) -> Void = { text in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     /// Builds the in-app static server backend for `batty server serve`

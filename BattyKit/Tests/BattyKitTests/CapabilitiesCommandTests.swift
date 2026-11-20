@@ -18,7 +18,7 @@ struct CapabilitiesCommandTests {
 
     // MARK: - Verb roster
 
-    static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, serverPane: false)
+    static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, servers: false)
     static let flagOn = FeatureFlags.allOnForTests
 
     static let flagOffRoster: Set<String> = [

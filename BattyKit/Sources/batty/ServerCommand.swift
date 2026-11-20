@@ -12,7 +12,7 @@ import Foundation
 struct ServerNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "server",
-        abstract: "Start, attach to, serve, stop or restart a dev server shown in a Server Pane.",
+        abstract: "Start, attach to, serve, stop or restart a dev server listed in the toolbar's Servers.",
         subcommands: [ServerStartCommand.self, ServerAttachCommand.self, ServerServeCommand.self, ServerStopCommand.self, ServerRestartCommand.self]
     )
 }
@@ -46,7 +46,7 @@ private nonisolated func resolveCallingPaneID(flag: String?) throws -> UUID? {
     }
 }
 
-/// Sends a `server` verb and prints the reply: the Server Pane id, or
+/// Sends a `server` verb and prints the reply: the server id, or
 /// `ServerReply` as JSON.
 private nonisolated func sendServer(verb: String, request: some Encodable, json: Bool, timeout: TimeInterval) throws -> ServerReply {
     let endpoint = try resolveServerEndpoint()
@@ -61,7 +61,7 @@ private nonisolated func sendServer(verb: String, request: some Encodable, json:
             }
             print(text)
         } else {
-            print(reply.paneID.uuidString)
+            print(reply.serverID.uuidString)
         }
         return reply
     case .unreachable:
@@ -86,14 +86,14 @@ private nonisolated func validatePort(_ port: Int) throws {
 struct ServerStartCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "start",
-        abstract: "Run a dev server in a terminal Pane and show a Server Pane for its port, printing the Server Pane's id.",
+        abstract: "Run a dev server in a terminal Pane and list it in the toolbar's Servers, printing the server's id.",
         discussion: """
         Example: batty server start --port 8083 -- go run .
 
-        The command runs in a new terminal Pane below the Server Pane, in this \
+        The command runs in a new terminal Pane split from the calling Pane, in this \
         directory; the keyboard stays in the calling Pane. One argument after \
         `--` is used verbatim as shell text; several are quoted and joined. \
-        Running it again for the same port reuses that Server Pane and its \
+        Running it again for the same port reuses that server and its \
         terminal, replaces the command and restarts. --wait waits until \
         something listens on the port (exit 0), the command exits (exit 4) or \
         --timeout passes (exit 4).
@@ -104,16 +104,16 @@ struct ServerStartCommand: ParsableCommand {
     @Option(name: .long, help: "TCP port the server listens on (1-65535).")
     var port: Int
 
-    @Option(name: .long, help: "URL to show and probe. Defaults to http://localhost:<port>/.")
+    @Option(name: .long, help: "URL to copy and probe. Defaults to http://127.0.0.1:<port>/.")
     var url: String?
 
-    @Option(name: .long, help: "JSON endpoint for stats. Defaults to /debug/vars (Go expvar) on the server.")
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
     var statsUrl: String?
 
-    @Option(name: .long, help: "Where the Server Pane goes: right or down. Defaults to the Settings choice.")
+    @Option(name: .long, help: "Where the terminal Pane goes: right (default) or down.")
     var split: ServerSplit?
 
-    @Option(name: .long, help: "Pane whose Session gets the Server Pane. Falls back to BATTY_PANE_ID, then the focused pane.")
+    @Option(name: .long, help: "Pane the terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.")
     var pane: String?
 
     @Flag(name: .long, help: "Wait until the server listens, exits, or --timeout passes.")
@@ -122,7 +122,7 @@ struct ServerStartCommand: ParsableCommand {
     @Option(name: .long, help: "Seconds --wait waits, at most 86400. Defaults to 60.")
     var timeout: Double = 60
 
-    @Flag(name: .long, help: "Emit JSON (paneID, terminalPaneID, tabID, url, pid, state) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (serverID, terminalPaneID, tabID, url, pid, state) instead of the id.")
     var json = false
 
     @Argument(parsing: .postTerminator, help: "The server command, after --.")
@@ -152,14 +152,14 @@ extension ServerSplit: ExpressibleByArgument {}
 struct ServerAttachCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "attach",
-        abstract: "Show a Server Pane for a server started elsewhere, printing the Server Pane's id.",
+        abstract: "List a server started elsewhere in the toolbar's Servers, printing the server's id.",
         discussion: """
         Example: batty server attach --port 8083
 
         Batty never reruns a command it read from another process. Pass \
         --command (and --cwd) to make Restart available; Restart then runs \
         it in a new terminal Pane. Running attach again for the same port \
-        returns the existing Server Pane unchanged.
+        returns the existing server unchanged.
         """,
         helpNames: .long
     )
@@ -167,22 +167,22 @@ struct ServerAttachCommand: ParsableCommand {
     @Option(name: .long, help: "TCP port the server listens on (1-65535).")
     var port: Int
 
-    @Option(name: .long, help: "URL to show and probe. Defaults to http://localhost:<port>/.")
+    @Option(name: .long, help: "URL to copy and probe. Defaults to http://127.0.0.1:<port>/.")
     var url: String?
 
-    @Option(name: .long, help: "JSON endpoint for stats. Defaults to /debug/vars (Go expvar) on the server.")
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
     var statsUrl: String?
 
-    @Option(name: .long, help: "Shell command Restart runs. Without it the Server Pane has no Restart.")
+    @Option(name: .long, help: "Shell command Restart runs. Without it the server has no Restart.")
     var command: String?
 
     @Option(name: .long, help: "Directory --command runs in. Defaults to this directory.")
     var cwd: String?
 
-    @Option(name: .long, help: "Where the Server Pane goes: right or down. Defaults to the Settings choice.")
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
     var split: ServerSplit?
 
-    @Option(name: .long, help: "Pane whose Session gets the Server Pane. Falls back to BATTY_PANE_ID, then the focused pane.")
+    @Option(name: .long, help: "Pane Restart splits a new terminal Pane from. Falls back to BATTY_PANE_ID, then the focused pane.")
     var pane: String?
 
     @Flag(name: .long, help: "Wait until the server listens or --timeout passes.")
@@ -191,7 +191,7 @@ struct ServerAttachCommand: ParsableCommand {
     @Option(name: .long, help: "Seconds --wait waits, at most 86400. Defaults to 60.")
     var timeout: Double = 60
 
-    @Flag(name: .long, help: "Emit JSON (paneID, url, pid, state) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (serverID, url, pid, state) instead of the id.")
     var json = false
 
     nonisolated func validate() throws {
@@ -210,7 +210,7 @@ struct ServerAttachCommand: ParsableCommand {
     nonisolated func run() throws {
         let reply = try sendServer(verb: XPCVerb.serverAttach, request: try request(), json: json, timeout: (wait ? timeout : 0) + serverStopTimeout)
         if reply.state == .starting {
-            fputs("nothing is listening on port \(port) yet; the Server Pane will update when something does\n", stderr)
+            fputs("nothing is listening on port \(port) yet; the Servers list will update when something does\n", stderr)
         }
     }
 }
@@ -218,14 +218,14 @@ struct ServerAttachCommand: ParsableCommand {
 struct ServerServeCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "serve",
-        abstract: "Serve a folder from inside Batty on 127.0.0.1, printing the Server Pane's id.",
+        abstract: "Serve a folder from inside Batty on 127.0.0.1, printing the server's id.",
         discussion: """
         Example: batty server serve ./site --open
 
         The server binds 127.0.0.1 only and reloads open pages when a file \
         under the folder changes. Dotfiles and anything outside the folder \
         are never served. Running serve again on the same folder reuses its \
-        Server Pane. Closing the Server Pane stops the server.
+        server. batty server stop stops it.
         """,
         helpNames: .long
     )
@@ -242,13 +242,13 @@ struct ServerServeCommand: ParsableCommand {
     @Flag(name: .long, help: "Serve files byte-for-byte, with no live-reload script in HTML.")
     var noInject = false
 
-    @Option(name: .long, help: "Where the Server Pane goes: right or down. Defaults to the Settings choice.")
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
     var split: ServerSplit?
 
-    @Option(name: .long, help: "Pane whose Session gets the Server Pane. Falls back to BATTY_PANE_ID, then the focused pane.")
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
     var pane: String?
 
-    @Flag(name: .long, help: "Emit JSON (paneID, url, root, state) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (serverID, url, root, state) instead of the id.")
     var json = false
 
     nonisolated func validate() throws {
@@ -267,13 +267,13 @@ struct ServerServeCommand: ParsableCommand {
     }
 }
 
-/// `stop` and `restart` name the Server Pane by id or by port.
+/// `stop` and `restart` name the server by id or by port.
 private nonisolated func controlRequest(id: String?, port: Int?, pane: String?) throws -> ServerControlRequest {
     if let id {
-        guard let uuid = UUID(uuidString: id) else { throw ValidationError("invalid Server Pane id: \(id)") }
-        return ServerControlRequest(paneID: try resolveCallingPaneID(flag: pane), serverPaneID: uuid)
+        guard let uuid = UUID(uuidString: id) else { throw ValidationError("invalid server id: \(id)") }
+        return ServerControlRequest(paneID: try resolveCallingPaneID(flag: pane), serverID: uuid)
     }
-    guard let port else { throw ValidationError("give --port or a Server Pane id") }
+    guard let port else { throw ValidationError("give --port or a server id") }
     try validatePort(port)
     return ServerControlRequest(paneID: try resolveCallingPaneID(flag: pane), port: port)
 }
@@ -281,17 +281,17 @@ private nonisolated func controlRequest(id: String?, port: Int?, pane: String?) 
 struct ServerStopCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "stop",
-        abstract: "Stop the server a Server Pane shows (SIGINT, then SIGTERM, then SIGKILL).",
+        abstract: "Stop a server (SIGINT, then SIGTERM, then SIGKILL).",
         helpNames: .long
     )
 
-    @Argument(help: "Server Pane id. Omit to name it by --port.")
+    @Argument(help: "Server id. Omit to name it by --port.")
     var id: String?
 
-    @Option(name: .long, help: "Port of the Server Pane in the calling Pane's Session.")
+    @Option(name: .long, help: "Port of the server.")
     var port: Int?
 
-    @Option(name: .long, help: "Pane whose Session is searched for --port. Falls back to BATTY_PANE_ID, then the focused pane.")
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
     var pane: String?
 
     @Flag(name: .long, help: "Emit JSON instead of the id.")
@@ -313,13 +313,13 @@ struct ServerRestartCommand: ParsableCommand {
         helpNames: .long
     )
 
-    @Argument(help: "Server Pane id. Omit to name it by --port.")
+    @Argument(help: "Server id. Omit to name it by --port.")
     var id: String?
 
-    @Option(name: .long, help: "Port of the Server Pane in the calling Pane's Session.")
+    @Option(name: .long, help: "Port of the server.")
     var port: Int?
 
-    @Option(name: .long, help: "Pane whose Session is searched for --port. Falls back to BATTY_PANE_ID, then the focused pane.")
+    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
     var pane: String?
 
     @Flag(name: .long, help: "Emit JSON instead of the id.")
@@ -336,10 +336,12 @@ struct ServerRestartCommand: ParsableCommand {
 
 // MARK: - Capabilities
 
-private nonisolated let splitProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Where the Server Pane goes: right or down. Defaults to the Settings choice.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue))
-private nonisolated let paneProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane whose Session gets the Server Pane. Falls back to BATTY_PANE_ID, then the focused pane.", required: false)
-private nonisolated let urlProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--url"], type: "string", description: "URL to show and probe. Defaults to http://localhost:<port>/.", required: false)
-private nonisolated let statsURLProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--stats-url"], type: "string", description: "JSON endpoint for stats. Defaults to /debug/vars (Go expvar) on the server.", required: false)
+private nonisolated let ignoredSplitProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Accepted for compatibility; has no effect.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue))
+private nonisolated let splitProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Where the terminal Pane goes: right (default) or down.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue))
+private nonisolated let paneProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane the terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false)
+private nonisolated let ignoredPaneProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Accepted for compatibility; has no effect.", required: false)
+private nonisolated let urlProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--url"], type: "string", description: "URL to copy and probe. Defaults to http://127.0.0.1:<port>/.", required: false)
+private nonisolated let statsURLProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--stats-url"], type: "string", description: "Accepted for compatibility; has no effect.", required: false)
 private nonisolated let portProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "TCP port the server listens on (1-65535).", required: true)
 private nonisolated let timeoutProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--timeout"], type: "number", description: "Seconds --wait waits, at most 86400. Defaults to 60.", required: false, defaultValue: "60", maximum: Int(WaitTimeout.maximumSeconds))
 
@@ -353,7 +355,7 @@ extension ServerStartCommand: CapabilitiesDescribable {
             "pane": paneProperty,
             "wait": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--wait"], type: "boolean", description: "Wait until the server listens, exits, or --timeout passes.", required: false, defaultValue: "false"),
             "timeout": timeoutProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (paneID, terminalPaneID, tabID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, terminalPaneID, tabID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
             "command": CapabilitiesPropertyPayload(cliKind: .positional, type: "array", description: "The server command, after --.", required: true),
         ], required: ["port", "command"])
     }
@@ -365,13 +367,13 @@ extension ServerAttachCommand: CapabilitiesDescribable {
             "port": portProperty,
             "url": urlProperty,
             "stats-url": statsURLProperty,
-            "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["--command"], type: "string", description: "Shell command Restart runs. Without it the Server Pane has no Restart.", required: false),
+            "command": CapabilitiesPropertyPayload(cliKind: .option, names: ["--command"], type: "string", description: "Shell command Restart runs. Without it the server has no Restart.", required: false),
             "cwd": CapabilitiesPropertyPayload(cliKind: .option, names: ["--cwd"], type: "string", description: "Directory --command runs in. Defaults to this directory.", required: false),
-            "split": splitProperty,
-            "pane": paneProperty,
+            "split": ignoredSplitProperty,
+            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane Restart splits a new terminal Pane from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false),
             "wait": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--wait"], type: "boolean", description: "Wait until the server listens or --timeout passes.", required: false, defaultValue: "false"),
             "timeout": timeoutProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (paneID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, url, pid, state) instead of the id.", required: false, defaultValue: "false"),
         ], required: ["port"])
     }
 }
@@ -383,18 +385,18 @@ extension ServerServeCommand: CapabilitiesDescribable {
             "port": CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "Port to listen on (1-65535). Defaults to a free port.", required: false),
             "open": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--open"], type: "boolean", description: "Also open the site in the default browser.", required: false, defaultValue: "false"),
             "no-inject": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--no-inject"], type: "boolean", description: "Serve files byte-for-byte, with no live-reload script in HTML.", required: false, defaultValue: "false"),
-            "split": splitProperty,
-            "pane": paneProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (paneID, url, root, state) instead of the id.", required: false, defaultValue: "false"),
+            "split": ignoredSplitProperty,
+            "pane": ignoredPaneProperty,
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, url, root, state) instead of the id.", required: false, defaultValue: "false"),
         ])
     }
 }
 
 private nonisolated func controlSchema() -> CapabilitiesInputSchemaPayload {
     CapabilitiesInputSchemaPayload(properties: [
-        "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Server Pane id. Omit to name it by --port.", required: false),
-        "port": CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "Port of the Server Pane in the calling Pane's Session.", required: false),
-        "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane whose Session is searched for --port. Falls back to BATTY_PANE_ID, then the focused pane.", required: false),
+        "id": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Server id. Omit to name it by --port.", required: false),
+        "port": CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "Port of the server.", required: false),
+        "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Accepted for compatibility; has no effect.", required: false),
         "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON instead of the id.", required: false, defaultValue: "false"),
     ])
 }

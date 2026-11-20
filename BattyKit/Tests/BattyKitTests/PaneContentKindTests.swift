@@ -31,18 +31,22 @@ struct PaneContentKindTests {
             "process-status",
             "lm-studio-dashboard",
             "system-metrics",
-            "server",
         ])
     }
 
-    @Test func serverRawValueIsServer() {
-        #expect(PaneContentKind.server.rawValue == "server")
-        #expect(PaneContentKind(rawValue: "server") == .server)
+    @Test func retiredServerRawValueIsUnknown() throws {
+        #expect(PaneContentKind(rawValue: "server") == nil)
+        let pane = """
+        {"id":"\(UUID().uuidString)","isHidden":false,"kind":"server"}
+        """
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(Pane.self, from: Data(pane.utf8))
+        }
     }
 
-    @Test func paneSplitKindsExcludeServer() {
-        #expect(!PaneContentKind.paneSplitKinds.contains(.server))
-        #expect(PaneContentKind.paneSplitKinds.count == PaneContentKind.allCases.count - 1)
+    @Test func paneSplitAndProjectSlotKindsAreAllKinds() {
+        #expect(PaneContentKind.paneSplitKinds == PaneContentKind.allCases)
+        #expect(PaneContentKind.projectSlotKinds == PaneContentKind.allCases)
     }
 
     @Test func retiredWebPreviewRawValueIsUnknown() throws {
@@ -58,11 +62,6 @@ struct PaneContentKindTests {
         """
         let decoded = try JSONDecoder().decode(TopologyPanePayload.self, from: Data(topology.utf8))
         #expect(decoded.kind == nil)
-    }
-
-    @Test func projectSlotKindsExcludeServer() {
-        #expect(!PaneContentKind.projectSlotKinds.contains(.server))
-        #expect(PaneContentKind.projectSlotKinds.contains(.terminal))
     }
 
     @Test func everyNonTerminalIdentifierIsKebabCase() {

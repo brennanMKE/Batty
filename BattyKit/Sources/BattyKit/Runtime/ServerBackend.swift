@@ -16,7 +16,7 @@ public nonisolated enum ServerBackendKind: Equatable, Sendable {
     case inApp
 }
 
-/// How a Server Pane's server runs, separate from how it is watched, so a
+/// How a tracked server runs, separate from how it is watched, so a
 /// new way of running a server needs no change to the view or the monitor.
 @MainActor
 public protocol ServerBackend: AnyObject {
@@ -24,7 +24,7 @@ public protocol ServerBackend: AnyObject {
     var canRestart: Bool { get }
     var canStop: Bool { get }
     /// True only for a backend with no terminal to own the process: closing
-    /// the Server Pane then stops the server.
+    /// the entry then stops the server.
     var stopsOnTearDown: Bool { get }
     var command: String? { get }
     var workingDirectory: String? { get }
@@ -42,7 +42,7 @@ public protocol ServerBackend: AnyObject {
     func stopDecision(listenerPid: pid_t?, table: ProcessTableReading) -> ServerStopDecision
 }
 
-/// What a Server Pane shows for a server that runs inside Batty.
+/// What the Servers list knows about a server that runs inside Batty.
 public nonisolated struct ServingFacts: Equatable, Sendable {
     public var root: String
     public var requestCount: Int
@@ -59,7 +59,7 @@ public nonisolated struct ServingFacts: Equatable, Sendable {
     }
 }
 
-/// A server whose listener is Batty itself (#0649). The Server Pane never
+/// A server whose listener is Batty itself (#0649). The entry never
 /// scans, probes, samples or signals for it: every one of those would find
 /// Batty's own pid.
 @MainActor
@@ -72,7 +72,7 @@ public protocol InProcessServerBackend: ServerBackend {
     func resumeServing() async throws(StaticServerError)
 }
 
-/// A terminal Tab, as a Server Pane's terminal backend needs it, so tests
+/// A terminal Tab, as a server's terminal backend needs it, so tests
 /// never need a live surface.
 @MainActor
 public protocol ServerTerminalSink: AnyObject {
@@ -185,12 +185,12 @@ public final class TerminalTabServerBackend: ServerBackend {
         let shell: ProcessRecord
         if let shellStamp {
             guard let record = snapshot.records[shellStamp.pid], record.stamp == shellStamp, !record.isZombie else {
-                return .refused("the shell of this Server Pane's terminal has exited")
+                return .refused("the shell of this server's terminal has exited")
             }
             shell = record
         } else {
             guard let found = ServerJobResolver.locateTabShell(tabID: tabID, spawnedAfter: spawnBaseline, snapshot: snapshot, table: table) else {
-                return .refused("the shell of this Server Pane's terminal was not found")
+                return .refused("the shell of this server's terminal was not found")
             }
             shellStamp = found.stamp
             shell = found

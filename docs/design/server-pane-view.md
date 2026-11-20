@@ -1,6 +1,6 @@
 # Server Pane view — design (#0648)
 
-**Status: drafted for user approval** (#0301 design-first gate). Implementation proceeds against this draft, as Process Status, Git Status, System Metrics and LM Studio did; visual sign-off happens when the user checks the `resolved` issue. The mock-up is [`server-pane-view.html`](server-pane-view.html).
+**Superseded** by #0691 and `docs/design/servers-list.md`. Earlier status: drafted for user approval (#0301 design-first gate). Implementation proceeds against this draft, as Process Status, Git Status, System Metrics and LM Studio did; visual sign-off happens when the user checks the `resolved` issue. The mock-up is [`server-pane-view.html`](server-pane-view.html).
 
 Read `docs/pane-kinds.md` and `docs/pane-view-lifecycle.md` first.
 

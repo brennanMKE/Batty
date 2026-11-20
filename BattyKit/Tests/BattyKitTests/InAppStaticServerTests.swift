@@ -127,36 +127,33 @@ final class FakeInProcessBackend: InProcessServerBackend {
 }
 
 @MainActor
-struct InAppServerPaneContentTests {
+struct InAppServerEntryTests {
     let clock = TestClock()
     let scanner = FakePortScanner()
     let probe = FakeHTTPProbe()
-    let fetcher = FakeStatsFetcher()
     let signaller = FakeProcessSignaller()
     let backend = FakeInProcessBackend()
 
-    func content() -> ServerPaneContent {
-        ServerPaneContent(
+    func content() -> ServerEntry {
+        ServerEntry(
             port: 52144, url: URL(string: "http://127.0.0.1:52144/"), backend: backend, clock: clock, scanner: scanner,
-            probe: probe, statsFetcher: fetcher, metricsProvider: { _ in Issue.record("sampled metrics"); return nil },
-            commandLineProvider: { _ in nil }, signaller: signaller, processTable: FakeProcessTable(tabID: UUID()), opener: { _ in }
+            probe: probe, commandLineProvider: { _ in nil }, signaller: signaller, processTable: FakeProcessTable(tabID: UUID()), opener: { _ in }
         )
     }
 
-    func active(_ content: ServerPaneContent) async {
+    func active(_ content: ServerEntry) async {
         content.setUp(visible: true)
         await clock.waitForSleepers(1)
     }
 
-    @Test func inAppServerIsServingWithoutScanningProbingOrStats() async {
+    @Test func inAppServerIsServingWithoutScanningOrProbing() async {
         let content = content()
         await active(content)
         await content.performTick()
         #expect(content.state == .listening(pid: nil))
         #expect(scanner.scans == 0)
         #expect(probe.probes == 0)
-        #expect(fetcher.fetches.isEmpty)
-        #expect(ServerPaneDisplay.stateText(content.state, isResponding: content.isResponding, kind: .inApp) == "Serving")
+        #expect(ServerEntryDisplay.stateText(content.state, isResponding: content.isResponding, kind: .inApp) == "Serving")
         content.tearDown()
     }
 
@@ -216,16 +213,15 @@ struct InAppServerPaneContentTests {
         #expect(signaller.sent.isEmpty)
     }
 
-    @Test func servingFactsUpdateOnTheTickOnlyWhileVisible() async {
+    @Test func servingFactsUpdateOnTheTick() async {
         let content = content()
         await active(content)
         backend.facts.requestCount = 3
         await content.performTick()
         #expect(content.servingFacts?.requestCount == 3)
-        content.setVisible(false)
         backend.facts.requestCount = 9
         await content.performTick()
-        #expect(content.servingFacts?.requestCount == 3)
+        #expect(content.servingFacts?.requestCount == 9)
         content.tearDown()
     }
 }
@@ -349,17 +345,16 @@ struct InAppStaticServerRealSocketTests {
         #expect(response.bodyText.contains("<h1>index</h1>"))
     }
 
-    @Test func serverPaneRestartOfARunningServerServesAgain() async throws {
+    @Test func entryRestartOfARunningServerServesAgain() async throws {
         let fixture = try StaticServerFixture()
         defer { fixture.remove() }
         let port = try await freePort(fixture)
         let backend = try backend(fixture)
         #expect(try await serve(backend, port: port) == port)
         let clock = TestClock()
-        let content = ServerPaneContent(
+        let content = ServerEntry(
             port: port, url: URL(string: "http://127.0.0.1:\(port)/"), backend: backend, clock: clock,
-            scanner: FakePortScanner(), probe: FakeHTTPProbe(), statsFetcher: FakeStatsFetcher(),
-            metricsProvider: { _ in nil }, commandLineProvider: { _ in nil }, signaller: FakeProcessSignaller(),
+            scanner: FakePortScanner(), probe: FakeHTTPProbe(), commandLineProvider: { _ in nil }, signaller: FakeProcessSignaller(),
             processTable: FakeProcessTable(tabID: UUID()), opener: { _ in })
         defer { content.tearDown() }
         content.setUp(visible: true)
@@ -387,8 +382,8 @@ final class StaticServerStoreFixture {
     var nextResult: Result<UInt16, StaticServerError> = .success(52144)
     var nextGate: AsyncGate?
 
-    init(serverPane: Bool = true) throws {
-        base = ServerStoreFixture(serverPane: serverPane)
+    init(servers: Bool = true) throws {
+        base = ServerStoreFixture(servers: servers)
         root = FileManager.default.temporaryDirectory.appendingPathComponent("serve-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let clock = base.clock
@@ -416,7 +411,7 @@ final class StaticServerStoreFixture {
     }
 
     func backend(_ result: ServerXPCResult) -> InAppStaticServerBackend? {
-        result.content.backend as? InAppStaticServerBackend
+        result.entry.backend as? InAppStaticServerBackend
     }
 }
 
@@ -428,12 +423,13 @@ func serveError(_ result: Result<ServerXPCResult, ServerXPCError>) -> ServerXPCE
 
 @MainActor
 struct AppStateStoreStaticServerTests {
-    @Test func serveCreatesAServerPaneWithAnInAppBackend() async throws {
+    @Test func serveRegistersAnInAppEntryAndOpensNoPane() async throws {
         let fixture = try StaticServerStoreFixture()
         let result = try await fixture.serve().get()
         #expect(result.created)
-        #expect(fixture.base.pane(result.paneID)?.kind == .server)
-        #expect(result.content.url.absoluteString == "http://127.0.0.1:52144/")
+        #expect(fixture.store.servers.entries.map(\.id) == [result.entry.id])
+        #expect(fixture.session.tree.allPanes.count == 1)
+        #expect(result.entry.url.absoluteString == "http://127.0.0.1:52144/")
         let backend = try #require(fixture.backend(result))
         #expect(backend.isServing)
         #expect(backend.root == StaticFilePathResolver.realPath(fixture.root.path))
@@ -442,32 +438,33 @@ struct AppStateStoreStaticServerTests {
         #expect(reply.state == .listening)
     }
 
-    @Test func serveKeepsFocusOnTheCallingPane() async throws {
+    @Test func serveLeavesFocusAlone() async throws {
         let fixture = try StaticServerStoreFixture()
         let caller = fixture.callingPaneID
         _ = try await fixture.serve().get()
         #expect(fixture.session.tree.focusedPaneID == caller)
     }
 
-    @Test func serveTwiceOnTheSameRootReusesThePane() async throws {
+    @Test func serveTwiceOnTheSameRootReusesTheEntry() async throws {
         let fixture = try StaticServerStoreFixture()
         let first = try await fixture.serve().get()
         let second = try await fixture.serve().get()
         #expect(!second.created)
-        #expect(second.paneID == first.paneID)
+        #expect(second.entry === first.entry)
         #expect(fixture.servers.count == 1)
     }
 
-    @Test func serveOnAStoppedRootResumesIt() async throws {
+    @Test func serveAfterStopServesAgainInAFreshEntry() async throws {
         let fixture = try StaticServerStoreFixture()
         let first = try await fixture.serve().get()
-        _ = fixture.store.stopServerForXPC(ServerControlRequest(paneID: fixture.callingPaneID, port: 52144))
-        await first.content.awaitPendingWork()
+        _ = fixture.store.stopServerForXPC(ServerControlRequest(port: 52144))
+        await first.entry.awaitPendingWork()
         #expect(fixture.backend(first)?.isServing == false)
+        #expect(fixture.store.servers.entries.isEmpty)
         let second = try await fixture.serve().get()
-        #expect(second.paneID == first.paneID)
+        #expect(second.created)
+        #expect(second.entry.id != first.entry.id)
         #expect(fixture.backend(second)?.isServing == true)
-        #expect(fixture.servers.last?.requestedPorts == [52144])
     }
 
     @Test func serveSameRootWithADifferentPortFails() async throws {
@@ -497,45 +494,39 @@ struct AppStateStoreStaticServerTests {
         #expect(fixture.session.tree.allPanes.count == 1)
     }
 
-    @Test func callingPaneClosedDuringBindStopsTheServerAndFails() async throws {
+    @Test func serveNeedsNoCallingPane() async throws {
         let fixture = try StaticServerStoreFixture()
-        let gate = AsyncGate()
-        fixture.nextGate = gate
-        let caller = fixture.callingPaneID
-        let sibling = fixture.store.splitPane(id: caller, direction: .horizontal)
-        #expect(sibling != nil)
-        let task = Task { await fixture.serve(paneID: caller) }
-        #expect(await awaitBounded { await gate.waitUntilEntered() })
-        #expect(fixture.store.closePane(id: caller) == .closed)
-        gate.open()
-        let result = await task.value
-        #expect(serveError(result) == .unknownPane)
-        #expect(fixture.servers.first?.stopCount == 1)
-    }
-
-    @Test func closingTheServerPaneStopsServing() async throws {
-        let fixture = try StaticServerStoreFixture()
-        let result = try await fixture.serve().get()
-        _ = fixture.store.closePane(id: result.paneID)
-        #expect(fixture.backend(result)?.isServing == false)
-        #expect(fixture.servers.first?.stopCount == 1)
-    }
-
-    @Test func stopAndRestartResolveTheInAppPaneByPort() async throws {
-        let fixture = try StaticServerStoreFixture()
-        let result = try await fixture.serve().get()
-        let stopped = try fixture.store.stopServerForXPC(ServerControlRequest(paneID: fixture.callingPaneID, port: 52144)).get()
-        #expect(stopped.paneID == result.paneID)
-        await result.content.awaitPendingWork()
-        #expect(fixture.backend(result)?.isServing == false)
-        _ = try fixture.store.restartServerForXPC(ServerControlRequest(paneID: fixture.callingPaneID, port: 52144)).get()
-        await result.content.awaitPendingWork()
+        let result = try await fixture.store.serveStaticForXPC(ServerServeRequest(paneID: UUID(), root: fixture.root.path)).get()
+        #expect(result.created)
         #expect(fixture.backend(result)?.isServing == true)
+    }
+
+    @Test func stopStopsServingAndRemovesTheEntry() async throws {
+        let fixture = try StaticServerStoreFixture()
+        let result = try await fixture.serve().get()
+        _ = try fixture.store.stopServerForXPC(ServerControlRequest(serverID: result.entry.id)).get()
+        await result.entry.awaitPendingWork()
+        #expect(fixture.backend(result)?.isServing == false)
+        #expect(fixture.servers.first?.stopCount == 1)
+        #expect(fixture.store.servers.entries.isEmpty)
+    }
+
+    @Test func stopAndRestartResolveTheInAppEntryByPort() async throws {
+        let fixture = try StaticServerStoreFixture()
+        let result = try await fixture.serve().get()
+        let restarted = try fixture.store.restartServerForXPC(ServerControlRequest(port: 52144)).get()
+        #expect(restarted.entry === result.entry)
+        await result.entry.awaitPendingWork()
+        #expect(fixture.backend(result)?.isServing == true)
+        let stopped = try fixture.store.stopServerForXPC(ServerControlRequest(port: 52144)).get()
+        #expect(stopped.entry === result.entry)
+        await result.entry.awaitPendingWork()
+        #expect(fixture.backend(result)?.isServing == false)
         #expect(fixture.base.signaller.sent.isEmpty)
     }
 
     @Test func serveFailsWithFlagOff() async throws {
-        let fixture = try StaticServerStoreFixture(serverPane: false)
+        let fixture = try StaticServerStoreFixture(servers: false)
         #expect(serveError(await fixture.serve()) == .flagOff)
         #expect(fixture.servers.isEmpty)
     }
@@ -563,8 +554,8 @@ struct AppStateStoreStaticServerTests {
     @Test func serveOpenOpensTheServedURLInTheDefaultBrowser() async throws {
         let (fixture, recorder) = try recordingFixture()
         let result = try await fixture.serve(open: true).get()
-        #expect(recorder.opened == [result.content.url])
-        #expect(Set(fixture.session.tree.allPanes.map(\.id)) == [fixture.callingPaneID, result.paneID])
+        #expect(recorder.opened == [result.entry.url])
+        #expect(fixture.session.tree.allPanes.map(\.id) == [fixture.callingPaneID])
     }
 
     @Test func serveWithoutOpenOpensNothing() async throws {
@@ -578,21 +569,21 @@ struct AppStateStoreStaticServerTests {
         let first = try await fixture.serve(open: true).get()
         let second = try await fixture.serve(open: true).get()
         #expect(!second.created)
-        #expect(recorder.opened == [first.content.url, first.content.url])
+        #expect(recorder.opened == [first.entry.url, first.entry.url])
     }
 
     @Test func staleServedSiteOpenTargetIsIgnored() async throws {
         let (fixture, recorder) = try recordingFixture()
         fixture.base.defaults.set("batty", forKey: "co.sstools.Batty.servedSiteOpenTarget")
         let result = try await fixture.serve(open: true).get()
-        #expect(recorder.opened == [result.content.url])
-        #expect(fixture.session.tree.allPanes.count == 2)
+        #expect(recorder.opened == [result.entry.url])
+        #expect(fixture.session.tree.allPanes.count == 1)
     }
 }
 
 @MainActor
 struct AppXPCServiceStaticServerTests {
-    @Test func serveReplyCarriesURLRootAndPane() async throws {
+    @Test func serveReplyCarriesURLRootAndServerID() async throws {
         let fixture = try StaticServerStoreFixture()
         let payload = try JSONEncoder().encode(ServerServeRequest(paneID: fixture.callingPaneID, root: fixture.root.path))
         let response = await AppXPCService.serverResponse(verb: XPCVerb.serverServe, payload: payload, store: fixture.store, clock: fixture.base.clock)
@@ -600,7 +591,7 @@ struct AppXPCServiceStaticServerTests {
         let reply = try JSONDecoder().decode(ServerReply.self, from: try #require(response.payload))
         #expect(reply.url == "http://127.0.0.1:52144/")
         #expect(reply.root == StaticFilePathResolver.realPath(fixture.root.path))
-        #expect(fixture.base.pane(reply.paneID)?.kind == .server)
+        #expect(reply.serverID == fixture.store.servers.entries.first?.id)
     }
 
     @Test func malformedServeIsAFailure() async throws {
@@ -612,14 +603,14 @@ struct AppXPCServiceStaticServerTests {
 }
 
 @MainActor
-struct ServerPaneInAppDisplayTests {
+struct ServerEntryInAppDisplayTests {
     @Test func inAppListeningReadsServing() {
-        #expect(ServerPaneDisplay.stateText(.listening(pid: nil), isResponding: nil, kind: .inApp) == "Serving")
-        #expect(ServerPaneDisplay.stateText(.stopped(exitCode: nil, reason: .requested), isResponding: nil, kind: .inApp) == "Stopped")
+        #expect(ServerEntryDisplay.stateText(.listening(pid: nil), isResponding: nil, kind: .inApp) == "Serving")
+        #expect(ServerEntryDisplay.stateText(.stopped(exitCode: nil, reason: .requested), isResponding: nil, kind: .inApp) == "Stopped")
     }
 
     @Test func stopShownForInAppListening() {
-        #expect(ServerPaneDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .inApp))
-        #expect(!ServerPaneDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .external))
+        #expect(ServerEntryDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .inApp))
+        #expect(!ServerEntryDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .external))
     }
 }

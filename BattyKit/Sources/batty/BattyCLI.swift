@@ -19,14 +19,14 @@ struct BattyCLI: ParsableCommand {
     /// The CLI's variant is fixed at compile time, so production only passes
     /// `.current`; taking the flags lets tests build both trees. A flagged
     /// noun or verb (`mcp` and `agent` with `agentIntegration`, `server` with
-    /// `serverPane`) is not in the tree at all when its flag is off, so
+    /// `servers`) is not in the tree at all when its flag is off, so
     /// `--help`, `batty capabilities` and the MCP tool list never mention it.
     static func subcommands(for flags: FeatureFlags) -> [ParsableCommand.Type] {
         var commands: [ParsableCommand.Type] = [
             NewSessionCommand.self, PingCommand.self, StatusCommand.self, ListCommand.self,
             SessionNounCommand.self, PaneNounCommand.self, TabNounCommand.self, ProjectNounCommand.self,
         ]
-        if flags.serverPane {
+        if flags.servers {
             commands.append(ServerNounCommand.self)
         }
         commands += [IDCommand.self, NotifyCommand.self]

@@ -579,7 +579,7 @@ struct CapabilitiesInputSchemaTests {
 extension FeatureFlags {
     /// Every flag on, so tree-walking tests cover flagged verbs; `.current`
     /// is off under `swift test`.
-    static let allOnForTests = FeatureFlags(sharedProjectImages: true, agentIntegration: true, serverPane: true)
+    static let allOnForTests = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: true)
 }
 
 struct ServerCapabilitiesTests {
@@ -587,7 +587,7 @@ struct ServerCapabilitiesTests {
 
     @Test func serverVerbsAppearOnlyWithTheFlagOn() {
         let on = Set(CapabilitiesCommand.verbs(flags: .allOnForTests).map(\.name))
-        let off = Set(CapabilitiesCommand.verbs(flags: FeatureFlags(sharedProjectImages: true, serverPane: false)).map(\.name))
+        let off = Set(CapabilitiesCommand.verbs(flags: FeatureFlags(sharedProjectImages: true, servers: false)).map(\.name))
         #expect(serverVerbs.isSubset(of: on))
         #expect(off.isDisjoint(with: serverVerbs))
     }

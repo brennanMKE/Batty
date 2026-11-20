@@ -296,7 +296,7 @@ nonisolated enum AppServiceClient {
         let requestPayload = try? JSONEncoder().encode(request)
         let outcome: Outcome<ServerReply> = perform(verb: verb, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: verb)
         if case .success(let reply) = outcome {
-            logger.info("\(verb, privacy: .public) -> pane=\(reply.paneID, privacy: .public) state=\(reply.state.rawValue, privacy: .public)")
+            logger.info("\(verb, privacy: .public) -> server=\(reply.serverID, privacy: .public) state=\(reply.state.rawValue, privacy: .public)")
         }
         return outcome
     }

@@ -187,9 +187,9 @@ struct CapabilitiesCommand: ParsableCommand {
         // Serves until stdin closes; the tools it runs carry their own hints.
         "mcp": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
         "install": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
-        // Reuses the port's Server Pane, but restarts the server each time.
+        // Reuses the port's server entry, but restarts the server each time.
         "start": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false),
-        // Returns the port's existing Server Pane unchanged.
+        // Returns the port's existing server entry unchanged.
         "attach": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
         // Ends a process; a second stop finds nothing running.
         "stop": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false),

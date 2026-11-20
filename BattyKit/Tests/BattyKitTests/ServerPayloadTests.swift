@@ -16,23 +16,35 @@ struct ServerPayloadTests {
         #expect(try roundTripOffActor(attach) == attach)
         let control = ServerControlRequest(paneID: UUID(), port: 8083)
         #expect(try roundTripOffActor(control) == control)
-        let reply = ServerReply(paneID: UUID(), terminalPaneID: UUID(), tabID: UUID(), url: "http://localhost:8083/", pid: 42, state: .listening, exitCode: nil, created: true)
+        let reply = ServerReply(serverID: UUID(), terminalPaneID: UUID(), tabID: UUID(), url: "http://localhost:8083/", pid: 42, state: .listening, exitCode: nil, created: true)
         #expect(try roundTripOffActor(reply) == reply)
     }
 
     @Test func serveRequestRoundTrips() throws {
         let serve = ServerServeRequest(paneID: UUID(), root: "/tmp/site", port: 8000, open: true, inject: false, split: .down)
         #expect(try roundTripOffActor(serve) == serve)
-        let reply = ServerReply(paneID: UUID(), url: "http://127.0.0.1:8000/", state: .listening, created: true, root: "/tmp/site")
+        let reply = ServerReply(serverID: UUID(), url: "http://127.0.0.1:8000/", state: .listening, created: true, root: "/tmp/site")
         #expect(try roundTripOffActor(reply) == reply)
     }
 
     @Test func replyWithoutRootDecodes() throws {
-        let reply = try JSONDecoder().decode(ServerReply.self, from: Data(#"{"paneID":"6F9619FF-8B86-D011-B42D-00C04FC964FF","url":"u","state":"listening","created":false}"#.utf8))
+        let reply = try JSONDecoder().decode(ServerReply.self, from: Data(#"{"serverID":"6F9619FF-8B86-D011-B42D-00C04FC964FF","url":"u","state":"listening","created":false}"#.utf8))
         #expect(reply.root == nil)
         let serve = try JSONDecoder().decode(ServerServeRequest.self, from: Data(#"{"root":"/x"}"#.utf8))
         #expect(serve.port == nil)
         #expect(serve.inject == nil)
+    }
+
+    @Test func replyEncodesServerIDNotPaneID() throws {
+        let reply = ServerReply(serverID: UUID(), url: "http://127.0.0.1:8000/", state: .listening, created: true)
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(reply)) as? [String: Any]
+        #expect(object?["serverID"] as? String == reply.serverID.uuidString)
+        #expect(object?["paneID"] == nil)
+    }
+
+    @Test func controlRequestRoundTripsServerID() throws {
+        let control = ServerControlRequest(serverID: UUID())
+        #expect(try roundTripOffActor(control) == control)
     }
 
     @Test func absentOptionalKeysDecodeAsNil() throws {

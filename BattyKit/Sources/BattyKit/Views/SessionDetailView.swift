@@ -204,6 +204,7 @@ public struct SessionDetailView: View {
         ToolbarItemGroup {
             SplitToolbarButton(windowRuntime: windowRuntime, direction: .horizontal)
             SplitToolbarButton(windowRuntime: windowRuntime, direction: .vertical)
+            ServersToolbarItem(store: store)
             RemindersToolbarButton(store: store, windowRuntime: windowRuntime, isShown: $remindersShown)
             BellFeedToolbarButton(store: store, isShown: $bellFeedShown)
         }

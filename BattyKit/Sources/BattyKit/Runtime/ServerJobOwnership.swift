@@ -86,7 +86,7 @@ public nonisolated protocol ProcessTableReading: AnyObject, Sendable {
     func environment(of pid: pid_t) -> [String]?
 }
 
-/// The moment before a Server Pane's terminal Tab was created, so its shell
+/// The moment before a server's terminal Tab was created, so its shell
 /// can be told apart from shells that already existed.
 public nonisolated struct ShellSpawnBaseline: Equatable, Sendable {
     public var seconds: UInt64
@@ -139,7 +139,7 @@ public nonisolated enum ServerStopDecision: Equatable, Sendable {
     case refused(String)
 }
 
-/// Decides which processes a Server Pane's Stop may signal. A started server
+/// Decides which processes a server's Stop may signal. A started server
 /// is a job of the Pane's own Tab: its group must differ from the Tab shell's
 /// and every member must descend from that shell. An attached server is the
 /// listener and its descendants. Neither may include Batty or any ancestor
@@ -199,7 +199,7 @@ public nonisolated enum ServerJobResolver {
     public static func planGroupStop(listener: pid_t, shell: ProcessRecord, snapshot: ProcessSnapshot, selfPid: pid_t) -> ServerStopDecision {
         guard let record = snapshot.records[listener], !record.isZombie else { return .nothing }
         guard snapshot.descends(listener, from: shell.pid) else {
-            return .refused("pid \(listener) was not started from this Server Pane's terminal")
+            return .refused("pid \(listener) was not started from this server's terminal")
         }
         let leader = snapshot.records[record.pgid].flatMap { $0.isZombie ? nil : $0.stamp }
         let plan = StopPlan(target: .processGroup(record.pgid), shell: shell.stamp, anchor: leader)
@@ -241,7 +241,7 @@ public nonisolated enum ServerJobResolver {
             for member in members {
                 if protected.contains(member.pid) { return .refuse("pid \(member.pid) is Batty or one of its ancestors") }
                 if !snapshot.descends(member.pid, from: shell.pid) {
-                    return .refuse("process group \(pgid) holds pid \(member.pid), which was not started from this Server Pane's terminal")
+                    return .refuse("process group \(pgid) holds pid \(member.pid), which was not started from this server's terminal")
                 }
             }
             return .proceed

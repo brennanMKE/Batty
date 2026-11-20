@@ -47,8 +47,7 @@ nonisolated final class CLIServerServeTests: XCTestCase {
     }
 
     @MainActor
-    private func text(_ identifier: String, in app: XCUIApplication) -> String {
-        let element = BattyScreen.element(identifier, in: app)
+    private func text(of element: XCUIElement) -> String {
         let label = element.label
         return label.isEmpty ? (element.value as? String ?? "") : label
     }
@@ -56,36 +55,42 @@ nonisolated final class CLIServerServeTests: XCTestCase {
     // MARK: - Tests
 
     @MainActor
-    func testServeShowsServingServerPane() throws {
+    func testServeListsTheFolderInServers() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
         let root = try site()
         let result = serve(root, from: session.focusedPaneID)
         XCTAssertEqual(result.status, 0, result.summary)
         let json = try reply(result)
-        let serverID = try XCTUnwrap((json["paneID"] as? String).flatMap(UUID.init(uuidString:)))
+        let serverID = try XCTUnwrap((json["serverID"] as? String).flatMap(UUID.init(uuidString:)))
         XCTAssertTrue((json["url"] as? String)?.hasPrefix("http://127.0.0.1:") == true)
-        let topology = try XCTUnwrap(BattyCLI.waitForTopology { $0.pane(serverID) != nil })
-        XCTAssertEqual(topology.pane(serverID)?.kind, "server")
-        XCTAssertEqual(topology.session(session.id)?.focusedPaneID, session.focusedPaneID, "serve moved keyboard focus")
-        XCTAssertTrue(BattyUITestHarness.waitFor({ self.text("server-pane-state", in: app) == "Serving" }, timeout: 15), "state chip reads \(text("server-pane-state", in: app))")
-        XCTAssertTrue(text("server-pane-root", in: app).hasSuffix("/site"), "root reads \(text("server-pane-root", in: app))")
+        XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "serve opened a Pane")
+        let button = BattyScreen.element("toolbar.servers", in: app)
+        XCTAssertTrue(button.waitForExistence(timeout: 10), "no Servers toolbar button while serving")
+        button.click()
+        let row = BattyScreen.element("servers.row.\(serverID.uuidString)", in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        XCTAssertTrue(row.descendants(matching: .any).matching(NSPredicate(format: "label == 'site' OR value == 'site'")).firstMatch.waitForExistence(timeout: 5), "the row is not named after the folder")
+        let state = row.descendants(matching: .any).matching(identifier: "servers.state").firstMatch
+        XCTAssertTrue(BattyUITestHarness.waitFor({ self.text(of: state) == "Serving" }, timeout: 15), "state reads \(text(of: state))")
+        app.typeKey(.escape, modifierFlags: [])
+        _ = BattyCLI.run(["server", "stop", serverID.uuidString])
     }
 
     @MainActor
-    func testClosingTheServerPaneFreesThePort() throws {
+    func testServerStopFreesThePort() throws {
         let (app, session) = try launch()
         defer { app.terminate() }
         let root = try site()
         let json = try reply(serve(root, from: session.focusedPaneID))
-        let serverID = try XCTUnwrap(json["paneID"] as? String)
+        let serverID = try XCTUnwrap(json["serverID"] as? String)
         let url = try XCTUnwrap(json["url"] as? String)
         let port = try XCTUnwrap(URLComponents(string: url)?.port)
-        BattyCLI.runExpectingSuccess(["pane", "close", "--pane", serverID])
-        XCTAssertNotNil(BattyCLI.waitForTopology { $0.pane(UUID(uuidString: serverID)!) == nil })
+        BattyCLI.runExpectingSuccess(["server", "stop", serverID])
         let again = serve(root, from: session.focusedPaneID, ["--port", String(port)])
         XCTAssertEqual(again.status, 0, again.summary)
         XCTAssertEqual(try reply(again)["url"] as? String, url)
+        if let id = try reply(again)["serverID"] as? String { _ = BattyCLI.run(["server", "stop", id]) }
     }
 
     @MainActor
@@ -99,7 +104,7 @@ nonisolated final class CLIServerServeTests: XCTestCase {
 
     @MainActor
     func testServeAbsentWithFlagForcedOff() throws {
-        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FORCE_SERVER_PANE_OFF": "1"])
+        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FORCE_SERVERS_OFF": "1"])
         defer { app.terminate() }
         let serveResult = serve(try site(), from: session.focusedPaneID)
         XCTAssertNotEqual(serveResult.status, 0, serveResult.summary)

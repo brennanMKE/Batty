@@ -5,7 +5,7 @@ import Foundation
 import Testing
 @testable import BattyKit
 
-/// A store whose Server Panes use fakes: no real scans, probes or signals.
+/// A store whose servers use fakes: no real scans, probes or signals.
 @MainActor
 final class ServerStoreFixture {
     let defaults = UserDefaults(suiteName: "AppStateStoreServerTests-\(UUID().uuidString)")!
@@ -14,24 +14,28 @@ final class ServerStoreFixture {
     let probe = FakeHTTPProbe()
     let signaller = FakeProcessSignaller()
     let store: AppStateStore
+    var copied: [String] = []
+    var opened: [URL] = []
 
-    init(serverPane: Bool = true) {
-        store = AppStateStore(preferences: defaults, featureFlags: FeatureFlags(sharedProjectImages: false, serverPane: serverPane))
+    init(servers: Bool = true) {
+        store = AppStateStore(preferences: defaults, featureFlags: FeatureFlags(sharedProjectImages: false, servers: servers))
         let clock = clock, scanner = scanner, probe = probe, signaller = signaller
-        store.makeServerContent = { port, url, statsURL, backend in
-            ServerPaneContent(
-                port: port, url: url, statsURL: statsURL, backend: backend, clock: clock, scanner: scanner,
-                probe: probe, statsFetcher: FakeStatsFetcher(), metricsProvider: { _ in nil }, commandLineProvider: { _ in nil },
+        store.makeServerEntry = { port, url, backend in
+            ServerEntry(
+                port: port, url: url, backend: backend, clock: clock, scanner: scanner,
+                probe: probe, commandLineProvider: { _ in nil },
                 signaller: signaller, processTable: FakeProcessTable(tabID: UUID()), opener: { _ in }, startsBackendOnSetUp: false
             )
         }
+        store.copyToPasteboard = { [weak self] in self?.copied.append($0) }
+        store.openURLInBrowser = { [weak self] in self?.opened.append($0) }
     }
 
     var session: SessionRuntime { store.sessions[0] }
     var callingPaneID: UUID { session.tree.focusedPaneID }
 
-    func start(port: Int = 8083, command: String = "go run .", split: ServerSplit? = nil, paneID: UUID? = nil) throws -> ServerXPCResult {
-        try store.startServerForXPC(ServerStartRequest(paneID: paneID ?? callingPaneID, port: port, command: command, workingDirectory: "/tmp", split: split)).get()
+    func start(port: Int = 8083, command: String = "go run .", split: ServerSplit? = nil, paneID: UUID? = nil, url: String? = nil) throws -> ServerXPCResult {
+        try store.startServerForXPC(ServerStartRequest(paneID: paneID ?? callingPaneID, port: port, command: command, workingDirectory: "/tmp", url: url, split: split)).get()
     }
 
     func attach(port: Int = 8083, command: String? = nil) throws -> ServerXPCResult {
@@ -54,34 +58,27 @@ private func splitDirection(between a: UUID, and b: UUID, in node: SplitTreeNode
 
 @MainActor
 struct AppStateStoreServerTests {
-    @Test func startCreatesServerPaneThenTerminalPaneBelowIt() throws {
+    @Test func startRegistersAnEntryAndSplitsATerminalPaneRightOfTheCaller() throws {
         let fixture = ServerStoreFixture()
         let caller = fixture.callingPaneID
         let result = try fixture.start()
         let reply = fixture.store.serverReply(result)
         #expect(result.created)
-        #expect(fixture.pane(result.paneID)?.kind == .server)
+        #expect(fixture.store.servers.entries.map(\.id) == [result.entry.id])
+        #expect(reply.serverID == result.entry.id)
         let terminalID = try #require(reply.terminalPaneID)
-        #expect(fixture.pane(terminalID)?.kind == .terminal)
         #expect(fixture.pane(terminalID)?.tabs.map(\.id) == reply.tabID.map { [$0] })
-        #expect(splitDirection(between: result.paneID, and: terminalID, in: fixture.session.tree.root) == .vertical)
-        #expect(splitDirection(between: caller, and: result.paneID, in: fixture.session.tree.root) == .horizontal)
-        #expect(fixture.session.tree.root.allLeafPanes.map(\.id).firstIndex(of: result.paneID)! < fixture.session.tree.root.allLeafPanes.map(\.id).firstIndex(of: terminalID)!)
+        #expect(splitDirection(between: caller, and: terminalID, in: fixture.session.tree.root) == .horizontal)
+        #expect(fixture.session.tree.allPanes.count == 2)
+        #expect(fixture.session.tree.allPanes.allSatisfy { $0.kind == .terminal })
     }
 
     @Test func startHonorsSplitDownOverride() throws {
         let fixture = ServerStoreFixture()
         let caller = fixture.callingPaneID
         let result = try fixture.start(split: .down)
-        #expect(splitDirection(between: caller, and: result.paneID, in: fixture.session.tree.root) == .vertical)
-    }
-
-    @Test func startUsesThePlacementSettingWhenNoSplitGiven() throws {
-        let fixture = ServerStoreFixture()
-        fixture.defaults.set(ServerPanePlacement.below.rawValue, forKey: SettingsPreference.serverPanePlacementKey)
-        let caller = fixture.callingPaneID
-        let result = try fixture.start()
-        #expect(splitDirection(between: caller, and: result.paneID, in: fixture.session.tree.root) == .vertical)
+        let terminalID = try #require(fixture.store.serverReply(result).terminalPaneID)
+        #expect(splitDirection(between: caller, and: terminalID, in: fixture.session.tree.root) == .vertical)
     }
 
     @Test func startKeepsFocusOnTheCallingPane() throws {
@@ -91,15 +88,16 @@ struct AppStateStoreServerTests {
         #expect(fixture.session.tree.focusedPaneID == caller)
     }
 
-    @Test func startTwiceOnSamePortReusesPaneAndTabAndRestarts() async throws {
+    @Test func startTwiceOnSamePortReusesEntryAndTabAndRestarts() async throws {
         let fixture = ServerStoreFixture()
         let first = try fixture.start()
         let firstReply = fixture.store.serverReply(first)
         let paneCount = fixture.session.tree.allPanes.count
         let second = try fixture.start()
-        await second.content.awaitPendingWork()
+        #expect(fixture.store.servers.entries.count == 1)
+        await second.entry.awaitPendingWork()
         #expect(!second.created)
-        #expect(second.paneID == first.paneID)
+        #expect(second.entry === first.entry)
         #expect(fixture.store.serverReply(second).tabID == firstReply.tabID)
         #expect(fixture.session.tree.allPanes.count == paneCount)
     }
@@ -108,76 +106,91 @@ struct AppStateStoreServerTests {
         let fixture = ServerStoreFixture()
         let first = try fixture.start(command: "go run .")
         _ = try fixture.start(command: "go run ./cmd/site")
-        #expect(first.content.backend.command == "go run ./cmd/site")
+        #expect(first.entry.backend.command == "go run ./cmd/site")
     }
 
-    @Test func startShowsAHiddenServerPaneForThePort() throws {
-        let fixture = ServerStoreFixture()
-        let first = try fixture.start()
-        fixture.store.hidePane(id: first.paneID)
-        #expect(fixture.pane(first.paneID)?.isHidden == true)
-        _ = try fixture.start()
-        #expect(fixture.pane(first.paneID)?.isHidden == false)
-    }
-
-    @Test func startAfterTerminalClosedMakesANewTerminalPaneUnderTheServerPane() throws {
+    @Test func startAfterTerminalClosedRegistersAFreshEntry() async throws {
         let fixture = ServerStoreFixture()
         let first = try fixture.start()
         let oldTerminal = try #require(fixture.store.serverReply(first).terminalPaneID)
         fixture.session.tree.removePane(id: oldTerminal)
-        _ = try fixture.start()
-        let newTerminal = try #require(fixture.store.serverReply(first).terminalPaneID)
+        await first.entry.performTick()
+        #expect(fixture.store.servers.entries.isEmpty)
+        let second = try fixture.start()
+        #expect(second.created)
+        #expect(second.entry.id != first.entry.id)
+        let newTerminal = try #require(fixture.store.serverReply(second).terminalPaneID)
         #expect(newTerminal != oldTerminal)
-        #expect(splitDirection(between: first.paneID, and: newTerminal, in: fixture.session.tree.root) == .vertical)
     }
 
-    @Test func differentPortsGetDifferentPanes() throws {
+    @Test func differentPortsGetDifferentEntries() throws {
         let fixture = ServerStoreFixture()
         let a = try fixture.start(port: 8083)
         let b = try fixture.start(port: 8084)
-        #expect(a.paneID != b.paneID)
+        #expect(a.entry.id != b.entry.id)
         #expect(b.created)
+        #expect(fixture.store.servers.entries.count == 2)
     }
 
-    @Test func samePortInAnotherSessionIsADifferentPane() throws {
+    @Test func samePortFromAnotherSessionReusesTheEntry() throws {
         let fixture = ServerStoreFixture()
         let a = try fixture.start()
         let other = try #require(fixture.store.addSession(title: "Other"))
         let b = try fixture.start(paneID: other.tree.focusedPaneID)
-        #expect(a.paneID != b.paneID)
-        #expect(b.created)
+        #expect(a.entry === b.entry)
+        #expect(!b.created)
     }
 
-    @Test func attachTwiceReturnsTheSamePaneUnchanged() throws {
+    @Test func attachTwiceReturnsTheSameEntryUnchanged() throws {
         let fixture = ServerStoreFixture()
         let first = try fixture.attach()
-        let count = fixture.session.tree.allPanes.count
         let second = try fixture.attach(command: "npm start")
-        #expect(second.paneID == first.paneID)
+        #expect(second.entry === first.entry)
         #expect(!second.created)
-        #expect(second.content.backend.command == nil)
+        #expect(second.entry.backend.command == nil)
+    }
+
+    @Test func attachOpensNoPane() throws {
+        let fixture = ServerStoreFixture()
+        let count = fixture.session.tree.allPanes.count
+        let result = try fixture.attach()
         #expect(fixture.session.tree.allPanes.count == count)
+        #expect(result.entry.backend.kind == .external)
+        #expect(fixture.store.servers.entry(port: 8083) === result.entry)
     }
 
     @Test func startOnAnAttachedPortConvertsItToATerminalBackend() async throws {
         let fixture = ServerStoreFixture()
         let attached = try fixture.attach()
         let started = try fixture.start()
-        await started.content.awaitPendingWork()
-        #expect(started.paneID == attached.paneID)
-        #expect(started.content.backend.kind == .terminal)
+        await started.entry.awaitPendingWork()
+        #expect(started.entry === attached.entry)
+        #expect(started.entry.backend.kind == .terminal)
         #expect(fixture.store.serverReply(started).terminalPaneID != nil)
     }
 
-    @Test func stopAndRestartResolveByPortWithinTheSession() async throws {
+    @Test func stopAndRestartResolveByPortAppWide() async throws {
         let fixture = ServerStoreFixture()
         let started = try fixture.start()
-        let stopped = try fixture.store.stopServerForXPC(ServerControlRequest(paneID: fixture.callingPaneID, port: 8083)).get()
-        #expect(stopped.paneID == started.paneID)
-        await stopped.content.awaitPendingWork()
-        #expect(stopped.content.state == .stopped(exitCode: nil, reason: .requested))
-        let restarted = try fixture.store.restartServerForXPC(ServerControlRequest(serverPaneID: started.paneID)).get()
-        #expect(restarted.paneID == started.paneID)
+        let other = try #require(fixture.store.addSession(title: "Other"))
+        let restarted = try fixture.store.restartServerForXPC(ServerControlRequest(paneID: other.tree.focusedPaneID, port: 8083)).get()
+        #expect(restarted.entry === started.entry)
+        await restarted.entry.awaitPendingWork()
+        let second = try fixture.start(port: 8084)
+        let stopped = try fixture.store.stopServerForXPC(ServerControlRequest(paneID: other.tree.focusedPaneID, port: 8084)).get()
+        #expect(stopped.entry === second.entry)
+        await stopped.entry.awaitPendingWork()
+        #expect(stopped.entry.state == .stopped(exitCode: nil, reason: .requested))
+        #expect(fixture.store.servers.entry(port: 8084) == nil)
+    }
+
+    @Test func stopResolvesByServerID() async throws {
+        let fixture = ServerStoreFixture()
+        let started = try fixture.start()
+        let stopped = try fixture.store.stopServerForXPC(ServerControlRequest(serverID: started.entry.id)).get()
+        #expect(stopped.entry === started.entry)
+        await stopped.entry.awaitPendingWork()
+        #expect(fixture.store.servers.entry(id: started.entry.id) == nil)
     }
 
     @Test func unknownPortIsAFailure() {
@@ -185,15 +198,77 @@ struct AppStateStoreServerTests {
         #expect(throws: ServerXPCError.unknownServer) {
             try fixture.store.stopServerForXPC(ServerControlRequest(paneID: fixture.callingPaneID, port: 9999)).get()
         }
+        #expect(throws: ServerXPCError.unknownServer) {
+            try fixture.store.stopServerForXPC(ServerControlRequest(serverID: UUID())).get()
+        }
     }
 
     @Test func everyVerbFailsWithFlagOff() {
-        let fixture = ServerStoreFixture(serverPane: false)
+        let fixture = ServerStoreFixture(servers: false)
         #expect(throws: ServerXPCError.flagOff) { try fixture.start() }
         #expect(throws: ServerXPCError.flagOff) { try fixture.attach() }
         #expect(throws: ServerXPCError.flagOff) { try fixture.store.stopServerForXPC(ServerControlRequest(port: 8083)).get() }
         #expect(throws: ServerXPCError.flagOff) { try fixture.store.restartServerForXPC(ServerControlRequest(port: 8083)).get() }
         #expect(fixture.session.tree.allPanes.count == 1)
+        #expect(fixture.store.servers.entries.isEmpty)
+    }
+}
+
+@MainActor
+struct ServerEntryActionsTests {
+    @Test func copyURLWritesTheLoopbackURL() throws {
+        let fixture = ServerStoreFixture()
+        let entry = try fixture.start(port: 8123).entry
+        fixture.store.copyServerURL(entry)
+        #expect(fixture.copied == ["http://127.0.0.1:8123/"])
+    }
+
+    @Test func copyURLUsesAnExplicitURL() throws {
+        let fixture = ServerStoreFixture()
+        let entry = try fixture.start(url: "http://localhost:8083/app").entry
+        fixture.store.copyServerURL(entry)
+        #expect(fixture.copied == ["http://localhost:8083/app"])
+    }
+
+    @Test func copyTailnetURLDoesNothingWithoutOne() throws {
+        let fixture = ServerStoreFixture()
+        let entry = try fixture.start().entry
+        fixture.store.copyServerTailnetURL(entry)
+        #expect(fixture.copied.isEmpty)
+    }
+
+    @Test func openInBrowserOpensTheEntryURL() throws {
+        let fixture = ServerStoreFixture()
+        let entry = try fixture.start(port: 8124).entry
+        fixture.store.openServerInBrowser(entry)
+        #expect(fixture.opened.map(\.absoluteString) == ["http://127.0.0.1:8124/"])
+    }
+
+    @Test func showTerminalJumpsToTheServersTab() throws {
+        let fixture = ServerStoreFixture()
+        let caller = fixture.callingPaneID
+        let result = try fixture.start()
+        let reply = fixture.store.serverReply(result)
+        let terminalID = try #require(reply.terminalPaneID)
+        #expect(fixture.session.tree.focusedPaneID == caller)
+        fixture.store.showServerTerminal(result.entry)
+        #expect(fixture.session.tree.focusedPaneID == terminalID)
+        #expect(fixture.pane(terminalID)?.activeTabID == reply.tabID)
+    }
+
+    @Test func showTerminalIsANoOpForAnAttachedServer() throws {
+        let fixture = ServerStoreFixture()
+        let caller = fixture.callingPaneID
+        let entry = try fixture.attach().entry
+        #expect(fixture.store.serverTerminalTabID(entry) == nil)
+        fixture.store.showServerTerminal(entry)
+        #expect(fixture.session.tree.focusedPaneID == caller)
+    }
+
+    @Test func rowOffersStopAndRestartOnlyForManagedKinds() {
+        #expect(ServerEntryDisplay.offersStopAndRestart(kind: .terminal))
+        #expect(ServerEntryDisplay.offersStopAndRestart(kind: .inApp))
+        #expect(!ServerEntryDisplay.offersStopAndRestart(kind: .external))
     }
 }
 
@@ -207,15 +282,16 @@ struct AppXPCServiceServerTests {
         try JSONEncoder().encode(ServerStartRequest(paneID: fixture.callingPaneID, port: 8083, command: "go run .", workingDirectory: "/tmp", wait: wait, waitTimeoutSeconds: 30))
     }
 
-    @Test func serverStartReplyCarriesPaneTerminalPaneAndTabIDs() async throws {
+    @Test func serverStartReplyCarriesServerIDTerminalPaneAndTabIDs() async throws {
         let fixture = ServerStoreFixture()
         let response = await respond(fixture, verb: XPCVerb.serverStart, payload: try startPayload(fixture))
         #expect(response.ok)
         let reply = try JSONDecoder().decode(ServerReply.self, from: try #require(response.payload))
         #expect(reply.created)
+        #expect(reply.serverID == fixture.store.servers.entries.first?.id)
         #expect(reply.terminalPaneID != nil)
         #expect(reply.tabID != nil)
-        #expect(reply.url == "http://localhost:8083/")
+        #expect(reply.url == "http://127.0.0.1:8083/")
         #expect(reply.state == .starting)
     }
 
@@ -224,7 +300,7 @@ struct AppXPCServiceServerTests {
         let payload = try startPayload(fixture, wait: true)
         let task = Task { await respond(fixture, verb: XPCVerb.serverStart, payload: payload) }
         await fixture.clock.waitForSleepers(2)
-        let content = try #require(fixture.session.tree.allPanes.compactMap { $0.content as? ServerPaneContent }.first)
+        let content = try #require(fixture.store.servers.entries.first)
         fixture.scanner.listener = 4321
         await content.performTick()
         let response = await task.value
@@ -239,7 +315,7 @@ struct AppXPCServiceServerTests {
         let payload = try startPayload(fixture, wait: true)
         let task = Task { await respond(fixture, verb: XPCVerb.serverStart, payload: payload) }
         await fixture.clock.waitForSleepers(2)
-        let content = try #require(fixture.session.tree.allPanes.compactMap { $0.content as? ServerPaneContent }.first)
+        let content = try #require(fixture.store.servers.entries.first)
         content.receive(.commandFinished(exitCode: 2))
         let response = await task.value
         #expect(!response.ok)
@@ -277,7 +353,7 @@ struct AppXPCServiceServerTests {
     @Test(arguments: [Double.infinity, -Double.infinity, Double.nan, 1e300])
     func firstStateLeavingStartingReturnsAtOnceForAnInvalidTimeout(_ seconds: Double) async throws {
         let fixture = ServerStoreFixture()
-        let content = try fixture.start().content
+        let content = try fixture.start().entry
         #expect(await AppXPCService.firstStateLeavingStarting(content, clock: fixture.clock, timeout: seconds) == nil)
     }
 

@@ -1,4 +1,4 @@
-// ServerPaneContentTests.swift
+// ServerEntryTests.swift
 
 import Darwin
 import Foundation
@@ -65,16 +65,6 @@ final class FakeHTTPProbe: HTTPProbing, @unchecked Sendable {
     }
 }
 
-final class FakeStatsFetcher: ServerStatsFetching, @unchecked Sendable {
-    var result: StatsFetchResult = .body(status: 404, data: Data())
-    var fetches: [URL] = []
-
-    func fetch(_ url: URL) async -> StatsFetchResult {
-        fetches.append(url)
-        return result
-    }
-}
-
 @MainActor
 final class FakeServerTerminalSink: ServerTerminalSink {
     var armed: [String] = []
@@ -111,11 +101,10 @@ final class InAppTestBackend: ServerBackend {
 }
 
 @MainActor
-struct ServerPaneContentTests {
+struct ServerEntryTests {
     let clock = TestClock()
     let scanner = FakePortScanner()
     let probe = FakeHTTPProbe()
-    let fetcher = FakeStatsFetcher()
     let signaller = FakeProcessSignaller(diesOn: [SIGINT])
     let sink = FakeServerTerminalSink()
     let tabID: UUID
@@ -132,21 +121,17 @@ struct ServerPaneContentTests {
         return TerminalTabServerBackend(tabID: tabID, command: command, workingDirectory: "/tmp/site", spawnBaseline: spawnBaseline, lookup: { _ in present() ? target : nil })
     }
 
-    func content(
-        backend: ServerBackend? = nil,
-        statsURL: URL? = nil,
-        metrics: @escaping @MainActor (pid_t) -> ServerProcessSample? = { _ in nil }
-    ) -> ServerPaneContent {
-        ServerPaneContent(
-            port: 8083, statsURL: statsURL, backend: backend ?? terminalBackend(), clock: clock, scanner: scanner,
-            probe: probe, statsFetcher: fetcher, metricsProvider: metrics, commandLineProvider: { _ in "python3 -m http.server" },
+    func content(backend: ServerBackend? = nil) -> ServerEntry {
+        ServerEntry(
+            port: 8083, backend: backend ?? terminalBackend(), clock: clock, scanner: scanner,
+            probe: probe, commandLineProvider: { _ in "python3 -m http.server" },
             signaller: signaller, processTable: table, opener: { _ in }
         )
     }
 
-    /// Sets up hidden so no tick loop runs, then shows only where a test
-    /// wants ticks; ticks are driven with `performTick()`.
-    func active(_ content: ServerPaneContent) async {
+    /// Starts the tick loop and waits until it sleeps; further ticks are
+    /// driven with `performTick()`.
+    func active(_ content: ServerEntry) async {
         content.setUp(visible: true)
         await clock.waitForSleepers(1)
     }
@@ -200,7 +185,7 @@ struct ServerPaneContentTests {
         content.setUp(visible: false)
         sink.finish(0)
         #expect(content.state == .crashed(exitCode: 0))
-        #expect(ServerPaneDisplay.stateText(content.state, isResponding: nil, kind: .terminal) == "Exited (0)")
+        #expect(ServerEntryDisplay.stateText(content.state, isResponding: nil, kind: .terminal) == "Exited (0)")
     }
 
     @Test func stopSignalsTheJobGroupNotTheShell() async {
@@ -249,44 +234,6 @@ struct ServerPaneContentTests {
         #expect(content.state == .stopped(exitCode: nil, reason: .terminalClosed))
     }
 
-    @Test func hiddenPaneDoesNoScansProbesOrStatsFetches() async {
-        let content = content()
-        await active(content)
-        content.setVisible(false)
-        let scans = scanner.scans, probes = probe.probes, fetches = fetcher.fetches.count
-        scanner.listener = FakeProcessTable.listener
-        await content.performTick()
-        await clock.advance(by: .seconds(10))
-        #expect(scanner.scans == scans)
-        #expect(probe.probes == probes)
-        #expect(fetcher.fetches.count == fetches)
-        #expect(content.lifecyclePhase == .suspended)
-    }
-
-    @Test func crashWhileHiddenIsStillRecorded() {
-        let content = content()
-        content.setUp(visible: false)
-        sink.finish(2)
-        #expect(content.state == .crashed(exitCode: 2))
-    }
-
-    @Test func showingRefreshesExactlyOnce() async {
-        let content = content()
-        content.setUp(visible: false)
-        #expect(scanner.scans == 0)
-        content.setVisible(true)
-        await clock.waitForSleepers(1)
-        #expect(scanner.scans == 1)
-    }
-
-    @Test func createdHiddenNeverStartsTicks() async {
-        let content = content()
-        content.setUp(visible: false)
-        await clock.advance(by: .seconds(5))
-        #expect(clock.pendingCount == 0)
-        #expect(scanner.scans == 0)
-    }
-
     @Test func tearDownCancelsTicksAndRemovesTheTabObserverSynchronously() async {
         let content = content()
         await active(content)
@@ -313,32 +260,6 @@ struct ServerPaneContentTests {
         content.tearDown()
         await content.awaitPendingWork()
         #expect(signaller.sent.first?.0 == .processTree(FakeProcessTable.listener))
-    }
-
-    @Test func debugVars404HidesStatsAndStopsPolling() async {
-        let content = content()
-        await active(content)
-        scanner.listener = FakeProcessTable.listener
-        await content.performTick()
-        #expect(fetcher.fetches.map(\.absoluteString) == ["http://localhost:8083/debug/vars"])
-        #expect(!content.statsVisible)
-        await content.performTick()
-        await content.performTick()
-        #expect(fetcher.fetches.count == 1)
-    }
-
-    @Test func explicitStatsURLFailureShowsUnavailable() async {
-        let content = content(statsURL: URL(string: "http://localhost:8083/metrics.json"))
-        await active(content)
-        scanner.listener = FakeProcessTable.listener
-        fetcher.result = .failed("timed out")
-        await content.performTick()
-        #expect(content.statsUnavailableReason == "timed out")
-    }
-
-    @Test func nonLoopbackStatsHostIsReported() {
-        #expect(content(statsURL: URL(string: "http://metrics.example.com/vars")).nonLoopbackStatsHost == "metrics.example.com")
-        #expect(content().nonLoopbackStatsHost == nil)
     }
 
     @Test func attachWithoutCommandCannotRestart() {
@@ -454,7 +375,7 @@ struct ServerPaneContentTests {
 
     /// The Tab's shell hides its environment, so it is found by start time
     /// after a baseline; a tick with a listener caches it.
-    func cachedHiddenShellContent() async -> ServerPaneContent {
+    func cachedHiddenShellContent() async -> ServerEntry {
         table.environments[FakeProcessTable.shell] = []
         table.add(ProcessRecord(pid: FakeProcessTable.login, ppid: FakeProcessTable.batty, pgid: FakeProcessTable.login, uid: 0, startSeconds: 50))
         let content = content(backend: terminalBackend(spawnBaseline: ShellSpawnBaseline(seconds: 40, microseconds: 0)))
@@ -528,18 +449,5 @@ struct ServerPaneContentTests {
             #expect(await content.performStop() == false)
         }
         #expect(signaller.sent.isEmpty)
-    }
-
-    @Test func metricsComeFromTheListenerPidNotTheJobLeader() async {
-        var sampled: [pid_t] = []
-        let content = content(metrics: { pid in
-            sampled.append(pid)
-            return ServerProcessSample(cpuTicks: 0, footprintBytes: 1024, startDate: nil)
-        })
-        await active(content)
-        scanner.listener = FakeProcessTable.listener
-        await content.performTick()
-        #expect(sampled == [FakeProcessTable.listener])
-        #expect(content.metrics?.footprintBytes == 1024)
     }
 }

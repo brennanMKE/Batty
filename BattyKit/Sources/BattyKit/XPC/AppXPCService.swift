@@ -53,15 +53,6 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     // replaced on each new `watch` call. Cleaned up by AppEventWatcher when the subscription
     // ID is revoked (in shutdown or on connection teardown).
 
-    /// A Server Pane needs a port and a command, which `PaneSplitRequest`
-    /// doesn't carry.
-    static func paneSplitRefusal(kind: PaneContentKind) -> String? {
-        switch kind {
-        case .server: "server panes are created with batty server start or batty server attach"
-        default: nil
-        }
-    }
-
     func ping(reply: @escaping @Sendable (String) -> Void) {
         let description = "pid \(ProcessInfo.processInfo.processIdentifier)"
         logger.info("ping -> \(description, privacy: .public)")
@@ -167,11 +158,6 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 }
                 let direction = SplitDirection(rawValue: request.direction.rawValue) ?? .horizontal
                 let kind = request.kind ?? .terminal
-                if let refusal = Self.paneSplitRefusal(kind: kind) {
-                    logger.error("perform paneSplit: refused kind \(kind.rawValue, privacy: .public)")
-                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: refusal)))
-                    return
-                }
                 // #0383: `--unique` find-or-create. `findUniquePane` itself
                 // guards `kind != .terminal` (there is no sensible "the
                 // terminal Pane" to find) — the CLI also rejects `--unique`
@@ -800,16 +786,16 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
             outcome = value
         }
         if verb == XPCVerb.serverStop || verb == XPCVerb.serverRestart || verb == XPCVerb.serverStart {
-            await outcome.content.awaitPendingWork()
-            if verb != XPCVerb.serverStart || !outcome.created, let reason = outcome.content.stopRefusal {
+            await outcome.entry.awaitPendingWork()
+            if verb != XPCVerb.serverStart || !outcome.created, let reason = outcome.entry.stopRefusal {
                 return XPCResponse(ok: false, error: "stop refused: \(reason)")
             }
-            if verb == XPCVerb.serverRestart, let error = outcome.content.lastError {
+            if verb == XPCVerb.serverRestart, let error = outcome.entry.lastError {
                 return XPCResponse(ok: false, error: error)
             }
         }
         if wait {
-            let content = outcome.content
+            let content = outcome.entry
             let state = await Self.firstStateLeavingStarting(content, clock: clock, timeout: timeout)
             switch state {
             case nil, .starting?:
@@ -825,7 +811,7 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
         guard let replyData = try? JSONEncoder().encode(store.serverReply(outcome)) else {
             return XPCResponse(ok: false, error: "failed to encode server reply")
         }
-        logger.info("perform \(verb, privacy: .public) -> pane=\(outcome.paneID, privacy: .public) created=\(outcome.created, privacy: .public)")
+        logger.info("perform \(verb, privacy: .public) -> server=\(outcome.entry.id, privacy: .public) created=\(outcome.created, privacy: .public)")
         return XPCResponse(ok: true, payload: replyData)
     }
 
@@ -833,13 +819,13 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
     /// `clock`, whichever comes first. nil at once for a timeout
     /// `WaitTimeout` rejects.
     @MainActor
-    static func firstStateLeavingStarting(_ content: ServerPaneContent, clock: any SchedulingClock, timeout: Double) async -> ServerPaneState? {
+    static func firstStateLeavingStarting(_ content: ServerEntry, clock: any SchedulingClock, timeout: Double) async -> ServerEntryState? {
         guard let duration = WaitTimeout.duration(timeout) else { return nil }
         var waiter: Task<Void, Never>?
         var timer: Task<Void, Never>?
-        let state: ServerPaneState? = await withCheckedContinuation { (continuation: CheckedContinuation<ServerPaneState?, Never>) in
+        let state: ServerEntryState? = await withCheckedContinuation { (continuation: CheckedContinuation<ServerEntryState?, Never>) in
             var resumed = false
-            func finish(_ value: ServerPaneState?) {
+            func finish(_ value: ServerEntryState?) {
                 guard !resumed else { return }
                 resumed = true
                 continuation.resume(returning: value)

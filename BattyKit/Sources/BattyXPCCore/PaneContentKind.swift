@@ -39,9 +39,6 @@ public nonisolated enum PaneContentKind: String, Codable, Sendable, Hashable, Ca
     case lmStudioDashboard = "lm-studio-dashboard"
     /// #0314 — `docs/design/system-metrics-view.md` (not yet approved).
     case systemMetrics = "system-metrics"
-    /// #0648 — `docs/design/server-pane-view.md` (drafted for user approval).
-    /// Created only by `batty server start|attach`, never by `pane split`.
-    case server
 
     // Deliberately not built here (review round 1, non-blocking):
     // `docs/pane-kinds.md` §5 designs a per-kind `isSingletonPerSession`
@@ -71,20 +68,12 @@ public nonisolated enum PaneContentKind: String, Codable, Sendable, Hashable, Ca
         case .processStatus: return "Process Status"
         case .lmStudioDashboard: return "LM Studio Dashboard"
         case .systemMetrics: return "System Metrics"
-        case .server: return "Server"
         }
     }
 
-    /// Kinds `batty pane split --view` accepts. `.server` is excluded: a
-    /// Server Pane needs a port and a command, which only `batty server
-    /// start|attach` carries.
-    public static var paneSplitKinds: [PaneContentKind] {
-        allCases.filter { $0 != .server }
-    }
+    /// Kinds `batty pane split --view` accepts: every kind.
+    public static var paneSplitKinds: [PaneContentKind] { allCases }
 
-    /// Kinds a Project slot can hold. `.server` is excluded for the same
-    /// reason: a slot has no port or command to start a server with.
-    public static var projectSlotKinds: [PaneContentKind] {
-        allCases.filter { $0 != .server }
-    }
+    /// Kinds a Project slot can hold: every kind.
+    public static var projectSlotKinds: [PaneContentKind] { allCases }
 }

@@ -162,18 +162,18 @@ public nonisolated enum XPCVerb {
     /// the user dismissed.
     public static let projectOpen = "projectOpen"
 
-    /// #0648: starts a dev server in a terminal Pane under a Server Pane for
-    /// its port, or reuses the Server Pane already showing that port and
-    /// restarts there. Request payload is `ServerStartRequest`; the reply is
-    /// `ServerReply`. Fails with the `serverPane` flag off.
+    /// #0648: starts a dev server in a terminal Pane and lists it in the
+    /// app-wide Servers registry (#0691), or reuses the entry already
+    /// tracking that port and restarts there. Request payload is `ServerStartRequest`; the reply is
+    /// `ServerReply`. Fails with the `servers` flag off.
     public static let serverStart = "serverStart"
 
-    /// #0648: shows a Server Pane for a server started elsewhere, or returns
-    /// the one already showing that port unchanged. Request payload is
+    /// #0648: lists a server started elsewhere, or returns the entry
+    /// already tracking that port unchanged. Request payload is
     /// `ServerAttachRequest`; the reply is `ServerReply`.
     public static let serverAttach = "serverAttach"
 
-    /// #0648: stops the server a Server Pane shows (SIGINT, then SIGTERM,
+    /// #0648: stops a tracked server (SIGINT, then SIGTERM,
     /// then SIGKILL). Request payload is `ServerControlRequest`; the reply is
     /// `ServerReply`.
     public static let serverStop = "serverStop"
@@ -185,6 +185,6 @@ public nonisolated enum XPCVerb {
 
     /// #0649: serves a folder from inside Batty on 127.0.0.1 in a Server
     /// Pane. Request `ServerServeRequest`, reply `ServerReply`. Fails with
-    /// the `serverPane` flag off.
+    /// the `servers` flag off.
     public static let serverServe = "serverServe"
 }

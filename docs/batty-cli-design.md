@@ -49,7 +49,7 @@ a note telling an agent it is in a Batty Pane, from `BATTY_*` alone. **`mcp`** i
 `capabilities`: `batty mcp` serves the CLI's verbs as MCP tools over stdio.
 Both are behind the `agentIntegration` flag until #0646 ships.
 **`server`** is the seventh noun (#0648, Beta only until 1.5.0 behind the
-`serverPane` flag), with verbs `start`, `attach`, `stop` and `restart`. It is
+`servers` flag), with verbs `start`, `attach`, `stop` and `restart`. It is
 not folded into `pane split --view server` because `start` needs a trailing
 `-- <command…>`, a working directory and a terminal Pane as well as the view,
 and `stop`/`restart` act on a running process rather than a Pane. #0649 adds
@@ -129,10 +129,10 @@ only if needed · **[skip]** off-mission for Batty.
 - `batty tab new [-c <cmd>]` — new tab in the focused pane, optionally running a command. *(supacode `tab new -i`, herdr `tab.create`)*
 - `batty pane close` **shipped over XPC**; `batty tab close` and `batty session close` remain proposed. *(all three)*
 - `batty window new` — new window. *(Batty-specific; #0234)*
-- `batty server start --port N [--url U] [--stats-url U] [--split right|down] [--wait [--timeout S]] -- <command…>` — run a dev server in a new terminal Pane under a Server Pane for its port; re-running for the same port reuses both and restarts. **Shipped over XPC (#0648, Beta).**
-- `batty server attach --port N [--command C [--cwd D]]` — a Server Pane for a server started elsewhere; Restart only with `--command`. **Shipped over XPC (#0648, Beta).**
-- `batty server stop|restart (--port N | <server-pane-id>)` — SIGINT, then SIGTERM, then SIGKILL; restart types the command again. **Shipped over XPC (#0648, Beta).**
-- `batty server serve [<dir>] [--port N] [--open] [--no-inject] [--split right|down]` — serve a folder from inside Batty on 127.0.0.1 in a Server Pane, with reload on change; `--open` also opens it in the default browser. **Shipped over XPC (#0649, Beta).**
+- `batty server start --port N [--url U] [--stats-url U] [--split right|down] [--wait [--timeout S]] -- <command…>` — run a dev server in a new terminal Pane split from the calling Pane and list it in the toolbar's Servers; re-running for the same port reuses the entry and its terminal and restarts. Prints the server id (`serverID` in `--json`). **Shipped over XPC (#0648, Beta).**
+- `batty server attach --port N [--command C [--cwd D]]` — list a server started elsewhere in the toolbar's Servers; Restart only with `--command`. **Shipped over XPC (#0648, Beta).**
+- `batty server stop|restart (--port N | <server-id>)` — SIGINT, then SIGTERM, then SIGKILL; restart types the command again. **Shipped over XPC (#0648, Beta).**
+- `batty server serve [<dir>] [--port N] [--open] [--no-inject] [--split right|down]` — serve a folder from inside Batty on 127.0.0.1, listed in the toolbar's Servers, with reload on change; `--open` also opens it in the default browser. **Shipped over XPC (#0649, Beta).**
 
 ### B. Focus / navigation  [core, 1-way]
 - `batty pane focus <up|down|left|right|id>` · `batty pane next|prev`. *(herdr `pane.focus_direction`/`neighbor`, cmux `surface.focus`)*

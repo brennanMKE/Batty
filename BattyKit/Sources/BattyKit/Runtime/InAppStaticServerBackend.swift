@@ -5,8 +5,8 @@ import OSLog
 
 nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "InAppStaticServerBackend")
 
-/// `batty server serve` (#0649): a static file server inside Batty, shown in
-/// a Server Pane with no terminal. Closing the Pane stops it.
+/// `batty server serve` (#0649): a static file server inside Batty, listed in
+/// the toolbar's Servers with no terminal. `batty server stop` stops it.
 @MainActor
 public final class InAppStaticServerBackend: InProcessServerBackend {
     public typealias ServerFactory = @MainActor (_ resolver: StaticFilePathResolver, _ injects: Bool) -> StaticServing

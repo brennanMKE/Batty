@@ -6,7 +6,7 @@ import Foundation
 /// `serverRestart` XPC verbs (#0648). `nonisolated` at the type level for the
 /// same reason as every other payload in this module.
 
-/// Where a new Server Pane goes, overriding Settings.
+/// Where `server start` puts its terminal Pane, split from the calling Pane.
 public nonisolated enum ServerSplit: String, Codable, Sendable, CaseIterable {
     case right
     case down
@@ -21,8 +21,8 @@ public nonisolated enum ServerState: String, Codable, Sendable {
 }
 
 public nonisolated struct ServerStartRequest: Codable, Sendable, Equatable {
-    /// The calling Pane; its Session gets the Server Pane. Nil falls back to
-    /// the focused Pane.
+    /// The calling Pane; the terminal Pane is split from it. Nil falls back
+    /// to the focused Pane.
     public var paneID: UUID?
     public var port: Int
     /// Shell text typed into the terminal.
@@ -52,7 +52,7 @@ public nonisolated struct ServerAttachRequest: Codable, Sendable, Equatable {
     public var port: Int
     public var url: String?
     public var statsURL: String?
-    /// The command Restart runs. Without it the Pane has no Restart.
+    /// The command Restart runs. Without it the server has no Restart.
     public var command: String?
     public var workingDirectory: String?
     public var split: ServerSplit?
@@ -72,8 +72,6 @@ public nonisolated struct ServerAttachRequest: Codable, Sendable, Equatable {
     }
 }
 
-/// Names the Server Pane by id, or by port within the calling Pane's
-/// Session.
 /// `batty server serve [<dir>]` (#0649). `root` is absolute (the CLI
 /// resolves it). `inject` nil means on.
 public nonisolated struct ServerServeRequest: Codable, Sendable, Equatable {
@@ -94,34 +92,35 @@ public nonisolated struct ServerServeRequest: Codable, Sendable, Equatable {
     }
 }
 
+/// Names a server by id, or by port (app-wide).
 public nonisolated struct ServerControlRequest: Codable, Sendable, Equatable {
     public var paneID: UUID?
-    public var serverPaneID: UUID?
+    public var serverID: UUID?
     public var port: Int?
 
-    public init(paneID: UUID? = nil, serverPaneID: UUID? = nil, port: Int? = nil) {
+    public init(paneID: UUID? = nil, serverID: UUID? = nil, port: Int? = nil) {
         self.paneID = paneID
-        self.serverPaneID = serverPaneID
+        self.serverID = serverID
         self.port = port
     }
 }
 
 public nonisolated struct ServerReply: Codable, Sendable, Equatable {
-    public var paneID: UUID
+    public var serverID: UUID
     public var terminalPaneID: UUID?
     public var tabID: UUID?
     public var url: String
     public var pid: Int32?
     public var state: ServerState
     public var exitCode: Int?
-    /// False when an existing Server Pane was reused.
+    /// False when an existing server was reused.
     public var created: Bool
     /// The served folder, for an in-app static server (#0649).
     public var root: String?
 
-    public init(paneID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil) {
+    public init(serverID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil) {
         self.root = root
-        self.paneID = paneID
+        self.serverID = serverID
         self.terminalPaneID = terminalPaneID
         self.tabID = tabID
         self.url = url

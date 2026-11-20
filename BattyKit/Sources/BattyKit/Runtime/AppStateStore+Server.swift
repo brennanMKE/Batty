@@ -21,11 +21,11 @@ public enum ServerXPCError: Error, Equatable, Sendable {
 
     public var message: String {
         switch self {
-        case .flagOff: return "server panes are not available in this build"
+        case .flagOff: return "servers are not available in this build"
         case .invalidPort: return "port must be between 1 and 65535"
         case .noPane: return "no pane to target"
         case .unknownPane: return "unknown pane id"
-        case .unknownServer: return "no server pane for that port in this session"
+        case .unknownServer: return "no server with that id or port"
         case .cannotRestart: return "this server has no command to restart; attach with --command"
         case .stopRefused(let reason): return "stop refused: \(reason)"
         case .notADirectory(let path): return "not a directory: \(path)"
@@ -37,13 +37,11 @@ public enum ServerXPCError: Error, Equatable, Sendable {
 }
 
 public struct ServerXPCResult {
-    public let paneID: UUID
-    public let content: ServerPaneContent
+    public let entry: ServerEntry
     public let created: Bool
 
-    public init(paneID: UUID, content: ServerPaneContent, created: Bool) {
-        self.paneID = paneID
-        self.content = content
+    public init(entry: ServerEntry, created: Bool) {
+        self.entry = entry
         self.created = created
     }
 }
@@ -93,18 +91,6 @@ extension AppStateStore {
         return nil
     }
 
-    /// The Server Pane for `port` in the Session holding `paneID`, hidden or
-    /// not.
-    public func findServerPane(sessionContaining paneID: UUID, port: UInt16) -> PaneRuntime? {
-        guard let (_, session) = locate(paneID: paneID) else { return nil }
-        return session.tree.allPanes.first { ($0.content as? ServerPaneContent)?.port == port }
-    }
-
-    public func serverContent(paneID: UUID) -> ServerPaneContent? {
-        guard let (_, session) = locate(paneID: paneID) else { return nil }
-        return session.tree.allPanes.first { $0.id == paneID }?.content as? ServerPaneContent
-    }
-
     func resolveCallingPane(_ paneID: UUID?) -> Result<(WindowRuntime, SessionRuntime, UUID), ServerXPCError> {
         guard let target = paneID ?? focusedPaneIDFallback() else { return .failure(.noPane) }
         guard let (window, session) = locate(paneID: target) else { return .failure(.unknownPane) }
@@ -116,15 +102,7 @@ extension AppStateStore {
     }
 
     func direction(for split: ServerSplit?) -> SplitDirection {
-        switch split {
-        case .right: return .horizontal
-        case .down: return .vertical
-        case nil: return ServerPanePlacement.resolved(defaults: preferences).direction
-        }
-    }
-
-    func showIfHidden(_ pane: PaneRuntime, in window: WindowRuntime) {
-        if pane.isHidden { window.showPane(id: pane.id) }
+        split == .down ? .vertical : .horizontal
     }
 
     // MARK: - Building Panes
@@ -135,151 +113,152 @@ extension AppStateStore {
         }
     }
 
-    /// A new terminal Pane below `serverPaneID`, focus unchanged.
-    private func makeServerTerminal(under serverPaneID: UUID, workingDirectory: String?) -> (paneID: UUID, tab: TabRuntime, spawnBaseline: ShellSpawnBaseline)? {
-        guard let (window, session) = locate(paneID: serverPaneID) else { return nil }
+    /// A new terminal Pane split from `anchorPaneID`, focus unchanged.
+    private func makeServerTerminal(from anchorPaneID: UUID, direction: SplitDirection, workingDirectory: String?) -> (paneID: UUID, tab: TabRuntime, spawnBaseline: ShellSpawnBaseline)? {
+        guard let (window, session) = locate(paneID: anchorPaneID) else { return nil }
         let focused = session.tree.focusedPaneID
         let spawnBaseline = ShellSpawnBaseline.now()
         let tab = TabRuntime(workingDirectory: workingDirectory)
         let isSessionSelected = window.selectedSessionID == session.id && window.isWindowVisible
-        guard let pane = session.tree.splitPane(id: serverPaneID, direction: .vertical, tabs: [tab], isSessionSelected: isSessionSelected) else { return nil }
+        guard let pane = session.tree.splitPane(id: anchorPaneID, direction: direction, tabs: [tab], isSessionSelected: isSessionSelected) else { return nil }
         session.tree.focusedPaneID = focused
         let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: pane.id)
         AppEventWatcher.shared.send(eventType: event.type, payload: event)
         return (pane.id, tab, spawnBaseline)
     }
 
-    private func wireRestart(_ content: ServerPaneContent, serverPaneID: UUID) {
-        content.makeTerminalBackend = { [weak self] command, workingDirectory in
-            guard let self, let (_, tab, spawnBaseline) = self.makeServerTerminal(under: serverPaneID, workingDirectory: workingDirectory) else { return nil }
-            return self.terminalBackend(tabID: tab.id, command: command, workingDirectory: workingDirectory, spawnBaseline: spawnBaseline)
-        }
+    /// A terminal backend in a new terminal Pane split from the entry's
+    /// anchor, or from the focused Pane once the anchor is gone.
+    private func makeAnchoredTerminalBackend(for entry: ServerEntry, command: String, workingDirectory: String?) -> TerminalTabServerBackend? {
+        let anchor = entry.anchorPaneID.flatMap { locate(paneID: $0) != nil ? $0 : nil } ?? focusedPaneIDFallback()
+        guard let anchor, let (_, tab, spawnBaseline) = makeServerTerminal(from: anchor, direction: .horizontal, workingDirectory: workingDirectory) else { return nil }
+        return terminalBackend(tabID: tab.id, command: command, workingDirectory: workingDirectory, spawnBaseline: spawnBaseline)
     }
 
-    func createServerPane(
-        session: SessionRuntime, window: WindowRuntime, callingPaneID: UUID,
-        port: UInt16, url: URL?, statsURL: URL?, split: ServerSplit?, backend: ServerBackend
-    ) -> ServerPaneContent? {
-        let focused = session.tree.focusedPaneID
-        let content = makeServerContent(port, url, statsURL, backend)
-        let isSessionSelected = window.selectedSessionID == session.id && window.isWindowVisible
-        guard let pane = session.tree.splitPane(id: callingPaneID, direction: direction(for: split), kind: .server, contentFactory: { _ in content }, isSessionSelected: isSessionSelected) else { return nil }
-        session.tree.focusedPaneID = focused
-        let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: pane.id)
-        AppEventWatcher.shared.send(eventType: event.type, payload: event)
-        wireRestart(content, serverPaneID: pane.id)
-        return content
+    func registerServer(port: UInt16, url: URL?, backend: ServerBackend, anchorPaneID: UUID?) -> ServerEntry {
+        let entry = makeServerEntry(port, url, backend)
+        entry.anchorPaneID = anchorPaneID
+        entry.makeTerminalBackend = { [weak self, weak entry] command, workingDirectory in
+            guard let self, let entry else { return nil }
+            return self.makeAnchoredTerminalBackend(for: entry, command: command, workingDirectory: workingDirectory)
+        }
+        servers.register(entry)
+        return entry
     }
 
     // MARK: - Verbs
 
     public func startServerForXPC(_ request: ServerStartRequest) -> Result<ServerXPCResult, ServerXPCError> {
-        guard featureFlags.serverPane else { return .failure(.flagOff) }
+        guard featureFlags.servers else { return .failure(.flagOff) }
         guard let port = Self.validPort(request.port) else { return .failure(.invalidPort) }
         let resolved = resolveCallingPane(request.paneID)
-        guard case .success(let (window, session, callingPaneID)) = resolved else {
+        guard case .success(let (_, _, callingPaneID)) = resolved else {
             if case .failure(let error) = resolved { return .failure(error) }
             return .failure(.noPane)
         }
         let cwd = request.workingDirectory
+        let direction = direction(for: request.split)
 
-        if let existing = findServerPane(sessionContaining: callingPaneID, port: port), let content = existing.content as? ServerPaneContent {
-            if let inApp = content.backend as? InAppStaticServerBackend {
+        if let entry = servers.entry(port: port) {
+            if let inApp = entry.backend as? InAppStaticServerBackend {
                 return .failure(.alreadyServing(root: inApp.root, port: Int(port)))
             }
-            showIfHidden(existing, in: window)
-            if let backend = content.backend as? TerminalTabServerBackend, backend.isAvailable {
-                content.update(command: request.command, workingDirectory: cwd)
-                content.restart()
-            } else if let (_, tab, spawnBaseline) = makeServerTerminal(under: existing.id, workingDirectory: cwd) {
+            if let backend = entry.backend as? TerminalTabServerBackend, backend.isAvailable {
+                entry.update(command: request.command, workingDirectory: cwd)
+                entry.restart()
+            } else if let (_, tab, spawnBaseline) = makeServerTerminal(from: callingPaneID, direction: direction, workingDirectory: cwd) {
+                entry.anchorPaneID = callingPaneID
                 let backend = terminalBackend(tabID: tab.id, command: request.command, workingDirectory: cwd, spawnBaseline: spawnBaseline)
-                if content.backend.kind == .external {
-                    content.convert(to: backend)
+                if entry.backend.kind == .external {
+                    entry.convert(to: backend)
                 } else {
-                    content.replaceBackend(backend)
+                    entry.replaceBackend(backend)
                 }
             }
-            logger.info("server start: reused pane \(existing.id, privacy: .public) for port \(port, privacy: .public)")
-            return .success(ServerXPCResult(paneID: existing.id, content: content, created: false))
+            logger.info("server start: reused server \(entry.id, privacy: .public) for port \(port, privacy: .public)")
+            return .success(ServerXPCResult(entry: entry, created: false))
         }
 
-        let spawnBaseline = ShellSpawnBaseline.now()
-        let tab = TabRuntime(workingDirectory: cwd)
-        let backend = terminalBackend(tabID: tab.id, command: request.command, workingDirectory: cwd, spawnBaseline: spawnBaseline)
-        guard let content = createServerPane(
-            session: session, window: window, callingPaneID: callingPaneID, port: port,
-            url: request.url.flatMap(URL.init(string:)), statsURL: request.statsURL.flatMap(URL.init(string:)),
-            split: request.split, backend: backend
-        ), let serverPane = session.tree.allPanes.first(where: { $0.content === content }) else { return .failure(.unknownPane) }
-        let focused = session.tree.focusedPaneID
-        let isSessionSelected = window.selectedSessionID == session.id && window.isWindowVisible
-        if let terminal = session.tree.splitPane(id: serverPane.id, direction: .vertical, tabs: [tab], isSessionSelected: isSessionSelected) {
-            session.tree.focusedPaneID = focused
-            let event = WatchEventPayload(type: "pane_split", sessionID: session.id, targetPaneID: terminal.id)
-            AppEventWatcher.shared.send(eventType: event.type, payload: event)
+        guard let (_, tab, spawnBaseline) = makeServerTerminal(from: callingPaneID, direction: direction, workingDirectory: cwd) else {
+            return .failure(.unknownPane)
         }
-        content.startBackend()
-        logger.info("server start: pane \(serverPane.id, privacy: .public) port \(port, privacy: .public)")
-        return .success(ServerXPCResult(paneID: serverPane.id, content: content, created: true))
+        let backend = terminalBackend(tabID: tab.id, command: request.command, workingDirectory: cwd, spawnBaseline: spawnBaseline)
+        let entry = registerServer(port: port, url: request.url.flatMap(URL.init(string:)), backend: backend, anchorPaneID: callingPaneID)
+        entry.startBackend()
+        logger.info("server start: server \(entry.id, privacy: .public) port \(port, privacy: .public)")
+        return .success(ServerXPCResult(entry: entry, created: true))
     }
 
     public func attachServerForXPC(_ request: ServerAttachRequest) -> Result<ServerXPCResult, ServerXPCError> {
-        guard featureFlags.serverPane else { return .failure(.flagOff) }
+        guard featureFlags.servers else { return .failure(.flagOff) }
         guard let port = Self.validPort(request.port) else { return .failure(.invalidPort) }
-        let resolved = resolveCallingPane(request.paneID)
-        guard case .success(let (window, session, callingPaneID)) = resolved else {
-            if case .failure(let error) = resolved { return .failure(error) }
-            return .failure(.noPane)
-        }
-        if let existing = findServerPane(sessionContaining: callingPaneID, port: port), let content = existing.content as? ServerPaneContent {
-            showIfHidden(existing, in: window)
-            return .success(ServerXPCResult(paneID: existing.id, content: content, created: false))
+        if let entry = servers.entry(port: port) {
+            return .success(ServerXPCResult(entry: entry, created: false))
         }
         let backend = ExternalProcessServerBackend(command: request.command, workingDirectory: request.workingDirectory)
-        guard let content = createServerPane(
-            session: session, window: window, callingPaneID: callingPaneID, port: port,
-            url: request.url.flatMap(URL.init(string:)), statsURL: request.statsURL.flatMap(URL.init(string:)),
-            split: request.split, backend: backend
-        ), let serverPane = session.tree.allPanes.first(where: { $0.content === content }) else { return .failure(.unknownPane) }
-        content.startBackend()
-        return .success(ServerXPCResult(paneID: serverPane.id, content: content, created: true))
+        let entry = registerServer(port: port, url: request.url.flatMap(URL.init(string:)), backend: backend, anchorPaneID: request.paneID)
+        entry.startBackend()
+        return .success(ServerXPCResult(entry: entry, created: true))
     }
 
-    private func resolveServer(_ request: ServerControlRequest) -> Result<(UUID, ServerPaneContent), ServerXPCError> {
-        guard featureFlags.serverPane else { return .failure(.flagOff) }
-        if let id = request.serverPaneID {
-            guard let content = serverContent(paneID: id) else { return .failure(.unknownServer) }
-            return .success((id, content))
+    private func resolveServer(_ request: ServerControlRequest) -> Result<ServerEntry, ServerXPCError> {
+        guard featureFlags.servers else { return .failure(.flagOff) }
+        if let id = request.serverID {
+            guard let entry = servers.entry(id: id) else { return .failure(.unknownServer) }
+            return .success(entry)
         }
         guard let rawPort = request.port else { return .failure(.unknownServer) }
         guard let port = Self.validPort(rawPort) else { return .failure(.invalidPort) }
-        guard let callingPaneID = request.paneID ?? focusedPaneIDFallback() else { return .failure(.noPane) }
-        guard locate(paneID: callingPaneID) != nil else { return .failure(.unknownPane) }
-        guard let pane = findServerPane(sessionContaining: callingPaneID, port: port), let content = pane.content as? ServerPaneContent else {
-            return .failure(.unknownServer)
-        }
-        return .success((pane.id, content))
+        guard let entry = servers.entry(port: port) else { return .failure(.unknownServer) }
+        return .success(entry)
     }
 
     public func stopServerForXPC(_ request: ServerControlRequest) -> Result<ServerXPCResult, ServerXPCError> {
-        resolveServer(request).map { id, content in
-            content.stop()
-            return ServerXPCResult(paneID: id, content: content, created: false)
+        resolveServer(request).map { entry in
+            entry.stop()
+            return ServerXPCResult(entry: entry, created: false)
         }
     }
 
     public func restartServerForXPC(_ request: ServerControlRequest) -> Result<ServerXPCResult, ServerXPCError> {
-        resolveServer(request).flatMap { id, content in
-            if let reason = content.stopRefusal { return .failure(.stopRefused(reason)) }
-            guard content.canRestart else { return .failure(.cannotRestart) }
-            content.restart()
-            return .success(ServerXPCResult(paneID: id, content: content, created: false))
+        resolveServer(request).flatMap { entry in
+            if let reason = entry.stopRefusal { return .failure(.stopRefused(reason)) }
+            guard entry.canRestart else { return .failure(.cannotRestart) }
+            entry.restart()
+            return .success(ServerXPCResult(entry: entry, created: false))
         }
     }
 
-    /// The wire reply for a Server Pane as it stands.
+    // MARK: - Servers list actions (event origin)
+
+    public func copyServerURL(_ entry: ServerEntry) {
+        copyToPasteboard(entry.url.absoluteString)
+    }
+
+    public func copyServerTailnetURL(_ entry: ServerEntry) {
+        guard let url = entry.tailnetURL else { return }
+        copyToPasteboard(url.absoluteString)
+    }
+
+    public func openServerInBrowser(_ entry: ServerEntry) {
+        openURLInBrowser(entry.url)
+    }
+
+    /// The terminal Tab running the server's command, when it still exists.
+    public func serverTerminalTabID(_ entry: ServerEntry) -> UUID? {
+        guard let backend = entry.backend as? TerminalTabServerBackend, backend.isAvailable else { return nil }
+        return backend.tabID
+    }
+
+    public func showServerTerminal(_ entry: ServerEntry) {
+        guard let tabID = serverTerminalTabID(entry), let paneID = paneID(holdingTab: tabID),
+              let (_, session) = locate(paneID: paneID) else { return }
+        jumpToTab(sessionID: session.id, tabID: tabID)
+    }
+
+    /// The wire reply for a server as it stands.
     public func serverReply(_ result: ServerXPCResult) -> ServerReply {
-        let content = result.content
+        let content = result.entry
         let tabID = (content.backend as? TerminalTabServerBackend)?.tabID
         let state: ServerState
         var exitCode: Int?
@@ -294,7 +273,7 @@ extension AppStateStore {
         case .crashed(let code): state = .crashed; exitCode = code
         }
         return ServerReply(
-            paneID: result.paneID, terminalPaneID: tabID.flatMap(paneID(holdingTab:)), tabID: tabID,
+            serverID: result.entry.id, terminalPaneID: tabID.flatMap(paneID(holdingTab:)), tabID: tabID,
             url: content.url.absoluteString, pid: pid ?? content.listenerPid, state: state, exitCode: exitCode, created: result.created,
             root: (content.backend as? InAppStaticServerBackend)?.root
         )

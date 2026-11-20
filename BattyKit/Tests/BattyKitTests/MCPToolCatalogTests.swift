@@ -6,8 +6,8 @@ import Testing
 @testable import batty
 
 struct MCPToolCatalogTests {
-    nonisolated static let flagOn = FeatureFlags(sharedProjectImages: true, agentIntegration: true, serverPane: true)
-    nonisolated static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, serverPane: false)
+    nonisolated static let flagOn = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: true)
+    nonisolated static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, servers: false)
 
     private func catalog(_ flags: FeatureFlags = flagOn) -> MCPToolCatalog {
         MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: flags))
@@ -28,10 +28,10 @@ struct MCPToolCatalogTests {
         #expect(tools == Set(verbs.map(MCPToolCatalog.toolName(forVerbPath:))))
     }
 
-    @Test func serverVerbsBecomeToolsOnlyWithServerPaneOn() {
+    @Test func serverVerbsBecomeToolsOnlyWithServersOn() {
         let serverTools: Set<String> = ["server_start", "server_attach", "server_stop", "server_restart", "server_serve"]
         #expect(serverTools.isSubset(of: Set(catalog().tools.map(\.name))))
-        let agentOnly = FeatureFlags(sharedProjectImages: true, agentIntegration: true, serverPane: false)
+        let agentOnly = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: false)
         #expect(Set(catalog(agentOnly).tools.map(\.name)).isDisjoint(with: serverTools))
     }
 

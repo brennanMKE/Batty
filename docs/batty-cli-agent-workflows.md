@@ -503,8 +503,8 @@ batty-beta server serve ./dist --open --json
   and anything outside the folder are never served.
 - Editing a file under the folder reloads any browser tab on the URL. `--no-inject` serves files byte-for-byte (browsers then
   reload by hand).
-- Running `serve` again on the same folder reuses its Server Pane. Closing
-  the Server Pane stops the server.
+- Running `serve` again on the same folder reuses its server.
+  `batty-beta server stop <serverID>` stops it.
 
 ## Dev servers: `server start` and `server attach` (Beta only until 1.5.0)
 
@@ -513,27 +513,27 @@ so check `capabilities --json` for `server start` first.
 
 The rule for agents: when you start a dev server, start it with
 `server start`, or `server attach` it if it is already running. Do not open a
-browser yourself. Let Batty place the Server Pane where the user's Settings
-say; pass `--split` only when the user asked for a specific placement.
+browser yourself. The command runs in a terminal Pane split to the right of
+yours; pass `--split down` only when the user asked for a specific placement.
 
 Start a Go dev server and wait for it:
 
 ```bash
 batty-beta server start --port 8083 --wait --json -- go run .
-# {"paneID": "...", "terminalPaneID": "...", "tabID": "...", "url": "http://localhost:8083/", "pid": 41823, "state": "listening", "created": true}
+# {"serverID": "...", "terminalPaneID": "...", "tabID": "...", "url": "http://127.0.0.1:8083/", "pid": 41823, "state": "listening", "created": true}
 ```
 
-- The command runs in a new terminal Pane below a Server Pane, in your current
+- The command runs in a new terminal Pane split from yours, in your current
   directory; your Pane keeps the keyboard. One argument after `--` is shell
   text as written (`-- "go run . | tee log"`); several are quoted and joined.
 - `--wait` exits `0` once something listens on the port, `4` with
   `server exited (code N)` if the command exits first, and `4` with
   `timed out; still starting` after `--timeout` seconds (default 60).
-- Running the same `server start --port 8083` again reuses that Server Pane
+- Running the same `server start --port 8083` again reuses that server
   and terminal, replaces the command and restarts. It never adds Panes.
 - `batty-beta server stop --port 8083` interrupts the job's process group
   (then SIGTERM, then SIGKILL); `server restart --port 8083` runs it again.
-  If the port is held by something the Server Pane's terminal didn't start
+  If the port is held by something the server's terminal didn't start
   (another Tab's server, another app), stop and restart exit non-zero with
   `stop refused: <reason>` and signal nothing.
 
@@ -544,9 +544,8 @@ batty-beta server attach --port 3000
 batty-beta server attach --port 3000 --command "npm run dev" --cwd ~/web   # adds Restart
 ```
 
-Without `--command` the Server Pane has no Restart: Batty never reruns a
-command it read from another process. The placement default (right or below)
-is in Settings › General › Server Panes; `--split right|down` overrides it.
+Without `--command` the server has no Restart: Batty never reruns a
+command it read from another process.
 
 ## Failure handling
 

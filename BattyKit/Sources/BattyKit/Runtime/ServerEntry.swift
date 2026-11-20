@@ -1,18 +1,18 @@
-// ServerPaneContent.swift
+// ServerEntry.swift
 
 import AppKit
 import Foundation
 import Observation
 import OSLog
 
-nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ServerPaneContent")
+nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: "ServerEntry")
 
 public nonisolated enum ServerStopReason: Equatable, Sendable {
     case requested
     case terminalClosed
 }
 
-public nonisolated enum ServerPaneState: Equatable, Sendable {
+public nonisolated enum ServerEntryState: Equatable, Sendable {
     /// The command was typed, or attach is waiting, and nothing listens yet.
     case starting
     /// `pid` is nil when the listener belongs to another user.
@@ -30,52 +30,32 @@ public nonisolated enum ServerPaneState: Equatable, Sendable {
     }
 }
 
-public nonisolated struct ServerProcessSample: Equatable, Sendable {
-    public var cpuTicks: UInt64
-    public var footprintBytes: UInt64
-    public var startDate: Date?
-
-    public init(cpuTicks: UInt64, footprintBytes: UInt64, startDate: Date?) {
-        self.cpuTicks = cpuTicks
-        self.footprintBytes = footprintBytes
-        self.startDate = startDate
-    }
-}
-
-public nonisolated struct ServerProcessMetrics: Equatable, Sendable {
-    public var cpuPercent: Double?
-    public var footprintBytes: UInt64
-    public var startDate: Date?
-}
-
-/// A Server Pane: watches one port (listener scan, HTTP probe, metrics,
-/// stats) and drives Stop and Restart through its `ServerBackend`.
+/// One tracked server in the app-wide `ServerRegistry`: watches one port
+/// (listener scan, HTTP probe) and drives Stop and Restart through its
+/// `ServerBackend`.
 @MainActor
 @Observable
-public final class ServerPaneContent: PaneContentLifecycle {
+public final class ServerEntry {
     public static let tickInterval: Duration = .seconds(1)
     static let probeEveryTicks = 5
-    static let statsEveryTicks = 2
 
+    public let id = UUID()
     public let port: UInt16
     public let url: URL
-    public let explicitStatsURL: URL?
+    /// Set by the tailnet share (#0694); nil until then.
+    public internal(set) var tailnetURL: URL?
     public private(set) var backend: ServerBackend
-    public private(set) var state: ServerPaneState
+    public private(set) var state: ServerEntryState
     public private(set) var listenerPid: pid_t?
-    public private(set) var metrics: ServerProcessMetrics?
     public private(set) var lastExitCode: Int?
     public private(set) var httpStatus: Int?
     public private(set) var isResponding: Bool?
-    public private(set) var stats = ServerStatsHistory()
-    public private(set) var statsVisible = false
-    public private(set) var statsUnavailableReason: String?
     public private(set) var recoveredCommandLine: String?
     /// Why Stop and Restart won't signal the listener, when it isn't
-    /// provably this Pane's server (for example a process from another Tab
+    /// provably this entry's server (for example a process from another Tab
     /// that holds the port).
     public private(set) var stopRefusal: String?
-    /// The in-app server's facts, copied on each tick while visible.
+    /// The in-app server's facts, copied on each tick.
     public private(set) var servingFacts: ServingFacts?
     /// Why the last in-app Restart failed.
     public private(set) var lastError: String?
@@ -86,16 +66,21 @@ public final class ServerPaneContent: PaneContentLifecycle {
     @ObservationIgnored private let clock: SchedulingClock
     @ObservationIgnored private let scanner: PortListenerScanning
     @ObservationIgnored private let probe: HTTPProbing
-    @ObservationIgnored private let statsFetcher: ServerStatsFetching
-    @ObservationIgnored private let metricsProvider: @MainActor (pid_t) -> ServerProcessSample?
     @ObservationIgnored private let commandLineProvider: @MainActor (pid_t) -> String?
     @ObservationIgnored private let signaller: ProcessSignalling
     @ObservationIgnored private let processTable: ProcessTableReading
     @ObservationIgnored private let stopBounds: StopBounds
     @ObservationIgnored private let opener: @MainActor (URL) -> Void
-    /// Makes a terminal backend in a new terminal Pane under this one, for
-    /// Restart when there is no terminal to type into. Set by the store.
+    /// Makes a terminal backend in a new terminal Pane, for Restart when
+    /// there is no terminal to type into. Set by the store.
     @ObservationIgnored public var makeTerminalBackend: ((_ command: String, _ workingDirectory: String?) -> ServerBackend?)?
+
+    /// The Pane `server start` was called from; Restart splits a new
+    /// terminal Pane from it once the old terminal is gone.
+    @ObservationIgnored public var anchorPaneID: UUID?
+    /// Called once the entry is no longer running and no Stop, Restart or
+    /// conversion is in flight. The registry removes the entry.
+    @ObservationIgnored var onFinished: (@MainActor (ServerEntry) -> Void)?
 
     /// False when the creator builds the backend's terminal after this
     /// content is set up, and calls `startBackend()` itself.
@@ -107,20 +92,15 @@ public final class ServerPaneContent: PaneContentLifecycle {
     @ObservationIgnored private var tickCount = 0
     @ObservationIgnored private var stopRequested = false
     @ObservationIgnored private var finishedDuringStop = false
-    @ObservationIgnored private var statsSuspended = false
-    @ObservationIgnored private var previousSample: (ticks: UInt64, at: Date, pid: pid_t)?
-    @ObservationIgnored private var stateWaiters: [UUID: (predicate: (ServerPaneState) -> Bool, continuation: CheckedContinuation<ServerPaneState, Never>)] = [:]
+    @ObservationIgnored private var stateWaiters: [UUID: (predicate: (ServerEntryState) -> Bool, continuation: CheckedContinuation<ServerEntryState, Never>)] = [:]
 
     public init(
         port: UInt16,
         url: URL? = nil,
-        statsURL: URL? = nil,
         backend: ServerBackend,
         clock: SchedulingClock = SystemClock(),
         scanner: PortListenerScanning = SystemPortListenerScanner(),
         probe: HTTPProbing? = nil,
-        statsFetcher: ServerStatsFetching? = nil,
-        metricsProvider: @escaping @MainActor (pid_t) -> ServerProcessSample? = ServerPaneContent.liveSample,
         commandLineProvider: @escaping @MainActor (pid_t) -> String? = { try? ProcessInspector.commandLine(pid: $0).get() },
         signaller: ProcessSignalling = SystemProcessSignaller(),
         processTable: ProcessTableReading = SystemProcessTable(),
@@ -130,47 +110,17 @@ public final class ServerPaneContent: PaneContentLifecycle {
     ) {
         self.startsBackendOnSetUp = startsBackendOnSetUp
         self.port = port
-        self.url = url ?? URL(string: "http://localhost:\(port)/")!
-        self.explicitStatsURL = statsURL
+        self.url = url ?? URL(string: "http://127.0.0.1:\(port)/")!
         self.backend = backend
         self.state = .starting
         self.clock = clock
         self.scanner = scanner
-        let shared = (probe == nil || statsFetcher == nil) ? URLSessionHTTPProbe() : nil
-        self.probe = probe ?? shared!
-        self.statsFetcher = statsFetcher ?? shared!
-        self.metricsProvider = metricsProvider
+        self.probe = probe ?? URLSessionHTTPProbe()
         self.commandLineProvider = commandLineProvider
         self.signaller = signaller
         self.processTable = processTable
         self.stopBounds = stopBounds
         self.opener = opener
-    }
-
-    public static func liveSample(pid: pid_t) -> ServerProcessSample? {
-        guard case .success(let core) = ProcessInspector.coreMetrics(pid: pid) else { return nil }
-        let start = ProcessInspector.listedIdentity(pid: pid).map {
-            Date(timeIntervalSince1970: TimeInterval($0.startSeconds) + TimeInterval($0.startMicroseconds) / 1_000_000)
-        }
-        return ServerProcessSample(cpuTicks: core.cpuTicksUser &+ core.cpuTicksSystem, footprintBytes: core.physFootprintBytes, startDate: start)
-    }
-
-    // MARK: - Stats URL
-
-    /// `--stats-url`, else `/debug/vars` on the server's origin.
-    public var statsURL: URL? {
-        if let explicitStatsURL { return explicitStatsURL }
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        components?.path = "/debug/vars"
-        components?.query = nil
-        components?.fragment = nil
-        return components?.url
-    }
-
-    /// The stats host when it isn't loopback, for the section header.
-    public var nonLoopbackStatsHost: String? {
-        guard let host = statsURL?.host, !URLSessionHTTPProbe.isLoopback(host: host) else { return nil }
-        return host
     }
 
     // MARK: - Lifecycle
@@ -186,14 +136,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
         guard !backendStarted, controller.phase != .tornDown else { return }
         backendStarted = true
         backend.start(events: { [weak self] in self?.receive($0) })
-    }
-
-    public func setVisible(_ visible: Bool) {
-        switch controller.apply(visible ? .show : .hide) {
-        case .applied(_, .active): startTicks()
-        case .applied(_, .suspended): stopTicks()
-        default: break
-        }
     }
 
     public func tearDown() {
@@ -268,7 +210,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
         if let found {
             if listenerPid != found {
                 listenerPid = found
-                previousSample = nil
                 if backend.kind == .external { recoveredCommandLine = commandLineProvider(found) }
                 refreshStopRefusal()
             } else if stopRefusal != nil {
@@ -276,13 +217,9 @@ public final class ServerPaneContent: PaneContentLifecycle {
             }
             if state != .listening(pid: found) {
                 setState(.listening(pid: found))
-                statsSuspended = false
-                statsUnavailableReason = nil
             }
-            sampleMetrics(pid: found)
         } else if wasListening {
             listenerPid = nil
-            metrics = nil
             stopRefusal = nil
             if case .listening = state { setState(.starting) }
         }
@@ -290,10 +227,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
         let justBecameListening = !wasListening && found != nil
         if justBecameListening || state == .starting || tick % Self.probeEveryTicks == 1 {
             await runProbe(generationAtStart)
-        }
-        guard isCurrent(generationAtStart) else { return }
-        if case .listening = state, !statsSuspended, justBecameListening || tick % Self.statsEveryTicks == 0 {
-            await fetchStats(generationAtStart)
         }
     }
 
@@ -328,55 +261,10 @@ public final class ServerPaneContent: PaneContentLifecycle {
             isResponding = true
             if state == .starting, listenerPid == nil {
                 setState(.listening(pid: nil))
-                statsSuspended = false
             }
         case .noResponse:
             if isResponding == true { isResponding = false }
         }
-    }
-
-    private func fetchStats(_ generationAtStart: Int) async {
-        guard let statsURL else { return }
-        let isExpvar = explicitStatsURL == nil
-        let result = await statsFetcher.fetch(statsURL)
-        guard isCurrent(generationAtStart) else { return }
-        let failure: String?
-        switch result {
-        case .body(let status, let data):
-            if (200..<300).contains(status), let snapshot = ServerStatsParser.parse(data, isExpvar: isExpvar) {
-                stats.append(snapshot)
-                statsVisible = true
-                statsUnavailableReason = nil
-                return
-            }
-            failure = (200..<300).contains(status) ? "not a JSON object" : "HTTP \(status)"
-        case .failed(let reason):
-            failure = reason
-        }
-        if isExpvar {
-            statsSuspended = true
-            statsVisible = false
-        } else {
-            statsUnavailableReason = failure
-        }
-    }
-
-    private func sampleMetrics(pid: pid_t) {
-        guard let sample = metricsProvider(pid) else {
-            metrics = nil
-            return
-        }
-        let now = clock.now
-        var cpu: Double?
-        if let previous = previousSample, previous.pid == pid, sample.cpuTicks >= previous.ticks {
-            let seconds = now.timeIntervalSince(previous.at)
-            if seconds > 0 {
-                let busy = Double(sample.cpuTicks - previous.ticks) * MachTimebase.nanosecondsPerTick / 1_000_000_000
-                cpu = busy / seconds * 100
-            }
-        }
-        previousSample = (sample.cpuTicks, now, pid)
-        metrics = ServerProcessMetrics(cpuPercent: cpu, footprintBytes: sample.footprintBytes, startDate: sample.startDate)
     }
 
     // MARK: - Events
@@ -386,7 +274,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
         case .commandFinished(let code):
             lastExitCode = code
             listenerPid = nil
-            metrics = nil
             stopRefusal = nil
             if stopRequested {
                 finishedDuringStop = true
@@ -396,7 +283,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
             }
         case .terminalGone:
             listenerPid = nil
-            metrics = nil
             stopRefusal = nil
             setState(.stopped(exitCode: nil, reason: .terminalClosed))
         }
@@ -419,7 +305,7 @@ public final class ServerPaneContent: PaneContentLifecycle {
         guard canStop, stopTask == nil else { return }
         stopTask = Task { [weak self] in
             await self?.performStop()
-            self?.stopTask = nil
+            self?.finishPendingWork()
         }
     }
 
@@ -427,7 +313,7 @@ public final class ServerPaneContent: PaneContentLifecycle {
         guard canRestart, stopTask == nil else { return }
         stopTask = Task { [weak self] in
             await self?.performRestart()
-            self?.stopTask = nil
+            self?.finishPendingWork()
         }
     }
 
@@ -436,7 +322,7 @@ public final class ServerPaneContent: PaneContentLifecycle {
     }
 
     /// Stops an attached server, if running, then swaps in `replacement`:
-    /// `server start` on a port whose Pane was attach-mode.
+    /// `server start` on a port an attached entry holds.
     public func convert(to replacement: ServerBackend) {
         let previous = stopTask
         stopTask = Task { [weak self] in
@@ -444,13 +330,23 @@ public final class ServerPaneContent: PaneContentLifecycle {
             guard let self else { return }
             if self.backend.kind == .external, self.state.isRunning, self.canStop {
                 guard await self.performStop() else {
-                    self.stopTask = nil
+                    self.finishPendingWork()
                     return
                 }
             }
             self.replaceBackend(replacement)
-            self.stopTask = nil
+            self.finishPendingWork()
         }
+    }
+
+    private func finishPendingWork() {
+        stopTask = nil
+        notifyIfFinished()
+    }
+
+    private func notifyIfFinished() {
+        guard !state.isRunning, stopTask == nil, controller.phase != .tornDown else { return }
+        onFinished?(self)
     }
 
     /// The in-flight Stop, Restart or conversion, for tests and the XPC
@@ -501,7 +397,6 @@ public final class ServerPaneContent: PaneContentLifecycle {
             return false
         }
         listenerPid = nil
-        metrics = nil
         if state == .stopping {
             setState(.stopped(exitCode: lastExitCode, reason: .requested))
         }
@@ -541,7 +436,7 @@ public final class ServerPaneContent: PaneContentLifecycle {
     }
 
     /// Swaps in a new backend and starts it, as `server start` on a port
-    /// whose Pane was attach-mode or lost its terminal.
+    /// an attached entry holds, or whose terminal is gone.
     public func replaceBackend(_ replacement: ServerBackend) {
         backend.detach()
         backend = replacement
@@ -562,24 +457,21 @@ public final class ServerPaneContent: PaneContentLifecycle {
         stopRefusal = nil
         finishedDuringStop = false
         listenerPid = nil
-        metrics = nil
         httpStatus = nil
         isResponding = nil
-        statsSuspended = false
-        statsVisible = false
-        stats = ServerStatsHistory()
         setState(.starting)
     }
 
     // MARK: - State waiters
 
-    private func setState(_ new: ServerPaneState) {
+    private func setState(_ new: ServerEntryState) {
         guard state != new else { return }
         state = new
         for (id, waiter) in stateWaiters where waiter.predicate(new) {
             stateWaiters.removeValue(forKey: id)
             waiter.continuation.resume(returning: new)
         }
+        notifyIfFinished()
     }
 
     private func resolveAllWaiters() {
@@ -591,7 +483,7 @@ public final class ServerPaneContent: PaneContentLifecycle {
     /// Resolves with the first state matching `predicate`, now or on a later
     /// write; also resolves (with the current state) on teardown or when the
     /// awaiting task is cancelled.
-    public func waitForState(_ predicate: @escaping (ServerPaneState) -> Bool) async -> ServerPaneState {
+    public func waitForState(_ predicate: @escaping (ServerEntryState) -> Bool) async -> ServerEntryState {
         if predicate(state) || controller.phase == .tornDown { return state }
         let id = UUID()
         return await withTaskCancellationHandler {

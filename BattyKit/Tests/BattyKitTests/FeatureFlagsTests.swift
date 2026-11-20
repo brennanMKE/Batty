@@ -30,23 +30,23 @@ struct FeatureFlagsTests {
         // Test builds don't pass -DBATTY_VARIANT_BETA, so the baked variant is Prod.
         #expect(ServiceNames.current == .prod)
         #expect(!FeatureFlags.current.agentIntegration)
-        #expect(!FeatureFlags.current.serverPane)
+        #expect(!FeatureFlags.current.servers)
     }
 
-    @Test func serverPaneIsOnInBetaAndOffInProd() {
-        #expect(FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: [:]).serverPane)
-        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [:]).serverPane)
+    @Test func serversIsOnInBetaAndOffInProd() {
+        #expect(FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: [:]).servers)
+        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [:]).servers)
     }
 
-    @Test func serverPaneFailsClosedForUnknownBundle() {
-        #expect(!FeatureFlags.resolved(bundleIdentifier: "com.example.other", environment: [:]).serverPane)
-        #expect(!FeatureFlags.resolved(bundleIdentifier: nil, environment: [:]).serverPane)
+    @Test func serversFailsClosedForUnknownBundle() {
+        #expect(!FeatureFlags.resolved(bundleIdentifier: "com.example.other", environment: [:]).servers)
+        #expect(!FeatureFlags.resolved(bundleIdentifier: nil, environment: [:]).servers)
     }
 
-    @Test func uiTestOverrideForcesServerPaneOffButNeverOn() {
-        let forceOff = [FeatureFlags.uiTestEnvironmentVar: "x", FeatureFlags.uiTestForceServerPaneOffVar: "1"]
-        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: forceOff).serverPane)
-        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [FeatureFlags.uiTestEnvironmentVar: "x", FeatureFlags.uiTestForceServerPaneOffVar: "0"]).serverPane)
-        #expect(FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: [FeatureFlags.uiTestForceServerPaneOffVar: "1"]).serverPane)
+    @Test func uiTestOverrideForcesServersOffButNeverOn() {
+        let forceOff = [FeatureFlags.uiTestEnvironmentVar: "x", FeatureFlags.uiTestForceServersOffVar: "1"]
+        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: forceOff).servers)
+        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [FeatureFlags.uiTestEnvironmentVar: "x", FeatureFlags.uiTestForceServersOffVar: "0"]).servers)
+        #expect(FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: [FeatureFlags.uiTestForceServersOffVar: "1"]).servers)
     }
 }
