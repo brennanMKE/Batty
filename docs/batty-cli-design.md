@@ -41,15 +41,13 @@ on 2026-10-12 (#0469, built in #0477). `project` has two verbs, `list` and
 `open`, and ships in both `batty` and `batty-beta` from 1.3.0. There are no
 `project add`, `remove` or `edit` verbs; Projects are edited in the Project
 Editor.
-**`agent`** is a deliberate sixth noun, scoped to agent integration (#0647,
-pending the user's sign-off at review). It has two verbs: `install`, which
+**`agent`** is a deliberate sixth noun, scoped to agent integration (#0647, ships in 1.5.0). It has two verbs: `install`, which
 installs the bundled skill, the MCP server entry and optionally a project
 snippet, so it is not named `mcp install`; and `context` (#0661), which prints
 a note telling an agent it is in a Batty Pane, from `BATTY_*` alone. **`mcp`** is an app-level verb like
-`capabilities`: `batty mcp` serves the CLI's verbs as MCP tools over stdio.
-**`server`** is the seventh noun (#0648, Beta only until 1.5.0 behind the
-`servers` flag), with verbs `start`, `share`, `serve`, `list`, `stop`,
-`restart` and `unshare` (#0692). `share` tracks a server Batty didn't start;
+`capabilities`: `batty mcp` serves the CLI's verbs as MCP tools over stdio (1.5.0).
+**`server`** is the seventh noun (#0648, ships in 1.5.0), with verbs `start`, `share`, `serve`, `list`, `stop`,
+`restart`, `unshare` (#0692) and `tailnet` (#0694). `share` tracks a server Batty didn't start;
 Batty never signals it, so `stop`/`restart` act only on servers Batty started
 and `unshare` removes a shared one from the list. It is
 not folded into `pane split --view server` because `start` needs a trailing
@@ -57,6 +55,8 @@ not folded into `pane split --view server` because `start` needs a trailing
 and `stop`/`restart` act on a running process rather than a Pane. #0649 adds
 `serve` (a static file server inside Batty) under the same noun, so it shares
 its flag gate.
+`tab` gains `new` (#0667): open a terminal Tab, optionally running a command
+and, with `--wait` (#0668), waiting for its exit status.
 No `workspace`, no `worktree`; `surface` is not a noun, but it is an
 accepted **alias** for `tab` (see §1.2).
 
@@ -128,16 +128,16 @@ only if needed · **[skip]** off-mission for Batty.
 - `batty session new [path]` — open a session (today's `batty <path>`; keep as an alias). *(supacode `repo worktree-new`, herdr `workspace.create`, cmux `new-workspace`)*
 - `batty pane split [-h|-v]` — split the focused/target pane. **Shipped over XPC**; also supports `-c/--command`, `--pane`, `--view`, and `--view`'s find-or-create companion `--unique` (#0383). *(all three: `pane.split` / `surface.split`)* — panes distribute evenly (1/n, #0255).
 - `batty pane hide` / `batty pane show <id>` — hide/restore a pane (**#0256 shipped**: surface kept alive, slot retained). `hide` targets the calling/focused pane; `show` needs an id (a hidden pane has no calling context). *(no direct competitor equivalent — Batty-specific)*
-- `batty tab new [-c <cmd>]` — new tab in the focused pane, optionally running a command. *(supacode `tab new -i`, herdr `tab.create`)*
+- `batty tab new [--pane] [-c <cmd> [--wait]] [--cwd] [--background]` — new tab in the calling pane, optionally running a command and waiting for its exit status. **Shipped over XPC (#0667, #0668).** *(supacode `tab new -i`, herdr `tab.create`)*
 - `batty pane close` **shipped over XPC**; `batty tab close` and `batty session close` remain proposed. *(all three)*
 - `batty window new` — new window. *(Batty-specific; #0234)*
-- `batty server start --port N [--name S] [--url U] [--split right|down] [--pane P] [--no-process-view] [--wait [--timeout S]] -- <command…>` — run a dev server in a new terminal Pane split from the calling Pane and list it in the toolbar's Servers; once the port listens, a Process Status Pane on the listener opens below the terminal Pane. Re-running for the same port reuses the entry and its terminal and restarts; on a port a still-listening shared server holds it fails. Prints the server id (`serverID` in `--json`). **Shipped over XPC (#0648, #0692, Beta).**
-- `batty server share --port N [--name S] [--url U] [--split right|down] [--pane P] [--no-process-view]` — list a server already listening on 127.0.0.1 and open a Process Status Pane on its pid beside the calling Pane; fails when nothing listens; a repeated share reuses the entry and the Pane. Replaces `attach` (removed, no alias). **Shipped over XPC (#0692, Beta).**
-- `batty server list [--json]` — one line per server: id, name, port, kind (`terminal`, `external`, `static`), state, url, and the tailnet URL when set. **Shipped over XPC (#0692, Beta).**
-- `batty server stop|restart (--port N | <server-id>)` — servers Batty started only (refused for a shared server); SIGINT, then SIGTERM, then SIGKILL; restart types the command again. **Shipped over XPC (#0648, Beta).**
-- `batty server unshare (--port N | <server-id>)` — remove a shared server from the list without signalling it; refused for a server Batty started. **Shipped over XPC (#0692, Beta).**
-- `batty server tailnet (--port N | <server-id>) [--off] [--json]` — share a listed server on the tailnet with `tailscale serve --bg --https=N http://127.0.0.1:N`, printing the id and the tailnet URL; `--off` turns off a mapping Batty made. It refuses a mapping Batty didn't make, including an identical one Batty found already in place and showed (adopted): Batty never removes that one, not even on quit, and the error names the `tailscale serve … off` command to run. `batty server share … --tailnet` shares and then does the same; if the tailnet step fails the share stands, the error goes to stderr and the exit is nonzero. **Shipped over XPC (#0694, Beta).**
-- `batty server serve [<dir>] [--port N] [--open] [--no-inject] [--split right|down]` — serve a folder from inside Batty on 127.0.0.1, listed in the toolbar's Servers, with reload on change; `--open` also opens it in the default browser. **Shipped over XPC (#0649, Beta).**
+- `batty server start --port N [--name S] [--url U] [--split right|down] [--pane P] [--no-process-view] [--wait [--timeout S]] -- <command…>` — run a dev server in a new terminal Pane split from the calling Pane and list it in the toolbar's Servers; once the port listens, a Process Status Pane on the listener opens below the terminal Pane. Re-running for the same port reuses the entry and its terminal and restarts; on a port a still-listening shared server holds it fails. Prints the server id (`serverID` in `--json`). **Shipped over XPC (#0648, #0692, 1.5.0).**
+- `batty server share --port N [--name S] [--url U] [--split right|down] [--pane P] [--no-process-view]` — list a server already listening on 127.0.0.1 and open a Process Status Pane on its pid beside the calling Pane; fails when nothing listens; a repeated share reuses the entry and the Pane. Replaces `attach` (removed, no alias). **Shipped over XPC (#0692, 1.5.0).**
+- `batty server list [--json]` — one line per server: id, name, port, kind (`terminal`, `external`, `static`), state, url, and the tailnet URL when set. **Shipped over XPC (#0692, 1.5.0).**
+- `batty server stop|restart (--port N | <server-id>)` — servers Batty started only (refused for a shared server); SIGINT, then SIGTERM, then SIGKILL; restart types the command again. **Shipped over XPC (#0648, 1.5.0).**
+- `batty server unshare (--port N | <server-id>)` — remove a shared server from the list without signalling it; refused for a server Batty started. **Shipped over XPC (#0692, 1.5.0).**
+- `batty server tailnet (--port N | <server-id>) [--off] [--json]` — share a listed server on the tailnet with `tailscale serve --bg --https=N http://127.0.0.1:N`, printing the id and the tailnet URL; `--off` turns off a mapping Batty made. It refuses a mapping Batty didn't make, including an identical one Batty found already in place and showed (adopted): Batty never removes that one, not even on quit, and the error names the `tailscale serve … off` command to run. `batty server share … --tailnet` shares and then does the same; if the tailnet step fails the share stands, the error goes to stderr and the exit is nonzero. **Shipped over XPC (#0694, 1.5.0).**
+- `batty server serve [<dir>] [--port N] [--open] [--no-inject] [--split right|down]` — serve a folder from inside Batty on 127.0.0.1, listed in the toolbar's Servers, with reload on change; `--open` also opens it in the default browser. **Shipped over XPC (#0649, 1.5.0).**
 
 ### B. Focus / navigation  [core, 1-way]
 - `batty pane focus <up|down|left|right|id>` · `batty pane next|prev`. *(herdr `pane.focus_direction`/`neighbor`, cmux `surface.focus`)*
@@ -197,6 +197,10 @@ renders them in the session sidebar / pane chrome / bell feed it already has.
 - `batty send <text>` / `batty send-key <enter|esc|…>` — inject text/keys into a
   surface. *(herdr `pane.send_text`, cmux `surface.send_text`/`send_key`, supacode `surface focus -i`)* — powerful for driving agents/scripts, but it's real automation surface; keep out of the simple core. Evaluate the existing XPC channel first.
 - `batty read [--lines N] [--source visible|recent]` — read screen/scrollback. *(herdr `pane.read`)* — needs an acknowledged reply; the existing XPC channel is the starting point.
+  **Decision (#0660, 2026-11-18): `read` stays deferred.** An agent that needs
+  output runs the command in its own shell; Panes it opens are for the user;
+  the completion signal agents need is the exit status from `--wait`. Revisit
+  only if agents need scrollback of a Pane the user watches.
 - `batty wait <idle|done|blocked> [--pane]` — block until an agent/command reaches a state. *(herdr `wait agent-status`)* — needs agent-state + events and may need a streaming extension to XPC.
 - `batty status/agent report <working|idle|blocked|done>` + `batty events subscribe` — full agent-state objects + a newline-JSON event stream. *(herdr `pane.report_agent`, `events.subscribe`)* — the heavy "agent presence" tier; a big step, likely off-mission.
 - `batty layout export|apply` — declarative save/restore of a pane tree. *(herdr `layout.export/apply`)* — overlaps Batty's existing **layout presets**; could unify.
@@ -234,18 +238,18 @@ worth a look:
   `batty id`/`whoami` are in place. Bare `batty <path>` remains the default
   `new` shorthand. The shipped transport is URL + XPC + local environment.
 - **Tier 1 — core mutations (partly shipped):** `pane split`, `pane close`,
-  and `notify` use acknowledged XPC. `tab new`, other close/focus/rename
+  and `notify` use acknowledged XPC, as does `tab new` (#0667). Other close/focus/rename
   verbs, `open`, and `settings` remain proposed.
 - **Tier 2 — agent activity display:** `status` (+ `progress`/`log`) sidebar pills
   routed into Batty's session UI + bell feed. The "present agent activity" ask,
   kept simple.
 - **Tier 3 — richer two-way behavior (partly shipped):** `status`, `list`, and
   `session info` use XPC today. `read`, `send`/`send-key`, `wait`, and event
-  subscription remain proposed; extend or validate XPC before adding another
+  subscription remain proposed (`read` deferred by decision, see §2); extend or validate XPC before adding another
   transport.
 
 Guardrails throughout: keep the noun set to session/pane/tab/window, plus
-`project` and the agent-integration noun `agent` (§1.1); every verb
+`project`, the agent-integration noun `agent` and `server` (§1.1); every verb
 must feel like a native Mac action with a keyboard/menu equivalent where it makes
 sense; no CLI feature should be required for the app itself to run.
 

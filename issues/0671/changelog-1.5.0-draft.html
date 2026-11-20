@@ -1,0 +1,30 @@
+<!--
+1.5.0 changelog draft (#0671). Not deployed. On release day:
+1. Fill the date in the h2.
+2. Confirm every item marked confirm (#0693 PhotonHTTP serve, #0670 servers flag removed), then delete the markers.
+3. Add any 1.4.1+ fixes merged to main under Fixes.
+4. Paste the article above v1-4-0 in website/changelog.html, after #0688 lifts the deploy hold.
+-->
+        <article id="v1-5-0">
+            <h2>1.5.0 — YYYY-MM-DD</h2>
+            <p class="meta">Coding agents can drive Batty: they know which Pane they are in, set up from Settings, run commands and dev servers, and share pages on your tailnet.</p>
+            <h3>New</h3>
+            <ul>
+                <li>Agents know they are in Batty. <code>batty agent context</code> names the Session, Tab and Pane, and the Claude Code SessionStart hook and the MCP server's instructions say the same (#0661, #0662, #0663).</li>
+                <li>Set up the MCP server and agent guidance for Claude Code, Codex, Cursor and OpenCode from Settings → Advanced → Command Line and AI Agents, with a preview first. Codex is now registered too (#0665, #0666, #0669).</li>
+                <li>Copy Prompt gives your agent a prompt to add a Batty section to its own global instructions (#0664).</li>
+                <li><code>batty tab new</code> opens a Tab, and <code>--wait</code> on <code>tab new</code> and <code>pane split</code> waits for a command and reports its exit status (#0667, #0668).</li>
+                <li>A Servers list in the toolbar, with <code>batty server start</code>, <code>share</code>, <code>list</code>, <code>stop</code>, <code>restart</code> and <code>unshare</code> (#0691, #0692). <!-- confirm #0670 --></li>
+                <li><code>batty server serve</code> serves a folder with PhotonHTTP, if installed (#0693). <!-- confirm #0693 --></li>
+                <li>Share a server on your tailnet from its row or with <code>batty server tailnet</code> (#0694).</li>
+                <li>A new Help page, AI Agents and Servers (#0671). See the <a href="docs/">command-line docs</a>.</li>
+            </ul>
+            <h3>Improvements</h3>
+            <ul>
+                <li>The Web Preview Pane and <code>server preview</code> are gone; agents look at pages with a webdriver such as <code>safaridriver</code> (#0690).</li>
+            </ul>
+            <h3>Fixes</h3>
+            <ul>
+                <!-- confirm: 1.4.x fixes merged to main -->
+            </ul>
+        </article>

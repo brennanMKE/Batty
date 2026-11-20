@@ -341,7 +341,7 @@ watch` today. Don't assume `session_destroyed` fires for every Session
 removal — only for one reached through this CLI verb.
 
 **Deliberately out of scope** (#0257's "a filed ticket reads as scheduled
-work" rule): `tab new`, `tab close`, `session rename`, `tab rename`, and
+work" rule): `tab close`, `session rename`, `tab rename`, and
 `pane zoom` have no CLI verb yet. Do not invent them from
 `batty-cli-design.md`'s forward-looking catalog.
 
@@ -402,6 +402,13 @@ batty project open "My Project" --json
   is no `--yes`.
 - A Session opened this way emits the same `session_created` /
   `session_focused` watch events as the GUI, with `fromCli: true`.
+
+## Knowing you are in Batty: `agent context`
+
+`batty agent context [--json]` prints which Session, Tab and Pane you are in,
+plus the rules for driving Batty. Outside Batty it prints nothing, and it
+always exits 0. The Claude Code SessionStart hook and the MCP server's
+`instructions` use the same text.
 
 ## Using Batty through MCP
 
@@ -488,13 +495,13 @@ If those variables are not set, you are not in Batty; ignore this section.
 ```
 ````
 
-## Previewing a static site: `server serve` (Beta only until 1.5.0)
+## Previewing a static site: `server serve`
 
 To look at a folder of HTML (Artifact pages, a built site), serve it from
 Batty instead of running `python3 -m http.server`:
 
 ```bash
-batty-beta server serve ./dist --open --json
+batty server serve ./dist --open --json
 # {"paneID": "...", "url": "http://127.0.0.1:52144/", "root": "/…/dist", "state": "listening", "created": true}
 ```
 
@@ -503,12 +510,11 @@ batty-beta server serve ./dist --open --json
 - Editing a file under the folder reloads any browser tab on the URL. `--no-inject` serves files byte-for-byte (browsers then
   reload by hand).
 - Running `serve` again on the same folder reuses its server.
-  `batty-beta server stop <serverID>` stops it.
+  `batty server stop <serverID>` stops it.
 
-## Dev servers: `server start` and `server share` (Beta only until 1.5.0)
+## Dev servers: `server start` and `server share`
 
-`batty-beta` has a `server` noun (#0648); `batty` (Prod) does not until 1.5.0,
-so check `capabilities --json` for `server start` first.
+From 1.5.0; check `capabilities --json` for `server start` first.
 
 The rule for agents: when you start a dev server, start it with
 `server start`, or `server share` it if it is already running. Do not open a
@@ -518,7 +524,7 @@ yours; pass `--split down` only when the user asked for a specific placement.
 Start a Go dev server and wait for it:
 
 ```bash
-batty-beta server start --port 8083 --wait --json -- go run .
+batty server start --port 8083 --wait --json -- go run .
 # {"serverID": "...", "terminalPaneID": "...", "tabID": "...", "url": "http://127.0.0.1:8083/", "pid": 41823, "state": "listening", "created": true}
 ```
 
@@ -530,7 +536,7 @@ batty-beta server start --port 8083 --wait --json -- go run .
   `timed out; still starting` after `--timeout` seconds (default 60).
 - Running the same `server start --port 8083` again reuses that server
   and terminal, replaces the command and restarts. It never adds Panes.
-- `batty-beta server stop --port 8083` interrupts the job's process group
+- `batty server stop --port 8083` interrupts the job's process group
   (then SIGTERM, then SIGKILL); `server restart --port 8083` runs it again.
   If the port is held by something the server's terminal didn't start
   (another Tab's server, another app), stop and restart exit non-zero with
@@ -539,9 +545,9 @@ batty-beta server start --port 8083 --wait --json -- go run .
 Share a server that is already running:
 
 ```bash
-batty-beta server share --port 3000
-batty-beta server list
-batty-beta server unshare --port 3000
+batty server share --port 3000
+batty server list
+batty server unshare --port 3000
 ```
 
 `share` fails when nothing of yours listens on the port. It lists the server
@@ -550,6 +556,34 @@ and opens a Process Status Pane on its process beside yours
 server: `stop` and `restart` exit non-zero, and `unshare` removes it from the
 list without signalling it. `server start` also opens a Process Status Pane,
 below the terminal Pane, once the port listens.
+
+## Sharing on the tailnet: `server tailnet`
+
+Only when the user asks. `batty server tailnet --port 8083` shares a listed
+server on the tailnet with `tailscale serve` and prints the tailnet URL;
+`--off` turns it off. Batty removes only mappings it made; a mapping that was
+already in place is left alone, and `--off` refuses it.
+
+## Viewing pages
+
+Batty has no web view. To look at or test a page, use the webdriver the user
+told you about, for example `safaridriver` (run `safaridriver --enable` once),
+against the URL from `batty server list`. Batty never starts a browser
+automation tool.
+
+## Running a command and waiting: `tab new` and `--wait`
+
+```bash
+batty tab new -c "make test" --wait --json
+batty pane split -c "make test" --wait --json
+```
+
+`batty tab new [--pane <id>] [-c <cmd> [--wait [--timeout S]]] [--cwd <dir>] [--background] [--json]`
+opens a terminal Tab in a Pane (yours by default) and prints its id.
+`--background` leaves the current Tab selected. With `-c` and `--wait` the
+command blocks until the command exits; the JSON carries `exitCode` and
+`waitResult`. Shells without shell integration (fish, elvish, nushell) report
+no exit status.
 
 ## Failure handling
 
@@ -579,10 +613,12 @@ output in automation. Use `list --json`; the plain-text forms are for people.
 
 - There is no command that creates a Session and its Pane layout atomically.
   If a later split fails, the earlier Session and Panes remain.
-- Batty currently exposes no CLI verbs for sending terminal input, reading
-  screen contents, waiting for process state, creating a Tab, closing one
+- Batty currently exposes no CLI verbs for sending terminal input, closing one
   Tab, renaming a Session/Tab, or zooming a Pane. Do not invent commands from
   the forward-looking catalog in `batty-cli-design.md`.
+- Reading a Pane's screen or scrollback (`read`) is deliberately deferred:
+  run the command in your own shell when you need its output; Panes you open
+  are for the user to watch.
 - `pane close` closes every Tab in the Pane and may refuse when confirmation is
   required or the Pane is the last one in the app. `session close` (`#0382`)
   has the same confirmation/last-remaining refusal one tier up, applied to

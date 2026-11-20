@@ -22,5 +22,6 @@ struct HelpCatalogTests {
         }
         #expect(HelpCatalog.sections.last?.id == "09-third-party-licenses")
         #expect(HelpCatalog.sections.contains { $0.id == "11-backgrounds" })
+        #expect(HelpCatalog.sections.contains { $0.id == "12-ai-agents" })
     }
 }

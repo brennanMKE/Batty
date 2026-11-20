@@ -21,6 +21,7 @@ You navigate four nested things, from outside in:
 - **Bell feed** — open with `Cmd-Shift-B` or the bell button in the toolbar. Recent bells from every tab; click an entry to jump to the source. See [Notifications](06-notifications.md).
 - **Reminders** — open with `Cmd-Option-R` or the alarm button left of the bell. Reminders that came due and the ones still waiting; click one to go back to its session. See [Notifications](06-notifications.md).
 - **Settings** — `Cmd-,`. Shell, font, cursor, theme, background, paste confirmation. Per-session mute is on the session's right-click menu in the sidebar. See [Themes](07-themes.md), [Backgrounds and See-Through](11-backgrounds.md) and the full binding list in [Keyboard Shortcuts](05-shortcuts.md). Dropping a file from Finder onto a pane pastes its quoted path — see [Drag and Drop](08-drag-and-drop.md).
+- **AI agents and servers** — optional; see [AI Agents and Servers](12-ai-agents.md).
 
 ## Try this
 

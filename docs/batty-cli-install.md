@@ -72,12 +72,13 @@ The CLI now has five execution paths:
 | `batty tab new [--pane <id>] [-c <cmd> [--wait [--timeout S]]] [--cwd <dir>] [--background] [--json]` | Open a terminal Tab in a Pane and print its id; `--wait` blocks until the command exits | XPC |
 | `batty project list [--json]` | List saved Projects: name, root, Pane count, and an `open` marker | XPC |
 | `batty project open <name> [--new] [--json]` | Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
-| `batty server start --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--wait] [--timeout <s>] [--json] -- <command…>` | Beta only (`servers` flag, #0648). Run a dev server in a terminal Pane and list it in the toolbar's Servers; reuses and restarts for a port that already has one | XPC |
-| `batty server share --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--json]` | Beta only (#0692). List a server already listening in the toolbar's Servers and open a Process Status Pane on it; Batty never signals it | XPC |
-| `batty server list [--json]` | Beta only. Every tracked server: id, name, port, kind, state, url | XPC |
-| `batty server unshare (<id> \| --port <n>) [--json]` | Beta only. Remove a shared server from the list without signalling it | XPC |
-| `batty server stop\|restart (--port <n> \| <server-id>) [--pane <id>] [--json]` | Beta only. Stop (SIGINT, SIGTERM, SIGKILL) or restart the server | XPC |
-| `batty server serve [<dir>] [--port <n>] [--open] [--no-inject] [--split right\|down] [--pane <id>] [--json]` | Beta only (#0649). Serve a folder from inside Batty on 127.0.0.1, listed in the toolbar's Servers, reloading pages on change; `--open` also opens it in the default browser | XPC |
+| `batty server start --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--wait] [--timeout <s>] [--json] -- <command…>` | 1.5.0 (#0648). Run a dev server in a terminal Pane and list it in the toolbar's Servers; reuses and restarts for a port that already has one | XPC |
+| `batty server share --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--json]` | 1.5.0 (#0692). List a server already listening in the toolbar's Servers and open a Process Status Pane on it; Batty never signals it | XPC |
+| `batty server list [--json]` | 1.5.0. Every tracked server: id, name, port, kind, state, url | XPC |
+| `batty server unshare (<id> \| --port <n>) [--json]` | 1.5.0. Remove a shared server from the list without signalling it | XPC |
+| `batty server stop\|restart (--port <n> \| <server-id>) [--pane <id>] [--json]` | 1.5.0. Stop (SIGINT, SIGTERM, SIGKILL) or restart the server | XPC |
+| `batty server tailnet (--port <n> \| <server-id>) [--off] [--json]` | 1.5.0 (#0694). Share a listed server on the tailnet with `tailscale serve`, printing the tailnet URL; `--off` turns off a mapping Batty made and refuses one it didn't | XPC |
+| `batty server serve [<dir>] [--port <n>] [--open] [--no-inject] [--split right\|down] [--pane <id>] [--json]` | 1.5.0 (#0649). Serve a folder from inside Batty on 127.0.0.1, listed in the toolbar's Servers, reloading pages on change; `--open` also opens it in the default browser | XPC |
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
 | `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |

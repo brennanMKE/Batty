@@ -14,6 +14,7 @@ enum HelpCatalog {
         .init(id: "11-backgrounds",   title: String(localized: "Backgrounds and See-Through"), resourceName: "11-backgrounds"),
         .init(id: "08-drag-and-drop", title: String(localized: "Drag and Drop"),      resourceName: "08-drag-and-drop"),
         .init(id: "10-projects",      title: String(localized: "Projects"),          resourceName: "10-projects"),
+        .init(id: "12-ai-agents",     title: String(localized: "AI Agents and Servers"), resourceName: "12-ai-agents"),
         .init(id: "09-third-party-licenses", title: String(localized: "Third-Party Licenses"), resourceName: "09-third-party-licenses"),
     ]
 }
