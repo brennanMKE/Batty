@@ -96,8 +96,7 @@ nonisolated final class SettingsTests: XCTestCase {
                              "Settings window must have a positive width")
     }
 
-    /// Advanced shows the AI Agents section (#0647); UI tests run the Beta
-    /// build, where the `agentIntegration` flag is on.
+    /// Advanced shows the AI Agents section (#0647).
     @MainActor
     func testAdvancedSettingsShowsAIAgentsSection() throws {
         let app = BattyUITestHarness.launchBatty()

@@ -489,19 +489,13 @@ private struct AdvancedSettingsView: View {
 
     var body: some View {
         Form {
-            if store?.featureFlags.agentIntegration == true {
-                Section("Command Line and AI Agents") {
-                    AgentSetupIntro()
-                    CLIInstallRow(model: cliModel, showsAgentGuidance: true)
-                    AgentHostRows(model: agentModel)
-                }
-                Section("Agent Instructions (optional)") {
-                    AgentIntegrationRows(model: agentModel)
-                }
-            } else {
-                Section("Command-Line Tool") {
-                    CLIInstallRow(model: cliModel)
-                }
+            Section("Command Line and AI Agents") {
+                AgentSetupIntro()
+                CLIInstallRow(model: cliModel)
+                AgentHostRows(model: agentModel)
+            }
+            Section("Agent Instructions (optional)") {
+                AgentIntegrationRows(model: agentModel)
             }
             Section("Broker Agent") {
                 if brokerModel.isEmbedded {
@@ -990,21 +984,14 @@ private struct BrokerAgentRow: View {
 
 private struct CLIInstallRow: View {
     @Bindable var model: CLIInstallModel
-    var showsAgentGuidance = false
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: model.commandName)
-                if showsAgentGuidance {
-                    Text("Symlinks `\(model.commandName)` to \(model.installPath). Lets you and your scripts run Batty commands in any terminal. Not needed for the MCP server.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Symlinks `\(model.commandName)` to \(model.installPath). Not required to run Batty.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Symlinks `\(model.commandName)` to \(model.installPath). Lets you and your scripts run Batty commands in any terminal. Not needed for the MCP server.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 switch model.state {
                 case .failed(let reason):
                     Text(reason)

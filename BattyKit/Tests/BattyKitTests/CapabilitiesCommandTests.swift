@@ -18,7 +18,7 @@ struct CapabilitiesCommandTests {
 
     // MARK: - Verb roster
 
-    static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, servers: false)
+    static let flagOff = FeatureFlags(sharedProjectImages: false, servers: false)
     static let flagOn = FeatureFlags.allOnForTests
 
     static let flagOffRoster: Set<String> = [
@@ -28,7 +28,7 @@ struct CapabilitiesCommandTests {
         "tab focus",
         "tab new",
         "project list", "project open",
-        "id", "notify", "capabilities",
+        "id", "notify", "mcp", "agent install", "agent context", "capabilities",
     ]
 
     @Test(arguments: [false, true])
@@ -36,21 +36,23 @@ struct CapabilitiesCommandTests {
         let flags = flagsOn ? Self.flagOn : Self.flagOff
         let names = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name))
         let expected = flagsOn ? Self.flagOffRoster.union([
-            "mcp", "agent install", "agent context",
             "server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare", "server tailnet",
         ]) : Self.flagOffRoster
         #expect(names == expected)
     }
 
-    @Test func flagOffRosterHasNoMcpOrAgentVerbs() {
-        let names = CapabilitiesCommand.verbs(flags: Self.flagOff).map(\.name)
-        #expect(!names.contains { $0 == "mcp" || $0.hasPrefix("agent") })
-    }
-
-    @Test func skillInstallLinesWithAgentIntegrationPointAtTheBundledInstaller() {
-        let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.5.0", flags: Self.flagOn).joined(separator: "\n")
+    @Test func skillInstallLinesPointAtTheBundledInstaller() {
+        let text = CapabilitiesCommand.skillInstallLines().joined(separator: "\n")
         #expect(text.contains("agent install [--dry-run] [--project DIR]"))
         #expect(!text.contains("git clone"))
+    }
+
+    @Test func prodPayloadListsMcpAndAgentVerbs() {
+        let prod = FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [:])
+        for payload in [CapabilitiesCommand.buildPayload(flags: prod), CapabilitiesCommand.buildPayload()] {
+            let names = Set(payload.verbs.map(\.name))
+            #expect(names.isSuperset(of: ["mcp", "agent install", "agent context"]))
+        }
     }
 
     @Test func flagOffPayloadHasNoServerVerbs() {
@@ -172,63 +174,6 @@ struct CapabilitiesCommandTests {
 
     // MARK: - Agent skill install pointer (#0403)
 
-    @Test func skillInstallLinesForAKnownVersionCloneTheMatchingTag() {
-        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0", flags: Self.flagOff)
-        #expect(lines == [
-            "agent skill:",
-            "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",
-            "  Cursor, OpenCode, and Codex: .claude/skills/batty-cli",
-            "  Install/refresh for every detected agent host from this build's own tagged",
-            "  release — the skill folder carries its own installer, so nothing extra to",
-            "  download:",
-            "    tmp=$(mktemp -d)",
-            "    if ! git clone --quiet --depth 1 --branch v1.1.0 https://github.com/brennanMKE/Batty.git \"$tmp\"; then",
-            "      echo \"clone of v1.1.0 failed (network error, or the tag doesn't exist) — existing copy left untouched\" >&2",
-            "    elif [ ! -x \"$tmp/.claude/skills/batty-cli/install.sh\" ]; then",
-            "      echo \"tag v1.1.0 has no agent-skill installer (added in #0404) — existing copy left untouched\" >&2",
-            "    else",
-            "      \"$tmp/.claude/skills/batty-cli/install.sh\"   # add --project DIR / --dry-run as needed",
-            "    fi",
-            "    rm -rf \"$tmp\"",
-        ])
-    }
-
-    // #0404: this recipe no longer performs the stage/verify/swap itself —
-    // it clones the tag and hands off to that clone's own `install.sh`,
-    // which applies the discipline per destination (see
-    // AgentSkillInstallScriptTests for coverage of that script directly).
-    // What's left to pin here is that the hand-off itself stays
-    // non-destructive: a clone failure and a tag predating the installer
-    // are reported with distinct messages, and neither fabricates a
-    // `--branch vunknown` clone from an unverifiable version.
-    @Test func skillInstallLinesReportEachFailureCauseWithADistinctMessage() {
-        let text = CapabilitiesCommand.skillInstallLines(cliVersion: "1.1.0", flags: Self.flagOff).joined(separator: "\n")
-        #expect(text.contains("clone of v1.1.0 failed (network error, or the tag doesn't exist)"))
-        #expect(text.contains("has no agent-skill installer (added in #0404)"))
-    }
-
-    @Test func skillInstallLinesForAnUnknownVersionNeverFabricateATag() {
-        // "unknown" (a bare SwiftPM-built binary, SessionCommand.swift's
-        // resolveAppVersion()) is not a real git tag — `--branch vunknown`
-        // would just fail. This must fall back to pointing at the tag list,
-        // never interpolate the literal string "unknown" into a `--branch`.
-        let lines = CapabilitiesCommand.skillInstallLines(cliVersion: "unknown", flags: Self.flagOff)
-        #expect(lines == [
-            "agent skill:",
-            "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",
-            "  Cursor, OpenCode, and Codex: .claude/skills/batty-cli",
-            "  Could not determine this build's version (\"unknown\") — this binary was",
-            "  likely built standalone via `swift build`, outside an app bundle, so there",
-            "  is no tag to install from automatically. Run `batty status --json` from an",
-            "  installed, running Batty for its status.appVersion, then pick the matching tag:",
-            "    https://github.com/brennanMKE/Batty.git (tags)",
-            "  Each tagged skill folder carries its own multi-host installer",
-            "  (.claude/skills/batty-cli/install.sh) — clone the tag and run it.",
-        ])
-        #expect(!lines.contains { $0.contains("--branch") })
-        #expect(!lines.contains { $0.contains("vunknown") })
-    }
-
     @Test func plainTextSummaryAppendsTheSkillBlockExactlyOnceAfterExitCodes() throws {
         let payload = CapabilitiesCommand.buildPayload()
         let text = CapabilitiesCommand.plainTextSummary(payload)
@@ -237,7 +182,7 @@ struct CapabilitiesCommandTests {
         let exitCodesIndex = try #require(lines.firstIndex(of: "exit codes:"))
         let skillIndex = try #require(lines.firstIndex(of: "agent skill:"))
         #expect(skillIndex > exitCodesIndex)
-        #expect(lines.suffix(from: skillIndex).elementsEqual(CapabilitiesCommand.skillInstallLines(cliVersion: payload.cliVersion)))
+        #expect(lines.suffix(from: skillIndex).elementsEqual(CapabilitiesCommand.skillInstallLines()))
     }
 
     @Test func plainTextSummaryNeverLeaksIntoTheJSONPayloadShape() throws {

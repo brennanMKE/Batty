@@ -6,8 +6,8 @@ import Testing
 @testable import batty
 
 struct MCPToolCatalogTests {
-    nonisolated static let flagOn = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: true)
-    nonisolated static let flagOff = FeatureFlags(sharedProjectImages: false, agentIntegration: false, servers: false)
+    nonisolated static let flagOn = FeatureFlags(sharedProjectImages: true, servers: true)
+    nonisolated static let flagOff = FeatureFlags(sharedProjectImages: false, servers: false)
 
     private func catalog(_ flags: FeatureFlags = flagOn) -> MCPToolCatalog {
         MCPToolCatalog(payload: CapabilitiesCommand.buildPayload(flags: flags))
@@ -21,8 +21,8 @@ struct MCPToolCatalogTests {
     // MARK: - Tool list mirrors capabilities
 
     @Test(arguments: [false, true])
-    func toolsMatchCapabilitiesVerbsMinusExclusions(agentIntegration: Bool) {
-        let flags = agentIntegration ? Self.flagOn : Self.flagOff
+    func toolsMatchCapabilitiesVerbsMinusExclusions(servers: Bool) {
+        let flags = servers ? Self.flagOn : Self.flagOff
         let verbs = Set(CapabilitiesCommand.verbs(flags: flags).map(\.name)).subtracting(MCPToolCatalog.excludedVerbPaths)
         let tools = Set(catalog(flags).tools.map(\.name))
         #expect(tools == Set(verbs.map(MCPToolCatalog.toolName(forVerbPath:))))
@@ -31,8 +31,15 @@ struct MCPToolCatalogTests {
     @Test func serverVerbsBecomeToolsOnlyWithServersOn() {
         let serverTools: Set<String> = ["server_start", "server_share", "server_list", "server_stop", "server_restart", "server_unshare", "server_serve", "server_tailnet"]
         #expect(serverTools.isSubset(of: Set(catalog().tools.map(\.name))))
-        let agentOnly = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: false)
-        #expect(Set(catalog(agentOnly).tools.map(\.name)).isDisjoint(with: serverTools))
+        let serversOff = FeatureFlags(sharedProjectImages: true, servers: false)
+        #expect(Set(catalog(serversOff).tools.map(\.name)).isDisjoint(with: serverTools))
+    }
+
+    @Test func prodCatalogHasMcpEraToolsButNoAgentTools() {
+        let prod = FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [:])
+        let names = Set(catalog(prod).tools.map(\.name))
+        #expect(names.isSuperset(of: ["pane_split", "session_remind"]))
+        #expect(names.isDisjoint(with: ["mcp", "agent_install", "agent_context"]))
     }
 
     @Test func agentContextIsNotATool() {

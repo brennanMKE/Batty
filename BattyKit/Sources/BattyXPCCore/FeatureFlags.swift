@@ -9,12 +9,10 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 /// other way to set it. See `docs/feature-flags.md`.
 public nonisolated struct FeatureFlags: Sendable, Equatable {
     public var sharedProjectImages: Bool
-    public var agentIntegration: Bool
     public var servers: Bool
 
-    public init(sharedProjectImages: Bool, agentIntegration: Bool = false, servers: Bool = false) {
+    public init(sharedProjectImages: Bool, servers: Bool = false) {
         self.sharedProjectImages = sharedProjectImages
-        self.agentIntegration = agentIntegration
         self.servers = servers
     }
 
@@ -33,11 +31,11 @@ public nonisolated struct FeatureFlags: Sendable, Equatable {
     ) -> FeatureFlags {
         guard let variant = ServiceNames.Variant(bundleIdentifier: bundleIdentifier) else {
             logger.error("feature flags off: bundle identifier \(bundleIdentifier ?? "<nil>", privacy: .public) is no known Batty variant")
-            return FeatureFlags(sharedProjectImages: false, agentIntegration: false, servers: false)
+            return FeatureFlags(sharedProjectImages: false, servers: false)
         }
         let isBeta = variant == .beta
         return applyingUITestOverride(
-            FeatureFlags(sharedProjectImages: isBeta, agentIntegration: isBeta, servers: isBeta),
+            FeatureFlags(sharedProjectImages: isBeta, servers: isBeta),
             environment: environment
         )
     }
@@ -48,7 +46,7 @@ public nonisolated struct FeatureFlags: Sendable, Equatable {
     /// reads this; it uses `resolved(bundleIdentifier:)`.
     public static var current: FeatureFlags {
         let isBeta = ServiceNames.current == .beta
-        return FeatureFlags(sharedProjectImages: isBeta, agentIntegration: isBeta, servers: isBeta)
+        return FeatureFlags(sharedProjectImages: isBeta, servers: isBeta)
     }
 
     public static func applyingUITestOverride(_ flags: FeatureFlags, environment: [String: String]) -> FeatureFlags {

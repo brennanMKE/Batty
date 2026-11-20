@@ -164,9 +164,7 @@ struct AgentSkillFlagDriftTests {
     // swap discipline itself — round-1/round-2 review's B1/B2 findings on
     // that inline recipe are now enforced once, in `install.sh`, which every
     // destination shares (see AgentSkillInstallScriptTests). What SKILL.md's
-    // own snippet still owns, and what drifting apart from
-    // `CapabilitiesCommand.skillInstallLines`'s hand-off text would break,
-    // is the *hand-off* itself: a clone failure is reported before a tag
+    // own snippet still owns is the *hand-off* itself: a clone failure is reported before a tag
     // that predates the installer is checked, which is reported before
     // `install.sh` is ever invoked, and the "unknown" version guard never
     // fabricates a `--branch vunknown` clone.

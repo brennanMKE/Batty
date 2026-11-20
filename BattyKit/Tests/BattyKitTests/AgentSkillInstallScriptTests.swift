@@ -6,7 +6,7 @@ import Testing
 /// #0404: `.claude/skills/batty-cli/install.sh` is the one place the
 /// stage-to-`.new`/verify-`SKILL.md`/swap discipline now lives — before
 /// #0404 that discipline was inlined per-destination in
-/// `CapabilitiesCommand.skillInstallLines` and, separately, in SKILL.md's
+/// the plain-text `batty capabilities` output and, separately, in SKILL.md's
 /// own refresh snippet (round-1 review B1, round-2 review B2 on that
 /// earlier shape). Moving it into a shared script means these invariants
 /// are asserted once, against the actual script, rather than against two

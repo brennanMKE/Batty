@@ -262,7 +262,7 @@ struct CapabilitiesInputSchemaTests {
     // #0384's verb-roster derivation)
 
     @Test(arguments: [false, true])
-    func everyLeafCommandConformsToCapabilitiesDescribable(agentIntegration: Bool) {
+    func everyLeafCommandConformsToCapabilitiesDescribable(servers: Bool) {
         // Mirrors CapabilitiesCommand.collectVerbs' own walk, so a future
         // command that forgets to declare its schema fails here, the same
         // way a verb missing from BattyCLI's tree would fail #0384's own
@@ -272,7 +272,7 @@ struct CapabilitiesInputSchemaTests {
             guard !subcommands.isEmpty else { return [type] }
             return subcommands.flatMap(leafTypes)
         }
-        let flags = agentIntegration ? FeatureFlags.allOnForTests : FeatureFlags(sharedProjectImages: false)
+        let flags = servers ? FeatureFlags.allOnForTests : FeatureFlags(sharedProjectImages: false)
         let leaves = BattyCLI.subcommands(for: flags).flatMap(leafTypes)
         #expect(!leaves.isEmpty)
         for leaf in leaves {
@@ -441,7 +441,7 @@ struct CapabilitiesInputSchemaTests {
         let keys = Set(CapabilitiesCommand.leafArchetypeByVerbPath.keys)
         let serverPaths: Set<String> = ["server start", "server share", "server serve", "server list", "server stop", "server restart", "server unshare", "server tailnet"]
         #expect(keys == shippedVerbPaths(flags: .allOnForTests))
-        #expect(keys.subtracting(MCPToolCatalog.excludedVerbPaths).subtracting(serverPaths) == shippedVerbPaths(flags: FeatureFlags(sharedProjectImages: false)))
+        #expect(keys.subtracting(serverPaths) == shippedVerbPaths(flags: FeatureFlags(sharedProjectImages: false)))
     }
 
     @Test func everyArchetypeLeafArchetypeByVerbPathPointsAtExists() {
@@ -579,7 +579,7 @@ struct CapabilitiesInputSchemaTests {
 extension FeatureFlags {
     /// Every flag on, so tree-walking tests cover flagged verbs; `.current`
     /// is off under `swift test`.
-    static let allOnForTests = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: true)
+    static let allOnForTests = FeatureFlags(sharedProjectImages: true, servers: true)
 }
 
 struct ServerCapabilitiesTests {

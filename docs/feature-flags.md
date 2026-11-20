@@ -28,10 +28,6 @@ Record each gate site (file, symbol, what the flag changes) as you add it, so re
   - `ProjectStore.sharedImagesEnabled`: true only with a transport. False keeps records, merges and `projects.json` as they were.
   - `BattyKit/Sources/BattyKit/Help/10-projects.md` keeps "choose the image on each Mac" until the flag goes, because Help ships in Prod. Update that sentence when removing the flag.
 
-- `agentIntegration` (#0647, for #0646): `batty mcp`, `batty agent install`, `batty agent context` (gated with the rest of `agent`) and the Settings section that runs the installer. The bundled `AgentGuidance/` skill ships in both variants, because a file nothing reads is inert. `FeatureFlags.current` gives the CLI its value. #0648 and #0649 may reuse it. Remove it in the release that ships #0646. Gate sites:
-  - `BattyCLI.subcommands(for:)` (`BattyKit/Sources/batty/BattyCLI.swift`): `MCPCommand` and `AgentNounCommand` are in the tree only with the flag on, so `--help`, `batty capabilities` and the MCP tool list never mention them otherwise.
-  - `CapabilitiesCommand.skillInstallLines(cliVersion:flags:)`: with the flag on, plain-text `capabilities` points at `agent install` instead of the `git clone` recipe.
-  - `AdvancedSettingsView` (`BattyKit/Sources/BattyKit/Views/SettingsView.swift`): the "AI Agents" section shows only when `store.featureFlags.agentIntegration`.
 - `servers` (#0648, renamed from `serverPane` by #0691): the toolbar's Servers list and the `batty server` noun. It has a CLI `current` and a UI-test force-off override (`BATTY_UI_TEST_FORCE_SERVERS_OFF=1` with `BATTY_UI_TEST_SCRIPT` set). Remove it in 1.5.0 (#0670). Gate sites:
   - `BattyCLI.subcommands(for:)`: the `server` noun is in the CLI tree only with the flag on, so `--help`, `capabilities` and its verbs are absent otherwise. `CapabilitiesCommand.verbs(flags:)` / `buildPayload(flags:)` take the flags.
   - `AppStateStore.startServerForXPC` / `shareServerForXPC` / `listServersForXPC` / `stopServerForXPC` / `restartServerForXPC` / `unshareServerForXPC` (`AppStateStore+Server.swift`) and `serveStaticForXPC` (#0649): fail with "servers are not available in this build" with the flag off, registering nothing.
@@ -43,3 +39,4 @@ Record each gate site (file, symbol, what the flag changes) as you add it, so re
 
 - `projects`: added in #0470, removed in 1.3.0 by #0504. Projects is always on in Prod and Beta.
 - `terminalBackgrounds`: added in #0374, removed in 1.3.5 by #0544. Terminal backgrounds and see-through are always on in Prod and Beta.
+- `agentIntegration`: added in #0647, removed in 1.5.0 by #0669. `batty mcp`, `batty agent install|context` and Settings → Advanced → Command Line and AI Agents are always on in Prod and Beta.

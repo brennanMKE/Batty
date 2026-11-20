@@ -48,7 +48,7 @@ The CLI now has five execution paths:
 - `capabilities` reads neither the environment nor the app: its verb roster
   and exit-code vocabulary are static data compiled into the binary
   (`#0384`), so it works even when Batty is not running at all.
-- `mcp` (behind `agentIntegration`, #0647) serves the `capabilities` verbs as
+- `mcp` (#0647) serves the `capabilities` verbs as
   MCP tools over stdin/stdout and runs each call by re-executing this same
   binary, so every tool takes one of the paths above.
 
@@ -81,9 +81,9 @@ The CLI now has five execution paths:
 | `batty id [--json]` / `batty whoami [--json]` | Print the calling Session/Pane/Tab ids | Environment only |
 | `batty notify --title <text> [--body <text>] [--sound] [--tab <id>]` | Post a Bell Feed notification attributed to a Tab | XPC |
 | `batty capabilities [--json]` | Print this build's verb roster and exit-code vocabulary | Local (static, no XPC) |
-| `batty mcp` | Serve the verbs as MCP tools over stdin/stdout (Beta, `agentIntegration`) | Re-executes `batty` per call |
-| `batty agent install [--dry-run] [--project <dir>] [--yes]` | Install the bundled skill and MCP server for Claude Code, Cursor, OpenCode and Codex; optionally add a Batty section to a project's agent file (Beta, `agentIntegration`). Settings → Advanced → Command Line and AI Agents does the same per host, can remove it, and refreshes only the hosts installed there after an update; neither needs the `/usr/local/bin` symlink | Local files, `claude` CLI |
-| `batty agent context [--json]` | Tell an AI agent it is in a Batty Pane and which one; prints nothing outside Batty, always exits 0 (Beta, `agentIntegration`) | Environment only |
+| `batty mcp` | Serve the verbs as MCP tools over stdin/stdout | Re-executes `batty` per call |
+| `batty agent install [--dry-run] [--project <dir>] [--yes]` | Install the bundled skill and MCP server for Claude Code, Cursor, OpenCode and Codex; optionally add a Batty section to a project's agent file. Settings → Advanced → Command Line and AI Agents does the same per host, can remove it, and refreshes only the hosts installed there after an update; neither needs the `/usr/local/bin` symlink | Local files, `claude` CLI |
+| `batty agent context [--json]` | Tell an AI agent it is in a Batty Pane and which one; prints nothing outside Batty, always exits 0 | Environment only |
 
 Run `batty <subcommand> --help` for exact options. The full noun/verb grammar
 in `docs/batty-cli-design.md` is a forward-looking catalog; only the commands
@@ -1001,7 +1001,8 @@ Mechanism, exactly:
 (`BattyKit/Sources/BattyKit/Views/SettingsView.swift`). `SettingsView`'s
 `TabView` includes `AdvancedSettingsView()` with `.tabItem { Label
 ("Advanced", systemImage: "terminal") }`. `AdvancedSettingsView` hosts a
-single `Section("Command-Line Tool")` containing `CLIInstallRow`, driven
+`Section("Command Line and AI Agents")` containing `CLIInstallRow` and the
+agent host rows; `CLIInstallRow` is driven
 by an `@Observable` `CLIInstallModel` (states: `.checking`, `.installed`,
 `.installedElsewhere(String)`, `.notInstalled`, `.blockedByFile`,
 `.installing`, `.uninstalling`, `.failed(String)`) that maps

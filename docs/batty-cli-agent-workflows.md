@@ -406,7 +406,7 @@ batty project open "My Project" --json
 
 ## Using Batty through MCP
 
-`batty mcp` (Batty Beta from 1.5.0, behind the `agentIntegration` flag) is a
+`batty mcp` (from 1.5.0) is a
 stdio MCP server: newline-delimited JSON-RPC 2.0 on stdin/stdout, serving until
 stdin closes. Its tools are generated from `batty capabilities --json`, so they
 can't drift from the CLI:

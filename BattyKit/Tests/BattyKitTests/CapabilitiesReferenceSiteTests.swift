@@ -7,7 +7,7 @@ import BattyXPCCore
 
 nonisolated struct CapabilitiesReferenceSiteTests {
     // The flags as they will be in the 1.5.0 Prod build.
-    static let releaseFlags = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: true)
+    static let releaseFlags = FeatureFlags(sharedProjectImages: true, servers: true)
 
     private static func cliURL() -> URL {
         URL(fileURLWithPath: #filePath)

@@ -43,7 +43,7 @@ open "/Applications/Batty Beta.app"
 
 Then, in Batty Beta:
 
-1. **Settings → Advanced → Command-Line Tool → Install.** This symlinks
+1. **Settings → Advanced → Command Line and AI Agents → Install.** This symlinks
    `/usr/local/bin/batty-beta` to the CLI inside the app bundle (it asks for an
    administrator password).
 2. **Settings → Advanced → Broker Agent → Register.**

@@ -35,7 +35,7 @@ struct MCPInstructionsTests {
     }
 
     @Test func serverHintsDropWithServersOff() {
-        let flags = FeatureFlags(sharedProjectImages: true, agentIntegration: true, servers: false)
+        let flags = FeatureFlags(sharedProjectImages: true, servers: false)
         let text = MCPInstructions.text(environment: MCPServerTests.inBatty, catalog: catalog(flags), cliName: "batty")
         #expect(!text.contains("server_"))
         #expect(text.contains("`pane_split`"))

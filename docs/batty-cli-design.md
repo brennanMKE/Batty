@@ -47,7 +47,6 @@ installs the bundled skill, the MCP server entry and optionally a project
 snippet, so it is not named `mcp install`; and `context` (#0661), which prints
 a note telling an agent it is in a Batty Pane, from `BATTY_*` alone. **`mcp`** is an app-level verb like
 `capabilities`: `batty mcp` serves the CLI's verbs as MCP tools over stdio.
-Both are behind the `agentIntegration` flag until #0646 ships.
 **`server`** is the seventh noun (#0648, Beta only until 1.5.0 behind the
 `servers` flag), with verbs `start`, `share`, `serve`, `list`, `stop`,
 `restart` and `unshare` (#0692). `share` tracks a server Batty didn't start;

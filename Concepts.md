@@ -340,7 +340,7 @@ Process-wide map `[UUID: ghostty_surface_t]`. The single source of truth for liv
 
 ## Agent guidance
 
-What Batty gives AI coding agents so they can drive it from any project (#0646, #0647; Batty Beta behind the `agentIntegration` flag).
+What Batty gives AI coding agents so they can drive it from any project (#0646, #0647; 1.5.0).
 
 - **Bundled skill:** the `batty-cli` skill, shipped in the app at `Contents/Resources/AgentGuidance/skills/batty-cli/SKILL.md`, so it always matches the build.
 - **MCP server:** `batty mcp`, a stdio MCP server whose tools are the verbs `batty capabilities` lists (tool name = verb path with `_`).

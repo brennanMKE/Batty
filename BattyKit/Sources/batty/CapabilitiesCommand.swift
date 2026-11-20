@@ -262,7 +262,7 @@ struct CapabilitiesCommand: ParsableCommand {
     /// skill pointer text structurally cannot leak into `--json`'s stdout
     /// (also asserted by `CapabilitiesCommandTests
     /// .payloadJSONTopLevelKeysAreStable`'s exact key-set check).
-    static func plainTextSummary(_ payload: CapabilitiesPayload, flags: FeatureFlags = .current) -> String {
+    static func plainTextSummary(_ payload: CapabilitiesPayload) -> String {
         var lines: [String] = []
         lines.append("batty \(payload.cliVersion) capabilities")
         lines.append("verbs:")
@@ -275,81 +275,18 @@ struct CapabilitiesCommand: ParsableCommand {
             lines.append("  \(exitCode.code) — \(exitCode.meaning)")
         }
         lines.append("")
-        lines.append(contentsOf: Self.skillInstallLines(cliVersion: payload.cliVersion, flags: flags))
+        lines.append(contentsOf: Self.skillInstallLines())
         return lines.joined(separator: "\n")
     }
 
-    /// The GitHub repository the agent skill (`.claude/skills/batty-cli/`,
-    /// #0403) is authored in and tagged from. Matches `issues/project.json`
-    /// and `scripts/tag-release.sh`'s `v<MARKETING_VERSION>` tagging, so a
-    /// tag named from this build's own `cliVersion` names the exact commit
-    /// that shipped it — no registry, no "latest" ambiguity.
-    static let skillRepositoryURL = "https://github.com/brennanMKE/Batty.git"
-    static let skillRepositoryRelativePath = ".claude/skills/batty-cli"
-
-    /// #0403/#0404: point a human/agent reading plain-text `capabilities` at
-    /// the installable skill and how to fetch the copy tagged from this
-    /// exact build — human-readable output only, never the `--json` path
-    /// (#0384 pinned JSON-stdout purity for that path). `cliVersion ==
-    /// "unknown"` (a bare SwiftPM-built binary, `SessionCommand.swift`'s
-    /// `resolveAppVersion()`) is not a real release tag, so this
-    /// deliberately does not fabricate a `--branch vunknown` clone that
-    /// would fail — it points at the tag list instead.
-    ///
-    /// **#0404: this only clones and hands off, it does not install
-    /// anything itself.** The skill folder ships its own multi-host
-    /// installer (`install.sh`, next to `SKILL.md`) that detects Claude
-    /// Code, Cursor, OpenCode, and Codex and applies the stage-to-`.new`/
-    /// verify-`SKILL.md`/swap discipline (round-1 review B1, round-2 review
-    /// B2 on this file, before that discipline moved into the script) once
-    /// per destination — see `install.sh`'s own header comment for the full
-    /// per-host rationale and non-destructive guarantee. Before #0404 this
-    /// function embedded that whole recipe inline, hardcoded to
-    /// `~/.claude/skills` alone; every other host got nothing (#0404's
-    /// filing). Two failure points are still checked here, before handing
-    /// off: the `git clone` itself can fail (network, or a tag that doesn't
-    /// exist), and a tag can predate the installer entirely (any tag before
-    /// #0404, checked by requiring `install.sh` to exist and be executable
-    /// in the clone, not just the skill directory) — both leave the
-    /// existing install(s) untouched, exactly as `install.sh` itself does
-    /// for the destinations it manages.
-    static func skillInstallLines(cliVersion: String, flags: FeatureFlags = .current) -> [String] {
-        if flags.agentIntegration {
-            return [
-                "agent skill:",
-                "  This build carries the skill and an MCP server. Install both for every detected",
-                "  agent host (Claude Code, Cursor, OpenCode, Codex):",
-                "    \(ServiceNames.current.cliCommandName) agent install [--dry-run] [--project DIR]",
-            ]
-        }
-        var lines = [
+    /// Points plain-text readers at `agent install`; never on the `--json` path.
+    static func skillInstallLines() -> [String] {
+        [
             "agent skill:",
-            "  Portable skill teaching agents to drive this CLI — installs for Claude Code,",
-            "  Cursor, OpenCode, and Codex: \(Self.skillRepositoryRelativePath)",
+            "  This build carries the skill and an MCP server. Install both for every detected",
+            "  agent host (Claude Code, Cursor, OpenCode, Codex):",
+            "    \(ServiceNames.current.cliCommandName) agent install [--dry-run] [--project DIR]",
         ]
-        if cliVersion == "unknown" {
-            lines.append("  Could not determine this build's version (\"unknown\") — this binary was")
-            lines.append("  likely built standalone via `swift build`, outside an app bundle, so there")
-            lines.append("  is no tag to install from automatically. Run `batty status --json` from an")
-            lines.append("  installed, running Batty for its status.appVersion, then pick the matching tag:")
-            lines.append("    \(Self.skillRepositoryURL) (tags)")
-            lines.append("  Each tagged skill folder carries its own multi-host installer")
-            lines.append("  (\(Self.skillRepositoryRelativePath)/install.sh) — clone the tag and run it.")
-        } else {
-            lines.append("  Install/refresh for every detected agent host from this build's own tagged")
-            lines.append("  release — the skill folder carries its own installer, so nothing extra to")
-            lines.append("  download:")
-            lines.append("    tmp=$(mktemp -d)")
-            lines.append("    if ! git clone --quiet --depth 1 --branch v\(cliVersion) \(Self.skillRepositoryURL) \"$tmp\"; then")
-            lines.append("      echo \"clone of v\(cliVersion) failed (network error, or the tag doesn't exist) — existing copy left untouched\" >&2")
-            lines.append("    elif [ ! -x \"$tmp/\(Self.skillRepositoryRelativePath)/install.sh\" ]; then")
-            lines.append("      echo \"tag v\(cliVersion) has no agent-skill installer (added in #0404) — existing copy left untouched\" >&2")
-            lines.append("    else")
-            lines.append("      \"$tmp/\(Self.skillRepositoryRelativePath)/install.sh\"   # add --project DIR / --dry-run as needed")
-            lines.append("    fi")
-            lines.append("    rm -rf \"$tmp\"")
-        }
-        return lines
     }
 }
 
