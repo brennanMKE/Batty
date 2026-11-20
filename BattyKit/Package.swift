@@ -102,6 +102,12 @@ let package = Package(
             dependencies: ["BattyCLICore"],
             swiftSettings: swiftSettings
         ),
+        // Renders the public Claude Code marketplace repo (tools/build-agent-downloads.py).
+        .executableTarget(
+            name: "BattyAgentPackages",
+            dependencies: ["BattyCLICore"],
+            swiftSettings: swiftSettings
+        ),
         .testTarget(
             name: "BattyKitTests",
             dependencies: [

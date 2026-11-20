@@ -38,6 +38,7 @@ MARK_CLOSE = "<!-- /generated -->"
 
 INFO = {
     "claude-code-plugin.txt": "sh",
+    "claude-code-marketplace.txt": "text",
     "claude-code-mcp-add.txt": "sh",
     "codex-config.toml": "toml",
     "cursor-mcp.json": "json",

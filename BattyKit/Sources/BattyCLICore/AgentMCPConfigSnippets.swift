@@ -52,6 +52,7 @@ public nonisolated enum AgentMCPConfigSnippets {
         func text(_ data: Data) -> String { String(decoding: data, as: UTF8.self) }
         return [
             SiteFile(name: "claude-code-plugin.txt", contents: pluginInstallCommand(cliCommandName: cli) + "\n"),
+            SiteFile(name: "claude-code-marketplace.txt", contents: AgentPluginTree.marketplaceCommands.joined(separator: "\n") + "\n"),
             SiteFile(name: "claude-code-mcp-add.txt", contents: claudeMCPAddCommand(key: cli, command: cli) + "\n"),
             SiteFile(name: "codex-config.toml", contents: codexBlock(key: cli, cliCommandName: cli, command: cli)),
             SiteFile(name: "cursor-mcp.json", contents: text(try configDocument(keyPath: ["mcpServers", cli], entry: mcpServersEntry(command: cli)))),

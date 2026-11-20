@@ -432,6 +432,42 @@ python3 -I tools/build-docs-page-selftest.py         # self-test
 
 The page lives under `docs/`, which `website/.deploy-hold` holds back until 1.5.0.
 
+## build-agent-downloads.py
+
+Release-day packaging of the bundled `batty-cli` skill and the public Claude Code
+plugin marketplace. It writes `website/docs/skill/batty-cli-skill-<version>.zip`
+and `batty-cli-skill-latest.zip` (identical, stored, fixed 1980 timestamps, so a
+re-run gives the same bytes), then runs the `BattyAgentPackages` Swift target to
+render the marketplace repo contents into the gitignored `build/claude-marketplace/`.
+The plugin tree comes from `AgentPluginTree`, the same renderer `batty agent install`
+stages, with bare `batty` in place of the app-bundle path. `--version` defaults to
+`MARKETING_VERSION`. It never deploys and never runs git.
+
+```bash
+python3 -I tools/build-agent-downloads.py                    # zips + build/claude-marketplace/
+python3 -I tools/build-agent-downloads.py --check            # exit 1 if the committed zips drifted
+python3 -I tools/build-agent-downloads.py --version 1.5.0 --skill-out /tmp/s --marketplace-out /tmp/m
+python3 -I tools/build-agent-downloads-selftest.py           # self-test
+```
+
+`tools/sync-claude-marketplace.sh <clone> [--version X.Y.Z] [--from DIR] [--dry-run]`
+regenerates the marketplace (`--no-skill`, so `website/` is untouched; `--from` syncs an
+already generated tree instead) and copies it into a local clone of the marketplace repo
+(`AgentPluginTree.publicRepository`). It writes only the managed paths `.claude-plugin/`,
+`batty/` and `README.md`; `rsync --delete` runs inside the two managed folders only, so
+`.git`, `LICENSE` and anything else in the clone are never touched. Before writing it
+refuses (exit 2, nothing changed) a target that is not the top level of a git repo, any
+checkout or worktree of this repo (same `git rev-parse --git-common-dir`), a symlinked
+managed path, a `marketplace.json` naming another marketplace, and a non-empty folder
+with no `.claude-plugin/marketplace.json` (`.git`, `LICENSE`, `README.md`, `.gitignore`
+and `.gitattributes` don't count). `--dry-run` runs those checks and writes nothing. It
+runs `claude plugin validate` when `claude` is on `PATH`, and prints the
+`git add`/`commit`/`tag`/`push` commands for the user. It never commits or pushes.
+
+```bash
+python3 -I tools/sync-claude-marketplace-selftest.py    # self-test, scratch repos only
+```
+
 ## check-website-hold.py
 
 Fails when a deployable website page links a path held back by `website/.deploy-hold` (#0681). It scans top-level `website/*.html`, plus `sitemap.xml` and `robots.txt` when present, resolving relative, root-relative and `https://batty.sstools.co/` links. The hold file is rsync `--exclude-from` format: entries anchored with a leading `/`, a trailing `/` for a directory, no wildcards or `+`/`-` prefixes.

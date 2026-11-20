@@ -1,0 +1,2 @@
+/plugin marketplace add brennanMKE/batty-plugins
+/plugin install batty@batty-plugins

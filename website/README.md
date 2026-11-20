@@ -43,6 +43,7 @@ python3 -I tools/build-docs-page.py --check
 python3 -I tools/check-website-hold.py
 python3 -I tools/build-cli-reference.py --check
 python3 -I tools/build-cli-reference-selftest.py
+python3 -I tools/build-agent-downloads.py --check   # on release day, once the skill zips are committed
 tidy -e -q website/*.html
 tidy -e -q website/docs/cli/index.html
 git lfs ls-files        # must list the background images, not pointer stubs
@@ -88,9 +89,15 @@ When `scripts/release.sh` produces `dist/Batty-<sha>.dmg`:
 4. Regenerate the CLI reference from the release's Prod build:
    `python3 -I tools/build-cli-reference.py --refresh-json --cli /Applications/Batty.app/Contents/Resources/bin/batty`
    (the installed release build), then commit `website/docs/cli/`.
-5. Deploy the site as described in [Deployment](#deployment) (pre-deploy
+5. Package the skill: `python3 -I tools/build-agent-downloads.py`, then
+   commit `website/docs/skill/batty-cli-skill-<version>.zip` and
+   `batty-cli-skill-latest.zip`. `--check` confirms them.
+6. Update the Claude Code marketplace (user-run): in your clone of
+   `brennanMKE/batty-plugins`, run `tools/sync-claude-marketplace.sh <clone>`,
+   review the diff, then commit, tag `v<version>` and push it yourself.
+7. Deploy the site as described in [Deployment](#deployment) (pre-deploy
    checks, dry run, real run, `curl -sI` checks).
-6. Attach the same DMG, as `Batty-<version>.dmg`, to the GitHub release
+8. Attach the same DMG, as `Batty-<version>.dmg`, to the GitHub release
    for the tag (`gh release create` / `gh release upload`; user-run or
    explicitly approved, see `scripts/RELEASE.md` step 10). The appcast
    enclosure keeps pointing at the website URL, not the GitHub asset.

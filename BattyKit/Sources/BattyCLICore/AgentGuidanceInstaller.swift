@@ -431,52 +431,29 @@ public nonisolated struct AgentGuidanceInstaller: Sendable {
         let fileManager = FileManager.default
         let pluginDirectory = directory.appending(path: identity.pluginName, directoryHint: .isDirectory)
         if exists(pluginDirectory) { try fileManager.removeItem(at: pluginDirectory) }
-        let description = "Drive the Batty terminal multiplexer: the \(AgentGuidanceIdentity.skillName) skill and the `\(identity.cliCommandName) mcp` server."
-        try writeJSON([
-            "name": identity.marketplaceName,
-            "description": "Batty's agent guidance, staged from \(identity.cliCommandName) \(identity.version).",
-            "owner": ["name": "Batty"],
-            "plugins": [[
-                "name": identity.pluginName,
-                "source": "./\(identity.pluginName)",
-                "description": description,
-                "version": identity.version,
-            ]],
-        ], to: directory.appending(path: ".claude-plugin/marketplace.json"))
-        try writeJSON([
-            "name": identity.pluginName,
-            "version": identity.version,
-            "description": description,
-            "author": ["name": "Batty"],
-        ], to: pluginDirectory.appending(path: ".claude-plugin/plugin.json"))
-        try writeJSON([
-            "mcpServers": [identity.pluginName: AgentMCPConfigSnippets.mcpServersEntry(command: identity.cliExecutablePath).foundation],
-        ], to: pluginDirectory.appending(path: ".mcp.json"))
-        try writeJSON([
-            "description": "Tell Claude Code it is running in a Batty Pane, and which one.",
-            "hooks": ["SessionStart": [[
-                "hooks": [[
-                    "type": "command",
-                    "command": Self.sessionStartHookCommand(cliExecutablePath: identity.cliExecutablePath),
-                    "timeout": 10,
-                ]],
-            ]]],
-        ], to: pluginDirectory.appending(path: "hooks/hooks.json"))
-        let skill = pluginDirectory.appending(path: "skills/\(AgentGuidanceIdentity.skillName)/SKILL.md")
-        try fileManager.createDirectory(at: skill.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try skillText(identity: identity, renamed: false).write(to: skill, options: .atomic)
+        let files = try AgentPluginTree.files(
+            pluginName: identity.pluginName,
+            cliCommandName: identity.cliCommandName,
+            cliCommand: identity.cliExecutablePath,
+            version: identity.version,
+            skill: try skillText(identity: identity, renamed: false),
+            marketplace: AgentPluginTree.Marketplace(
+                name: identity.marketplaceName,
+                description: "Batty's agent guidance, staged from \(identity.cliCommandName) \(identity.version).",
+                owner: ["name": "Batty"],
+                entryCarriesVersion: true
+            )
+        )
+        for file in files {
+            let url = directory.appending(path: file.path, directoryHint: .notDirectory)
+            try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try file.data.write(to: url, options: .atomic)
+        }
     }
 
     /// Claude Code runs a command without `args` through `sh -c`, so the path is always quoted.
     public static func sessionStartHookCommand(cliExecutablePath: String) -> String {
         "'" + cliExecutablePath.replacingOccurrences(of: "'", with: "'\\''") + "' agent context"
-    }
-
-    private func writeJSON(_ object: Any, to file: URL) throws {
-        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-        data.append(0x0A)
-        try data.write(to: file, options: .atomic)
     }
 
     /// Staged outside the skills root, checked, then swapped in. A different

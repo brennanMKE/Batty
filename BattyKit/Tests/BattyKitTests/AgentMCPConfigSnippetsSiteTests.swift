@@ -25,4 +25,9 @@ nonisolated struct AgentMCPConfigSnippetsSiteTests {
         let names = try FileManager.default.contentsOfDirectory(atPath: Self.snippetsURL().path(percentEncoded: false))
         #expect(Set(names) == Set(try AgentMCPConfigSnippets.siteFiles().map(\.name)), "run tools/build-agent-snippets.sh")
     }
+
+    @Test func marketplaceSnippetUsesThePublicRepository() throws {
+        let file = try #require(try AgentMCPConfigSnippets.siteFiles().first { $0.name == "claude-code-marketplace.txt" })
+        #expect(file.contents == "/plugin marketplace add brennanMKE/batty-plugins\n/plugin install batty@batty-plugins\n")
+    }
 }

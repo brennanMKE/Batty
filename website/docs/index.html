@@ -41,6 +41,9 @@
         <h3 id="claude-code">Claude Code</h3>
         <p><code>batty agent install</code> sets up every agent host it finds. For Claude Code it stages the Batty plugin, with its MCP entry, skill and a SessionStart hook; for Codex, Cursor and OpenCode it adds the MCP entry and the skill:</p>
         <pre><code class="language-sh">batty agent install</code></pre>
+        <p>Or add Batty&#x27;s plugin marketplace in Claude Code, which installs the same plugin: the skill, the MCP server and the SessionStart hook. It runs <code>batty</code> from your <code>PATH</code>, so install the command first. Use this or <code>batty agent install</code>, not both.</p>
+        <pre><code class="language-text">/plugin marketplace add brennanMKE/batty-plugins
+/plugin install batty@batty-plugins</code></pre>
         <p>Or register only the MCP server by hand:</p>
         <pre><code class="language-sh">claude mcp add --scope user batty -- batty mcp</code></pre>
         <h3 id="codex">Codex</h3>
@@ -152,6 +155,7 @@ If those variables are not set, you are not in Batty; ignore this section.
         <ul>
             <li><a href="cli/index.html">CLI reference</a></li>
             <li><a href="skill/batty-cli-skill-latest.zip">Batty skill</a></li>
+            <li><a href="https://github.com/brennanMKE/batty-plugins">Claude Code plugin marketplace</a></li>
             <li><a href="../changelog.html">Changelog</a></li>
             <li><a href="https://github.com/brennanMKE/Batty">Batty on GitHub</a></li>
         </ul>

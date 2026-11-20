@@ -32,6 +32,15 @@ batty agent install
 ```
 <!-- /generated -->
 
+Or add Batty's plugin marketplace in Claude Code, which installs the same plugin: the skill, the MCP server and the SessionStart hook. It runs `batty` from your `PATH`, so install the command first. Use this or `batty agent install`, not both.
+
+<!-- generated:claude-code-marketplace.txt -->
+```text
+/plugin marketplace add brennanMKE/batty-plugins
+/plugin install batty@batty-plugins
+```
+<!-- /generated -->
+
 Or register only the MCP server by hand:
 
 <!-- generated:claude-code-mcp-add.txt -->
@@ -216,5 +225,6 @@ If those variables are not set, you are not in Batty; ignore this section.
 
 - [CLI reference](cli/index.md)
 - [Batty skill](skill/batty-cli-skill-latest.zip)
+- [Claude Code plugin marketplace](https://github.com/brennanMKE/batty-plugins)
 - [Changelog](../changelog.html)
 - [Batty on GitHub](https://github.com/brennanMKE/Batty)
