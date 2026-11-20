@@ -453,4 +453,11 @@ struct ServerEntryTests {
         await content.performTick()
         #expect(seen == [FakeProcessTable.listener, 100_950])
     }
+
+    @Test func tailnetMenuActionCoversShareStopAndAdopted() {
+        #expect(ServerEntryDisplay.tailnetMenuAction(hasURL: false, adopted: false, offersSharing: true) == .share)
+        #expect(ServerEntryDisplay.tailnetMenuAction(hasURL: false, adopted: false, offersSharing: false) == nil)
+        #expect(ServerEntryDisplay.tailnetMenuAction(hasURL: true, adopted: false, offersSharing: true) == .stop)
+        #expect(ServerEntryDisplay.tailnetMenuAction(hasURL: true, adopted: true, offersSharing: false) == .adoptedNote)
+    }
 }

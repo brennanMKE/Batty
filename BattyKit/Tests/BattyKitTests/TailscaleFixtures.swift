@@ -14,6 +14,7 @@ nonisolated enum TailscaleFixtures {
     static let missingSelf = #"{"BackendState":"Running","CertDomains":["host.tailnet.ts.net"]}"#
     static let malformed = #"{"BackendState":"#
 
+    // Unverified against real tailscale serve status --json output (#0697): replace with a captured fixture when available.
     static let emptyServe = "{}"
     static let oursOn3000 = #"{"TCP":{"3000":{"HTTPS":true}},"Web":{"host.tailnet.ts.net:3000":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:3000"}}}},"AllowFunnel":{}}"#
     static let foreignOn3000 = #"{"TCP":{"3000":{"HTTPS":true}},"Web":{"host.tailnet.ts.net:3000":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:4000"}}}}}"#

@@ -5,6 +5,16 @@ import Foundation
 
 /// Pure text and visibility rules for the toolbar's Servers list.
 public enum ServerEntryDisplay {
+    public enum TailnetMenuAction: Equatable, Sendable {
+        case share, stop, adoptedNote
+    }
+
+    /// The row menu's tailnet item. An adopted mapping is never offered Stop.
+    public static func tailnetMenuAction(hasURL: Bool, adopted: Bool, offersSharing: Bool) -> TailnetMenuAction? {
+        if hasURL { return adopted ? .adoptedNote : .stop }
+        return offersSharing ? .share : nil
+    }
+
     public enum Tone: Equatable, Sendable {
         case neutral, good, warning, bad
     }

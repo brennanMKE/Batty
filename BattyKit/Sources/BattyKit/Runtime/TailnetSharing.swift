@@ -44,7 +44,7 @@ public nonisolated enum TailnetError: Error, Equatable, Sendable {
         case .noDNSName: return "Tailscale reports no MagicDNS name for this Mac; turn on MagicDNS in the admin console"
         case .httpsDisabled: return "HTTPS certificates aren't enabled for this tailnet; turn them on in the Tailscale admin console (DNS › HTTPS Certificates), then try again"
         case .portTaken(let port): return "tailnet port \(port) is already served by a mapping Batty didn't make; Batty won't replace it (see tailscale serve status)"
-        case .notOurs(let port): return "the tailnet mapping on port \(port) wasn't made by Batty; remove it with tailscale serve yourself"
+        case .notOurs(let port): return "this tailnet mapping on port \(port) wasn't created by Batty; remove it with tailscale \(TailscaleArgs.serveOff(port: port).joined(separator: " "))"
         case .commandFailed(let message): return "tailscale serve failed: \(message)"
         case .timedOut(let output): return "tailscale serve didn't finish within 20 s: \(output)"
         case .notApplied: return "tailscale serve exited 0 but serve status doesn't show the mapping"
@@ -59,7 +59,8 @@ public nonisolated enum TailnetError: Error, Equatable, Sendable {
 public final class TailnetSharing {
     public static let fakeEnvironmentVar = "BATTY_UI_TEST_FAKE_TAILSCALE"
     static let statusCacheSeconds: TimeInterval = 10
-    static let commandTimeout: Duration = .seconds(20)
+    /// Nonisolated so quit cleanup never needs the main actor it blocks.
+    nonisolated static let commandTimeout: Duration = .seconds(20)
 
     public private(set) var status: TailnetStatus?
 
@@ -74,6 +75,8 @@ public final class TailnetSharing {
     @ObservationIgnored var pending: [UInt16: Task<Void, Never>] = [:]
     @ObservationIgnored private var lastRefresh: Date?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    /// How quit cleanup waits on its semaphore; tests return at once.
+    @ObservationIgnored var quitWait: @Sendable (DispatchSemaphore, TimeInterval) -> DispatchTimeoutResult = { $0.wait(timeout: .now() + $1) }
 
     init(runner: TailscaleCommandRunning, locate: @escaping () -> URL?) {
         self.runner = runner
@@ -152,18 +155,19 @@ public final class TailnetSharing {
         return chain(port: port) { [weak self] in
             let result = await self?.performShare(port: port) ?? .failure(.notInstalled)
             switch result {
-            case .success(let url):
-                if entry.tailnetURL != url { entry.tailnetURL = url }
+            case .success(let shared):
+                if entry.tailnetURL != shared.url { entry.tailnetURL = shared.url }
+                if entry.isTailnetAdopted != shared.adopted { entry.isTailnetAdopted = shared.adopted }
                 if entry.tailnetError != nil { entry.tailnetError = nil }
             case .failure(let error):
                 entry.tailnetError = error.message
             }
             entry.isTailnetBusy = false
-            return result
+            return result.map(\.url)
         }
     }
 
-    private func performShare(port: UInt16) async -> Result<URL, TailnetError> {
+    private func performShare(port: UInt16) async -> Result<(url: URL, adopted: Bool), TailnetError> {
         guard let executable = locate() else {
             status = .unavailable
             return .failure(.notInstalled)
@@ -184,8 +188,9 @@ public final class TailnetSharing {
         let url = TailnetURL.make(dnsName: dnsName, port: port)
         guard let before = await serveConfig(executable) else { return .failure(.commandFailed("couldn't read tailscale serve status --json")) }
         if before.isOurs(port: port, dnsName: dnsName) {
-            if owned[port] == nil { logger.info("tailnet: adopting the existing mapping on port \(port, privacy: .public); Batty won't turn it off") }
-            return .success(url)
+            let adopted = owned[port] == nil
+            if adopted { logger.info("tailnet: adopting the existing mapping on port \(port, privacy: .public); Batty won't turn it off") }
+            return .success((url, adopted))
         }
         if before.hasAnyMapping(port: port) { return .failure(.portTaken(port)) }
         let result = await runner.run(executable: executable, arguments: TailscaleArgs.serveOn(port: port), timeout: Self.commandTimeout)
@@ -196,7 +201,7 @@ public final class TailnetSharing {
         }
         owned[port] = dnsName
         logger.info("tailnet: serving port \(port, privacy: .public)")
-        return .success(url)
+        return .success((url, false))
     }
 
     /// Stops serving `port` on the tailnet when Batty made the mapping.
@@ -205,10 +210,11 @@ public final class TailnetSharing {
     public func unshare(port: UInt16, entry: ServerEntry?, reportForeign: Bool = false) -> Task<Result<Void, TailnetError>, Never> {
         entry?.isTailnetBusy = true
         return chain(port: port) { [weak self] in
-            let result = await self?.performUnshare(port: port, adopted: entry?.tailnetURL != nil, reportForeign: reportForeign) ?? .success(())
+            let result = await self?.performUnshare(port: port, adopted: entry?.isTailnetAdopted == true, reportForeign: reportForeign) ?? .success(())
             switch result {
             case .success:
                 if entry?.tailnetURL != nil { entry?.tailnetURL = nil }
+                if entry?.isTailnetAdopted == true { entry?.isTailnetAdopted = false }
                 if entry?.tailnetError != nil { entry?.tailnetError = nil }
             case .failure(let error):
                 entry?.tailnetError = error.message
@@ -220,7 +226,8 @@ public final class TailnetSharing {
 
     private func performUnshare(port: UInt16, adopted: Bool, reportForeign: Bool) async -> Result<Void, TailnetError> {
         guard let dnsName = owned[port] else {
-            guard reportForeign, !adopted, let executable = locate() else { return .success(()) }
+            if adopted { return .failure(.notOurs(port)) }
+            guard reportForeign, let executable = locate() else { return .success(()) }
             guard let config = await serveConfig(executable) else { return .success(()) }
             var ours = false
             if case .running(let dns, _) = status { ours = config.isOurs(port: port, dnsName: dns) }
@@ -272,8 +279,10 @@ public final class TailnetSharing {
     /// Blocks the main thread for at most `timeout` while the owned
     /// mappings are turned off off the main actor. Only for
     /// `applicationWillTerminate`, where a detached task might never run.
-    public func removeOwnedMappingsSynchronouslyForQuit(timeout: TimeInterval = 5) {
-        guard !owned.isEmpty, let executable = locate() else { return }
+    /// Returns false when the timeout ran out first.
+    @discardableResult
+    public func removeOwnedMappingsSynchronouslyForQuit(timeout: TimeInterval = 5) -> Bool {
+        guard !owned.isEmpty, let executable = locate() else { return true }
         let mappings = owned.sorted { $0.key < $1.key }
         let runner = runner
         let done = DispatchSemaphore(value: 0)
@@ -283,8 +292,11 @@ public final class TailnetSharing {
             }
             done.signal()
         }
-        if done.wait(timeout: .now() + timeout) == .timedOut {
+        guard quitWait(done, timeout) == .success else {
             logger.error("tailnet: quit cleanup didn't finish within \(timeout, privacy: .public) s")
+            return false
         }
+        return true
     }
+
 }

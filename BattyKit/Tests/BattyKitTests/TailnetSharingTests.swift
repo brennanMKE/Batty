@@ -209,17 +209,50 @@ struct TailnetSharingTests {
         #expect(fixture.fake.serveCalls.isEmpty)
     }
 
-    @Test func anIdenticalPreexistingMappingIsAdoptedButNeverTurnedOff() async throws {
+    @Test func anAdoptedMappingIsRefusedOnStopAndKeepsItsURL() async throws {
         let fixture = TailnetFixture()
         fixture.fake.serveOverride = TailscaleFixtures.oursOn3000
         let entry = try await fixture.entry()
         _ = await fixture.tailnet.share(entry: entry).value
         #expect(entry.tailnetURL?.absoluteString == "https://host.tailnet.ts.net:3000/")
+        #expect(entry.isTailnetAdopted)
         #expect(fixture.tailnet.ownedPorts.isEmpty)
-        _ = await fixture.tailnet.unshare(port: 3000, entry: entry).value
-        #expect(entry.tailnetURL == nil)
+        let offCommand = TailscaleArgs.serveOff(port: 3000).joined(separator: " ")
+        for reportForeign in [false, true] {
+            let off = await fixture.tailnet.unshare(port: 3000, entry: entry, reportForeign: reportForeign).value
+            #expect(throws: TailnetError.notOurs(3000)) { try off.get() }
+            #expect(entry.tailnetURL?.absoluteString == "https://host.tailnet.ts.net:3000/")
+            #expect(entry.isTailnetAdopted)
+            #expect(entry.tailnetError?.contains(offCommand) == true)
+        }
+        #expect(fixture.fake.serveCalls.isEmpty)
         fixture.store.servers.remove(id: entry.id)
         await fixture.settle(3000)
+        #expect(fixture.fake.serveCalls.isEmpty)
+    }
+
+    @Test func aServerBattySharedIsNotMarkedAdopted() async throws {
+        let fixture = TailnetFixture()
+        let entry = try await fixture.entry()
+        _ = await fixture.tailnet.share(entry: entry).value
+        #expect(entry.tailnetURL != nil)
+        #expect(!entry.isTailnetAdopted)
+        _ = await fixture.tailnet.unshare(port: 3000, entry: entry).value
+        #expect(entry.tailnetURL == nil)
+        #expect(fixture.fake.calls.last == off3000)
+    }
+
+    @Test func tailnetOffForAnAdoptedServerFailsOverXPC() async throws {
+        let fixture = TailnetFixture()
+        fixture.fake.serveOverride = TailscaleFixtures.oursOn3000
+        let entry = try await fixture.entry()
+        _ = await fixture.tailnet.share(entry: entry).value
+        let result = await fixture.store.tailnetServerForXPC(ServerTailnetRequest(port: 3000, off: true))
+        guard case .failure(.tailnet(let message)) = result else {
+            Issue.record("expected a tailnet failure, got \(result)")
+            return
+        }
+        #expect(message.contains("wasn't created by Batty"))
         #expect(fixture.fake.serveCalls.isEmpty)
     }
 
@@ -279,5 +312,75 @@ struct TailnetSharingTests {
         await fixture.tailnet.removeOwnedMappingsForQuit()
         #expect(fixture.tailnet.ownedPorts.isEmpty)
         #expect(fixture.fake.mappings.isEmpty)
+    }
+
+    @Test func quitCleanupGivesUpAfterTheTimeout() async throws {
+        let fixture = TailnetFixture()
+        let entry = try await fixture.entry()
+        _ = await fixture.tailnet.share(entry: entry).value
+        let hanging = HangingTailscaleRunner()
+        fixture.tailnet.runner = hanging
+        let recorded = TimeoutRecorder()
+        fixture.tailnet.quitWait = { _, timeout in
+            recorded.set(timeout)
+            return .timedOut
+        }
+        #expect(fixture.tailnet.removeOwnedMappingsSynchronouslyForQuit() == false)
+        #expect(recorded.value == 5)
+        var reached = hanging.entered.makeAsyncIterator()
+        #expect(await reached.next() != nil)
+        hanging.release()
+    }
+
+    @Test func quitCleanupReportsCompletion() async throws {
+        let fixture = TailnetFixture()
+        let entry = try await fixture.entry()
+        _ = await fixture.tailnet.share(entry: entry).value
+        #expect(fixture.tailnet.removeOwnedMappingsSynchronouslyForQuit())
+        #expect(fixture.fake.calls.contains(off3000))
+    }
+}
+
+nonisolated private final class TimeoutRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: TimeInterval?
+    var value: TimeInterval? { lock.withLock { _value } }
+    func set(_ newValue: TimeInterval) { lock.withLock { _value = newValue } }
+}
+
+/// A runner whose every call suspends until `release()`.
+nonisolated private final class HangingTailscaleRunner: TailscaleCommandRunning, @unchecked Sendable {
+    let entered: AsyncStream<Void>
+    private let enteredContinuation: AsyncStream<Void>.Continuation
+    private let lock = NSLock()
+    private var released = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init() {
+        (entered, enteredContinuation) = AsyncStream<Void>.makeStream()
+    }
+
+    func run(executable: URL, arguments: [String], timeout: Duration) async -> TailscaleCommandResult {
+        enteredContinuation.yield()
+        await withCheckedContinuation { continuation in
+            let resume = lock.withLock {
+                if released { return true }
+                waiters.append(continuation)
+                return false
+            }
+            if resume { continuation.resume() }
+        }
+        return TailscaleCommandResult(exitCode: 1, stderr: "released")
+    }
+
+    func release() {
+        let pending = lock.withLock {
+            released = true
+            let all = waiters
+            waiters = []
+            return all
+        }
+        pending.forEach { $0.resume() }
+        enteredContinuation.finish()
     }
 }

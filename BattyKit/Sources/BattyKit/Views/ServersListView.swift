@@ -76,7 +76,7 @@ private struct ServerRow: View {
                 }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
-                .help("Copy Tailnet URL")
+                .help(entry.isTailnetAdopted ? "Copy Tailnet URL (this mapping wasn't created by Batty)" : "Copy Tailnet URL")
                 .accessibilityIdentifier("servers.copy-tailnet-url")
             }
             rowMenu
@@ -95,16 +95,21 @@ private struct ServerRow: View {
                 Button("Show Terminal") { store.showServerTerminal(entry) }
                     .accessibilityIdentifier("servers.row.show-terminal")
             }
-            if store.tailnet.offersSharing || entry.tailnetURL != nil {
-                if entry.tailnetURL == nil {
-                    Button("Share on Tailnet") { store.shareServerOnTailnet(entry) }
-                        .disabled(entry.isTailnetBusy)
-                        .accessibilityIdentifier("servers.row.tailnet-share")
-                } else {
-                    Button("Stop Sharing on Tailnet") { store.stopSharingServerOnTailnet(entry) }
-                        .disabled(entry.isTailnetBusy)
-                        .accessibilityIdentifier("servers.row.tailnet-unshare")
-                }
+            switch ServerEntryDisplay.tailnetMenuAction(hasURL: entry.tailnetURL != nil, adopted: entry.isTailnetAdopted, offersSharing: store.tailnet.offersSharing) {
+            case .share:
+                Button("Share on Tailnet") { store.shareServerOnTailnet(entry) }
+                    .disabled(entry.isTailnetBusy)
+                    .accessibilityIdentifier("servers.row.tailnet-share")
+            case .stop:
+                Button("Stop Sharing on Tailnet") { store.stopSharingServerOnTailnet(entry) }
+                    .disabled(entry.isTailnetBusy)
+                    .accessibilityIdentifier("servers.row.tailnet-unshare")
+            case .adoptedNote:
+                Button("Shared on Tailnet outside Batty") {}
+                    .disabled(true)
+                    .accessibilityIdentifier("servers.row.tailnet-adopted")
+            case nil:
+                EmptyView()
             }
             if ServerEntryDisplay.offersStopAndRestart(kind: entry.backend.kind) {
                 Divider()

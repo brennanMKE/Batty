@@ -45,6 +45,9 @@ public final class ServerEntry {
     /// The `https://<host>.<tailnet>.ts.net[:port]/` URL while the port is
     /// served on the tailnet (`TailnetSharing`); nil otherwise.
     public internal(set) var tailnetURL: URL?
+    /// The tailnet URL is served by a mapping Batty found and didn't make,
+    /// so Batty never turns it off.
+    public internal(set) var isTailnetAdopted = false
     /// Why the last tailnet share or stop failed, in the tool's words.
     public internal(set) var tailnetError: String?
     /// True while a tailnet share or stop runs for this entry.
