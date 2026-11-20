@@ -58,9 +58,38 @@ struct AgentSkillRecipeTests {
         #expect(checked >= 10)
     }
 
-    @Test func skillNoLongerClaims1_1_0() throws {
+    @Test func skillStatesOneMinimumBattyVersionUpFront() throws {
         let markdown = try Self.skillMarkdown()
-        #expect(!markdown.contains("Authored against Batty CLI `1.1.0`"))
-        #expect(markdown.contains("Authored against Batty CLI `1.5.0`"))
+        let head = markdown.components(separatedBy: "\n").prefix(10)
+        #expect(head.contains { $0.contains("Requires Batty `1.5.0` or later") })
+        #expect(!markdown.contains("Authored against"))
+        #expect(!markdown.contains("Minimum compatible"))
+    }
+
+    @Test func skillStaysThin() throws {
+        let markdown = try Self.skillMarkdown()
+        #expect(markdown.components(separatedBy: "\n").count <= 150)
+        #expect(markdown.contains("capabilities --json"))
+        #expect(markdown.contains("agent context"))
+    }
+
+    @Test func skillHasNoGitCloneOrInstallScript() throws {
+        let markdown = try Self.skillMarkdown()
+        #expect(!markdown.contains("git clone"))
+        #expect(!markdown.contains("install.sh"))
+        #expect(!markdown.contains("Beta only"))
+    }
+
+    @Test func skillNamesTheSiteDownloadAfterAgentInstall() throws {
+        let markdown = try Self.skillMarkdown()
+        let install = try #require(markdown.range(of: "agent install"))
+        let url = try #require(markdown.range(of: CapabilitiesCommand.skillDownloadURL))
+        #expect(install.lowerBound < url.lowerBound)
+    }
+
+    @Test func skillCarriesTheWebdriverRule() throws {
+        let markdown = try Self.skillMarkdown()
+        #expect(markdown.contains("webdriver"))
+        #expect(markdown.contains("safaridriver"))
     }
 }

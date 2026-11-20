@@ -285,16 +285,13 @@ keep, what each exit code means to do next, why `--unique`, why not to re-run
 batty-beta capabilities
 ```
 
-The tail of the output (`agent skill:`) prints an install command pre-filled
-with this build's own version: a shallow clone of tag `v<cliVersion>` from
-`github.com/brennanMKE/Batty`, then `.claude/skills/batty-cli/install.sh`, which
-installs for every agent host it detects (Claude Code, Cursor, OpenCode, Codex).
-Paste that block, or preview first by adding `--dry-run` to the `install.sh`
-line. It is non-destructive: a failed clone or a tag that predates the
-installer leaves existing copies alone. The installer needs the tag to exist on
-the remote; if the clone fails, the tag for this build hasn't been pushed (or you
-are offline), and you can run `.claude/skills/batty-cli/install.sh` straight
-from this checkout instead.
+The tail of the output (`agent skill:`) names the installer. Preview, then
+install for every agent host it detects (Claude Code, Cursor, OpenCode, Codex):
+
+```sh
+batty-beta agent install --dry-run
+batty-beta agent install
+```
 
 Then, in a fresh agent session inside a Batty Pane, ask it to "open a git-status
 view and a test-watcher split in this Session and tell me when it's ready" and

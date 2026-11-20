@@ -8,14 +8,13 @@ see [`batty-cli-install.md`](batty-cli-install.md).
 some unrelated project's Pane — should install the condensed agent skill
 this doc is packaged into instead of reading this file directly:
 [`.claude/skills/batty-cli/SKILL.md`](../.claude/skills/batty-cli/SKILL.md)
-(#0403). The skill folder's own `install.sh` (#0404) detects and installs
-for Claude Code, Cursor, OpenCode, and Codex — it is not Claude-only despite
-living under `.claude/`, which is simply the skill's original authoring
-location and the one path every consumer still fetches the tagged folder
-from. This doc stays the canonical, fuller reference — the skill is a
-subset for a reader with no repo access, not a replacement — and
-`batty capabilities`'s plain-text output prints the install command
-pre-filled with the running build's own version.
+(#0403). Install it with `batty agent install` (`--dry-run` previews), which
+copies the skill that ships with the running app for Claude Code, Cursor,
+OpenCode, and Codex; without the app, download
+`https://batty.sstools.co/docs/skill/batty-cli-skill-latest.zip`. This doc
+stays the canonical, fuller reference — the skill is a subset for a reader
+with no repo access, not a replacement — and `batty capabilities`'s
+plain-text output names both install routes.
 
 ## Prerequisites
 

@@ -160,34 +160,6 @@ struct AgentSkillFlagDriftTests {
         return pairs
     }
 
-    // #0404: SKILL.md's refresh snippet no longer inlines the stage/verify/
-    // swap discipline itself — round-1/round-2 review's B1/B2 findings on
-    // that inline recipe are now enforced once, in `install.sh`, which every
-    // destination shares (see AgentSkillInstallScriptTests). What SKILL.md's
-    // own snippet still owns is the *hand-off* itself: a clone failure is reported before a tag
-    // that predates the installer is checked, which is reported before
-    // `install.sh` is ever invoked, and the "unknown" version guard never
-    // fabricates a `--branch vunknown` clone.
-    @Test func refreshSnippetInSkillMarkdownHandsOffToInstallShWithoutFabricatingATag() throws {
-        let markdown = try Self.skillMarkdown()
-        let lines = markdown.components(separatedBy: "\n")
-
-        let cloneFailureIndex = try #require(lines.firstIndex { $0.contains("clone of") && $0.contains("failed") })
-        let predatesInstallerIndex = try #require(lines.firstIndex { $0.contains("has no agent-skill installer") })
-        let invokeIndex = try #require(lines.firstIndex { $0.contains("install.sh") && $0.contains("$tmp/.claude/skills/batty-cli") && !$0.contains("[ !") })
-
-        #expect(cloneFailureIndex < predatesInstallerIndex, "SKILL.md: a clone failure must be checked before a tag is judged to predate the installer")
-        #expect(predatesInstallerIndex < invokeIndex, "SKILL.md: install.sh must not be invoked before confirming the clone actually has it")
-        // Round-3 review N1: the previous version of this assertion
-        // (`executableGuardLine.contains("-x")`) was tautological — the
-        // `#require` that produced `executableGuardLine` already filtered
-        // on `"[ ! -x"`, so this could never fail. Pinned to the exact
-        // guard line instead, which actually exercises the specific
-        // executable-bit check rather than restating how it was found.
-        #expect(lines.contains(#"elif [ ! -x "$tmp/.claude/skills/batty-cli/install.sh" ]; then"#), "SKILL.md: the installer must be checked for its executable bit specifically, not merely that the path exists")
-        #expect(!markdown.contains("--branch vunknown"), "SKILL.md: \"unknown\" must never be fabricated into a --branch argument")
-    }
-
     @Test func everyFlagTheSkillShowsExistsOnItsVerbInCapabilities() throws {
         // The embedded global-instructions prompt is prose built from code and
         // pinned by AgentGlobalInstructionsPromptTests; its "`batty capabilities`
@@ -227,6 +199,8 @@ struct AgentSkillFlagDriftTests {
             "pane split --pane",
             "notify --title",
             "capabilities --json",
+            "server start --port",
+            "agent install --dry-run",
         ]
         for pair in required {
             #expect(pairs.contains(pair), "expected to find `\(pair)` among SKILL.md's extracted invocations — its absence likely means the \"$BATTY\" normalization (or the extraction itself) silently broke")

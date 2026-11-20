@@ -41,9 +41,13 @@ struct CapabilitiesCommandTests {
         #expect(names == expected)
     }
 
-    @Test func skillInstallLinesPointAtTheBundledInstaller() {
-        let text = CapabilitiesCommand.skillInstallLines().joined(separator: "\n")
-        #expect(text.contains("agent install [--dry-run] [--project DIR]"))
+    @Test func skillInstallLinesNameAgentInstallThenTheSiteZip() throws {
+        let lines = CapabilitiesCommand.skillInstallLines()
+        let text = lines.joined(separator: "\n")
+        #expect(CapabilitiesCommand.skillDownloadURL == "https://batty.sstools.co/docs/skill/batty-cli-skill-latest.zip")
+        let installIndex = try #require(lines.firstIndex { $0.contains("agent install [--dry-run] [--project DIR]") })
+        let urlIndex = try #require(lines.firstIndex { $0.contains(CapabilitiesCommand.skillDownloadURL) })
+        #expect(installIndex < urlIndex)
         #expect(!text.contains("git clone"))
     }
 

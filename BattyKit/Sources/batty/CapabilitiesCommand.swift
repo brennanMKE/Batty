@@ -279,13 +279,17 @@ struct CapabilitiesCommand: ParsableCommand {
         return lines.joined(separator: "\n")
     }
 
-    /// Points plain-text readers at `agent install`; never on the `--json` path.
+    static let skillDownloadURL = "https://batty.sstools.co/docs/skill/batty-cli-skill-latest.zip"
+
+    /// Points plain-text readers at `agent install`, then the site's skill zip; never on the `--json` path.
     static func skillInstallLines() -> [String] {
         [
             "agent skill:",
             "  This build carries the skill and an MCP server. Install both for every detected",
             "  agent host (Claude Code, Cursor, OpenCode, Codex):",
             "    \(ServiceNames.current.cliCommandName) agent install [--dry-run] [--project DIR]",
+            "  Without the app's installer, download the skill:",
+            "    \(skillDownloadURL)",
         ]
     }
 }
