@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Docs — Batty</title>
+    <meta name="description" content="How an agent running in a Batty Pane detects Batty and drives it by CLI or MCP.">
+
+    <meta property="og:title" content="Batty Docs">
+    <meta property="og:description" content="How an agent running in a Batty Pane detects Batty and drives it by CLI or MCP.">
+    <meta property="og:url" content="https://batty.sstools.co/docs/">
+    <meta property="og:type" content="website">
+
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Batty Docs">
+    <meta name="twitter:description" content="How an agent running in a Batty Pane detects Batty and drives it by CLI or MCP.">
+
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png">
+    <link rel="icon" href="../assets/batty-icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body class="page">
+    <header class="page-header">
+        <a class="back" href="../index.html">← Batty</a>
+        <h1>Docs</h1>
+    </header>
+
+    <main class="prose docs">
+        <p class="meta">Generated from <a href="index.md">index.md</a>, which agents can read as plain Markdown.</p>
+        <p>Batty is a native macOS terminal multiplexer: a window of Sessions, each with Tabs, each Tab split into Panes. An agent running in one of its terminal Panes can drive Batty from the <code>batty</code> command-line tool or its MCP server: open Panes beside its work, run commands and wait for them, serve a page, and get the user&#x27;s attention. Everything on this page is optional. Nothing here happens unless the user or their agent asks for it, and the setup lives in Batty&#x27;s Settings.</p>
+        <h2 id="are-you-in-batty">Are you in Batty?</h2>
+        <p>Batty sets <code>BATTY_SESSION_ID</code>, <code>BATTY_TAB_ID</code> and <code>BATTY_PANE_ID</code> in every terminal Pane:</p>
+        <pre><code class="language-sh">env | grep &#x27;^BATTY&#x27;</code></pre>
+        <p>If they are set, <code>batty agent context</code> prints which Session, Tab and Pane you are in and the rules for driving Batty. Add <code>--json</code> for a machine-readable reply.</p>
+        <h2 id="mcp-or-cli">MCP or CLI</h2>
+        <p>Use the <code>batty</code> MCP tools when your host has <code>batty mcp</code> registered as an MCP server; otherwise use the <code>batty</code> CLI. Run <code>batty capabilities</code> (or <code>batty capabilities --json</code>) first to see what this Batty offers. An MCP tool&#x27;s name is its command&#x27;s verb path with underscores, so <code>batty server list</code> is the <code>server_list</code> tool. A command or tool given no Session, Tab or Pane acts on the caller&#x27;s own Pane.</p>
+        <p>In Batty Beta the command is <code>batty-beta</code>. Substitute it everywhere on this page, including the MCP server&#x27;s name.</p>
+        <h2 id="set-up-your-agent">Set up your agent</h2>
+        <p>Each of these is optional, and Settings → Advanced → Command Line and AI Agents can do the same for you. The snippets run the <code>batty</code> command, so install it from that section first; it goes in <code>/usr/local/bin</code>. <code>batty agent install</code> writes the full path to the command instead.</p>
+        <h3 id="claude-code">Claude Code</h3>
+        <p><code>batty agent install</code> sets up every agent host it finds. For Claude Code it stages the Batty plugin, with its MCP entry, skill and a SessionStart hook; for Codex, Cursor and OpenCode it adds the MCP entry and the skill:</p>
+        <pre><code class="language-sh">batty agent install</code></pre>
+        <p>Or register only the MCP server by hand:</p>
+        <pre><code class="language-sh">claude mcp add --scope user batty -- batty mcp</code></pre>
+        <h3 id="codex">Codex</h3>
+        <p>Add this to <code>~/.codex/config.toml</code>. <code>batty agent install</code> writes this marked block:</p>
+        <pre><code class="language-toml"># batty:begin — managed by `batty agent install`; edits inside this block are replaced
+[mcp_servers.batty]
+command = &quot;batty&quot;
+args = [&quot;mcp&quot;]
+env_vars = [&quot;BATTY_SESSION_ID&quot;, &quot;BATTY_TAB_ID&quot;, &quot;BATTY_PANE_ID&quot;]
+# batty:end</code></pre>
+        <h3 id="cursor">Cursor</h3>
+        <p>Merge this into <code>~/.cursor/mcp.json</code>:</p>
+        <pre><code class="language-json">{
+  &quot;mcpServers&quot; : {
+    &quot;batty&quot; : {
+      &quot;args&quot; : [
+        &quot;mcp&quot;
+      ],
+      &quot;command&quot; : &quot;batty&quot;
+    }
+  }
+}</code></pre>
+        <h3 id="opencode">OpenCode</h3>
+        <p>Merge this into <code>~/.config/opencode/opencode.json</code>:</p>
+        <pre><code class="language-json">{
+  &quot;mcp&quot; : {
+    &quot;batty&quot; : {
+      &quot;command&quot; : [
+        &quot;batty&quot;,
+        &quot;mcp&quot;
+      ],
+      &quot;enabled&quot; : true,
+      &quot;type&quot; : &quot;local&quot;
+    }
+  }
+}</code></pre>
+        <h2 id="core-verbs">Core verbs</h2>
+        <p>One example each. The MCP tool is named beside the command. For the order to use them in, see the Batty skill under More.</p>
+        <h3 id="show-status-in-a-pane">Show status in a Pane</h3>
+        <p><code>batty pane split --view git-status --unique</code> (MCP: <code>pane_split</code>) opens a Git Status Pane beside yours, or reuses the one already open. The other views are <code>process-status</code>, <code>system-metrics</code> and <code>lm-studio-dashboard</code>.</p>
+        <h3 id="run-a-command-and-wait">Run a command and wait</h3>
+        <p><code>batty tab new -c &quot;make test&quot; --wait --json</code> (MCP: <code>tab_new</code>) runs the command in a new Tab and replies when it exits, with <code>exitCode</code> and <code>waitResult</code> in the JSON.</p>
+        <h3 id="start-a-dev-server">Start a dev server</h3>
+        <p><code>batty server start --port 3000 -- npm run dev</code> (MCP: <code>server_start</code>) runs the server in a terminal Pane and adds it to the Servers list.</p>
+        <h3 id="share-a-server-that-is-already-running">Share a server that is already running</h3>
+        <p><code>batty server share --port 3000</code> (MCP: <code>server_share</code>) adds a server Batty didn&#x27;t start to the Servers list.</p>
+        <h3 id="serve-a-folder">Serve a folder</h3>
+        <p><code>batty server serve site --port 8080</code> (MCP: <code>server_serve</code>) serves a static folder. See Share a page from your project below.</p>
+        <h3 id="list-servers">List servers</h3>
+        <p><code>batty server list --json</code> (MCP: <code>server_list</code>) prints each server&#x27;s port, state and URL.</p>
+        <h3 id="get-the-user-s-attention">Get the user&#x27;s attention</h3>
+        <p><code>batty notify --title &quot;Tests passed&quot; --body &quot;Ready for review&quot;</code> (MCP: <code>notify</code>) posts a notification.</p>
+        <h3 id="set-a-reminder">Set a reminder</h3>
+        <p><code>batty session remind &quot;Check the deploy&quot; --in 30m</code> (MCP: <code>session_remind</code>) reminds the user about this Session later.</p>
+        <h2 id="viewing-pages">Viewing pages</h2>
+        <p>Batty has no web view. To look at or test a page, use the webdriver the developer has named, for example <code>safaridriver</code> (the developer runs <code>safaridriver --enable</code> once), against the localhost or tailnet URL from <code>batty server list</code>. Batty never starts a browser automation tool.</p>
+        <h2 id="share-a-page-from-your-project">Share a page from your project</h2>
+        <p>The local way for an agent to publish a web page and hand the user a link. Each step shows the CLI command and its MCP tool. This describes <code>server serve</code> as Batty 1.5.0 ships it.</p>
+        <h3 id="1-write-the-files">1. Write the files</h3>
+        <p>Write the static files (HTML, CSS, JS) into a folder in the project, for example <code>site/</code>.</p>
+        <h3 id="2-serve-the-folder">2. Serve the folder</h3>
+        <p><code>batty server serve site --port 8080</code> (MCP: <code>server_serve</code>) runs <code>photon serve &lt;abs path&gt;/site --host 127.0.0.1 --port 8080</code> in a terminal Pane, where photon prints <code>listening 127.0.0.1:8080</code>. The server appears in the Servers list.</p>
+        <p><code>photon</code> comes from PhotonHTTP, an optional tool the user installs separately; Batty doesn&#x27;t bundle it. It needs macOS 15 or later and a Swift 6.4 toolchain, and installs <code>photon</code> to <code>/usr/local/bin</code>:</p>
+        <pre><code class="language-sh">curl -fsSL https://photon-http.sstools.co/install.sh | bash
+photon --help</code></pre>
+        <p>See <a href="https://photon-http.sstools.co/docs/getting-started.md">PhotonHTTP getting started</a>. When <code>photon</code> is missing, <code>serve</code> stops before opening a Pane and prints the install command and that link.</p>
+        <h3 id="3-give-the-user-the-link">3. Give the user the link</h3>
+        <p><code>batty server list</code> (or <code>--json</code>; MCP: <code>server_list</code>) prints the <code>http://127.0.0.1:8080/</code> URL. Print it or copy it for the user.</p>
+        <h3 id="4-share-it-on-the-tailnet-only-if-asked">4. Share it on the tailnet, only if asked</h3>
+        <p>Only when the user asks to open the page from another device: <code>batty server tailnet --port 8080</code> (MCP: <code>server_tailnet</code>) runs <code>tailscale serve --bg --https=8080 http://127.0.0.1:8080</code> and prints the tailnet URL, which <code>batty server list --json</code> also shows as <code>tailnetURL</code>. The URL opens on the user&#x27;s other devices on their tailnet. It needs Tailscale with HTTPS certificates turned on. Tailnet sharing is opt-in and never automatic.</p>
+        <h3 id="5-clean-up">5. Clean up</h3>
+        <p>If you shared it, run <code>batty server tailnet --port 8080 --off</code>, then <code>batty server stop --port 8080</code> (MCP: <code>server_stop</code>). Batty removes only the tailnet mappings it added.</p>
+        <h2 id="close-what-you-open">Close what you open</h2>
+        <p>When you are done, close the Panes and Sessions you created, and only those: <code>batty pane close --pane &lt;id&gt;</code> (MCP: <code>pane_close</code>) and <code>batty session close</code> (MCP: <code>session_close</code>).</p>
+        <h2 id="global-instructions">Global instructions</h2>
+        <p>Give this prompt to your agent once, so every new session knows about Batty:</p>
+        <pre><code class="language-text">Add Batty to your global instructions, the file you read at the start of every session:
+
+- Claude Code: `~/.claude/CLAUDE.md`
+- Codex: `~/.codex/AGENTS.md`
+- OpenCode: `~/.config/opencode/AGENTS.md`
+- Cursor has no such file: show me the section below so I can paste it into Cursor&#x27;s User Rules (Cursor Settings → Rules).
+
+If the file does not exist, create it. If it already has a `## Batty` section, replace that whole section, from its heading up to the next `## ` heading or the end of the file, with the text below; do not add a second one. Change nothing else in the file. Then tell me which file you changed.
+
+```markdown
+## Batty
+
+At the start of a session, run `env | grep &#x27;^BATTY&#x27;`. If `BATTY_SESSION_ID`, `BATTY_TAB_ID` and `BATTY_PANE_ID` are set, you are running in a terminal Pane of Batty, a macOS terminal multiplexer, and can drive it:
+
+- Prefer the `batty` MCP tools (`batty-beta` in Batty Beta) when they are available (`batty mcp`, installed by `batty agent install`). Otherwise use the CLI: `batty` (or `batty-beta` in Batty Beta). Run `batty capabilities` to see the available commands.
+- Use Batty to split Panes and set reminders (`batty session remind`) when they help the user follow your work.
+- Show status in Batty Panes (`batty pane split --view git-status --unique`) rather than printing it.
+- Start dev servers with `batty server start --port N -- &lt;command&gt;` (or `batty server share --port N` if one is already running) when `batty capabilities` lists it. Don&#x27;t open a browser yourself; pass `--split` only when the user asked for a placement.
+- Preview static pages with `batty server serve &lt;dir&gt; --open`, never `python3 -m http.server`.
+- Use `batty notify` to get the user&#x27;s attention.
+- Close the Panes and Sessions you open when you are done with them.
+
+If those variables are not set, you are not in Batty; ignore this section.
+```</code></pre>
+        <h2 id="versions">Versions</h2>
+        <ul>
+            <li>1.5.0: <code>agent context</code>, <code>agent install</code>, <code>mcp</code>, <code>tab new</code>, <code>--wait</code>, <code>server</code> and the Servers list.</li>
+            <li>1.4.0: <code>session remind</code>.</li>
+            <li>1.3.0: Projects.</li>
+            <li>1.2.0: <code>pane split --view</code> with <code>--unique</code>, and <code>capabilities --json</code>.</li>
+        </ul>
+        <h2 id="more">More</h2>
+        <ul>
+            <li><a href="cli/index.html">CLI reference</a></li>
+            <li><a href="skill/batty-cli-skill-latest.zip">Batty skill</a></li>
+            <li><a href="../changelog.html">Changelog</a></li>
+            <li><a href="https://github.com/brennanMKE/Batty">Batty on GitHub</a></li>
+        </ul>
+    </main>
+
+    <footer>
+        <nav>
+            <a href="../demo.html">Demo</a>
+            <a href="../changelog.html">Changelog</a>
+            <a href="../privacy.html">Privacy</a>
+            <a href="https://github.com/brennanMKE/Batty/issues">Report an issue</a>
+        </nav>
+        <p class="copyright">© Batty contributors. Built on libghostty (Ghostty contributors, MIT) and SlidingTabs.</p>
+    </footer>
+</body>
+</html>

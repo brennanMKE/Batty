@@ -37,6 +37,7 @@ The site is served from `photon:/var/www/vhosts/batty.sstools.co/`. Deploying is
 ```bash
 python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json
 python3 -I tools/build-backgrounds-page.py --check
+python3 -I tools/build-docs-page.py --check
 python3 -I tools/check-website-hold.py
 tidy -e -q website/*.html
 git lfs ls-files        # must list the background images, not pointer stubs

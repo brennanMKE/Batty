@@ -411,6 +411,27 @@ Only the text between the `<!-- BEGIN BACKGROUND SETS … -->` /
 them by hand. `--check` also fails when the page's `og:image` isn't one of the
 catalog's thumbnails. Run it before every website deploy.
 
+## build-docs-page.py
+
+Builds the agent Docs page, `website/docs/index.html`, from the hand-written
+`website/docs/index.md`. Each `<!-- generated:<name> -->` … `<!-- /generated -->`
+region of the Markdown is first refreshed from `website/docs/snippets/<name>`
+(written by `build-agent-snippets.sh`), then the Markdown is rendered as a small
+subset (headings `#`-`###`, paragraphs, flat lists, fenced code, inline code,
+bold, links) into a page with the site's header, footer and stylesheet. Any
+other construct is an error. `--capabilities FILE` checks every `batty …`
+command, flag and MCP tool name on the page against `batty capabilities --json`.
+
+```bash
+tools/build-agent-snippets.sh                        # first, when the snippets changed
+python3 -I tools/build-docs-page.py                  # regenerate index.md's blocks and index.html
+python3 -I tools/build-docs-page.py --check          # exit 1 if either file is out of date
+python3 -I tools/build-docs-page.py --check --capabilities caps.json  # caps.json from `batty capabilities --json`
+python3 -I tools/build-docs-page-selftest.py         # self-test
+```
+
+The page lives under `docs/`, which `website/.deploy-hold` holds back until 1.5.0.
+
 ## check-website-hold.py
 
 Fails when a deployable website page links a path held back by `website/.deploy-hold` (#0681). It scans top-level `website/*.html`, plus `sitemap.xml` and `robots.txt` when present, resolving relative, root-relative and `https://batty.sstools.co/` links. The hold file is rsync `--exclude-from` format: entries anchored with a leading `/`, a trailing `/` for a directory, no wildcards or `+`/`-` prefixes.
