@@ -27,6 +27,8 @@ Pages to spot-check:
 - `/backgrounds.html` — the Background Sets page, generated from the catalog
 - `/appcast.xml` — should parse as RSS
 - `/backgrounds/catalog.json` — the built-in background catalog
+- `/docs/cli/index.html` — the CLI reference, generated from `docs/cli/capabilities.json`
+- `/docs/cli/capabilities.json` — expect `Content-Type: application/json`
 
 ## Deployment
 
@@ -39,7 +41,10 @@ python3 -I tools/check-backgrounds.py website/backgrounds/catalog.json
 python3 -I tools/build-backgrounds-page.py --check
 python3 -I tools/build-docs-page.py --check
 python3 -I tools/check-website-hold.py
+python3 -I tools/build-cli-reference.py --check
+python3 -I tools/build-cli-reference-selftest.py
 tidy -e -q website/*.html
+tidy -e -q website/docs/cli/index.html
 git lfs ls-files        # must list the background images, not pointer stubs
 ```
 
@@ -80,9 +85,12 @@ When `scripts/release.sh` produces `dist/Batty-<sha>.dmg`:
 3. Add a `<article>` to `changelog.html` summarising user-visible
    changes. Use the same id (`v0-1-0` etc.) the appcast's
    `<sparkle:releaseNotesLink>` references.
-4. Deploy the site as described in [Deployment](#deployment) (pre-deploy
+4. Regenerate the CLI reference from the release's Prod build:
+   `python3 -I tools/build-cli-reference.py --refresh-json --cli /Applications/Batty.app/Contents/Resources/bin/batty`
+   (the installed release build), then commit `website/docs/cli/`.
+5. Deploy the site as described in [Deployment](#deployment) (pre-deploy
    checks, dry run, real run, `curl -sI` checks).
-5. Attach the same DMG, as `Batty-<version>.dmg`, to the GitHub release
+6. Attach the same DMG, as `Batty-<version>.dmg`, to the GitHub release
    for the tag (`gh release create` / `gh release upload`; user-run or
    explicitly approved, see `scripts/RELEASE.md` step 10). The appcast
    enclosure keeps pointing at the website URL, not the GitHub asset.

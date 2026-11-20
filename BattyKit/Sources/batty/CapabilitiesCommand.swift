@@ -56,9 +56,7 @@ struct CapabilitiesCommand: ParsableCommand {
     nonisolated func run() throws {
         let payload = Self.buildPayload()
         if json {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            guard let data = try? encoder.encode(payload), let text = String(data: data, encoding: .utf8) else {
+            guard let text = try? Self.jsonText(payload) else {
                 fputs("batty: failed to encode capabilities as JSON\n", stderr)
                 throw ExitCode.failure
             }
@@ -66,6 +64,16 @@ struct CapabilitiesCommand: ParsableCommand {
         } else {
             Self.printPlainText(payload)
         }
+    }
+
+    static func jsonText(_ payload: CapabilitiesPayload) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(payload)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.coderInvalidValue)
+        }
+        return text
     }
 
     /// The JSON Schema dialect every verb's `inputSchema` follows (#0402),

@@ -460,3 +460,13 @@ recording: the VM tests `git archive HEAD`. Each stage re-runs alone
 ## build-agent-snippets.sh
 
 Regenerates `website/docs/snippets/`, the per-host MCP config snippets (Claude Code, Codex, Cursor, OpenCode) and the global-instructions prompt, from the same renderer `batty agent install` uses (`AgentMCPConfigSnippets`). The folder is generator-owned: files it does not produce are removed. `--check` writes nothing and exits 1 when the committed files differ. `AgentMCPConfigSnippetsSiteTests` fails until the script is re-run after a change to the entry builders, `CodexConfigBlock` or `AgentGlobalInstructionsPrompt`.
+
+## build-cli-reference.py
+
+Renders `website/docs/cli/index.md` and `website/docs/cli/index.html` from `website/docs/cli/capabilities.json`, the `batty capabilities --json` output. Three modes:
+
+- default: render both pages from the committed JSON;
+- `--check`: write nothing, exit 1 when a page differs (never builds Swift);
+- `--refresh-json` first replaces the JSON with the CLI's own stdout, byte for byte. With `--cli-version X.Y.Z` it runs `swift run` on the `batty` target with `-DBATTY_VARIANT_BETA` (every release flag on) in its own scratch path, `BattyKit/.build/cli-reference`, so it never forces a rebuild of `BattyKit/.build`; that binary reports `"unknown"`, and the script stamps the given version on that one line. With `--cli PATH` (the installed release build, at release time) the output is kept verbatim and `--cli-version` is refused.
+
+`CapabilitiesReferenceSiteTests` fails until the JSON is refreshed after any change to a verb's name, abstract, aliases, schema or annotations. `build-cli-reference-selftest.py` covers the script offline.
