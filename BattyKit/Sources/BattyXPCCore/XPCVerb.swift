@@ -162,6 +162,24 @@ public nonisolated enum XPCVerb {
     /// the user dismissed.
     public static let projectOpen = "projectOpen"
 
+    /// #0700: read-only. Lists Background Sets images from every catalog
+    /// the app has loaded, plus My Images by digest. Request payload is
+    /// `BackgroundListRequest`; the reply is `BackgroundListReply`. Never
+    /// marks the catalogs browsed, so the built-in catalog is not fetched
+    /// before the user's first Browse.
+    public static let backgroundList = "backgroundList"
+
+    /// #0700: saves a new Project. Request payload is `ProjectWriteRequest`
+    /// (no `target`); the reply is `ProjectWriteReply`. A failure reply
+    /// covers a name collision, a validation error (naming the field) and
+    /// an image that could not be fetched or copied; nothing is written.
+    public static let projectCreate = "projectCreate"
+
+    /// #0700: changes the given fields of a saved Project, then applies
+    /// them to its open Sessions as an editor save does. Request payload is
+    /// `ProjectWriteRequest` with `target`; the reply is `ProjectWriteReply`.
+    public static let projectEdit = "projectEdit"
+
     /// #0648: starts a dev server in a terminal Pane and lists it in the
     /// app-wide Servers registry (#0691), or reuses the entry already
     /// tracking that port and restarts there. Request payload is `ServerStartRequest`; the reply is

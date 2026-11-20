@@ -364,12 +364,7 @@ final class ProjectEditorViewModel {
 
     /// The draft's Theme names this Mac's catalog doesn't have.
     func unavailableThemeNames() -> [String] {
-        guard let theme = draft?.theme else { return [] }
-        var names: [String] = []
-        for name in [theme.dark, theme.light].compactMap({ $0 }) where BattyThemeCatalog.theme(named: name) == nil && !names.contains(name) {
-            names.append(name)
-        }
-        return names
+        ProjectValidator.unavailableThemeNames(draft?.theme)
     }
 
     /// Done in the Theme sheet. Guards equal values: `draft?.theme = value` is
@@ -402,115 +397,21 @@ final class ProjectEditorViewModel {
     // MARK: - Validation
 
     func validate() -> ProjectEditorValidation {
-        var result = ProjectEditorValidation()
-        guard let draft else { return result }
-        let project = draft.makeProject()
-
-        if project.name.isEmpty {
-            result.errors[.name] = String(localized: "Give the Project a name.", comment: "Project Editor validation")
-        } else if let clash = store.projects.first(where: {
-            $0.id != draft.id && $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == project.name.lowercased()
-        }) {
-            result.errors[.name] = String(localized: "Another Project is already named \u{201C}\(clash.name)\u{201D}.", comment: "Project Editor validation; names are unique ignoring case")
-        }
-
-        let rootIsUsable: Bool
-        if draft.rootNeedsChoosing {
-            result.errors[.root] = String(localized: "Batty could not tell which folder this Session works in. Choose the Project's root folder.", comment: "Project Editor validation: a captured Session with no known folder")
-            rootIsUsable = false
-        } else if project.rootPath.isEmpty {
-            result.errors[.root] = String(localized: "Choose the Project's root folder.", comment: "Project Editor validation")
-            rootIsUsable = false
-        } else if !project.rootPath.hasPrefix("/") {
-            result.errors[.root] = String(localized: "The root folder must be an absolute path.", comment: "Project Editor validation")
-            rootIsUsable = false
-        } else if !directoryExists(project.rootPath) {
-            result.errors[.root] = String(localized: "This folder does not exist.", comment: "Project Editor validation")
-            rootIsUsable = false
-        } else {
-            rootIsUsable = true
-        }
-
-        for (slot, pane) in project.layout.panes.enumerated() {
-            switch pane.kind {
-            case .terminal:
-                for (index, tab) in pane.tabs.enumerated() {
-                    checkDirectory(
-                        tab.workingDirectory, field: .tabDirectory(slot: slot, tab: index), project: project, rootIsUsable: rootIsUsable,
-                        missingFolderWarning: String(localized: "This folder does not exist yet; the Tab opens in the root folder instead.", comment: "Project Editor warning"),
-                        into: &result)
-                    if let command = tab.startupCommand, let problem = Self.commandProblem(command) {
-                        result.errors[.tabCommand(slot: slot, tab: index)] = problem
-                    }
-                    if let path = tab.background?.imagePath, let warning = Self.imageWarning(tabImageStates[path] ?? .none) {
-                        result.warnings[.tabBackground(slot: slot, tab: index)] = warning
-                    }
-                }
-                if let path = pane.background?.imagePath, let warning = Self.imageWarning(tabImageStates[path] ?? .none) {
-                    result.warnings[.paneBackground(slot: slot)] = warning
-                }
-            case .gitStatus:
-                checkDirectory(
-                    pane.repositoryPath ?? ".", field: .repository(slot: slot), project: project, rootIsUsable: rootIsUsable,
-                    missingFolderWarning: String(localized: "This folder does not exist yet; the Git Status view will not find a repository there.", comment: "Project Editor warning"),
-                    into: &result)
-            case .processStatus, .systemMetrics, .lmStudioDashboard:
-                break
-            }
-        }
-        if let warning = Self.imageWarning(backgroundImageState) {
-            result.warnings[.background] = warning
-        }
-        if let name = unavailableThemeNames().first {
-            result.warnings[.theme] = String(localized: "“\(name)” isn't available in this version of Batty. Sessions opened from this Project use the Settings Theme instead until it is. Saving keeps it.", comment: "Project Editor: the Project names a Theme this Mac doesn't have; the argument is the name")
-        }
-        for (field, note) in draft.captureNotes where result.errors[field] == nil && result.warnings[field] == nil {
-            result.warnings[field] = note
-        }
-        return result
+        guard let draft else { return ProjectEditorValidation() }
+        let projectPath = draft.background?.imagePath
+        return ProjectValidator.validate(
+            draft.makeProject(),
+            others: store.projects,
+            rootNeedsChoosing: draft.rootNeedsChoosing,
+            directoryExists: directoryExists,
+            imageState: { [backgroundImageState, tabImageStates] path in
+                path == projectPath ? backgroundImageState : tabImageStates[path] ?? .none
+            },
+            captureNotes: draft.captureNotes)
     }
 
-    private static func imageWarning(_ state: BackgroundImageState) -> String? {
-        switch state {
-        case .none, .usable:
-            nil
-        case .missing:
-            String(localized: "Image not found. Choose it again.")
-        case .rejected:
-            String(localized: "The saved image can't be used. Choose it again.")
-        }
-    }
-
-    private func checkDirectory(
-        _ relative: String,
-        field: ProjectEditorField,
-        project: Project,
-        rootIsUsable: Bool,
-        missingFolderWarning: String,
-        into result: inout ProjectEditorValidation
-    ) {
-        guard project.rootPath.hasPrefix("/") else { return }
-        guard let url = project.resolve(relative) else {
-            result.errors[field] = String(localized: "This path leaves the Project's root folder.", comment: "Project Editor validation")
-            return
-        }
-        if rootIsUsable, !directoryExists(url.path) {
-            result.warnings[field] = missingFolderWarning
-        }
-    }
-
-    /// A command is delivered line by line with control and format
-    /// characters dropped (`StartupCommandDelivery.lines(from:)`). Text that
-    /// delivery would alter is refused here rather than run differently from
-    /// what the user typed and approved.
     static func commandProblem(_ command: String) -> String? {
-        let expected = command.components(separatedBy: .newlines).filter {
-            !$0.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-        if StartupCommandDelivery.lines(from: command) != expected {
-            return String(localized: "This command contains control characters that cannot be typed into a shell.", comment: "Project Editor validation")
-        }
-        return nil
+        ProjectValidator.commandProblem(command)
     }
 
     // MARK: - Selection and navigation

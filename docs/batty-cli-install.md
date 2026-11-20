@@ -41,8 +41,8 @@ The CLI now has five execution paths:
 - Live queries and acknowledged mutations use the broker-mediated XPC
   channel: `ping`, `status`, `list`, `session info`, `session focus`,
   `session close`, `pane split`, `pane close`, `pane focus`, `pane hide`,
-  `pane show`, `tab focus`, `tab new`, `notify`, `project list` and
-  `project open`.
+  `pane show`, `tab focus`, `tab new`, `notify`, `project list`,
+  `project open`, `project create`, `project edit` and `background list`.
 - `id` (alias `whoami`) reads `BATTY_SESSION_ID`, `BATTY_PANE_ID`, and
   `BATTY_TAB_ID` from the environment without contacting the broker or app.
 - `capabilities` reads neither the environment nor the app: its verb roster
@@ -72,6 +72,9 @@ The CLI now has five execution paths:
 | `batty tab new [--pane <id>] [-c <cmd> [--wait [--timeout S]]] [--cwd <dir>] [--background] [--json]` | Open a terminal Tab in a Pane and print its id; `--wait` blocks until the command exits | XPC |
 | `batty project list [--json]` | List saved Projects: name, root, Pane count, and an `open` marker | XPC |
 | `batty project open <name> [--new] [--json]` | Open a saved Project as a Session, or focus its open Session (`--new` always opens another); waits for the user's answer when Batty asks to approve the Project's startup commands | XPC |
+| `batty project create --name <n> --path <dir> [--color\|--color-hex] [--symbol\|--symbol-name] [--theme\|--theme-dark/--theme-light] [--preset\|--layout <file\|->\|--layout-json <json>\|--from-session [--session <id>]] [--background-set <s> --background-image <t>\|--background-id <url>\|--background-digest <d>\|--background-file <path>] [--opacity 0-100] [--terminal-opacity 0-100] [--startup-command <cmd>]... [--json]` | 1.5.0 (#0700). Save a new Project; never overwrites and never approves startup commands | XPC |
+| `batty project edit <name\|id> [same options] [--no-theme] [--no-background]` | 1.5.0 (#0700). Change only the given fields; open Sessions pick up name, color, symbol, Theme and background at once, a layout at the next open | XPC |
+| `batty background list [--set <name>] [--json]` | 1.5.0 (#0700). List Background Sets images (id = full-size URL) and My Images (by digest) | XPC |
 | `batty server start --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--wait] [--timeout <s>] [--json] -- <command…>` | 1.5.0 (#0648). Run a dev server in a terminal Pane and list it in the toolbar's Servers; reuses and restarts for a port that already has one | XPC |
 | `batty server share --port <n> [--name <s>] [--url <u>] [--split right\|down] [--pane <id>] [--no-process-view] [--json]` | 1.5.0 (#0692). List a server already listening in the toolbar's Servers and open a Process Status Pane on it; Batty never signals it | XPC |
 | `batty server list [--json]` | 1.5.0. Every tracked server: id, name, port, kind, state, url | XPC |

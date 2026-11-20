@@ -5,18 +5,18 @@ import BattyXPCCore
 import Foundation
 
 /// `batty project` — the fifth noun. The CLI never reads
-/// `projects.json`; the app owns `ProjectStore` and answers both verbs over
-/// XPC. There are deliberately no `add`, `remove` or `edit` verbs: Projects
-/// are edited in the Project Editor.
+/// `projects.json`; the app owns `ProjectStore` and answers every verb over
+/// XPC. `create` and `edit` exist so an agent can save a setup for the user
+/// (user request, 2026-11-19); there is deliberately no `delete` verb.
 struct ProjectNounCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "project",
-        abstract: "List or open a saved Project.",
-        subcommands: [ProjectListCommand.self, ProjectOpenCommand.self]
+        abstract: "List, open, create or edit saved Projects.",
+        subcommands: [ProjectListCommand.self, ProjectOpenCommand.self, ProjectCreateCommand.self, ProjectEditCommand.self]
     )
 }
 
-private nonisolated func resolveAppEndpoint() throws -> NSXPCListenerEndpoint {
+nonisolated func resolveProjectAppEndpoint() throws -> NSXPCListenerEndpoint {
     switch AppConnectDance.resolveEndpoint() {
     case .failure(.brokerUnreachable):
         fputs("batty: broker unreachable\n", stderr)
@@ -66,7 +66,7 @@ struct ProjectListCommand: ParsableCommand {
     var json = false
 
     nonisolated func run() throws {
-        let endpoint = try resolveAppEndpoint()
+        let endpoint = try resolveProjectAppEndpoint()
         switch AppServiceClient.projectList(endpoint: endpoint, timeout: 3.0) {
         case .success(let reply):
             if json {
@@ -165,7 +165,7 @@ struct ProjectOpenCommand: ParsableCommand {
     }
 
     nonisolated func run() throws {
-        let endpoint = try resolveAppEndpoint()
+        let endpoint = try resolveProjectAppEndpoint()
         let timeout = TimeInterval(ProjectOpenRequest.confirmationBoundSeconds + 10)
         switch AppServiceClient.projectOpen(endpoint: endpoint, name: name, openNew: new, timeout: timeout) {
         case .success(let reply):

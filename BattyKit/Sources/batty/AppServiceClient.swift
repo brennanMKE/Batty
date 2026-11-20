@@ -291,6 +291,27 @@ nonisolated enum AppServiceClient {
         return outcome
     }
 
+    /// #0700. Read-only.
+    static func backgroundList(endpoint: NSXPCListenerEndpoint, request: BackgroundListRequest, timeout: TimeInterval) -> Outcome<BackgroundListReply> {
+        let requestPayload = try? JSONEncoder().encode(request)
+        let outcome: Outcome<BackgroundListReply> = perform(verb: XPCVerb.backgroundList, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: "backgroundList")
+        if case .success(let reply) = outcome {
+            logger.info("backgroundList -> images=\(reply.images.count, privacy: .public)")
+        }
+        return outcome
+    }
+
+    /// #0700: `projectCreate` or `projectEdit`. A hosted image may be
+    /// downloaded first, so callers pass `ProjectWriteRequest.timeoutSeconds`.
+    static func projectWrite(verb: String, request: ProjectWriteRequest, endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<ProjectWriteReply> {
+        let requestPayload = try? JSONEncoder().encode(request)
+        let outcome: Outcome<ProjectWriteReply> = perform(verb: verb, requestPayload: requestPayload, endpoint: endpoint, timeout: timeout, logLabel: verb)
+        if case .success(let reply) = outcome {
+            logger.info("\(verb, privacy: .public) -> project=\(reply.id, privacy: .public) created=\(reply.created, privacy: .public)")
+        }
+        return outcome
+    }
+
     /// The four `server` verbs (#0648) share one reply type.
     static func server(verb: String, request: some Encodable, endpoint: NSXPCListenerEndpoint, timeout: TimeInterval) -> Outcome<ServerReply> {
         let requestPayload = try? JSONEncoder().encode(request)

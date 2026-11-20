@@ -206,6 +206,9 @@ struct CapabilitiesCommand: ParsableCommand {
         // Ends a process; a second stop finds nothing running.
         "stop": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false),
         "restart": .init(readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false),
+        // Replaces the given fields: a repeat leaves the same Project, and
+        // nothing is removed in the MCP sense.
+        "edit": .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
     ]
 
     /// The explicit per-verb-path opt-in into `annotationsByArchetype` — see
@@ -229,6 +232,9 @@ struct CapabilitiesCommand: ParsableCommand {
         "tab new": "new",
         "project list": "list",
         "project open": "open",
+        "project create": "new",
+        "project edit": "edit",
+        "background list": "list",
         "id": "id",
         "notify": "notify",
         "capabilities": "capabilities",

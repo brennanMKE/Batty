@@ -24,6 +24,7 @@ struct BattyCLI: ParsableCommand {
         var commands: [ParsableCommand.Type] = [
             NewSessionCommand.self, PingCommand.self, StatusCommand.self, ListCommand.self,
             SessionNounCommand.self, PaneNounCommand.self, TabNounCommand.self, ProjectNounCommand.self,
+            BackgroundNounCommand.self,
         ]
         if flags.servers {
             commands.append(ServerNounCommand.self)

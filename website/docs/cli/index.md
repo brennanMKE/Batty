@@ -273,6 +273,112 @@ Hints: none
 | `<name>` | positional | string | yes |  |  |  | Name of the saved Project (case-insensitive). |
 | `--new` | flag | boolean | no | false |  |  | Open another Session even if one from this Project is already open. |
 
+### `batty project create`
+
+Save a new Project: its root, look, layout and background.
+
+Hints: none
+
+| Parameter | Kind | Type | Required | Default | Allowed values | Range | Description |
+|---|---|---|---|---|---|---|---|
+| `--background-digest` | option | string | no |  |  |  | A My Images image by its digest from background list. |
+| `--background-file` | option | string | no |  |  |  | A local image file, copied into the Project's background folder. |
+| `--background-id` | option | string | no |  |  |  | A Background Sets image by its id (full URL) from background list. |
+| `--background-image` | option | string | no |  |  |  | The image's title in background-set. |
+| `--background-set` | option | string | no |  |  |  | The Background Sets set of the Project's image (with background-image). |
+| `--color` | option | string | no |  | blue, orange, green, pink, teal, red, violet, amber, cyan, brown |  | A palette color. |
+| `--color-hex` | option | string | no |  |  |  | A custom color as #RRGGBB. |
+| `--from-session` | flag | boolean | no | false |  |  | Take the layout from a live Session, as Save Session as Project does. |
+| `--json` | flag | boolean | no | false |  |  | Emit JSON (id, name, rootPath, paneCount, tabCount, created, warnings, appliesOnNextOpen) instead of a sentence. |
+| `--layout` | option | string | no |  |  |  | A layout document file path, or - for standard input (not available over MCP; use layout-json). |
+| `--layout-json` | option | string | no |  |  |  | A layout document as inline JSON. A layout document is JSON: {"preset": NAME, "panes": [PANE...], "focusedPane": N} fills a preset's slots in order (omit "panes" for all terminals), or {"root": NODE} gives a tree, where NODE is a PANE or {"split": "horizontal"\|"vertical", "children": [NODE, NODE...]}. A PANE is {"kind": "terminal"\|"git-status"\|"process-status"\|"system-metrics"\|"lm-studio-dashboard", "tabs": [TAB...] (terminal only), "repository": DIR (git-status only), "background": BG, "hidden": BOOL, "activeTab": N}. A TAB is {"title", "cwd" (relative to the Project root), "command", "background": BG}. A BG is one of {"id": URL from `batty background list`}, {"set": SET, "image": TITLE}, {"digest": D (My Images)} or {"file": PATH (relative to the current folder)}, plus "opacity" and "terminalOpacity" in percent (0-100). Unknown keys are errors. |
+| `--name` | option | string | no |  |  |  | The Project's name (required unless from-session). Names are unique, ignoring case. |
+| `--no-background` | flag | boolean | no | false |  |  | Remove the Project's background. |
+| `--no-theme` | flag | boolean | no | false |  |  | Follow the Settings Theme (clears the Project's Theme). |
+| `--opacity` | option | integer | no |  |  | 0–100 | The Project image's opacity in percent. A first image gets 15; needs an image. |
+| `--path` | option | string | no |  |  |  | The Project's root folder: an absolute path to an existing directory (a relative one is resolved against the CLI's current folder). Required on create unless from-session. |
+| `--preset` | option | string | no |  | singlePane, horizontalSplit, verticalSplit, threeColumns, threeRows, mainLeftTwoRight, mainRightTwoLeft, mainTopTwoBottom, mainBottomTwoTop, twoByTwoGrid |  | A layout preset, every Pane a terminal. |
+| `--session` | option | string | no |  |  |  | The Session id for from-session. Falls back to BATTY_SESSION_ID, then the focused Session. |
+| `--startup-command` | option | array | no |  |  |  | Startup commands, one per terminal Tab in slot order. They still need the user's approval at the first open. |
+| `--symbol` | option | string | no |  | folder, terminal, code, hammer, tools, package, branch, checklist, extension, macApp, iPhoneApp, web, server, cloud, network, security, link, qrCode, chip, wireless, light, home, art, grid, craft, video, game, document, learning, chart, calendar, social, community, ai, model, map, music |  | A curated Project symbol. |
+| `--symbol-name` | option | string | no |  |  |  | Any SF Symbol name. |
+| `--terminal-opacity` | option | integer | no |  |  | 0–100 | The terminal's opacity over the background in percent. Default 100. |
+| `--theme` | option | string | no |  |  |  | A Theme for both Dark and Light appearance. |
+| `--theme-dark` | option | string | no |  |  |  | The Theme for Dark appearance. |
+| `--theme-light` | option | string | no |  |  |  | The Theme for Light appearance. |
+
+- --color and --color-hex can't be used together
+- --symbol and --symbol-name can't be used together
+- use one of --theme, --theme-dark/--theme-light and --no-theme
+- use one of --theme, --theme-dark/--theme-light and --no-theme
+- use one of --preset, --layout, --layout-json and --from-session
+- use one of --background-set/--background-image, --background-id, --background-digest, --background-file and --no-background
+- --no-background can't be used with --opacity or --terminal-opacity
+- --no-background can't be used with --opacity or --terminal-opacity
+- --background-set and --background-image go together
+- --background-set and --background-image go together
+- --session needs --from-session
+
+### `batty project edit`
+
+Change the given fields of a saved Project.
+
+Hints: idempotent
+
+| Parameter | Kind | Type | Required | Default | Allowed values | Range | Description |
+|---|---|---|---|---|---|---|---|
+| `--background-digest` | option | string | no |  |  |  | A My Images image by its digest from background list. |
+| `--background-file` | option | string | no |  |  |  | A local image file, copied into the Project's background folder. |
+| `--background-id` | option | string | no |  |  |  | A Background Sets image by its id (full URL) from background list. |
+| `--background-image` | option | string | no |  |  |  | The image's title in background-set. |
+| `--background-set` | option | string | no |  |  |  | The Background Sets set of the Project's image (with background-image). |
+| `--color` | option | string | no |  | blue, orange, green, pink, teal, red, violet, amber, cyan, brown |  | A palette color. |
+| `--color-hex` | option | string | no |  |  |  | A custom color as #RRGGBB. |
+| `--from-session` | flag | boolean | no | false |  |  | Take the layout from a live Session, as Save Session as Project does. |
+| `--json` | flag | boolean | no | false |  |  | Emit JSON (id, name, rootPath, paneCount, tabCount, created, warnings, appliesOnNextOpen) instead of a sentence. |
+| `--layout` | option | string | no |  |  |  | A layout document file path, or - for standard input (not available over MCP; use layout-json). |
+| `--layout-json` | option | string | no |  |  |  | A layout document as inline JSON. A layout document is JSON: {"preset": NAME, "panes": [PANE...], "focusedPane": N} fills a preset's slots in order (omit "panes" for all terminals), or {"root": NODE} gives a tree, where NODE is a PANE or {"split": "horizontal"\|"vertical", "children": [NODE, NODE...]}. A PANE is {"kind": "terminal"\|"git-status"\|"process-status"\|"system-metrics"\|"lm-studio-dashboard", "tabs": [TAB...] (terminal only), "repository": DIR (git-status only), "background": BG, "hidden": BOOL, "activeTab": N}. A TAB is {"title", "cwd" (relative to the Project root), "command", "background": BG}. A BG is one of {"id": URL from `batty background list`}, {"set": SET, "image": TITLE}, {"digest": D (My Images)} or {"file": PATH (relative to the current folder)}, plus "opacity" and "terminalOpacity" in percent (0-100). Unknown keys are errors. |
+| `--name` | option | string | no |  |  |  | Rename the Project. Names are unique, ignoring case. |
+| `--no-background` | flag | boolean | no | false |  |  | Remove the Project's background. |
+| `--no-theme` | flag | boolean | no | false |  |  | Follow the Settings Theme (clears the Project's Theme). |
+| `--opacity` | option | integer | no |  |  | 0–100 | The Project image's opacity in percent. A first image gets 15; needs an image. |
+| `--path` | option | string | no |  |  |  | The Project's root folder: an absolute path to an existing directory (a relative one is resolved against the CLI's current folder). Required on create unless from-session. |
+| `--preset` | option | string | no |  | singlePane, horizontalSplit, verticalSplit, threeColumns, threeRows, mainLeftTwoRight, mainRightTwoLeft, mainTopTwoBottom, mainBottomTwoTop, twoByTwoGrid |  | A layout preset, every Pane a terminal; replaces the layout, which open Sessions pick up at the next open. |
+| `--session` | option | string | no |  |  |  | The Session id for from-session. Falls back to BATTY_SESSION_ID, then the focused Session. |
+| `--startup-command` | option | array | no |  |  |  | Startup commands, one per terminal Tab in slot order. They still need the user's approval at the first open. |
+| `--symbol` | option | string | no |  | folder, terminal, code, hammer, tools, package, branch, checklist, extension, macApp, iPhoneApp, web, server, cloud, network, security, link, qrCode, chip, wireless, light, home, art, grid, craft, video, game, document, learning, chart, calendar, social, community, ai, model, map, music |  | A curated Project symbol. |
+| `--symbol-name` | option | string | no |  |  |  | Any SF Symbol name. |
+| `<target>` | positional | string | yes |  |  |  | The saved Project's name (case-insensitive) or id. |
+| `--terminal-opacity` | option | integer | no |  |  | 0–100 | The terminal's opacity over the background in percent. Default 100. |
+| `--theme` | option | string | no |  |  |  | A Theme for both Dark and Light appearance. |
+| `--theme-dark` | option | string | no |  |  |  | The Theme for Dark appearance. |
+| `--theme-light` | option | string | no |  |  |  | The Theme for Light appearance. |
+
+- --color and --color-hex can't be used together
+- --symbol and --symbol-name can't be used together
+- use one of --theme, --theme-dark/--theme-light and --no-theme
+- use one of --theme, --theme-dark/--theme-light and --no-theme
+- use one of --preset, --layout, --layout-json and --from-session
+- use one of --background-set/--background-image, --background-id, --background-digest, --background-file and --no-background
+- --no-background can't be used with --opacity or --terminal-opacity
+- --no-background can't be used with --opacity or --terminal-opacity
+- --background-set and --background-image go together
+- --background-set and --background-image go together
+- --session needs --from-session
+
+## `background`
+
+### `batty background list`
+
+List Background Sets images and My Images.
+
+Hints: read-only, idempotent
+
+| Parameter | Kind | Type | Required | Default | Allowed values | Range | Description |
+|---|---|---|---|---|---|---|---|
+| `--json` | flag | boolean | no | false |  |  | Emit JSON (images with set, title, id, source, thumbnailURL, fullURL, catalogURL, downloaded, digest; warnings). |
+| `--set` | option | string | no |  |  |  | Only this set (case-insensitive, exact). "My Images" lists My Images. |
+
 ## `server`
 
 ### `batty server start`

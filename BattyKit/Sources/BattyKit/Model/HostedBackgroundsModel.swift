@@ -154,6 +154,43 @@ final class HostedBackgroundsModel {
         await reconcileAvailability()
     }
 
+    /// `batty background list` and `project create`/`edit`: cached copies,
+    /// then a check of the due catalogs. Unlike `browseAppeared` it never
+    /// marks Browse as opened, so the built-in catalog is not fetched before
+    /// the user's first Browse.
+    func catalogsForCLI() async {
+        await loadCachedStates()
+        await refreshDue(catalogURLs)
+        await reconcileAvailability()
+    }
+
+    /// A loaded image by set name and title, both case-insensitive and exact.
+    func hostedImage(set: String, title: String) -> CLIOutcome<HostedBackgroundImage> {
+        let sets = catalogs.compactMap(\.catalog).flatMap(\.sets).filter { $0.name.lowercased() == set.lowercased() }
+        guard !sets.isEmpty else {
+            let names = catalogs.compactMap(\.catalog).flatMap(\.sets).map(\.name)
+            return .failure("no Background Set named \"\(set)\"" + (names.isEmpty ? "; open Background Sets in Batty once to load them" : "; sets: " + names.joined(separator: ", ")))
+        }
+        let matches = sets.flatMap(\.images).filter { $0.title.lowercased() == title.lowercased() }
+        switch matches.count {
+        case 1:
+            return .success(matches[0])
+        case 0:
+            return .failure("no image titled \"\(title)\" in \"\(set)\"; titles: " + sets.flatMap(\.images).map(\.title).joined(separator: ", "))
+        default:
+            return .failure("more than one image is titled \"\(title)\" in \"\(set)\"; use --background-id with one of " + matches.map(\.full.absoluteString).joined(separator: ", "))
+        }
+    }
+
+    /// A loaded image by its full-size URL. Only a URL from a loaded
+    /// catalog is accepted, so the CLI never downloads an arbitrary URL.
+    func hostedImage(id: String) -> CLIOutcome<HostedBackgroundImage> {
+        if let image = catalogs.compactMap(\.catalog).flatMap(\.allImages).first(where: { $0.full.absoluteString == id }) {
+            return .success(image)
+        }
+        return .failure("no Background Sets image has the id \"\(id)\"; run `batty background list` to see the ids")
+    }
+
     var isCheckingAny: Bool {
         isRefreshingAll || catalogs.contains(where: \.isChecking)
     }

@@ -135,7 +135,8 @@ nonisolated struct MCPToolCatalog: Sendable {
 
     /// Validates a `tools/call`'s arguments and builds the argv for the verb:
     /// options as `--long=value`, boolean flags only when true, an enum-flag
-    /// as its own spelling, `--json` when available, the positional (each element
+    /// as its own spelling, an array option as one `--long=value` per element,
+    /// `--json` when available, the positional (each element
     /// of an array positional as its own argument) last after `--`.
     func arguments(forToolName name: String, callArguments: [String: MCPJSONValue]) throws(MCPArgumentError) -> [String] {
         guard let verb = verb(forToolName: name) else { throw .unknownArgument(name) }
@@ -160,7 +161,11 @@ nonisolated struct MCPToolCatalog: Sendable {
                     positional = [value.argumentText]
                 }
             case .option:
-                argv.append("\(Self.longName(property))=\(value.argumentText)")
+                if case let .array(elements) = value {
+                    argv += elements.map { "\(Self.longName(property))=\($0.argumentText)" }
+                } else {
+                    argv.append("\(Self.longName(property))=\(value.argumentText)")
+                }
             case .flag:
                 if case let .bool(isSet) = value {
                     if isSet { argv.append(Self.longName(property)) }

@@ -84,3 +84,95 @@ public nonisolated struct ProjectOpenReply: Codable, Sendable, Equatable {
         self.created = created
     }
 }
+
+/// `batty project create` (no `target`) and `batty project edit <target>`.
+/// A nil field keeps the stored value on edit and takes the default on
+/// create. There is deliberately no field that approves startup commands.
+public nonisolated struct ProjectWriteRequest: Codable, Sendable, Equatable {
+    public enum LayoutSource: Codable, Sendable, Equatable {
+        case preset(String)
+        case document(ProjectLayoutDocument)
+        /// The Session to capture; nil is the focused Session.
+        case fromSession(UUID?)
+    }
+
+    public enum BackgroundChoice: Codable, Sendable, Equatable {
+        case hosted(set: String, title: String)
+        case hostedID(String)
+        case myImage(digest: String)
+        /// An absolute path; the CLI resolves relative ones.
+        case file(String)
+        case none
+    }
+
+    /// Edit only: the Project's name or UUID.
+    public var target: String?
+    public var name: String?
+    public var rootPath: String?
+    public var color: String?
+    public var colorHex: String?
+    public var symbol: String?
+    public var symbolName: String?
+    public var themeDark: String?
+    public var themeLight: String?
+    public var clearTheme: Bool
+    public var layout: LayoutSource?
+    public var background: BackgroundChoice?
+    public var imageOpacityPercent: Int?
+    public var terminalOpacityPercent: Int?
+    public var startupCommands: [String]?
+    public var callerSessionID: UUID?
+
+    /// A hosted image may need downloading before the reply.
+    public static let timeoutSeconds = 90
+
+    public init(
+        target: String? = nil, name: String? = nil, rootPath: String? = nil,
+        color: String? = nil, colorHex: String? = nil, symbol: String? = nil, symbolName: String? = nil,
+        themeDark: String? = nil, themeLight: String? = nil, clearTheme: Bool = false,
+        layout: LayoutSource? = nil, background: BackgroundChoice? = nil,
+        imageOpacityPercent: Int? = nil, terminalOpacityPercent: Int? = nil,
+        startupCommands: [String]? = nil, callerSessionID: UUID? = nil
+    ) {
+        self.target = target
+        self.name = name
+        self.rootPath = rootPath
+        self.color = color
+        self.colorHex = colorHex
+        self.symbol = symbol
+        self.symbolName = symbolName
+        self.themeDark = themeDark
+        self.themeLight = themeLight
+        self.clearTheme = clearTheme
+        self.layout = layout
+        self.background = background
+        self.imageOpacityPercent = imageOpacityPercent
+        self.terminalOpacityPercent = terminalOpacityPercent
+        self.startupCommands = startupCommands
+        self.callerSessionID = callerSessionID
+    }
+}
+
+public nonisolated struct ProjectWriteReply: Codable, Sendable, Equatable {
+    public let id: UUID
+    public let name: String
+    public let rootPath: String
+    public let paneCount: Int
+    public let tabCount: Int
+    public let created: Bool
+    public let warnings: [String]
+    /// Changed fields an open Session picks up only the next time the
+    /// Project opens (today only `layout`).
+    public let appliesOnNextOpen: [String]
+
+    public init(id: UUID, name: String, rootPath: String, paneCount: Int, tabCount: Int, created: Bool, warnings: [String], appliesOnNextOpen: [String]) {
+        self.id = id
+        self.name = name
+        self.rootPath = rootPath
+        self.paneCount = paneCount
+        self.tabCount = tabCount
+        self.created = created
+        self.warnings = warnings
+        self.appliesOnNextOpen = appliesOnNextOpen
+    }
+}

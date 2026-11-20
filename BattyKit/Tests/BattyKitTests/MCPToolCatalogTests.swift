@@ -298,4 +298,21 @@ struct MCPToolCatalogTests {
             try catalog().arguments(forToolName: "pane_show", callArguments: [:])
         }
     }
+
+    // MARK: - #0700
+
+    @Test func anArrayOptionRepeatsTheFlagPerElement() throws {
+        let argv = try catalog().arguments(forToolName: "project_create", callArguments: [
+            "name": .string("Demo"), "path": .string("/tmp"),
+            "startup-command": .array([.string("npm run dev"), .string("ls -la")]),
+        ])
+        #expect(argv.filter { $0.hasPrefix("--startup-command=") } == ["--startup-command=npm run dev", "--startup-command=ls -la"])
+        let parsed = try ProjectCreateCommand.parse(Array(argv.dropFirst(2)))
+        #expect(parsed.options.startupCommand == ["npm run dev", "ls -la"])
+    }
+
+    @Test func catalogIncludesProjectCreateEditAndBackgroundList() {
+        let names = Set(catalog(Self.flagOff).tools.map(\.name))
+        #expect(names.isSuperset(of: ["project_create", "project_edit", "background_list"]))
+    }
 }

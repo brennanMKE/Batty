@@ -37,10 +37,15 @@ preserving:
 
 So the noun set is **`session`, `pane`, `tab`, `window`** (+ app-level verbs),
 plus **`project`**, a deliberate fifth noun approved with the Projects design
-on 2026-10-12 (#0469, built in #0477). `project` has two verbs, `list` and
-`open`, and ships in both `batty` and `batty-beta` from 1.3.0. There are no
-`project add`, `remove` or `edit` verbs; Projects are edited in the Project
-Editor.
+on 2026-10-12 (#0469, built in #0477). `project` has `list` and `open`,
+shipped in both `batty` and `batty-beta` from 1.3.0, and from 1.5.0 `create`
+and `edit` (#0700). The 2026-10-12 decision that Projects are edited only in
+the Project Editor was reversed at the user's request on 2026-11-19, so an
+agent can save a setup for the user; both verbs use the editor's validation,
+and neither approves startup commands. There is still no `delete` verb.
+**`background`** is a noun with one read-only verb, `list` (#0700, 1.5.0): the
+Background Sets images (by their full-size URL) and My Images (by digest) a
+Project can use.
 **`agent`** is a deliberate sixth noun, scoped to agent integration (#0647, ships in 1.5.0). It has two verbs: `install`, which
 installs the bundled skill, the MCP server entry and optionally a project
 snippet, so it is not named `mcp install`; and `context` (#0661), which prints

@@ -17,7 +17,7 @@ struct ProjectCLITests {
     @Test func theTreeContainsTheProjectNounWithListAndOpen() throws {
         let noun = try #require(BattyCLI.configuration.subcommands.first { $0.configuration.commandName == "project" })
         #expect(noun is ProjectNounCommand.Type)
-        #expect(noun.configuration.subcommands.map { $0.configuration.commandName } == ["list", "open"])
+        #expect(noun.configuration.subcommands.map { $0.configuration.commandName } == ["list", "open", "create", "edit"])
     }
 
     @Test func theShippedConfigurationContainsTheProjectNoun() {
@@ -164,5 +164,118 @@ struct ProjectCLITests {
         #expect(object["sessionID"] as? String == session.uuidString)
         #expect(object["paneID"] as? String == pane.uuidString)
         #expect(object["created"] as? Bool == true)
+    }
+
+    // MARK: - create and edit (#0700)
+
+    private func validationFails(_ type: any ParsableCommand.Type, _ arguments: [String]) -> Bool {
+        do { _ = try type.parseAsRoot(arguments); return false } catch { return true }
+    }
+
+    @Test func theTreeContainsCreateAndEdit() {
+        #expect(verbNames().isSuperset(of: ["project create", "project edit"]))
+    }
+
+    @Test func createParsesTheFullSynopsis() throws {
+        let command = try ProjectCreateCommand.parse([
+            "--name", "Demo", "--path", "/tmp/x", "--color", "green", "--symbol", "web", "--theme", "Batty Dark",
+            "--preset", "twoByTwoGrid", "--background-set", "Deep Space", "--background-image", "Nebula",
+            "--opacity", "20", "--terminal-opacity", "90", "--startup-command", "ls", "--json",
+        ])
+        let request = try command.options.request(target: nil, cwd: "/work", environment: [:], standardInput: .nullDevice)
+        #expect(request.name == "Demo" && request.rootPath == "/tmp/x" && request.color == "green" && request.symbol == "web")
+        #expect(request.themeDark == "Batty Dark" && request.themeLight == "Batty Dark")
+        #expect(request.layout == .preset("twoByTwoGrid"))
+        #expect(request.background == .hosted(set: "Deep Space", title: "Nebula"))
+        #expect(request.imageOpacityPercent == 20 && request.terminalOpacityPercent == 90)
+        #expect(request.startupCommands == ["ls"])
+        #expect(command.options.json)
+    }
+
+    @Test func createNeedsNameAndPathWithoutFromSession() {
+        #expect(validationFails(ProjectCreateCommand.self, ["--name", "Demo"]))
+        #expect(validationFails(ProjectCreateCommand.self, ["--path", "/tmp"]))
+        #expect(!validationFails(ProjectCreateCommand.self, ["--from-session"]))
+    }
+
+    @Test func colorAndColorHexAreExclusive() {
+        #expect(validationFails(ProjectCreateCommand.self, ["--name", "A", "--path", "/tmp", "--color", "red", "--color-hex", "#112233"]))
+    }
+
+    @Test func layoutSourcesAreExclusive() {
+        #expect(validationFails(ProjectCreateCommand.self, ["--name", "A", "--path", "/tmp", "--preset", "singlePane", "--layout-json", "{}"]))
+        #expect(validationFails(ProjectCreateCommand.self, ["--name", "A", "--path", "/tmp", "--layout", "-", "--from-session"]))
+    }
+
+    @Test func imageSourcesAreExclusive() {
+        #expect(validationFails(ProjectCreateCommand.self, ["--name", "A", "--path", "/tmp", "--background-id", "x", "--background-digest", "y"]))
+        #expect(validationFails(ProjectCreateCommand.self, ["--name", "A", "--path", "/tmp", "--background-file", "x", "--no-background"]))
+    }
+
+    @Test func noBackgroundWithOpacityIsAnError() {
+        #expect(validationFails(ProjectEditCommand.self, ["Demo", "--no-background", "--opacity", "10"]))
+    }
+
+    @Test func opacityAbove100IsAValidationError() {
+        #expect(validationFails(ProjectEditCommand.self, ["Demo", "--opacity", "101"]))
+        #expect(!validationFails(ProjectEditCommand.self, ["Demo", "--opacity", "100"]))
+    }
+
+    @Test func negativeTerminalOpacityIsAValidationError() {
+        #expect(validationFails(ProjectEditCommand.self, ["Demo", "--terminal-opacity=-1"]))
+    }
+
+    @Test func backgroundSetRequiresBackgroundImage() {
+        #expect(validationFails(ProjectEditCommand.self, ["Demo", "--background-set", "Deep Space"]))
+        #expect(validationFails(ProjectEditCommand.self, ["Demo", "--background-image", "Nebula"]))
+    }
+
+    @Test func sessionRequiresFromSession() {
+        #expect(validationFails(ProjectEditCommand.self, ["Demo", "--session", UUID().uuidString, "--color", "red"]))
+        #expect(!validationFails(ProjectEditCommand.self, ["Demo", "--session", UUID().uuidString, "--from-session"]))
+    }
+
+    @Test func relativePathResolvesAgainstTheCwd() throws {
+        #expect(ProjectWriteOptions.resolvedPath("site/../app", cwd: "/work") == "/work/app")
+        #expect(ProjectWriteOptions.resolvedPath("/abs", cwd: "/work") == "/abs")
+        let command = try ProjectCreateCommand.parse(["--name", "A", "--path", "repo", "--background-file", "img.png"])
+        let request = try command.options.request(target: nil, cwd: "/work", environment: [:], standardInput: .nullDevice)
+        #expect(request.rootPath == "/work/repo")
+        #expect(request.background == .file("/work/img.png"))
+    }
+
+    @Test func layoutDashReadsTheGivenHandle() throws {
+        let pipe = Pipe()
+        pipe.fileHandleForWriting.write(Data(#"{"preset":"horizontalSplit","panes":[{"kind":"terminal"},{"kind":"git-status","background":null}]}"#.utf8))
+        try pipe.fileHandleForWriting.close()
+        let command = try ProjectCreateCommand.parse(["--name", "A", "--path", "/tmp", "--layout", "-"])
+        let request = try command.options.request(target: nil, cwd: "/work", environment: [:], standardInput: pipe.fileHandleForReading)
+        guard case .document(let document)? = request.layout else { Issue.record("no document"); return }
+        #expect(document.preset == "horizontalSplit" && document.panes?.count == 2)
+    }
+
+    @Test func editNeedsAtLeastOneField() {
+        #expect(validationFails(ProjectEditCommand.self, ["Demo"]))
+        #expect(validationFails(ProjectEditCommand.self, ["Demo", "--json"]))
+        #expect(!validationFails(ProjectEditCommand.self, ["Demo", "--no-theme"]))
+    }
+
+    @Test func startupCommandRepeats() throws {
+        let command = try ProjectCreateCommand.parse(["--name", "A", "--path", "/tmp", "--startup-command", "a", "--startup-command", "b"])
+        #expect(command.options.startupCommand == ["a", "b"])
+    }
+
+    @Test func badLayoutJSONIsARequestFailureNamingThePath() throws {
+        let command = try ProjectCreateCommand.parse(["--name", "A", "--path", "/tmp", "--layout-json", #"{"preset":"singlePane","panes":[{"kind":"terminal","tabz":[]}]}"#])
+        #expect(throws: ProjectWriteCLIError("panes[0].tabz: unknown key")) {
+            try command.options.request(target: nil, cwd: "/work", environment: [:], standardInput: .nullDevice)
+        }
+    }
+
+    @Test func callerSessionComesFromTheEnvironment() throws {
+        let id = UUID()
+        let command = try ProjectCreateCommand.parse(["--from-session"])
+        let request = try command.options.request(target: nil, cwd: "/", environment: ["BATTY_SESSION_ID": id.uuidString], standardInput: .nullDevice)
+        #expect(request.layout == .fromSession(nil) && request.callerSessionID == id)
     }
 }

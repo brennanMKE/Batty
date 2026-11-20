@@ -258,6 +258,72 @@ struct CapabilitiesInputSchemaTests {
         #expect(ProjectOpenCommand.capabilitiesInputSchema.properties["name"]?.required == true)
     }
 
+    @Test func projectCreateCommandSchemaMatchesStoredProperties() throws {
+        let instance = try ProjectCreateCommand.parse(["--name", "A", "--path", "/tmp"])
+        let expected = wrappedPropertyNames(of: instance).union(wrappedPropertyNames(of: instance.options))
+        #expect(Set(ProjectCreateCommand.capabilitiesInputSchema.properties.keys) == Set(expected.map(kebabCase)))
+        assertNamesAreInvocable(ProjectCreateCommand.capabilitiesInputSchema, helpMessage: ProjectCreateCommand.helpMessage())
+    }
+
+    @Test func projectEditCommandSchemaMatchesStoredProperties() throws {
+        let instance = try ProjectEditCommand.parse(["Demo", "--color", "red"])
+        let expected = wrappedPropertyNames(of: instance).union(wrappedPropertyNames(of: instance.options))
+        #expect(Set(ProjectEditCommand.capabilitiesInputSchema.properties.keys) == Set(expected.map(kebabCase)))
+        assertNamesAreInvocable(ProjectEditCommand.capabilitiesInputSchema, helpMessage: ProjectEditCommand.helpMessage())
+        #expect(ProjectEditCommand.capabilitiesInputSchema.required == ["target"])
+    }
+
+    @Test func backgroundListCommandSchemaMatchesStoredProperties() throws {
+        let instance = try BackgroundListCommand.parse([])
+        assertSchemaMatchesStoredProperties(instance, schema: BackgroundListCommand.capabilitiesInputSchema)
+        assertNamesAreInvocable(BackgroundListCommand.capabilitiesInputSchema, helpMessage: BackgroundListCommand.helpMessage())
+    }
+
+    /// Every pair `validateCommon` rejects is a stated conflict, and every
+    /// stated conflict is rejected by parsing.
+    @Test func projectWriteConflictsCoverEveryValidateRule() throws {
+        let values: [String: [String]] = [
+            "color": ["--color", "red"], "color-hex": ["--color-hex", "#112233"], "symbol": ["--symbol", "web"],
+            "symbol-name": ["--symbol-name", "star"], "theme": ["--theme", "X"], "theme-dark": ["--theme-dark", "X"],
+            "theme-light": ["--theme-light", "X"], "no-theme": ["--no-theme"], "preset": ["--preset", "singlePane"],
+            "layout": ["--layout", "-"], "layout-json": ["--layout-json", "{}"], "from-session": ["--from-session"],
+            "background-set": ["--background-set", "S", "--background-image", "T"], "background-id": ["--background-id", "x"],
+            "background-digest": ["--background-digest", "d"], "background-file": ["--background-file", "f"],
+            "no-background": ["--no-background"], "opacity": ["--opacity", "10"], "terminal-opacity": ["--terminal-opacity", "10"],
+            "session": ["--session", UUID().uuidString],
+        ]
+        let conflicts = ProjectEditCommand.capabilitiesInputSchema.conflicts
+        for conflict in conflicts where conflict.kind == .mutuallyExclusive {
+            let parameters = try #require(conflict.parameters)
+            for (i, a) in parameters.enumerated() {
+                for b in parameters[(i + 1)...] {
+                    let arguments = ["Demo"] + (values[a] ?? []) + (values[b] ?? [])
+                    #expect(throws: (any Error).self, "\(a) with \(b)") { _ = try ProjectEditCommand.parseAsRoot(arguments) }
+                }
+            }
+        }
+        for conflict in conflicts where conflict.kind == .requires {
+            let parameter = try #require(conflict.parameter)
+            let flags = parameter == "background-set" ? ["--background-set", "S"] : parameter == "background-image" ? ["--background-image", "T"] : (values[parameter] ?? [])
+            #expect(throws: (any Error).self, "\(parameter) alone") { _ = try ProjectEditCommand.parseAsRoot(["Demo", "--color", "red"] + flags) }
+        }
+        #expect(conflicts.contains { $0.parameters == ["color", "color-hex"] })
+        #expect(conflicts.contains { $0.parameter == "session" && $0.requiresParameter == "from-session" })
+    }
+
+    @Test func editArchetypeIsIdempotentAndNotDestructive() {
+        let edit = CapabilitiesCommand.annotationsByArchetype["edit"]
+        #expect(edit == .init(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false))
+        #expect(CapabilitiesCommand.leafArchetypeByVerbPath["project edit"] == "edit")
+        #expect(CapabilitiesCommand.leafArchetypeByVerbPath["project create"] == "new")
+        #expect(CapabilitiesCommand.leafArchetypeByVerbPath["background list"] == "list")
+    }
+
+    @Test func presetEnumMatchesProjectVocabulary() {
+        #expect(ProjectCreateCommand.capabilitiesInputSchema.properties["preset"]?.enumValues == ProjectVocabulary.presetNames)
+        #expect(ProjectCreateCommand.capabilitiesInputSchema.properties["opacity"]?.maximum == 100)
+    }
+
     // MARK: - Every leaf command conforms (parameter-roster analog of
     // #0384's verb-roster derivation)
 

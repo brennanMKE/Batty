@@ -403,6 +403,56 @@ batty project open "My Project" --json
 - A Session opened this way emits the same `session_created` /
   `session_focused` watch events as the GUI, with `fromCli: true`.
 
+## Setting up a Project for the user
+
+From 1.5.0 (#0700) an agent can save a Project, so the user can reopen the
+setup later. Nothing opens until `project open`.
+
+```bash
+batty background list --json        # {"images":[{"set","title","id","downloaded",...}],"warnings":[]}
+batty project create --name Web --path ~/Developer/web --layout-json '{
+  "preset": "mainLeftTwoRight",
+  "panes": [
+    {"kind": "terminal", "tabs": [{"title": "server", "cwd": "web", "command": "npm run dev"}, {"cwd": "."}]},
+    {"kind": "git-status", "repository": "."},
+    {"kind": "process-status"}
+  ]}' --background-id "<id from background list>" --opacity 20
+batty project open Web
+```
+
+- **The layout document** is either `{"preset", "panes", "focusedPane"}`,
+  where `preset` is a `PaneLayout` name and `panes` fills its slots in order
+  (omit `panes` for all terminals), or `{"root"}`, a tree of
+  `{"split": "horizontal"|"vertical", "children": [...]}` nodes whose leaves
+  are Panes. A Pane is `{"kind", "tabs", "repository", "background",
+  "hidden", "activeTab"}` with `kind` one of `terminal`, `git-status`,
+  `process-status`, `system-metrics`, `lm-studio-dashboard`; only a terminal
+  Pane has `tabs` (default one Tab at `.`) and only `git-status` has
+  `repository`. A Tab is `{"title", "cwd", "command", "background"}`; `cwd`
+  is relative to the Project root. A background is one of `{"id"}` (a
+  Background Sets URL), `{"set", "image"}`, `{"digest"}` (My Images) or
+  `{"file"}` (relative to the caller's folder), plus `opacity` and
+  `terminalOpacity` in percent. **Unknown keys are errors**, named by their
+  path (`panes[0].tabs[0].comand: unknown key`), so a typo never saves.
+- `--layout FILE` and `--layout -` (standard input) take the same document.
+  Over MCP there is no standard input, so use `layout-json`.
+- **Opacity** is a whole percent from 0 to 100. `--opacity` is the image's
+  opacity and needs an image; a first image gets 15, and replacing an image
+  keeps its opacity. `--terminal-opacity` defaults to 100.
+- Errors exit `4` and name the field; nothing is saved. Warnings (a Tab
+  folder that doesn't exist yet, an unknown Theme) go to stderr, or
+  `warnings` in `--json`, and don't stop the save. A name already in use,
+  ignoring case, is an error.
+- `project edit <name>` changes only the flags given. Name, color, symbol,
+  Theme and the Project background reach open Sessions at once; a layout
+  change applies the next time the Project opens (`appliesOnNextOpen:
+  ["layout"]`).
+- **Startup commands still need the user's approval** at the first
+  `project open`. Neither verb can approve them.
+- `background list` never makes Batty fetch the built-in catalog before the
+  user has opened Background Sets once. Until then it lists only a saved
+  copy, or exits `4` asking the user to open Background Sets.
+
 ## Knowing you are in Batty: `agent context`
 
 `batty agent context [--json]` prints which Session, Tab and Pane you are in,

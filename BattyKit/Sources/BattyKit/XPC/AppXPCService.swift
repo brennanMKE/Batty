@@ -514,6 +514,50 @@ nonisolated final class AppXPCService: NSObject, AppServiceProtocol {
                 logger.info("perform projectList -> projects=\(reply.projects.count, privacy: .public)")
                 pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
             }
+        case XPCVerb.backgroundList:
+            Task { @MainActor [pendingRequests, storeProvider] in
+                let store = storeProvider()
+                let request = decoded.payload.flatMap { try? JSONDecoder().decode(BackgroundListRequest.self, from: $0) } ?? BackgroundListRequest()
+                switch await store.backgroundListForXPC(request) {
+                case .success(let reply):
+                    guard let replyData = try? JSONEncoder().encode(reply) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode background list reply")))
+                        return
+                    }
+                    logger.info("perform backgroundList -> images=\(reply.images.count, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .failure(let message):
+                    logger.error("perform backgroundList: \(message, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: message)))
+                }
+            }
+        case XPCVerb.projectCreate, XPCVerb.projectEdit:
+            let verb = decoded.verb
+            Task { @MainActor [pendingRequests, storeProvider] in
+                let store = storeProvider()
+                guard let payloadData = decoded.payload,
+                      let request = try? JSONDecoder().decode(ProjectWriteRequest.self, from: payloadData)
+                else {
+                    logger.error("perform \(verb, privacy: .public): malformed or missing request payload")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "malformed project \(verb == XPCVerb.projectCreate ? "create" : "edit") request")))
+                    return
+                }
+                let result = verb == XPCVerb.projectCreate
+                    ? await store.createProjectForXPC(request)
+                    : await store.editProjectForXPC(request)
+                switch result {
+                case .success(let reply):
+                    guard let replyData = try? JSONEncoder().encode(reply) else {
+                        pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: "failed to encode project write reply")))
+                        return
+                    }
+                    logger.info("perform \(verb, privacy: .public) -> project=\(reply.id, privacy: .public) created=\(reply.created, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: true, payload: replyData)))
+                case .failure(let message):
+                    logger.error("perform \(verb, privacy: .public): \(message, privacy: .public)")
+                    pendingRequests.resolve(requestID, with: Self.encode(XPCResponse(ok: false, error: message)))
+                }
+            }
         case XPCVerb.projectOpen:
             Task { @MainActor [pendingRequests, storeProvider, clock] in
                 let store = storeProvider()

@@ -1047,6 +1047,880 @@
       "name" : "project open"
     },
     {
+      "abstract" : "Save a new Project: its root, look, layout and background.",
+      "aliases" : [
+
+      ],
+      "annotations" : {
+        "destructiveHint" : false,
+        "idempotentHint" : false,
+        "openWorldHint" : false,
+        "readOnlyHint" : false
+      },
+      "inputSchema" : {
+        "conflicts" : [
+          {
+            "description" : "--color and --color-hex can't be used together",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "color",
+              "color-hex"
+            ]
+          },
+          {
+            "description" : "--symbol and --symbol-name can't be used together",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "symbol",
+              "symbol-name"
+            ]
+          },
+          {
+            "description" : "use one of --theme, --theme-dark/--theme-light and --no-theme",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "theme",
+              "theme-dark",
+              "no-theme"
+            ]
+          },
+          {
+            "description" : "use one of --theme, --theme-dark/--theme-light and --no-theme",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "theme",
+              "theme-light",
+              "no-theme"
+            ]
+          },
+          {
+            "description" : "use one of --preset, --layout, --layout-json and --from-session",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "preset",
+              "layout",
+              "layout-json",
+              "from-session"
+            ]
+          },
+          {
+            "description" : "use one of --background-set/--background-image, --background-id, --background-digest, --background-file and --no-background",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "background-set",
+              "background-id",
+              "background-digest",
+              "background-file",
+              "no-background"
+            ]
+          },
+          {
+            "description" : "--no-background can't be used with --opacity or --terminal-opacity",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "no-background",
+              "opacity"
+            ]
+          },
+          {
+            "description" : "--no-background can't be used with --opacity or --terminal-opacity",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "no-background",
+              "terminal-opacity"
+            ]
+          },
+          {
+            "allowsOmission" : false,
+            "description" : "--background-set and --background-image go together",
+            "kind" : "requires",
+            "parameter" : "background-set",
+            "requiresParameter" : "background-image"
+          },
+          {
+            "allowsOmission" : false,
+            "description" : "--background-set and --background-image go together",
+            "kind" : "requires",
+            "parameter" : "background-image",
+            "requiresParameter" : "background-set"
+          },
+          {
+            "allowsOmission" : false,
+            "description" : "--session needs --from-session",
+            "kind" : "requires",
+            "parameter" : "session",
+            "requiresParameter" : "from-session"
+          }
+        ],
+        "properties" : {
+          "background-digest" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A My Images image by its digest from background list.",
+            "names" : [
+              "--background-digest"
+            ],
+            "type" : "string"
+          },
+          "background-file" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A local image file, copied into the Project's background folder.",
+            "names" : [
+              "--background-file"
+            ],
+            "type" : "string"
+          },
+          "background-id" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A Background Sets image by its id (full URL) from background list.",
+            "names" : [
+              "--background-id"
+            ],
+            "type" : "string"
+          },
+          "background-image" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The image's title in background-set.",
+            "names" : [
+              "--background-image"
+            ],
+            "type" : "string"
+          },
+          "background-set" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Background Sets set of the Project's image (with background-image).",
+            "names" : [
+              "--background-set"
+            ],
+            "type" : "string"
+          },
+          "color" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A palette color.",
+            "enum" : [
+              "blue",
+              "orange",
+              "green",
+              "pink",
+              "teal",
+              "red",
+              "violet",
+              "amber",
+              "cyan",
+              "brown"
+            ],
+            "names" : [
+              "--color"
+            ],
+            "type" : "string"
+          },
+          "color-hex" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A custom color as #RRGGBB.",
+            "names" : [
+              "--color-hex"
+            ],
+            "type" : "string"
+          },
+          "from-session" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Take the layout from a live Session, as Save Session as Project does.",
+            "names" : [
+              "--from-session"
+            ],
+            "type" : "boolean"
+          },
+          "json" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Emit JSON (id, name, rootPath, paneCount, tabCount, created, warnings, appliesOnNextOpen) instead of a sentence.",
+            "names" : [
+              "--json"
+            ],
+            "type" : "boolean"
+          },
+          "layout" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A layout document file path, or - for standard input (not available over MCP; use layout-json).",
+            "names" : [
+              "--layout"
+            ],
+            "type" : "string"
+          },
+          "layout-json" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A layout document as inline JSON. A layout document is JSON: {\"preset\": NAME, \"panes\": [PANE...], \"focusedPane\": N} fills a preset's slots in order (omit \"panes\" for all terminals), or {\"root\": NODE} gives a tree, where NODE is a PANE or {\"split\": \"horizontal\"|\"vertical\", \"children\": [NODE, NODE...]}. A PANE is {\"kind\": \"terminal\"|\"git-status\"|\"process-status\"|\"system-metrics\"|\"lm-studio-dashboard\", \"tabs\": [TAB...] (terminal only), \"repository\": DIR (git-status only), \"background\": BG, \"hidden\": BOOL, \"activeTab\": N}. A TAB is {\"title\", \"cwd\" (relative to the Project root), \"command\", \"background\": BG}. A BG is one of {\"id\": URL from `batty background list`}, {\"set\": SET, \"image\": TITLE}, {\"digest\": D (My Images)} or {\"file\": PATH (relative to the current folder)}, plus \"opacity\" and \"terminalOpacity\" in percent (0-100). Unknown keys are errors.",
+            "names" : [
+              "--layout-json"
+            ],
+            "type" : "string"
+          },
+          "name" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Project's name (required unless from-session). Names are unique, ignoring case.",
+            "names" : [
+              "--name"
+            ],
+            "type" : "string"
+          },
+          "no-background" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Remove the Project's background.",
+            "names" : [
+              "--no-background"
+            ],
+            "type" : "boolean"
+          },
+          "no-theme" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Follow the Settings Theme (clears the Project's Theme).",
+            "names" : [
+              "--no-theme"
+            ],
+            "type" : "boolean"
+          },
+          "opacity" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Project image's opacity in percent. A first image gets 15; needs an image.",
+            "maximum" : 100,
+            "minimum" : 0,
+            "names" : [
+              "--opacity"
+            ],
+            "type" : "integer"
+          },
+          "path" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Project's root folder: an absolute path to an existing directory (a relative one is resolved against the CLI's current folder). Required on create unless from-session.",
+            "names" : [
+              "--path"
+            ],
+            "type" : "string"
+          },
+          "preset" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A layout preset, every Pane a terminal.",
+            "enum" : [
+              "singlePane",
+              "horizontalSplit",
+              "verticalSplit",
+              "threeColumns",
+              "threeRows",
+              "mainLeftTwoRight",
+              "mainRightTwoLeft",
+              "mainTopTwoBottom",
+              "mainBottomTwoTop",
+              "twoByTwoGrid"
+            ],
+            "names" : [
+              "--preset"
+            ],
+            "type" : "string"
+          },
+          "session" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Session id for from-session. Falls back to BATTY_SESSION_ID, then the focused Session.",
+            "names" : [
+              "--session"
+            ],
+            "type" : "string"
+          },
+          "startup-command" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "Startup commands, one per terminal Tab in slot order. They still need the user's approval at the first open.",
+            "names" : [
+              "--startup-command"
+            ],
+            "type" : "array"
+          },
+          "symbol" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A curated Project symbol.",
+            "enum" : [
+              "folder",
+              "terminal",
+              "code",
+              "hammer",
+              "tools",
+              "package",
+              "branch",
+              "checklist",
+              "extension",
+              "macApp",
+              "iPhoneApp",
+              "web",
+              "server",
+              "cloud",
+              "network",
+              "security",
+              "link",
+              "qrCode",
+              "chip",
+              "wireless",
+              "light",
+              "home",
+              "art",
+              "grid",
+              "craft",
+              "video",
+              "game",
+              "document",
+              "learning",
+              "chart",
+              "calendar",
+              "social",
+              "community",
+              "ai",
+              "model",
+              "map",
+              "music"
+            ],
+            "names" : [
+              "--symbol"
+            ],
+            "type" : "string"
+          },
+          "symbol-name" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "Any SF Symbol name.",
+            "names" : [
+              "--symbol-name"
+            ],
+            "type" : "string"
+          },
+          "terminal-opacity" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The terminal's opacity over the background in percent. Default 100.",
+            "maximum" : 100,
+            "minimum" : 0,
+            "names" : [
+              "--terminal-opacity"
+            ],
+            "type" : "integer"
+          },
+          "theme" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A Theme for both Dark and Light appearance.",
+            "names" : [
+              "--theme"
+            ],
+            "type" : "string"
+          },
+          "theme-dark" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Theme for Dark appearance.",
+            "names" : [
+              "--theme-dark"
+            ],
+            "type" : "string"
+          },
+          "theme-light" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Theme for Light appearance.",
+            "names" : [
+              "--theme-light"
+            ],
+            "type" : "string"
+          }
+        },
+        "required" : [
+
+        ],
+        "type" : "object"
+      },
+      "name" : "project create"
+    },
+    {
+      "abstract" : "Change the given fields of a saved Project.",
+      "aliases" : [
+
+      ],
+      "annotations" : {
+        "destructiveHint" : false,
+        "idempotentHint" : true,
+        "openWorldHint" : false,
+        "readOnlyHint" : false
+      },
+      "inputSchema" : {
+        "conflicts" : [
+          {
+            "description" : "--color and --color-hex can't be used together",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "color",
+              "color-hex"
+            ]
+          },
+          {
+            "description" : "--symbol and --symbol-name can't be used together",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "symbol",
+              "symbol-name"
+            ]
+          },
+          {
+            "description" : "use one of --theme, --theme-dark/--theme-light and --no-theme",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "theme",
+              "theme-dark",
+              "no-theme"
+            ]
+          },
+          {
+            "description" : "use one of --theme, --theme-dark/--theme-light and --no-theme",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "theme",
+              "theme-light",
+              "no-theme"
+            ]
+          },
+          {
+            "description" : "use one of --preset, --layout, --layout-json and --from-session",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "preset",
+              "layout",
+              "layout-json",
+              "from-session"
+            ]
+          },
+          {
+            "description" : "use one of --background-set/--background-image, --background-id, --background-digest, --background-file and --no-background",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "background-set",
+              "background-id",
+              "background-digest",
+              "background-file",
+              "no-background"
+            ]
+          },
+          {
+            "description" : "--no-background can't be used with --opacity or --terminal-opacity",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "no-background",
+              "opacity"
+            ]
+          },
+          {
+            "description" : "--no-background can't be used with --opacity or --terminal-opacity",
+            "kind" : "mutuallyExclusive",
+            "parameters" : [
+              "no-background",
+              "terminal-opacity"
+            ]
+          },
+          {
+            "allowsOmission" : false,
+            "description" : "--background-set and --background-image go together",
+            "kind" : "requires",
+            "parameter" : "background-set",
+            "requiresParameter" : "background-image"
+          },
+          {
+            "allowsOmission" : false,
+            "description" : "--background-set and --background-image go together",
+            "kind" : "requires",
+            "parameter" : "background-image",
+            "requiresParameter" : "background-set"
+          },
+          {
+            "allowsOmission" : false,
+            "description" : "--session needs --from-session",
+            "kind" : "requires",
+            "parameter" : "session",
+            "requiresParameter" : "from-session"
+          }
+        ],
+        "properties" : {
+          "background-digest" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A My Images image by its digest from background list.",
+            "names" : [
+              "--background-digest"
+            ],
+            "type" : "string"
+          },
+          "background-file" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A local image file, copied into the Project's background folder.",
+            "names" : [
+              "--background-file"
+            ],
+            "type" : "string"
+          },
+          "background-id" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A Background Sets image by its id (full URL) from background list.",
+            "names" : [
+              "--background-id"
+            ],
+            "type" : "string"
+          },
+          "background-image" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The image's title in background-set.",
+            "names" : [
+              "--background-image"
+            ],
+            "type" : "string"
+          },
+          "background-set" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Background Sets set of the Project's image (with background-image).",
+            "names" : [
+              "--background-set"
+            ],
+            "type" : "string"
+          },
+          "color" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A palette color.",
+            "enum" : [
+              "blue",
+              "orange",
+              "green",
+              "pink",
+              "teal",
+              "red",
+              "violet",
+              "amber",
+              "cyan",
+              "brown"
+            ],
+            "names" : [
+              "--color"
+            ],
+            "type" : "string"
+          },
+          "color-hex" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A custom color as #RRGGBB.",
+            "names" : [
+              "--color-hex"
+            ],
+            "type" : "string"
+          },
+          "from-session" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Take the layout from a live Session, as Save Session as Project does.",
+            "names" : [
+              "--from-session"
+            ],
+            "type" : "boolean"
+          },
+          "json" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Emit JSON (id, name, rootPath, paneCount, tabCount, created, warnings, appliesOnNextOpen) instead of a sentence.",
+            "names" : [
+              "--json"
+            ],
+            "type" : "boolean"
+          },
+          "layout" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A layout document file path, or - for standard input (not available over MCP; use layout-json).",
+            "names" : [
+              "--layout"
+            ],
+            "type" : "string"
+          },
+          "layout-json" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A layout document as inline JSON. A layout document is JSON: {\"preset\": NAME, \"panes\": [PANE...], \"focusedPane\": N} fills a preset's slots in order (omit \"panes\" for all terminals), or {\"root\": NODE} gives a tree, where NODE is a PANE or {\"split\": \"horizontal\"|\"vertical\", \"children\": [NODE, NODE...]}. A PANE is {\"kind\": \"terminal\"|\"git-status\"|\"process-status\"|\"system-metrics\"|\"lm-studio-dashboard\", \"tabs\": [TAB...] (terminal only), \"repository\": DIR (git-status only), \"background\": BG, \"hidden\": BOOL, \"activeTab\": N}. A TAB is {\"title\", \"cwd\" (relative to the Project root), \"command\", \"background\": BG}. A BG is one of {\"id\": URL from `batty background list`}, {\"set\": SET, \"image\": TITLE}, {\"digest\": D (My Images)} or {\"file\": PATH (relative to the current folder)}, plus \"opacity\" and \"terminalOpacity\" in percent (0-100). Unknown keys are errors.",
+            "names" : [
+              "--layout-json"
+            ],
+            "type" : "string"
+          },
+          "name" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "Rename the Project. Names are unique, ignoring case.",
+            "names" : [
+              "--name"
+            ],
+            "type" : "string"
+          },
+          "no-background" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Remove the Project's background.",
+            "names" : [
+              "--no-background"
+            ],
+            "type" : "boolean"
+          },
+          "no-theme" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Follow the Settings Theme (clears the Project's Theme).",
+            "names" : [
+              "--no-theme"
+            ],
+            "type" : "boolean"
+          },
+          "opacity" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Project image's opacity in percent. A first image gets 15; needs an image.",
+            "maximum" : 100,
+            "minimum" : 0,
+            "names" : [
+              "--opacity"
+            ],
+            "type" : "integer"
+          },
+          "path" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Project's root folder: an absolute path to an existing directory (a relative one is resolved against the CLI's current folder). Required on create unless from-session.",
+            "names" : [
+              "--path"
+            ],
+            "type" : "string"
+          },
+          "preset" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A layout preset, every Pane a terminal; replaces the layout, which open Sessions pick up at the next open.",
+            "enum" : [
+              "singlePane",
+              "horizontalSplit",
+              "verticalSplit",
+              "threeColumns",
+              "threeRows",
+              "mainLeftTwoRight",
+              "mainRightTwoLeft",
+              "mainTopTwoBottom",
+              "mainBottomTwoTop",
+              "twoByTwoGrid"
+            ],
+            "names" : [
+              "--preset"
+            ],
+            "type" : "string"
+          },
+          "session" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Session id for from-session. Falls back to BATTY_SESSION_ID, then the focused Session.",
+            "names" : [
+              "--session"
+            ],
+            "type" : "string"
+          },
+          "startup-command" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "Startup commands, one per terminal Tab in slot order. They still need the user's approval at the first open.",
+            "names" : [
+              "--startup-command"
+            ],
+            "type" : "array"
+          },
+          "symbol" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A curated Project symbol.",
+            "enum" : [
+              "folder",
+              "terminal",
+              "code",
+              "hammer",
+              "tools",
+              "package",
+              "branch",
+              "checklist",
+              "extension",
+              "macApp",
+              "iPhoneApp",
+              "web",
+              "server",
+              "cloud",
+              "network",
+              "security",
+              "link",
+              "qrCode",
+              "chip",
+              "wireless",
+              "light",
+              "home",
+              "art",
+              "grid",
+              "craft",
+              "video",
+              "game",
+              "document",
+              "learning",
+              "chart",
+              "calendar",
+              "social",
+              "community",
+              "ai",
+              "model",
+              "map",
+              "music"
+            ],
+            "names" : [
+              "--symbol"
+            ],
+            "type" : "string"
+          },
+          "symbol-name" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "Any SF Symbol name.",
+            "names" : [
+              "--symbol-name"
+            ],
+            "type" : "string"
+          },
+          "target" : {
+            "cliKind" : "positional",
+            "cliRequired" : true,
+            "description" : "The saved Project's name (case-insensitive) or id.",
+            "names" : [
+
+            ],
+            "type" : "string"
+          },
+          "terminal-opacity" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The terminal's opacity over the background in percent. Default 100.",
+            "maximum" : 100,
+            "minimum" : 0,
+            "names" : [
+              "--terminal-opacity"
+            ],
+            "type" : "integer"
+          },
+          "theme" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "A Theme for both Dark and Light appearance.",
+            "names" : [
+              "--theme"
+            ],
+            "type" : "string"
+          },
+          "theme-dark" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Theme for Dark appearance.",
+            "names" : [
+              "--theme-dark"
+            ],
+            "type" : "string"
+          },
+          "theme-light" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "The Theme for Light appearance.",
+            "names" : [
+              "--theme-light"
+            ],
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "target"
+        ],
+        "type" : "object"
+      },
+      "name" : "project edit"
+    },
+    {
+      "abstract" : "List Background Sets images and My Images.",
+      "aliases" : [
+
+      ],
+      "annotations" : {
+        "destructiveHint" : false,
+        "idempotentHint" : true,
+        "openWorldHint" : false,
+        "readOnlyHint" : true
+      },
+      "inputSchema" : {
+        "conflicts" : [
+
+        ],
+        "properties" : {
+          "json" : {
+            "cliKind" : "flag",
+            "cliRequired" : false,
+            "default" : "false",
+            "description" : "Emit JSON (images with set, title, id, source, thumbnailURL, fullURL, catalogURL, downloaded, digest; warnings).",
+            "names" : [
+              "--json"
+            ],
+            "type" : "boolean"
+          },
+          "set" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "Only this set (case-insensitive, exact). \"My Images\" lists My Images.",
+            "names" : [
+              "--set"
+            ],
+            "type" : "string"
+          }
+        },
+        "required" : [
+
+        ],
+        "type" : "object"
+      },
+      "name" : "background list"
+    },
+    {
       "abstract" : "Run a dev server in a terminal Pane and list it in the toolbar's Servers, printing the server's id.",
       "aliases" : [
 

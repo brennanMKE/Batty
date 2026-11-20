@@ -27,7 +27,7 @@ struct CapabilitiesCommandTests {
         "pane split", "pane close", "pane focus", "pane hide", "pane show",
         "tab focus",
         "tab new",
-        "project list", "project open",
+        "project list", "project open", "project create", "project edit", "background list",
         "id", "notify", "mcp", "agent install", "agent context", "capabilities",
     ]
 

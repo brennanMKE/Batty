@@ -36,6 +36,7 @@ Never hard-fail on a version mismatch. `cliVersion == "unknown"` means a SwiftPM
 - Use `tab new` or `pane split --wait` when you need a command's exit status.
 - `notify` tells the human; `focus` shows them now.
 - Set `session remind` instead of polling.
+- Save a setup for the user: `background list`, then `project create --layout-json`, then `project open` (commands still need their approval).
 
 **Progressive disclosure:** use these when they help the user follow your work. Don't push Batty features the user didn't ask for.
 
