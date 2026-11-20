@@ -1663,8 +1663,11 @@ public final class AppStateStore {
     /// `previous` is nil) are applied, so a Sidebar override of a field the
     /// save left alone survives: name, color (nearest palette entry for a
     /// custom hex), Theme and background. The symbol is always written.
-    /// Layout, Pane and Tab backgrounds, Tab directories and commands, and
-    /// mute wait for the next open.
+    /// Pane and Tab backgrounds apply to every Pane and Tab still showing the
+    /// value the Project gave it; one the user changed in the Session keeps
+    /// it. When the save adds, removes or changes the kind of a Pane, or adds
+    /// or removes a Tab, those wait for the next open, with the layout, Tab
+    /// directories and commands, and mute.
     func applyProjectSave(previous: Project?, saved: Project) {
         applyProjectSave(previous: previous, saved: saved, isDark: NSApp?.effectiveAppearance.isDark ?? true)
     }
@@ -1674,6 +1677,8 @@ public final class AppStateStore {
         let colorChanged = previous?.color != saved.color || previous?.customColorHex != saved.customColorHex
         let backgroundChanged = previous?.background != saved.background
         let themeChanged = previous?.theme != saved.theme
+        let resolution = saved.tabImages.isEmpty ? (project: saved, cachedDigests: Set<String>()) : resolveTabImages(of: saved)
+        var waiting = false
         for window in windows {
             for session in window.sessions where session.projectID == saved.id {
                 if session.projectSymbol != saved.symbol { session.projectSymbol = saved.symbol }
@@ -1684,12 +1689,16 @@ public final class AppStateStore {
                 }
                 if colorChanged { window.setSessionColor(id: session.id, to: saved.color.rawValue) }
                 if backgroundChanged { _ = seedProjectBackground(saved, on: session) }
+                if let previous {
+                    waiting = applyProjectSlotBackgrounds(previous: previous, saved: resolution.project, to: session) || waiting
+                }
                 if themeChanged {
                     if session.themeOverride != saved.theme { session.themeOverride = saved.theme }
                     applyActiveSessionTheme(for: session, isDark: isDark)
                 }
             }
         }
+        if waiting { requestTabImages(for: resolution.project, touching: resolution.cachedDigests) }
     }
 
     /// Gives an open `session` the Project's background with the same
