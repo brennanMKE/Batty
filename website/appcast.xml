@@ -27,6 +27,23 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.4.2</title>
+      <pubDate>Sat, 21 Nov 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-4-2</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <h2>Project edits reach every open Session</h2>
+        <p>Saving a Project now applies its background image, image opacity and terminal opacity right away to every open Session of that Project, in every window, including Tab and Pane backgrounds that still show the Project's value. Tabs and Panes you changed yourself keep your setting.</p>
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.4.2.dmg"
+        sparkle:version="202611210007"
+        sparkle:shortVersionString="1.4.2"
+        sparkle:edSignature="4UhGoEuJLeF/Cw6wIp4MWnQaShKnvjprJKIZxncJEPmo8KgzBdhqny8o+Dj3T0e9L/7m/zdumb8v07qGYFjLBA=="
+        length="29250934"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.4.1</title>
       <pubDate>Fri, 20 Nov 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
