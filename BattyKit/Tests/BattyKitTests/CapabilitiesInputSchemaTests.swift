@@ -674,7 +674,8 @@ struct ServerCapabilitiesTests {
 
     @Test func serveHasAFullInputSchema() throws {
         let schema = ServerServeCommand.capabilitiesInputSchema
-        #expect(Set(schema.properties.keys) == ["dir", "port", "open", "no-inject", "split", "pane", "json"])
+        #expect(Set(schema.properties.keys) == ["dir", "port", "open", "no-inject", "engine", "split", "pane", "json"])
+        #expect(schema.properties["engine"]?.enumValues == ["builtin", "photon"])
         #expect(schema.required.isEmpty)
     }
 

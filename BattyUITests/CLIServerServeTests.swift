@@ -110,4 +110,44 @@ nonisolated final class CLIServerServeTests: XCTestCase {
         XCTAssertNotEqual(serveResult.status, 0, serveResult.summary)
         XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a flag-off serve changed the layout")
     }
+
+    // MARK: - Engines (#0693)
+
+    @MainActor
+    func testServeUsesPhotonWhenPresentAndOpensATerminalPane() throws {
+        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FAKE_PHOTON": "present"])
+        defer { app.terminate() }
+        let result = serve(try site(), from: session.focusedPaneID)
+        XCTAssertEqual(result.status, 0, result.summary)
+        let json = try reply(result)
+        XCTAssertEqual(json["kind"] as? String, "photon")
+        XCTAssertEqual(json["engine"] as? String, "photon")
+        XCTAssertNotNil(json["terminalPaneID"] as? String, "a photon serve has no terminal Pane")
+        XCTAssertGreaterThan(BattyCLI.topology()?.session(session.id)?.panes.count ?? 0, session.panes.count, "photon serve opened no Pane")
+        XCTAssertTrue(BattyScreen.element("toolbar.servers", in: app).waitForExistence(timeout: 10), "no Servers toolbar button while serving")
+        if let id = json["serverID"] as? String { _ = BattyCLI.run(["server", "stop", id]) }
+    }
+
+    @MainActor
+    func testServeEngineBuiltinUsesTheBuiltinServerWithPhotonPresent() throws {
+        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FAKE_PHOTON": "present"])
+        defer { app.terminate() }
+        let result = serve(try site(), from: session.focusedPaneID, ["--engine", "builtin"])
+        XCTAssertEqual(result.status, 0, result.summary)
+        let json = try reply(result)
+        XCTAssertEqual(json["kind"] as? String, "static")
+        XCTAssertNil(json["terminalPaneID"] as? String)
+        XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a built-in serve opened a Pane")
+        if let id = json["serverID"] as? String { _ = BattyCLI.run(["server", "stop", id]) }
+    }
+
+    @MainActor
+    func testServeEnginePhotonFailsWhenAbsent() throws {
+        let (app, session) = try launch(extraEnvironment: ["BATTY_UI_TEST_FAKE_PHOTON": "absent"])
+        defer { app.terminate() }
+        let result = serve(try site(), from: session.focusedPaneID, ["--engine", "photon"])
+        XCTAssertNotEqual(result.status, 0, result.summary)
+        XCTAssertTrue(result.summary.contains("isn't installed"), result.summary)
+        XCTAssertEqual(BattyCLI.topology()?.session(session.id)?.panes.count, session.panes.count, "a failed photon serve changed the layout")
+    }
 }

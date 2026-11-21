@@ -63,6 +63,18 @@ struct ServerPayloadTests {
         let serve = try JSONDecoder().decode(ServerServeRequest.self, from: Data(#"{"root":"/x"}"#.utf8))
         #expect(serve.port == nil)
         #expect(serve.inject == nil)
+        #expect(serve.engine == nil)
+        #expect(serve.searchPath == nil)
+    }
+
+    @Test func serveEngineAndSearchPathRoundTrip() throws {
+        let serve = ServerServeRequest(root: "/tmp/site", engine: .photon, searchPath: "/usr/bin:/bin")
+        #expect(try roundTripOffActor(serve) == serve)
+        let reply = ServerReply(serverID: UUID(), url: "http://127.0.0.1:8000/", state: .listening, created: true, kind: .photon, engine: .photon)
+        #expect(try roundTripOffActor(reply) == reply)
+        let item = ServerListItem(serverID: UUID(), name: "site", port: 8000, kind: .photon, state: .listening, url: "u", engine: .builtin)
+        #expect(try roundTripOffActor(item) == item)
+        #expect(String(decoding: try JSONEncoder().encode(ServerKind.photon), as: UTF8.self) == #""photon""#)
     }
 
     @Test func replyEncodesServerIDNotPaneID() throws {

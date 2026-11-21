@@ -14,7 +14,7 @@ public struct SettingsView: View {
 
     public var body: some View {
         TabView {
-            GeneralSettingsView(showsServers: store?.featureFlags.servers ?? false)
+            GeneralSettingsView(showsServers: store?.featureFlags.servers ?? false, store: store)
                 .tabItem { Label("General", systemImage: "gearshape") }
 
             AppearanceSettingsView(store: store)
@@ -43,6 +43,8 @@ private struct GeneralSettingsView: View {
     @AppStorage(SettingsPreference.autoNameWithAIKey) private var autoNameWithAI: Bool = SettingsPreference.defaultAutoNameWithAI
     @AppStorage(SettingsPreference.alwaysShowServersKey) private var alwaysShowServers: Bool = SettingsPreference.defaultAlwaysShowServers
     let showsServers: Bool
+    let store: AppStateStore?
+    @State private var photonModel: PhotonSettingsModel?
 
     private var aiNamingSupported: Bool {
         if #available(macOS 26, *) { return true }
@@ -129,11 +131,73 @@ private struct GeneralSettingsView: View {
                     Text("Servers appears in the toolbar while a server started with batty server is running. Turn this on to keep it there.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let photonModel {
+                        PhotonSettingsRow(model: photonModel)
+                    }
                 }
             }
         }
         .formStyle(.grouped)
         .padding(20)
+        .onAppear {
+            guard showsServers, let store else { return }
+            let model = photonModel ?? PhotonSettingsModel(store: store)
+            if photonModel == nil { photonModel = model }
+            Task { await model.refresh() }
+        }
+    }
+}
+
+private struct PhotonSettingsRow: View {
+    let model: PhotonSettingsModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("PhotonHTTP")
+            Text("Optional static server. When it's installed, batty server serve uses it instead of Batty's built-in server.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                status
+                    .accessibilityIdentifier("settings.photon.status")
+                Spacer()
+                Link("Getting Started", destination: PhotonInstall.gettingStartedURL)
+                Button("Refresh") {
+                    Task { await model.refresh() }
+                }
+                .accessibilityIdentifier("settings.photon.refresh")
+            }
+            if model.state == .notInstalled {
+                Text("Install runs `\(PhotonInstall.command)` in a new terminal Pane. It downloads PhotonHTTP and builds it from source (needs macOS 15 or later and a Swift 6.4 toolchain from Xcode or swift.org), then installs photon to /usr/local/bin, which may ask for your administrator password.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Button("Install PhotonHTTP…") {
+                    model.install()
+                }
+                .accessibilityIdentifier("settings.photon.install")
+            }
+            if let error = model.installError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.photon.row")
+    }
+
+    @ViewBuilder private var status: some View {
+        switch model.state {
+        case .checking:
+            ProgressView().controlSize(.small)
+        case .installed(let path):
+            Label("Installed at \(path)", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+        case .notInstalled:
+            Text("Not installed")
+                .font(.caption)
+        }
     }
 }
 

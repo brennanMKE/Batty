@@ -39,6 +39,22 @@ struct ServerCommandParsingTests {
         #expect(plain.inject == nil)
     }
 
+    @Test func serveAcceptsEngineBuiltinAndPhoton() throws {
+        #expect(try ServerServeCommand.parse(["--engine", "builtin"]).request(currentDirectory: "/tmp").engine == .builtin)
+        #expect(try ServerServeCommand.parse(["--engine", "photon"]).request(currentDirectory: "/tmp").engine == .photon)
+        #expect(try ServerServeCommand.parse([]).request(currentDirectory: "/tmp").engine == nil)
+    }
+
+    @Test func serveRejectsUnknownEngine() {
+        #expect(throws: (any Error).self) { try ServerServeCommand.parse(["--engine", "nginx"]) }
+    }
+
+    @Test func serveSendsTheCallersPATHAsSearchPath() throws {
+        let request = try ServerServeCommand.parse([]).request(currentDirectory: "/tmp", environment: ["PATH": "/a/bin:/b/bin"])
+        #expect(request.searchPath == "/a/bin:/b/bin")
+        #expect(try ServerServeCommand.parse([]).request(currentDirectory: "/tmp", environment: [:]).searchPath == nil)
+    }
+
     @Test func serverPreviewIsAnUnknownSubcommand() {
         #expect(throws: (any Error).self) { try ServerNounCommand.parseAsRoot(["preview", "--port", "8083"]) }
         #expect(!ServerNounCommand.configuration.subcommands.contains { $0.configuration.commandName == "preview" })
@@ -119,14 +135,16 @@ struct ServerCommandParsingTests {
     }
 
     @Test func listLinesAreTabSeparatedWithTailnetOnlyWhenSet() {
-        let a = UUID(), b = UUID()
+        let a = UUID(), b = UUID(), c = UUID()
         let reply = ServerListReply(servers: [
             ServerListItem(serverID: a, name: "go", port: 8083, kind: .terminal, state: .listening, url: "http://127.0.0.1:8083/"),
             ServerListItem(serverID: b, name: "web", port: 9000, kind: .external, state: .starting, url: "http://127.0.0.1:9000/", tailnetURL: "https://h.ts.net/"),
+            ServerListItem(serverID: c, name: "site", port: 52200, kind: .photon, state: .listening, url: "http://127.0.0.1:52200/", engine: .photon),
         ])
         #expect(ServerListCommand.lines(reply) == [
             "\(a.uuidString)\tgo\t8083\tterminal\tlistening\thttp://127.0.0.1:8083/",
             "\(b.uuidString)\tweb\t9000\texternal\tstarting\thttp://127.0.0.1:9000/\thttps://h.ts.net/",
+            "\(c.uuidString)\tsite\t52200\tphoton\tlistening\thttp://127.0.0.1:52200/",
         ])
         #expect(ServerListCommand.lines(ServerListReply(servers: [])).isEmpty)
     }

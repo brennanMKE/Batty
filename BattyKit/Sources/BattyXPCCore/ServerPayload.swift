@@ -92,8 +92,17 @@ public nonisolated struct ServerTailnetRequest: Codable, Sendable, Equatable {
     }
 }
 
+/// Which server `batty server serve` runs (#0693): Batty's built-in one, or
+/// PhotonHTTP's `photon` in a terminal Pane.
+public nonisolated enum ServeEngine: String, Codable, Sendable, CaseIterable {
+    case builtin
+    case photon
+}
+
 /// `batty server serve [<dir>]` (#0649). `root` is absolute (the CLI
-/// resolves it). `inject` nil means on.
+/// resolves it). `inject` nil means on. `engine` nil picks `photon` when
+/// it is found, else the built-in server. `searchPath` is the caller's
+/// `PATH`, searched for `photon`.
 public nonisolated struct ServerServeRequest: Codable, Sendable, Equatable {
     public var paneID: UUID?
     public var root: String
@@ -101,14 +110,18 @@ public nonisolated struct ServerServeRequest: Codable, Sendable, Equatable {
     public var open: Bool?
     public var inject: Bool?
     public var split: ServerSplit?
+    public var engine: ServeEngine?
+    public var searchPath: String?
 
-    public init(paneID: UUID? = nil, root: String, port: Int? = nil, open: Bool? = nil, inject: Bool? = nil, split: ServerSplit? = nil) {
+    public init(paneID: UUID? = nil, root: String, port: Int? = nil, open: Bool? = nil, inject: Bool? = nil, split: ServerSplit? = nil, engine: ServeEngine? = nil, searchPath: String? = nil) {
         self.paneID = paneID
         self.root = root
         self.port = port
         self.open = open
         self.inject = inject
         self.split = split
+        self.engine = engine
+        self.searchPath = searchPath
     }
 }
 
@@ -135,10 +148,12 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
     public var exitCode: Int?
     /// False when an existing server was reused.
     public var created: Bool
-    /// The served folder, for an in-app static server (#0649).
+    /// The served folder, for `server serve` (#0649).
     public var root: String?
     public var name: String?
     public var kind: ServerKind?
+    /// The engine of a `server serve` entry; nil for other servers.
+    public var engine: ServeEngine?
     /// The Process Status Pane watching the listener, when one is open.
     public var processPaneID: UUID?
     /// Set while the server is shared on the tailnet (#0694).
@@ -146,7 +161,8 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
     /// Why `share --tailnet` couldn't share on the tailnet; the share stands.
     public var tailnetError: String?
 
-    public init(serverID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil, name: String? = nil, kind: ServerKind? = nil, processPaneID: UUID? = nil, tailnetURL: String? = nil, tailnetError: String? = nil) {
+    public init(serverID: UUID, terminalPaneID: UUID? = nil, tabID: UUID? = nil, url: String, pid: Int32? = nil, state: ServerState, exitCode: Int? = nil, created: Bool, root: String? = nil, name: String? = nil, kind: ServerKind? = nil, processPaneID: UUID? = nil, tailnetURL: String? = nil, tailnetError: String? = nil, engine: ServeEngine? = nil) {
+        self.engine = engine
         self.tailnetURL = tailnetURL
         self.tailnetError = tailnetError
         self.root = root
@@ -165,12 +181,14 @@ public nonisolated struct ServerReply: Codable, Sendable, Equatable {
 }
 
 /// How a listed server runs: `terminal` (a command in a Batty terminal
-/// Pane), `external` (shared; Batty didn't start it) or `static` (a folder
-/// Batty serves).
+/// Pane), `external` (shared; Batty didn't start it), `static` (a folder
+/// Batty's built-in server serves) or `photon` (a folder PhotonHTTP serves
+/// in a terminal Pane).
 public nonisolated enum ServerKind: String, Codable, Sendable, CaseIterable {
     case terminal
     case external
     case `static`
+    case photon
 }
 
 public nonisolated struct ServerListItem: Codable, Sendable, Equatable {
@@ -184,8 +202,11 @@ public nonisolated struct ServerListItem: Codable, Sendable, Equatable {
     public var pid: Int32?
     public var terminalPaneID: UUID?
     public var processPaneID: UUID?
+    /// The engine of a `server serve` entry; nil for other servers.
+    public var engine: ServeEngine?
 
-    public init(serverID: UUID, name: String, port: Int, kind: ServerKind, state: ServerState, url: String, tailnetURL: String? = nil, pid: Int32? = nil, terminalPaneID: UUID? = nil, processPaneID: UUID? = nil) {
+    public init(serverID: UUID, name: String, port: Int, kind: ServerKind, state: ServerState, url: String, tailnetURL: String? = nil, pid: Int32? = nil, terminalPaneID: UUID? = nil, processPaneID: UUID? = nil, engine: ServeEngine? = nil) {
+        self.engine = engine
         self.serverID = serverID
         self.name = name
         self.port = port

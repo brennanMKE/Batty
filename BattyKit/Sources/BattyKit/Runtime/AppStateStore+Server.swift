@@ -23,6 +23,7 @@ public enum ServerXPCError: Error, Equatable, Sendable {
     case notManaged
     case managedServer
     case tailnet(String)
+    case photonNotInstalled
 
     public var message: String {
         switch self {
@@ -42,6 +43,7 @@ public enum ServerXPCError: Error, Equatable, Sendable {
         case .notManaged: return "this server was shared, not started by Batty, so Batty won't signal it; use batty server unshare to remove it from the list"
         case .managedServer: return "Batty started this server; use batty server stop"
         case .tailnet(let message): return message
+        case .photonNotInstalled: return PhotonInstall.notInstalledMessage
         }
     }
 }
@@ -120,14 +122,14 @@ extension AppStateStore {
 
     // MARK: - Building Panes
 
-    private func terminalBackend(tabID: UUID, command: String, workingDirectory: String?, spawnBaseline: ShellSpawnBaseline) -> TerminalTabServerBackend {
+    func terminalBackend(tabID: UUID, command: String, workingDirectory: String?, spawnBaseline: ShellSpawnBaseline) -> TerminalTabServerBackend {
         TerminalTabServerBackend(tabID: tabID, command: command, workingDirectory: workingDirectory, spawnBaseline: spawnBaseline) { [weak self] id in
             self?.tabRuntime(id: id).map { TabRuntimeServerTerminalSink(tab: $0) }
         }
     }
 
     /// A new terminal Pane split from `anchorPaneID`, focus unchanged.
-    private func makeServerTerminal(from anchorPaneID: UUID, direction: SplitDirection, workingDirectory: String?) -> (paneID: UUID, tab: TabRuntime, spawnBaseline: ShellSpawnBaseline)? {
+    func makeServerTerminal(from anchorPaneID: UUID, direction: SplitDirection, workingDirectory: String?) -> (paneID: UUID, tab: TabRuntime, spawnBaseline: ShellSpawnBaseline)? {
         guard let (window, session) = locate(paneID: anchorPaneID) else { return nil }
         let focused = session.tree.focusedPaneID
         let spawnBaseline = ShellSpawnBaseline.now()
@@ -197,6 +199,10 @@ extension AppStateStore {
     /// opens one only on a started server's first listener, below its
     /// terminal Pane, and never reopens a Pane the user closed.
     func serverListenerChanged(_ entry: ServerEntry, pid: pid_t) {
+        if entry.opensBrowserOnFirstListener {
+            entry.opensBrowserOnFirstListener = false
+            openURLInBrowser(entry.url)
+        }
         if let id = entry.processStatusPaneID, let content = processStatusContent(paneID: id) {
             if content.target != .pinned(pid) { content.retarget(to: .pinned(pid)) }
             return
@@ -224,6 +230,9 @@ extension AppStateStore {
         if let entry = servers.entry(port: port) {
             if let inApp = entry.backend as? InAppStaticServerBackend {
                 return .failure(.alreadyServing(root: inApp.root, port: Int(port)))
+            }
+            if let served = entry.served, served.engine == .photon {
+                return .failure(.alreadyServing(root: served.root, port: Int(port)))
             }
             if let backend = entry.backend as? TerminalTabServerBackend, backend.isAvailable {
                 entry.update(command: request.command, workingDirectory: cwd)
@@ -413,9 +422,10 @@ extension AppStateStore {
         let tabID = (entry.backend as? TerminalTabServerBackend)?.tabID
         return ServerListItem(
             serverID: entry.id, name: ServerEntryDisplay.name(for: entry), port: Int(entry.port),
-            kind: ServerEntryDisplay.kind(entry.backend.kind), state: wire.state, url: entry.url.absoluteString,
+            kind: ServerEntryDisplay.kind(for: entry), state: wire.state, url: entry.url.absoluteString,
             tailnetURL: entry.tailnetURL?.absoluteString, pid: wire.pid,
-            terminalPaneID: tabID.flatMap(paneID(holdingTab:)), processPaneID: liveProcessPaneID(entry)
+            terminalPaneID: tabID.flatMap(paneID(holdingTab:)), processPaneID: liveProcessPaneID(entry),
+            engine: entry.served?.engine
         )
     }
 
@@ -427,10 +437,11 @@ extension AppStateStore {
         return ServerReply(
             serverID: entry.id, terminalPaneID: tabID.flatMap(paneID(holdingTab:)), tabID: tabID,
             url: entry.url.absoluteString, pid: wire.pid, state: wire.state, exitCode: wire.exitCode, created: result.created,
-            root: (entry.backend as? InAppStaticServerBackend)?.root,
-            name: ServerEntryDisplay.name(for: entry), kind: ServerEntryDisplay.kind(entry.backend.kind),
+            root: entry.served?.root ?? (entry.backend as? InAppStaticServerBackend)?.root,
+            name: ServerEntryDisplay.name(for: entry), kind: ServerEntryDisplay.kind(for: entry),
             processPaneID: liveProcessPaneID(entry),
-            tailnetURL: entry.tailnetURL?.absoluteString, tailnetError: result.tailnetError
+            tailnetURL: entry.tailnetURL?.absoluteString, tailnetError: result.tailnetError,
+            engine: entry.served?.engine
         )
     }
 }

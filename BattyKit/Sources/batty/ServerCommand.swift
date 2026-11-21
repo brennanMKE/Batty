@@ -94,8 +94,9 @@ private nonisolated func sendServer(verb: String, request: some Encodable, json:
 /// call at 20 s.
 private nonisolated let tailnetTimeout: TimeInterval = 60
 
-/// Generous enough for a Stop that escalates all the way to SIGKILL.
-private nonisolated let serverStopTimeout: TimeInterval = 15
+/// Generous enough for a Stop that escalates all the way to SIGKILL,
+/// including PhotonHTTP's drain of up to 10 s after the first signal.
+private nonisolated let serverStopTimeout: TimeInterval = 20
 
 private nonisolated func validatePort(_ port: Int) throws {
     guard (1...65535).contains(port) else { throw ValidationError("--port must be between 1 and 65535") }
@@ -171,6 +172,7 @@ struct ServerStartCommand: ParsableCommand {
 }
 
 extension ServerSplit: ExpressibleByArgument {}
+extension ServeEngine: ExpressibleByArgument {}
 
 struct ServerShareCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -235,7 +237,7 @@ struct ServerShareCommand: ParsableCommand {
 struct ServerListCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "list",
-        abstract: "List the servers in the toolbar's Servers, one per line: id, name, port, kind, state, url.",
+        abstract: "List the servers in the toolbar's Servers, one per line: id, name, port, kind (terminal, external, static or photon), state, url.",
         helpNames: .long
     )
 
@@ -264,14 +266,18 @@ struct ServerListCommand: ParsableCommand {
 struct ServerServeCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "serve",
-        abstract: "Serve a folder from inside Batty on 127.0.0.1, printing the server's id.",
+        abstract: "Serve a folder on 127.0.0.1, printing the server's id.",
         discussion: """
         Example: batty server serve ./site --open
 
-        The server binds 127.0.0.1 only and reloads open pages when a file \
-        under the folder changes. Dotfiles and anything outside the folder \
-        are never served. Running serve again on the same folder reuses its \
-        server. batty server stop stops it.
+        When PhotonHTTP's photon command is installed, serve runs \
+        photon serve in a new terminal Pane; otherwise Batty's built-in \
+        server serves the folder. --engine picks one explicitly; \
+        --engine photon fails when photon isn't installed. The built-in \
+        server reloads open pages when a file under the folder changes \
+        (--no-inject turns that off); photon doesn't. Both bind 127.0.0.1 \
+        only. Running serve again on the same folder reuses its server. \
+        batty server stop stops it.
         """,
         helpNames: .long
     )
@@ -285,27 +291,31 @@ struct ServerServeCommand: ParsableCommand {
     @Flag(name: .long, help: "Also open the site in the default browser.")
     var open = false
 
-    @Flag(name: .long, help: "Serve files byte-for-byte, with no live-reload script in HTML.")
+    @Flag(name: .long, help: "Built-in server only: serve files byte-for-byte, with no live-reload script in HTML.")
     var noInject = false
 
-    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
+    @Option(name: .long, help: "builtin or photon. Defaults to photon when PhotonHTTP's photon is installed, else builtin.")
+    var engine: ServeEngine?
+
+    @Option(name: .long, help: "photon only: where its terminal Pane goes: right or down. Defaults to right.")
     var split: ServerSplit?
 
-    @Option(name: .long, help: "Accepted for compatibility; has no effect.")
+    @Option(name: .long, help: "photon only: Pane id to split from (defaults to $BATTY_PANE_ID, then the focused Pane).")
     var pane: String?
 
-    @Flag(name: .long, help: "Emit JSON (serverID, url, root, state) instead of the id.")
+    @Flag(name: .long, help: "Emit JSON (serverID, url, root, kind, engine, terminalPaneID, state) instead of the id.")
     var json = false
 
     nonisolated func validate() throws {
         if let port { try validatePort(port) }
     }
 
-    nonisolated func request(currentDirectory: String = FileManager.default.currentDirectoryPath) throws -> ServerServeRequest {
+    nonisolated func request(currentDirectory: String = FileManager.default.currentDirectoryPath, environment: [String: String] = ProcessInfo.processInfo.environment) throws -> ServerServeRequest {
         let root = URL(fileURLWithPath: dir ?? ".", relativeTo: URL(fileURLWithPath: currentDirectory, isDirectory: true)).standardizedFileURL.path
         return ServerServeRequest(
             paneID: try resolveCallingPaneID(flag: pane), root: root, port: port,
-            open: open ? true : nil, inject: noInject ? false : nil, split: split)
+            open: open ? true : nil, inject: noInject ? false : nil, split: split,
+            engine: engine, searchPath: environment["PATH"])
     }
 
     nonisolated func run() throws {
@@ -458,10 +468,8 @@ struct ServerTailnetCommand: ParsableCommand {
 
 private nonisolated let nameProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--name"], type: "string", description: "Name shown in the Servers list.", required: false)
 private nonisolated let noProcessViewProperty = CapabilitiesPropertyPayload(cliKind: .flag, names: ["--no-process-view"], type: "boolean", description: "Don't open a Process Status Pane on the server's process.", required: false, defaultValue: "false")
-private nonisolated let ignoredSplitProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Accepted for compatibility; has no effect.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue))
 private nonisolated let splitProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "Where the terminal Pane goes: right (default) or down.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue))
 private nonisolated let paneProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Pane the terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false)
-private nonisolated let ignoredPaneProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "Accepted for compatibility; has no effect.", required: false)
 private nonisolated let urlProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--url"], type: "string", description: "URL to copy and probe. Defaults to http://127.0.0.1:<port>/.", required: false)
 private nonisolated let portProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "TCP port the server listens on (1-65535).", required: true)
 private nonisolated let timeoutProperty = CapabilitiesPropertyPayload(cliKind: .option, names: ["--timeout"], type: "number", description: "Seconds --wait waits, at most 86400. Defaults to 60.", required: false, defaultValue: "60", maximum: Int(WaitTimeout.maximumSeconds))
@@ -512,10 +520,11 @@ extension ServerServeCommand: CapabilitiesDescribable {
             "dir": CapabilitiesPropertyPayload(cliKind: .positional, type: "string", description: "Folder to serve. Defaults to this directory.", required: false),
             "port": CapabilitiesPropertyPayload(cliKind: .option, names: ["--port"], type: "integer", description: "Port to listen on (1-65535). Defaults to a free port.", required: false),
             "open": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--open"], type: "boolean", description: "Also open the site in the default browser.", required: false, defaultValue: "false"),
-            "no-inject": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--no-inject"], type: "boolean", description: "Serve files byte-for-byte, with no live-reload script in HTML.", required: false, defaultValue: "false"),
-            "split": ignoredSplitProperty,
-            "pane": ignoredPaneProperty,
-            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, url, root, state) instead of the id.", required: false, defaultValue: "false"),
+            "no-inject": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--no-inject"], type: "boolean", description: "Built-in server only: serve files byte-for-byte, with no live-reload script in HTML.", required: false, defaultValue: "false"),
+            "engine": CapabilitiesPropertyPayload(cliKind: .option, names: ["--engine"], type: "string", description: "builtin or photon. Defaults to photon when PhotonHTTP's photon is installed, else builtin. photon fails when it isn't installed.", required: false, enumValues: ServeEngine.allCases.map(\.rawValue)),
+            "split": CapabilitiesPropertyPayload(cliKind: .option, names: ["--split"], type: "string", description: "photon only: where its terminal Pane goes: right (default) or down.", required: false, enumValues: ServerSplit.allCases.map(\.rawValue)),
+            "pane": CapabilitiesPropertyPayload(cliKind: .option, names: ["--pane"], type: "string", description: "photon only: Pane its terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.", required: false),
+            "json": CapabilitiesPropertyPayload(cliKind: .flag, names: ["--json"], type: "boolean", description: "Emit JSON (serverID, url, root, kind, engine, terminalPaneID, state) instead of the id.", required: false, defaultValue: "false"),
         ])
     }
 }

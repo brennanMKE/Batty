@@ -45,13 +45,15 @@ The **Servers** toolbar button appears only while a server is listed, or always 
 
 ## Serving a folder
 
-`batty server serve ./site` runs PhotonHTTP's `photon serve` on 127.0.0.1 in a terminal Pane. PhotonHTTP is optional and installed separately (macOS 15 or later, Swift 6.4 toolchain):
+`batty server serve ./site` serves a folder on 127.0.0.1. When PhotonHTTP's `photon` command is installed, `serve` runs `photon serve` in a terminal Pane; otherwise Batty's built-in server serves the folder and reloads open pages when a file changes. `--engine builtin` always uses the built-in server (for example to keep reloading); `--engine photon` uses `photon` and fails, before opening a Pane, when it isn't installed.
+
+PhotonHTTP is optional. **Settings → General → Servers** shows whether it is installed, and **Install PhotonHTTP…** runs its installer in a new terminal Pane, only when you click it:
 
 ```
 curl -fsSL https://photon-http.sstools.co/install.sh | bash
 ```
 
-It installs to `/usr/local/bin`; check it with `photon --help`. See https://photon-http.sstools.co/docs/getting-started.md. Without it, `serve` stops and tells you how to install it.
+It builds PhotonHTTP from source (macOS 15 or later, Swift 6.4 toolchain) and installs `photon` to `/usr/local/bin`, which may ask for your administrator password in that Pane. Check it with `photon --help`. See https://photon-http.sstools.co/docs/getting-started.md.
 
 To share a page: write the files into a project folder, run `batty server serve` on it, give the localhost URL from `batty server list`, share on the tailnet only if asked, and stop the server when done.
 

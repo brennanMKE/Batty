@@ -77,6 +77,8 @@ pane_id=$("$BATTY" pane split --horizontal --command "npm run dev") || exit $?
 "$BATTY" server list --json
 ```
 
+`server serve` uses PhotonHTTP's `photon` when it is installed, else Batty's built-in server; `--engine builtin|photon` picks one.
+
 Batty has no web view or in-app browser. To look at or test a page, use the webdriver the developer has told you about (for example `safaridriver`, after they run `safaridriver --enable` once) against the URL from `"$BATTY" server list --json`.
 Batty never launches a browser or a browser automation tool, and you don't open a browser yourself unless asked.
 Share a server on the tailnet (`server tailnet`) only when the user asks.

@@ -45,6 +45,12 @@ private struct ServerRow: View {
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("servers.port")
+                    if let engine = ServerEntryDisplay.engineText(entry.served?.engine) {
+                        Text(engine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("servers.engine")
+                    }
                     Text(ServerEntryDisplay.stateText(entry.state, isResponding: entry.isResponding, kind: entry.backend.kind))
                         .font(.caption)
                         .foregroundStyle(color(ServerEntryDisplay.tone(entry.state, isResponding: entry.isResponding)))

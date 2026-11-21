@@ -613,4 +613,17 @@ struct ServerEntryInAppDisplayTests {
         #expect(ServerEntryDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .inApp))
         #expect(!ServerEntryDisplay.showsStop(.listening(pid: nil), canStop: true, kind: .external))
     }
+
+    @Test func nameOfAPhotonServeIsTheFolder() {
+        let entry = ServerEntry(port: 52200, backend: ExternalProcessServerBackend(), startsBackendOnSetUp: false)
+        entry.served = ("/Users/x/my-site", .photon)
+        #expect(ServerEntryDisplay.name(for: entry) == "my-site")
+        #expect(ServerEntryDisplay.kind(for: entry) == .photon)
+    }
+
+    @Test func engineTextNamesPhotonHTTPAndBuiltIn() {
+        #expect(ServerEntryDisplay.engineText(.photon) == "PhotonHTTP")
+        #expect(ServerEntryDisplay.engineText(.builtin) == "Built-in")
+        #expect(ServerEntryDisplay.engineText(nil) == nil)
+    }
 }

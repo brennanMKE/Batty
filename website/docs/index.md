@@ -154,16 +154,20 @@ Write the static files (HTML, CSS, JS) into a folder in the project, for example
 
 ### 2. Serve the folder
 
-`batty server serve site --port 8080` (MCP: `server_serve`) runs `photon serve <abs path>/site --host 127.0.0.1 --port 8080` in a terminal Pane, where photon prints `listening 127.0.0.1:8080`. The server appears in the Servers list.
+`batty server serve site --port 8080` (MCP: `server_serve`) serves the folder on 127.0.0.1, and the server appears in the Servers list. When PhotonHTTP's `photon` command is installed, `serve` runs `photon serve <abs path>/site --host 127.0.0.1 --port 8080` in a terminal Pane, where photon prints `listening 127.0.0.1:8080`. Otherwise Batty's built-in server serves the folder and reloads open pages when a file changes.
 
-`photon` comes from PhotonHTTP, an optional tool the user installs separately; Batty doesn't bundle it. It needs macOS 15 or later and a Swift 6.4 toolchain, and installs `photon` to `/usr/local/bin`:
+`--engine builtin` always uses the built-in server; `--engine photon` uses `photon` only. PhotonHTTP is optional and Batty doesn't bundle it. **Settings → General → Servers** shows whether it is installed, and **Install PhotonHTTP…** runs the installer in a new terminal Pane when the user clicks it. It needs macOS 15 or later and a Swift 6.4 toolchain, and installs `photon` to `/usr/local/bin`, which may ask for an administrator password:
 
 ```sh
 curl -fsSL https://photon-http.sstools.co/install.sh | bash
 photon --help
 ```
 
-See [PhotonHTTP getting started](https://photon-http.sstools.co/docs/getting-started.md). When `photon` is missing, `serve` stops before opening a Pane and prints the install command and that link.
+See [PhotonHTTP getting started](https://photon-http.sstools.co/docs/getting-started.md). When `photon` is missing, `--engine photon` stops before opening a Pane with:
+
+```
+`photon` (PhotonHTTP) isn't installed. Install it from Settings, or run `curl -fsSL https://photon-http.sstools.co/install.sh | bash` (macOS 15+, Swift 6.4 toolchain), then check with `photon --help`. See https://photon-http.sstools.co/docs/getting-started.md
+```
 
 ### 3. Give the user the link
 

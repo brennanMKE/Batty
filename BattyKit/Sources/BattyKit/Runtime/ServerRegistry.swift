@@ -31,9 +31,9 @@ public final class ServerRegistry {
         entries.first { $0.port == port }
     }
 
-    /// The in-app static server serving `rootRealPath`.
+    /// The `server serve` entry serving `rootRealPath`, on either engine.
     public func entry(root rootRealPath: String) -> ServerEntry? {
-        entries.first { ($0.backend as? InAppStaticServerBackend)?.root == rootRealPath }
+        entries.first { ($0.backend as? InAppStaticServerBackend)?.root == rootRealPath || $0.served?.root == rootRealPath }
     }
 
     public func register(_ entry: ServerEntry) {

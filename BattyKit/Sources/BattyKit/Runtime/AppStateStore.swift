@@ -211,6 +211,16 @@ public final class AppStateStore {
         ServerEntry(port: port, url: url, backend: backend, startsBackendOnSetUp: false)
     }
 
+    /// Finds PhotonHTTP's `photon` for `server serve` and Settings (#0693),
+    /// off the main actor. Tests replace it.
+    @ObservationIgnored var locatePhoton: @MainActor (_ searchPath: String?) async -> URL? = { searchPath in
+        if let fake = PhotonUITestFake.override(environment: ProcessInfo.processInfo.environment) { return fake }
+        return await Task.detached { PhotonExecutableLocator.locate(searchPath: searchPath) }.value
+    }
+
+    /// A free loopback port for a photon serve. Tests replace it.
+    @ObservationIgnored var pickServePort: @MainActor () -> UInt16? = { LoopbackPortPicker.pick() }
+
     /// Finds the listener for `server share` (#0692). Tests replace it.
     @ObservationIgnored var serverPortScanner: PortListenerScanning = SystemPortListenerScanner()
 

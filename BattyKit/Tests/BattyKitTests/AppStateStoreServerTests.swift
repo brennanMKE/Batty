@@ -29,6 +29,7 @@ final class ServerStoreFixture {
             )
         }
         store.serverPortScanner = scanner
+        store.locatePhoton = { _ in nil }
         store.tailnet.runner = tailscale
         store.tailnet.locate = { FakeTailscaleRunner.executable }
         store.copyToPasteboard = { [weak self] in self?.copied.append($0) }

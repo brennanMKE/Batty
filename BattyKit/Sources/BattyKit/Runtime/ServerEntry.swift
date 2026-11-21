@@ -77,7 +77,7 @@ public final class ServerEntry {
     @ObservationIgnored private let commandLineProvider: @MainActor (pid_t) -> String?
     @ObservationIgnored private let signaller: ProcessSignalling
     @ObservationIgnored private let processTable: ProcessTableReading
-    @ObservationIgnored private let stopBounds: StopBounds
+    @ObservationIgnored var stopBounds: StopBounds
     @ObservationIgnored private let opener: @MainActor (URL) -> Void
     /// Makes a terminal backend in a new terminal Pane, for Restart when
     /// there is no terminal to type into. Set by the store.
@@ -90,6 +90,12 @@ public final class ServerEntry {
     /// True until the first listener opens the Process Status Pane
     /// (`server start` without `--no-process-view`).
     @ObservationIgnored public var wantsProcessStatus = false
+    /// The folder and engine of a `server serve` entry. The store sets it
+    /// right after `registerServer`, with no suspension in between, and
+    /// never changes it.
+    @ObservationIgnored public internal(set) var served: (root: String, engine: ServeEngine)?
+    /// `serve --open` with photon: open the URL once the listener appears.
+    @ObservationIgnored public var opensBrowserOnFirstListener = false
     /// Called from a tick when the listener changes to a found pid.
     @ObservationIgnored public var onListenerChange: ((ServerEntry, pid_t) -> Void)?
 

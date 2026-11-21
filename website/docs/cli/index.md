@@ -419,23 +419,24 @@ Hints: idempotent
 
 ### `batty server serve`
 
-Serve a folder from inside Batty on 127.0.0.1, printing the server's id.
+Serve a folder on 127.0.0.1, printing the server's id.
 
 Hints: none
 
 | Parameter | Kind | Type | Required | Default | Allowed values | Range | Description |
 |---|---|---|---|---|---|---|---|
 | `<dir>` | positional | string | no |  |  |  | Folder to serve. Defaults to this directory. |
-| `--json` | flag | boolean | no | false |  |  | Emit JSON (serverID, url, root, state) instead of the id. |
-| `--no-inject` | flag | boolean | no | false |  |  | Serve files byte-for-byte, with no live-reload script in HTML. |
+| `--engine` | option | string | no |  | builtin, photon |  | builtin or photon. Defaults to photon when PhotonHTTP's photon is installed, else builtin. photon fails when it isn't installed. |
+| `--json` | flag | boolean | no | false |  |  | Emit JSON (serverID, url, root, kind, engine, terminalPaneID, state) instead of the id. |
+| `--no-inject` | flag | boolean | no | false |  |  | Built-in server only: serve files byte-for-byte, with no live-reload script in HTML. |
 | `--open` | flag | boolean | no | false |  |  | Also open the site in the default browser. |
-| `--pane` | option | string | no |  |  |  | Accepted for compatibility; has no effect. |
+| `--pane` | option | string | no |  |  |  | photon only: Pane its terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane. |
 | `--port` | option | integer | no |  |  |  | Port to listen on (1-65535). Defaults to a free port. |
-| `--split` | option | string | no |  | right, down |  | Accepted for compatibility; has no effect. |
+| `--split` | option | string | no |  | right, down |  | photon only: where its terminal Pane goes: right (default) or down. |
 
 ### `batty server list`
 
-List the servers in the toolbar's Servers, one per line: id, name, port, kind, state, url.
+List the servers in the toolbar's Servers, one per line: id, name, port, kind (terminal, external, static or photon), state, url.
 
 Hints: read-only, idempotent
 

@@ -32,8 +32,32 @@ extension AppStateStore {
             return .failure(.notADirectory(request.root))
         }
 
-        if let existing = servers.entry(root: resolver.rootRealPath) {
+        let root = resolver.rootRealPath
+        if let existing = servers.entry(root: root) {
+            let existingEngine = existing.served?.engine ?? .builtin
+            if let engine = request.engine, engine != existingEngine {
+                return .failure(.alreadyServing(root: root, port: Int(existing.port)))
+            }
+            if existingEngine == .photon {
+                if let requestedPort, requestedPort != existing.port {
+                    return .failure(.alreadyServing(root: root, port: Int(existing.port)))
+                }
+                let result = ServerXPCResult(entry: existing, created: false)
+                if request.open == true, case .starting = existing.state {
+                    existing.opensBrowserOnFirstListener = true
+                    return .success(result)
+                }
+                return .success(openIfAsked(result, open: request.open))
+            }
             return await reuse(existing, requestedPort: requestedPort, open: request.open)
+        }
+
+        if request.engine != .builtin {
+            let photon = await locatePhoton(request.searchPath)
+            if let photon {
+                return servePhoton(photon, root: root, requestedPort: requestedPort, request: request)
+            }
+            if request.engine == .photon { return .failure(.photonNotInstalled) }
         }
 
         let backend = makeInAppServerBackend(resolver, request.inject ?? true)
@@ -54,9 +78,52 @@ extension AppStateStore {
             return .failure(.bindFailed("no URL for port \(port)"))
         }
         let entry = registerServer(port: port, url: url, backend: backend, anchorPaneID: request.paneID)
+        entry.served = (root, .builtin)
         entry.startBackend()
-        logger.info("server serve: server \(entry.id, privacy: .public) port \(port, privacy: .public)")
+        logger.info("server serve: built-in server \(entry.id, privacy: .public) port \(port, privacy: .public)")
         return .success(openIfAsked(ServerXPCResult(entry: entry, created: true), open: request.open))
+    }
+
+    /// `photon serve` in a new terminal Pane split from the calling Pane.
+    /// The entry's tick marks it listening once photon binds.
+    private func servePhoton(_ photon: URL, root: String, requestedPort: UInt16?, request: ServerServeRequest) -> Result<ServerXPCResult, ServerXPCError> {
+        // The main actor was free while photon was looked for.
+        if let existing = servers.entry(root: root) {
+            return .failure(.alreadyServing(root: root, port: Int(existing.port)))
+        }
+        var port = requestedPort
+        if port == nil {
+            for _ in 0..<5 {
+                guard let picked = pickServePort() else { break }
+                if servers.entry(port: picked) == nil {
+                    port = picked
+                    break
+                }
+            }
+        }
+        guard let port else { return .failure(.bindFailed("no free port on 127.0.0.1")) }
+        if servers.entry(port: port) != nil { return .failure(.portInUse(Int(port))) }
+        let resolved = resolveCallingPane(request.paneID)
+        guard case .success(let (_, _, callingPaneID)) = resolved else {
+            if case .failure(let error) = resolved { return .failure(error) }
+            return .failure(.noPane)
+        }
+        guard let url = URL(string: "http://127.0.0.1:\(port)/") else {
+            return .failure(.bindFailed("no URL for port \(port)"))
+        }
+        guard let (_, tab, spawnBaseline) = makeServerTerminal(from: callingPaneID, direction: direction(for: request.split), workingDirectory: root) else {
+            return .failure(.unknownPane)
+        }
+        let command = PhotonServeCommand.commandLine(photon: photon, root: root, port: port)
+        let backend = terminalBackend(tabID: tab.id, command: command, workingDirectory: root, spawnBaseline: spawnBaseline)
+        let entry = registerServer(port: port, url: url, backend: backend, anchorPaneID: callingPaneID)
+        entry.served = (root, .photon)
+        entry.stopBounds = .photonServe
+        entry.wantsProcessStatus = true
+        entry.opensBrowserOnFirstListener = request.open == true
+        entry.startBackend()
+        logger.info("server serve: photon server \(entry.id, privacy: .public) port \(port, privacy: .public)")
+        return .success(ServerXPCResult(entry: entry, created: true))
     }
 
     /// `serve --open`: the served URL in the default browser.

@@ -400,22 +400,23 @@
             </tbody>
         </table>
         <h3 id="verb-server-serve"><code>batty server serve</code></h3>
-        <p>Serve a folder from inside Batty on 127.0.0.1, printing the server&#x27;s id.</p>
+        <p>Serve a folder on 127.0.0.1, printing the server&#x27;s id.</p>
         <p>Hints: none</p>
         <table>
             <thead><tr><th>Parameter</th><th>Kind</th><th>Type</th><th>Required</th><th>Default</th><th>Allowed values</th><th>Range</th><th>Description</th></tr></thead>
             <tbody>
                 <tr><td><code>&lt;dir&gt;</code></td><td>positional</td><td>string</td><td>no</td><td></td><td></td><td></td><td>Folder to serve. Defaults to this directory.</td></tr>
-                <tr><td><code>--json</code></td><td>flag</td><td>boolean</td><td>no</td><td>false</td><td></td><td></td><td>Emit JSON (serverID, url, root, state) instead of the id.</td></tr>
-                <tr><td><code>--no-inject</code></td><td>flag</td><td>boolean</td><td>no</td><td>false</td><td></td><td></td><td>Serve files byte-for-byte, with no live-reload script in HTML.</td></tr>
+                <tr><td><code>--engine</code></td><td>option</td><td>string</td><td>no</td><td></td><td>builtin, photon</td><td></td><td>builtin or photon. Defaults to photon when PhotonHTTP&#x27;s photon is installed, else builtin. photon fails when it isn&#x27;t installed.</td></tr>
+                <tr><td><code>--json</code></td><td>flag</td><td>boolean</td><td>no</td><td>false</td><td></td><td></td><td>Emit JSON (serverID, url, root, kind, engine, terminalPaneID, state) instead of the id.</td></tr>
+                <tr><td><code>--no-inject</code></td><td>flag</td><td>boolean</td><td>no</td><td>false</td><td></td><td></td><td>Built-in server only: serve files byte-for-byte, with no live-reload script in HTML.</td></tr>
                 <tr><td><code>--open</code></td><td>flag</td><td>boolean</td><td>no</td><td>false</td><td></td><td></td><td>Also open the site in the default browser.</td></tr>
-                <tr><td><code>--pane</code></td><td>option</td><td>string</td><td>no</td><td></td><td></td><td></td><td>Accepted for compatibility; has no effect.</td></tr>
+                <tr><td><code>--pane</code></td><td>option</td><td>string</td><td>no</td><td></td><td></td><td></td><td>photon only: Pane its terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.</td></tr>
                 <tr><td><code>--port</code></td><td>option</td><td>integer</td><td>no</td><td></td><td></td><td></td><td>Port to listen on (1-65535). Defaults to a free port.</td></tr>
-                <tr><td><code>--split</code></td><td>option</td><td>string</td><td>no</td><td></td><td>right, down</td><td></td><td>Accepted for compatibility; has no effect.</td></tr>
+                <tr><td><code>--split</code></td><td>option</td><td>string</td><td>no</td><td></td><td>right, down</td><td></td><td>photon only: where its terminal Pane goes: right (default) or down.</td></tr>
             </tbody>
         </table>
         <h3 id="verb-server-list"><code>batty server list</code></h3>
-        <p>List the servers in the toolbar&#x27;s Servers, one per line: id, name, port, kind, state, url.</p>
+        <p>List the servers in the toolbar&#x27;s Servers, one per line: id, name, port, kind (terminal, external, static or photon), state, url.</p>
         <p>Hints: read-only, idempotent</p>
         <table>
             <thead><tr><th>Parameter</th><th>Kind</th><th>Type</th><th>Required</th><th>Default</th><th>Allowed values</th><th>Range</th><th>Description</th></tr></thead>

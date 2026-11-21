@@ -2148,7 +2148,7 @@
       "name" : "server share"
     },
     {
-      "abstract" : "Serve a folder from inside Batty on 127.0.0.1, printing the server's id.",
+      "abstract" : "Serve a folder on 127.0.0.1, printing the server's id.",
       "aliases" : [
 
       ],
@@ -2172,11 +2172,24 @@
             ],
             "type" : "string"
           },
+          "engine" : {
+            "cliKind" : "option",
+            "cliRequired" : false,
+            "description" : "builtin or photon. Defaults to photon when PhotonHTTP's photon is installed, else builtin. photon fails when it isn't installed.",
+            "enum" : [
+              "builtin",
+              "photon"
+            ],
+            "names" : [
+              "--engine"
+            ],
+            "type" : "string"
+          },
           "json" : {
             "cliKind" : "flag",
             "cliRequired" : false,
             "default" : "false",
-            "description" : "Emit JSON (serverID, url, root, state) instead of the id.",
+            "description" : "Emit JSON (serverID, url, root, kind, engine, terminalPaneID, state) instead of the id.",
             "names" : [
               "--json"
             ],
@@ -2186,7 +2199,7 @@
             "cliKind" : "flag",
             "cliRequired" : false,
             "default" : "false",
-            "description" : "Serve files byte-for-byte, with no live-reload script in HTML.",
+            "description" : "Built-in server only: serve files byte-for-byte, with no live-reload script in HTML.",
             "names" : [
               "--no-inject"
             ],
@@ -2205,7 +2218,7 @@
           "pane" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "Accepted for compatibility; has no effect.",
+            "description" : "photon only: Pane its terminal Pane is split from. Falls back to BATTY_PANE_ID, then the focused pane.",
             "names" : [
               "--pane"
             ],
@@ -2223,7 +2236,7 @@
           "split" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "Accepted for compatibility; has no effect.",
+            "description" : "photon only: where its terminal Pane goes: right (default) or down.",
             "enum" : [
               "right",
               "down"
@@ -2242,7 +2255,7 @@
       "name" : "server serve"
     },
     {
-      "abstract" : "List the servers in the toolbar's Servers, one per line: id, name, port, kind, state, url.",
+      "abstract" : "List the servers in the toolbar's Servers, one per line: id, name, port, kind (terminal, external, static or photon), state, url.",
       "aliases" : [
 
       ],

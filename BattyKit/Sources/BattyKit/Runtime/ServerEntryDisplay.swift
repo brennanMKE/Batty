@@ -83,10 +83,28 @@ public enum ServerEntryDisplay {
         }
     }
 
+    /// An entry's wire kind: a photon serve is `photon`.
+    public static func kind(for entry: ServerEntry) -> ServerKind {
+        entry.served?.engine == .photon ? .photon : kind(entry.backend.kind)
+    }
+
+    /// The Servers row's engine label for a `server serve` entry.
+    public static func engineText(_ engine: ServeEngine?) -> String? {
+        switch engine {
+        case .photon: String(localized: "PhotonHTTP", comment: "Servers list: the folder is served by PhotonHTTP's photon command")
+        case .builtin: String(localized: "Built-in", comment: "Servers list: the folder is served by Batty's built-in static server")
+        case nil: nil
+        }
+    }
+
     /// The row's name: `--name`, else the served folder, else the command's
     /// program, else the port.
     public static func name(for entry: ServerEntry) -> String {
         if let custom = entry.customName, !custom.isEmpty { return custom }
+        if let root = entry.served?.root {
+            let name = URL(fileURLWithPath: root).lastPathComponent
+            if !name.isEmpty { return name }
+        }
         if let inApp = entry.backend as? InAppStaticServerBackend {
             let name = URL(fileURLWithPath: inApp.root).lastPathComponent
             if !name.isEmpty { return name }
