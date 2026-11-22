@@ -1,29 +1,9 @@
 {
     "permissions": {
         "allow": [
-            "Edit(AGENTS.md)",
             "Bash(tools/run-ui-tests-vm.sh:*)",
             "Bash(./tools/run-ui-tests-vm.sh:*)",
-            "Bash(./build.sh ui-typecheck)",
-            "Edit(scripts/**)",
-            "Edit(Configuration/**)",
-            "Bash(scripts/release.sh:*)",
-            "Bash(./scripts/release.sh:*)",
-            "Bash(./build.sh:*)",
-            "Bash(scripts/verify-dmg.sh:*)",
-            "Bash(scripts/verify-profile.sh:*)",
-            "Bash(scripts/install-profiles.sh:*)",
-            "Bash(./scripts/set-environment.sh:*)",
-            "Bash(xcrun notarytool:*)",
-            "Bash(xcrun stapler:*)",
-            "Bash(codesign:*)",
-            "Bash(spctl:*)",
-            "Bash(security cms -D:*)",
-            "Bash(security find-identity:*)",
-            "Bash(git commit:*)",
-            "Bash(git merge:*)",
-            "Bash(gh release:*)",
-            "Bash(rsync:*)"
+            "Bash(./build.sh ui-typecheck)"
         ]
     }
 }
