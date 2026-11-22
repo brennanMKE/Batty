@@ -25,16 +25,26 @@ extension AppStateStore {
     /// is answered or abandoned; the app delegate passes
     /// `NSApp.reply(toApplicationShouldTerminate:)`. For the other results
     /// `reply` is never called.
+    ///
+    /// A quit marked in `preconfirmedQuit` (Sparkle's Install and Relaunch)
+    /// skips `confirm` but still asks the editor question. This call consumes
+    /// the mark whatever the outcome, so a cancelled quit leaves none behind.
     public func handleTerminateRequest(
         promptsEditor: Bool = QuitConfirmation.promptsEditorOnQuit,
+        preconfirmedQuit: PreconfirmedQuit = .shared,
         confirm: @escaping @MainActor (AppStateStore) -> Bool = { QuitConfirmation.shouldQuitOrPrompt(store: $0) },
         reply: @escaping @MainActor (Bool) -> Void
     ) -> NSApplication.TerminateReply {
+        let preconfirmed = preconfirmedQuit.consume()
+        if let preconfirmed {
+            logger.info("handleTerminateRequest: quit preconfirmed (\(preconfirmed.rawValue, privacy: .public)), skipping the Quit Batty? alert")
+        }
+        let skipsConfirm = preconfirmed != nil
         if promptsEditor, let editor = openProjectEditorModel(), editor.isDirty {
             var answeredImmediately: Bool?
             var deferred = false
             editor.requestQuit { [weak self] proceed in
-                let outcome = proceed && (self.map(confirm) ?? true)
+                let outcome = proceed && (skipsConfirm || (self.map(confirm) ?? true))
                 if outcome { self?.nameCache.save() }
                 if deferred {
                     reply(outcome)
@@ -49,7 +59,7 @@ extension AppStateStore {
             logger.info("handleTerminateRequest: asking about the Project Editor's unsaved edits")
             return .terminateLater
         }
-        guard confirm(self) else { return .terminateCancel }
+        guard skipsConfirm || confirm(self) else { return .terminateCancel }
         nameCache.save()
         return .terminateNow
     }

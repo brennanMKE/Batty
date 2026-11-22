@@ -42,9 +42,10 @@ private final class QuitFixture {
         model.setName(name)
     }
 
-    func quit(promptsEditor: Bool = true) -> NSApplication.TerminateReply {
+    func quit(promptsEditor: Bool = true, preconfirmed: PreconfirmedQuit = PreconfirmedQuit()) -> NSApplication.TerminateReply {
         store.handleTerminateRequest(
             promptsEditor: promptsEditor,
+            preconfirmedQuit: preconfirmed,
             confirm: { [unowned self] _ in
                 events.append("confirm")
                 return confirmAnswer
@@ -531,5 +532,68 @@ struct ProjectEditorPanelTests {
 
         #expect(recorder.completions.isEmpty)
         #expect(f.model.draft?.name == "Unsaved Edit")
+    }
+
+    // MARK: - Preconfirmed quit (#0718)
+
+    @Test func preconfirmedQuitSkipsTheQuitAlert() throws {
+        let f = try QuitFixture()
+        let flag = PreconfirmedQuit()
+        flag.mark(.sparkleInstall)
+
+        #expect(f.quit(preconfirmed: flag) == .terminateNow)
+        #expect(!f.events.contains("confirm"))
+        #expect(flag.pending == nil)
+    }
+
+    @Test func ordinaryQuitStillRunsTheQuitAlert() throws {
+        let f = try QuitFixture()
+        f.confirmAnswer = false
+
+        #expect(f.quit() == .terminateCancel)
+        #expect(f.events == ["confirm"])
+    }
+
+    @Test func preconfirmedQuitStillAsksAboutADirtyEditor() throws {
+        let f = try QuitFixture()
+        f.dirty()
+        let flag = PreconfirmedQuit()
+        flag.mark(.sparkleInstall)
+
+        #expect(f.quit(preconfirmed: flag) == .terminateLater)
+        f.model.resolveUnsaved(.save)
+        #expect(f.replies == [true])
+        #expect(f.events == ["reply"])
+    }
+
+    @Test func cancelledPreconfirmedQuitLeavesNoFlag() throws {
+        let f = try QuitFixture()
+        f.dirty()
+        let flag = PreconfirmedQuit()
+        flag.mark(.sparkleInstall)
+
+        #expect(f.quit(preconfirmed: flag) == .terminateLater)
+        f.model.resolveUnsaved(.cancel)
+        #expect(f.replies == [false])
+        #expect(flag.pending == nil)
+
+        f.events = []
+        f.confirmAnswer = false
+        #expect(f.quit(promptsEditor: false, preconfirmed: flag) == .terminateCancel)
+        #expect(f.events == ["confirm"])
+    }
+
+    @Test func confirmQuitOffNeverPromptsWithOrWithoutTheFlag() {
+        let testDefaults = TestDefaults()
+        defer { testDefaults.tearDown() }
+        testDefaults.defaults.set(false, forKey: SettingsPreference.confirmQuitKey)
+        let store = AppStateStore(preferences: testDefaults.defaults)
+        store.terminateHandler = {}
+        let flag = PreconfirmedQuit()
+
+        #expect(store.handleTerminateRequest(promptsEditor: false, preconfirmedQuit: flag, reply: { _ in }) == .terminateNow)
+        flag.mark(.sparkleInstall)
+        #expect(store.handleTerminateRequest(promptsEditor: false, preconfirmedQuit: flag, reply: { _ in }) == .terminateNow)
+        #expect(flag.pending == nil)
     }
 }

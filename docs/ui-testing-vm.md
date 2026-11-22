@@ -701,14 +701,16 @@ guest-trusted self-signed HTTPS certificate) needs the user's approval first.
 
 **Guest-only changes.** `tools/vm-guest-sparkle.sh` refuses to run outside a VM.
 It runs `spctl --global-disable` (recorded in `setup.log`), clears quarantine,
-writes the "keep terminals running" default, turns Settings "Confirm before
-quitting" off (`co.sstools.Batty.confirmQuit`; otherwise the "Quit Batty?"
-alert blocks Sparkle's terminate request with nobody to answer it, a finding
-recorded in #0715), bootstraps the broker
+writes the "keep terminals running" default, bootstraps the broker
 (`vm-guest-broker.sh`) and a BattyHost agent equivalent to the embedded
 `*.host.plist` (absolute `Program`, same Label and MachServices) from
 `~/Library/Application Support/BattyUITests/agents/`, and captures
-`log stream --level info` for the whole run. The shipped app is unchanged.
+`log stream --level info` for the whole run. Settings "Confirm before
+quitting" (`co.sstools.Batty.confirmQuit`) stays at its default in relaunch
+mode, where Sparkle's own quit skips the "Quit Batty?" alert (#0718). Only
+`launch onquit` turns it off: there the harness's `osascript` quit is an
+ordinary user quit, the alert legitimately appears, and the guest cannot
+answer it. The shipped app is unchanged.
 
 **The #0714 contract.** `open --env BATTY_BETA_SPARKLE_AUTO=relaunch|onquit`
 on a not-running app; wait for `sparkle-auto: armed mode=<mode>` (category

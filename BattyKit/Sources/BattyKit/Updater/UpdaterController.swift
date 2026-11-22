@@ -16,14 +16,21 @@ nonisolated private let autoLogger = Logger(subsystem: Logging.subsystem, catego
 /// `SparkleAutoConfirm`); it checks only when the `checkNotificationName`
 /// distributed notification arrives, and its delegate refuses Sparkle's
 /// scheduled checks.
+///
+/// Both backends share an `UpdaterDelegate`, held strongly here. On the
+/// standard updater it only marks an install's quit as confirmed, so the
+/// "Quit Batty?" alert doesn't follow Install and Relaunch. A feedless Beta
+/// never installs, so its delegate is inert.
 @MainActor
 public final class UpdaterController {
     public static let shared = UpdaterController()
 
     private enum Running {
         case standard(SPUStandardUpdaterController)
-        case headless(SPUUpdater, SparkleAutoConfirmUserDriver, SparkleAutoConfirmUpdaterDelegate)
+        case headless(SPUUpdater, SparkleAutoConfirmUserDriver)
     }
+
+    private let delegate: UpdaterDelegate
 
     private var running: Running
     private var checkObserver: (any NSObjectProtocol)?
@@ -46,14 +53,17 @@ public final class UpdaterController {
 
         switch SparkleAutoConfirm.backend(mode: mode, hasFeedURL: hasFeedURL) {
         case .standard:
+            let delegate = UpdaterDelegate(refusesBackgroundChecks: false)
+            self.delegate = delegate
             self.running = .standard(SPUStandardUpdaterController(
                 startingUpdater: hasFeedURL,
-                updaterDelegate: nil,
+                updaterDelegate: delegate,
                 userDriverDelegate: nil
             ))
         case .headless(let mode):
             let driver = SparkleAutoConfirmUserDriver(mode: mode)
-            let delegate = SparkleAutoConfirmUpdaterDelegate()
+            let delegate = UpdaterDelegate(refusesBackgroundChecks: true)
+            self.delegate = delegate
             let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: driver, delegate: delegate)
             do {
                 try updater.start()
@@ -67,7 +77,7 @@ public final class UpdaterController {
                 ))
                 return
             }
-            self.running = .headless(updater, driver, delegate)
+            self.running = .headless(updater, driver)
             checkObserver = DistributedNotificationCenter.default().addObserver(
                 forName: Notification.Name(SparkleAutoConfirm.checkNotificationName),
                 object: nil,
@@ -102,7 +112,7 @@ public final class UpdaterController {
     }
 
     private func requestAutoConfirmCheck() {
-        guard case .headless(let updater, _, _) = running else { return }
+        guard case .headless(let updater, _) = running else { return }
         guard updater.canCheckForUpdates else {
             autoLogger.error("\(SparkleAutoConfirm.logPrefix, privacy: .public)check ignored: session in progress")
             return

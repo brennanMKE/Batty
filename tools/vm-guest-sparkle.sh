@@ -128,10 +128,6 @@ setup)
 
   note "opt-in"
   /usr/bin/defaults write "$BUNDLE_ID" "$OPT_IN_KEY" -bool YES
-  # Settings "Confirm before quitting" off: otherwise the "Quit Batty?" alert
-  # (QuitConfirmation) blocks Sparkle's terminate request with nobody to
-  # answer it. The run records this as a finding, not a failure.
-  /usr/bin/defaults write "$BUNDLE_ID" co.sstools.Batty.confirmQuit -bool NO
 
   note "broker"
   tmo 90 /bin/zsh "$S/tools/vm-guest-broker.sh" "$APP" "$R/broker-diagnostics.log" </dev/null
@@ -157,6 +153,15 @@ launch)
   off=$(stream_size)
   print -r -- "$off" > "$R/launch-offset.txt"
   feed_requests > "$R/feed-requests.txt"
+  # onquit: the harness's osascript quit is an ordinary user quit (Sparkle
+  # installs after termination), so "Quit Batty?" legitimately appears and the
+  # guest has no Accessibility grant to answer it. Relaunch mode keeps the
+  # default, since Sparkle's own quit skips the alert.
+  if [[ "$mode" == onquit ]]; then
+    /usr/bin/defaults write "$BUNDLE_ID" co.sstools.Batty.confirmQuit -bool NO
+  else
+    /usr/bin/defaults delete "$BUNDLE_ID" co.sstools.Batty.confirmQuit 2>/dev/null
+  fi
   tmo 30 /usr/bin/open --env "BATTY_BETA_SPARKLE_AUTO=$mode" -a "$APP" || err "open A failed"
   if ! line=$(wait_log $off 60 "sparkle-auto: (armed mode=|start failed|ignored:)"); then
     [[ -n "$(app_pid)" ]] || {
