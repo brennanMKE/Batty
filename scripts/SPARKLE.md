@@ -116,3 +116,23 @@ also attached to the GitHub release for the tag as a user-run step; see
   standard "fetching appcast" UI.
 - With a fresh appcast item: the user sees the prompt, the DMG downloads,
   and Sparkle installs on relaunch.
+
+## Test feed for the VM runner (#0715)
+
+`tools/run-sparkle-update-vm.sh` builds Betas that carry a test feed. These
+packages are installed only inside a disposable VM and never leave the VM
+and the runner's results folder (never `dist/` or `website/`).
+
+`scripts/build-beta.sh` opt-in variables (unset, nothing changes):
+
+- `BATTY_BETA_BUILD_NUMBER` — overrides the UTC-minute build number (digits only).
+- `BATTY_BETA_FEED_URL` and `BATTY_BETA_ED_PUBLIC_KEY` — set together; become
+  `SU_FEED_URL` / `SU_PUBLIC_ED_KEY` for that build and are checked in the
+  built `Info.plist`. Refused with `--notarize`.
+
+`scripts/appcast-item.sh` options, given before the DMG (without them the
+item and the Keychain-backed `--account Batty` signing are unchanged):
+
+- `--ed-key-file <file>` — sign with `sign_update --ed-key-file`, never the Keychain.
+- `--enclosure-url <url>` — this enclosure URL, no `releaseNotesLink`.
+- `--sign-update <path>` — this `sign_update` binary.

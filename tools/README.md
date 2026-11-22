@@ -5,6 +5,27 @@ Unlike `scripts/` (release pipeline, restricted per `AGENTS.md`), this
 directory holds ad-hoc developer tooling that doesn't need release-process
 review.
 
+## run-sparkle-update-vm.sh (#0715)
+
+Tests that a Sparkle update keeps every Session and its running processes.
+Builds two team-signed Beta packages (A, and B one build newer) on the host
+with a test feed, then in a disposable Tart VM per mode (`relaunch`,
+`onquit`) installs A, sets up Sessions through the CLI, has Sparkle update to
+B through the #0714 hook and checks the result. Ends with
+`CHECK SPARKLE: PASSED|FAILED|ERROR`. See `docs/ui-testing-vm.md`,
+"Sparkle update runner (#0715)".
+
+```bash
+tools/run-sparkle-update-vm.sh --dry-run --ref issue/0696 --merge main
+tools/run-sparkle-update-vm.sh --ref issue/0696 --merge main
+```
+
+Helpers: `vm-lib.zsh` (Tart lifecycle shared with `run-ui-tests-vm.sh`),
+`vm-guest-sparkle.sh` (guest steps), `sparkle-test-key.swift` (throwaway
+Ed25519 key in a file, never the Keychain; `selftest`),
+`sparkle-update-check.py` (the checks; `sparkle-update-check-selftest.py`),
+and `appcast-item-selftest.py` for `scripts/appcast-item.sh`'s test options.
+
 ## run-ui-tests-vm.sh
 
 Runs `BattyUITests` inside a disposable Tart VM (#0412). UI tests never run

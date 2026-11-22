@@ -30,6 +30,21 @@
 #   VM runner keep App.xcconfig's static CURRENT_PROJECT_VERSION = 1. Betas have
 #   no Sparkle feed, so no appcast ordering gate applies.
 #
+# TEST FEED VARIABLES (#0715, for tools/run-sparkle-update-vm.sh only)
+#
+#   All three are opt-in and unset by default; unset, every xcodebuild
+#   invocation and every package is exactly what it was before them.
+#
+#   BATTY_BETA_BUILD_NUMBER   overrides the UTC-minute build number. Digits
+#                             only (anything else exits 2). The Sparkle runner
+#                             uses it so package B is strictly newer than A.
+#   BATTY_BETA_FEED_URL       Sparkle feed URL (SU_FEED_URL) and Ed25519 public
+#   BATTY_BETA_ED_PUBLIC_KEY  key (SU_PUBLIC_ED_KEY), which Beta.xcconfig blanks.
+#                             Set both or neither (one alone exits 2). Refused
+#                             with --notarize (exit 2): a test-feed package is
+#                             installed only inside a disposable VM and never
+#                             leaves it and the runner's results folder.
+#
 # THE SIGNING QUESTION (read this before using --sign)
 #
 #   Default is unsigned: CODE_SIGNING_ALLOWED=NO / CODE_SIGNING_REQUIRED=NO.
@@ -123,6 +138,23 @@ OUT_DIR="$BUILD_ROOT/Products"
 
 source "$REPO/scripts/build-number.sh"
 BUILD_NUMBER="$(release_build_number)"
+if [[ -n "${BATTY_BETA_BUILD_NUMBER:-}" ]]; then
+    if [[ ! "$BATTY_BETA_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+        print -u2 "build-beta.sh: BATTY_BETA_BUILD_NUMBER must be digits only (got '$BATTY_BETA_BUILD_NUMBER')"
+        exit 2
+    fi
+    BUILD_NUMBER="$BATTY_BETA_BUILD_NUMBER"
+fi
+FEED_URL="${BATTY_BETA_FEED_URL:-}"
+ED_PUBLIC_KEY="${BATTY_BETA_ED_PUBLIC_KEY:-}"
+FEED_FLAGS=()
+if [[ -n "$FEED_URL" || -n "$ED_PUBLIC_KEY" ]]; then
+    if [[ -z "$FEED_URL" || -z "$ED_PUBLIC_KEY" ]]; then
+        print -u2 "build-beta.sh: BATTY_BETA_FEED_URL and BATTY_BETA_ED_PUBLIC_KEY must be set together"
+        exit 2
+    fi
+    FEED_FLAGS=(SU_FEED_URL="$FEED_URL" SU_PUBLIC_ED_KEY="$ED_PUBLIC_KEY")
+fi
 BUILT_VERSION=""
 
 check_build_number() {
@@ -136,6 +168,18 @@ check_build_number() {
     fi
     BUILT_VERSION="$short ($actual)"
     print "==> Version check: $BUILT_VERSION"
+}
+
+check_feed() {
+    local app="$1" feed key
+    feed="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist" 2>/dev/null || true)"
+    key="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist" 2>/dev/null || true)"
+    if [[ "$feed" != "$FEED_URL" || "$key" != "$ED_PUBLIC_KEY" ]]; then
+        print -u2 "error: built SUFeedURL/SUPublicEDKey ('$feed' / '$key') != requested ('$FEED_URL' / '$ED_PUBLIC_KEY')"
+        return 1
+    fi
+    [[ -n "$FEED_URL" ]] && print "==> Feed check: SUFeedURL=$feed"
+    return 0
 }
 
 print_help() {
@@ -171,6 +215,14 @@ if (( NO_SUBMIT && ! NOTARIZE )); then
     print -u2 "build-beta.sh: --no-submit is only meaningful with --sign --notarize"
     print -u2 "usage: $0 --sign --notarize [--no-submit]"
     exit 2
+fi
+
+if (( NOTARIZE )) && [[ -n "${BATTY_BETA_FEED_URL:-}${BATTY_BETA_ED_PUBLIC_KEY:-}" ]]; then
+    print -u2 "build-beta.sh: BATTY_BETA_FEED_URL and BATTY_BETA_ED_PUBLIC_KEY are refused with --notarize"
+    exit 2
+fi
+if (( ${#FEED_FLAGS} )); then
+    print "==> TEST FEED PACKAGE: install only inside a disposable VM"
 fi
 
 if (( TEARDOWN )); then
@@ -370,7 +422,8 @@ PLIST
         -derivedDataPath "$DERIVED_DATA" \
         -destination 'generic/platform=macOS' \
         BATTY_SIGNING=developerid \
-        CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+        CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+        "${FEED_FLAGS[@]}"
 
     print "==> Exporting signed app (developer-id, manual)"
     xcodebuild -exportArchive \
@@ -384,6 +437,7 @@ PLIST
         return 1
     fi
     check_build_number "$APP_PATH" || return 1
+    check_feed "$APP_PATH" || return 1
 
     # Same reason as release.sh (#0273): bin/* are sealed as resources, so
     # -exportArchive does not necessarily re-sign them.
@@ -562,7 +616,8 @@ xcodebuild build \
     -derivedDataPath "$DERIVED_DATA" \
     -destination 'platform=macOS' \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-    "${SIGN_FLAGS[@]}"
+    "${SIGN_FLAGS[@]}" \
+    "${FEED_FLAGS[@]}"
 
 BUILT_APP="$DERIVED_DATA/Build/Products/$CONFIGURATION/$APP_NAME"
 if [[ ! -d "$BUILT_APP" ]]; then
@@ -571,6 +626,7 @@ if [[ ! -d "$BUILT_APP" ]]; then
     exit 1
 fi
 check_build_number "$BUILT_APP" || exit 1
+check_feed "$BUILT_APP" || exit 1
 
 # Leave exactly one copy behind, in a location this script owns —
 # release.sh's #0026 comment documents that a stray leftover .app confuses

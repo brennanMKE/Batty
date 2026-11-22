@@ -217,13 +217,17 @@ this approval:
   `~/Developer/Homelab/cameron/lm-studio-memory.md`), not interference.
 - Writes results to the gitignored `build/ui-tests/<run-id>/`.
 
-The approval covers only that runner and read-only `tart list` / `tart-lease status` checks.
+**Sparkle update runner (user, 2026-11-21).** The same standing authorization covers `tools/run-sparkle-update-vm.sh` on the same terms: Tart lease, the memory-signal protocol, disposable `batty-uitest-*` clones, results in the gitignored `build/sparkle-tests/`, one VM at a time. On the host it also builds two Beta packages with `./build.sh package --sign` (Manual signing, committed profile, never `--notarize`) in exported trees under `build/sparkle-tests/work/`, and signs a test appcast with a throwaway Ed25519 key from a temporary file (`sign_update --ed-key-file`, never the Keychain). Inside the guest only, it may disable Gatekeeper, bootstrap the broker and BattyHost agents, and quit the app with `osascript`.
+
+The approval covers only those runners and read-only `tart list` / `tart-lease status` checks.
 It does **not** cover:
 
 - running UI tests or UI scripting on the host;
 - touching the golden image or other projects' VMs;
 - unloading models or killing processes by hand;
-- starting a second concurrent Batty VM.
+- starting a second concurrent Batty VM;
+- a notarized run of either runner (needs the user's go-ahead each time);
+- copying a test-feed package anywhere but the VM and the results folder.
 
 If the runner fails on a host precondition (disk, memory request not fulfilled, no lease slot),
 report it rather than working around it.
@@ -312,7 +316,7 @@ Never do any of these, in any session or subagent:
 - Ask the user to create, revoke or "fix" a certificate in the developer portal.
 
 Developer ID signing happens in exactly two places (user decision, 2026-10-14). Both use **Manual** signing with the committed profiles in `Configuration/Profiles/`, which never contacts Apple:
-- `./build.sh package --sign`, to build the Beta the user installs. With `--notarize` (valid only together with `--sign`) it archives, exports and packages a notarized Beta DMG for installing on another Mac; it notarizes only with the user's go-ahead each time (`--no-submit` stops before the upload);
+- `./build.sh package --sign`, to build the Beta the user installs. With `--notarize` (valid only together with `--sign`) it archives, exports and packages a notarized Beta DMG for installing on another Mac; it notarizes only with the user's go-ahead each time (`--no-submit` stops before the upload). `tools/run-sparkle-update-vm.sh` (#0715) calls this same site, without `--notarize`, for its two test packages; it is not a new site;
 - `scripts/release.sh`, only with the user's go-ahead each time. If a signing step fails, stop and report it. Never work around it.
 
 ## Restricted areas

@@ -172,31 +172,7 @@ fi
 log()  { print -r -- "==> $*"; }
 fail() { print -r -- "!! $*" >&2; CHECK_LINE="CHECK UI: ERROR ($*)"; exit 2; }
 
-# Kill $1, waiting up to ~30s (polling kill -0) for it to actually go away
-# before escalating to KILL -- never an unbounded `wait`, so cleanup can't
-# hang indefinitely on a wedged child.
-bounded_kill() {
-  local pid="$1" label="${2:-process}" waited=0
-  kill -0 "$pid" 2>/dev/null || { wait "$pid" 2>/dev/null || true; return 0; }
-  kill "$pid" >/dev/null 2>&1 || true
-  while kill -0 "$pid" 2>/dev/null && (( waited < 30 )); do
-    sleep 1
-    # Pre-increment: post-increment's result is the OLD value, so the first
-    # pass evaluates to 0 -- a standalone `(( expr ))` command's exit status
-    # is 1 when expr is 0, which set -e treats as a command failure and
-    # aborts the whole EXIT-trap cleanup mid-kill, skipping tart stop/KILL/
-    # delete for any target that outlives 1s. Verified with a scratch copy
-    # of bounded_kill+cleanup: the post-increment form stops after logging
-    # "cleanup rc=..." and never reaches the kill, leaking both children;
-    # `(( ++waited ))` runs cleanup to completion every time.
-    (( ++waited ))
-  done
-  if kill -0 "$pid" 2>/dev/null; then
-    log "$label pid $pid still alive after ${waited}s, sending KILL"
-    kill -KILL "$pid" >/dev/null 2>&1 || true
-  fi
-  wait "$pid" 2>/dev/null || true
-}
+source "${0:A:h}/vm-lib.zsh"
 
 # zsh does not run an EXIT trap when the process is killed by an uncaught
 # INT/TERM/HUP -- the shell terminates directly on the default signal
@@ -225,10 +201,7 @@ cleanup() {
   # Give the Tart slot back before the slower teardown, so a waiting session
   # starts sooner. Not fatal if missed: leases are pid-stamped and the next
   # acquire prunes ours.
-  if [[ -n "${LEASE_ID:-}" ]]; then
-    tart-lease release --id "$LEASE_ID" 2>/dev/null || true
-    LEASE_ID=""
-  fi
+  vm_lease_release
   # The backgrounded `tart run` (below) is a background job, so the shell
   # set its SIGINT disposition to ignored when launching it. Ctrl-C can't be
   # relied on to stop it either way -- tart handles signals itself, and a
@@ -236,7 +209,7 @@ cleanup() {
   # killed explicitly, before `tart delete`, or it keeps the VM's
   # virtualization session alive underneath the delete.
   if [[ -n "${TEST_PID:-}" ]]; then
-    bounded_kill "$TEST_PID" "test-exec"
+    vm_bounded_kill "$TEST_PID" "test-exec"
     unset TEST_PID
   fi
   if [[ -n "${CLONE:-}" ]]; then
@@ -245,15 +218,10 @@ cleanup() {
     tart stop "$CLONE" --timeout 30 >/dev/null 2>&1 || true
   fi
   if [[ -n "${TART_RUN_PID:-}" ]]; then
-    bounded_kill "$TART_RUN_PID" "tart-run"
+    vm_bounded_kill "$TART_RUN_PID" "tart-run"
     unset TART_RUN_PID
   fi
-  if [[ -n "${MEMORY_REQUEST_ID:-}" && -n "${MEMORY_COORD_DIR:-}" ]]; then
-    mkdir -p "$MEMORY_COORD_DIR/release" 2>/dev/null || true
-    print -r -- "{\"id\": \"$MEMORY_REQUEST_ID\", \"released\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-      > "$MEMORY_COORD_DIR/release/$MEMORY_REQUEST_ID.json" 2>/dev/null || true
-    unset MEMORY_REQUEST_ID MEMORY_COORD_DIR
-  fi
+  vm_memory_release
   if [[ -n "${CLONE:-}" ]]; then
     tart delete "$CLONE" >/dev/null 2>&1 || true
   fi
@@ -273,108 +241,24 @@ tart list | awk '{ print $2 }' | grep -qx "$GOLDEN" || fail "Golden image '$GOLD
 
 [[ -d "$SLIDINGTABS_REPO/.git" ]] || fail "SlidingTabs repo not found at $SLIDINGTABS_REPO — BattyKit/Package.swift depends on it via a local path"
 
-# A SIGKILL skips the trap, so sweep clones left by earlier runs. This runs
-# before the wait-for-a-slot preflight below: an orphaned clone from a
-# SIGKILLed previous run keeps its `tart run` alive (Tart shows it as
-# "running"), so sweeping it here first is what lets that slot free up --
-# swept after the wait instead, the wait would see the orphan as "running"
-# and wait for a slot that only sweeping itself can open. Only this script's
-# own run-id shape is matched — never a bare "batty-uitest-" prefix match,
-# which would also match the golden image itself (the 2026-09-13 Changeover
-# incident this pattern guards against, see
-# ~/Developer/Homelab/cameron/tart-ui-test-vm.md). A clone whose <pid>
-# suffix is still alive belongs to a concurrent run of this same script (the
-# "no other VM running" preflight below only checks Tart's own state, which
-# a run still booting or between clone-and-boot may not show yet) -- skip it
-# rather than deleting a run out from under it. This is a best-effort
-# PID-liveness check, not a lock: a dead script's PID can in principle be
-# reused by an unrelated process before this sweep runs.
-for old in $(tart list | awk -v p="^$PREFIX-[0-9]{8}-[0-9]{6}-[0-9]+\$" '$2 ~ p { print $2 }'); do
-  [[ "$old" == "$GOLDEN" || "$old" == "$CLONE" ]] && continue
-  old_pid="${old##*-}"
-  if [[ "$old_pid" =~ ^[0-9]+$ ]] && kill -0 "$old_pid" 2>/dev/null; then
-    log "Skipping $old — its run-id pid ($old_pid) is still alive (a concurrent run, not stale)"
-    continue
-  fi
-  log "Sweeping stale clone: $old"
-  tart stop "$old" >/dev/null 2>&1 || true
-  tart delete "$old" >/dev/null 2>&1 || true
-done
+# A SIGKILL skips the trap, so sweep stale clones first (see
+# vm_sweep_stale_clones in tools/vm-lib.zsh for why this comes before the wait).
+vm_sweep_stale_clones "$PREFIX" "$GOLDEN" "$CLONE"
 
-# Apple allows two macOS guests at once, and every project on this host
-# shares that and the RAM. The host is busy enough in practice (several
-# projects cycling VMs concurrently) that a slot can take a while to open
-# up, so wait for one rather than failing on the first refusal.
-# WAIT_FOR_SLOT_SECS=0 restores the old immediate-fail behavior.
-WAIT_FOR_SLOT_SECS="${WAIT_FOR_SLOT_SECS:-1200}"
-WAIT_POLL_SECS="${WAIT_POLL_SECS:-30}"
-(( WAIT_POLL_SECS >= 1 )) || WAIT_POLL_SECS=1
-running=$(tart list | awk '$NF == "running" { print $2 }')
-if [[ -n "$running" ]]; then
-  if (( WAIT_FOR_SLOT_SECS == 0 )); then
-    fail "Another VM is running ($running). Wait for it to finish."
-  fi
-  log "Another VM is running ($running). Waiting up to ${WAIT_FOR_SLOT_SECS}s for a free slot (polling every ${WAIT_POLL_SECS}s; override with WAIT_FOR_SLOT_SECS/WAIT_POLL_SECS, or WAIT_FOR_SLOT_SECS=0 to fail immediately instead)."
-  wait_start=$SECONDS
-  wait_deadline=$(( SECONDS + WAIT_FOR_SLOT_SECS ))
-  while [[ -n "$running" ]]; do
-    (( SECONDS < wait_deadline )) || fail "Timed out after ${WAIT_FOR_SLOT_SECS}s waiting for another VM to finish ($running still running)."
-    sleep "$WAIT_POLL_SECS"
-    running=$(tart list | awk '$NF == "running" { print $2 }')
-  done
-  log "Slot free after $(( SECONDS - wait_start )) s of waiting"
-fi
+vm_wait_for_free_slot || fail "$VM_LIB_ERROR"
 
 free_kb=$(df -k / | awk 'NR == 2 { print $4 }')
 (( free_kb / 1024 / 1024 >= 20 )) || fail "Only $((free_kb / 1024 / 1024)) GiB free on / — need at least 20 GiB"
 
 # --- Memory (memory-signal protocol, as in Changeover's/Curator's run-ui-tests-vm.sh) ---
 
-memory_available_bytes() {
-  local page free inactive purgeable
-  page=$(sysctl -n vm.pagesize)
-  free=$(vm_stat | awk '/Pages free/ {gsub("\\.","",$3); print $3}')
-  inactive=$(vm_stat | awk '/Pages inactive/ {gsub("\\.","",$3); print $3}')
-  purgeable=$(vm_stat | awk '/Pages purgeable/ {gsub("\\.","",$3); print $3}')
-  print -r -- $(( (free + inactive + purgeable) * page ))
-}
-
-memory_observer_live() {
-  local dir hb now mtime
-  dir="${MEMORY_COORDINATION_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/memory-coordination}"
-  hb="$dir/heartbeat"
-  [[ -f "$hb" ]] || return 1
-  now=$(date +%s)
-  mtime=$(stat -f %m "$hb" 2>/dev/null) || return 1
-  (( now - mtime <= 15 ))
-}
-
-memory_request_and_wait() {
-  local need_bytes=$1 dir id deadline
-  dir="${MEMORY_COORDINATION_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/memory-coordination}"
-  memory_observer_live || return 4
-  id="run-ui-tests-vm-batty-$$-$(date +%s)"
-  MEMORY_REQUEST_ID="$id"
-  MEMORY_COORD_DIR="$dir"
-  mkdir -p "$dir/requests" "$dir/ready" "$dir/failed" "$dir/release"
-  print -r -- "{\"id\": \"$id\", \"resource\": \"memory\", \"bytes\": $need_bytes, \"requester\": \"run-ui-tests-vm\", \"reason\": \"Batty UI-test VM needs guest RAM plus build headroom\", \"pid\": $$, \"created\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-    > "$dir/requests/$id.json"
-  deadline=$(( SECONDS + 120 ))
-  while (( SECONDS < deadline )); do
-    [[ -f "$dir/ready/$id.json" ]] && return 0
-    [[ -f "$dir/failed/$id.json" ]] && return 3
-    sleep 2
-  done
-  return 4
-}
-
 need_bytes=$(( (GUEST_MEM_MB + 4096) * 1024 * 1024 ))
-avail_bytes=$(memory_available_bytes)
+avail_bytes=$(vm_memory_available_bytes)
 if (( avail_bytes < need_bytes )); then
   log "Host memory short ($(( avail_bytes / 1073741824 )) GiB of $(( need_bytes / 1073741824 )) GiB) — requesting via the memory-signal protocol"
-  set +e; memory_request_and_wait "$need_bytes"; mem_rc=$?; set -e
+  set +e; vm_memory_request_and_wait "$need_bytes" run-ui-tests-vm-batty run-ui-tests-vm "Batty UI-test VM needs guest RAM plus build headroom"; mem_rc=$?; set -e
   (( mem_rc == 0 )) || fail "Memory request not fulfilled (rc=$mem_rc). Free memory (e.g. unload LM Studio models, see ~/Developer/Homelab/cameron/lm-studio-memory.md) and retry."
-  avail_bytes=$(memory_available_bytes)
+  avail_bytes=$(vm_memory_available_bytes)
   (( avail_bytes >= need_bytes )) || fail "Observer signaled ready but memory is still short"
 fi
 
@@ -400,11 +284,7 @@ git -C "$SLIDINGTABS_REPO" archive -o "$EXPORT/slidingtabs.tar" HEAD
 # memory-signal work so it sees memory the observer just freed.
 # See Homelab protocols/tart-lease/PROTOCOL.md
 
-if command -v tart-lease >/dev/null; then
-  LEASE_ID=$(tart-lease acquire --label batty --pid $$)
-else
-  log "WARNING: tart-lease not on PATH — running without admission control"
-fi
+vm_lease_acquire batty
 
 # --- Clone and boot ----------------------------------------------------------
 
@@ -422,24 +302,9 @@ if (( DEMO )); then
   tart set "$CLONE" --display "$DEMO_DISPLAY" || fail "tart set --display failed"
 fi
 
-log "Booting $CLONE (headless, muted, export mounted read-only)"
-boot_start=$SECONDS
-# --no-audio: without it Tart routes guest audio to the host output (e.g. the
-# notification sound from `batty notify --sound`). No UI test depends on sound.
-tart run "$CLONE" --no-graphics --no-audio --dir=run:"$EXPORT":ro >"$RESULTS_DIR/tart-run.log" 2>&1 &
-TART_RUN_PID=$!
-boot_deadline=$(( SECONDS + BOOT_TIMEOUT_SECS ))
-until tart exec "$CLONE" true >/dev/null 2>&1; do
-  (( SECONDS < boot_deadline )) || fail "Guest did not become reachable within ${BOOT_TIMEOUT_SECS}s (see $RESULTS_DIR/tart-run.log)"
-  sleep 5
-done
-log "Guest reachable after $(( SECONDS - boot_start )) s (elapsed since boot start, not script start)"
+vm_boot "$CLONE" "$EXPORT" "$RESULTS_DIR/tart-run.log" "$BOOT_TIMEOUT_SECS" || fail "$VM_LIB_ERROR"
 
 # --- In the guest ------------------------------------------------------------
-
-log "Confirming the guest is actually virtualized (kern.hv_vmm_present)"
-hv=$(tart exec "$CLONE" /usr/sbin/sysctl -n kern.hv_vmm_present)
-[[ "$hv" == "1" ]] || fail "Guest reports kern.hv_vmm_present=$hv, expected 1 — refusing to trust the host guard inside this guest"
 
 log "Extracting source into the guest (locally, from the tar files on the read-only share)"
 tart exec "$CLONE" /bin/zsh -lc "
@@ -509,7 +374,7 @@ log "Running UI tests in the guest (this runs XCUITest inside the VM only)"
 # external command exits on its own -- verified with a scratch script --
 # so a plain foreground `tart exec ... test` would make Ctrl-C during the
 # ~10-minute test phase wait for it to finish before cleanup ran. `wait`
-# on an explicit background PID does not have that problem. run_guest_step
+# on an explicit background PID does not have that problem. vm_run_guest_step
 # below goes one step further: it polls the background PID with `kill -0`
 # and `sleep 2` rather than `wait`ing on it outright, so a wedged
 # `tart exec` can be killed at a host-side bound.
@@ -525,34 +390,6 @@ GUEST_APP="$GUEST_DD/Build/Products/Debug/Batty Beta.app"
 # outlive its limit even if the guest command blocks on a prompt.
 GUEST_TMO='/usr/bin/perl -e "alarm shift; exec @ARGV" --'
 
-# Wait up to $1 seconds for the background job in TEST_PID, killing it at the
-# bound. Sets step_rc (124 when the host-side bound hit).
-wait_bounded() {
-  local secs="$1" label="$2" waited=0
-  while kill -0 "$TEST_PID" 2>/dev/null && (( waited < secs )); do
-    sleep 2
-    (( waited += 2 ))
-  done
-  if kill -0 "$TEST_PID" 2>/dev/null; then
-    log "$label exceeded ${secs}s on the host side — killing it"
-    bounded_kill "$TEST_PID" "$label"
-    step_rc=124
-  else
-    step_rc=0
-    wait "$TEST_PID" || step_rc=$?
-  fi
-  unset TEST_PID
-}
-
-# Run one guest command string, backgrounded and bounded on the host too (the
-# `tart exec` itself can wedge). Sets step_rc.
-run_guest_step() {
-  local secs="$1" cmd="$2"
-  tart exec "$CLONE" /bin/zsh -lc "$cmd" &
-  TEST_PID=$!
-  wait_bounded "$secs" "guest step"
-}
-
 # Best-effort, bounded pull of whatever the guest has so far, so a later hang
 # or timeout still returns the earlier steps' output.
 pull_results() {
@@ -562,7 +399,7 @@ pull_results() {
   (( DEMO )) && { guest_secs=1500; host_secs=1560 }
   tart exec "$CLONE" /bin/zsh -lc "$GUEST_TMO $guest_secs tar -C $GUEST_RESULTS -cf - ." > "$tarball" 2>/dev/null &
   TEST_PID=$!
-  wait_bounded $host_secs "result pull"
+  vm_wait_bounded $host_secs "result pull"
   tar -x -C "$RESULTS_DIR" -f "$tarball" 2>/dev/null || log "Failed to pull some results back from the guest"
   rm -f "$tarball"
 }
@@ -570,7 +407,7 @@ pull_results() {
 set +e
 if (( DEMO )); then
   log "Demo mode: guest setup (repos, toolchains, shell) -- network heavy"
-  run_guest_step 2700 "
+  vm_run_guest_step 2700 "
     $GUEST_TMO 2600 /bin/zsh $GUEST_BATTY/tools/demo/guest-setup.sh '$GUEST_APP' ${BATTY_UI_DEMO_REPOS:-} < /dev/null 2>&1 | tee $GUEST_RESULTS/demo-setup.log
     exit 0"
   pull_results
@@ -581,14 +418,14 @@ if (( DEMO )); then
 fi
 # SwiftPM's repository cache occasionally fails on a fresh clone (exit 74); one
 # bounded retry. A persistent failure still surfaces in the build step below.
-run_guest_step 700 "
+vm_run_guest_step 700 "
   cd $GUEST_BATTY
   for attempt in 1 2; do
     $GUEST_TMO 300 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' -resolvePackageDependencies && break
     print -r -- \"package resolution attempt \$attempt failed\"
   done
   exit 0"
-run_guest_step 1500 "
+vm_run_guest_step 1500 "
   cd $GUEST_BATTY
   $GUEST_TMO 1200 xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
     -destination 'platform=macOS' -derivedDataPath $GUEST_DD \
@@ -601,12 +438,12 @@ pull_results
 if (( build_rc != 0 )); then
   test_rc=$build_rc
 else
-  run_guest_step 150 "
+  vm_run_guest_step 150 "
     ls -la '$GUEST_APP' > $GUEST_RESULTS/broker-bootstrap.out 2>&1
     $GUEST_TMO 90 /bin/zsh $GUEST_BATTY/tools/vm-guest-broker.sh '$GUEST_APP' $GUEST_RESULTS/broker-diagnostics.log < /dev/null >> $GUEST_RESULTS/broker-bootstrap.out 2>&1
     print -r -- \"bootstrap script rc=\$?\" >> $GUEST_RESULTS/broker-bootstrap.out"
   pull_results
-  run_guest_step $TEST_HOST_SECS "
+  vm_run_guest_step $TEST_HOST_SECS "
     cd $GUEST_BATTY
     /usr/bin/env $GALLERY_ENV $DEMO_ENV $GUEST_TMO $TEST_GUEST_SECS xcodebuild -workspace Batty.xcworkspace -scheme 'Batty UI Tests' \
       -destination 'platform=macOS' -derivedDataPath $GUEST_DD \
@@ -625,7 +462,7 @@ set -e
 # AttributeGraph cycles) surface only in the log, and a crash only in a
 # crash report. Keep both with the results.
 
-run_guest_step 300 "
+vm_run_guest_step 300 "
   $GUEST_TMO 120 /usr/bin/log show --last 30m --info --style compact \
     --predicate 'process CONTAINS \"Batty\" AND (messageType == error OR messageType == fault OR category == \"AppXPCCoordinator\" OR category == \"BrokerAgentController\" OR subsystem BEGINSWITH \"com.apple.SwiftUI\" OR subsystem == \"com.apple.AttributeGraph\")' \
     > $GUEST_RESULTS/app-warnings.log 2>&1
@@ -643,7 +480,7 @@ run_guest_step 300 "
 # errors/faults). Small by design: defaults, the saved-state and Application
 # Support listings, the name cache, and the app subsystem's log.
 
-run_guest_step 200 "
+vm_run_guest_step 200 "
   mkdir -p $GUEST_RESULTS/guest-state
   $GUEST_TMO 30 /usr/bin/defaults read co.sstools.Batty.beta > $GUEST_RESULTS/guest-state/defaults.txt 2>&1
   ls -laR ~/Library/Saved\\ Application\\ State/co.sstools.Batty.beta.savedState > $GUEST_RESULTS/guest-state/saved-state-listing.txt 2>&1
@@ -658,7 +495,7 @@ run_guest_step 200 "
 # so it is opt-in: BATTY_UI_FULL_APP_LOG=1 tools/run-ui-tests-vm.sh ... (#0444
 # found its root cause there).
 if [[ "${BATTY_UI_FULL_APP_LOG:-}" == "1" ]]; then
-  run_guest_step 400 "
+  vm_run_guest_step 400 "
     $GUEST_TMO 300 /usr/bin/log show --last 30m --info --debug --style compact \
       --predicate 'process == \"Batty Beta\"' \
       > $GUEST_RESULTS/guest-state/app-all-processes.log 2>&1"

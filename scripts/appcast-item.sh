@@ -23,11 +23,35 @@
 #   url:             https://batty.sstools.co/downloads/Batty-<X.Y.Z>.dmg
 #   releaseNotesLink https://batty.sstools.co/changelog.html#v<X-Y-Z>
 # Copy the DMG to website/downloads/Batty-<X.Y.Z>.dmg before deploying.
+#
+# Test-feed options (#0715, used only by tools/run-sparkle-update-vm.sh),
+# given before the DMG. Without them the output and the Keychain-backed
+# `sign_update --account Batty` call are unchanged.
+#   --ed-key-file <file>    sign with `sign_update --ed-key-file <file>`;
+#                           the Keychain is never read (no --account)
+#   --enclosure-url <url>   use this enclosure URL and omit releaseNotesLink
+#   --sign-update <path>    use this sign_update binary
 
 set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
 REPO_ROOT="${SCRIPT_DIR:h}"
+
+ED_KEY_FILE=""
+ENCLOSURE_URL=""
+SIGN_UPDATE=""
+while (( $# )); do
+    case "$1" in
+        --ed-key-file) ED_KEY_FILE="${2:-}"; shift 2 ;;
+        --enclosure-url) ENCLOSURE_URL="${2:-}"; shift 2 ;;
+        --sign-update) SIGN_UPDATE="${2:-}"; shift 2 ;;
+        *) break ;;
+    esac
+done
+if [[ -n "$ED_KEY_FILE" && ! -f "$ED_KEY_FILE" ]]; then
+    print -u2 "error: --ed-key-file $ED_KEY_FILE not found"
+    exit 2
+fi
 
 DMG="${1:-}"
 if [[ -z "$DMG" || ! -f "$DMG" ]]; then
@@ -53,7 +77,7 @@ find_sign_update() {
     return 1
 }
 
-SIGN_UPDATE=$(find_sign_update) || {
+[[ -n "$SIGN_UPDATE" ]] || SIGN_UPDATE=$(find_sign_update) || {
     print -u2 "error: sign_update not found. Build BattyKit once (./build.sh) so"
     print -u2 "       the Sparkle SPM artifacts are produced, then retry."
     exit 1
@@ -85,7 +109,11 @@ if [[ -z "$SHORT_VERSION" || -z "$BUILD_VERSION" ]]; then
 fi
 
 # sign_update prints: sparkle:edSignature="..." length="..."
-SIG_LINE=$("$SIGN_UPDATE" --account Batty "$DMG")
+if [[ -n "$ED_KEY_FILE" ]]; then
+    SIG_LINE=$("$SIGN_UPDATE" --ed-key-file "$ED_KEY_FILE" "$DMG")
+else
+    SIG_LINE=$("$SIGN_UPDATE" --account Batty "$DMG")
+fi
 ED_SIGNATURE=$(print -r -- "$SIG_LINE" | grep -oE 'sparkle:edSignature="[^"]+"' | sed -E 's/.*="([^"]+)"/\1/')
 LENGTH=$(print -r -- "$SIG_LINE" | grep -oE 'length="[0-9]+"' | sed -E 's/.*="([0-9]+)"/\1/')
 
@@ -105,17 +133,26 @@ fi
 ANCHOR="v${SHORT_VERSION//./-}"
 PUBDATE=$(date -u +"%a, %d %b %Y 00:00:00 +0000")
 
+URL="https://batty.sstools.co/downloads/Batty-${SHORT_VERSION}.dmg"
+NOTES_LINE="      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#${ANCHOR}</sparkle:releaseNotesLink>"
+if [[ -n "$ENCLOSURE_URL" ]]; then
+    URL="$ENCLOSURE_URL"
+    NOTES_LINE=""
+fi
+
 cat <<EOF
     <item>
       <title>${SHORT_VERSION}</title>
       <pubDate>${PUBDATE}</pubDate>
       <sparkle:minimumSystemVersion>${MIN_SYSTEM}</sparkle:minimumSystemVersion>
-      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#${ANCHOR}</sparkle:releaseNotesLink>
+EOF
+[[ -n "$NOTES_LINE" ]] && print -r -- "$NOTES_LINE"
+cat <<EOF
       <description><![CDATA[
         TODO: paste user-visible release notes for ${SHORT_VERSION} here.
       ]]></description>
       <enclosure
-        url="https://batty.sstools.co/downloads/Batty-${SHORT_VERSION}.dmg"
+        url="${URL}"
         sparkle:version="${BUILD_VERSION}"
         sparkle:shortVersionString="${SHORT_VERSION}"
         sparkle:edSignature="${ED_SIGNATURE}"
@@ -125,6 +162,11 @@ cat <<EOF
 EOF
 
 print -u2 ""
+if [[ -n "$ENCLOSURE_URL" ]]; then
+    print -u2 "Generated a TEST <item> for Batty ${SHORT_VERSION} (build ${BUILD_VERSION}) at ${URL}."
+    print -u2 "  - Test item only: never paste it into website/appcast.xml or deploy it."
+    exit 0
+fi
 print -u2 "Generated <item> for Batty ${SHORT_VERSION} (build ${BUILD_VERSION})."
 print -u2 "  - Paste it as the FIRST <item> in website/appcast.xml (newest first)."
 print -u2 "  - Copy the DMG to website/downloads/Batty-${SHORT_VERSION}.dmg."

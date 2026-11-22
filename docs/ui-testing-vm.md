@@ -666,3 +666,74 @@ Neovim, GNU Make and an `ld` shim for `make defconfig`, a `~/.zshrc` with the `b
 `TEST_RUNNER_BATTY_UI_DEMO=1` only when a filter names `DemoSceneTests`.
 `BATTY_UI_DEMO_SETUP_ONLY=1` stops after the setup step; `BATTY_UI_DEMO_REPOS="owner/repo ..."`
 limits what it clones. See issue #0505 "Gotchas" for what the guest needed.
+
+## Sparkle update runner (#0715)
+
+`tools/run-sparkle-update-vm.sh` checks the #0696 goal: a Sparkle update must
+relaunch the app and restore every Session with its running processes. It
+shares the Tart lifecycle with the UI runner through `tools/vm-lib.zsh` (same
+golden, the same `batty-uitest-<YYYYMMDD-HHMMSS>-<pid>` clone shape, lease
+label `batty`, memory protocol) and so never runs beside it.
+
+**What is built, and why signed.** `OutgoingCodeSigningEnforcement` skips the
+XPC requirement when the app has no team identifier, so an unsigned package
+would pass for the wrong reason. The runner exports the tested commit into
+`build/sparkle-tests/work/A` and `.../B` and runs that tree's
+`./build.sh package --sign` with `BATTY_BETA_FEED_URL`,
+`BATTY_BETA_ED_PUBLIC_KEY` and `BATTY_BETA_BUILD_NUMBER` (B = A + 1). It
+checks the feed, key and versions, that each BattyHost is signed by team
+`XV8BAAVZ6V`, `codesign --verify --deep --strict`, and that the two BattyHost
+cdhashes differ (the trees are at different paths, and a Debug `swift build`
+records absolute object paths). ERROR before any VM if not.
+
+**Throwaway key.** `tools/sparkle-test-key.swift generate` writes a CryptoKit
+Ed25519 seed (base64, mode 0600) into a temp folder removed on exit;
+`sign_update --ed-key-file` signs `B.dmg`, and the runner verifies that
+signature with the public key before using it. Only `ed25519.pub` is kept.
+
+**Feed.** `http://127.0.0.1:47912/appcast.xml`, served in the guest by a
+`python3 -m http.server` agent. The IP literal avoids ATS (it doesn't apply to
+IP hosts) and the update is EdDSA-signed. The feed holds no item until
+`trigger` swaps the real appcast in, because the headless updater also runs
+Sparkle's own launch-time check (a finding recorded in #0715) and would
+otherwise install B before the baseline. If Sparkle ever refuses it, the run
+is an ERROR naming the `sparkle-auto: error:` line; the fallback (a
+guest-trusted self-signed HTTPS certificate) needs the user's approval first.
+
+**Guest-only changes.** `tools/vm-guest-sparkle.sh` refuses to run outside a VM.
+It runs `spctl --global-disable` (recorded in `setup.log`), clears quarantine,
+writes the "keep terminals running" default, turns Settings "Confirm before
+quitting" off (`co.sstools.Batty.confirmQuit`; otherwise the "Quit Batty?"
+alert blocks Sparkle's terminate request with nobody to answer it, a finding
+recorded in #0715), bootstraps the broker
+(`vm-guest-broker.sh`) and a BattyHost agent equivalent to the embedded
+`*.host.plist` (absolute `Program`, same Label and MachServices) from
+`~/Library/Application Support/BattyUITests/agents/`, and captures
+`log stream --level info` for the whole run. The shipped app is unchanged.
+
+**The #0714 contract.** `open --env BATTY_BETA_SPARKLE_AUTO=relaunch|onquit`
+on a not-running app; wait for `sparkle-auto: armed mode=<mode>` (category
+`SparkleAutoConfirm`); trigger with the distributed notification
+`co.sstools.Batty.beta.sparkle-auto.check` posted through JXA; follow
+`installing and relaunching` or `staged for install on quit` (then quit
+through `osascript`, guest only, and reopen).
+
+**Checks** (`tools/sparkle-update-check.py`, fixed order, first failure is
+the CHECK detail): `app-version`, `helper-connection`, `restore-attach`,
+`host-binary`, `host-pid`, `topology`, `project-link`, `shell-pids` (each
+baseline shell pid alive under the current BattyHost), `counter` (no gap, still
+growing), `orphans`, `crashes`.
+
+**Output.** `build/sparkle-tests/<run-id>/`: `run.txt`, `host/` (build logs,
+`packages.txt`, `appcast.xml`, `ed25519.pub`), `<mode>/` (`tart-run.log`,
+step outputs, `guest/` with `setup.log`, `baseline/`, `after/`, `logs/`,
+`crashes/`, `checks.txt`, `checks.json`), `summary.txt`. Last line:
+`CHECK SPARKLE: PASSED|FAILED|ERROR [(detail)]`, exit 0/1/2.
+
+**Testing `issue/0696` before it merges:**
+`tools/run-sparkle-update-vm.sh --ref issue/0696 --merge main` builds a
+throwaway merge commit (no branch, no working-tree change).
+`--reuse-packages <run-id>` (with a run made with `--keep-packages`) skips
+the builds while iterating on guest steps.
+
+**First baseline result (2026-11-22):** run `20261122-010537-9057`, `tools/run-sparkle-update-vm.sh --ref issue/0696 --merge main --merge issue/0715` → `CHECK SPARKLE: FAILED (relaunch: helper unavailable after update: -67065; onquit: helper unavailable after update: -67065)`, exit 1. In both modes these failed: `helper-connection` (-67065), `restore-attach` (no `restore: tabs=` line), `host-binary` (the running host is still A's), and `orphans` (an in-process `-zsh` outside BattyHost). These passed: `host-pid`, `shell-pids` and `counter` (the old host and its shells are still alive), and `topology` and `project-link`. A broker restart was needed after each update (`warnings.txt`).
