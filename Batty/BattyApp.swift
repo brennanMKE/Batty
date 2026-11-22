@@ -103,6 +103,7 @@ final class BattyAppDelegate: NSObject, NSApplicationDelegate {
         // is unregistered (AppStateStore.unregisterNSWindow →
         // terminateIfLastContentWindowGone). No app-level terminate hook here.
         xpcCoordinator.start()
+        UpdaterController.armAutoConfirmIfRequested()
         LaunchWindowGuard.installAtFirstQuiescence {
             LaunchWindowGuard.openContentWindowIfMissing(store: AppStateStore.shared)
             AppStateStore.shared.startBackgroundCatalogChecks()
