@@ -34,6 +34,7 @@ err() { print -r -- "GUEST-ERROR: $*"; exit 3; }
 note() { print -r -- "== $(date '+%H:%M:%S') $*"; }
 tmo() { local s=$1; shift; /usr/bin/perl -e 'alarm shift; exec @ARGV' -- "$s" "$@"; }
 now() { date '+%Y-%m-%d %H:%M:%S'; }
+feed_requests() { /usr/bin/awk '/GET \/appcast.xml/ { n++ } END { print n + 0 }' "$R/logs/feed-server.log" 2>/dev/null || print 0; }
 stream_size() { [[ -f "$STREAM" ]] && /usr/bin/stat -f %z "$STREAM" || print 0; }
 
 # wait_log <offset> <secs> <regex>: prints the first matching line written
@@ -116,11 +117,8 @@ setup)
   tmo 30 /usr/bin/codesign -dvvv "$APP/Contents/Resources/bin/BattyHost"
 
   note "feed server"
-  # The headless updater also runs Sparkle's own launch-time check, so the feed
-  # holds no item until `trigger` swaps the real appcast in.
-  /bin/cp "$SHARE/appcast.xml" "$S/appcast-real.xml" || err "copy feed failed"
+  /bin/cp "$SHARE/appcast.xml" "$S/feed/appcast.xml" || err "copy feed failed"
   /bin/cp "$SHARE/B.dmg" "$S/feed/" || err "copy feed failed"
-  /usr/bin/sed '/<item>/,/<\/item>/d' "$S/appcast-real.xml" > "$S/feed/appcast.xml"
   write_agent co.sstools.sparkle-test.feed "$AGENT_DIR/co.sstools.sparkle-test.feed.plist" \
     "<key>RunAtLoad</key><true/><key>StandardErrorPath</key><string>$R/logs/feed-server.log</string>" \
     /usr/bin/python3 -m http.server $FEED_PORT --bind 127.0.0.1 --directory "$S/feed" || err "feed agent failed"
@@ -157,6 +155,8 @@ setup)
 launch)
   mode="${1:?mode}"
   off=$(stream_size)
+  print -r -- "$off" > "$R/launch-offset.txt"
+  feed_requests > "$R/feed-requests.txt"
   tmo 30 /usr/bin/open --env "BATTY_BETA_SPARKLE_AUTO=$mode" -a "$APP" || err "open A failed"
   if ! line=$(wait_log $off 60 "sparkle-auto: (armed mode=|start failed|ignored:)"); then
     [[ -n "$(app_pid)" ]] || {
@@ -252,7 +252,10 @@ trigger)
   [[ -n "$base_pid" ]] || err "no baseline app pid"
   off=$(stream_size)
   now > "$R/trigger-time.txt"
-  /bin/cp "$S/appcast-real.xml" "$S/feed/appcast.xml" || err "swap in the real appcast"
+  feed_requests >> "$R/feed-requests.txt"
+  launch_off=$(<"$R/launch-offset.txt") || err "no launch offset"
+  /usr/bin/tail -c +$(( launch_off + 1 )) "$STREAM" | /usr/bin/grep -q -- "sparkle-auto: update found" \
+    && err "sparkle-auto: update found before the trigger"
   tmo 20 /usr/bin/osascript -l JavaScript -e "ObjC.import(\"Foundation\"); \$.NSDistributedNotificationCenter.defaultCenter.postNotificationNameObjectUserInfoDeliverImmediately(\"$CHECK_NOTIFICATION\", \$(), \$(), true)" \
     || err "posting the check notification failed"
   if [[ "$mode" == relaunch ]]; then
@@ -265,7 +268,7 @@ trigger)
     tmo 30 /usr/bin/osascript -e "tell application id \"$BUNDLE_ID\" to quit" || err "quit A"
     wait_pid_exit "$base_pid" 120 || err "timeout: A (pid $base_pid) did not exit after quit"
     deadline=$(( SECONDS + 180 ))
-    want=$(/usr/bin/sed -n 's/.*sparkle:version="\([0-9]*\)".*/\1/p' "$S/appcast-real.xml" | /usr/bin/head -1)
+    want=$(/usr/bin/sed -n 's/.*sparkle:version="\([0-9]*\)".*/\1/p' "$S/feed/appcast.xml" | /usr/bin/head -1)
     until [[ "$(app_version)" == "$want" ]] && ! /usr/bin/pgrep -x Autoupdate >/dev/null; do
       (( SECONDS < deadline )) || err "timeout: install on quit (version $(app_version), want $want)"
       sleep 2

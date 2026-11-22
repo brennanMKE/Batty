@@ -54,6 +54,16 @@ nonisolated public enum SparkleAutoConfirm {
         return .install
     }
 
+    /// Only the hook's own `checkForUpdates()` (`.updates`) may run; Sparkle's
+    /// scheduled checks would otherwise install before the trigger.
+    public static func allowsUpdateCheck(_ check: SPUUpdateCheck) -> Bool {
+        check == .updates
+    }
+
+    public static let backgroundCheckRefusedMessage = "background check refused"
+    public static let refusalErrorDomain = "co.sstools.Batty.SparkleAutoConfirm"
+    public static let refusalErrorDescription = "Batty Beta auto-confirm hook: checks run only when triggered"
+
     public static func readyToInstallChoice(mode: Mode) -> SPUUserUpdateChoice {
         switch mode {
         case .installAndRelaunch: .install

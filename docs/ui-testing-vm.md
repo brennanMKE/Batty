@@ -693,10 +693,9 @@ signature with the public key before using it. Only `ed25519.pub` is kept.
 
 **Feed.** `http://127.0.0.1:47912/appcast.xml`, served in the guest by a
 `python3 -m http.server` agent. The IP literal avoids ATS (it doesn't apply to
-IP hosts) and the update is EdDSA-signed. The feed holds no item until
-`trigger` swaps the real appcast in, because the headless updater also runs
-Sparkle's own launch-time check (a finding recorded in #0715) and would
-otherwise install B before the baseline. If Sparkle ever refuses it, the run
+IP hosts) and the update is EdDSA-signed. The feed serves B from `setup` on:
+the hook refuses Sparkle's scheduled checks (#0717), and `trigger` fails if
+`update found` was logged before it. If Sparkle ever refuses it, the run
 is an ERROR naming the `sparkle-auto: error:` line; the fallback (a
 guest-trusted self-signed HTTPS certificate) needs the user's approval first.
 

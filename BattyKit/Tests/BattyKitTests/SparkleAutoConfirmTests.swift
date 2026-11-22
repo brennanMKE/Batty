@@ -72,4 +72,10 @@ nonisolated struct SparkleAutoConfirmTests {
         #expect(SparkleAutoConfirm.readyToInstallChoice(mode: .installAndRelaunch) == .install)
         #expect(SparkleAutoConfirm.readyToInstallChoice(mode: .installOnQuit) == .dismiss)
     }
+
+    @Test func onlyTheHooksOwnCheckIsAllowed() {
+        #expect(SparkleAutoConfirm.allowsUpdateCheck(.updates))
+        #expect(!SparkleAutoConfirm.allowsUpdateCheck(.updatesInBackground))
+        #expect(!SparkleAutoConfirm.allowsUpdateCheck(.updateInformation))
+    }
 }

@@ -13,15 +13,16 @@ nonisolated private let autoLogger = Logger(subsystem: Logging.subsystem, catego
 ///
 /// A headless `SPUUpdater` with `SparkleAutoConfirmUserDriver` replaces it only
 /// in a Beta with a feed and `BATTY_BETA_SPARKLE_AUTO` set (see
-/// `SparkleAutoConfirm`); it checks when the `checkNotificationName`
-/// distributed notification arrives.
+/// `SparkleAutoConfirm`); it checks only when the `checkNotificationName`
+/// distributed notification arrives, and its delegate refuses Sparkle's
+/// scheduled checks.
 @MainActor
 public final class UpdaterController {
     public static let shared = UpdaterController()
 
     private enum Running {
         case standard(SPUStandardUpdaterController)
-        case headless(SPUUpdater, SparkleAutoConfirmUserDriver)
+        case headless(SPUUpdater, SparkleAutoConfirmUserDriver, SparkleAutoConfirmUpdaterDelegate)
     }
 
     private var running: Running
@@ -52,7 +53,8 @@ public final class UpdaterController {
             ))
         case .headless(let mode):
             let driver = SparkleAutoConfirmUserDriver(mode: mode)
-            let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: driver, delegate: nil)
+            let delegate = SparkleAutoConfirmUpdaterDelegate()
+            let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: driver, delegate: delegate)
             do {
                 try updater.start()
             } catch {
@@ -65,7 +67,7 @@ public final class UpdaterController {
                 ))
                 return
             }
-            self.running = .headless(updater, driver)
+            self.running = .headless(updater, driver, delegate)
             checkObserver = DistributedNotificationCenter.default().addObserver(
                 forName: Notification.Name(SparkleAutoConfirm.checkNotificationName),
                 object: nil,
@@ -100,7 +102,7 @@ public final class UpdaterController {
     }
 
     private func requestAutoConfirmCheck() {
-        guard case .headless(let updater, _) = running else { return }
+        guard case .headless(let updater, _, _) = running else { return }
         guard updater.canCheckForUpdates else {
             autoLogger.error("\(SparkleAutoConfirm.logPrefix, privacy: .public)check ignored: session in progress")
             return
