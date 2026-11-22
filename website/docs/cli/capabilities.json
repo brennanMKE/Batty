@@ -1222,7 +1222,7 @@
           "color-hex" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "A custom color as #RRGGBB.",
+            "description" : "A custom color as #RRGGBB. Derive it from the folder's accent color (an asset catalog AccentColor, a CSS/Tailwind brand color, a logo); leave it out if none is clear.",
             "names" : [
               "--color-hex"
             ],
@@ -1232,7 +1232,7 @@
             "cliKind" : "flag",
             "cliRequired" : false,
             "default" : "false",
-            "description" : "Take the layout from a live Session, as Save Session as Project does.",
+            "description" : "Take the layout from a live Session, as Save Session as Project does; the Session becomes a Session of the Project and shows its symbol, color and background at once.",
             "names" : [
               "--from-session"
             ],
@@ -1298,7 +1298,7 @@
           "opacity" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "The Project image's opacity in percent. A first image gets 15; needs an image.",
+            "description" : "The Project image's opacity in percent. A first image gets 30; use less for a dark image under a light Theme; needs an image.",
             "maximum" : 100,
             "minimum" : 0,
             "names" : [
@@ -1405,7 +1405,7 @@
           "symbol-name" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "Any SF Symbol name.",
+            "description" : "Any SF Symbol name, exactly as Apple's SF Symbols app shows it (e.g. hammer.fill). An unknown name saves with a warning and shows a folder.",
             "names" : [
               "--symbol-name"
             ],
@@ -1633,7 +1633,7 @@
           "color-hex" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "A custom color as #RRGGBB.",
+            "description" : "A custom color as #RRGGBB. Derive it from the folder's accent color (an asset catalog AccentColor, a CSS/Tailwind brand color, a logo); leave it out if none is clear.",
             "names" : [
               "--color-hex"
             ],
@@ -1643,7 +1643,7 @@
             "cliKind" : "flag",
             "cliRequired" : false,
             "default" : "false",
-            "description" : "Take the layout from a live Session, as Save Session as Project does.",
+            "description" : "Take the layout from a live Session, as Save Session as Project does; the Session becomes a Session of the Project and shows its symbol, color and background at once.",
             "names" : [
               "--from-session"
             ],
@@ -1709,7 +1709,7 @@
           "opacity" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "The Project image's opacity in percent. A first image gets 15; needs an image.",
+            "description" : "The Project image's opacity in percent. A first image gets 30; use less for a dark image under a light Theme; needs an image.",
             "maximum" : 100,
             "minimum" : 0,
             "names" : [
@@ -1816,7 +1816,7 @@
           "symbol-name" : {
             "cliKind" : "option",
             "cliRequired" : false,
-            "description" : "Any SF Symbol name.",
+            "description" : "Any SF Symbol name, exactly as Apple's SF Symbols app shows it (e.g. hammer.fill). An unknown name saves with a warning and shows a folder.",
             "names" : [
               "--symbol-name"
             ],

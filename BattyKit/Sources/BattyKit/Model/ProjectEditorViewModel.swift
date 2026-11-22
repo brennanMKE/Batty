@@ -106,6 +106,9 @@ final class ProjectEditorViewModel {
     /// and as stored after it, after every `save()` that wrote, so open
     /// Sessions can follow the changed fields. Runs from the save action.
     @ObservationIgnored var projectSaved: @MainActor (_ previous: Project?, _ saved: Project) -> Void = { _, _ in }
+    /// Called after `projectSaved` when the saved draft was captured from a
+    /// Session, so that Session becomes a Session of the Project. Runs from the save action.
+    @ObservationIgnored var sessionSourceSaved: @MainActor (_ source: ProjectSessionSource, _ saved: Project) -> Void = { _, _ in }
     /// Brings the editor window front so a quit question is visible. False
     /// when the window cannot show one, for example because a sheet is
     /// already up on it.
@@ -733,6 +736,7 @@ final class ProjectEditorViewModel {
         saveError = nil
         applyLayout(capture.layout)
         draft?.captureNotes = capture.notes
+        draft?.sessionSource = nil
         if !root.hasPrefix("/") {
             draft?.rootPath = capture.rootPath
             draft?.rootNeedsChoosing = capture.rootIsFallback
@@ -837,6 +841,7 @@ final class ProjectEditorViewModel {
     @discardableResult
     func save() -> Project? {
         guard let draft else { return nil }
+        let source = draft.sessionSource
         guard validationIssues.isEmpty else {
             saveError = String(localized: "Fix the highlighted fields before saving.", comment: "Project Editor")
             return nil
@@ -870,6 +875,7 @@ final class ProjectEditorViewModel {
         load(stored)
         selectedSlot = min(slot, max(stored.layout.paneCount - 1, 0))
         projectSaved(previous, stored)
+        if let source { sessionSourceSaved(source, stored) }
         return stored
     }
 

@@ -26,6 +26,8 @@ nonisolated enum MCPInstructions {
              line: "Static sites: `server_serve` with `open: true`, never `python3 -m http.server`."),
         Hint(tools: ["project_create", "background_list"], argument: "layout-json", value: nil,
              line: "Save a setup for the user: `background_list`, then `project_create` with `layout-json`, then `project_open`."),
+        Hint(tools: ["project_create", "background_list"], argument: "from-session", value: nil,
+             line: "Save the user's Session as a Project: `project_create` with `from-session`; pick any SF Symbol (`symbol-name`), a `color-hex` from the folder's accent color, and an image from `background_list`."),
         Hint(tools: ["notify"], argument: nil, value: nil,
              line: "Get the user's attention: `notify`."),
         Hint(tools: ["session_remind"], argument: nil, value: nil,

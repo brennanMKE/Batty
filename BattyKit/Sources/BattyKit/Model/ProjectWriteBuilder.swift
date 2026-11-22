@@ -80,7 +80,10 @@ enum ProjectWriteBuilder {
             }
             return nil
         case .some(.some(let path)):
-            value = (value ?? TerminalBackgroundSettings(imagePath: nil)).pickingImage(path: path)
+            let base = value ?? TerminalBackgroundSettings(imagePath: nil)
+            value = base.imagePath == nil
+                ? base.withImagePath(path).withImageOpacity(TerminalBackgroundSettings.cliFirstImageOpacity)
+                : base.withImagePath(path)
         }
         if let percent = request.imageOpacityPercent {
             guard let current = value, current.imagePath != nil else { throw ProjectWriteError("opacity: --opacity needs an image") }

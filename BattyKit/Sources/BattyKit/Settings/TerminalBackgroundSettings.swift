@@ -82,6 +82,12 @@ public struct TerminalBackgroundSettings: Equatable, Sendable {
     /// all-white image.
     static let firstImageOpacity = 0.15
 
+    /// The image opacity a first image gets when an agent picks it through
+    /// `project create`/`edit`; the user asked for 30%. It keeps TokyoNight
+    /// readable over any image, and TokyoNight Day only over light images
+    /// (see `cliFirstImageTintReadability`).
+    static let cliFirstImageOpacity = 0.3
+
     /// The resolution chain. A non-nil override is complete, and `nil` follows
     /// the broader level. No level has a default so that no caller can leave
     /// a tier out by accident.

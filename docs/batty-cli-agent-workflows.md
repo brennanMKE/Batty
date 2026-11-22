@@ -420,6 +420,18 @@ batty project create --name Web --path ~/Developer/web --layout-json '{
 batty project open Web
 ```
 
+To save the Session the user is in, use `--from-session`. That Session
+becomes a Session of the new Project at once, showing its symbol, color and
+background; nothing reopens. Pick any SF Symbol by its exact name, derive
+`--color-hex` from the folder's accent color (an asset catalog
+`AccentColor`, a CSS or Tailwind brand color, a logo; leave it out if none is
+clear), and a background from `background list`:
+
+```bash
+batty project create --name Web --path ~/Developer/web --from-session \
+  --symbol-name hammer.fill --color-hex "#3B82F6" --background-id "<id from background list>"
+```
+
 - **The layout document** is either `{"preset", "panes", "focusedPane"}`,
   where `preset` is a `PaneLayout` name and `panes` fills its slots in order
   (omit `panes` for all terminals), or `{"root"}`, a tree of
@@ -437,7 +449,8 @@ batty project open Web
 - `--layout FILE` and `--layout -` (standard input) take the same document.
   Over MCP there is no standard input, so use `layout-json`.
 - **Opacity** is a whole percent from 0 to 100. `--opacity` is the image's
-  opacity and needs an image; a first image gets 15, and replacing an image
+  opacity and needs an image; a first image gets 30 (use less for a dark
+  image under a light Theme), and replacing an image
   keeps its opacity. `--terminal-opacity` defaults to 100.
 - Errors exit `4` and name the field; nothing is saved. Warnings (a Tab
   folder that doesn't exist yet, an unknown Theme) go to stderr, or

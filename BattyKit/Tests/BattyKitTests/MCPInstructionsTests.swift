@@ -50,6 +50,22 @@ struct MCPInstructionsTests {
         #expect(!text.contains("act on this Pane"))
     }
 
+    @Test func projectCreateHintSuggestsSymbolColorAndBackground() {
+        let text = MCPInstructions.text(environment: MCPServerTests.inBatty, catalog: catalog(), cliName: "batty")
+        for token in ["symbol-name", "color-hex", "from-session", "background_list"] {
+            #expect(text.contains(token), "\(token)")
+        }
+        let full = CapabilitiesCommand.buildPayload(flags: MCPToolCatalogTests.flagOn)
+        let without = CapabilitiesPayload(
+            cliVersion: full.cliVersion, verbs: full.verbs.filter { $0.name != "project create" },
+            exitCodes: full.exitCodes, jsonSchemaDialect: full.jsonSchemaDialect)
+        let catalogWithout = MCPToolCatalog(payload: without)
+        #expect(!catalogWithout.tools.contains { $0.name == "project_create" })
+        let reduced = MCPInstructions.text(environment: MCPServerTests.inBatty, catalog: catalogWithout, cliName: "batty")
+        #expect(!reduced.contains("from-session"))
+        #expect(!reduced.contains("symbol-name"))
+    }
+
     @Test func instructionsStayUnder1500Characters() {
         let text = MCPInstructions.text(environment: MCPServerTests.inBatty, catalog: catalog(), cliName: "batty-beta")
         #expect(text.count < 1500, "\(text.count) characters")

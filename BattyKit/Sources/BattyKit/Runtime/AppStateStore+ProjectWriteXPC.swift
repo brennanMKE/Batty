@@ -27,11 +27,13 @@ extension AppStateStore {
         var base: Project
         var rootNeedsChoosing = false
         var captureNotes: [ProjectEditorField: String] = [:]
+        var sessionSource: ProjectSessionSource?
         if case .fromSession(let id) = request.layout {
             guard let sessionID = id ?? request.callerSessionID ?? focusedSessionIDFallback(), let session = session(id: sessionID) else {
                 return .failure("unknown session id")
             }
             let draft = SaveSessionAsProject.draft(for: session, destination: stored.map { .update($0.id) } ?? .newProject, store: self)
+            sessionSource = draft.sessionSource
             if var kept = stored {
                 kept.layout = draft.makeProject().layout
                 base = kept
@@ -117,10 +119,15 @@ extension AppStateStore {
             applyProjectSave(previous: stored, saved: saved)
             if stored.layout != saved.layout { appliesOnNextOpen = ["layout"] }
         }
+        if let sessionSource { linkSession(sessionSource, to: saved) }
+        var warnings = Self.lines(validation.warnings)
+        if request.symbolName != nil, let name = saved.customSymbolName, !ProjectSymbol.exists(name) {
+            warnings.append("symbol-name: \"\(name)\" is not an SF Symbol on this Mac, so the Project shows a folder; use the exact name from Apple's SF Symbols app")
+        }
         return .success(ProjectWriteReply(
             id: saved.id, name: saved.name, rootPath: saved.rootPath,
             paneCount: saved.layout.paneCount, tabCount: saved.layout.tabCount,
-            created: stored == nil, warnings: Self.lines(validation.warnings), appliesOnNextOpen: appliesOnNextOpen))
+            created: stored == nil, warnings: warnings, appliesOnNextOpen: appliesOnNextOpen))
     }
 
     private static func lines(_ messages: [ProjectEditorField: String]) -> [String] {

@@ -37,6 +37,7 @@ Never hard-fail on a version mismatch. `cliVersion == "unknown"` means a SwiftPM
 - `notify` tells the human; `focus` shows them now.
 - Set `session remind` instead of polling.
 - Save a setup for the user: `background list`, then `project create --layout-json`, then `project open` (commands still need their approval).
+- Save the user's current Session: `project create --from-session`, with `--symbol-name` (any SF Symbol, exact name), `--color-hex` from the folder's accent color (AccentColor.colorset, CSS/Tailwind theme color, logo; omit if unclear) and a background from `background list` (a first image gets 30% opacity; use less for a dark image under a light Theme).
 
 **Progressive disclosure:** use these when they help the user follow your work. Don't push Batty features the user didn't ask for.
 

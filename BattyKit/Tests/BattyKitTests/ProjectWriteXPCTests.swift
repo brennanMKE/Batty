@@ -246,7 +246,7 @@ struct ProjectWriteXPCTests {
         let saved = try #require(store.projectStore.project(named: "Space"))
         let path = try #require(saved.background?.imagePath)
         #expect(path.hasPrefix(f.projectFolder.path))
-        #expect(saved.background?.imageOpacity == TerminalBackgroundSettings.firstImageOpacity)
+        #expect(saved.background?.imageOpacity == TerminalBackgroundSettings.cliFirstImageOpacity)
         #expect(f.catalogFetcher.count(HostedCatalogFixture.imageURL) == 1)
     }
 
@@ -350,6 +350,84 @@ struct ProjectWriteXPCTests {
         let store = f.appStore(sessions: [f.session()])
         let message = failure(await create(store, ProjectWriteRequest(name: "A", rootPath: f.root.path, layout: .fromSession(UUID()))))
         #expect(message == "unknown session id")
+    }
+
+    @Test func createFromSessionLinksTheCapturedSession() async throws {
+        let f = try ProjectBackgroundFixture()
+        let session = f.session(2)
+        let store = f.appStore(sessions: [session])
+        let paneIDs = session.tree.allPanes.map(\.id)
+        #expect(session.projectID == nil && session.title == "Website")
+        let made = try #require(reply(await create(store, ProjectWriteRequest(name: "Captured", rootPath: f.root.path, layout: .fromSession(nil), callerSessionID: session.id))))
+        #expect(session.projectID == made.id)
+        #expect(session.title == "Captured" && session.titleOverride)
+        #expect(session.tree.allPanes.map(\.id) == paneIDs)
+    }
+
+    @Test func editFromSessionLinksTheCapturedSession() async throws {
+        let f = try ProjectBackgroundFixture()
+        let session = f.session()
+        let store = f.appStore(sessions: [session])
+        let stored = f.project(name: "Rich", background: nil)
+        try store.projectStore.upsert(stored)
+        #expect(session.projectID == nil)
+        _ = try #require(reply(await store.editProjectForXPC(ProjectWriteRequest(target: "Rich", layout: .fromSession(session.id)))))
+        #expect(session.projectID == stored.id)
+        #expect(session.title == "Rich")
+    }
+
+    @Test func fromSessionBackgroundWithoutOpacitySavesThirtyPercent() async throws {
+        let f = try ProjectBackgroundFixture()
+        let session = f.session()
+        session.setBackgroundOverride(TerminalBackgroundSettings(imagePath: nil, terminalOpacity: 0.8))
+        let store = f.appStore(sessions: [session])
+        let file = f.base.appendingPathComponent("local.png")
+        try BackgroundTestImage.encoded(width: 128).write(to: file)
+        _ = try #require(reply(await create(store, ProjectWriteRequest(
+            name: "Thirty", rootPath: f.root.path, layout: .fromSession(session.id), background: .file(file.path)))))
+        let saved = try #require(store.projectStore.project(named: "Thirty")?.background)
+        #expect(saved.imageOpacity == 0.3)
+        #expect(saved.terminalOpacity == 0.8)
+    }
+
+    @Test func explicitOpacityWinsOverTheAgentDefault() async throws {
+        let f = try ProjectBackgroundFixture()
+        let session = f.session()
+        session.setBackgroundOverride(TerminalBackgroundSettings(imagePath: nil, terminalOpacity: 0.8))
+        let store = f.appStore(sessions: [session])
+        let file = f.base.appendingPathComponent("local.png")
+        try BackgroundTestImage.encoded(width: 128).write(to: file)
+        _ = try #require(reply(await create(store, ProjectWriteRequest(
+            name: "Explicit", rootPath: f.root.path, layout: .fromSession(session.id), background: .file(file.path), imageOpacityPercent: 55))))
+        #expect(store.projectStore.project(named: "Explicit")?.background?.imageOpacity == 0.55)
+    }
+
+    @Test func fromSessionAppliesTheAgentsChoicesToTheLiveSession() async throws {
+        let f = try ProjectBackgroundFixture()
+        let session = f.session()
+        let store = f.appStore(sessions: [session])
+        let window = try #require(store.windowOwning(sessionID: session.id))
+        window.setSessionColor(id: session.id, to: SessionColor.pink.rawValue)
+        let file = f.base.appendingPathComponent("local.png")
+        try BackgroundTestImage.encoded(width: 128).write(to: file)
+        let made = try #require(reply(await create(store, ProjectWriteRequest(
+            name: "Agent", rootPath: f.root.path, colorHex: "#1E90FF", symbolName: "airplane.departure",
+            layout: .fromSession(session.id), background: .file(file.path)))))
+        let saved = try #require(store.projectStore.project(id: made.id))
+        #expect(saved.color != .pink)
+        #expect(session.projectSymbolName == "airplane.departure")
+        #expect(session.colorIndex == saved.color.rawValue)
+        #expect(session.backgroundOverride?.imageOpacity == 0.3)
+        #expect(session.backgroundOverride?.imagePath?.hasPrefix(f.projectFolder.path) == true)
+        #expect(made.warnings.isEmpty)
+    }
+
+    @Test func unknownSymbolNameSavesWithAWarning() async throws {
+        let f = try ProjectBackgroundFixture()
+        let store = f.appStore()
+        let made = try #require(reply(await create(store, ProjectWriteRequest(name: "Typo", rootPath: f.root.path, symbolName: "not.a.real.symbol.xyz"))))
+        #expect(made.warnings.contains { $0.hasPrefix("symbol-name:") && $0.contains("not.a.real.symbol.xyz") })
+        #expect(store.projectStore.project(named: "Typo")?.customSymbolName == "not.a.real.symbol.xyz")
     }
 }
 
@@ -540,9 +618,17 @@ struct ProjectWriteBuilderTests {
         #expect(result.background?.imagePath == "/a/new.png" && result.background?.imageOpacity == 0.4)
     }
 
-    @Test func firstImageGetsFifteenPercent() throws {
+    @Test func firstImageGetsThirtyPercent() throws {
         let result = try apply(ProjectWriteRequest(), imagePath: .some("/a/new.png"))
-        #expect(result.background?.imageOpacity == TerminalBackgroundSettings.firstImageOpacity)
+        #expect(result.background?.imageOpacity == TerminalBackgroundSettings.cliFirstImageOpacity)
         #expect(result.background?.terminalOpacity == 1)
+    }
+
+    @Test func aFirstImageKeepsTheBasesTerminalOpacity() throws {
+        var project = base
+        project.background = TerminalBackgroundSettings(imagePath: nil, terminalOpacity: 0.7)
+        let result = try apply(ProjectWriteRequest(), to: project, imagePath: .some("/a/new.png"))
+        #expect(result.background?.imageOpacity == 0.3)
+        #expect(result.background?.terminalOpacity == 0.7)
     }
 }

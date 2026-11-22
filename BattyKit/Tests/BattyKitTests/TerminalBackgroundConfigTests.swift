@@ -374,4 +374,29 @@ final class TerminalBackgroundConfigTests {
             }
         }
     }
+
+    @Test func uiFirstImageDefaultStaysFifteenPercent() {
+        let picked = TerminalBackgroundSettings(imagePath: nil, terminalOpacity: 0.7).pickingImage(path: "/a.png")
+        #expect(picked.imageOpacity == 0.15)
+        #expect(picked.terminalOpacity == 0.7)
+    }
+
+    /// The CLI default at 30%: TokyoNight stays readable over any image,
+    /// TokyoNight Day only over light ones, which the agent guidance covers.
+    @Test func cliFirstImageTintReadability() throws {
+        let black = RGBColor(red: 0, green: 0, blue: 0, alpha: 1)
+        let white = RGBColor(red: 1, green: 1, blue: 1, alpha: 1)
+        func contrast(_ name: String, over image: RGBColor) throws -> Double {
+            let theme = try #require(BattyThemeCatalog.theme(named: name))
+            let background = try #require(RGBColor(hex: theme.background))
+            let foreground = try #require(RGBColor(hex: theme.foreground))
+            return foreground.contrast(against: background.blended(with: image, ratio: TerminalBackgroundSettings.cliFirstImageOpacity))
+        }
+        let dark = ThemePreference.defaultDarkThemeName
+        let light = ThemePreference.defaultLightThemeName
+        #expect(try contrast(dark, over: black) >= 3)
+        #expect(try contrast(dark, over: white) >= 3)
+        #expect(try contrast(light, over: white) >= 3)
+        #expect(try contrast(light, over: black) < 3)
+    }
 }

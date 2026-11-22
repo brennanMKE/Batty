@@ -39,6 +39,7 @@ enum SaveSessionAsProject {
             let captured = capture(root: project.rootPath)
             var draft = captured.updateDraft(of: project)
             captureState(of: session, capture: captured, into: &draft, stored: project, store: store)
+            draft.sessionSource = ProjectSessionSource(sessionID: session.id, paneIDs: captured.paneIDs, tabIDs: captured.tabIDs)
             let title = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
             if !title.isEmpty, title != project.name { draft.name = title }
             if session.sessionColor != project.color {
@@ -51,6 +52,7 @@ enum SaveSessionAsProject {
         let name = SessionProjectCapture.suggestedName(session: session, capture: captured, nameForRoot: nameForRoot)
         var draft = captured.newDraft(name: name, existingNames: projectStore.projects.map(\.name))
         captureState(of: session, capture: captured, into: &draft, stored: nil, store: store)
+        draft.sessionSource = ProjectSessionSource(sessionID: session.id, paneIDs: captured.paneIDs, tabIDs: captured.tabIDs)
         return draft
     }
 

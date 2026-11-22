@@ -88,6 +88,7 @@ final class ProjectEditorWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.center()
         model.projectSaved = { [weak store] previous, saved in store?.applyProjectSave(previous: previous, saved: saved) }
+        model.sessionSourceSaved = { [weak store] source, saved in store?.linkSession(source, to: saved) }
         model.closeWindow = { [weak self] in self?.window?.close() }
         model.presentForQuit = { [weak self] in
             guard let window = self?.window, window.attachedSheet == nil else { return false }

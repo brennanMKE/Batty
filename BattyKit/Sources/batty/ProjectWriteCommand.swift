@@ -28,13 +28,13 @@ struct ProjectWriteOptions: ParsableArguments {
     @Option(name: .long, help: "A palette color.")
     var color: String?
 
-    @Option(name: .long, help: "A custom color as #RRGGBB.")
+    @Option(name: .long, help: "A custom color as #RRGGBB. Derive it from the folder's accent color (an asset catalog AccentColor, a CSS/Tailwind brand color, a logo); leave it out if none is clear.")
     var colorHex: String?
 
     @Option(name: .long, help: "A curated Project symbol.")
     var symbol: String?
 
-    @Option(name: .long, help: "Any SF Symbol name.")
+    @Option(name: .long, help: "Any SF Symbol name, exactly as Apple's SF Symbols app shows it (e.g. hammer.fill). An unknown name saves with a warning and shows a folder.")
     var symbolName: String?
 
     @Option(name: .long, help: "A Theme for both Dark and Light appearance.")
@@ -58,7 +58,7 @@ struct ProjectWriteOptions: ParsableArguments {
     @Option(name: .long, help: "A layout document as inline JSON. \(projectLayoutSchemaText)")
     var layoutJson: String?
 
-    @Flag(name: .long, help: "Take the layout from a live Session, as Save Session as Project does.")
+    @Flag(name: .long, help: "Take the layout from a live Session, as Save Session as Project does; the Session becomes a Session of the Project and shows its symbol, color and background at once.")
     var fromSession = false
 
     @Option(name: .long, help: "The Session for --from-session. Falls back to BATTY_SESSION_ID, then the focused Session.")
@@ -82,7 +82,7 @@ struct ProjectWriteOptions: ParsableArguments {
     @Flag(name: .long, help: "Remove the Project's background.")
     var noBackground = false
 
-    @Option(name: .long, help: "The Project image's opacity in percent (0-100). A first image gets 15.")
+    @Option(name: .long, help: "The Project image's opacity in percent (0-100). A first image gets 30. Use less for a dark image under a light Theme.")
     var opacity: Int?
 
     @Option(name: .long, help: "The terminal's opacity over the background in percent (0-100). Default 100.")
@@ -245,9 +245,9 @@ struct ProjectWriteOptions: ParsableArguments {
             "name": option("name", edit ? "Rename the Project. Names are unique, ignoring case." : "The Project's name (required unless from-session). Names are unique, ignoring case."),
             "path": option("path", "The Project's root folder: an absolute path to an existing directory (a relative one is resolved against the CLI's current folder). Required on create unless from-session."),
             "color": option("color", "A palette color.", enumValues: ProjectVocabulary.colorNames),
-            "color-hex": option("color-hex", "A custom color as #RRGGBB."),
+            "color-hex": option("color-hex", "A custom color as #RRGGBB. Derive it from the folder's accent color (an asset catalog AccentColor, a CSS/Tailwind brand color, a logo); leave it out if none is clear."),
             "symbol": option("symbol", "A curated Project symbol.", enumValues: ProjectVocabulary.symbolNames),
-            "symbol-name": option("symbol-name", "Any SF Symbol name."),
+            "symbol-name": option("symbol-name", "Any SF Symbol name, exactly as Apple's SF Symbols app shows it (e.g. hammer.fill). An unknown name saves with a warning and shows a folder."),
             "theme": option("theme", "A Theme for both Dark and Light appearance."),
             "theme-dark": option("theme-dark", "The Theme for Dark appearance."),
             "theme-light": option("theme-light", "The Theme for Light appearance."),
@@ -255,7 +255,7 @@ struct ProjectWriteOptions: ParsableArguments {
             "preset": option("preset", "A layout preset, every Pane a terminal\(edit ? "; replaces the layout, which open Sessions pick up at the next open" : "").", enumValues: ProjectVocabulary.presetNames),
             "layout": option("layout", "A layout document file path, or - for standard input (not available over MCP; use layout-json)."),
             "layout-json": option("layout-json", "A layout document as inline JSON. \(projectLayoutSchemaText)"),
-            "from-session": flag("from-session", "Take the layout from a live Session, as Save Session as Project does."),
+            "from-session": flag("from-session", "Take the layout from a live Session, as Save Session as Project does; the Session becomes a Session of the Project and shows its symbol, color and background at once."),
             "session": option("session", "The Session id for from-session. Falls back to BATTY_SESSION_ID, then the focused Session."),
             "background-set": option("background-set", "The Background Sets set of the Project's image (with background-image)."),
             "background-image": option("background-image", "The image's title in background-set."),
@@ -263,7 +263,7 @@ struct ProjectWriteOptions: ParsableArguments {
             "background-digest": option("background-digest", "A My Images image by its digest from background list."),
             "background-file": option("background-file", "A local image file, copied into the Project's background folder."),
             "no-background": flag("no-background", "Remove the Project's background."),
-            "opacity": option("opacity", "The Project image's opacity in percent. A first image gets 15; needs an image.", type: "integer", minimum: 0, maximum: 100),
+            "opacity": option("opacity", "The Project image's opacity in percent. A first image gets 30; use less for a dark image under a light Theme; needs an image.", type: "integer", minimum: 0, maximum: 100),
             "terminal-opacity": option("terminal-opacity", "The terminal's opacity over the background in percent. Default 100.", type: "integer", minimum: 0, maximum: 100),
             "startup-command": CapabilitiesPropertyPayload(cliKind: .option, names: ["--startup-command"], type: "array", description: "Startup commands, one per terminal Tab in slot order. They still need the user's approval at the first open.", required: false),
             "json": flag("json", "Emit JSON (id, name, rootPath, paneCount, tabCount, created, warnings, appliesOnNextOpen) instead of a sentence."),
