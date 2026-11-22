@@ -943,3 +943,227 @@ struct SaveSessionAsProjectSessionStateTests {
         #expect(stored.customColorHex != nil)
     }
 }
+
+@MainActor
+struct SaveSessionAsProjectLinkTests {
+    /// A plain two-Pane Session (Pane 0 has two Tabs), pink, no symbol, no
+    /// pinned title, not muted, no Theme, and its own backgrounds at every
+    /// level, each a real image outside the Project folder.
+    private struct Setup {
+        let fixture: ProjectBackgroundFixture
+        let store: AppStateStore
+        let session: SessionRuntime
+        let model: ProjectEditorViewModel
+        let paneIDs: [UUID]
+        let tabIDs: [[UUID]]
+    }
+
+    private func setup(editDraft: (inout ProjectDraft) -> Void = { _ in }) async throws -> Setup {
+        let fixture = try ProjectBackgroundFixture()
+        let sessionImage = try await fixture.copy(in: fixture.paneFolder, width: 200)
+        let paneImage = try await fixture.copy(in: fixture.paneFolder, width: 210)
+        let tabImage = try await fixture.copy(in: fixture.paneFolder, width: 220)
+        let session = fixture.session(2)
+        let store = fixture.appStore(sessions: [session])
+        let window = try #require(store.windowOwning(sessionID: session.id))
+        window.setSessionColor(id: session.id, to: SessionColor.pink.rawValue)
+        let panes = session.tree.allPanes
+        panes[0].addTab()
+        session.setBackgroundOverride(TerminalBackgroundSettings(imagePath: sessionImage, imageOpacity: 0.4, terminalOpacity: 0.8))
+        panes[1].setBackgroundOverride(secondBackgroundValue(path: paneImage))
+        panes[0].tabs[1].setBackgroundOverride(projectBackgroundValue(path: tabImage))
+        #expect(session.projectID == nil && session.projectSymbolName == nil && !session.titleOverride && !session.notificationsMuted)
+
+        let model = makeModel(store)
+        var draft = SaveSessionAsProject.draft(for: session, destination: .newProject, store: store, nameForRoot: { _ in nil })
+        draft.notificationsMuted = true
+        editDraft(&draft)
+        model.requestNavigation(.newDraft(draft))
+        model.setName("Linked")
+        model.setCustomColor(hex: "#1E90FF")
+        model.setSymbolName("airplane.departure")
+        model.setTheme(ThemePair(dark: "Dracula", light: nil))
+        return Setup(
+            fixture: fixture, store: store, session: session, model: model,
+            paneIDs: panes.map(\.id), tabIDs: panes.map { $0.tabs.map(\.id) })
+    }
+
+    private func makeModel(_ store: AppStateStore, capture: @escaping @MainActor (String?) -> SessionProjectCapture? = { _ in nil }) -> ProjectEditorViewModel {
+        let model = ProjectEditorViewModel(
+            store: store.projectStore, initialSelection: nil, directoryExists: { _ in true },
+            captureSession: capture, backgrounds: store.projectBackgrounds)
+        model.projectSaved = { store.applyProjectSave(previous: $0, saved: $1, isDark: true) }
+        model.sessionSourceSaved = { store.linkSession($0, to: $1, isDark: true) }
+        return model
+    }
+
+    private func ids(_ session: SessionRuntime) -> (panes: [UUID], tabs: [[UUID]]) {
+        let panes = session.tree.allPanes
+        return (panes.map(\.id), panes.map { $0.tabs.map(\.id) })
+    }
+
+    @Test func savingANewProjectLinksTheSourceSession() async throws {
+        let s = try await setup()
+        let saved = try #require(s.model.save())
+        #expect(s.session.projectID == saved.id)
+        #expect(SaveSessionAsProject.menuModel(store: s.store, session: s.session).updateTarget?.id == saved.id)
+        let after = ids(s.session)
+        #expect(after.panes == s.paneIDs)
+        #expect(after.tabs == s.tabIDs)
+    }
+
+    @Test func savingAppliesSymbolColorAndTitleToTheSourceSession() async throws {
+        let s = try await setup()
+        let saved = try #require(s.model.save())
+        #expect(saved.color != .pink)
+        #expect(s.session.projectSymbol == .folder)
+        #expect(s.session.projectSymbolName == "airplane.departure")
+        #expect(s.session.colorIndex == saved.color.rawValue)
+        #expect(s.session.title == "Linked")
+        #expect(s.session.titleOverride)
+        #expect(s.session.themeOverride == ThemePair(dark: "Dracula", light: nil))
+        #expect(s.session.themeOverride == saved.theme)
+        #expect(s.session.notificationsMuted)
+    }
+
+    @Test func savingAppliesSessionPaneAndTabBackgroundsWithOpacities() async throws {
+        let s = try await setup()
+        let original = try #require(s.session.backgroundOverride?.imagePath)
+        let draftPane = try #require(s.model.paneBackground(slot: 1))
+        s.model.setPaneBackground(slot: 1, draftPane.withImageOpacity(0.55))
+        let saved = try #require(s.model.save())
+
+        let session = try #require(s.session.backgroundOverride)
+        #expect(session == saved.background)
+        #expect(session.imageOpacity == 0.4 && session.terminalOpacity == 0.8)
+        #expect(session.imagePath?.hasPrefix(s.fixture.projectFolder.path) == true)
+        #expect(session.imagePath != original)
+
+        let panes = s.session.tree.allPanes
+        #expect(panes[1].backgroundOverride == saved.layout.panes[1].background)
+        #expect(panes[1].backgroundOverride?.imageOpacity == 0.55)
+        #expect(panes[1].backgroundOverride?.imagePath?.hasPrefix(s.fixture.projectFolder.path) == true)
+        #expect(panes[0].tabs[1].backgroundOverride == saved.layout.panes[0].tabs[1].background)
+        #expect(panes[0].tabs[1].backgroundOverride?.imagePath?.hasPrefix(s.fixture.projectFolder.path) == true)
+        #expect(panes[0].tabs[0].backgroundOverride == nil)
+    }
+
+    @Test func saveAsNewProjectMovesTheLinkToTheNewProject() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let store = fixture.appStore(sessions: [fixture.session()])
+        let old = Project(name: "Old", rootPath: fixture.root.path, color: .teal, customSymbolName: "star.fill")
+        try store.projectStore.upsert(old)
+        let session = try store.openProject(id: old.id, mode: .openNew, contentFactory: noContent).session
+        #expect(session.projectID == old.id)
+
+        let model = makeModel(store)
+        model.requestNavigation(.newDraft(SaveSessionAsProject.draft(for: session, destination: .newProject, store: store, nameForRoot: { _ in nil })))
+        model.setName("New One")
+        let saved = try #require(model.save())
+
+        #expect(saved.id != old.id)
+        #expect(session.projectID == saved.id)
+        #expect(try store.openProject(id: old.id, mode: .focusExistingOrOpen, contentFactory: noContent).wasCreated)
+    }
+
+    @Test func savingAfterTheSourceSessionClosedLinksNothing() async throws {
+        let s = try await setup()
+        s.store.removeSession(id: s.session.id)
+        let saved = try #require(s.model.save())
+        #expect(s.store.windows.flatMap(\.sessions).allSatisfy { $0.projectID != saved.id })
+        #expect(s.session.projectID == nil)
+    }
+
+    @Test func discardingTheDraftLinksNothing() async throws {
+        let s = try await setup()
+        let other = Project(name: "Other", rootPath: s.fixture.root.path)
+        try s.store.projectStore.upsert(other)
+        s.model.requestNavigation(.select(other.id))
+        s.model.resolveUnsaved(.discard)
+        #expect(s.model.draft?.id == other.id)
+        #expect(s.model.draft?.sessionSource == nil)
+        #expect(s.session.projectID == nil)
+        #expect(s.session.projectSymbolName == nil)
+    }
+
+    @Test func copyFromCurrentSessionDoesNotLink() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let session = fixture.session(2)
+        let store = fixture.appStore(sessions: [session])
+        let model = makeModel(store) { SessionProjectCapture.capture(session: session, root: $0) }
+        model.requestNavigation(.newDraft(SaveSessionAsProject.draft(for: session, destination: .newProject, store: store, nameForRoot: { _ in nil })))
+        #expect(model.draft?.sessionSource?.sessionID == session.id)
+
+        #expect(model.copyFromCurrentSession(confirmDiscard: true) == .applied)
+        #expect(model.draft?.sessionSource == nil)
+        model.setName("Copied")
+        #expect(model.save() != nil)
+        #expect(session.projectID == nil)
+    }
+
+    @Test func aLinkedSessionTakesLaterPaneAndTabBackgroundEdits() async throws {
+        let s = try await setup()
+        _ = try #require(s.model.save())
+        let tabID = try #require(s.model.tabIDs(slot: 0).last)
+        let newPane = try await s.fixture.copy(in: s.fixture.paneFolder, width: 230)
+        let newTab = try await s.fixture.copy(in: s.fixture.paneFolder, width: 240)
+        s.model.setPaneBackground(slot: 1, appWideBackgroundValue(path: newPane))
+        s.model.setTabBackground(slot: 0, tabID: tabID, secondBackgroundValue(path: newTab))
+        let edited = try #require(s.model.save())
+
+        let panes = s.session.tree.allPanes
+        #expect(panes[1].backgroundOverride == edited.layout.panes[1].background)
+        #expect(panes[1].backgroundOverride?.imageOpacity == appWideBackgroundValue(path: nil).imageOpacity)
+        #expect(panes[0].tabs[1].backgroundOverride == edited.layout.panes[0].tabs[1].background)
+        #expect(panes[0].tabs[1].backgroundOverride?.imageOpacity == secondBackgroundValue(path: nil).imageOpacity)
+
+        let mine = TerminalBackgroundSettings(imagePath: nil, imageOpacity: 0.25, terminalOpacity: 0.65)
+        panes[1].setBackgroundOverride(mine)
+        s.model.setPaneBackground(slot: 1, projectBackgroundValue(path: nil))
+        _ = try #require(s.model.save())
+        #expect(panes[1].backgroundOverride == mine)
+    }
+
+    @Test func openProjectFocusesTheLinkedSession() async throws {
+        let s = try await setup()
+        let saved = try #require(s.model.save())
+        let result = try s.store.openProject(id: saved.id)
+        #expect(!result.wasCreated)
+        #expect(result.session === s.session)
+    }
+
+    @Test func aLayoutChangedBeforeSaveLinksWithoutSeeds() async throws {
+        let s = try await setup()
+        let paneBefore = s.session.tree.allPanes[1].backgroundOverride
+        let tabBefore = s.session.tree.allPanes[0].tabs[1].backgroundOverride
+        s.model.changePreset(to: .singlePane, confirmDrop: true)
+        let saved = try #require(s.model.save())
+
+        #expect(s.session.projectID == saved.id)
+        #expect(s.session.projectSymbolName == "airplane.departure")
+        let panes = s.session.tree.allPanes
+        #expect(panes[1].backgroundOverride == paneBefore)
+        #expect(panes[0].tabs[1].backgroundOverride == tabBefore)
+        #expect(panes.allSatisfy { $0.projectBackgroundSeed == nil && $0.tabs.allSatisfy { $0.projectBackgroundSeed == nil } })
+    }
+
+    @Test func addProjectSessionStillSetsEveryField() async throws {
+        let fixture = try ProjectBackgroundFixture()
+        let image = try await fixture.copy()
+        let store = fixture.appStore(sessions: [fixture.session()])
+        let theme = ThemePair(dark: "Nord", light: nil)
+        let project = Project(
+            name: "Every Field", rootPath: fixture.root.path, color: .teal, customColorHex: "#1E90FF",
+            customSymbolName: "airplane.departure", background: projectBackgroundValue(path: image),
+            theme: theme, notificationsMuted: true)
+        try store.projectStore.upsert(project)
+        let session = try store.openProject(id: project.id, mode: .openNew, contentFactory: noContent).session
+        #expect(session.projectID == project.id)
+        #expect(session.projectSymbolName == "airplane.departure")
+        #expect(session.colorIndex == project.color.rawValue)
+        #expect(session.title == "Every Field" && session.titleOverride)
+        #expect(session.themeOverride == theme)
+        #expect(session.notificationsMuted)
+        #expect(session.backgroundOverride == projectBackgroundValue(path: image))
+    }
+}

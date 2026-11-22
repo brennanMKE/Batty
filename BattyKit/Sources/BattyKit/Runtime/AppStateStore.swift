@@ -1705,7 +1705,7 @@ public final class AppStateStore {
     /// checks `openProject` makes, marking a missing image or one still
     /// waiting on sync.
     @discardableResult
-    private func seedProjectBackground(_ project: Project, on session: SessionRuntime) -> BackgroundImageState? {
+    func seedProjectBackground(_ project: Project, on session: SessionRuntime) -> BackgroundImageState? {
         let checked = project.background.map(projectBackgrounds.checked)
         session.setBackgroundOverride(checked?.settings)
         if let problem = checked?.problem { session.projectBackgroundImageProblem = problem }

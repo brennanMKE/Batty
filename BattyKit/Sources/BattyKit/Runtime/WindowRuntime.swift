@@ -359,14 +359,9 @@ public final class WindowRuntime {
             titleOverride: true,
             colorIndex: project.color.rawValue
         )
-        session.projectID = project.id
-        session.projectSymbol = project.symbol
-        session.projectSymbolName = project.customSymbolName
-        session.themeOverride = project.theme
         session.setBackgroundOverride(background)
-        session.notificationsMuted = project.notificationsMuted
         sessions.append(session)
-        setSessionColor(id: session.id, to: project.color.rawValue)
+        applyProjectIdentity(project, to: session)
         let panes = tree.allPanes
         for (slot, stored) in project.layout.panes.enumerated() where stored.isHidden && panes.indices.contains(slot) {
             hidePane(id: panes[slot].id)
@@ -379,6 +374,22 @@ public final class WindowRuntime {
         // Arrange first, select last (see `selectedSessionID`).
         selectedSessionID = session.id
         return session
+    }
+
+    /// Makes `session` show `project`'s identity: link, symbol, name, color,
+    /// Theme and mute. The background is the caller's, since opening and
+    /// linking check images differently. `session` must already be in
+    /// `sessions` so the color write reaches it.
+    func applyProjectIdentity(_ project: Project, to session: SessionRuntime) {
+        if session.projectID != project.id { session.projectID = project.id }
+        if session.projectSymbol != project.symbol { session.projectSymbol = project.symbol }
+        if session.projectSymbolName != project.customSymbolName { session.projectSymbolName = project.customSymbolName }
+        if session.title != project.name { session.title = project.name }
+        if !session.titleOverride { session.titleOverride = true }
+        // `themeOverride`'s didSet pushes to the whole tree.
+        if session.themeOverride != project.theme { session.themeOverride = project.theme }
+        if session.notificationsMuted != project.notificationsMuted { session.notificationsMuted = project.notificationsMuted }
+        setSessionColor(id: session.id, to: project.color.rawValue)
     }
 
     /// `fromCli` marks the emitted `session_destroyed` event as XPC-driven

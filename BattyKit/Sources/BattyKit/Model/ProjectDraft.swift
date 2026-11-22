@@ -43,6 +43,9 @@ struct ProjectDraft: Equatable {
     /// they were (a folder outside the root), shown as warnings until the
     /// field or the structure around it is edited. Not part of the Project.
     var captureNotes: [ProjectEditorField: String] = [:]
+    /// The live Session this draft was captured from, which a Save links to
+    /// the stored Project. Not part of the Project.
+    var sessionSource: ProjectSessionSource?
     /// The root is a placeholder because the captured Session had no known
     /// folder; the editor reports it as an error until the user sets one.
     var rootNeedsChoosing = false
@@ -181,4 +184,12 @@ private extension ProjectPane {
         image = nil
         activeTab = nil
     }
+}
+
+/// The live Session a Save Session as Project draft was captured from, and
+/// the runtime Pane and Tab behind each slot. Not part of the Project.
+struct ProjectSessionSource: Equatable {
+    let sessionID: UUID
+    let paneIDs: [Int: UUID]
+    let tabIDs: [Int: [UUID]]
 }
