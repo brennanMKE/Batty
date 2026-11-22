@@ -21,6 +21,15 @@
 #   scripts/build-beta.sh --teardown      print the teardown steps; makes no changes
 #   scripts/build-beta.sh -h | --help     this text
 #
+# BUILD NUMBER (#0713)
+#
+#   Every package variant stamps CFBundleVersion with the UTC time YYYYMMDDHHMM
+#   from scripts/build-number.sh (release_build_number), passed to xcodebuild as
+#   CURRENT_PROJECT_VERSION the way release.sh does, and fails if the built
+#   Info.plist doesn't carry it. Plain ./build.sh, ./build.sh unit, Xcode and the
+#   VM runner keep App.xcconfig's static CURRENT_PROJECT_VERSION = 1. Betas have
+#   no Sparkle feed, so no appcast ordering gate applies.
+#
 # THE SIGNING QUESTION (read this before using --sign)
 #
 #   Default is unsigned: CODE_SIGNING_ALLOWED=NO / CODE_SIGNING_REQUIRED=NO.
@@ -111,6 +120,23 @@ APP_NAME="Batty Beta.app"
 BUILD_ROOT="$REPO/beta-build"
 DERIVED_DATA="$BUILD_ROOT/DerivedData"
 OUT_DIR="$BUILD_ROOT/Products"
+
+source "$REPO/scripts/build-number.sh"
+BUILD_NUMBER="$(release_build_number)"
+BUILT_VERSION=""
+
+check_build_number() {
+    local app="$1" actual short
+    actual="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" || return 1
+    short="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" || return 1
+    if [[ "$actual" != "$BUILD_NUMBER" ]]; then
+        print -u2 "error: built CFBundleVersion ($actual) != injected build number ($BUILD_NUMBER)"
+        print -u2 "       xcodebuild did not honor CURRENT_PROJECT_VERSION=$BUILD_NUMBER."
+        return 1
+    fi
+    BUILT_VERSION="$short ($actual)"
+    print "==> Version check: $BUILT_VERSION"
+}
 
 print_help() {
     sed -n '2,/^set -euo pipefail$/p' "$SCRIPT_PATH" | sed '$d' | sed 's/^# \{0,1\}//'
@@ -343,7 +369,8 @@ PLIST
         -archivePath "$ARCHIVE_PATH" \
         -derivedDataPath "$DERIVED_DATA" \
         -destination 'generic/platform=macOS' \
-        BATTY_SIGNING=developerid
+        BATTY_SIGNING=developerid \
+        CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
     print "==> Exporting signed app (developer-id, manual)"
     xcodebuild -exportArchive \
@@ -356,6 +383,7 @@ PLIST
         print -u2 "error: exported app not found at $APP_PATH"
         return 1
     fi
+    check_build_number "$APP_PATH" || return 1
 
     # Same reason as release.sh (#0273): bin/* are sealed as resources, so
     # -exportArchive does not necessarily re-sign them.
@@ -474,6 +502,7 @@ PLIST
         print ""
         print "==> --no-submit: stopping before notarytool submit. Nothing was uploaded to the notary service (codesign still contacts the timestamp server)."
         print "    Signed, NOT notarized DMG: $FINAL_DMG"
+        print "    Version: $BUILT_VERSION"
         print "    Would run next:"
         print "      xcrun notarytool submit \"$WORK_DMG\" --keychain-profile $NOTARY_PROFILE --wait"
         print "      xcrun stapler staple / validate, scripts/verify-dmg.sh"
@@ -500,6 +529,7 @@ PLIST
 
     print ""
     print "==> Notarized Beta DMG: $FINAL_DMG"
+    print "    Version: $BUILT_VERSION"
     print ""
     print "Installing stays manual: mount the DMG and drag \"$APP_NAME\" to Applications."
     print "Teardown steps: scripts/build-beta.sh --teardown  (also docs/beta-teardown.md)"
@@ -531,6 +561,7 @@ xcodebuild build \
     -configuration "$CONFIGURATION" \
     -derivedDataPath "$DERIVED_DATA" \
     -destination 'platform=macOS' \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     "${SIGN_FLAGS[@]}"
 
 BUILT_APP="$DERIVED_DATA/Build/Products/$CONFIGURATION/$APP_NAME"
@@ -539,6 +570,7 @@ if [[ ! -d "$BUILT_APP" ]]; then
     print -u2 "(PRODUCT_NAME must resolve to \"Batty Beta\" — check Configuration/Beta.xcconfig)"
     exit 1
 fi
+check_build_number "$BUILT_APP" || exit 1
 
 # Leave exactly one copy behind, in a location this script owns —
 # release.sh's #0026 comment documents that a stray leftover .app confuses
@@ -547,7 +579,7 @@ fi
 ditto "$BUILT_APP" "$OUT_DIR/$APP_NAME"
 
 print ""
-print "==> Built: $OUT_DIR/$APP_NAME"
+print "==> Built: $OUT_DIR/$APP_NAME ($BUILT_VERSION)"
 print ""
 if (( SIGN )); then
     print "Signed with Developer ID (manual signing, Beta provisioning profile)."

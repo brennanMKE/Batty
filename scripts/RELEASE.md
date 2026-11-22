@@ -77,8 +77,11 @@ private key) in one pair of commands, non-destructively.
    `release.sh` and the preflight refuse a build number that is not
    strictly greater than the newest `sparkle:version` in
    `website/appcast.xml` or in `main`'s copy of it, so releases may
-   happen any number of times a day, at most once a minute. The static value left in
-   `App.xcconfig` is only used by Xcode-driven Debug builds, which
+   happen any number of times a day, at most once a minute. `./build.sh package` (every
+   variant, via `scripts/build-beta.sh`) stamps Beta packages with the
+   same UTC `YYYYMMDDHHMM` number, without the appcast gate since Betas
+   have no feed. The static `1` left in `App.xcconfig` is used only by
+   `./build.sh`, `./build.sh unit`, Xcode and the VM runner, which
    Sparkle never sees. The auto-derived number is printed at the
    end of `release.sh` so it can be pasted into `appcast.xml` as
    `sparkle:version`.
@@ -201,6 +204,12 @@ private key) in one pair of commands, non-destructively.
    Reads `MARKETING_VERSION` from `App.xcconfig`, creates an
    annotated `v<X.Y.Z>` tag on the current HEAD, and prompts before
    pushing to origin. `--push` or `--no-push` to skip the prompt.
+
+   For an `X.Y.0` release from `main`, then create `release/X.Y` from
+   the tag and bump `MARKETING_VERSION` on `main` to `X.(Y+1).0`
+   (`Bump version to X.(Y+1).0`), so Betas from `main` don't report the
+   shipped version. Patch releases bump `release/X.Y` instead. See
+   "Release branches" in `AGENTS.md`.
 
 9. **Write release notes**
 

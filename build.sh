@@ -28,6 +28,7 @@
 #                                  package a Batty Beta.app to install alongside Prod;
 #                                  --sign --notarize makes a notarized dist/Batty-Beta-<sha>.dmg
 #                                  (delegates to scripts/build-beta.sh)
+#                                  the package's CFBundleVersion is the UTC build number (YYYYMMDDHHMM)
 #
 # Result contract (build, unit, ui-typecheck):
 #
