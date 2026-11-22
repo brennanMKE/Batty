@@ -223,6 +223,16 @@ Note there is no `RunAtLoad`. You do not want one — launchd starts the agent
 **on demand** when someone connects to the Mach service, which is exactly the
 behaviour that lets `yourctl ping` work with the app never having been launched.
 
+In Batty the broker also **exits when its own executable is replaced** (#0719).
+An app update (Sparkle, or a manual copy) deletes or overwrites the bundle the
+running broker came from; its clients' outgoing code-signing check (#0278) then
+rejects it with -67065 (`errSecCSNoSuchCode`), because the process's code is no
+longer on disk. `BattyBroker` watches its own executable with
+`ExecutableReplacementWatcher` (BattyXPCCore) and exits on delete, rename,
+revoke or write, so launchd starts the new binary on the next connection. The
+app re-registers its endpoint on the interruption. The watch holds no state and
+does no business logic, so it stays within "What the broker must not be".
+
 ### The four-string rule
 
 These four must be the identical string:

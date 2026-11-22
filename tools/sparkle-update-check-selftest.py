@@ -88,6 +88,8 @@ def build(tmp, mutate=None):
         "write_after": True,
         "after_app": (800, "101"),
         "crash": None,
+        "broker": "fresh",
+        "broker_pids": ("900", "901"),
     }
     if mutate:
         mutate(spec_)
@@ -95,6 +97,10 @@ def build(tmp, mutate=None):
     if spec_["write_after"]:
         write_snapshot(root / "after", *spec_["after_app"], spec_["after_hosts"], spec_["after_ps"], 10, spec_["final"])
         (root / "after" / "terminal-layout.json").write_text(json.dumps(spec_["after_layout"]))
+        if spec_["broker"] is not None:
+            (root / "after" / "broker.txt").write_text(spec_["broker"] + "\n")
+        (root / "after" / "broker-pid.txt").write_text(spec_["broker_pids"][1] + "\n")
+    (root / "baseline" / "broker-pid.txt").write_text(spec_["broker_pids"][0] + "\n")
     (root / "logs").mkdir()
     if spec_["crash"]:
         (root / "crashes").mkdir()
@@ -229,6 +235,29 @@ def crash(s):
     s["crash"] = "BattyHost-2026-11-21-100040.ips"
 code, out, _, checks = run(crash)
 expect("crash_report_fails_crashes", code == 1 and first_fail(checks)["name"] == "crashes", out)
+
+
+code, out, _, checks = run()
+expect("broker_fresh_passes", code == 0 and next(c for c in checks if c["name"] == "broker-fresh")["passed"], out)
+
+
+def broker_stale(s):
+    s["broker"] = "broker-stale"
+code, out, _, checks = run(broker_stale)
+expect("broker_stale_fails_broker_fresh", checks is not None and code == 1
+       and first_fail(checks)["name"] == "broker-fresh" and "broker-stale" in first_fail(checks)["detail"], out)
+
+
+def broker_pid_unchanged(s):
+    s["broker_pids"] = ("900", "900")
+code, out, _, checks = run(broker_pid_unchanged)
+expect("broker_pid_unchanged_fails_broker_fresh", code == 1 and first_fail(checks)["name"] == "broker-fresh", out)
+
+
+def no_broker_txt(s):
+    s["broker"] = None
+code, out, err, checks = run(no_broker_txt)
+expect("missing_broker_txt_is_error_exit_2", code == 2 and checks is None and "broker.txt" in err, err)
 
 
 def everything_wrong(s):

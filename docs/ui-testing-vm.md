@@ -721,7 +721,10 @@ through `osascript`, guest only, and reopen).
 the CHECK detail): `app-version`, `helper-connection`, `restore-attach`,
 `host-binary`, `host-pid`, `topology`, `project-link`, `shell-pids` (each
 baseline shell pid alive under the current BattyHost), `counter` (no gap, still
-growing), `orphans`, `crashes`.
+growing), `orphans`, `crashes`, `broker-fresh` (`batty ping` answered after
+the update without a broker restart, and the broker pid changed; #0719). If
+the ping fails, the guest marks `after/broker.txt` `broker-stale` and restarts
+the broker once, only so the `after` snapshot can still be taken.
 
 **Output.** `build/sparkle-tests/<run-id>/`: `run.txt`, `host/` (build logs,
 `packages.txt`, `appcast.xml`, `ed25519.pub`), `<mode>/` (`tart-run.log`,

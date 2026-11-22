@@ -232,6 +232,8 @@ except Exception: print("0 -1")
   done
   /bin/cp "$layout" "$d/terminal-layout.json" 2>/dev/null
   /bin/ps -A -o pid=,ppid=,pgid=,stat=,tty=,lstart=,comm= > "$d/ps.txt"
+  tmo 20 /bin/launchctl print "gui/$uid/co.sstools.Batty.beta.broker" 2>/dev/null </dev/null \
+    | /usr/bin/sed -n 's/^[[:space:]]*pid = //p' | /usr/bin/head -1 > "$d/broker-pid.txt"
   : > "$d/host.txt"
   for p in $(/usr/bin/pgrep -x BattyHost); do
     print -r -- "pid=$p" >> "$d/host.txt"
@@ -282,9 +284,14 @@ trigger)
     sleep 1
   done
   wait_log $off 90 "restore:" >/dev/null || print -r -- "WARNING: no restore: line within 90s"
-  if ! wait_ping 60; then
-    print -r -- "WARNING: broker-restarted"
-    print -r -- "broker-restarted" >> "$R/warnings.txt"
+  /bin/mkdir -p "$R/after"
+  # A broker still running the replaced binary is a failure (#0719): restart it
+  # once only so the after snapshot, which needs the CLI, can still be taken.
+  if wait_ping 60; then
+    print -r -- "fresh" > "$R/after/broker.txt"
+  else
+    print -r -- "FAIL-MARK: broker-stale"
+    print -r -- "broker-stale" > "$R/after/broker.txt"
     tmo 20 /bin/launchctl kickstart -k "gui/$uid/co.sstools.Batty.beta.broker" </dev/null
     wait_ping 60 || err "batty ping failed after the update (broker restarted once)"
   fi

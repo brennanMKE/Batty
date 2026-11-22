@@ -35,6 +35,7 @@ CHECK_ORDER = [
     "counter",
     "orphans",
     "crashes",
+    "broker-fresh",
 ]
 
 # Focus, selection, sizes and titles legitimately change across a relaunch;
@@ -52,6 +53,11 @@ def read_text(path):
         return Path(path).read_text(errors="replace")
     except OSError as e:
         raise InputError(f"missing {path}: {e.strerror}")
+
+
+def read_optional(path):
+    p = Path(path)
+    return p.read_text(errors="replace").strip() if p.is_file() else ""
 
 
 def read_json(path):
@@ -184,6 +190,9 @@ def run_checks(a):
             raise InputError(f"bad pid file {f}")
         pid_files[f.name] = int(txt)
     logs = log_lines_after(a.logs, a.trigger_time)
+    broker_state = read_text(after / "broker.txt").strip()
+    b_broker_pid = read_optional(base / "broker-pid.txt")
+    a_broker_pid = read_optional(after / "broker-pid.txt")
 
     results = {}
 
@@ -288,6 +297,14 @@ def run_checks(a):
     crashes_dir = Path(a.crashes) if a.crashes else Path(a.logs).parent / "crashes"
     crashes = sorted(p.name for p in crashes_dir.glob("*.ips") if p.name.startswith("Batty")) if crashes_dir.is_dir() else []
     results["crashes"] = None if not crashes else f"crashes: {', '.join(crashes)}"
+
+    # 12. broker-fresh
+    if broker_state == "broker-stale":
+        results["broker-fresh"] = "broker-stale: batty ping failed after the update until the broker was restarted"
+    elif b_broker_pid and a_broker_pid and b_broker_pid == a_broker_pid:
+        results["broker-fresh"] = f"broker pid unchanged ({a_broker_pid}): the old broker is still serving"
+    else:
+        results["broker-fresh"] = None
 
     return [(name, results[name]) for name in CHECK_ORDER]
 
