@@ -32,7 +32,34 @@ listener.resume()
 
 logger.info("listening on \(ServiceNames.broker, privacy: .public)")
 
-// launchd started this process on demand (no RunAtLoad); it stays alive to
-// answer requests until launchd stops it. No other work happens here — see
-// "What the broker must not be" in docs/xpc/xpc-cli-architecture.md.
+// An update replaces the bundle this process came from; clients then reject
+// it (#0278's check fails with -67065 once its code is gone from disk). Exit
+// on the first replacement event and launchd starts the new binary on the next
+// connection; the app registers its endpoint again on the interruption.
+let replacementWatcher: ExecutableReplacementWatcher? = {
+    guard let path = ExecutableReplacementWatcher.ownExecutablePath() else {
+        logger.error("could not resolve own executable path; not watching for replacement")
+        return nil
+    }
+    let watcher = ExecutableReplacementWatcher(
+        path: path,
+        queue: DispatchQueue(label: "co.sstools.Batty.broker.executable-watch")
+    ) { event in
+        logger.notice("executable replaced (\(ExecutableReplacementWatcher.describe(event), privacy: .public)) — exiting so launchd starts the new broker on demand")
+        exit(0)
+    }
+    do {
+        try watcher.start()
+        return watcher
+    } catch {
+        logger.error("could not watch own executable \(path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        return nil
+    }
+}()
+
+// launchd started this process on demand (no RunAtLoad); it stays alive until
+// launchd stops it, or until its own executable is replaced by an update (then
+// it exits and launchd starts the new binary on the next connection). No other
+// work happens here — see "What the broker must not be" in
+// docs/xpc/xpc-cli-architecture.md.
 RunLoop.main.run()
