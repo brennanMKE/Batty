@@ -225,10 +225,17 @@ vm_wait_bounded() {
 }
 
 # Run one guest command string, backgrounded and bounded on the host too (the
-# `tart exec` itself can wedge). Sets step_rc.
+# `tart exec` itself can wedge). Sets step_rc. An optional third argument is a
+# host file that also receives the step's output; with it, the step's stderr
+# is merged into stdout (`2>&1`) on the terminal too. $! stays the
+# `tart exec` job, so step_rc is still its status.
 vm_run_guest_step() {
-  local secs="$1" cmd="$2"
-  tart exec "$CLONE" /bin/zsh -lc "$cmd" &
+  local secs="$1" cmd="$2" tee_file="${3:-}"
+  if [[ -n "$tee_file" ]]; then
+    tart exec "$CLONE" /bin/zsh -lc "$cmd" > >(tee "$tee_file") 2>&1 &
+  else
+    tart exec "$CLONE" /bin/zsh -lc "$cmd" &
+  fi
   TEST_PID=$!
   vm_wait_bounded "$secs" "guest step"
 }

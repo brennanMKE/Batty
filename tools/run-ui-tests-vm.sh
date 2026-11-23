@@ -49,12 +49,16 @@
 #      `test-without-building` with -only-testing:BattyUITests (or the
 #      given specs).
 #   5. Stream results back to build/ui-tests/<run-id>/: xcodebuild-build.log
-#      and xcodebuild.log (the test step), UITests.xcresult,
+#      and xcodebuild.log (the test step), xcodebuild-stream.log (the host's
+#      own copy of the streamed test output), UITests.xcresult,
 #      broker-bootstrap.out and broker-diagnostics.log, app-warnings.log,
 #      sandbox-denials.log, crashes/, and the host-side tart-run.log
 #      (written directly to this results dir, created before boot, so it
 #      survives cleanup). Results are also pulled after the build and
-#      bootstrap steps, so a later hang or timeout still returns them.
+#      bootstrap steps, so a later hang or timeout still returns them. The
+#      final pull runs in two passes, everything but the result bundle
+#      first and then the bundle, each retried once; a failed pull is
+#      logged and named next to the CHECK UI line, never silently read past.
 #      The run ends with `==> RESULT: ...`, a digest of failing tests from
 #      UITests.xcresult (tools/check-report.py --stage ui, Haiku-summarized
 #      on failure), and a final `CHECK UI: ...` line on every exit path;
@@ -391,17 +395,43 @@ GUEST_APP="$GUEST_DD/Build/Products/Debug/Batty Beta.app"
 GUEST_TMO='/usr/bin/perl -e "alarm shift; exec @ARGV" --'
 
 # Best-effort, bounded pull of whatever the guest has so far, so a later hang
-# or timeout still returns the earlier steps' output.
+# or timeout still returns the earlier steps' output. $1 selects what: all
+# (default), logs (everything but UITests.xcresult) or bundle (only it).
+# Returns non-zero on failure, after logging the cause; step_rc is preserved.
+# A failed pass can leave a partial file behind from a truncated archive.
 pull_results() {
-  local tarball="$EXPORT/pull.tar"
-  local guest_secs=90 host_secs=120
+  local what="${1:-all}" tarball="$EXPORT/pull.tar" saved_rc=$step_rc rc=0 cause=""
+  local guest_secs=300 host_secs=330 src="."
+  [[ "$what" == logs ]] && src="--exclude ./UITests.xcresult ."
+  if [[ "$what" == bundle ]]; then
+    src="./UITests.xcresult"
+    guest_secs=600; host_secs=660
+  fi
   (( KEEP_RECORDINGS )) && { guest_secs=600; host_secs=660 }
   (( DEMO )) && { guest_secs=1500; host_secs=1560 }
-  tart exec "$CLONE" /bin/zsh -lc "$GUEST_TMO $guest_secs tar -C $GUEST_RESULTS -cf - ." > "$tarball" 2>/dev/null &
+  if [[ "$what" == bundle ]]; then
+    tart exec "$CLONE" /bin/zsh -lc "[[ -e $GUEST_RESULTS/UITests.xcresult ]] || exit 0; $GUEST_TMO $guest_secs tar -C $GUEST_RESULTS -cf - $src" > "$tarball" 2>/dev/null &
+  else
+    tart exec "$CLONE" /bin/zsh -lc "$GUEST_TMO $guest_secs tar -C $GUEST_RESULTS -cf - $src" > "$tarball" 2>/dev/null &
+  fi
   TEST_PID=$!
   vm_wait_bounded $host_secs "result pull"
-  tar -x -C "$RESULTS_DIR" -f "$tarball" 2>/dev/null || log "Failed to pull some results back from the guest"
+  if (( step_rc == 124 )); then
+    cause="host bound of ${host_secs}s hit"
+  elif (( step_rc != 0 )); then
+    cause="tart exec exit $step_rc"
+  fi
+  if [[ -s "$tarball" ]]; then
+    tar -x -C "$RESULTS_DIR" -f "$tarball" 2>/dev/null || rc=$?
+    (( rc )) && [[ -z "$cause" ]] && cause="tar -x exit $rc (partial archive)"
+  fi
   rm -f "$tarball"
+  step_rc=$saved_rc
+  if [[ -n "$cause" ]]; then
+    log "Results pull from the guest failed ($what): $cause"
+    return 1
+  fi
+  return 0
 }
 
 set +e
@@ -452,7 +482,7 @@ else
       CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
       BATTY_ENTITLEMENTS=Batty/Batty-local.entitlements PROVISIONING_PROFILE_SPECIFIER= \
       test-without-building 2>&1 | tee $GUEST_RESULTS/xcodebuild.log
-    exit \${pipestatus[1]}"
+    exit \${pipestatus[1]}" "$RESULTS_DIR/xcodebuild-stream.log"
   test_rc=$step_rc
 fi
 set -e
@@ -507,10 +537,16 @@ fi
 # alongside it.
 
 log "Pulling results into $RESULTS_DIR"
-# Best-effort and bounded (see pull_results): the test's own result is already
-# known ($test_rc, above) and must be what this script exits with regardless of
-# whether the result bundle made it back.
-pull_results
+# Bounded (see pull_results), logs first so they can't be lost behind the
+# result bundle, each pass retried once. The exit status comes from the
+# CHECK UI classification below; a failed pull is reported there (as
+# --missing), never silently read past. `|| X=1` keeps a pass that fails twice
+# from tripping errexit, and records it: whatever that pass left on disk may
+# be a partial file and is treated as not retrieved.
+LOGS_PULL_FAILED=0
+BUNDLE_PULL_FAILED=0
+pull_results logs || pull_results logs || LOGS_PULL_FAILED=1
+pull_results bundle || pull_results bundle || BUNDLE_PULL_FAILED=1
 
 print ""
 if (( test_rc == 0 )); then
@@ -518,8 +554,29 @@ if (( test_rc == 0 )); then
 else
   log "RESULT: TEST FAILED (exit $test_rc)"
 fi
-summary_log="$RESULTS_DIR/xcodebuild.log"
-[[ -f "$summary_log" ]] || summary_log="$RESULTS_DIR/xcodebuild-build.log"
+missing=()
+if (( build_rc != 0 )); then
+  summary_log="$RESULTS_DIR/xcodebuild-build.log"
+  if (( LOGS_PULL_FAILED )) || [[ ! -f "$summary_log" ]]; then
+    missing+=(xcodebuild-build.log)
+  fi
+else
+  # The test step ran: never read the build log for its result.
+  summary_log="$RESULTS_DIR/xcodebuild.log"
+  if (( LOGS_PULL_FAILED )) || [[ ! -f "$summary_log" ]]; then
+    if [[ -s "$RESULTS_DIR/xcodebuild-stream.log" ]]; then
+      log "xcodebuild.log was not fully retrieved from the guest; reading the host's copy of the streamed test output (xcodebuild-stream.log)"
+      summary_log="$RESULTS_DIR/xcodebuild-stream.log"
+    else
+      missing+=(xcodebuild.log)
+    fi
+  fi
+  if (( BUNDLE_PULL_FAILED )) || [[ ! -e "$RESULTS_DIR/UITests.xcresult" ]]; then
+    missing+=(UITests.xcresult)
+  fi
+fi
+missing_args=()
+for m in "${missing[@]}"; do missing_args+=(--missing "$m"); done
 crashes=( "$RESULTS_DIR"/crashes/*.ips(N) )
 (( ${#crashes} )) && log "CRASH REPORTS: ${#crashes} in $RESULTS_DIR/crashes/"
 warnings="$(grep -c -i -E "modifying state during view update|multiple times per frame|attributegraph: cycle|publishing changes from within view updates|geometry action is cycling|constraint|exception" "$RESULTS_DIR/app-warnings.log" 2>/dev/null || true)"
@@ -531,7 +588,7 @@ log "Full log:      $summary_log"
 
 set +e
 check_out="$(python3 "$REPO/tools/check-report.py" --stage ui --log "$summary_log" \
-  --rc "$test_rc" --xcresult "$RESULTS_DIR/UITests.xcresult" --duration "$SECONDS")"
+  --rc "$test_rc" --xcresult "$RESULTS_DIR/UITests.xcresult" --duration "$SECONDS" "${missing_args[@]}")"
 check_rc=$?
 set -e
 if [[ -z "$check_out" ]]; then

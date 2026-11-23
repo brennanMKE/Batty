@@ -23,7 +23,7 @@ BATTY_CHECK_SUMMARY_TIMEOUT sets the timeout, default 90 s). The exit code and
 the final line never depend on that summary.
 
     tools/check-report.py --stage {build,unit,ui-typecheck,ui} --log PATH --rc N
-                          [--xcresult PATH] [--duration SECS]
+                          [--xcresult PATH] [--duration SECS] [--missing NAME ...]
 """
 
 import argparse
@@ -51,7 +51,10 @@ OTHER_ERROR = re.compile(
 LOCATED_WARNING = re.compile(r"^([^\s:][^:]*):\d+:\d+: warning: .+$")
 ST_ISSUE = re.compile(r"^✘ Test (.+?) recorded an issue at (\S+?):(\d+):\d+: (.+)$")
 ST_RUN = re.compile(r"^[✔✘] Test run with (\d+) tests?.*?(passed|failed)")
-XC_EXECUTED = re.compile(r"Executed (\d+) tests?, with (\d+) failures?")
+# The middle group absorbs any clause before the failure count ("N tests
+# skipped and ", or anything else xcodebuild adds there) so the count is kept.
+XC_EXECUTED = re.compile(r"Executed (\d+) tests?, with (.*?)(\d+) failures? \((\d+) unexpected\)")
+XC_SKIPPED = re.compile(r"(\d+) tests? skipped")
 XC_CASE_FAILED = re.compile(r"Test Case '(.+?)' failed")
 FALLBACK_HINT = re.compile(r"error|failed|cannot|unable|denied|not found", re.I)
 # Simulator and Xcode-internal chatter that matches FALLBACK_HINT on every run.
@@ -104,6 +107,15 @@ def changed_files(root):
     names.update((git(root, "diff", "--name-only", "HEAD") or "").splitlines())
     names.update((git(root, "ls-files", "--others", "--exclude-standard") or "").splitlines())
     return {n for n in names if n}
+
+
+def parse_executed(line):
+    """(executed, skipped, failed, unexpected) from an xcodebuild summary line, or None."""
+    m = XC_EXECUTED.search(line)
+    if not m:
+        return None
+    sk = XC_SKIPPED.search(m.group(2))
+    return int(m.group(1)), int(sk.group(1)) if sk else 0, int(m.group(3)), int(m.group(4))
 
 
 def read_xcresult(path):
@@ -183,11 +195,13 @@ def parse(log_lines, stage, xcresult, root, rc):
                     tests["total"] = int(m.group(1))
             executed = None
             for line in log_lines:
-                m = XC_EXECUTED.search(line)
-                if m:
-                    executed = (int(m.group(1)), int(m.group(2)))
-            if executed and tests["total"] is None:
-                tests["total"] = executed[0]
+                parsed = parse_executed(line)
+                if parsed:
+                    executed = parsed
+            if executed:
+                if tests["total"] is None:
+                    tests["total"] = executed[0]
+                tests["skipped"] = executed[1]
             names = []
             for name, line in st_issues:
                 if name not in names:
@@ -198,7 +212,7 @@ def parse(log_lines, stage, xcresult, root, rc):
                 if m and m.group(1) not in names:
                     names.append(m.group(1))
                     tests["failures"].append((m.group(1), line.strip()))
-            tests["failed"] = len(names) or (executed[1] if executed else 0)
+            tests["failed"] = len(names) or (executed[2] if executed else 0)
 
     changed = changed_files(root)
     warnings, all_warning_count = [], 0
@@ -219,8 +233,18 @@ def parse(log_lines, stage, xcresult, root, rc):
     return compile_errors, failed_commands, tests, st_issues, warnings, build_failed
 
 
-def classify(stage, rc, compile_errors, tests, build_failed=False):
+def classify(stage, rc, compile_errors, tests, build_failed=False, missing=()):
     """Decide the outcome from rc and test counts; compile_errors only labels it."""
+    outcome = _classify(stage, rc, compile_errors, tests, build_failed)
+    # Results the caller could not retrieve turn a "could not tell" ERROR into
+    # one that says why; PASSED/FAILED from a log that did come back stand.
+    if (missing and stage in ("unit", "ui") and outcome[0] == "ERROR"
+            and outcome[1] != "interrupted"):
+        return "ERROR", f"results not retrieved from guest: {', '.join(missing)}", 2
+    return outcome
+
+
+def _classify(stage, rc, compile_errors, tests, build_failed=False):
     n_err = len(compile_errors)
     if stage not in ("unit", "ui"):
         if rc == 0:
@@ -364,6 +388,8 @@ def main():
     ap.add_argument("--rc", required=True, type=int)
     ap.add_argument("--xcresult")
     ap.add_argument("--duration", type=float)
+    ap.add_argument("--missing", action="append", default=[],
+                    help="a result file the caller could not retrieve (repeatable)")
     args = ap.parse_args()
 
     log_path = Path(args.log)
@@ -374,10 +400,18 @@ def main():
     root_s = git(log_path.parent.resolve() if log_path.parent.exists() else Path.cwd(),
                  "rev-parse", "--show-toplevel")
     root = Path(root_s) if root_s else None
+    missing = list(dict.fromkeys(args.missing))
+    if not log_path.exists() and log_path.name not in missing:
+        missing.insert(0, log_path.name)
 
+    # A bundle the caller reports as not retrieved may be a partial copy; don't
+    # read counts from it.
+    xcresult = args.xcresult
+    if xcresult and Path(xcresult).name in missing:
+        xcresult = None
     compile_errors, failed_commands, tests, st_issues, warnings, build_failed = parse(
-        log_lines, args.stage, args.xcresult, root, args.rc)
-    outcome, detail, code = classify(args.stage, args.rc, compile_errors, tests, build_failed)
+        log_lines, args.stage, xcresult, root, args.rc)
+    outcome, detail, code = classify(args.stage, args.rc, compile_errors, tests, build_failed, missing)
 
     def rel(p):
         try:
@@ -390,7 +424,10 @@ def main():
     failures_path = Path(str(log_path) + ".failures.txt")
     if outcome != "PASSED":
         digest = build_digest(compile_errors, failed_commands, tests, st_issues, warnings, log_lines)
-        if detail == "no tests ran":
+        if detail and detail.startswith("results not retrieved from guest"):
+            digest.insert(0, f"Results were not retrieved from the guest: {', '.join(missing)}; "
+                             "see the runner's pull messages above.")
+        elif detail == "no tests ran":
             digest.insert(0, "No tests ran: the test filter matched nothing, or the test bundle never executed.")
         elif not digest:
             digest = fallback_digest(log_lines)
@@ -415,6 +452,8 @@ def main():
             if more > 0:
                 out.append(f"… {more} more lines in {rel(failures_path)}")
 
+    if missing:
+        out.append(f"==> not retrieved from the guest: {', '.join(missing)}")
     warn = f"{plural(len(warnings), 'warning')} in changed files"
     errs = plural(len(compile_errors), "compile error")
     if args.stage in ("unit", "ui"):

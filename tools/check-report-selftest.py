@@ -75,14 +75,80 @@ CASES = [
      0, "CHECK UI-TYPECHECK: PASSED"),
 ]
 
+SUMMARY_106 = "\t Executed 106 tests, with 1 test skipped and 1 failure (0 unexpected) in 1859.831 (1859.883) seconds"
+SUMMARY_117 = "\t Executed 117 tests, with 8 tests skipped and 0 failures (0 unexpected) in 796.353 (796.410) seconds"
+SUMMARY_52 = "\t Executed 52 tests, with 2 failures (0 unexpected) in 796.682 (796.707) seconds"
+SUITE_FAILED = "Test Suite 'Selected tests' failed at 2026-11-22 18:20:01.680."
 
-def run(stage, rc, lines, summary, workdir):
-    log = Path(workdir) / f"{stage}-case.log"
-    log.write_text("\n".join(lines) + "\n")
-    cr.read_xcresult = lambda _path: summary
-    argv = ["check-report.py", "--stage", stage, "--log", str(log), "--rc", str(rc)]
+# (line, expected parse_executed result)
+EXECUTED_CASES = [
+    (SUMMARY_106, (106, 1, 1, 0)),
+    (SUMMARY_117, (117, 8, 0, 0)),
+    (SUMMARY_52, (52, 0, 2, 0)),
+    ("\t Executed 1 test, with 1 failure (0 unexpected) in 20.1 (20.1) seconds", (1, 0, 1, 0)),
+    ("\t Executed 1 test, with 0 failures (0 unexpected) in 20.1 (20.1) seconds", (1, 0, 0, 0)),
+    ("\t Executed 3 tests, with 1 failure (0 unexpected) in 20.1 (20.1) seconds", (3, 0, 1, 0)),
+    ("\t Executed 4 tests, with 1 test skipped and 2 failures (0 unexpected) in 9.0 (9.1) seconds", (4, 1, 2, 0)),
+    ("\t Executed 9 tests, with 2 tests skipped and 1 failure (0 unexpected) in 50.0 (50.1) seconds", (9, 2, 1, 0)),
+    (SUITE_FAILED, None),
+]
+
+LOG_0722 = [
+    "Test Case '-[BattyUITests.SessionReminderTests testSuggestionIsSelectedSoTypingReplacesIt]' skipped (0.055 seconds).",
+    "Test Case '-[BattyUITests.TabRenameTests testRenameActiveTabUpdatesChipTitle]' failed (20.447 seconds).",
+    SUITE_FAILED, SUMMARY_106, "** TEST EXECUTE FAILED **",
+]
+
+# (name, stage, rc, log lines or None for no log file, extra argv,
+#  expected code, expected last line, substrings the output must contain,
+#  substrings it must not contain[, xcresult summary stub])
+UI_CASES = [
+    ("ui rc 65, no xcresult, skipped-and-failed summary (#0722)", "ui", 65, LOG_0722, [],
+     1, "CHECK UI: FAILED (1 test, 0 compile errors)", ["==> ui: 106 tests, 1 failed, 1 skipped"], []),
+    ("ui rc 65, no xcresult, summary count only", "ui", 65,
+     [l for l in LOG_0722 if "failed (" not in l], [],
+     1, "CHECK UI: FAILED (1 test, 0 compile errors)", [], []),
+    ("ui rc 0, no xcresult, skipped and 0 failures", "ui", 0,
+     [SUMMARY_117, "** TEST EXECUTE SUCCEEDED **"], [],
+     0, "CHECK UI: PASSED (117 tests)", ["8 skipped"], []),
+    ("ui rc 65, no xcresult, plain 2 failures", "ui", 65,
+     [SUMMARY_52, "** TEST EXECUTE FAILED **"], [],
+     1, "CHECK UI: FAILED (2 tests, 0 compile errors)", [], []),
+    ("ui rc 65, log and xcresult not retrieved", "ui", 65, None,
+     ["--missing", "xcodebuild.log", "--missing", "UITests.xcresult"],
+     2, "CHECK UI: ERROR (results not retrieved from guest: xcodebuild.log, UITests.xcresult)",
+     ["==> not retrieved from the guest:"], ["No tests ran"]),
+    ("ui rc 65, xcresult not retrieved, log has the failure", "ui", 65, LOG_0722,
+     ["--missing", "UITests.xcresult"],
+     1, "CHECK UI: FAILED (1 test, 0 compile errors)", ["not retrieved from the guest: UITests.xcresult"], []),
+    ("ui rc 65, xcresult not retrieved, truncated log", "ui", 65,
+     ["Test Case '-[BattyUITests.TabRenameTests testA]' started."], ["--missing", "UITests.xcresult"],
+     2, "CHECK UI: ERROR (results not retrieved from guest: UITests.xcresult)", [], []),
+    ("ui rc 65, build log only, build failed", "ui", 65,
+     ["/x/A.swift:8:31: error: cannot convert value", "** TEST BUILD FAILED **"], [],
+     1, "CHECK UI: FAILED (0 tests, 1 compile error)", [], []),
+    # The runner passes --missing for a pass that failed twice even when it left
+    # a partial file on disk.
+    ("ui rc 0, logs pass failed, partial xcodebuild.log", "ui", 0,
+     ["Test Case '-[BattyUITests.TabRenameTests testA]' started."], ["--missing", "xcodebuild.log"],
+     2, "CHECK UI: ERROR (results not retrieved from guest: xcodebuild.log)",
+     ["==> not retrieved from the guest: xcodebuild.log"], ["No tests ran"]),
+    ("ui rc 65, bundle pass failed, partial bundle not read", "ui", 65, LOG_0722,
+     ["--missing", "UITests.xcresult"],
+     1, "CHECK UI: FAILED (1 test, 0 compile errors)",
+     ["==> ui: 106 tests, 1 failed, 1 skipped", "not retrieved from the guest: UITests.xcresult"], [],
+     {"totalTestCount": 3, "failedTests": 0, "skippedTests": 0, "testFailures": []}),
+]
+
+
+def run(stage, rc, lines, summary, workdir, extra_argv=()):
+    log = Path(workdir) / ("xcodebuild.log" if lines is None else f"{stage}-case.log")
+    if lines is not None:
+        log.write_text("\n".join(lines) + "\n")
+    cr.read_xcresult = lambda path: summary if path else None
+    argv = ["check-report.py", "--stage", stage, "--log", str(log), "--rc", str(rc), *extra_argv]
     if summary is not None:
-        argv += ["--xcresult", str(Path(workdir) / "stub.xcresult")]
+        argv += ["--xcresult", str(Path(workdir) / "UITests.xcresult")]
     out = io.StringIO()
     saved = sys.argv
     sys.argv = argv
@@ -105,7 +171,24 @@ def main():
         failures += not ok
         print(f"{'ok  ' if ok else 'FAIL'} {name}" +
               ("" if ok else f": got exit {code}, {last!r}; want exit {want_code}, {want_last!r}"))
-    print(f"{len(CASES) - failures}/{len(CASES)} passed")
+    for line, want in EXECUTED_CASES:
+        got = cr.parse_executed(line)
+        ok = got == want
+        failures += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} parse_executed {line.strip()[:60]!r}" +
+              ("" if ok else f": got {got}, want {want}"))
+    for name, stage, rc, lines, extra, want_code, want_last, must, must_not, *stub in UI_CASES:
+        with tempfile.TemporaryDirectory() as workdir:
+            code, out = run(stage, rc, lines, stub[0] if stub else None, workdir, extra)
+        last = out[-1] if out else ""
+        text = "\n".join(out)
+        ok = (code == want_code and last == want_last
+              and all(m in text for m in must) and not any(m in text for m in must_not))
+        failures += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} {name}" +
+              ("" if ok else f": got exit {code}, {last!r}; want exit {want_code}, {want_last!r}\n{text}"))
+    total = len(CASES) + len(EXECUTED_CASES) + len(UI_CASES)
+    print(f"{total - failures}/{total} passed")
     return 1 if failures else 0
 
 

@@ -127,6 +127,10 @@ exits 0 on pass, 1 on a test or build failure, and 2 when a host precondition fa
 aborts the script (a `set -e` failure in `git archive`, `tart-lease`, `tart clone`, …, reported as
 `CHECK UI: ERROR (aborted, exit N)`), so a caller can tell "could not run" from "tests failed". An
 interrupted run prints `CHECK UI: ERROR (interrupted)` and keeps its signal status (129/130/143).
+When a result file didn't come back from the guest, the runner logs `Results pull from the guest
+failed (…): <cause>`, prints `==> not retrieved from the guest: <names>` before the counts line,
+and a run it can't classify from what did come back ends `CHECK UI: ERROR (results not retrieved
+from guest: …)` (exit 2) instead of "no tests ran" (#0722).
 
 ```sh
 ./build.sh ui                                          # full BattyUITests suite
@@ -136,11 +140,20 @@ tools/run-ui-tests-vm.sh                                # same thing, called dir
 
 Run it in the foreground of a terminal — a dropped session costs a clone, not a work
 session. Results land in `build/ui-tests/<run-id>/`: `xcodebuild-build.log` (the
-`build-for-testing` step) and `xcodebuild.log` (the test step), `UITests.xcresult`,
+`build-for-testing` step) and `xcodebuild.log` (the test step), `xcodebuild-stream.log` (the
+host's own copy of the test step's streamed output), `UITests.xcresult`,
 `broker-bootstrap.out` and `broker-diagnostics.log` (the broker step, #0419),
 `app-warnings.log`, `sandbox-denials.log`, `crashes/` (any Batty crash reports from the
 guest), and `tart-run.log` (the host-side `tart run` output). A build failure leaves no
-`xcodebuild.log`; the runner's summary then reads `xcodebuild-build.log`.
+`xcodebuild.log`; the runner's summary then reads `xcodebuild-build.log`. Once the test step
+has run it never does: a missing `xcodebuild.log` is read from `xcodebuild-stream.log`, or
+reported as not retrieved. The default pull bound is 300 s in the guest (330 s on the host);
+the final pull runs in two passes, everything but `UITests.xcresult` first and then the
+bundle alone (600 s/660 s), each retried once. In the worst case (both passes time out
+twice) the final pull adds about 2 × 330 s + 2 × 660 s ≈ 33 minutes after the test step. A
+pass that fails twice doesn't stop the run: what it left behind may be partial, so the summary
+treats it as not retrieved (`xcodebuild.log` is then read from `xcodebuild-stream.log`, and
+`UITests.xcresult` is reported missing and not read).
 `scripts/release.sh` leaves `build/ui-tests/` alone (#0721), but removing the worktree
 deletes it, so copy out any results you still need first.
 
@@ -169,7 +182,7 @@ tools/export-ui-recordings.sh build/ui-tests/<run-id>/UITests.xcresult   # -> <r
 - **Size.** A failing-only run of 25 recordings was 152 MB, so a kept-recordings run of the
   full suite is in the hundreds of MB. Bundles stay under the gitignored, never-pruned
   `build/ui-tests/<run-id>/`; delete old ones. With the switch on, the runner raises the
-  guest `tar` bound for `pull_results` from 90 s to 600 s (host-side 120 s to 660 s) so a
+  guest `tar` bound for `pull_results` from 300 s to 600 s (host-side 330 s to 660 s) so a
   large bundle still comes back over `tart exec`.
 - **Export.** `tools/export-ui-recordings.sh <xcresult> [out-dir]` runs
   `xcresulttool export attachments --filter '*.mp4'` and renames the UUID-named files from
@@ -323,8 +336,10 @@ the file extension) and strips the `_<n>_<UUID>` Xcode appends.
    `build/ui-tests/<run-id>/`, which already holds `tart-run.log` (the host-side `tart run`
    output, written there directly since boot, not under the temp export that cleanup
    deletes). It is pulled after the build step and after the broker step as well as at the
-   end, so a later hang or timeout still returns the earlier output. Contents:
-   `xcodebuild-build.log`, `xcodebuild.log`, `UITests.xcresult`, `broker-bootstrap.out`,
+   end, so a later hang or timeout still returns the earlier output. The final pull is two
+   passes (logs, then `UITests.xcresult`), each retried once. Contents:
+   `xcodebuild-build.log`, `xcodebuild.log`, `xcodebuild-stream.log` (teed on the host),
+   `UITests.xcresult`, `broker-bootstrap.out`,
    `broker-diagnostics.log`, an `app-warnings.log` (errors/faults/SwiftUI/AttributeGraph and
    `AppXPCCoordinator`/`BrokerAgentController` messages from the guest's unified log), a
    `sandbox-denials.log`, and any `Batty*.ips` crash reports.
